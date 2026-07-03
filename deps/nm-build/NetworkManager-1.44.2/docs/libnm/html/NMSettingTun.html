@@ -1,0 +1,412 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingTun: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingTeam.html" title="NMSettingTeam">
+<link rel="next" href="NMSettingUser.html" title="NMSettingUser">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingTun.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingTun.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingTeam.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingUser.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingTun"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingTun.top_of_page"></a>NMSettingTun</span></h2>
+<p>NMSettingTun — Describes connection properties for TUN/TAP interfaces</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingTun.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTun.html#nm-setting-tun-new" title="nm_setting_tun_new ()">nm_setting_tun_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTun.html#NMSettingTunMode" title="enum NMSettingTunMode"><span class="returnvalue">NMSettingTunMode</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTun.html#nm-setting-tun-get-mode" title="nm_setting_tun_get_mode ()">nm_setting_tun_get_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTun.html#nm-setting-tun-get-owner" title="nm_setting_tun_get_owner ()">nm_setting_tun_get_owner</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTun.html#nm-setting-tun-get-group" title="nm_setting_tun_get_group ()">nm_setting_tun_get_group</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTun.html#nm-setting-tun-get-pi" title="nm_setting_tun_get_pi ()">nm_setting_tun_get_pi</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTun.html#nm-setting-tun-get-vnet-hdr" title="nm_setting_tun_get_vnet_hdr ()">nm_setting_tun_get_vnet_hdr</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTun.html#nm-setting-tun-get-multi-queue" title="nm_setting_tun_get_multi_queue ()">nm_setting_tun_get_multi_queue</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTun.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTun.html#NM-SETTING-TUN-SETTING-NAME:CAPS" title="NM_SETTING_TUN_SETTING_NAME">NM_SETTING_TUN_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTun.html#NM-SETTING-TUN-MODE:CAPS" title="NM_SETTING_TUN_MODE">NM_SETTING_TUN_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTun.html#NM-SETTING-TUN-OWNER:CAPS" title="NM_SETTING_TUN_OWNER">NM_SETTING_TUN_OWNER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTun.html#NM-SETTING-TUN-GROUP:CAPS" title="NM_SETTING_TUN_GROUP">NM_SETTING_TUN_GROUP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTun.html#NM-SETTING-TUN-PI:CAPS" title="NM_SETTING_TUN_PI">NM_SETTING_TUN_PI</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTun.html#NM-SETTING-TUN-VNET-HDR:CAPS" title="NM_SETTING_TUN_VNET_HDR">NM_SETTING_TUN_VNET_HDR</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTun.html#NM-SETTING-TUN-MULTI-QUEUE:CAPS" title="NM_SETTING_TUN_MULTI_QUEUE">NM_SETTING_TUN_MULTI_QUEUE</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingTun.html#NMSettingTunMode" title="enum NMSettingTunMode">NMSettingTunMode</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTun.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GEnum</a>
+    <span class="lineart">╰──</span> NMSettingTunMode
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingTun.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for connection to TUN/TAP interfaces.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingTun.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-tun-new"></a><h3>nm_setting_tun_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_tun_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-tun-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tun-get-mode"></a><h3>nm_setting_tun_get_mode ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTun.html#NMSettingTunMode" title="enum NMSettingTunMode"><span class="returnvalue">NMSettingTunMode</span></a>
+nm_setting_tun_get_mode (<em class="parameter"><code><a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tun-get-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tun-get-mode.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mode”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tun-get-owner"></a><h3>nm_setting_tun_get_owner ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_tun_get_owner (<em class="parameter"><code><a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tun-get-owner.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tun-get-owner.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“owner”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tun-get-group"></a><h3>nm_setting_tun_get_group ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_tun_get_group (<em class="parameter"><code><a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tun-get-group.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tun-get-group.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“group”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tun-get-pi"></a><h3>nm_setting_tun_get_pi ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_tun_get_pi (<em class="parameter"><code><a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tun-get-pi.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tun-get-pi.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“pi”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tun-get-vnet-hdr"></a><h3>nm_setting_tun_get_vnet_hdr ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_tun_get_vnet_hdr (<em class="parameter"><code><a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tun-get-vnet-hdr.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tun-get-vnet-hdr.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“vnet_hdr”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tun-get-multi-queue"></a><h3>nm_setting_tun_get_multi_queue ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_tun_get_multi_queue (<em class="parameter"><code><a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tun-get-multi-queue.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tun-get-multi-queue.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multi-queue”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTun.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-TUN-SETTING-NAME:CAPS"></a><h3>NM_SETTING_TUN_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_TUN_SETTING_NAME "tun"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TUN-MODE:CAPS"></a><h3>NM_SETTING_TUN_MODE</h3>
+<pre class="programlisting">#define NM_SETTING_TUN_MODE        "mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TUN-OWNER:CAPS"></a><h3>NM_SETTING_TUN_OWNER</h3>
+<pre class="programlisting">#define NM_SETTING_TUN_OWNER       "owner"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TUN-GROUP:CAPS"></a><h3>NM_SETTING_TUN_GROUP</h3>
+<pre class="programlisting">#define NM_SETTING_TUN_GROUP       "group"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TUN-PI:CAPS"></a><h3>NM_SETTING_TUN_PI</h3>
+<pre class="programlisting">#define NM_SETTING_TUN_PI          "pi"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TUN-VNET-HDR:CAPS"></a><h3>NM_SETTING_TUN_VNET_HDR</h3>
+<pre class="programlisting">#define NM_SETTING_TUN_VNET_HDR    "vnet-hdr"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TUN-MULTI-QUEUE:CAPS"></a><h3>NM_SETTING_TUN_MULTI_QUEUE</h3>
+<pre class="programlisting">#define NM_SETTING_TUN_MULTI_QUEUE "multi-queue"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingTunMode"></a><h3>enum NMSettingTunMode</h3>
+<p><a class="link" href="NMSettingTun.html#NMSettingTunMode" title="enum NMSettingTunMode"><span class="type">NMSettingTunMode</span></a> values indicate the device type (TUN/TAP)</p>
+<div class="refsect3">
+<a name="NMSettingTunMode.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-TUN-MODE-UNKNOWN:CAPS"></a>NM_SETTING_TUN_MODE_UNKNOWN</p></td>
+<td class="enum_member_description">
+<p>an unknown device type</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-TUN-MODE-TUN:CAPS"></a>NM_SETTING_TUN_MODE_TUN</p></td>
+<td class="enum_member_description">
+<p>a TUN device</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-TUN-MODE-TAP:CAPS"></a>NM_SETTING_TUN_MODE_TAP</p></td>
+<td class="enum_member_description">
+<p>a TAP device</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

@@ -1,0 +1,219 @@
+'\" t
+.\"     Title: nm-initrd-generator
+.\"    Author: 
+.\" Generator: DocBook XSL Stylesheets vsnapshot <http://docbook.sf.net/>
+.\"      Date: 10/03/2023
+.\"    Manual: System Administration
+.\"    Source: NetworkManager 1.44.2
+.\"  Language: English
+.\"
+.TH "NM\-INITRD\-GENERATOR" "8" "" "NetworkManager 1\&.44\&.2" "System Administration"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+nm-initrd-generator \- early boot NetworkManager configuration generator
+.SH "SYNOPSIS"
+.HP \w'\fBnm\-initrd\-generator\fR\ 'u
+\fBnm\-initrd\-generator\fR [\fIOPTIONS\fR...] \-\- [\fICMDLINE\fR...]
+.SH "DESCRIPTION"
+.PP
+\fBnm\-initrd\-generator\fR
+scans the command line for options relevant to network configuration and creates configuration files for an early instance of NetworkManager run from the initial ramdisk during early boot\&.
+.SH "OPTIONS"
+.PP
+\fB\-c\fR | \fB\-\-connections\-dir\fR \fIpath\fR
+.RS 4
+Output connection directory\&.
+.RE
+.PP
+\fB\-p\fR | \fB\-\-persistent\-connections\-dir\fR \fIpath\fR
+.RS 4
+Persistent connection directory\&. If it exists, rd\&.neednet will not cause a default connection to be generated in absence of other options\&.
+.RE
+.PP
+\fB\-i\fR | \fB\-\-initrd\-data\-dir\fR \fIpath\fR
+.RS 4
+Output directory for initrd data (e\&.g\&. hostname)\&.
+.RE
+.PP
+\fB\-d\fR | \fB\-\-sysfs\-dir\fR \fIpath\fR
+.RS 4
+The sysfs mount point\&.
+.RE
+.PP
+\fB\-r\fR | \fB\-\-run\-config\-dir\fR \fIpath\fR
+.RS 4
+Output directory for config files\&.
+.RE
+.PP
+\fB\-s\fR | \fB\-\-stdout\fR
+.RS 4
+Dump connections to standard output\&. Useful for debugging\&.
+.RE
+.PP
+\fICMDLINE\fR
+.RS 4
+The options that appear on the kernel command line\&. The following options are recognized:
+.RS 4
+\fBip\fR
+.RE
+.RS 4
+\fBrd\&.route\fR
+.RE
+.RS 4
+\fBbridge\fR
+.RE
+.RS 4
+\fBbond\fR
+.RE
+.RS 4
+\fBteam\fR
+.RE
+.RS 4
+\fBvlan\fR
+.RE
+.RS 4
+\fBib\&.pkey\fR
+.RE
+.RS 4
+\fBbootdev\fR
+.RE
+.RS 4
+\fBnameserver\fR
+.RE
+.RS 4
+\fBnet\&.ifnames\fR
+.RE
+.RS 4
+\fBrd\&.peerdns\fR
+.RE
+.RS 4
+\fBrd\&.iscsi\&.ibft\fR
+.RE
+.RS 4
+\fBrd\&.bootif\fR
+.RE
+.RS 4
+\fBrd\&.neednet\fR
+.RE
+.RS 4
+\fBrd\&.ethtool\fR
+.RE
+.RS 4
+\fBrd\&.net\&.timeout\&.dhcp\fR
+.RE
+.RS 4
+\fBrd\&.net\&.dhcp\&.retry\fR
+.RE
+.RS 4
+\fBrd\&.net\&.dhcp\&.vendor\-class\fR
+.RE
+.RS 4
+\fBrd\&.net\&.timeout\&.carrier\fR
+.RE
+.RS 4
+\fBrd\&.znet\fR
+.RE
+.RS 4
+\fBrd\&.znet_ifname\fR
+.RE
+.RS 4
+\fBBOOTIF\fR
+.RE
+Please consult the
+\fBdracut.cmdline\fR(7)
+manual for the documentation of the precise format of the values supported\&.
+.RE
+.SH "DIFFERENCES FROM THE NETWORK\-LEGACY DRACUT MODULE"
+.PP
+\fBnm\-initrd\-generator\fR
+generates a set of connections that are then configured by the NetworkManager instance running in the initrd\&. There are some differences in behavior compared to the network\-legacy dracut module:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+When an interface is configured with a static address and a gateway, the network\-legacy module waits that the gateway responds to arping requests before proceeding, while NetworkManager doesn\*(Aqt\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+network\-legacy configures interfaces one by one in the order in which they are announced by udev\&. If multiple interfaces specify a hostname (from command line or from DHCP), the one from the last interface activated wins\&. With NetworkManager, hostnames from command line have higher precedence over ones from DHCP, and the last that appears in the command line wins\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+NetworkManager supports the
+\fBib\&.pkey\fR=\fIPARENT\fR\&.\fIPKEY\fR
+argument to set up an Infiniband partition on IPoIB parent device
+\fIPARENT\fR
+using the specified partition key
+\fIPKEY\fR\&. The partition key must be in hexadecimal notation without leading "0x", for example "ib\&.pkey=ib0\&.8004"\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+NetworkManager supports the
+\fBrd\&.ethtool\fR=\fIINTERFACE\fR:\fIAUTONEG\fR:\fISPEED\fR
+kernel command line option to set up ethtool NIC configuration parameters
+\fIAUTONEG\fR
+and
+\fISPEED\fR\&. The
+\fIINTERFACE\fR
+being configured must be specified, and the other parameters are optional and can be left blank\&. When
+\fISPEED\fR
+is set, duplex mode is automatically set to \*(Aqfull\*(Aq\&.
+\fIINTERFACE\fR
+accepts string values,
+\fIAUTONEG\fR
+accepts boolean values (true and false / on or off / 0 or 1), and
+\fISPEED\fR
+accepts positive integer values\&.
+.RE
+.SH "EXIT STATUS"
+.PP
+\fBnm\-initrd\-generator\fR
+exits with status 0\&. It ignores unrecognized options and prints an error message if it encounters a malformed option\&.
+.SH "SEE ALSO"
+.PP
+\fBdracut.cmdline\fR(7),
+\fBNetworkManager\fR(8)\&.

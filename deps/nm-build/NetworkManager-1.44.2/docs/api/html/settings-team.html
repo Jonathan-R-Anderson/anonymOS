@@ -1,0 +1,167 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>team: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="ch01.html" title="Configuration Settings">
+<link rel="prev" href="settings-tc.html" title="tc">
+<link rel="next" href="settings-team-port.html" title="team-port">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#settings-team.properties" class="shortcut">
+            Properties
+        </a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch01.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="settings-tc.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="settings-team-port.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="settings-team"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2>team</h2>
+<p>team — Teaming Settings</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.3.3.35.2"></a><h2>
+            Properties
+        </h2>
+<div class="table">
+<a name="id-1.3.3.35.2.2.1"></a><p class="title"><b>Table 69. </b></p>
+<div class="table-contents"><table class="table" border="1">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>Key Name</th>
+<th>Value Type</th>
+<th>Default Value</th>
+<th>Value Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><pre class="screen">config</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The JSON configuration for the team network interface.  The property should contain raw JSON configuration data suitable for teamd, because the value is passed directly to teamd. If not specified, the default configuration is used.  See man teamd.conf for the format details.</td>
+</tr>
+<tr>
+<td><pre class="screen">interface-name</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Deprecated in favor of connection.interface-name, but can be used for backward-compatibility with older daemons, to set the team's interface name.</td>
+</tr>
+<tr>
+<td><pre class="screen">link-watchers</pre></td>
+<td><pre class="screen">array of vardict</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Link watchers configuration for the connection: each link watcher is defined by a dictionary, whose keys depend upon the selected link watcher. Available link watchers are 'ethtool', 'nsna_ping' and 'arp_ping' and it is specified in the dictionary with the key 'name'. Available keys are:   ethtool: 'delay-up', 'delay-down', 'init-wait'; nsna_ping: 'init-wait', 'interval', 'missed-max', 'target-host'; arp_ping: all the ones in nsna_ping and 'source-host', 'validate-active', 'validate-inactive', 'send-always'. See teamd.conf man for more details.</td>
+</tr>
+<tr>
+<td><pre class="screen">mcast-rejoin-count</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>Corresponds to the teamd mcast_rejoin.count.</td>
+</tr>
+<tr>
+<td><pre class="screen">mcast-rejoin-interval</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>Corresponds to the teamd mcast_rejoin.interval.</td>
+</tr>
+<tr>
+<td><pre class="screen">notify-peers-count</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>Corresponds to the teamd notify_peers.count.</td>
+</tr>
+<tr>
+<td><pre class="screen">notify-peers-interval</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>Corresponds to the teamd notify_peers.interval.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Corresponds to the teamd runner.name. Permitted values are: "roundrobin", "broadcast", "activebackup", "loadbalance", "lacp", "random".</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-active</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">TRUE</pre></td>
+<td>Corresponds to the teamd runner.active.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-agg-select-policy</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Corresponds to the teamd runner.agg_select_policy.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-fast-rate</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>Corresponds to the teamd runner.fast_rate.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-hwaddr-policy</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Corresponds to the teamd runner.hwaddr_policy.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-min-ports</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>Corresponds to the teamd runner.min_ports.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-sys-prio</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>Corresponds to the teamd runner.sys_prio.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-tx-balancer</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Corresponds to the teamd runner.tx_balancer.name.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-tx-balancer-interval</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>Corresponds to the teamd runner.tx_balancer.interval.</td>
+</tr>
+<tr>
+<td><pre class="screen">runner-tx-hash</pre></td>
+<td><pre class="screen">array of string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Corresponds to the teamd runner.tx_hash.</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p><br class="table-break"></p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

@@ -1,0 +1,56 @@
+dbus_launch-tool-common.o: tool-common.c ../config.h tool-common.h \
+  ../dbus/dbus.h ../dbus/dbus-arch-deps.h ../dbus/dbus-macros.h \
+  ../dbus/dbus-address.h ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  ../dbus/dbus-errors.h ../dbus/dbus-protocol.h ../dbus/dbus-bus.h \
+  ../dbus/dbus-connection.h ../dbus/dbus-memory.h ../dbus/dbus-message.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  ../dbus/dbus-shared.h ../dbus/dbus-misc.h ../dbus/dbus-pending-call.h \
+  ../dbus/dbus-server.h ../dbus/dbus-signature.h ../dbus/dbus-syntax.h \
+  ../dbus/dbus-threads.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/errno.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/errno.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdio.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/time.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/unistd.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/posix.h
+../config.h:
+tool-common.h:
+../dbus/dbus.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-address.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-protocol.h:
+../dbus/dbus-bus.h:
+../dbus/dbus-connection.h:
+../dbus/dbus-memory.h:
+../dbus/dbus-message.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+../dbus/dbus-shared.h:
+../dbus/dbus-misc.h:
+../dbus/dbus-pending-call.h:
+../dbus/dbus-server.h:
+../dbus/dbus-signature.h:
+../dbus/dbus-syntax.h:
+../dbus/dbus-threads.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/errno.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/errno.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdio.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/time.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/unistd.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/posix.h:

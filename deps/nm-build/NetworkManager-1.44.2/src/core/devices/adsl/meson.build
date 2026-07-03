@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+libnm_device_plugin_adsl = shared_module(
+  'nm-device-plugin-adsl',
+  sources: files(
+    'nm-atm-manager.c',
+    'nm-device-adsl.c',
+  ),
+  dependencies: core_plugin_dep,
+  link_args: ldflags_linker_script_devices,
+  link_depends: linker_script_devices,
+  install: true,
+  install_dir: nm_plugindir,
+)
+
+core_plugins += libnm_device_plugin_adsl
+
+test(
+  'check-local-devices-adsl',
+  check_exports,
+  args: [
+    libnm_device_plugin_adsl.full_path(),
+    linker_script_devices,
+  ],
+)

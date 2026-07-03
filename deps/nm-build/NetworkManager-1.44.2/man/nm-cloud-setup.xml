@@ -1,0 +1,438 @@
+<?xml version='1.0'?>
+<?xml-stylesheet type="text/xsl" href="http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
+"http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd" [
+<!ENTITY % entities SYSTEM "common.ent" >
+%entities;
+]>
+
+<!--
+  nm-cloud-setup(8) manual page
+
+  Copyright 2020 Red Hat, Inc.
+
+  Permission is granted to copy, distribute and/or modify this document
+  under the terms of the GNU Free Documentation License, Version 1.1
+  or any later version published by the Free Software Foundation;
+  with no Invariant Sections, no Front-Cover Texts, and no Back-Cover
+  Texts. You may obtain a copy of the GNU Free Documentation License
+  from the Free Software Foundation by visiting their Web site or by
+  writing to:
+
+  Free Software Foundation, Inc.,
+  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+-->
+
+<refentry id="nm-cloud-setup">
+  <refentryinfo>
+    <title>nm-cloud-setup</title>
+    <author>Automatic Network Configuration in Cloud with NetworkManager</author>
+  </refentryinfo>
+
+  <refmeta>
+    <refentrytitle>nm-cloud-setup</refentrytitle>
+    <manvolnum>8</manvolnum>
+    <refmiscinfo class="source">NetworkManager</refmiscinfo>
+    <refmiscinfo class="manual">Automatic Network Configuration in Cloud with NetworkManager</refmiscinfo>
+    <refmiscinfo class="version">&NM_VERSION;</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>nm-cloud-setup</refname>
+    <refpurpose>Overview of Automatic Network Configuration in Cloud</refpurpose>
+  </refnamediv>
+
+  <refsect1>
+    <title>Overview</title>
+
+    <para>When running a virtual machine in a public cloud environment, it is
+    desirable to automatically configure the network of that VM.
+    In simple setups, the VM only has one network interface and the public
+    cloud supports automatic configuration via DHCP, DHCP6 or IPv6 autoconf.
+    However, the virtual machine might have multiple network
+    interfaces, or multiple IP addresses and IP subnets
+    on one interface which cannot be configured via DHCP. Also, the administrator
+    may reconfigure the network while the machine is running. NetworkManager's
+    nm-cloud-setup is a tool
+    that automatically picks up such configuration in cloud environments and updates the network
+    configuration of the host.</para>
+
+    <para>Multiple cloud providers are supported. See <xref linkend="providers"/>.</para>
+  </refsect1>
+
+  <refsect1>
+    <title>Use</title>
+
+    <para>The goal of nm-cloud-setup is to be configuration-less and work automatically.
+    All you need is to opt-in to the desired cloud providers (see <xref linkend="env"/>)
+    and run <command>/usr/libexec/nm-cloud-setup</command>.</para>
+
+    <para>Usually this is done by enabling the nm-cloud-setup.service systemd service
+    and let it run periodically. For that there is both a nm-cloud-setup.timer systemd timer
+    and a NetworkManager dispatcher script.</para>
+  </refsect1>
+
+  <refsect1>
+    <title>Details</title>
+
+    <para>
+    nm-cloud-setup configures the network by fetching the configuration from
+    the well-known meta data server of the cloud provider. That means, it already
+    needs the network configured to the point where it can reach the meta data
+    server. Commonly that means, that a simple connection profile is activated
+    that possibly uses DHCP to get the primary IP address. NetworkManager will
+    create such a profile for ethernet devices automatically if it is not configured
+    otherwise via <literal>"no-auto-default"</literal> setting in NetworkManager.conf.
+    One possible alternative may be to create such an initial profile with
+    <command>nmcli device connect "$DEVICE"</command> or
+    <command>nmcli connection add type ethernet ...</command>.
+    </para>
+
+    <para>
+    By setting the user-data <literal>org.freedesktop.nm-cloud-setup.skip=yes</literal>
+    on the profile, nm-cloud-setup will skip the device.
+    </para>
+
+    <para>nm-cloud-setup modifies the run time configuration akin to <command>nmcli device modify</command>.
+    With this approach, the configuration is not persisted
+    and only preserved until the device disconnects.</para>
+
+    <refsect2>
+      <title>/usr/libexec/nm-cloud-setup</title>
+
+      <para>The binary <command>/usr/libexec/nm-cloud-setup</command> does most of the
+      work. It supports no command line arguments but can be configured via environment
+      variables.
+      See <xref linkend="env"/> for the supported environment variables.</para>
+
+      <para>By default, all cloud providers are disabled unless you opt-in by enabling one
+      or several providers. If cloud providers are enabled, the program
+      tries to fetch the host's configuration from a meta data server of the cloud via HTTP.
+      If configuration could be not fetched, no cloud provider are detected and the
+      program quits.
+      If host configuration is obtained, the corresponding cloud provider is
+      successfully detected. Then the network of the host will be configured.</para>
+
+      <para>It is intended to re-run nm-cloud-setup every time when the configuration
+      (maybe) changes. The tool is idempotent, so it should be OK to also run it
+      more often than necessary. You could run <command>/usr/libexec/nm-cloud-setup</command>
+      directly. However it may be preferable to restart the nm-cloud-setup systemd
+      service instead or use the timer or dispatcher script to run it periodically (see below).</para>
+    </refsect2>
+
+    <refsect2>
+      <title>nm-cloud-setup.service systemd unit</title>
+      <para>Usually <command>/usr/libexec/nm-cloud-setup</command> is not run directly,
+      but only by <command>systemctl restart nm-cloud-setup.service</command>. This
+      ensures that the tool only runs once at any time. It also allows to integrate
+      with the nm-cloud-setup systemd timer,
+      and to enable/disable the service via systemd.</para>
+
+      <para>As you need to set environment variable to configure nm-cloud-setup binary,
+      you can do so via systemd override files. Try <command>systemctl edit nm-cloud-setup.service</command>.</para>
+    </refsect2>
+
+    <refsect2>
+      <title>nm-cloud-setup.timer systemd timer</title>
+      <para><command>/usr/libexec/nm-cloud-setup</command> is intended to run
+      whenever an update is necessary. For example, during boot when when
+      changing the network configuration of the virtual machine via the cloud
+      provider.</para>
+
+      <para>One way to do this, is by enabling the nm-cloud-setup.timer systemd timer
+      with <command>systemctl enable --now nm-cloud-setup.timer</command>.</para>
+    </refsect2>
+
+    <refsect2>
+      <title>/usr/lib/NetworkManager/dispatcher.d/90-nm-cloud-setup.sh</title>
+
+      <para>There is also a NetworkManager dispatcher script that will
+      run for example when an interface is activated by NetworkManager.
+      Together with the nm-cloud-setup.timer systemd timer this
+      script is to automatically pick up changes to the network.</para>
+
+      <para>The dispatcher script will do nothing, unless the systemd service is
+      enabled. To use the dispatcher script you should therefor run
+      <command>systemctl enable nm-cloud-setup.service</command> once.</para>
+    </refsect2>
+
+  </refsect1>
+
+  <refsect1 id="env">
+    <title>Environment Variables</title>
+
+    <para>The following environment variables are used to configure <command>/usr/libexec/nm-cloud-setup</command>.
+    You may want to configure them with a drop-in for the systemd service.
+    For example by calling <command>systemctl edit nm-cloud-setup.service</command>
+    and configuring <literal>[Service] Environment=</literal>, as described in
+    <link linkend='systemd.exec'><citerefentry><refentrytitle>systemd.exec</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>
+    manual.</para>
+
+    <itemizedlist>
+      <listitem>
+        <para><literal>NM_CLOUD_SETUP_LOG</literal>: control the logging verbosity. Set it
+          to one of <literal>TRACE</literal>, <literal>DEBUG</literal>, <literal>INFO</literal>,
+          <literal>WARN</literal>, <literal>ERR</literal> or <literal>OFF</literal>. The program
+          will print message on stdout and the default level is <literal>WARN</literal>. When
+          run as systemd service, the log will be collected by journald can can be seen with
+          <command>journalctl</command>.</para>
+      </listitem>
+      <listitem>
+        <para><literal>NM_CLOUD_SETUP_AZURE</literal>: boolean, whether Microsoft Azure support is enabled. Defaults
+          to <literal>no</literal>.</para>
+      </listitem>
+      <listitem>
+        <para><literal>NM_CLOUD_SETUP_EC2</literal>: boolean, whether Amazon EC2 (AWS) support is enabled. Defaults
+          to <literal>no</literal>.</para>
+      </listitem>
+      <listitem>
+        <para><literal>NM_CLOUD_SETUP_GCP</literal>: boolean, whether Google GCP support is enabled. Defaults
+          to <literal>no</literal>.</para>
+      </listitem>
+      <listitem>
+        <para><literal>NM_CLOUD_SETUP_ALIYUN</literal>: boolean, whether Alibaba Cloud (Aliyun) support is enabled. Defaults
+          to <literal>no</literal>.</para>
+      </listitem>
+    </itemizedlist>
+
+  </refsect1>
+
+  <refsect1 id="debugging">
+    <title>Debugging</title>
+    <para>Enable debug logging by setting <literal>NM_CLOUD_SETUP_LOG</literal> environment variable to <literal>TRACE</literal>.</para>
+    <para>In the common case where nm-cloud-setup is running as systemd service, this can be done via <command>systemctl edit nm-cloud-setup.service</command>
+    and add <literal>Environment=NM_CLOUD_SETUP_LOG=TRACE</literal> to the <literal>[Service]</literal> section. Afterwards, the log can
+    be found in syslog via <literal>journalctl</literal>. You may also want to enable debug logging in NetworkManager as descibed
+    in the DEBUGGING section in <link linkend='NetworkManager'><citerefentry><refentrytitle>NetworkManager</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>
+    manual. When sharing logs, it's best to share complete logs and not preemptively filter for NetworkManager or nm-cloud-setup logs.</para>
+  </refsect1>
+
+  <refsect1 id="deploy">
+    <title>Example Setup for Configuring and Predeploying nm-cloud-setup</title>
+
+    <para>As detailed before, nm-cloud-setup needs to be explicitly enabled. As it
+      runs as a systemd service and timer, that basically means to enable and configure
+      those. This can be done by dropping the correct files and symlinks to disk.
+    </para>
+    <para>
+      The following example enables nm-cloud-setup for Amazon EC2 cloud:
+      <programlisting>
+dnf install -y NetworkManager-cloud-setup
+
+mkdir -p /etc/systemd/system/nm-cloud-setup.service.d
+cat &gt; /etc/systemd/system/nm-cloud-setup.service.d/10-enable-ec2.conf &lt;&lt; EOF
+[Service]
+Environment=NM_CLOUD_SETUP_EC2=yes
+EOF
+
+# systemctl enable nm-cloud-setup.service
+mkdir -p /etc/systemd/system/NetworkManager.service.wants/
+ln -s /usr/lib/systemd/system/nm-cloud-setup.service /etc/systemd/system/NetworkManager.service.wants/nm-cloud-setup.service
+
+# systemctl enable nm-cloud-setup.timer
+mkdir -p /etc/systemd/system/timers.target.wants/
+ln -s /etc/systemd/system/timers.target.wants/nm-cloud-setup.timer /usr/lib/systemd/system/nm-cloud-setup.timer
+
+# systemctl daemon-reload
+      </programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1 id="providers">
+    <title>Supported Cloud Providers</title>
+
+    <refsect2>
+      <title>Amazon EC2 (AWS)</title>
+
+      <para>For AWS, the tools tries to fetch configuration from <literal>http://169.254.169.254/</literal>. Currently, it only
+      configures IPv4 and does nothing about IPv6. It will do the following.</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>First fetch <literal>http://169.254.169.254/latest/meta-data/</literal> to determine whether the
+          expected API is present. This determines whether EC2 environment is detected and whether to proceed
+          to configure the host using EC2 meta data.</para>
+        </listitem>
+        <listitem>
+          <para>Fetch <literal>http://169.254.169.254/2018-09-24/meta-data/network/interfaces/macs/</literal> to get the list
+          of available interface. Interfaces are identified by their MAC address.</para>
+        </listitem>
+        <listitem>
+          <para>Then for each interface fetch <literal>http://169.254.169.254/2018-09-24/meta-data/network/interfaces/macs/$MAC/subnet-ipv4-cidr-block</literal>
+          and <literal>http://169.254.169.254/2018-09-24/meta-data/network/interfaces/macs/$MAC/local-ipv4s</literal>.
+          Thereby we get a list of local IPv4 addresses and one CIDR subnet block.</para>
+        </listitem>
+        <listitem>
+          <para>Then nm-cloud-setup iterates over all interfaces for which it could fetch IP configuration.
+          If no ethernet device for the respective MAC address is found, it is skipped.
+          Also, if the device is currently not activated in NetworkManager or if the currently
+          activated profile has a user-data <literal>org.freedesktop.nm-cloud-setup.skip=yes</literal>,
+          it is skipped.</para>
+          <para>If only one interface and one address is configured, then the tool does nothing
+          and leaves the automatic configuration that was obtained via DHCP.</para>
+          <para>Otherwise, the tool will change the runtime configuration of the device.
+            <itemizedlist>
+              <listitem>
+                <para>Add static IPv4 addresses for all the configured addresses from <literal>local-ipv4s</literal> with
+                prefix length according to <literal>subnet-ipv4-cidr-block</literal>. For example,
+                we might have here 2 IP addresses like <literal>"172.16.5.3/24,172.16.5.4/24"</literal>.</para>
+              </listitem>
+              <listitem>
+                  <para>Choose a route table 30400 + the index of the interface and
+                  add a default route <literal>0.0.0.0/0</literal>. The gateway
+                  is the first IP address in the CIDR subnet block. For
+                  example, we might get a route <literal>"0.0.0.0/0 172.16.5.1 10 table=30400"</literal>.</para>
+                  <para>Also choose a route table 30200 + the interface index. This
+                  contains a direct routes to the subnets of this interface.</para>
+              </listitem>
+              <listitem>
+                  <para>Finally, add a policy routing rule for each address. For example
+                  <literal>"priority 30200 from 172.16.5.3/32 table 30200, priority 30200 from 172.16.5.4/32 table 30200"</literal>.
+                  and
+                  <literal>"priority 30400 from 172.16.5.3/32 table 30400, priority 30400 from 172.16.5.4/32 table 30400"</literal>
+                  The 30200+ rules select the table to reach the subnet directly, while the 30400+ rules use the
+                  default route. Also add a rule
+                  <literal>"priority 30350 table main suppress_prefixlength 0"</literal>. This has a priority between
+                  the two previous rules and causes a lookup of routes in the main table while ignoring the default
+                  route. The purpose of this is so that other specific routes in the main table are honored over
+                  the default route in table 30400+.</para>
+              </listitem>
+            </itemizedlist>
+            With above example, this roughly corresponds for interface <literal>eth0</literal> to
+            <command>nmcli device modify "eth0" ipv4.addresses "172.16.5.3/24,172.16.5.4/24" ipv4.routes "172.16.5.0/24 0.0.0.0 10 table=30200, 0.0.0.0/0 172.16.5.1 10 table=30400" ipv4.routing-rules "priority 30200 from 172.16.5.3/32 table 30200, priority 30200 from 172.16.5.4/32 table 30200, priority 20350 table main suppress_prefixlength 0, priority 30400 from 172.16.5.3/32 table 30400, priority 30400 from 172.16.5.4/32 table 30400"</command>.
+            Note that this replaces the previous addresses, routes and rules with the new information.
+            But also note that this only changes the run time configuration of the device. The
+            connection profile on disk is not affected.
+          </para>
+        </listitem>
+      </itemizedlist>
+   </refsect2>
+
+    <refsect2>
+      <title>Google Cloud Platform (GCP)</title>
+
+      <para>
+        For GCP, the meta data is fetched from URIs starting with <literal>http://metadata.google.internal/computeMetadata/v1/</literal> with a
+        HTTP header <literal>"Metadata-Flavor: Google"</literal>.
+        Currently, the tool only configures IPv4 and does nothing about IPv6. It will do the following.
+      </para>
+
+      <itemizedlist>
+        <listitem>
+          <para>First fetch <literal>http://metadata.google.internal/computeMetadata/v1/instance/id</literal> to detect whether the tool
+          runs on Google Cloud Platform. Only if the platform is detected, it will continue fetching the configuration.</para>
+        </listitem>
+        <listitem>
+          <para>Fetch <literal>http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/</literal> to get the list
+          of available interface indexes. These indexes can be used for further lookups.</para>
+        </listitem>
+        <listitem>
+          <para>Then, for each interface fetch <literal>http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/$IFACE_INDEX/mac</literal> to get
+          the corresponding MAC address of the found interfaces. The MAC address is used to identify the device later on.</para>
+        </listitem>
+        <listitem>
+          <para>Then, for each interface with a MAC address fetch <literal>http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/$IFACE_INDEX/forwarded-ips/</literal>
+          and then all the found IP addresses at <literal>http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/$IFACE_INDEX/forwarded-ips/$FIPS_INDEX</literal>.
+          </para>
+        </listitem>
+        <listitem>
+          <para>At this point, we have a list of all interfaces (by MAC address) and their configured IPv4 addresses.</para>
+          <para>For each device, we lookup the currently applied connection in NetworkManager. That implies, that the device is currently activated
+          in NetworkManager. If no such device was in NetworkManager, or if the profile has user-data <literal>org.freedesktop.nm-cloud-setup.skip=yes</literal>,
+          we skip the device. Now for each found IP address we add a static route "$FIPS_ADDR/32 0.0.0.0 100 type=local" and reapply the change.</para>
+          <para>The effect is not unlike calling <command>nmcli device modify "$DEVICE" ipv4.routes "$FIPS_ADDR/32 0.0.0.0 100 type=local [,...]"</command> for all relevant
+          devices and all found addresses.</para>
+        </listitem>
+      </itemizedlist>
+    </refsect2>
+
+    <refsect2>
+      <title>Microsoft Azure</title>
+
+      <para>
+        For Azure, the meta data is fetched from URIs starting with <literal>http://169.254.169.254/metadata/instance</literal> with a
+        URL parameter <literal>"?format=text&amp;api-version=2017-04-02"</literal> and a HTTP header <literal>"Metadata:true"</literal>.
+        Currently, the tool only configures IPv4 and does nothing about IPv6. It will do the following.
+      </para>
+
+      <itemizedlist>
+        <listitem>
+          <para>First fetch <literal>http://169.254.169.254/metadata/instance?format=text&amp;api-version=2017-04-02</literal> to detect whether the tool
+          runs on Azure Cloud. Only if the platform is detected, it will continue fetching the configuration.</para>
+        </listitem>
+        <listitem>
+          <para>Fetch <literal>http://169.254.169.254/metadata/instance/network/interface/?format=text&amp;api-version=2017-04-02</literal> to get the list
+          of available interface indexes. These indexes can be used for further lookups.</para>
+        </listitem>
+        <listitem>
+          <para>Then, for each interface fetch <literal>http://169.254.169.254/metadata/instance/network/interface/$IFACE_INDEX/macAddress?format=text&amp;api-version=2017-04-02</literal>
+          to get the corresponding MAC address of the found interfaces. The MAC address is used to identify the device later on.</para>
+        </listitem>
+        <listitem>
+          <para>Then, for each interface with a MAC address fetch <literal>http://169.254.169.254/metadata/instance/network/interface/$IFACE_INDEX/ipv4/ipAddress/?format=text&amp;api-version=2017-04-02</literal>
+          to get the list of (indexes of) IP addresses on that interface.
+          </para>
+        </listitem>
+        <listitem>
+          <para>Then, for each IP address index fetch the address at
+          <literal>http://169.254.169.254/metadata/instance/network/interface/$IFACE_INDEX/ipv4/ipAddress/$ADDR_INDEX/privateIpAddress?format=text&amp;api-version=2017-04-02</literal>.
+          Also fetch the size of the subnet and prefix for the interface from
+          <literal>http://169.254.169.254/metadata/instance/network/interface/$IFACE_INDEX/ipv4/subnet/0/address/?format=text&amp;api-version=2017-04-02</literal>.
+          and
+          <literal>http://169.254.169.254/metadata/instance/network/interface/$IFACE_INDEX/ipv4/subnet/0/prefix/?format=text&amp;api-version=2017-04-02</literal>.
+          </para>
+        </listitem>
+        <listitem>
+          <para>At this point, we have a list of all interfaces (by MAC address) and their configured IPv4 addresses.</para>
+          <para>Then the tool configures the system like doing for AWS environment. That is, using source based policy routing
+          with the tables/rules 30200/30400.</para>
+        </listitem>
+      </itemizedlist>
+    </refsect2>
+
+    <refsect2>
+      <title>Alibaba Cloud (Aliyun)</title>
+
+      <para>For Aliyun, the tools tries to fetch configuration from <literal>http://100.100.100.200/</literal>. Currently, it only
+      configures IPv4 and does nothing about IPv6. It will do the following.</para>
+
+      <itemizedlist>
+        <listitem>
+          <para>First fetch <literal>http://100.100.100.200/2016-01-01/meta-data/</literal> to determine whether the
+          expected API is present. This determines whether Aliyun environment is detected and whether to proceed
+          to configure the host using Aliyun meta data.</para>
+        </listitem>
+        <listitem>
+          <para>Fetch <literal>http://100.100.100.200/2016-01-01/meta-data/network/interfaces/macs/</literal> to get the list
+          of available interface. Interfaces are identified by their MAC address.</para>
+        </listitem>
+        <listitem>
+          <para>Then for each interface fetch <literal>http://100.100.100.200/2016-01-01/meta-data/network/interfaces/macs/$MAC/vpc-cidr-block</literal>,
+          <literal>http://100.100.100.200/2016-01-01/meta-data/network/interfaces/macs/$MAC/private-ipv4s</literal>,
+          <literal>http://100.100.100.200/2016-01-01/meta-data/network/interfaces/macs/$MAC/netmask</literal> and
+          <literal>http://100.100.100.200/2016-01-01/meta-data/network/interfaces/macs/$MAC/gateway</literal>.
+          Thereby we get a list of private IPv4 addresses, one CIDR subnet block and private IPv4 addresses prefix.</para>
+        </listitem>
+        <listitem>
+          <para>Then nm-cloud-setup iterates over all interfaces for which it could fetch IP configuration.
+          If no ethernet device for the respective MAC address is found, it is skipped.
+          Also, if the device is currently not activated in NetworkManager or if the currently
+          activated profile has a user-data <literal>org.freedesktop.nm-cloud-setup.skip=yes</literal>,
+          it is skipped. Also, there is only one interface and one IP address, the tool does nothing.</para>
+          <para>Then the tool configures the system like doing for AWS environment. That is, using source based policy routing
+          with the tables/rules 30200/30400. One difference to AWS is that the gateway is also fetched via metadata instead
+          of using the first IP address in the subnet.</para>
+        </listitem>
+      </itemizedlist>
+    </refsect2>
+
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+    <para>
+      <link linkend='NetworkManager'><citerefentry><refentrytitle>NetworkManager</refentrytitle><manvolnum>8</manvolnum></citerefentry></link>
+      <link linkend='nmcli'><citerefentry><refentrytitle>nmcli</refentrytitle><manvolnum>1</manvolnum></citerefentry></link>
+    </para>
+  </refsect1>
+</refentry>

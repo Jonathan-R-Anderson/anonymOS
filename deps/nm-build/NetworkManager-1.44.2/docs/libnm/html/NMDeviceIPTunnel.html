@@ -1,0 +1,819 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMDeviceIPTunnel: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch04.html" title="Device and Runtime Configuration API Reference">
+<link rel="prev" href="NMDeviceInfiniband.html" title="NMDeviceInfiniband">
+<link rel="next" href="NMDeviceLoopback.html" title="NMDeviceLoopback">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMDeviceIPTunnel.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMDeviceIPTunnel.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMDeviceIPTunnel.properties" class="shortcut">Properties</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch04.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMDeviceInfiniband.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMDeviceLoopback.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMDeviceIPTunnel"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMDeviceIPTunnel.top_of_page"></a>NMDeviceIPTunnel</span></h2>
+<p>NMDeviceIPTunnel</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMDeviceIPTunnel.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMDevice.html" title="NMDevice"><span class="returnvalue">NMDevice</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-parent" title="nm_device_ip_tunnel_get_parent ()">nm_device_ip_tunnel_get_parent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="libnm-nm-dbus-interface.html#NMIPTunnelMode" title="enum NMIPTunnelMode"><span class="returnvalue">NMIPTunnelMode</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-mode" title="nm_device_ip_tunnel_get_mode ()">nm_device_ip_tunnel_get_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-local" title="nm_device_ip_tunnel_get_local ()">nm_device_ip_tunnel_get_local</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-remote" title="nm_device_ip_tunnel_get_remote ()">nm_device_ip_tunnel_get_remote</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-ttl" title="nm_device_ip_tunnel_get_ttl ()">nm_device_ip_tunnel_get_ttl</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-tos" title="nm_device_ip_tunnel_get_tos ()">nm_device_ip_tunnel_get_tos</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-path-mtu-discovery" title="nm_device_ip_tunnel_get_path_mtu_discovery ()">nm_device_ip_tunnel_get_path_mtu_discovery</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-input-key" title="nm_device_ip_tunnel_get_input_key ()">nm_device_ip_tunnel_get_input_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-output-key" title="nm_device_ip_tunnel_get_output_key ()">nm_device_ip_tunnel_get_output_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-encapsulation-limit" title="nm_device_ip_tunnel_get_encapsulation_limit ()">nm_device_ip_tunnel_get_encapsulation_limit</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-flow-label" title="nm_device_ip_tunnel_get_flow_label ()">nm_device_ip_tunnel_get_flow_label</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingIPTunnel.html#NMIPTunnelFlags" title="enum NMIPTunnelFlags"><span class="returnvalue">NMIPTunnelFlags</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceIPTunnel.html#nm-device-ip-tunnel-get-flags" title="nm_device_ip_tunnel_get_flags ()">nm_device_ip_tunnel_get_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceIPTunnel.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--encapsulation-limit" title="The “encapsulation-limit” property">encapsulation-limit</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--flags" title="The “flags” property">flags</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--flow-label" title="The “flow-label” property">flow-label</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--input-key" title="The “input-key” property">input-key</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--local" title="The “local” property">local</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--mode" title="The “mode” property">mode</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--output-key" title="The “output-key” property">output-key</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<a class="link" href="NMDevice.html" title="NMDevice"><span class="type">NMDevice</span></a> *</td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--parent" title="The “parent” property">parent</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--path-mtu-discovery" title="The “path-mtu-discovery” property">path-mtu-discovery</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--remote" title="The “remote” property">remote</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--tos" title="The “tos” property">tos</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel--ttl" title="The “ttl” property">ttl</a></td>
+<td class="property_flags">Read</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceIPTunnel.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-MODE:CAPS" title="NM_DEVICE_IP_TUNNEL_MODE">NM_DEVICE_IP_TUNNEL_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-PARENT:CAPS" title="NM_DEVICE_IP_TUNNEL_PARENT">NM_DEVICE_IP_TUNNEL_PARENT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-LOCAL:CAPS" title="NM_DEVICE_IP_TUNNEL_LOCAL">NM_DEVICE_IP_TUNNEL_LOCAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-REMOTE:CAPS" title="NM_DEVICE_IP_TUNNEL_REMOTE">NM_DEVICE_IP_TUNNEL_REMOTE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-TTL:CAPS" title="NM_DEVICE_IP_TUNNEL_TTL">NM_DEVICE_IP_TUNNEL_TTL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-TOS:CAPS" title="NM_DEVICE_IP_TUNNEL_TOS">NM_DEVICE_IP_TUNNEL_TOS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-PATH-MTU-DISCOVERY:CAPS" title="NM_DEVICE_IP_TUNNEL_PATH_MTU_DISCOVERY">NM_DEVICE_IP_TUNNEL_PATH_MTU_DISCOVERY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-INPUT-KEY:CAPS" title="NM_DEVICE_IP_TUNNEL_INPUT_KEY">NM_DEVICE_IP_TUNNEL_INPUT_KEY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-OUTPUT-KEY:CAPS" title="NM_DEVICE_IP_TUNNEL_OUTPUT_KEY">NM_DEVICE_IP_TUNNEL_OUTPUT_KEY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-ENCAPSULATION-LIMIT:CAPS" title="NM_DEVICE_IP_TUNNEL_ENCAPSULATION_LIMIT">NM_DEVICE_IP_TUNNEL_ENCAPSULATION_LIMIT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-FLOW-LABEL:CAPS" title="NM_DEVICE_IP_TUNNEL_FLOW_LABEL">NM_DEVICE_IP_TUNNEL_FLOW_LABEL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NM-DEVICE-IP-TUNNEL-FLAGS:CAPS" title="NM_DEVICE_IP_TUNNEL_FLAGS">NM_DEVICE_IP_TUNNEL_FLAGS</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMDeviceIPTunnel.html#NMDeviceIPTunnel-struct" title="NMDeviceIPTunnel">NMDeviceIPTunnel</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceIPTunnel.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> <a class="link" href="NMObject.html" title="NMObject">NMObject</a>
+        <span class="lineart">╰──</span> <a class="link" href="NMDevice.html" title="NMDevice">NMDevice</a>
+            <span class="lineart">╰──</span> NMDeviceIPTunnel
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMDeviceIPTunnel.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMDeviceIPTunnel.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-parent"></a><h3>nm_device_ip_tunnel_get_parent ()</h3>
+<pre class="programlisting"><a class="link" href="NMDevice.html" title="NMDevice"><span class="returnvalue">NMDevice</span></a> *
+nm_device_ip_tunnel_get_parent (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-parent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-parent.returns"></a><h4>Returns</h4>
+<p>the device's parent device. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-mode"></a><h3>nm_device_ip_tunnel_get_mode ()</h3>
+<pre class="programlisting"><a class="link" href="libnm-nm-dbus-interface.html#NMIPTunnelMode" title="enum NMIPTunnelMode"><span class="returnvalue">NMIPTunnelMode</span></a>
+nm_device_ip_tunnel_get_mode (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-mode.returns"></a><h4>Returns</h4>
+<p> the tunneling mode</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-local"></a><h3>nm_device_ip_tunnel_get_local ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_ip_tunnel_get_local (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-local.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-local.returns"></a><h4>Returns</h4>
+<p> the local endpoint of the tunnel</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-remote"></a><h3>nm_device_ip_tunnel_get_remote ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_ip_tunnel_get_remote (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-remote.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-remote.returns"></a><h4>Returns</h4>
+<p> the remote endpoint of the tunnel</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-ttl"></a><h3>nm_device_ip_tunnel_get_ttl ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+nm_device_ip_tunnel_get_ttl (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-ttl.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-ttl.returns"></a><h4>Returns</h4>
+<p> the TTL assigned to tunneled packets</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-tos"></a><h3>nm_device_ip_tunnel_get_tos ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+nm_device_ip_tunnel_get_tos (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-tos.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-tos.returns"></a><h4>Returns</h4>
+<p> type of service (IPv4) or traffic class (IPv6) assigned
+to tunneled packets.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-path-mtu-discovery"></a><h3>nm_device_ip_tunnel_get_path_mtu_discovery ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_ip_tunnel_get_path_mtu_discovery
+                               (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-path-mtu-discovery.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-path-mtu-discovery.returns"></a><h4>Returns</h4>
+<p> whether path MTU discovery is enabled</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-input-key"></a><h3>nm_device_ip_tunnel_get_input_key ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_ip_tunnel_get_input_key (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-input-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-input-key.returns"></a><h4>Returns</h4>
+<p> the key used for incoming packets</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-output-key"></a><h3>nm_device_ip_tunnel_get_output_key ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_ip_tunnel_get_output_key (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-output-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-output-key.returns"></a><h4>Returns</h4>
+<p> the key used for outgoing packets</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-encapsulation-limit"></a><h3>nm_device_ip_tunnel_get_encapsulation_limit ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+nm_device_ip_tunnel_get_encapsulation_limit
+                               (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-encapsulation-limit.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-encapsulation-limit.returns"></a><h4>Returns</h4>
+<p> the maximum permitted encapsulation level</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-flow-label"></a><h3>nm_device_ip_tunnel_get_flow_label ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_ip_tunnel_get_flow_label (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-flow-label.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-flow-label.returns"></a><h4>Returns</h4>
+<p> the flow label assigned to tunnel packets</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ip-tunnel-get-flags"></a><h3>nm_device_ip_tunnel_get_flags ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingIPTunnel.html#NMIPTunnelFlags" title="enum NMIPTunnelFlags"><span class="returnvalue">NMIPTunnelFlags</span></a>
+nm_device_ip_tunnel_get_flags (<em class="parameter"><code><a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceIPTunnel.html" title="NMDeviceIPTunnel"><span class="type">NMDeviceIPTunnel</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ip-tunnel-get-flags.returns"></a><h4>Returns</h4>
+<p> the tunnel flags</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceIPTunnel.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-MODE:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_MODE</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_MODE                "mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-PARENT:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_PARENT</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_PARENT              "parent"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-LOCAL:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_LOCAL</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_LOCAL               "local"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-REMOTE:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_REMOTE</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_REMOTE              "remote"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-TTL:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_TTL</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_TTL                 "ttl"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-TOS:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_TOS</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_TOS                 "tos"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-PATH-MTU-DISCOVERY:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_PATH_MTU_DISCOVERY</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_PATH_MTU_DISCOVERY  "path-mtu-discovery"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-INPUT-KEY:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_INPUT_KEY</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_INPUT_KEY           "input-key"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-OUTPUT-KEY:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_OUTPUT_KEY</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_OUTPUT_KEY          "output-key"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-ENCAPSULATION-LIMIT:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_ENCAPSULATION_LIMIT</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_ENCAPSULATION_LIMIT "encapsulation-limit"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-FLOW-LABEL:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_FLOW_LABEL</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_FLOW_LABEL          "flow-label"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-IP-TUNNEL-FLAGS:CAPS"></a><h3>NM_DEVICE_IP_TUNNEL_FLAGS</h3>
+<pre class="programlisting">#define NM_DEVICE_IP_TUNNEL_FLAGS               "flags"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel-struct"></a><h3>NMDeviceIPTunnel</h3>
+<pre class="programlisting">typedef struct _NMDeviceIPTunnel NMDeviceIPTunnel;</pre>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceIPTunnel.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--encapsulation-limit"></a><h3>The <code class="literal">“encapsulation-limit”</code> property</h3>
+<pre class="programlisting">  “encapsulation-limit”      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></pre>
+<p>How many additional levels of encapsulation are permitted to
+be prepended to packets. This property applies only to IPv6
+tunnels.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--flags"></a><h3>The <code class="literal">“flags”</code> property</h3>
+<pre class="programlisting">  “flags”                    <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>Tunnel flags.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--flow-label"></a><h3>The <code class="literal">“flow-label”</code> property</h3>
+<pre class="programlisting">  “flow-label”               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The flow label to assign to tunnel packets. This property
+applies only to IPv6 tunnels.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Allowed values: &lt;= 1048575</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--input-key"></a><h3>The <code class="literal">“input-key”</code> property</h3>
+<pre class="programlisting">  “input-key”                <span class="type">char</span> *</pre>
+<p>The key used for tunneled input packets, if applicable.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--local"></a><h3>The <code class="literal">“local”</code> property</h3>
+<pre class="programlisting">  “local”                    <span class="type">char</span> *</pre>
+<p>The local endpoint of the tunnel.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--mode"></a><h3>The <code class="literal">“mode”</code> property</h3>
+<pre class="programlisting">  “mode”                     <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The tunneling mode of the device.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--output-key"></a><h3>The <code class="literal">“output-key”</code> property</h3>
+<pre class="programlisting">  “output-key”               <span class="type">char</span> *</pre>
+<p>The key used for tunneled output packets, if applicable.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--parent"></a><h3>The <code class="literal">“parent”</code> property</h3>
+<pre class="programlisting">  “parent”                   <a class="link" href="NMDevice.html" title="NMDevice"><span class="type">NMDevice</span></a> *</pre>
+<p>The devices's parent device.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--path-mtu-discovery"></a><h3>The <code class="literal">“path-mtu-discovery”</code> property</h3>
+<pre class="programlisting">  “path-mtu-discovery”       <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether path MTU discovery is enabled on this tunnel.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--remote"></a><h3>The <code class="literal">“remote”</code> property</h3>
+<pre class="programlisting">  “remote”                   <span class="type">char</span> *</pre>
+<p>The remote endpoint of the tunnel.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--tos"></a><h3>The <code class="literal">“tos”</code> property</h3>
+<pre class="programlisting">  “tos”                      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></pre>
+<p>The type of service (IPv4) or traffic class (IPv6) assigned to
+tunneled packets.</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceIPTunnel--ttl"></a><h3>The <code class="literal">“ttl”</code> property</h3>
+<pre class="programlisting">  “ttl”                      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></pre>
+<p>The TTL assigned to tunneled packets. 0 is a special value
+ meaning that packets inherit the TTL value</p>
+<p>Owner: NMDeviceIPTunnel</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

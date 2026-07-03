@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+
+<policyconfig>
+
+  <vendor>NetworkManager</vendor>
+  <vendor_url>https://networkmanager.dev/</vendor_url>
+  <icon_name>nm-icon</icon_name>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-network">
+    <description>Enable or disable system networking</description>
+    <message>System policy prevents enabling or disabling system networking</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.reload">
+    <description>Reload NetworkManager configuration</description>
+    <message>System policy prevents reloading NetworkManager</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.sleep-wake">
+    <description>Put NetworkManager to sleep or wake it up (should only be used by system power management)</description>
+    <message>System policy prevents putting NetworkManager to sleep or waking it up</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>no</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-wifi">
+    <description>Enable or disable Wi-Fi devices</description>
+    <message>System policy prevents enabling or disabling Wi-Fi devices</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-wwan">
+    <description>Enable or disable mobile broadband devices</description>
+    <message>System policy prevents enabling or disabling mobile broadband devices</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-wimax">
+    <description>Enable or disable WiMAX mobile broadband devices</description>
+    <message>System policy prevents enabling or disabling WiMAX mobile broadband devices</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.network-control">
+    <description>Allow control of network connections</description>
+    <message>System policy prevents control of network connections</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.wifi.scan">
+    <description>Allow control of Wi-Fi scans</description>
+    <message>System policy prevents Wi-Fi scans</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.wifi.share.protected">
+    <description>Connection sharing via a protected Wi-Fi network</description>
+    <message>System policy prevents sharing connections via a protected Wi-Fi network</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.wifi.share.open">
+    <description>Connection sharing via an open Wi-Fi network</description>
+    <message>System policy prevents sharing connections via an open Wi-Fi network</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.settings.modify.own">
+    <description>Modify personal network connections</description>
+    <message>System policy prevents modification of personal network settings</message>
+    <defaults>
+      <allow_any>auth_self_keep</allow_any>
+      <allow_inactive>yes</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.settings.modify.system">
+    <description>Modify network connections for all users</description>
+    <message>System policy prevents modification of network settings for all users</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>@NM_MODIFY_SYSTEM_POLICY@</allow_inactive>
+      <allow_active>@NM_MODIFY_SYSTEM_POLICY@</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.settings.modify.hostname">
+    <description>Modify persistent system hostname</description>
+    <message>System policy prevents modification of the persistent system hostname</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.settings.modify.global-dns">
+    <description>Modify persistent global DNS configuration</description>
+    <message>System policy prevents modification of the persistent global DNS configuration</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.checkpoint-rollback">
+    <description>Perform a checkpoint or rollback of interfaces configuration</description>
+    <message>System policy prevents the creation of a checkpoint or its rollback</message>
+    <defaults>
+      <allow_any>auth_admin_keep</allow_any>
+      <allow_inactive>auth_admin_keep</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-statistics">
+    <description>Enable or disable device statistics</description>
+    <message>System policy prevents enabling or disabling device statistics</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-connectivity-check">
+    <description>Enable or disable connectivity checking</description>
+    <message>System policy prevents enabling or disabling connectivity checking</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>
+

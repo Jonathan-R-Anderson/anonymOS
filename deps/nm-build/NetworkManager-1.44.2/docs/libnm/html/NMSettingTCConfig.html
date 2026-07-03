@@ -1,0 +1,1834 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingTCConfig: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingSriov.html" title="NMSettingSriov">
+<link rel="next" href="NMSettingTeamPort.html" title="NMSettingTeamPort">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingTCConfig.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingTCConfig.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingSriov.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingTeamPort.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingTCConfig"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingTCConfig.top_of_page"></a>NMSettingTCConfig</span></h2>
+<p>NMSettingTCConfig — Describes connection properties for the Linux Traffic Control</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingTCConfig.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="returnvalue">NMTCQdisc</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-new" title="nm_tc_qdisc_new ()">nm_tc_qdisc_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-ref" title="nm_tc_qdisc_ref ()">nm_tc_qdisc_ref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-unref" title="nm_tc_qdisc_unref ()">nm_tc_qdisc_unref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-equal" title="nm_tc_qdisc_equal ()">nm_tc_qdisc_equal</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="returnvalue">NMTCQdisc</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-dup" title="nm_tc_qdisc_dup ()">nm_tc_qdisc_dup</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-get-kind" title="nm_tc_qdisc_get_kind ()">nm_tc_qdisc_get_kind</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-get-handle" title="nm_tc_qdisc_get_handle ()">nm_tc_qdisc_get_handle</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-set-handle" title="nm_tc_qdisc_set_handle ()">nm_tc_qdisc_set_handle</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-get-parent" title="nm_tc_qdisc_get_parent ()">nm_tc_qdisc_get_parent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> **
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-get-attribute-names" title="nm_tc_qdisc_get_attribute_names ()">nm_tc_qdisc_get_attribute_names</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-get-attribute" title="nm_tc_qdisc_get_attribute ()">nm_tc_qdisc_get_attribute</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-qdisc-set-attribute" title="nm_tc_qdisc_set_attribute ()">nm_tc_qdisc_set_attribute</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="returnvalue">NMTCAction</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-new" title="nm_tc_action_new ()">nm_tc_action_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-ref" title="nm_tc_action_ref ()">nm_tc_action_ref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-unref" title="nm_tc_action_unref ()">nm_tc_action_unref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-equal" title="nm_tc_action_equal ()">nm_tc_action_equal</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="returnvalue">NMTCAction</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-dup" title="nm_tc_action_dup ()">nm_tc_action_dup</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-get-kind" title="nm_tc_action_get_kind ()">nm_tc_action_get_kind</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">char</span> **
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-get-attribute-names" title="nm_tc_action_get_attribute_names ()">nm_tc_action_get_attribute_names</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-get-attribute" title="nm_tc_action_get_attribute ()">nm_tc_action_get_attribute</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-action-set-attribute" title="nm_tc_action_set_attribute ()">nm_tc_action_set_attribute</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="returnvalue">NMTCTfilter</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-new" title="nm_tc_tfilter_new ()">nm_tc_tfilter_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-ref" title="nm_tc_tfilter_ref ()">nm_tc_tfilter_ref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-unref" title="nm_tc_tfilter_unref ()">nm_tc_tfilter_unref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-equal" title="nm_tc_tfilter_equal ()">nm_tc_tfilter_equal</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="returnvalue">NMTCTfilter</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-dup" title="nm_tc_tfilter_dup ()">nm_tc_tfilter_dup</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-get-kind" title="nm_tc_tfilter_get_kind ()">nm_tc_tfilter_get_kind</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-get-handle" title="nm_tc_tfilter_get_handle ()">nm_tc_tfilter_get_handle</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-set-handle" title="nm_tc_tfilter_set_handle ()">nm_tc_tfilter_set_handle</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-get-parent" title="nm_tc_tfilter_get_parent ()">nm_tc_tfilter_get_parent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="returnvalue">NMTCAction</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-get-action" title="nm_tc_tfilter_get_action ()">nm_tc_tfilter_get_action</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-tc-tfilter-set-action" title="nm_tc_tfilter_set_action ()">nm_tc_tfilter_set_action</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-new" title="nm_setting_tc_config_new ()">nm_setting_tc_config_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-get-num-qdiscs" title="nm_setting_tc_config_get_num_qdiscs ()">nm_setting_tc_config_get_num_qdiscs</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="returnvalue">NMTCQdisc</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-get-qdisc" title="nm_setting_tc_config_get_qdisc ()">nm_setting_tc_config_get_qdisc</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-add-qdisc" title="nm_setting_tc_config_add_qdisc ()">nm_setting_tc_config_add_qdisc</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-remove-qdisc" title="nm_setting_tc_config_remove_qdisc ()">nm_setting_tc_config_remove_qdisc</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-remove-qdisc-by-value" title="nm_setting_tc_config_remove_qdisc_by_value ()">nm_setting_tc_config_remove_qdisc_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-clear-qdiscs" title="nm_setting_tc_config_clear_qdiscs ()">nm_setting_tc_config_clear_qdiscs</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-get-num-tfilters" title="nm_setting_tc_config_get_num_tfilters ()">nm_setting_tc_config_get_num_tfilters</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="returnvalue">NMTCTfilter</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-get-tfilter" title="nm_setting_tc_config_get_tfilter ()">nm_setting_tc_config_get_tfilter</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-add-tfilter" title="nm_setting_tc_config_add_tfilter ()">nm_setting_tc_config_add_tfilter</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-remove-tfilter" title="nm_setting_tc_config_remove_tfilter ()">nm_setting_tc_config_remove_tfilter</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-remove-tfilter-by-value" title="nm_setting_tc_config_remove_tfilter_by_value ()">nm_setting_tc_config_remove_tfilter_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTCConfig.html#nm-setting-tc-config-clear-tfilters" title="nm_setting_tc_config_clear_tfilters ()">nm_setting_tc_config_clear_tfilters</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<a name="NMTCAction"></a><a name="NMTCQdisc"></a><a name="NMTCTfilter"></a><div class="refsect1">
+<a name="NMSettingTCConfig.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTCConfig.html#NM-SETTING-TC-CONFIG-SETTING-NAME:CAPS" title="NM_SETTING_TC_CONFIG_SETTING_NAME">NM_SETTING_TC_CONFIG_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTCConfig.html#NM-SETTING-TC-CONFIG-QDISCS:CAPS" title="NM_SETTING_TC_CONFIG_QDISCS">NM_SETTING_TC_CONFIG_QDISCS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTCConfig.html#NM-SETTING-TC-CONFIG-TFILTERS:CAPS" title="NM_SETTING_TC_CONFIG_TFILTERS">NM_SETTING_TC_CONFIG_TFILTERS</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTCConfig.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Boxed-Types.html">GBoxed</a>
+    <span class="lineart">├──</span> NMTCAction
+    <span class="lineart">├──</span> NMTCQdisc
+    <span class="lineart">╰──</span> NMTCTfilter
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingTCConfig.includes"></a><h2>Includes</h2>
+<pre class="synopsis">#include &lt;nm-setting-tc-config.h&gt;
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingTCConfig.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMSettingTCConfig.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-tc-qdisc-new"></a><h3>nm_tc_qdisc_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="returnvalue">NMTCQdisc</span></a> *
+nm_tc_qdisc_new (<em class="parameter"><code>const <span class="type">char</span> *kind</code></em>,
+                 <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> parent</code></em>,
+                 <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> object.</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-new.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>kind</p></td>
+<td class="parameter_description"><p>name of the queueing discipline</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>parent</p></td>
+<td class="parameter_description"><p>the parent queueing discipline</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-qdisc-new.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> object, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> on error. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-ref"></a><h3>nm_tc_qdisc_ref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_qdisc_ref (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<p>Increases the reference count of the object.</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-ref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-unref"></a><h3>nm_tc_qdisc_unref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_qdisc_unref (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<p>Decreases the reference count of the object.  If the reference count
+reaches zero, the object will be destroyed.</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-unref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-equal"></a><h3>nm_tc_qdisc_equal ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_tc_qdisc_equal (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>,
+                   <em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *other</code></em>);</pre>
+<p>Determines if two <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> objects contain the same kind, * handle
+and parent.</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-equal.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>other</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> to compare <em class="parameter"><code>qdisc</code></em>
+to.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-qdisc-equal.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the objects contain the same values, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they do not.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-dup"></a><h3>nm_tc_qdisc_dup ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="returnvalue">NMTCQdisc</span></a> *
+nm_tc_qdisc_dup (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<p>Creates a copy of <em class="parameter"><code>qdisc</code></em>
+</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-dup.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-qdisc-dup.returns"></a><h4>Returns</h4>
+<p>a copy of <em class="parameter"><code>qdisc</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-get-kind"></a><h3>nm_tc_qdisc_get_kind ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_tc_qdisc_get_kind (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-kind.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-get-handle"></a><h3>nm_tc_qdisc_get_handle ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_tc_qdisc_get_handle (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-handle.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-handle.returns"></a><h4>Returns</h4>
+<p> the queueing discipline handle</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-set-handle"></a><h3>nm_tc_qdisc_set_handle ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_qdisc_set_handle (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>,
+                        <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> handle</code></em>);</pre>
+<p>Sets the queueing discipline handle.</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-set-handle.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>handle</p></td>
+<td class="parameter_description"><p>the queueing discipline handle</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-get-parent"></a><h3>nm_tc_qdisc_get_parent ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_tc_qdisc_get_parent (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-parent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-parent.returns"></a><h4>Returns</h4>
+<p> the parent class</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-get-attribute-names"></a><h3>nm_tc_qdisc_get_attribute_names ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> **
+nm_tc_qdisc_get_attribute_names (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<p>Gets an array of attribute names defined on <em class="parameter"><code>qdisc</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-attribute-names.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-attribute-names.returns"></a><h4>Returns</h4>
+<p>a <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated array of attribute names
+or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if no attributes are set. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data container, but not the data inside it."><span class="acronym">transfer container</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-get-attribute"></a><h3>nm_tc_qdisc_get_attribute ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+nm_tc_qdisc_get_attribute (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>,
+                           <em class="parameter"><code>const <span class="type">char</span> *name</code></em>);</pre>
+<p>Gets the value of the attribute with name <em class="parameter"><code>name</code></em>
+ on <em class="parameter"><code>qdisc</code></em>
+</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-attribute.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>the name of an qdisc attribute</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-qdisc-get-attribute.returns"></a><h4>Returns</h4>
+<p>the value of the attribute with name <em class="parameter"><code>name</code></em>
+on
+<em class="parameter"><code>qdisc</code></em>
+, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if <em class="parameter"><code>qdisc</code></em>
+has no such attribute. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-qdisc-set-attribute"></a><h3>nm_tc_qdisc_set_attribute ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_qdisc_set_attribute (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>,
+                           <em class="parameter"><code>const <span class="type">char</span> *name</code></em>,
+                           <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *value</code></em>);</pre>
+<p>Sets or clears the named attribute on <em class="parameter"><code>qdisc</code></em>
+ to the given value.</p>
+<div class="refsect3">
+<a name="nm-tc-qdisc-set-attribute.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>the name of an qdisc attribute</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the value. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-new"></a><h3>nm_tc_action_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="returnvalue">NMTCAction</span></a> *
+nm_tc_action_new (<em class="parameter"><code>const <span class="type">char</span> *kind</code></em>,
+                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> object.</p>
+<div class="refsect3">
+<a name="nm-tc-action-new.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>kind</p></td>
+<td class="parameter_description"><p>name of the queueing discipline</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-action-new.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> object, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> on error. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-ref"></a><h3>nm_tc_action_ref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_action_ref (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>);</pre>
+<p>Increases the reference count of the object.</p>
+<div class="refsect3">
+<a name="nm-tc-action-ref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-unref"></a><h3>nm_tc_action_unref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_action_unref (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>);</pre>
+<p>Decreases the reference count of the object.  If the reference count
+reaches zero, the object will be destroyed.</p>
+<div class="refsect3">
+<a name="nm-tc-action-unref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-equal"></a><h3>nm_tc_action_equal ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_tc_action_equal (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>,
+                    <em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *other</code></em>);</pre>
+<p>Determines if two <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> objects contain the same kind, family,
+handle, parent and info.</p>
+<div class="refsect3">
+<a name="nm-tc-action-equal.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>other</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> to compare <em class="parameter"><code>action</code></em>
+to.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-action-equal.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the objects contain the same values, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they do not.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-dup"></a><h3>nm_tc_action_dup ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="returnvalue">NMTCAction</span></a> *
+nm_tc_action_dup (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>);</pre>
+<p>Creates a copy of <em class="parameter"><code>action</code></em>
+</p>
+<div class="refsect3">
+<a name="nm-tc-action-dup.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-action-dup.returns"></a><h4>Returns</h4>
+<p>a copy of <em class="parameter"><code>action</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-get-kind"></a><h3>nm_tc_action_get_kind ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_tc_action_get_kind (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-tc-action-get-kind.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-get-attribute-names"></a><h3>nm_tc_action_get_attribute_names ()</h3>
+<pre class="programlisting"><span class="returnvalue">char</span> **
+nm_tc_action_get_attribute_names (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>);</pre>
+<p>Gets an array of attribute names defined on <em class="parameter"><code>action</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-tc-action-get-attribute-names.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-action-get-attribute-names.returns"></a><h4>Returns</h4>
+<p>a <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated array of attribute names,. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-get-attribute"></a><h3>nm_tc_action_get_attribute ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+nm_tc_action_get_attribute (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>,
+                            <em class="parameter"><code>const <span class="type">char</span> *name</code></em>);</pre>
+<p>Gets the value of the attribute with name <em class="parameter"><code>name</code></em>
+ on <em class="parameter"><code>action</code></em>
+</p>
+<div class="refsect3">
+<a name="nm-tc-action-get-attribute.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>the name of an action attribute</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-action-get-attribute.returns"></a><h4>Returns</h4>
+<p>the value of the attribute with name <em class="parameter"><code>name</code></em>
+on
+<em class="parameter"><code>action</code></em>
+, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if <em class="parameter"><code>action</code></em>
+has no such attribute. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-action-set-attribute"></a><h3>nm_tc_action_set_attribute ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_action_set_attribute (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>,
+                            <em class="parameter"><code>const <span class="type">char</span> *name</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *value</code></em>);</pre>
+<p>Sets or clears the named attribute on <em class="parameter"><code>action</code></em>
+ to the given value.</p>
+<div class="refsect3">
+<a name="nm-tc-action-set-attribute.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>the name of an action attribute</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the value. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-new"></a><h3>nm_tc_tfilter_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="returnvalue">NMTCTfilter</span></a> *
+nm_tc_tfilter_new (<em class="parameter"><code>const <span class="type">char</span> *kind</code></em>,
+                   <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> parent</code></em>,
+                   <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> object.</p>
+<div class="refsect3">
+<a name="nm-tc-tfilter-new.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>kind</p></td>
+<td class="parameter_description"><p>name of the queueing discipline</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>parent</p></td>
+<td class="parameter_description"><p>the parent queueing discipline</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-tfilter-new.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> object, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> on error. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-ref"></a><h3>nm_tc_tfilter_ref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_tfilter_ref (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<p>Increases the reference count of the object.</p>
+<div class="refsect3">
+<a name="nm-tc-tfilter-ref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-unref"></a><h3>nm_tc_tfilter_unref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_tfilter_unref (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<p>Decreases the reference count of the object.  If the reference count
+reaches zero, the object will be destroyed.</p>
+<div class="refsect3">
+<a name="nm-tc-tfilter-unref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-equal"></a><h3>nm_tc_tfilter_equal ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_tc_tfilter_equal (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>,
+                     <em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *other</code></em>);</pre>
+<p>Determines if two <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> objects contain the same kind, family,
+handle, parent and info.</p>
+<div class="refsect3">
+<a name="nm-tc-tfilter-equal.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>other</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> to compare <em class="parameter"><code>tfilter</code></em>
+to.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-tfilter-equal.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the objects contain the same values, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they do not.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-dup"></a><h3>nm_tc_tfilter_dup ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="returnvalue">NMTCTfilter</span></a> *
+nm_tc_tfilter_dup (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<p>Creates a copy of <em class="parameter"><code>tfilter</code></em>
+</p>
+<div class="refsect3">
+<a name="nm-tc-tfilter-dup.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-tfilter-dup.returns"></a><h4>Returns</h4>
+<p>a copy of <em class="parameter"><code>tfilter</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-get-kind"></a><h3>nm_tc_tfilter_get_kind ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_tc_tfilter_get_kind (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-tc-tfilter-get-kind.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-get-handle"></a><h3>nm_tc_tfilter_get_handle ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_tc_tfilter_get_handle (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-tc-tfilter-get-handle.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-tfilter-get-handle.returns"></a><h4>Returns</h4>
+<p> the queueing discipline handle</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-set-handle"></a><h3>nm_tc_tfilter_set_handle ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_tfilter_set_handle (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>,
+                          <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> handle</code></em>);</pre>
+<p>Sets the queueing discipline handle.</p>
+<div class="refsect3">
+<a name="nm-tc-tfilter-set-handle.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>handle</p></td>
+<td class="parameter_description"><p>the queueing discipline handle</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-get-parent"></a><h3>nm_tc_tfilter_get_parent ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_tc_tfilter_get_parent (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-tc-tfilter-get-parent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-tfilter-get-parent.returns"></a><h4>Returns</h4>
+<p> the parent class</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-get-action"></a><h3>nm_tc_tfilter_get_action ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="returnvalue">NMTCAction</span></a> *
+nm_tc_tfilter_get_action (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-tc-tfilter-get-action.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-tc-tfilter-get-action.returns"></a><h4>Returns</h4>
+<p> the action associated with a traffic filter.</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-tc-tfilter-set-action"></a><h3>nm_tc_tfilter_set_action ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_tc_tfilter_set_action (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>,
+                          <em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCAction"><span class="type">NMTCAction</span></a> *action</code></em>);</pre>
+<p>Sets the action associated with a traffic filter.</p>
+<div class="refsect3">
+<a name="nm-tc-tfilter-set-action.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>action</p></td>
+<td class="parameter_description"><p>the action object</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-new"></a><h3>nm_setting_tc_config_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_tc_config_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-get-num-qdiscs"></a><h3>nm_setting_tc_config_get_num_qdiscs ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_tc_config_get_num_qdiscs (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tc-config-get-num-qdiscs.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tc-config-get-num-qdiscs.returns"></a><h4>Returns</h4>
+<p> the number of configured queueing disciplines</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-get-qdisc"></a><h3>nm_setting_tc_config_get_qdisc ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="returnvalue">NMTCQdisc</span></a> *
+nm_setting_tc_config_get_qdisc (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tc-config-get-qdisc.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the qdisc to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tc-config-get-qdisc.returns"></a><h4>Returns</h4>
+<p>the qdisc at index <em class="parameter"><code>idx</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-add-qdisc"></a><h3>nm_setting_tc_config_add_qdisc ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_tc_config_add_qdisc (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<p>Appends a new qdisc and associated information to the setting.  The
+given qdisc is duplicated internally and is not changed by this function.
+If an identical qdisc (considering attributes as well) already exists, the
+qdisc is not added and the function returns <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-add-qdisc.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the qdisc to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tc-config-add-qdisc.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the qdisc was added; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if the qdisc was already known.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-remove-qdisc"></a><h3>nm_setting_tc_config_remove_qdisc ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_tc_config_remove_qdisc (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>,
+                                   <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the qdisc at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-remove-qdisc.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the qdisc</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-remove-qdisc-by-value"></a><h3>nm_setting_tc_config_remove_qdisc_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_tc_config_remove_qdisc_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCQdisc"><span class="type">NMTCQdisc</span></a> *qdisc</code></em>);</pre>
+<p>Removes the first matching qdisc that matches <em class="parameter"><code>qdisc</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-remove-qdisc-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>qdisc</p></td>
+<td class="parameter_description"><p>the qdisc to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tc-config-remove-qdisc-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the qdisc was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-clear-qdiscs"></a><h3>nm_setting_tc_config_clear_qdiscs ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_tc_config_clear_qdiscs (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>);</pre>
+<p>Removes all configured queueing disciplines.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-clear-qdiscs.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-get-num-tfilters"></a><h3>nm_setting_tc_config_get_num_tfilters ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_tc_config_get_num_tfilters (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tc-config-get-num-tfilters.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tc-config-get-num-tfilters.returns"></a><h4>Returns</h4>
+<p> the number of configured queueing disciplines</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-get-tfilter"></a><h3>nm_setting_tc_config_get_tfilter ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="returnvalue">NMTCTfilter</span></a> *
+nm_setting_tc_config_get_tfilter (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-tc-config-get-tfilter.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the tfilter to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tc-config-get-tfilter.returns"></a><h4>Returns</h4>
+<p>the tfilter at index <em class="parameter"><code>idx</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-add-tfilter"></a><h3>nm_setting_tc_config_add_tfilter ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_tc_config_add_tfilter (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>,
+                                  <em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<p>Appends a new tfilter and associated information to the setting.  The
+given tfilter is duplicated internally and is not changed by this function.
+If an identical tfilter (considering attributes as well) already exists, the
+tfilter is not added and the function returns <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-add-tfilter.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the tfilter to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tc-config-add-tfilter.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the tfilter was added; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if the tfilter was already known.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-remove-tfilter"></a><h3>nm_setting_tc_config_remove_tfilter ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_tc_config_remove_tfilter (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>,
+                                     <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the tfilter at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-remove-tfilter.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the tfilter</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-remove-tfilter-by-value"></a><h3>nm_setting_tc_config_remove_tfilter_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_tc_config_remove_tfilter_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSettingTCConfig.html#NMTCTfilter"><span class="type">NMTCTfilter</span></a> *tfilter</code></em>);</pre>
+<p>Removes the first matching tfilter that matches <em class="parameter"><code>tfilter</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-remove-tfilter-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>tfilter</p></td>
+<td class="parameter_description"><p>the tfilter to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-tc-config-remove-tfilter-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the tfilter was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-tc-config-clear-tfilters"></a><h3>nm_setting_tc_config_clear_tfilters ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_tc_config_clear_tfilters (<em class="parameter"><code><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> *setting</code></em>);</pre>
+<p>Removes all configured queueing disciplines.</p>
+<div class="refsect3">
+<a name="nm-setting-tc-config-clear-tfilters.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTCConfig.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-TC-CONFIG-SETTING-NAME:CAPS"></a><h3>NM_SETTING_TC_CONFIG_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_TC_CONFIG_SETTING_NAME "tc"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TC-CONFIG-QDISCS:CAPS"></a><h3>NM_SETTING_TC_CONFIG_QDISCS</h3>
+<pre class="programlisting">#define NM_SETTING_TC_CONFIG_QDISCS   "qdiscs"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TC-CONFIG-TFILTERS:CAPS"></a><h3>NM_SETTING_TC_CONFIG_TFILTERS</h3>
+<pre class="programlisting">#define NM_SETTING_TC_CONFIG_TFILTERS "tfilters"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

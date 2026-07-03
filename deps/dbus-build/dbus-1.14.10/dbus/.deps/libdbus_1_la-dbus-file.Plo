@@ -1,0 +1,19 @@
+libdbus_1_la-dbus-file.lo: dbus-file.c ../config.h dbus-file.h \
+  ../dbus/dbus-string.h ../dbus/dbus-macros.h ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  ../dbus/dbus-arch-deps.h ../dbus/dbus-memory.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  ../dbus/dbus-errors.h ../dbus/dbus-protocol.h
+../config.h:
+dbus-file.h:
+../dbus/dbus-string.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-memory.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-protocol.h:

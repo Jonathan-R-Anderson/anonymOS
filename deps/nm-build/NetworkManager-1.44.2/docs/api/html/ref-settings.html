@@ -1,0 +1,210 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Part II. Network Configuration Setting Specification: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="index.html" title="NetworkManager Reference Manual">
+<link rel="prev" href="nm-openvswitch.html" title="nm-openvswitch">
+<link rel="next" href="ch01.html" title="Configuration Settings">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts"></td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><img src="up-insensitive.png" width="16" height="16" border="0"></td>
+<td><a accesskey="p" href="nm-openvswitch.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="ch01.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="part">
+<div class="titlepage"><div><div><h1 class="title">
+<a name="ref-settings"></a>Part II. Network Configuration Setting Specification</h1></div></div></div>
+<div class="toc">
+<p><b>Table of Contents</b></p>
+<dl class="toc">
+<dt><span class="chapter"><a href="ch01.html">Configuration Settings</a></span></dt>
+<dd><dl>
+<dt>
+<span class="refentrytitle"><a href="settings-connection.html">connection</a></span><span class="refpurpose"> — General Connection Profile Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-6lowpan.html">6lowpan</a></span><span class="refpurpose"> — 6LoWPAN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-1x.html">802-1x</a></span><span class="refpurpose"> — IEEE 802.1x Authentication Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-adsl.html">adsl</a></span><span class="refpurpose"> — ADSL Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bluetooth.html">bluetooth</a></span><span class="refpurpose"> — Bluetooth Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bond.html">bond</a></span><span class="refpurpose"> — Bonding Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bridge.html">bridge</a></span><span class="refpurpose"> — Bridging Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bridge-port.html">bridge-port</a></span><span class="refpurpose"> — Bridge Port Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-cdma.html">cdma</a></span><span class="refpurpose"> — CDMA-based Mobile Broadband Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-dcb.html">dcb</a></span><span class="refpurpose"> — Data Center Bridging Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-dummy.html">dummy</a></span><span class="refpurpose"> — Dummy Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ethtool.html">ethtool</a></span><span class="refpurpose"> — Ethtool Ethernet Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-generic.html">generic</a></span><span class="refpurpose"> — Generic Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-gsm.html">gsm</a></span><span class="refpurpose"> — GSM-based Mobile Broadband Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-infiniband.html">infiniband</a></span><span class="refpurpose"> — Infiniband Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ipv4.html">ipv4</a></span><span class="refpurpose"> — IPv4 Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ipv6.html">ipv6</a></span><span class="refpurpose"> — IPv6 Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ip-tunnel.html">ip-tunnel</a></span><span class="refpurpose"> — IP Tunneling Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-macsec.html">macsec</a></span><span class="refpurpose"> — MACSec Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-macvlan.html">macvlan</a></span><span class="refpurpose"> — MAC VLAN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-match.html">match</a></span><span class="refpurpose"> — Match settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-11-olpc-mesh.html">802-11-olpc-mesh</a></span><span class="refpurpose"> — OLPC Wireless Mesh Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-bridge.html">ovs-bridge</a></span><span class="refpurpose"> — OvsBridge Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-dpdk.html">ovs-dpdk</a></span><span class="refpurpose"> — OvsDpdk Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-interface.html">ovs-interface</a></span><span class="refpurpose"> — Open vSwitch Interface Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-patch.html">ovs-patch</a></span><span class="refpurpose"> — OvsPatch Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-port.html">ovs-port</a></span><span class="refpurpose"> — OvsPort Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ppp.html">ppp</a></span><span class="refpurpose"> — Point-to-Point Protocol Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-pppoe.html">pppoe</a></span><span class="refpurpose"> — PPP-over-Ethernet Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-proxy.html">proxy</a></span><span class="refpurpose"> — WWW Proxy Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-serial.html">serial</a></span><span class="refpurpose"> — Serial Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-sriov.html">sriov</a></span><span class="refpurpose"> — SR-IOV settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-tc.html">tc</a></span><span class="refpurpose"> — Linux Traffic Control Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-team.html">team</a></span><span class="refpurpose"> — Teaming Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-team-port.html">team-port</a></span><span class="refpurpose"> — Team Port Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-tun.html">tun</a></span><span class="refpurpose"> — Tunnel Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-user.html">user</a></span><span class="refpurpose"> — General User Profile Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-vlan.html">vlan</a></span><span class="refpurpose"> — VLAN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-vpn.html">vpn</a></span><span class="refpurpose"> — VPN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-vrf.html">vrf</a></span><span class="refpurpose"> — VRF settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-vxlan.html">vxlan</a></span><span class="refpurpose"> — VXLAN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-wifi-p2p.html">wifi-p2p</a></span><span class="refpurpose"> — Wi-Fi P2P Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-wimax.html">wimax</a></span><span class="refpurpose"> — WiMax Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-3-ethernet.html">802-3-ethernet</a></span><span class="refpurpose"> — Wired Ethernet Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-wireguard.html">wireguard</a></span><span class="refpurpose"> — WireGuard Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-11-wireless.html">802-11-wireless</a></span><span class="refpurpose"> — Wi-Fi Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-11-wireless-security.html">802-11-wireless-security</a></span><span class="refpurpose"> — Wi-Fi Security Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-wpan.html">wpan</a></span><span class="refpurpose"> — IEEE 802.15.4 (WPAN) MAC Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bond-port.html">bond-port</a></span><span class="refpurpose"> — Bond Port Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-hostname.html">hostname</a></span><span class="refpurpose"> — Hostname settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-link.html">link</a></span><span class="refpurpose"> — Link settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-loopback.html">loopback</a></span><span class="refpurpose"> — Loopback Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-external-ids.html">ovs-external-ids</a></span><span class="refpurpose"> — OVS External IDs Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-other-config.html">ovs-other-config</a></span><span class="refpurpose"> — OVS Other Config Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-veth.html">veth</a></span><span class="refpurpose"> — Veth Settings</span>
+</dt>
+</dl></dd>
+<dt><span class="chapter"><a href="secrets-flags.html">Secret flag types</a></span></dt>
+</dl>
+</div>
+<p>
+      This part documents the properties and value types of each "Setting"
+      object that composes the basic unit of NetworkManager configuration,
+      the "Connection".  Each Connection object is simply a dictionary mapping
+      setting names (like "802-3-ethernet" or "bluetooth") to a dictionary of
+      key/value pairs that represents each itself.
+    </p>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

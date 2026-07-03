@@ -1,0 +1,941 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMDeviceMacsec: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch04.html" title="Device and Runtime Configuration API Reference">
+<link rel="prev" href="NMDeviceLoopback.html" title="NMDeviceLoopback">
+<link rel="next" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMDeviceMacsec.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMDeviceMacsec.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMDeviceMacsec.properties" class="shortcut">Properties</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch04.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMDeviceLoopback.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMDeviceMacvlan.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMDeviceMacsec"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMDeviceMacsec.top_of_page"></a>NMDeviceMacsec</span></h2>
+<p>NMDeviceMacsec</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMDeviceMacsec.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMDevice.html" title="NMDevice"><span class="returnvalue">NMDevice</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-parent" title="nm_device_macsec_get_parent ()">nm_device_macsec_get_parent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-hw-address" title="nm_device_macsec_get_hw_address ()">nm_device_macsec_get_hw_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-sci" title="nm_device_macsec_get_sci ()">nm_device_macsec_get_sci</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-icv-length" title="nm_device_macsec_get_icv_length ()">nm_device_macsec_get_icv_length</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-cipher-suite" title="nm_device_macsec_get_cipher_suite ()">nm_device_macsec_get_cipher_suite</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-window" title="nm_device_macsec_get_window ()">nm_device_macsec_get_window</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-encoding-sa" title="nm_device_macsec_get_encoding_sa ()">nm_device_macsec_get_encoding_sa</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-validation" title="nm_device_macsec_get_validation ()">nm_device_macsec_get_validation</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-encrypt" title="nm_device_macsec_get_encrypt ()">nm_device_macsec_get_encrypt</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-protect" title="nm_device_macsec_get_protect ()">nm_device_macsec_get_protect</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-include-sci" title="nm_device_macsec_get_include_sci ()">nm_device_macsec_get_include_sci</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-es" title="nm_device_macsec_get_es ()">nm_device_macsec_get_es</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-scb" title="nm_device_macsec_get_scb ()">nm_device_macsec_get_scb</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacsec.html#nm-device-macsec-get-replay-protect" title="nm_device_macsec_get_replay_protect ()">nm_device_macsec_get_replay_protect</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacsec.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="type">guint64</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--cipher-suite" title="The “cipher-suite” property">cipher-suite</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--encoding-sa" title="The “encoding-sa” property">encoding-sa</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--encrypt" title="The “encrypt” property">encrypt</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--es" title="The “es” property">es</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--icv-length" title="The “icv-length” property">icv-length</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--include-sci" title="The “include-sci” property">include-sci</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<a class="link" href="NMDevice.html" title="NMDevice"><span class="type">NMDevice</span></a> *</td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--parent" title="The “parent” property">parent</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--protect" title="The “protect” property">protect</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--replay-protect" title="The “replay-protect” property">replay-protect</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--scb" title="The “scb” property">scb</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="type">guint64</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--sci" title="The “sci” property">sci</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--validation" title="The “validation” property">validation</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec--window" title="The “window” property">window</a></td>
+<td class="property_flags">Read</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacsec.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-PARENT:CAPS" title="NM_DEVICE_MACSEC_PARENT">NM_DEVICE_MACSEC_PARENT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-HW-ADDRESS:CAPS" title="NM_DEVICE_MACSEC_HW_ADDRESS">NM_DEVICE_MACSEC_HW_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-SCI:CAPS" title="NM_DEVICE_MACSEC_SCI">NM_DEVICE_MACSEC_SCI</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-ICV-LENGTH:CAPS" title="NM_DEVICE_MACSEC_ICV_LENGTH">NM_DEVICE_MACSEC_ICV_LENGTH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-CIPHER-SUITE:CAPS" title="NM_DEVICE_MACSEC_CIPHER_SUITE">NM_DEVICE_MACSEC_CIPHER_SUITE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-WINDOW:CAPS" title="NM_DEVICE_MACSEC_WINDOW">NM_DEVICE_MACSEC_WINDOW</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-ENCODING-SA:CAPS" title="NM_DEVICE_MACSEC_ENCODING_SA">NM_DEVICE_MACSEC_ENCODING_SA</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-VALIDATION:CAPS" title="NM_DEVICE_MACSEC_VALIDATION">NM_DEVICE_MACSEC_VALIDATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-ENCRYPT:CAPS" title="NM_DEVICE_MACSEC_ENCRYPT">NM_DEVICE_MACSEC_ENCRYPT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-PROTECT:CAPS" title="NM_DEVICE_MACSEC_PROTECT">NM_DEVICE_MACSEC_PROTECT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-INCLUDE-SCI:CAPS" title="NM_DEVICE_MACSEC_INCLUDE_SCI">NM_DEVICE_MACSEC_INCLUDE_SCI</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-ES:CAPS" title="NM_DEVICE_MACSEC_ES">NM_DEVICE_MACSEC_ES</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-SCB:CAPS" title="NM_DEVICE_MACSEC_SCB">NM_DEVICE_MACSEC_SCB</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NM-DEVICE-MACSEC-REPLAY-PROTECT:CAPS" title="NM_DEVICE_MACSEC_REPLAY_PROTECT">NM_DEVICE_MACSEC_REPLAY_PROTECT</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMDeviceMacsec.html#NMDeviceMacsec-struct" title="NMDeviceMacsec">NMDeviceMacsec</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacsec.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> <a class="link" href="NMObject.html" title="NMObject">NMObject</a>
+        <span class="lineart">╰──</span> <a class="link" href="NMDevice.html" title="NMDevice">NMDevice</a>
+            <span class="lineart">╰──</span> NMDeviceMacsec
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacsec.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacsec.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-device-macsec-get-parent"></a><h3>nm_device_macsec_get_parent ()</h3>
+<pre class="programlisting"><a class="link" href="NMDevice.html" title="NMDevice"><span class="returnvalue">NMDevice</span></a> *
+nm_device_macsec_get_parent (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-macsec-get-parent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-parent.returns"></a><h4>Returns</h4>
+<p>the device's parent device. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-hw-address"></a><h3>nm_device_macsec_get_hw_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_macsec_get_hw_address (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_device_macsec_get_hw_address</code> has been deprecated since version 1.24 and should not be used in newly-written code.</p>
+<p>Use <a class="link" href="NMDevice.html#nm-device-get-hw-address" title="nm_device_get_hw_address ()"><code class="function">nm_device_get_hw_address()</code></a> instead.</p>
+</div>
+<p>Gets the hardware (MAC) address of the <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p>
+<p><span class="annotation">[<acronym title="Exposed in C code, not necessarily available in other languages."><span class="acronym">skip</span></acronym>]</span></p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-hw-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-hw-address.returns"></a><h4>Returns</h4>
+<p> the hardware address. This is the internal string used by the
+device, and must not be modified.</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-sci"></a><h3>nm_device_macsec_get_sci ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+nm_device_macsec_get_sci (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets the Secure Channel Identifier in use</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-sci.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-sci.returns"></a><h4>Returns</h4>
+<p> the SCI</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-icv-length"></a><h3>nm_device_macsec_get_icv_length ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+nm_device_macsec_get_icv_length (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets the length of ICV (Integrity Check Value)</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-icv-length.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-icv-length.returns"></a><h4>Returns</h4>
+<p> the length of ICV</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-cipher-suite"></a><h3>nm_device_macsec_get_cipher_suite ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+nm_device_macsec_get_cipher_suite (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets the set of cryptographic algorithms in use</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-cipher-suite.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-cipher-suite.returns"></a><h4>Returns</h4>
+<p> the set of cryptographic algorithms in use</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-window"></a><h3>nm_device_macsec_get_window ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_macsec_get_window (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets the size of the replay window</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-window.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-window.returns"></a><h4>Returns</h4>
+<p> size of the replay window</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-encoding-sa"></a><h3>nm_device_macsec_get_encoding_sa ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint8"><span class="returnvalue">guint8</span></a>
+nm_device_macsec_get_encoding_sa (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets the value of the Association Number (0..3) for the Security
+Association in use.</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-encoding-sa.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-encoding-sa.returns"></a><h4>Returns</h4>
+<p> the current Security Association</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-validation"></a><h3>nm_device_macsec_get_validation ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_macsec_get_validation (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets the validation mode for incoming packets (strict, check,
+disabled)</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-validation.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-validation.returns"></a><h4>Returns</h4>
+<p> the validation mode</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-encrypt"></a><h3>nm_device_macsec_get_encrypt ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_macsec_get_encrypt (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets whether encryption of transmitted frames is enabled</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-encrypt.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-encrypt.returns"></a><h4>Returns</h4>
+<p> whether encryption is enabled</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-protect"></a><h3>nm_device_macsec_get_protect ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_macsec_get_protect (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets whether protection of transmitted frames is enabled</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-protect.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-protect.returns"></a><h4>Returns</h4>
+<p> whether protection is enabled</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-include-sci"></a><h3>nm_device_macsec_get_include_sci ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_macsec_get_include_sci (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets whether the SCI is always included in SecTAG for transmitted
+frames</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-include-sci.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-include-sci.returns"></a><h4>Returns</h4>
+<p> whether the SCI is always included</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-es"></a><h3>nm_device_macsec_get_es ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_macsec_get_es (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets whether the ES (End station) bit is enabled in SecTAG for
+transmitted frames</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-es.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-es.returns"></a><h4>Returns</h4>
+<p> whether the ES (End station) bit is enabled</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-scb"></a><h3>nm_device_macsec_get_scb ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_macsec_get_scb (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets whether the SCB (Single Copy Broadcast) bit is enabled in
+SecTAG for transmitted frames</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-scb.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-scb.returns"></a><h4>Returns</h4>
+<p> whether the SCB (Single Copy Broadcast) bit is enabled</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macsec-get-replay-protect"></a><h3>nm_device_macsec_get_replay_protect ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_macsec_get_replay_protect (<em class="parameter"><code><a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a> *device</code></em>);</pre>
+<p>Gets whether replay protection is enabled</p>
+<div class="refsect3">
+<a name="nm-device-macsec-get-replay-protect.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacsec.html" title="NMDeviceMacsec"><span class="type">NMDeviceMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macsec-get-replay-protect.returns"></a><h4>Returns</h4>
+<p> whether replay protection is enabled</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacsec.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-PARENT:CAPS"></a><h3>NM_DEVICE_MACSEC_PARENT</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_PARENT         "parent"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-HW-ADDRESS:CAPS"></a><h3>NM_DEVICE_MACSEC_HW_ADDRESS</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_HW_ADDRESS     "hw-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-SCI:CAPS"></a><h3>NM_DEVICE_MACSEC_SCI</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_SCI            "sci"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-ICV-LENGTH:CAPS"></a><h3>NM_DEVICE_MACSEC_ICV_LENGTH</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_ICV_LENGTH     "icv-length"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-CIPHER-SUITE:CAPS"></a><h3>NM_DEVICE_MACSEC_CIPHER_SUITE</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_CIPHER_SUITE   "cipher-suite"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-WINDOW:CAPS"></a><h3>NM_DEVICE_MACSEC_WINDOW</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_WINDOW         "window"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-ENCODING-SA:CAPS"></a><h3>NM_DEVICE_MACSEC_ENCODING_SA</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_ENCODING_SA    "encoding-sa"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-VALIDATION:CAPS"></a><h3>NM_DEVICE_MACSEC_VALIDATION</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_VALIDATION     "validation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-ENCRYPT:CAPS"></a><h3>NM_DEVICE_MACSEC_ENCRYPT</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_ENCRYPT        "encrypt"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-PROTECT:CAPS"></a><h3>NM_DEVICE_MACSEC_PROTECT</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_PROTECT        "protect"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-INCLUDE-SCI:CAPS"></a><h3>NM_DEVICE_MACSEC_INCLUDE_SCI</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_INCLUDE_SCI    "include-sci"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-ES:CAPS"></a><h3>NM_DEVICE_MACSEC_ES</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_ES             "es"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-SCB:CAPS"></a><h3>NM_DEVICE_MACSEC_SCB</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_SCB            "scb"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACSEC-REPLAY-PROTECT:CAPS"></a><h3>NM_DEVICE_MACSEC_REPLAY_PROTECT</h3>
+<pre class="programlisting">#define NM_DEVICE_MACSEC_REPLAY_PROTECT "replay-protect"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec-struct"></a><h3>NMDeviceMacsec</h3>
+<pre class="programlisting">typedef struct _NMDeviceMacsec NMDeviceMacsec;</pre>
+<p class="since">Since: 1.6</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacsec.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMDeviceMacsec--cipher-suite"></a><h3>The <code class="literal">“cipher-suite”</code> property</h3>
+<pre class="programlisting">  “cipher-suite”             <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="type">guint64</span></a></pre>
+<p>The set of cryptographic algorithms in use.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--encoding-sa"></a><h3>The <code class="literal">“encoding-sa”</code> property</h3>
+<pre class="programlisting">  “encoding-sa”              <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></pre>
+<p>The value of the Association Number (0..3) for the Security
+Association in use.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--encrypt"></a><h3>The <code class="literal">“encrypt”</code> property</h3>
+<pre class="programlisting">  “encrypt”                  <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether encryption of transmitted frames is enabled.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--es"></a><h3>The <code class="literal">“es”</code> property</h3>
+<pre class="programlisting">  “es”                       <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether the ES (End station) bit is enabled in SecTAG for
+transmitted frames.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--icv-length"></a><h3>The <code class="literal">“icv-length”</code> property</h3>
+<pre class="programlisting">  “icv-length”               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></pre>
+<p>The length of ICV (Integrity Check Value).</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--include-sci"></a><h3>The <code class="literal">“include-sci”</code> property</h3>
+<pre class="programlisting">  “include-sci”              <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether the SCI is always included in SecTAG for transmitted
+frames.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--parent"></a><h3>The <code class="literal">“parent”</code> property</h3>
+<pre class="programlisting">  “parent”                   <a class="link" href="NMDevice.html" title="NMDevice"><span class="type">NMDevice</span></a> *</pre>
+<p>The devices's parent device.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--protect"></a><h3>The <code class="literal">“protect”</code> property</h3>
+<pre class="programlisting">  “protect”                  <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether protection of transmitted frames is enabled.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--replay-protect"></a><h3>The <code class="literal">“replay-protect”</code> property</h3>
+<pre class="programlisting">  “replay-protect”           <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether replay protection is enabled.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--scb"></a><h3>The <code class="literal">“scb”</code> property</h3>
+<pre class="programlisting">  “scb”                      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether the SCB (Single Copy Broadcast) bit is enabled in
+SecTAG for transmitted frames.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--sci"></a><h3>The <code class="literal">“sci”</code> property</h3>
+<pre class="programlisting">  “sci”                      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="type">guint64</span></a></pre>
+<p>The Secure Channel Identifier in use.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--validation"></a><h3>The <code class="literal">“validation”</code> property</h3>
+<pre class="programlisting">  “validation”               <span class="type">char</span> *</pre>
+<p>The validation mode for incoming packets (strict, check,
+disabled).</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacsec--window"></a><h3>The <code class="literal">“window”</code> property</h3>
+<pre class="programlisting">  “window”                   <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The size of the replay window.</p>
+<p>Owner: NMDeviceMacsec</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.6</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

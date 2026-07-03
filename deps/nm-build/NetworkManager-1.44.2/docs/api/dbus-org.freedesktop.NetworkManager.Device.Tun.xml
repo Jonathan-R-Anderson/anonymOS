@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Tun">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Tun.top_of_page">org.freedesktop.NetworkManager.Device.Tun</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Tun.top_of_page"><primary sortas=".Device.Tun">org.freedesktop.NetworkManager.Device.Tun</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Tun</refname>    <refpurpose>Userspace Tunneling Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Owner">Owner</link>       readable   x
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Group">Group</link>       readable   x
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Mode">Mode</link>        readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.NoPi">NoPi</link>        readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.VnetHdr">VnetHdr</link>     readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.MultiQueue">MultiQueue</link>  readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.HwAddress">HwAddress</link>   readable   s
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Tun">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Tun">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Owner">
+  <title>The "Owner" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Owner"><primary sortas=".Device.Tun:Owner">org.freedesktop.NetworkManager.Device.Tun:Owner</primary></indexterm>
+<programlisting>
+Owner  readable   x
+</programlisting>
+<para>
+The uid of the tunnel owner, or -1 if it has no owner.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Group">
+  <title>The "Group" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Group"><primary sortas=".Device.Tun:Group">org.freedesktop.NetworkManager.Device.Tun:Group</primary></indexterm>
+<programlisting>
+Group  readable   x
+</programlisting>
+<para>
+The gid of the tunnel group, or -1 if it has no owner.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Mode">
+  <title>The "Mode" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.Mode"><primary sortas=".Device.Tun:Mode">org.freedesktop.NetworkManager.Device.Tun:Mode</primary></indexterm>
+<programlisting>
+Mode  readable   s
+</programlisting>
+<para>
+The tunnel mode, either "tun" or "tap".
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.NoPi">
+  <title>The "NoPi" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.NoPi"><primary sortas=".Device.Tun:NoPi">org.freedesktop.NetworkManager.Device.Tun:NoPi</primary></indexterm>
+<programlisting>
+NoPi  readable   b
+</programlisting>
+<para>
+The tunnel's "TUN_NO_PI" flag; true if no protocol info is prepended to
+the tunnel packets.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.VnetHdr">
+  <title>The "VnetHdr" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.VnetHdr"><primary sortas=".Device.Tun:VnetHdr">org.freedesktop.NetworkManager.Device.Tun:VnetHdr</primary></indexterm>
+<programlisting>
+VnetHdr  readable   b
+</programlisting>
+<para>
+The tunnel's "TUN_VNET_HDR" flag; true if the tunnel packets include a
+virtio network header.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.MultiQueue">
+  <title>The "MultiQueue" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.MultiQueue"><primary sortas=".Device.Tun:MultiQueue">org.freedesktop.NetworkManager.Device.Tun:MultiQueue</primary></indexterm>
+<programlisting>
+MultiQueue  readable   b
+</programlisting>
+<para>
+The tunnel's "TUN_TAP_MQ" flag; true if callers can connect to the tap
+device multiple times, for multiple send/receive queues.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Tun.HwAddress"><primary sortas=".Device.Tun:HwAddress">org.freedesktop.NetworkManager.Device.Tun:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+Hardware address of the device.
+n
+DEPRECATED. Use the "HwAddress" property in "org.freedesktop.NetworkManager.Device" instead which exists since version NetworkManager 1.24.0.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

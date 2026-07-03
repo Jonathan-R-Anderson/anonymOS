@@ -1,0 +1,61 @@
+dbus-message-util.lo: dbus-message-util.c ../config.h \
+  dbus-message-private.h ../dbus/dbus-message.h ../dbus/dbus-macros.h \
+  ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  ../dbus/dbus-arch-deps.h ../dbus/dbus-memory.h ../dbus/dbus-errors.h \
+  ../dbus/dbus-protocol.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  ../dbus/dbus-message-internal.h ../dbus/dbus-marshal-validate.h \
+  ../dbus/dbus-string.h ../dbus/dbus-resources.h \
+  ../dbus/dbus-internals.h ../dbus/dbus-sysdeps.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  ../dbus/dbus-file.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h \
+  ../dbus/dbus-threads-internal.h ../dbus/dbus-threads.h \
+  ../dbus/dbus-connection.h ../dbus/dbus-shared.h ../dbus/dbus-list.h \
+  ../dbus/dbus-dataslot.h ../dbus/dbus-marshal-header.h \
+  ../dbus/dbus-marshal-basic.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/byteswap.h
+../config.h:
+dbus-message-private.h:
+../dbus/dbus-message.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-memory.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-protocol.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+../dbus/dbus-message-internal.h:
+../dbus/dbus-marshal-validate.h:
+../dbus/dbus-string.h:
+../dbus/dbus-resources.h:
+../dbus/dbus-internals.h:
+../dbus/dbus-sysdeps.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+../dbus/dbus-file.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h:
+../dbus/dbus-threads-internal.h:
+../dbus/dbus-threads.h:
+../dbus/dbus-connection.h:
+../dbus/dbus-shared.h:
+../dbus/dbus-list.h:
+../dbus/dbus-dataslot.h:
+../dbus/dbus-marshal-header.h:
+../dbus/dbus-marshal-basic.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/byteswap.h:

@@ -1,0 +1,1171 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMDeviceVxlan: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch04.html" title="Device and Runtime Configuration API Reference">
+<link rel="prev" href="NMDeviceVrf.html" title="NMDeviceVrf">
+<link rel="next" href="NMDeviceWifiP2P.html" title="NMDeviceWifiP2P">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMDeviceVxlan.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMDeviceVxlan.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMDeviceVxlan.properties" class="shortcut">Properties</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch04.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMDeviceVrf.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMDeviceWifiP2P.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMDeviceVxlan"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMDeviceVxlan.top_of_page"></a>NMDeviceVxlan</span></h2>
+<p>NMDeviceVxlan</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMDeviceVxlan.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-hw-address" title="nm_device_vxlan_get_hw_address ()">nm_device_vxlan_get_hw_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-carrier" title="nm_device_vxlan_get_carrier ()">nm_device_vxlan_get_carrier</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMDevice.html" title="NMDevice"><span class="returnvalue">NMDevice</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-parent" title="nm_device_vxlan_get_parent ()">nm_device_vxlan_get_parent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-id" title="nm_device_vxlan_get_id ()">nm_device_vxlan_get_id</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-group" title="nm_device_vxlan_get_group ()">nm_device_vxlan_get_group</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-local" title="nm_device_vxlan_get_local ()">nm_device_vxlan_get_local</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-src-port-min" title="nm_device_vxlan_get_src_port_min ()">nm_device_vxlan_get_src_port_min</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-src-port-max" title="nm_device_vxlan_get_src_port_max ()">nm_device_vxlan_get_src_port_max</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-dst-port" title="nm_device_vxlan_get_dst_port ()">nm_device_vxlan_get_dst_port</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-learning" title="nm_device_vxlan_get_learning ()">nm_device_vxlan_get_learning</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-ageing" title="nm_device_vxlan_get_ageing ()">nm_device_vxlan_get_ageing</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-tos" title="nm_device_vxlan_get_tos ()">nm_device_vxlan_get_tos</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-ttl" title="nm_device_vxlan_get_ttl ()">nm_device_vxlan_get_ttl</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-limit" title="nm_device_vxlan_get_limit ()">nm_device_vxlan_get_limit</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-proxy" title="nm_device_vxlan_get_proxy ()">nm_device_vxlan_get_proxy</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-rsc" title="nm_device_vxlan_get_rsc ()">nm_device_vxlan_get_rsc</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-l2miss" title="nm_device_vxlan_get_l2miss ()">nm_device_vxlan_get_l2miss</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceVxlan.html#nm-device-vxlan-get-l3miss" title="nm_device_vxlan_get_l3miss ()">nm_device_vxlan_get_l3miss</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceVxlan.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--ageing" title="The “ageing” property">ageing</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--carrier" title="The “carrier” property">carrier</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--dst-port" title="The “dst-port” property">dst-port</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--group" title="The “group” property">group</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--id" title="The “id” property">id</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--l2miss" title="The “l2miss” property">l2miss</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--l3miss" title="The “l3miss” property">l3miss</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--learning" title="The “learning” property">learning</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--limit" title="The “limit” property">limit</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--local" title="The “local” property">local</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<a class="link" href="NMDevice.html" title="NMDevice"><span class="type">NMDevice</span></a> *</td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--parent" title="The “parent” property">parent</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--proxy" title="The “proxy” property">proxy</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--rsc" title="The “rsc” property">rsc</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--src-port-max" title="The “src-port-max” property">src-port-max</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--src-port-min" title="The “src-port-min” property">src-port-min</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--tos" title="The “tos” property">tos</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan--ttl" title="The “ttl” property">ttl</a></td>
+<td class="property_flags">Read</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceVxlan.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-HW-ADDRESS:CAPS" title="NM_DEVICE_VXLAN_HW_ADDRESS">NM_DEVICE_VXLAN_HW_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-CARRIER:CAPS" title="NM_DEVICE_VXLAN_CARRIER">NM_DEVICE_VXLAN_CARRIER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-PARENT:CAPS" title="NM_DEVICE_VXLAN_PARENT">NM_DEVICE_VXLAN_PARENT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-ID:CAPS" title="NM_DEVICE_VXLAN_ID">NM_DEVICE_VXLAN_ID</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-GROUP:CAPS" title="NM_DEVICE_VXLAN_GROUP">NM_DEVICE_VXLAN_GROUP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-LOCAL:CAPS" title="NM_DEVICE_VXLAN_LOCAL">NM_DEVICE_VXLAN_LOCAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-SRC-PORT-MIN:CAPS" title="NM_DEVICE_VXLAN_SRC_PORT_MIN">NM_DEVICE_VXLAN_SRC_PORT_MIN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-SRC-PORT-MAX:CAPS" title="NM_DEVICE_VXLAN_SRC_PORT_MAX">NM_DEVICE_VXLAN_SRC_PORT_MAX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-LEARNING:CAPS" title="NM_DEVICE_VXLAN_LEARNING">NM_DEVICE_VXLAN_LEARNING</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-AGEING:CAPS" title="NM_DEVICE_VXLAN_AGEING">NM_DEVICE_VXLAN_AGEING</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-TOS:CAPS" title="NM_DEVICE_VXLAN_TOS">NM_DEVICE_VXLAN_TOS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-TTL:CAPS" title="NM_DEVICE_VXLAN_TTL">NM_DEVICE_VXLAN_TTL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-LIMIT:CAPS" title="NM_DEVICE_VXLAN_LIMIT">NM_DEVICE_VXLAN_LIMIT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-PROXY:CAPS" title="NM_DEVICE_VXLAN_PROXY">NM_DEVICE_VXLAN_PROXY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-RSC:CAPS" title="NM_DEVICE_VXLAN_RSC">NM_DEVICE_VXLAN_RSC</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-L2MISS:CAPS" title="NM_DEVICE_VXLAN_L2MISS">NM_DEVICE_VXLAN_L2MISS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-L3MISS:CAPS" title="NM_DEVICE_VXLAN_L3MISS">NM_DEVICE_VXLAN_L3MISS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NM-DEVICE-VXLAN-DST-PORT:CAPS" title="NM_DEVICE_VXLAN_DST_PORT">NM_DEVICE_VXLAN_DST_PORT</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMDeviceVxlan.html#NMDeviceVxlan-struct" title="NMDeviceVxlan">NMDeviceVxlan</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceVxlan.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> <a class="link" href="NMObject.html" title="NMObject">NMObject</a>
+        <span class="lineart">╰──</span> <a class="link" href="NMDevice.html" title="NMDevice">NMDevice</a>
+            <span class="lineart">╰──</span> NMDeviceVxlan
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMDeviceVxlan.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMDeviceVxlan.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-hw-address"></a><h3>nm_device_vxlan_get_hw_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_vxlan_get_hw_address (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_device_vxlan_get_hw_address</code> has been deprecated since version 1.24 and should not be used in newly-written code.</p>
+<p>Use <a class="link" href="NMDevice.html#nm-device-get-hw-address" title="nm_device_get_hw_address ()"><code class="function">nm_device_get_hw_address()</code></a> instead.</p>
+</div>
+<p>Gets the hardware (MAC) address of the <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p>
+<p><span class="annotation">[<acronym title="Exposed in C code, not necessarily available in other languages."><span class="acronym">skip</span></acronym>]</span></p>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-hw-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-hw-address.returns"></a><h4>Returns</h4>
+<p> the hardware address. This is the internal string used by the
+device, and must not be modified.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-carrier"></a><h3>nm_device_vxlan_get_carrier ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_vxlan_get_carrier (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<p>Whether the device has carrier.</p>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-carrier.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-carrier.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the device has carrier.</p>
+<p>This property is not implemented yet, and the function always returns
+FALSE.</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-parent"></a><h3>nm_device_vxlan_get_parent ()</h3>
+<pre class="programlisting"><a class="link" href="NMDevice.html" title="NMDevice"><span class="returnvalue">NMDevice</span></a> *
+nm_device_vxlan_get_parent (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-parent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-parent.returns"></a><h4>Returns</h4>
+<p>the device's parent device. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-id"></a><h3>nm_device_vxlan_get_id ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_vxlan_get_id (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-id.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-id.returns"></a><h4>Returns</h4>
+<p> the device's VXLAN ID.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-group"></a><h3>nm_device_vxlan_get_group ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_vxlan_get_group (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-group.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-group.returns"></a><h4>Returns</h4>
+<p> The unicast destination IP address or the multicast
+IP address joined</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-local"></a><h3>nm_device_vxlan_get_local ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_vxlan_get_local (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-local.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-local.returns"></a><h4>Returns</h4>
+<p> the source IP address to use in outgoing packets</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-src-port-min"></a><h3>nm_device_vxlan_get_src_port_min ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_vxlan_get_src_port_min (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-src-port-min.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-src-port-min.returns"></a><h4>Returns</h4>
+<p> the minimum UDP source port</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-src-port-max"></a><h3>nm_device_vxlan_get_src_port_max ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_vxlan_get_src_port_max (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-src-port-max.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-src-port-max.returns"></a><h4>Returns</h4>
+<p>  the maximum UDP source port</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-dst-port"></a><h3>nm_device_vxlan_get_dst_port ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_vxlan_get_dst_port (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-dst-port.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-dst-port.returns"></a><h4>Returns</h4>
+<p> the UDP destination port</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-learning"></a><h3>nm_device_vxlan_get_learning ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_vxlan_get_learning (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-learning.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-learning.returns"></a><h4>Returns</h4>
+<p> whether address learning is enabled</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-ageing"></a><h3>nm_device_vxlan_get_ageing ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_vxlan_get_ageing (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-ageing.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-ageing.returns"></a><h4>Returns</h4>
+<p> the lifetime in seconds of FDB entries learnt by the kernel</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-tos"></a><h3>nm_device_vxlan_get_tos ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_vxlan_get_tos (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-tos.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-tos.returns"></a><h4>Returns</h4>
+<p> the TOS value to use in outgoing packets</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-ttl"></a><h3>nm_device_vxlan_get_ttl ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_vxlan_get_ttl (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-ttl.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-ttl.returns"></a><h4>Returns</h4>
+<p> the time-to-live value to use in outgoing packets</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-limit"></a><h3>nm_device_vxlan_get_limit ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_device_vxlan_get_limit (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-limit.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-limit.returns"></a><h4>Returns</h4>
+<p> the maximum number of entries that can be added to the
+forwarding table</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-proxy"></a><h3>nm_device_vxlan_get_proxy ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_vxlan_get_proxy (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-proxy.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-proxy.returns"></a><h4>Returns</h4>
+<p> whether ARP proxy is turned on</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-rsc"></a><h3>nm_device_vxlan_get_rsc ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_vxlan_get_rsc (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-rsc.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-rsc.returns"></a><h4>Returns</h4>
+<p> whether route short circuit is turned on</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-l2miss"></a><h3>nm_device_vxlan_get_l2miss ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_vxlan_get_l2miss (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-l2miss.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-l2miss.returns"></a><h4>Returns</h4>
+<p> whether netlink LL ADDR miss notifications are generated</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-vxlan-get-l3miss"></a><h3>nm_device_vxlan_get_l3miss ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_vxlan_get_l3miss (<em class="parameter"><code><a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-l3miss.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceVxlan.html" title="NMDeviceVxlan"><span class="type">NMDeviceVxlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-vxlan-get-l3miss.returns"></a><h4>Returns</h4>
+<p> whether netlink IP ADDR miss notifications are generated</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceVxlan.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-HW-ADDRESS:CAPS"></a><h3>NM_DEVICE_VXLAN_HW_ADDRESS</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_HW_ADDRESS   "hw-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-CARRIER:CAPS"></a><h3>NM_DEVICE_VXLAN_CARRIER</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_CARRIER      "carrier"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-PARENT:CAPS"></a><h3>NM_DEVICE_VXLAN_PARENT</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_PARENT       "parent"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-ID:CAPS"></a><h3>NM_DEVICE_VXLAN_ID</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_ID           "id"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-GROUP:CAPS"></a><h3>NM_DEVICE_VXLAN_GROUP</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_GROUP        "group"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-LOCAL:CAPS"></a><h3>NM_DEVICE_VXLAN_LOCAL</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_LOCAL        "local"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-SRC-PORT-MIN:CAPS"></a><h3>NM_DEVICE_VXLAN_SRC_PORT_MIN</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_SRC_PORT_MIN "src-port-min"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-SRC-PORT-MAX:CAPS"></a><h3>NM_DEVICE_VXLAN_SRC_PORT_MAX</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_SRC_PORT_MAX "src-port-max"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-LEARNING:CAPS"></a><h3>NM_DEVICE_VXLAN_LEARNING</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_LEARNING     "learning"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-AGEING:CAPS"></a><h3>NM_DEVICE_VXLAN_AGEING</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_AGEING       "ageing"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-TOS:CAPS"></a><h3>NM_DEVICE_VXLAN_TOS</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_TOS          "tos"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-TTL:CAPS"></a><h3>NM_DEVICE_VXLAN_TTL</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_TTL          "ttl"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-LIMIT:CAPS"></a><h3>NM_DEVICE_VXLAN_LIMIT</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_LIMIT        "limit"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-PROXY:CAPS"></a><h3>NM_DEVICE_VXLAN_PROXY</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_PROXY        "proxy"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-RSC:CAPS"></a><h3>NM_DEVICE_VXLAN_RSC</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_RSC          "rsc"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-L2MISS:CAPS"></a><h3>NM_DEVICE_VXLAN_L2MISS</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_L2MISS       "l2miss"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-L3MISS:CAPS"></a><h3>NM_DEVICE_VXLAN_L3MISS</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_L3MISS       "l3miss"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-VXLAN-DST-PORT:CAPS"></a><h3>NM_DEVICE_VXLAN_DST_PORT</h3>
+<pre class="programlisting">#define NM_DEVICE_VXLAN_DST_PORT     "dst-port"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan-struct"></a><h3>NMDeviceVxlan</h3>
+<pre class="programlisting">typedef struct _NMDeviceVxlan NMDeviceVxlan;</pre>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceVxlan.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMDeviceVxlan--ageing"></a><h3>The <code class="literal">“ageing”</code> property</h3>
+<pre class="programlisting">  “ageing”                   <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The lifetime in seconds of FDB entries learnt by the kernel.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--carrier"></a><h3>The <code class="literal">“carrier”</code> property</h3>
+<pre class="programlisting">  “carrier”                  <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether the device has carrier.</p>
+<p>This property is not implemented yet, and the property is always FALSE.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--dst-port"></a><h3>The <code class="literal">“dst-port”</code> property</h3>
+<pre class="programlisting">  “dst-port”                 <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The UDP destination port used to communicate with the remote VXLAN tunnel
+endpoint.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Allowed values: &lt;= 65535</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--group"></a><h3>The <code class="literal">“group”</code> property</h3>
+<pre class="programlisting">  “group”                    <span class="type">char</span> *</pre>
+<p>The unicast destination IP address used in outgoing packets when the
+destination link layer address is not known in the VXLAN device
+forwarding database or the multicast IP address joined.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--id"></a><h3>The <code class="literal">“id”</code> property</h3>
+<pre class="programlisting">  “id”                       <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The device's VXLAN ID.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Allowed values: &lt;= 16777215</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--l2miss"></a><h3>The <code class="literal">“l2miss”</code> property</h3>
+<pre class="programlisting">  “l2miss”                   <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether netlink LL ADDR miss notifications are generated.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--l3miss"></a><h3>The <code class="literal">“l3miss”</code> property</h3>
+<pre class="programlisting">  “l3miss”                   <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether netlink IP ADDR miss notifications are generated.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--learning"></a><h3>The <code class="literal">“learning”</code> property</h3>
+<pre class="programlisting">  “learning”                 <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether unknown source link layer addresses and IP addresses are entered
+into the VXLAN device forwarding database.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: TRUE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--limit"></a><h3>The <code class="literal">“limit”</code> property</h3>
+<pre class="programlisting">  “limit”                    <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The maximum number of entries that can be added to the forwarding table.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--local"></a><h3>The <code class="literal">“local”</code> property</h3>
+<pre class="programlisting">  “local”                    <span class="type">char</span> *</pre>
+<p>The source IP address to use in outgoing packets.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--parent"></a><h3>The <code class="literal">“parent”</code> property</h3>
+<pre class="programlisting">  “parent”                   <a class="link" href="NMDevice.html" title="NMDevice"><span class="type">NMDevice</span></a> *</pre>
+<p>The devices's parent device.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--proxy"></a><h3>The <code class="literal">“proxy”</code> property</h3>
+<pre class="programlisting">  “proxy”                    <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether ARP proxy is turned on.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--rsc"></a><h3>The <code class="literal">“rsc”</code> property</h3>
+<pre class="programlisting">  “rsc”                      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether route short circuit is turned on.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--src-port-max"></a><h3>The <code class="literal">“src-port-max”</code> property</h3>
+<pre class="programlisting">  “src-port-max”             <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The maximum UDP source port used to communicate with the remote VXLAN
+tunnel endpoint.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Allowed values: &lt;= 65535</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--src-port-min"></a><h3>The <code class="literal">“src-port-min”</code> property</h3>
+<pre class="programlisting">  “src-port-min”             <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The minimum UDP source port used to communicate with the remote VXLAN
+tunnel endpoint.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Allowed values: &lt;= 65535</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--tos"></a><h3>The <code class="literal">“tos”</code> property</h3>
+<pre class="programlisting">  “tos”                      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></pre>
+<p>The TOS value to use in outgoing packets.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceVxlan--ttl"></a><h3>The <code class="literal">“ttl”</code> property</h3>
+<pre class="programlisting">  “ttl”                      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guchar"><span class="type">guchar</span></a></pre>
+<p>The time-to-live value to use in outgoing packets.</p>
+<p>Owner: NMDeviceVxlan</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

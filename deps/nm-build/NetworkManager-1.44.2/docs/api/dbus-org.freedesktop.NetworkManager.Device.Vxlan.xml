@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Vxlan">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Vxlan.top_of_page">org.freedesktop.NetworkManager.Device.Vxlan</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Vxlan.top_of_page"><primary sortas=".Device.Vxlan">org.freedesktop.NetworkManager.Device.Vxlan</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Vxlan</refname>    <refpurpose>VXLAN Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Parent">Parent</link>      readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.HwAddress">HwAddress</link>   readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Id">Id</link>          readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Group">Group</link>       readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Local">Local</link>       readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Tos">Tos</link>         readable   y
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Ttl">Ttl</link>         readable   y
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Learning">Learning</link>    readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Ageing">Ageing</link>      readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Limit">Limit</link>       readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.DstPort">DstPort</link>     readable   q
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.SrcPortMin">SrcPortMin</link>  readable   q
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.SrcPortMax">SrcPortMax</link>  readable   q
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Proxy">Proxy</link>       readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Rsc">Rsc</link>         readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.L2miss">L2miss</link>      readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.L3miss">L3miss</link>      readable   b
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Vxlan">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Vxlan">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Parent">
+  <title>The "Parent" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Parent"><primary sortas=".Device.Vxlan:Parent">org.freedesktop.NetworkManager.Device.Vxlan:Parent</primary></indexterm>
+<programlisting>
+Parent  readable   o
+</programlisting>
+<para>
+The object path of the parent device (if the VXLAN is not purely internal
+to this host).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.HwAddress"><primary sortas=".Device.Vxlan:HwAddress">org.freedesktop.NetworkManager.Device.Vxlan:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+Hardware address of the device.
+n
+DEPRECATED. Use the "HwAddress" property in "org.freedesktop.NetworkManager.Device" instead which exists since version NetworkManager 1.24.0.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Id">
+  <title>The "Id" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Id"><primary sortas=".Device.Vxlan:Id">org.freedesktop.NetworkManager.Device.Vxlan:Id</primary></indexterm>
+<programlisting>
+Id  readable   u
+</programlisting>
+<para>
+The VXLAN Network Identifier (VNI).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Group">
+  <title>The "Group" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Group"><primary sortas=".Device.Vxlan:Group">org.freedesktop.NetworkManager.Device.Vxlan:Group</primary></indexterm>
+<programlisting>
+Group  readable   s
+</programlisting>
+<para>
+The IP (v4 or v6) multicast group used to communicate with other physical
+hosts on this VXLAN.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Local">
+  <title>The "Local" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Local"><primary sortas=".Device.Vxlan:Local">org.freedesktop.NetworkManager.Device.Vxlan:Local</primary></indexterm>
+<programlisting>
+Local  readable   s
+</programlisting>
+<para>
+The local IPv4 or IPv6 address to use when sending VXLAN packets to other
+physical hosts.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Tos">
+  <title>The "Tos" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Tos"><primary sortas=".Device.Vxlan:Tos">org.freedesktop.NetworkManager.Device.Vxlan:Tos</primary></indexterm>
+<programlisting>
+Tos  readable   y
+</programlisting>
+<para>
+The value to use in the IP ToS field for VXLAN packets sent to other
+physical hosts.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Ttl">
+  <title>The "Ttl" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Ttl"><primary sortas=".Device.Vxlan:Ttl">org.freedesktop.NetworkManager.Device.Vxlan:Ttl</primary></indexterm>
+<programlisting>
+Ttl  readable   y
+</programlisting>
+<para>
+The value to use in the IP TTL field for VXLAN packets sent to other
+physical hosts.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Learning">
+  <title>The "Learning" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Learning"><primary sortas=".Device.Vxlan:Learning">org.freedesktop.NetworkManager.Device.Vxlan:Learning</primary></indexterm>
+<programlisting>
+Learning  readable   b
+</programlisting>
+<para>
+True if the VXLAN dynamically learns remote IP addresses.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Ageing">
+  <title>The "Ageing" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Ageing"><primary sortas=".Device.Vxlan:Ageing">org.freedesktop.NetworkManager.Device.Vxlan:Ageing</primary></indexterm>
+<programlisting>
+Ageing  readable   u
+</programlisting>
+<para>
+The interval in seconds at which the kernel purges stale cached addresses.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Limit">
+  <title>The "Limit" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Limit"><primary sortas=".Device.Vxlan:Limit">org.freedesktop.NetworkManager.Device.Vxlan:Limit</primary></indexterm>
+<programlisting>
+Limit  readable   u
+</programlisting>
+<para>
+The maximum number of entries that can be added to the VXLAN's forwarding
+table.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.DstPort">
+  <title>The "DstPort" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.DstPort"><primary sortas=".Device.Vxlan:DstPort">org.freedesktop.NetworkManager.Device.Vxlan:DstPort</primary></indexterm>
+<programlisting>
+DstPort  readable   q
+</programlisting>
+<para>
+Destination port for outgoing VXLAN packets.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.SrcPortMin">
+  <title>The "SrcPortMin" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.SrcPortMin"><primary sortas=".Device.Vxlan:SrcPortMin">org.freedesktop.NetworkManager.Device.Vxlan:SrcPortMin</primary></indexterm>
+<programlisting>
+SrcPortMin  readable   q
+</programlisting>
+<para>
+The lowest source port number to use for outgoing VXLAN packets.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.SrcPortMax">
+  <title>The "SrcPortMax" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.SrcPortMax"><primary sortas=".Device.Vxlan:SrcPortMax">org.freedesktop.NetworkManager.Device.Vxlan:SrcPortMax</primary></indexterm>
+<programlisting>
+SrcPortMax  readable   q
+</programlisting>
+<para>
+The highest source port number to use for outgoing VXLAN packets.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Proxy">
+  <title>The "Proxy" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Proxy"><primary sortas=".Device.Vxlan:Proxy">org.freedesktop.NetworkManager.Device.Vxlan:Proxy</primary></indexterm>
+<programlisting>
+Proxy  readable   b
+</programlisting>
+<para>
+True if the VXLAN is implementing DOVE ARP proxying for remote clients.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Rsc">
+  <title>The "Rsc" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.Rsc"><primary sortas=".Device.Vxlan:Rsc">org.freedesktop.NetworkManager.Device.Vxlan:Rsc</primary></indexterm>
+<programlisting>
+Rsc  readable   b
+</programlisting>
+<para>
+True if the VXLAN is implementing DOVE route short-circuiting of known
+remote IP addresses.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.L2miss">
+  <title>The "L2miss" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.L2miss"><primary sortas=".Device.Vxlan:L2miss">org.freedesktop.NetworkManager.Device.Vxlan:L2miss</primary></indexterm>
+<programlisting>
+L2miss  readable   b
+</programlisting>
+<para>
+True if the VXLAN will emit netlink notifications of L2 switch misses.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.L3miss">
+  <title>The "L3miss" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Vxlan.L3miss"><primary sortas=".Device.Vxlan:L3miss">org.freedesktop.NetworkManager.Device.Vxlan:L3miss</primary></indexterm>
+<programlisting>
+L3miss  readable   b
+</programlisting>
+<para>
+True if the VXLAN will emit netlink notifications of L3 switch misses.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

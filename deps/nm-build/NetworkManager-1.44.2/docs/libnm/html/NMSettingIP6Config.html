@@ -1,0 +1,639 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingIP6Config: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingIP4Config.html" title="NMSettingIP4Config">
+<link rel="next" href="NMSettingLink.html" title="NMSettingLink">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingIP6Config.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingIP6Config.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingIP4Config.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingLink.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingIP6Config"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingIP6Config.top_of_page"></a>NMSettingIP6Config</span></h2>
+<p>NMSettingIP6Config — Describes IPv6 addressing, routing, and name service properties</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingIP6Config.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingIP6Config.html#nm-setting-ip6-config-new" title="nm_setting_ip6_config_new ()">nm_setting_ip6_config_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigPrivacy" title="enum NMSettingIP6ConfigPrivacy"><span class="returnvalue">NMSettingIP6ConfigPrivacy</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingIP6Config.html#nm-setting-ip6-config-get-ip6-privacy" title="nm_setting_ip6_config_get_ip6_privacy ()">nm_setting_ip6_config_get_ip6_privacy</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigAddrGenMode" title="enum NMSettingIP6ConfigAddrGenMode"><span class="returnvalue">NMSettingIP6ConfigAddrGenMode</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingIP6Config.html#nm-setting-ip6-config-get-addr-gen-mode" title="nm_setting_ip6_config_get_addr_gen_mode ()">nm_setting_ip6_config_get_addr_gen_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingIP6Config.html#nm-setting-ip6-config-get-token" title="nm_setting_ip6_config_get_token ()">nm_setting_ip6_config_get_token</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingIP6Config.html#nm-setting-ip6-config-get-dhcp-duid" title="nm_setting_ip6_config_get_dhcp_duid ()">nm_setting_ip6_config_get_dhcp_duid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint32"><span class="returnvalue">gint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingIP6Config.html#nm-setting-ip6-config-get-ra-timeout" title="nm_setting_ip6_config_get_ra_timeout ()">nm_setting_ip6_config_get_ra_timeout</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingIP6Config.html#nm-setting-ip6-config-get-mtu" title="nm_setting_ip6_config_get_mtu ()">nm_setting_ip6_config_get_mtu</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingIP6Config.html#nm-setting-ip6-config-get-dhcp-pd-hint" title="nm_setting_ip6_config_get_dhcp_pd_hint ()">nm_setting_ip6_config_get_dhcp_pd_hint</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingIP6Config.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-SETTING-NAME:CAPS" title="NM_SETTING_IP6_CONFIG_SETTING_NAME">NM_SETTING_IP6_CONFIG_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-IP6-PRIVACY:CAPS" title="NM_SETTING_IP6_CONFIG_IP6_PRIVACY">NM_SETTING_IP6_CONFIG_IP6_PRIVACY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-ADDR-GEN-MODE:CAPS" title="NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE">NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-TOKEN:CAPS" title="NM_SETTING_IP6_CONFIG_TOKEN">NM_SETTING_IP6_CONFIG_TOKEN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-DHCP-DUID:CAPS" title="NM_SETTING_IP6_CONFIG_DHCP_DUID">NM_SETTING_IP6_CONFIG_DHCP_DUID</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-RA-TIMEOUT:CAPS" title="NM_SETTING_IP6_CONFIG_RA_TIMEOUT">NM_SETTING_IP6_CONFIG_RA_TIMEOUT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-MTU:CAPS" title="NM_SETTING_IP6_CONFIG_MTU">NM_SETTING_IP6_CONFIG_MTU</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-DHCP-PD-HINT:CAPS" title="NM_SETTING_IP6_CONFIG_DHCP_PD_HINT">NM_SETTING_IP6_CONFIG_DHCP_PD_HINT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-METHOD-IGNORE:CAPS" title="NM_SETTING_IP6_CONFIG_METHOD_IGNORE">NM_SETTING_IP6_CONFIG_METHOD_IGNORE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-METHOD-AUTO:CAPS" title="NM_SETTING_IP6_CONFIG_METHOD_AUTO">NM_SETTING_IP6_CONFIG_METHOD_AUTO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-METHOD-DHCP:CAPS" title="NM_SETTING_IP6_CONFIG_METHOD_DHCP">NM_SETTING_IP6_CONFIG_METHOD_DHCP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-METHOD-LINK-LOCAL:CAPS" title="NM_SETTING_IP6_CONFIG_METHOD_LINK_LOCAL">NM_SETTING_IP6_CONFIG_METHOD_LINK_LOCAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-METHOD-MANUAL:CAPS" title="NM_SETTING_IP6_CONFIG_METHOD_MANUAL">NM_SETTING_IP6_CONFIG_METHOD_MANUAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-METHOD-SHARED:CAPS" title="NM_SETTING_IP6_CONFIG_METHOD_SHARED">NM_SETTING_IP6_CONFIG_METHOD_SHARED</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-METHOD-DISABLED:CAPS" title="NM_SETTING_IP6_CONFIG_METHOD_DISABLED">NM_SETTING_IP6_CONFIG_METHOD_DISABLED</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigPrivacy" title="enum NMSettingIP6ConfigPrivacy">NMSettingIP6ConfigPrivacy</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigAddrGenMode" title="enum NMSettingIP6ConfigAddrGenMode">NMSettingIP6ConfigAddrGenMode</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingIP6Config.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GEnum</a>
+    <span class="lineart">├──</span> NMSettingIP6ConfigAddrGenMode
+    <span class="lineart">╰──</span> NMSettingIP6ConfigPrivacy
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingIP6Config.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes
+properties related to IPv6 addressing, routing, and Domain Name Service</p>
+<p><a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> has few properties or methods of its own; it inherits
+almost everything from <a class="link" href="NMSettingIPConfig.html" title="NMSettingIPConfig"><span class="type">NMSettingIPConfig</span></a>.</p>
+<p>NetworkManager supports 7 values for the <span class="type">“method”</span> property
+for IPv6.  If "auto" is specified then the appropriate automatic method (PPP,
+router advertisement, etc) is used for the device and most other properties
+can be left unset.  To force the use of DHCP only, specify "dhcp"; this
+method is only valid for Ethernet- based hardware.  If "link-local" is
+specified, then an IPv6 link-local address will be assigned to the interface.
+If "manual" is specified, static IP addressing is used and at least one IP
+address must be given in the "addresses" property.  If "ignore" is specified,
+IPv6 configuration is not done. Note: the "shared" method is not yet
+supported. If "disabled" is specified, IPv6 is disabled completely for the
+interface.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingIP6Config.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-ip6-config-new"></a><h3>nm_setting_ip6_config_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_ip6_config_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ip6-config-get-ip6-privacy"></a><h3>nm_setting_ip6_config_get_ip6_privacy ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigPrivacy" title="enum NMSettingIP6ConfigPrivacy"><span class="returnvalue">NMSettingIP6ConfigPrivacy</span></a>
+nm_setting_ip6_config_get_ip6_privacy (<em class="parameter"><code><a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“ip6-privacy”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-ip6-privacy.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-ip6-privacy.returns"></a><h4>Returns</h4>
+<p> IPv6 Privacy Extensions configuration value (<a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigPrivacy" title="enum NMSettingIP6ConfigPrivacy"><span class="type">NMSettingIP6ConfigPrivacy</span></a>).</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ip6-config-get-addr-gen-mode"></a><h3>nm_setting_ip6_config_get_addr_gen_mode ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigAddrGenMode" title="enum NMSettingIP6ConfigAddrGenMode"><span class="returnvalue">NMSettingIP6ConfigAddrGenMode</span></a>
+nm_setting_ip6_config_get_addr_gen_mode
+                               (<em class="parameter"><code><a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“addr-gen-mode”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-addr-gen-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-addr-gen-mode.returns"></a><h4>Returns</h4>
+<p> IPv6 Address Generation Mode.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ip6-config-get-token"></a><h3>nm_setting_ip6_config_get_token ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_ip6_config_get_token (<em class="parameter"><code><a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“token”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-token.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-token.returns"></a><h4>Returns</h4>
+<p> A string.</p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ip6-config-get-dhcp-duid"></a><h3>nm_setting_ip6_config_get_dhcp_duid ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_ip6_config_get_dhcp_duid (<em class="parameter"><code><a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“dhcp-duid”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-dhcp-duid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-dhcp-duid.returns"></a><h4>Returns</h4>
+<p> The configured DUID value to be included in the DHCPv6 requests
+sent to the DHCPv6 servers.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ip6-config-get-ra-timeout"></a><h3>nm_setting_ip6_config_get_ra_timeout ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint32"><span class="returnvalue">gint32</span></a>
+nm_setting_ip6_config_get_ra_timeout (<em class="parameter"><code><a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-ra-timeout.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-ra-timeout.returns"></a><h4>Returns</h4>
+<p> The configured <a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-RA-TIMEOUT:CAPS" title="NM_SETTING_IP6_CONFIG_RA_TIMEOUT"><code class="literal">NM_SETTING_IP6_CONFIG_RA_TIMEOUT</code></a> value with the
+timeout for router advertisements in seconds.</p>
+</div>
+<p class="since">Since: 1.24</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ip6-config-get-mtu"></a><h3>nm_setting_ip6_config_get_mtu ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_ip6_config_get_mtu (<em class="parameter"><code><a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-mtu.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-mtu.returns"></a><h4>Returns</h4>
+<p> The configured <a class="link" href="NMSettingIP6Config.html#NM-SETTING-IP6-CONFIG-MTU:CAPS" title="NM_SETTING_IP6_CONFIG_MTU"><code class="literal">NM_SETTING_IP6_CONFIG_MTU</code></a> value for the maximum
+transmission unit.</p>
+</div>
+<p class="since">Since: 1.40</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ip6-config-get-dhcp-pd-hint"></a><h3>nm_setting_ip6_config_get_dhcp_pd_hint ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_ip6_config_get_dhcp_pd_hint
+                               (<em class="parameter"><code><a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“dhcp-pd-hint”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-dhcp-pd-hint.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ip6-config-get-dhcp-pd-hint.returns"></a><h4>Returns</h4>
+<p> a string containing an address and prefix length to be used
+as hint for DHCPv6 prefix delegation.</p>
+</div>
+<p class="since">Since: 1.44</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingIP6Config.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-SETTING-NAME:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_SETTING_NAME "ipv6"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-IP6-PRIVACY:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_IP6_PRIVACY</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_IP6_PRIVACY "ip6-privacy"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-ADDR-GEN-MODE:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE "addr-gen-mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-TOKEN:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_TOKEN</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_TOKEN "token"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-DHCP-DUID:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_DHCP_DUID</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_DHCP_DUID "dhcp-duid"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-RA-TIMEOUT:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_RA_TIMEOUT</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_RA_TIMEOUT "ra-timeout"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-MTU:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_MTU</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_MTU "mtu"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-DHCP-PD-HINT:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_DHCP_PD_HINT</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_DHCP_PD_HINT "dhcp-pd-hint"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-METHOD-IGNORE:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_METHOD_IGNORE</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_METHOD_IGNORE "ignore"
+</pre>
+<p>IPv6 is not required or is handled by some other mechanism, and NetworkManager
+should not configure IPv6 for this connection.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-METHOD-AUTO:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_METHOD_AUTO</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_METHOD_AUTO "auto"
+</pre>
+<p>IPv6 configuration should be automatically determined via a method appropriate
+for the hardware interface, ie router advertisements, DHCP, or PPP or some
+other device-specific manner.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-METHOD-DHCP:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_METHOD_DHCP</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_METHOD_DHCP "dhcp"
+</pre>
+<p>IPv6 configuration should be automatically determined via DHCPv6 only and
+router advertisements should be ignored.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-METHOD-LINK-LOCAL:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_METHOD_LINK_LOCAL</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_METHOD_LINK_LOCAL "link-local"
+</pre>
+<p>IPv6 configuration should be automatically configured for link-local-only
+operation.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-METHOD-MANUAL:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_METHOD_MANUAL</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_METHOD_MANUAL "manual"
+</pre>
+<p>All necessary IPv6 configuration (addresses, prefix, DNS, etc) is specified
+in the setting's properties.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-METHOD-SHARED:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_METHOD_SHARED</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_METHOD_SHARED "shared"
+</pre>
+<p>This connection specifies configuration that allows other computers to
+connect through it to the default network (usually the Internet).  The
+connection's interface will be assigned a private address, and router
+advertisements, a caching DNS server, and Network Address Translation (NAT)
+functionality will be started on this connection's interface to allow other
+devices to connect through that interface to the default network. (not yet
+supported for IPv6)</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-IP6-CONFIG-METHOD-DISABLED:CAPS"></a><h3>NM_SETTING_IP6_CONFIG_METHOD_DISABLED</h3>
+<pre class="programlisting">#define NM_SETTING_IP6_CONFIG_METHOD_DISABLED "disabled"
+</pre>
+<p>IPv6 is disabled for the connection.</p>
+<p class="since">Since: 1.20</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingIP6ConfigPrivacy"></a><h3>enum NMSettingIP6ConfigPrivacy</h3>
+<p><a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigPrivacy" title="enum NMSettingIP6ConfigPrivacy"><span class="type">NMSettingIP6ConfigPrivacy</span></a> values indicate if and how IPv6 Privacy
+Extensions are used (RFC4941).</p>
+<div class="refsect3">
+<a name="NMSettingIP6ConfigPrivacy.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-IP6-CONFIG-PRIVACY-UNKNOWN:CAPS"></a>NM_SETTING_IP6_CONFIG_PRIVACY_UNKNOWN</p></td>
+<td class="enum_member_description">
+<p>unknown or no value specified</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-IP6-CONFIG-PRIVACY-DISABLED:CAPS"></a>NM_SETTING_IP6_CONFIG_PRIVACY_DISABLED</p></td>
+<td class="enum_member_description">
+<p>IPv6 Privacy Extensions are disabled</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-IP6-CONFIG-PRIVACY-PREFER-PUBLIC-ADDR:CAPS"></a>NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_PUBLIC_ADDR</p></td>
+<td class="enum_member_description">
+<p>IPv6 Privacy Extensions
+are enabled, but public addresses are preferred over temporary addresses</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-IP6-CONFIG-PRIVACY-PREFER-TEMP-ADDR:CAPS"></a>NM_SETTING_IP6_CONFIG_PRIVACY_PREFER_TEMP_ADDR</p></td>
+<td class="enum_member_description">
+<p>IPv6 Privacy Extensions
+are enabled and temporary addresses are preferred over public addresses</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingIP6ConfigAddrGenMode"></a><h3>enum NMSettingIP6ConfigAddrGenMode</h3>
+<p><a class="link" href="NMSettingIP6Config.html#NMSettingIP6ConfigAddrGenMode" title="enum NMSettingIP6ConfigAddrGenMode"><span class="type">NMSettingIP6ConfigAddrGenMode</span></a> controls how the Interface Identifier for
+RFC4862 Stateless Address Autoconfiguration is created.</p>
+<div class="refsect3">
+<a name="NMSettingIP6ConfigAddrGenMode.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-IP6-CONFIG-ADDR-GEN-MODE-EUI64:CAPS"></a>NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE_EUI64</p></td>
+<td class="enum_member_description">
+<p>The Interface Identifier is derived
+from the interface hardware address.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-IP6-CONFIG-ADDR-GEN-MODE-STABLE-PRIVACY:CAPS"></a>NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE_STABLE_PRIVACY</p></td>
+<td class="enum_member_description">
+<p>The Interface Identifier
+is created by using a cryptographically secure hash of a secret host-specific
+key along with the connection identification and the network address as
+specified by RFC7217.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-IP6-CONFIG-ADDR-GEN-MODE-DEFAULT-OR-EUI64:CAPS"></a>NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE_DEFAULT_OR_EUI64</p></td>
+<td class="enum_member_description">
+<p>Fallback to the global
+default, and if unspecified use "eui64". Since: 1.40.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-IP6-CONFIG-ADDR-GEN-MODE-DEFAULT:CAPS"></a>NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>Fallback to the global
+default, and if unspecified use "stable-privacy". Since: 1.40.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

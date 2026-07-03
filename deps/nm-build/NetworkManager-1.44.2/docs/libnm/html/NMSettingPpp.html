@@ -1,0 +1,875 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingPpp: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingOvsPort.html" title="NMSettingOvsPort">
+<link rel="next" href="NMSettingPppoe.html" title="NMSettingPppoe">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingPpp.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingOvsPort.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingPppoe.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingPpp"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingPpp.top_of_page"></a>NMSettingPpp</span></h2>
+<p>NMSettingPpp — Describes connection properties for devices/networks
+that require PPP to deliver IP capability</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingPpp.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-new" title="nm_setting_ppp_new ()">nm_setting_ppp_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-noauth" title="nm_setting_ppp_get_noauth ()">nm_setting_ppp_get_noauth</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-refuse-eap" title="nm_setting_ppp_get_refuse_eap ()">nm_setting_ppp_get_refuse_eap</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-refuse-pap" title="nm_setting_ppp_get_refuse_pap ()">nm_setting_ppp_get_refuse_pap</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-refuse-chap" title="nm_setting_ppp_get_refuse_chap ()">nm_setting_ppp_get_refuse_chap</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-refuse-mschap" title="nm_setting_ppp_get_refuse_mschap ()">nm_setting_ppp_get_refuse_mschap</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-refuse-mschapv2" title="nm_setting_ppp_get_refuse_mschapv2 ()">nm_setting_ppp_get_refuse_mschapv2</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-nobsdcomp" title="nm_setting_ppp_get_nobsdcomp ()">nm_setting_ppp_get_nobsdcomp</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-nodeflate" title="nm_setting_ppp_get_nodeflate ()">nm_setting_ppp_get_nodeflate</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-no-vj-comp" title="nm_setting_ppp_get_no_vj_comp ()">nm_setting_ppp_get_no_vj_comp</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-require-mppe" title="nm_setting_ppp_get_require_mppe ()">nm_setting_ppp_get_require_mppe</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-require-mppe-128" title="nm_setting_ppp_get_require_mppe_128 ()">nm_setting_ppp_get_require_mppe_128</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-mppe-stateful" title="nm_setting_ppp_get_mppe_stateful ()">nm_setting_ppp_get_mppe_stateful</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-crtscts" title="nm_setting_ppp_get_crtscts ()">nm_setting_ppp_get_crtscts</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-baud" title="nm_setting_ppp_get_baud ()">nm_setting_ppp_get_baud</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-mru" title="nm_setting_ppp_get_mru ()">nm_setting_ppp_get_mru</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-mtu" title="nm_setting_ppp_get_mtu ()">nm_setting_ppp_get_mtu</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-lcp-echo-failure" title="nm_setting_ppp_get_lcp_echo_failure ()">nm_setting_ppp_get_lcp_echo_failure</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingPpp.html#nm-setting-ppp-get-lcp-echo-interval" title="nm_setting_ppp_get_lcp_echo_interval ()">nm_setting_ppp_get_lcp_echo_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingPpp.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-SETTING-NAME:CAPS" title="NM_SETTING_PPP_SETTING_NAME">NM_SETTING_PPP_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-NOAUTH:CAPS" title="NM_SETTING_PPP_NOAUTH">NM_SETTING_PPP_NOAUTH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-REFUSE-EAP:CAPS" title="NM_SETTING_PPP_REFUSE_EAP">NM_SETTING_PPP_REFUSE_EAP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-REFUSE-PAP:CAPS" title="NM_SETTING_PPP_REFUSE_PAP">NM_SETTING_PPP_REFUSE_PAP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-REFUSE-CHAP:CAPS" title="NM_SETTING_PPP_REFUSE_CHAP">NM_SETTING_PPP_REFUSE_CHAP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-REFUSE-MSCHAP:CAPS" title="NM_SETTING_PPP_REFUSE_MSCHAP">NM_SETTING_PPP_REFUSE_MSCHAP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-REFUSE-MSCHAPV2:CAPS" title="NM_SETTING_PPP_REFUSE_MSCHAPV2">NM_SETTING_PPP_REFUSE_MSCHAPV2</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-NOBSDCOMP:CAPS" title="NM_SETTING_PPP_NOBSDCOMP">NM_SETTING_PPP_NOBSDCOMP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-NODEFLATE:CAPS" title="NM_SETTING_PPP_NODEFLATE">NM_SETTING_PPP_NODEFLATE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-NO-VJ-COMP:CAPS" title="NM_SETTING_PPP_NO_VJ_COMP">NM_SETTING_PPP_NO_VJ_COMP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-REQUIRE-MPPE:CAPS" title="NM_SETTING_PPP_REQUIRE_MPPE">NM_SETTING_PPP_REQUIRE_MPPE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-REQUIRE-MPPE-128:CAPS" title="NM_SETTING_PPP_REQUIRE_MPPE_128">NM_SETTING_PPP_REQUIRE_MPPE_128</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-MPPE-STATEFUL:CAPS" title="NM_SETTING_PPP_MPPE_STATEFUL">NM_SETTING_PPP_MPPE_STATEFUL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-CRTSCTS:CAPS" title="NM_SETTING_PPP_CRTSCTS">NM_SETTING_PPP_CRTSCTS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-BAUD:CAPS" title="NM_SETTING_PPP_BAUD">NM_SETTING_PPP_BAUD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-MRU:CAPS" title="NM_SETTING_PPP_MRU">NM_SETTING_PPP_MRU</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-MTU:CAPS" title="NM_SETTING_PPP_MTU">NM_SETTING_PPP_MTU</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-LCP-ECHO-FAILURE:CAPS" title="NM_SETTING_PPP_LCP_ECHO_FAILURE">NM_SETTING_PPP_LCP_ECHO_FAILURE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingPpp.html#NM-SETTING-PPP-LCP-ECHO-INTERVAL:CAPS" title="NM_SETTING_PPP_LCP_ECHO_INTERVAL">NM_SETTING_PPP_LCP_ECHO_INTERVAL</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingPpp.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for connection to networks that require PPP transport, like PPPoE
+cable and DSL modems and some mobile broadband devices.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingPpp.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-ppp-new"></a><h3>nm_setting_ppp_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_ppp_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-ppp-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-noauth"></a><h3>nm_setting_ppp_get_noauth ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_noauth (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-noauth.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-noauth.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“noauth”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-refuse-eap"></a><h3>nm_setting_ppp_get_refuse_eap ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_refuse_eap (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-eap.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-eap.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“refuse-eap”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-refuse-pap"></a><h3>nm_setting_ppp_get_refuse_pap ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_refuse_pap (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-pap.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-pap.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“refuse-pap”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-refuse-chap"></a><h3>nm_setting_ppp_get_refuse_chap ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_refuse_chap (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-chap.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-chap.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“refuse-chap”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-refuse-mschap"></a><h3>nm_setting_ppp_get_refuse_mschap ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_refuse_mschap (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-mschap.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-mschap.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“refuse-mschap”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-refuse-mschapv2"></a><h3>nm_setting_ppp_get_refuse_mschapv2 ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_refuse_mschapv2 (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-mschapv2.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-refuse-mschapv2.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“refuse-mschapv2”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-nobsdcomp"></a><h3>nm_setting_ppp_get_nobsdcomp ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_nobsdcomp (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-nobsdcomp.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-nobsdcomp.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“nobsdcomp”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-nodeflate"></a><h3>nm_setting_ppp_get_nodeflate ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_nodeflate (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-nodeflate.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-nodeflate.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“nodeflate”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-no-vj-comp"></a><h3>nm_setting_ppp_get_no_vj_comp ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_no_vj_comp (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-no-vj-comp.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-no-vj-comp.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“no-vj-comp”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-require-mppe"></a><h3>nm_setting_ppp_get_require_mppe ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_require_mppe (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-require-mppe.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-require-mppe.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“require-mppe”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-require-mppe-128"></a><h3>nm_setting_ppp_get_require_mppe_128 ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_require_mppe_128 (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-require-mppe-128.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-require-mppe-128.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“require-mppe-128”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-mppe-stateful"></a><h3>nm_setting_ppp_get_mppe_stateful ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_mppe_stateful (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-mppe-stateful.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-mppe-stateful.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mppe-stateful”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-crtscts"></a><h3>nm_setting_ppp_get_crtscts ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ppp_get_crtscts (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-crtscts.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-crtscts.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“crtscts”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-baud"></a><h3>nm_setting_ppp_get_baud ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_ppp_get_baud (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-baud.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-baud.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“baud”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-mru"></a><h3>nm_setting_ppp_get_mru ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_ppp_get_mru (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-mru.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-mru.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mru”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-mtu"></a><h3>nm_setting_ppp_get_mtu ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_ppp_get_mtu (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-mtu.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-mtu.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mtu”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-lcp-echo-failure"></a><h3>nm_setting_ppp_get_lcp_echo_failure ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_ppp_get_lcp_echo_failure (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-lcp-echo-failure.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-lcp-echo-failure.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“lcp-echo-failure”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ppp-get-lcp-echo-interval"></a><h3>nm_setting_ppp_get_lcp_echo_interval ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_ppp_get_lcp_echo_interval (<em class="parameter"><code><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-lcp-echo-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ppp-get-lcp-echo-interval.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“lcp-echo-interval”</span> property of the setting</p>
+</div>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingPpp.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-SETTING-NAME:CAPS"></a><h3>NM_SETTING_PPP_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_SETTING_NAME "ppp"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-NOAUTH:CAPS"></a><h3>NM_SETTING_PPP_NOAUTH</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_NOAUTH            "noauth"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-REFUSE-EAP:CAPS"></a><h3>NM_SETTING_PPP_REFUSE_EAP</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_REFUSE_EAP        "refuse-eap"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-REFUSE-PAP:CAPS"></a><h3>NM_SETTING_PPP_REFUSE_PAP</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_REFUSE_PAP        "refuse-pap"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-REFUSE-CHAP:CAPS"></a><h3>NM_SETTING_PPP_REFUSE_CHAP</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_REFUSE_CHAP       "refuse-chap"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-REFUSE-MSCHAP:CAPS"></a><h3>NM_SETTING_PPP_REFUSE_MSCHAP</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_REFUSE_MSCHAP     "refuse-mschap"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-REFUSE-MSCHAPV2:CAPS"></a><h3>NM_SETTING_PPP_REFUSE_MSCHAPV2</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_REFUSE_MSCHAPV2   "refuse-mschapv2"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-NOBSDCOMP:CAPS"></a><h3>NM_SETTING_PPP_NOBSDCOMP</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_NOBSDCOMP         "nobsdcomp"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-NODEFLATE:CAPS"></a><h3>NM_SETTING_PPP_NODEFLATE</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_NODEFLATE         "nodeflate"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-NO-VJ-COMP:CAPS"></a><h3>NM_SETTING_PPP_NO_VJ_COMP</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_NO_VJ_COMP        "no-vj-comp"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-REQUIRE-MPPE:CAPS"></a><h3>NM_SETTING_PPP_REQUIRE_MPPE</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_REQUIRE_MPPE      "require-mppe"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-REQUIRE-MPPE-128:CAPS"></a><h3>NM_SETTING_PPP_REQUIRE_MPPE_128</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_REQUIRE_MPPE_128  "require-mppe-128"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-MPPE-STATEFUL:CAPS"></a><h3>NM_SETTING_PPP_MPPE_STATEFUL</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_MPPE_STATEFUL     "mppe-stateful"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-CRTSCTS:CAPS"></a><h3>NM_SETTING_PPP_CRTSCTS</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_CRTSCTS           "crtscts"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-BAUD:CAPS"></a><h3>NM_SETTING_PPP_BAUD</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_BAUD              "baud"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-MRU:CAPS"></a><h3>NM_SETTING_PPP_MRU</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_MRU               "mru"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-MTU:CAPS"></a><h3>NM_SETTING_PPP_MTU</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_MTU               "mtu"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-LCP-ECHO-FAILURE:CAPS"></a><h3>NM_SETTING_PPP_LCP_ECHO_FAILURE</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_LCP_ECHO_FAILURE  "lcp-echo-failure"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PPP-LCP-ECHO-INTERVAL:CAPS"></a><h3>NM_SETTING_PPP_LCP_ECHO_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_PPP_LCP_ECHO_INTERVAL "lcp-echo-interval"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

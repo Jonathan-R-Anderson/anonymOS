@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.freedesktop.DBus.TestSuiteSegfaultService
+Exec=/home/bruns/Documents/EpinAnonymOS/deps/dbus-build/dbus-1.14.10/test/test-segfault
+User=anyrandomuser
+

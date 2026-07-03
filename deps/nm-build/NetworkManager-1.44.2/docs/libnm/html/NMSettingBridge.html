@@ -1,0 +1,2089 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingBridge: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingBridgePort.html" title="NMSettingBridgePort">
+<link rel="next" href="NMSettingCdma.html" title="NMSettingCdma">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingBridge.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingBridge.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingBridgePort.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingCdma.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingBridge"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingBridge.top_of_page"></a>NMSettingBridge</span></h2>
+<p>NMSettingBridge — Describes connection properties for bridges</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingBridge.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-new" title="nm_setting_bridge_new ()">nm_setting_bridge_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-mac-address" title="nm_setting_bridge_get_mac_address ()">nm_setting_bridge_get_mac_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-stp" title="nm_setting_bridge_get_stp ()">nm_setting_bridge_get_stp</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-priority" title="nm_setting_bridge_get_priority ()">nm_setting_bridge_get_priority</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-forward-delay" title="nm_setting_bridge_get_forward_delay ()">nm_setting_bridge_get_forward_delay</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-hello-time" title="nm_setting_bridge_get_hello_time ()">nm_setting_bridge_get_hello_time</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-max-age" title="nm_setting_bridge_get_max_age ()">nm_setting_bridge_get_max_age</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-ageing-time" title="nm_setting_bridge_get_ageing_time ()">nm_setting_bridge_get_ageing_time</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-group-forward-mask" title="nm_setting_bridge_get_group_forward_mask ()">nm_setting_bridge_get_group_forward_mask</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-snooping" title="nm_setting_bridge_get_multicast_snooping ()">nm_setting_bridge_get_multicast_snooping</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-vlan-filtering" title="nm_setting_bridge_get_vlan_filtering ()">nm_setting_bridge_get_vlan_filtering</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-vlan-default-pvid" title="nm_setting_bridge_get_vlan_default_pvid ()">nm_setting_bridge_get_vlan_default_pvid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-add-vlan" title="nm_setting_bridge_add_vlan ()">nm_setting_bridge_add_vlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-num-vlans" title="nm_setting_bridge_get_num_vlans ()">nm_setting_bridge_get_num_vlans</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-vlan" title="nm_setting_bridge_get_vlan ()">nm_setting_bridge_get_vlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-remove-vlan" title="nm_setting_bridge_remove_vlan ()">nm_setting_bridge_remove_vlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-remove-vlan-by-vid" title="nm_setting_bridge_remove_vlan_by_vid ()">nm_setting_bridge_remove_vlan_by_vid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-clear-vlans" title="nm_setting_bridge_clear_vlans ()">nm_setting_bridge_clear_vlans</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-new" title="nm_bridge_vlan_new ()">nm_bridge_vlan_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-ref" title="nm_bridge_vlan_ref ()">nm_bridge_vlan_ref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-unref" title="nm_bridge_vlan_unref ()">nm_bridge_vlan_unref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-new-clone" title="nm_bridge_vlan_new_clone ()">nm_bridge_vlan_new_clone</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-cmp" title="nm_bridge_vlan_cmp ()">nm_bridge_vlan_cmp</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-seal" title="nm_bridge_vlan_seal ()">nm_bridge_vlan_seal</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-is-sealed" title="nm_bridge_vlan_is_sealed ()">nm_bridge_vlan_is_sealed</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-set-untagged" title="nm_bridge_vlan_set_untagged ()">nm_bridge_vlan_set_untagged</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-set-pvid" title="nm_bridge_vlan_set_pvid ()">nm_bridge_vlan_set_pvid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-get-vid-range" title="nm_bridge_vlan_get_vid_range ()">nm_bridge_vlan_get_vid_range</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-is-untagged" title="nm_bridge_vlan_is_untagged ()">nm_bridge_vlan_is_untagged</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-is-pvid" title="nm_bridge_vlan_is_pvid ()">nm_bridge_vlan_is_pvid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-to-str" title="nm_bridge_vlan_to_str ()">nm_bridge_vlan_to_str</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-bridge-vlan-from-str" title="nm_bridge_vlan_from_str ()">nm_bridge_vlan_from_str</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-group-address" title="nm_setting_bridge_get_group_address ()">nm_setting_bridge_get_group_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-vlan-protocol" title="nm_setting_bridge_get_vlan_protocol ()">nm_setting_bridge_get_vlan_protocol</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-vlan-stats-enabled" title="nm_setting_bridge_get_vlan_stats_enabled ()">nm_setting_bridge_get_vlan_stats_enabled</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-router" title="nm_setting_bridge_get_multicast_router ()">nm_setting_bridge_get_multicast_router</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-query-use-ifaddr" title="nm_setting_bridge_get_multicast_query_use_ifaddr ()">nm_setting_bridge_get_multicast_query_use_ifaddr</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-querier" title="nm_setting_bridge_get_multicast_querier ()">nm_setting_bridge_get_multicast_querier</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-hash-max" title="nm_setting_bridge_get_multicast_hash_max ()">nm_setting_bridge_get_multicast_hash_max</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-last-member-count" title="nm_setting_bridge_get_multicast_last_member_count ()">nm_setting_bridge_get_multicast_last_member_count</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-last-member-interval" title="nm_setting_bridge_get_multicast_last_member_interval ()">nm_setting_bridge_get_multicast_last_member_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-membership-interval" title="nm_setting_bridge_get_multicast_membership_interval ()">nm_setting_bridge_get_multicast_membership_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-querier-interval" title="nm_setting_bridge_get_multicast_querier_interval ()">nm_setting_bridge_get_multicast_querier_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-query-interval" title="nm_setting_bridge_get_multicast_query_interval ()">nm_setting_bridge_get_multicast_query_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-query-response-interval" title="nm_setting_bridge_get_multicast_query_response_interval ()">nm_setting_bridge_get_multicast_query_response_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-startup-query-count" title="nm_setting_bridge_get_multicast_startup_query_count ()">nm_setting_bridge_get_multicast_startup_query_count</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingBridge.html#nm-setting-bridge-get-multicast-startup-query-interval" title="nm_setting_bridge_get_multicast_startup_query_interval ()">nm_setting_bridge_get_multicast_startup_query_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<a name="NMBridgeVlan"></a><div class="refsect1">
+<a name="NMSettingBridge.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-SETTING-NAME:CAPS" title="NM_SETTING_BRIDGE_SETTING_NAME">NM_SETTING_BRIDGE_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MAC-ADDRESS:CAPS" title="NM_SETTING_BRIDGE_MAC_ADDRESS">NM_SETTING_BRIDGE_MAC_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-STP:CAPS" title="NM_SETTING_BRIDGE_STP">NM_SETTING_BRIDGE_STP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-PRIORITY:CAPS" title="NM_SETTING_BRIDGE_PRIORITY">NM_SETTING_BRIDGE_PRIORITY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-FORWARD-DELAY:CAPS" title="NM_SETTING_BRIDGE_FORWARD_DELAY">NM_SETTING_BRIDGE_FORWARD_DELAY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-HELLO-TIME:CAPS" title="NM_SETTING_BRIDGE_HELLO_TIME">NM_SETTING_BRIDGE_HELLO_TIME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MAX-AGE:CAPS" title="NM_SETTING_BRIDGE_MAX_AGE">NM_SETTING_BRIDGE_MAX_AGE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-AGEING-TIME:CAPS" title="NM_SETTING_BRIDGE_AGEING_TIME">NM_SETTING_BRIDGE_AGEING_TIME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-GROUP-FORWARD-MASK:CAPS" title="NM_SETTING_BRIDGE_GROUP_FORWARD_MASK">NM_SETTING_BRIDGE_GROUP_FORWARD_MASK</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-HASH-MAX:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_HASH_MAX">NM_SETTING_BRIDGE_MULTICAST_HASH_MAX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-LAST-MEMBER-COUNT:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_LAST_MEMBER_COUNT">NM_SETTING_BRIDGE_MULTICAST_LAST_MEMBER_COUNT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-LAST-MEMBER-INTERVAL:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_LAST_MEMBER_INTERVAL">NM_SETTING_BRIDGE_MULTICAST_LAST_MEMBER_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-MEMBERSHIP-INTERVAL:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_MEMBERSHIP_INTERVAL">NM_SETTING_BRIDGE_MULTICAST_MEMBERSHIP_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-SNOOPING:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_SNOOPING">NM_SETTING_BRIDGE_MULTICAST_SNOOPING</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-ROUTER:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_ROUTER">NM_SETTING_BRIDGE_MULTICAST_ROUTER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-QUERIER:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_QUERIER">NM_SETTING_BRIDGE_MULTICAST_QUERIER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-QUERIER-INTERVAL:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_QUERIER_INTERVAL">NM_SETTING_BRIDGE_MULTICAST_QUERIER_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-QUERY-INTERVAL:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_QUERY_INTERVAL">NM_SETTING_BRIDGE_MULTICAST_QUERY_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-QUERY-RESPONSE-INTERVAL:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_QUERY_RESPONSE_INTERVAL">NM_SETTING_BRIDGE_MULTICAST_QUERY_RESPONSE_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-QUERY-USE-IFADDR:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_QUERY_USE_IFADDR">NM_SETTING_BRIDGE_MULTICAST_QUERY_USE_IFADDR</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-STARTUP-QUERY-COUNT:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_STARTUP_QUERY_COUNT">NM_SETTING_BRIDGE_MULTICAST_STARTUP_QUERY_COUNT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-MULTICAST-STARTUP-QUERY-INTERVAL:CAPS" title="NM_SETTING_BRIDGE_MULTICAST_STARTUP_QUERY_INTERVAL">NM_SETTING_BRIDGE_MULTICAST_STARTUP_QUERY_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-VLAN-FILTERING:CAPS" title="NM_SETTING_BRIDGE_VLAN_FILTERING">NM_SETTING_BRIDGE_VLAN_FILTERING</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-VLAN-DEFAULT-PVID:CAPS" title="NM_SETTING_BRIDGE_VLAN_DEFAULT_PVID">NM_SETTING_BRIDGE_VLAN_DEFAULT_PVID</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-VLANS:CAPS" title="NM_SETTING_BRIDGE_VLANS">NM_SETTING_BRIDGE_VLANS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-GROUP-ADDRESS:CAPS" title="NM_SETTING_BRIDGE_GROUP_ADDRESS">NM_SETTING_BRIDGE_GROUP_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-VLAN-PROTOCOL:CAPS" title="NM_SETTING_BRIDGE_VLAN_PROTOCOL">NM_SETTING_BRIDGE_VLAN_PROTOCOL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-SETTING-BRIDGE-VLAN-STATS-ENABLED:CAPS" title="NM_SETTING_BRIDGE_VLAN_STATS_ENABLED">NM_SETTING_BRIDGE_VLAN_STATS_ENABLED</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-BRIDGE-VLAN-VID-MIN:CAPS" title="NM_BRIDGE_VLAN_VID_MIN">NM_BRIDGE_VLAN_VID_MIN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingBridge.html#NM-BRIDGE-VLAN-VID-MAX:CAPS" title="NM_BRIDGE_VLAN_VID_MAX">NM_BRIDGE_VLAN_VID_MAX</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingBridge.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Boxed-Types.html">GBoxed</a>
+    <span class="lineart">╰──</span> NMBridgeVlan
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingBridge.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for bridging connections.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingBridge.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-bridge-new"></a><h3>nm_setting_bridge_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_bridge_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-bridge-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-mac-address"></a><h3>nm_setting_bridge_get_mac_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_bridge_get_mac_address (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-mac-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-mac-address.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mac-address”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-stp"></a><h3>nm_setting_bridge_get_stp ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_bridge_get_stp (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-stp.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-stp.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“stp”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-priority"></a><h3>nm_setting_bridge_get_priority ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+nm_setting_bridge_get_priority (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-priority.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-priority.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“priority”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-forward-delay"></a><h3>nm_setting_bridge_get_forward_delay ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+nm_setting_bridge_get_forward_delay (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-forward-delay.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-forward-delay.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“forward-delay”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-hello-time"></a><h3>nm_setting_bridge_get_hello_time ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+nm_setting_bridge_get_hello_time (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-hello-time.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-hello-time.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“hello-time”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-max-age"></a><h3>nm_setting_bridge_get_max_age ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+nm_setting_bridge_get_max_age (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-max-age.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-max-age.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“max-age”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-ageing-time"></a><h3>nm_setting_bridge_get_ageing_time ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_bridge_get_ageing_time (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-ageing-time.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-ageing-time.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“ageing-time”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-group-forward-mask"></a><h3>nm_setting_bridge_get_group_forward_mask ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+nm_setting_bridge_get_group_forward_mask
+                               (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-group-forward-mask.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-group-forward-mask.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“group-forward-mask”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-snooping"></a><h3>nm_setting_bridge_get_multicast_snooping ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_bridge_get_multicast_snooping
+                               (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-snooping.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-snooping.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-snooping”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-vlan-filtering"></a><h3>nm_setting_bridge_get_vlan_filtering ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_bridge_get_vlan_filtering (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan-filtering.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan-filtering.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“vlan-filtering”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-vlan-default-pvid"></a><h3>nm_setting_bridge_get_vlan_default_pvid ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+nm_setting_bridge_get_vlan_default_pvid
+                               (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan-default-pvid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan-default-pvid.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“vlan-default-pvid”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-add-vlan"></a><h3>nm_setting_bridge_add_vlan ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_bridge_add_vlan (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>,
+                            <em class="parameter"><code><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>);</pre>
+<p>Appends a new vlan and associated information to the setting.  The
+given vlan gets sealed and a reference to it is added.</p>
+<div class="refsect3">
+<a name="nm-setting-bridge-add-vlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the vlan to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-num-vlans"></a><h3>nm_setting_bridge_get_num_vlans ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_bridge_get_num_vlans (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-num-vlans.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-num-vlans.returns"></a><h4>Returns</h4>
+<p> the number of VLANs</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-vlan"></a><h3>nm_setting_bridge_get_vlan ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+nm_setting_bridge_get_vlan (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the VLAN to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan.returns"></a><h4>Returns</h4>
+<p>the VLAN at index <em class="parameter"><code>idx</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-remove-vlan"></a><h3>nm_setting_bridge_remove_vlan ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_bridge_remove_vlan (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the vlan at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-bridge-remove-vlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the VLAN.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-remove-vlan-by-vid"></a><h3>nm_setting_bridge_remove_vlan_by_vid ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_bridge_remove_vlan_by_vid (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>,
+                                      <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="type">guint16</span></a> vid_start</code></em>,
+                                      <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="type">guint16</span></a> vid_end</code></em>);</pre>
+<p>Remove the VLAN with range <em class="parameter"><code>vid_start</code></em>
+ to <em class="parameter"><code>vid_end</code></em>
+.
+If <em class="parameter"><code>vid_end</code></em>
+ is zero, it is assumed to be equal to <em class="parameter"><code>vid_start</code></em>
+
+and so the single-id VLAN with id <em class="parameter"><code>vid_start</code></em>
+ is removed.</p>
+<div class="refsect3">
+<a name="nm-setting-bridge-remove-vlan-by-vid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vid_start</p></td>
+<td class="parameter_description"><p>the vlan start index</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vid_end</p></td>
+<td class="parameter_description"><p>the vlan end index</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-remove-vlan-by-vid.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the vlan was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-clear-vlans"></a><h3>nm_setting_bridge_clear_vlans ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_bridge_clear_vlans (<em class="parameter"><code><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<p>Removes all configured VLANs.</p>
+<div class="refsect3">
+<a name="nm-setting-bridge-clear-vlans.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-new"></a><h3>nm_bridge_vlan_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+nm_bridge_vlan_new (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="type">guint16</span></a> vid_start</code></em>,
+                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="type">guint16</span></a> vid_end</code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> object for the given VLAN id range.
+Setting <em class="parameter"><code>vid_end</code></em>
+ to 0 is equivalent to setting it to <em class="parameter"><code>vid_start</code></em>
+
+and creates a single-id VLAN.</p>
+<p>Since 1.42, ref-counting of <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> is thread-safe.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-new.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vid_start</p></td>
+<td class="parameter_description"><p>the start VLAN id, must be between 1 and 4094.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vid_end</p></td>
+<td class="parameter_description"><p>the end VLAN id, must be 0 or between <em class="parameter"><code>vid_start</code></em>
+and 4094.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-new.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-ref"></a><h3>nm_bridge_vlan_ref ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+nm_bridge_vlan_ref (<em class="parameter"><code><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>);</pre>
+<p>Increases the reference count of the object.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-ref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-ref.returns"></a><h4>Returns</h4>
+<p> the input argument <em class="parameter"><code>vlan</code></em>
+object.</p>
+<p>Since 1.42, ref-counting of <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> is thread-safe.</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-unref"></a><h3>nm_bridge_vlan_unref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_bridge_vlan_unref (<em class="parameter"><code><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>);</pre>
+<p>Decreases the reference count of the object.  If the reference count
+reaches zero the object will be destroyed.</p>
+<p>Since 1.42, ref-counting of <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> is thread-safe.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-unref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-new-clone"></a><h3>nm_bridge_vlan_new_clone ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+nm_bridge_vlan_new_clone (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-bridge-vlan-new-clone.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> instance to copy</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-new-clone.returns"></a><h4>Returns</h4>
+<p>a clone of <em class="parameter"><code>vlan</code></em>
+. This instance
+is always unsealed. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-cmp"></a><h3>nm_bridge_vlan_cmp ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_bridge_vlan_cmp (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *a</code></em>,
+                    <em class="parameter"><code>const <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *b</code></em>);</pre>
+<p>Compare two bridge VLAN objects.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-cmp.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>a</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>b</p></td>
+<td class="parameter_description"><p>another <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-cmp.returns"></a><h4>Returns</h4>
+<p> zero of the two instances are equivalent or
+a non-zero integer otherwise. This defines a total ordering
+over the VLANs. Whether a VLAN is sealed or not does not
+affect the comparison.</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-seal"></a><h3>nm_bridge_vlan_seal ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_bridge_vlan_seal (<em class="parameter"><code><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>);</pre>
+<p>Seal the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> instance. Afterwards, it is a bug
+to call all functions that modify the instance (except ref/unref).
+A sealed instance cannot be unsealed again, but you can create
+an unsealed copy with <a class="link" href="NMSettingBridge.html#nm-bridge-vlan-new-clone" title="nm_bridge_vlan_new_clone ()"><code class="function">nm_bridge_vlan_new_clone()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-seal.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-is-sealed"></a><h3>nm_bridge_vlan_is_sealed ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_bridge_vlan_is_sealed (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-bridge-vlan-is-sealed.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-is-sealed.returns"></a><h4>Returns</h4>
+<p> whether <em class="parameter"><code>self</code></em>
+is sealed or not.</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-set-untagged"></a><h3>nm_bridge_vlan_set_untagged ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_bridge_vlan_set_untagged (<em class="parameter"><code><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>,
+                             <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> value</code></em>);</pre>
+<p>Change the value of the untagged property of the VLAN.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-set-untagged.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the new value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-set-pvid"></a><h3>nm_bridge_vlan_set_pvid ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_bridge_vlan_set_pvid (<em class="parameter"><code><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> value</code></em>);</pre>
+<p>Change the value of the PVID property of the VLAN. It
+is invalid to set the value to <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> for non-single-id
+VLANs.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-set-pvid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the new value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-get-vid-range"></a><h3>nm_bridge_vlan_get_vid_range ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_bridge_vlan_get_vid_range (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="type">guint16</span></a> *vid_start</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="type">guint16</span></a> *vid_end</code></em>);</pre>
+<p>Gets the VLAN id range.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-get-vid-range.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vid_start</p></td>
+<td class="parameter_description"><p>location to store the VLAN id range start. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vid_end</p></td>
+<td class="parameter_description"><p>location to store the VLAN id range end. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-get-vid-range.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> is the VLAN specifies a range, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it is
+a single-id VLAN.</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-is-untagged"></a><h3>nm_bridge_vlan_is_untagged ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_bridge_vlan_is_untagged (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>);</pre>
+<p>Returns whether the VLAN is untagged.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-is-untagged.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-is-untagged.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the VLAN is untagged, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-is-pvid"></a><h3>nm_bridge_vlan_is_pvid ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_bridge_vlan_is_pvid (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>);</pre>
+<p>Returns whether the VLAN is the PVID for the port.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-is-pvid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-is-pvid.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the VLAN is the PVID</p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-to-str"></a><h3>nm_bridge_vlan_to_str ()</h3>
+<pre class="programlisting"><span class="returnvalue">char</span> *
+nm_bridge_vlan_to_str (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="type">NMBridgeVlan</span></a> *vlan</code></em>,
+                       <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Convert a <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><code class="literal">NMBridgeVlan</code></a> to a string.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-to-str.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vlan</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><code class="literal">NMBridgeVlan</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location of the error</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-to-str.returns"></a><h4>Returns</h4>
+<p> formatted string or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-bridge-vlan-from-str"></a><h3>nm_bridge_vlan_from_str ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBridge.html#NMBridgeVlan"><span class="returnvalue">NMBridgeVlan</span></a> *
+nm_bridge_vlan_from_str (<em class="parameter"><code>const <span class="type">char</span> *str</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Parses the string representation of the queueing
+discipline to a <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><code class="literal">NMBridgeVlan</code></a> instance.</p>
+<div class="refsect3">
+<a name="nm-bridge-vlan-from-str.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>str</p></td>
+<td class="parameter_description"><p>the string representation of a bridge VLAN</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location of the error</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-bridge-vlan-from-str.returns"></a><h4>Returns</h4>
+<p> the <a class="link" href="NMSettingBridge.html#NMBridgeVlan"><code class="literal">NMBridgeVlan</code></a> or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p>
+</div>
+<p class="since">Since: 1.18</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-group-address"></a><h3>nm_setting_bridge_get_group_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_bridge_get_group_address (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-group-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-group-address.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“group-address”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.24</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-vlan-protocol"></a><h3>nm_setting_bridge_get_vlan_protocol ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_bridge_get_vlan_protocol (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan-protocol.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan-protocol.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“vlan-protocol”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.24</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-vlan-stats-enabled"></a><h3>nm_setting_bridge_get_vlan_stats_enabled ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_bridge_get_vlan_stats_enabled
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan-stats-enabled.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-vlan-stats-enabled.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“vlan-stats-enabled”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.24</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-router"></a><h3>nm_setting_bridge_get_multicast_router ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_bridge_get_multicast_router
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-router.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-router.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-router”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.24</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-query-use-ifaddr"></a><h3>nm_setting_bridge_get_multicast_query_use_ifaddr ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_bridge_get_multicast_query_use_ifaddr
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-query-use-ifaddr.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-query-use-ifaddr.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-query-use-ifaddr”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.24</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-querier"></a><h3>nm_setting_bridge_get_multicast_querier ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_bridge_get_multicast_querier
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-querier.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-querier.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-querier”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.24</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-hash-max"></a><h3>nm_setting_bridge_get_multicast_hash_max ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_bridge_get_multicast_hash_max
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-hash-max.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-hash-max.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-hash-max”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-last-member-count"></a><h3>nm_setting_bridge_get_multicast_last_member_count ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_bridge_get_multicast_last_member_count
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-last-member-count.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-last-member-count.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-last-member-count”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-last-member-interval"></a><h3>nm_setting_bridge_get_multicast_last_member_interval ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+nm_setting_bridge_get_multicast_last_member_interval
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-last-member-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-last-member-interval.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-last-member-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-membership-interval"></a><h3>nm_setting_bridge_get_multicast_membership_interval ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+nm_setting_bridge_get_multicast_membership_interval
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-membership-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-membership-interval.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-membership-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-querier-interval"></a><h3>nm_setting_bridge_get_multicast_querier_interval ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+nm_setting_bridge_get_multicast_querier_interval
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-querier-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-querier-interval.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-querier-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-query-interval"></a><h3>nm_setting_bridge_get_multicast_query_interval ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+nm_setting_bridge_get_multicast_query_interval
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-query-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-query-interval.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-query-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-query-response-interval"></a><h3>nm_setting_bridge_get_multicast_query_response_interval ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+nm_setting_bridge_get_multicast_query_response_interval
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-query-response-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-query-response-interval.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-query-response-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-startup-query-count"></a><h3>nm_setting_bridge_get_multicast_startup_query_count ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_bridge_get_multicast_startup_query_count
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-startup-query-count.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-startup-query-count.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-query-response-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-bridge-get-multicast-startup-query-interval"></a><h3>nm_setting_bridge_get_multicast_startup_query_interval ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="returnvalue">guint64</span></a>
+nm_setting_bridge_get_multicast_startup_query_interval
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-startup-query-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-bridge-get-multicast-startup-query-interval.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“multicast-startup-query-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingBridge.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-SETTING-NAME:CAPS"></a><h3>NM_SETTING_BRIDGE_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_SETTING_NAME "bridge"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MAC-ADDRESS:CAPS"></a><h3>NM_SETTING_BRIDGE_MAC_ADDRESS</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MAC_ADDRESS                       "mac-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-STP:CAPS"></a><h3>NM_SETTING_BRIDGE_STP</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_STP                               "stp"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-PRIORITY:CAPS"></a><h3>NM_SETTING_BRIDGE_PRIORITY</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_PRIORITY                          "priority"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-FORWARD-DELAY:CAPS"></a><h3>NM_SETTING_BRIDGE_FORWARD_DELAY</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_FORWARD_DELAY                     "forward-delay"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-HELLO-TIME:CAPS"></a><h3>NM_SETTING_BRIDGE_HELLO_TIME</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_HELLO_TIME                        "hello-time"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MAX-AGE:CAPS"></a><h3>NM_SETTING_BRIDGE_MAX_AGE</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MAX_AGE                           "max-age"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-AGEING-TIME:CAPS"></a><h3>NM_SETTING_BRIDGE_AGEING_TIME</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_AGEING_TIME                       "ageing-time"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-GROUP-FORWARD-MASK:CAPS"></a><h3>NM_SETTING_BRIDGE_GROUP_FORWARD_MASK</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_GROUP_FORWARD_MASK                "group-forward-mask"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-HASH-MAX:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_HASH_MAX</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_HASH_MAX                "multicast-hash-max"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-LAST-MEMBER-COUNT:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_LAST_MEMBER_COUNT</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_LAST_MEMBER_COUNT       "multicast-last-member-count"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-LAST-MEMBER-INTERVAL:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_LAST_MEMBER_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_LAST_MEMBER_INTERVAL    "multicast-last-member-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-MEMBERSHIP-INTERVAL:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_MEMBERSHIP_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_MEMBERSHIP_INTERVAL     "multicast-membership-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-SNOOPING:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_SNOOPING</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_SNOOPING                "multicast-snooping"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-ROUTER:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_ROUTER</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_ROUTER                  "multicast-router"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-QUERIER:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_QUERIER</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_QUERIER                 "multicast-querier"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-QUERIER-INTERVAL:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_QUERIER_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_QUERIER_INTERVAL        "multicast-querier-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-QUERY-INTERVAL:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_QUERY_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_QUERY_INTERVAL          "multicast-query-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-QUERY-RESPONSE-INTERVAL:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_QUERY_RESPONSE_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_QUERY_RESPONSE_INTERVAL "multicast-query-response-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-QUERY-USE-IFADDR:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_QUERY_USE_IFADDR</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_QUERY_USE_IFADDR        "multicast-query-use-ifaddr"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-STARTUP-QUERY-COUNT:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_STARTUP_QUERY_COUNT</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_STARTUP_QUERY_COUNT     "multicast-startup-query-count"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-MULTICAST-STARTUP-QUERY-INTERVAL:CAPS"></a><h3>NM_SETTING_BRIDGE_MULTICAST_STARTUP_QUERY_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_MULTICAST_STARTUP_QUERY_INTERVAL  "multicast-startup-query-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-VLAN-FILTERING:CAPS"></a><h3>NM_SETTING_BRIDGE_VLAN_FILTERING</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_VLAN_FILTERING                    "vlan-filtering"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-VLAN-DEFAULT-PVID:CAPS"></a><h3>NM_SETTING_BRIDGE_VLAN_DEFAULT_PVID</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_VLAN_DEFAULT_PVID                 "vlan-default-pvid"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-VLANS:CAPS"></a><h3>NM_SETTING_BRIDGE_VLANS</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_VLANS                             "vlans"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-GROUP-ADDRESS:CAPS"></a><h3>NM_SETTING_BRIDGE_GROUP_ADDRESS</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_GROUP_ADDRESS                     "group-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-VLAN-PROTOCOL:CAPS"></a><h3>NM_SETTING_BRIDGE_VLAN_PROTOCOL</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_VLAN_PROTOCOL                     "vlan-protocol"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-BRIDGE-VLAN-STATS-ENABLED:CAPS"></a><h3>NM_SETTING_BRIDGE_VLAN_STATS_ENABLED</h3>
+<pre class="programlisting">#define NM_SETTING_BRIDGE_VLAN_STATS_ENABLED                "vlan-stats-enabled"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-BRIDGE-VLAN-VID-MIN:CAPS"></a><h3>NM_BRIDGE_VLAN_VID_MIN</h3>
+<pre class="programlisting">#define NM_BRIDGE_VLAN_VID_MIN 1
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-BRIDGE-VLAN-VID-MAX:CAPS"></a><h3>NM_BRIDGE_VLAN_VID_MAX</h3>
+<pre class="programlisting">#define NM_BRIDGE_VLAN_VID_MAX 4094
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

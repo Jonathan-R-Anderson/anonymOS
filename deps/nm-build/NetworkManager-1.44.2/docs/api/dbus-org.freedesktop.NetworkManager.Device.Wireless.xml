@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Wireless">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Wireless.top_of_page">org.freedesktop.NetworkManager.Device.Wireless</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Wireless.top_of_page"><primary sortas="DeviceWifi">org.freedesktop.NetworkManager.Device.Wireless</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Wireless</refname>    <refpurpose>Wi-Fi Device.</refpurpose>  </refnamediv>  <refsynopsisdiv role="synopsis">
+    <title role="synopsis.title">Methods</title>
+    <synopsis>
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.GetAccessPoints">GetAccessPoints</link>    (OUT ao    access_points);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.GetAllAccessPoints">GetAllAccessPoints</link> (OUT ao    access_points);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.RequestScan">RequestScan</link>        (IN  a{sv} options);
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1 role="signal_proto">
+    <title role="signal_proto.title">Signals</title>
+    <synopsis>
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-Device-Wireless.AccessPointAdded">AccessPointAdded</link>   (o access_point);
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-Device-Wireless.AccessPointRemoved">AccessPointRemoved</link> (o access_point);
+</synopsis>
+  </refsect1>
+  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.HwAddress">HwAddress</link>             readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.PermHwAddress">PermHwAddress</link>         readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.Mode">Mode</link>                  readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.Bitrate">Bitrate</link>               readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.AccessPoints">AccessPoints</link>          readable   ao
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.ActiveAccessPoint">ActiveAccessPoint</link>     readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.WirelessCapabilities">WirelessCapabilities</link>  readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.LastScan">LastScan</link>              readable   x
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Wireless">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-methods-org.freedesktop.NetworkManager.Device.Wireless">
+  <title role="details.title">Method Details</title>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.GetAccessPoints">
+  <title>The GetAccessPoints() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.GetAccessPoints"><primary sortas="DeviceWifi.GetAccessPoints">org.freedesktop.NetworkManager.Device.Wireless.GetAccessPoints()</primary></indexterm>
+<programlisting>
+GetAccessPoints (OUT ao access_points);
+</programlisting>
+<para>
+DEPRECATED. Get the list of access points visible to this device. Note
+that this list does not include access points which hide their SSID. To
+retrieve a list of all access points (including hidden ones) use the
+GetAllAccessPoints() method.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>OUT ao <parameter>access_points</parameter></literal>:</term>
+  <listitem><para>
+List of access point object paths.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.GetAllAccessPoints">
+  <title>The GetAllAccessPoints() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.GetAllAccessPoints"><primary sortas="DeviceWifi.GetAllAccessPoints">org.freedesktop.NetworkManager.Device.Wireless.GetAllAccessPoints()</primary></indexterm>
+<programlisting>
+GetAllAccessPoints (OUT ao access_points);
+</programlisting>
+<para>
+Get the list of all access points visible to this device, including hidden
+ones for which the SSID is not yet known.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>OUT ao <parameter>access_points</parameter></literal>:</term>
+  <listitem><para>
+List of access point object paths.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.RequestScan">
+  <title>The RequestScan() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device-Wireless.RequestScan"><primary sortas="DeviceWifi.RequestScan">org.freedesktop.NetworkManager.Device.Wireless.RequestScan()</primary></indexterm>
+<programlisting>
+RequestScan (IN  a{sv} options);
+</programlisting>
+<para>
+Request the device to scan. To know when the scan is finished, use the "PropertiesChanged" signal from "org.freedesktop.DBus.Properties" to listen to changes to the "LastScan" property.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>options</parameter></literal>:</term>
+  <listitem><para>
+Options of scan. Currently, 'ssids' option with value of "aay" type is supported.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-signals-org.freedesktop.NetworkManager.Device.Wireless">
+  <title role="details.title">Signal Details</title>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-Device-Wireless.AccessPointAdded">
+  <title>The "AccessPointAdded" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-Device-Wireless.AccessPointAdded"><primary sortas="DeviceWifi::AccessPointAdded">org.freedesktop.NetworkManager.Device.Wireless::AccessPointAdded</primary></indexterm>
+<programlisting>
+AccessPointAdded (o access_point);
+</programlisting>
+<para>
+Emitted when a new access point is found by the device.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>o <parameter>access_point</parameter></literal>:</term>
+  <listitem><para>
+The object path of the newly found access point.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-Device-Wireless.AccessPointRemoved">
+  <title>The "AccessPointRemoved" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-Device-Wireless.AccessPointRemoved"><primary sortas="DeviceWifi::AccessPointRemoved">org.freedesktop.NetworkManager.Device.Wireless::AccessPointRemoved</primary></indexterm>
+<programlisting>
+AccessPointRemoved (o access_point);
+</programlisting>
+<para>
+Emitted when an access point disappears from view of the device.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>o <parameter>access_point</parameter></literal>:</term>
+  <listitem><para>
+The object path of the access point that has disappeared.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Wireless">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.HwAddress"><primary sortas="DeviceWifi:HwAddress">org.freedesktop.NetworkManager.Device.Wireless:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+The active hardware address of the device.
+</para><para>
+DEPRECATED. Use the "HwAddress" property in "org.freedesktop.NetworkManager.Device" instead which exists since version NetworkManager 1.24.0.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.PermHwAddress">
+  <title>The "PermHwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.PermHwAddress"><primary sortas="DeviceWifi:PermHwAddress">org.freedesktop.NetworkManager.Device.Wireless:PermHwAddress</primary></indexterm>
+<programlisting>
+PermHwAddress  readable   s
+</programlisting>
+<para>
+The permanent hardware address of the device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.Mode">
+  <title>The "Mode" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.Mode"><primary sortas="DeviceWifi:Mode">org.freedesktop.NetworkManager.Device.Wireless:Mode</primary></indexterm>
+<programlisting>
+Mode  readable   u
+</programlisting>
+<para>
+The operating mode of the wireless device.
+</para><para>
+Returns: <link linkend="NM80211Mode">NM80211Mode</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.Bitrate">
+  <title>The "Bitrate" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.Bitrate"><primary sortas="DeviceWifi:Bitrate">org.freedesktop.NetworkManager.Device.Wireless:Bitrate</primary></indexterm>
+<programlisting>
+Bitrate  readable   u
+</programlisting>
+<para>
+The bit rate currently used by the wireless device, in kilobits/second
+(Kb/s).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.AccessPoints">
+  <title>The "AccessPoints" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.AccessPoints"><primary sortas="DeviceWifi:AccessPoints">org.freedesktop.NetworkManager.Device.Wireless:AccessPoints</primary></indexterm>
+<programlisting>
+AccessPoints  readable   ao
+</programlisting>
+<para>
+List of object paths of access point visible to this wireless device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.ActiveAccessPoint">
+  <title>The "ActiveAccessPoint" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.ActiveAccessPoint"><primary sortas="DeviceWifi:ActiveAccessPoint">org.freedesktop.NetworkManager.Device.Wireless:ActiveAccessPoint</primary></indexterm>
+<programlisting>
+ActiveAccessPoint  readable   o
+</programlisting>
+<para>
+Object path of the access point currently used by the wireless device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.WirelessCapabilities">
+  <title>The "WirelessCapabilities" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.WirelessCapabilities"><primary sortas="DeviceWifi:WirelessCapabilities">org.freedesktop.NetworkManager.Device.Wireless:WirelessCapabilities</primary></indexterm>
+<programlisting>
+WirelessCapabilities  readable   u
+</programlisting>
+<para>
+The capabilities of the wireless device.
+</para><para>
+Returns: <link linkend="NMDeviceWifiCapabilities">NMDeviceWifiCapabilities</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.LastScan">
+  <title>The "LastScan" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wireless.LastScan"><primary sortas="DeviceWifi:LastScan">org.freedesktop.NetworkManager.Device.Wireless:LastScan</primary></indexterm>
+<programlisting>
+LastScan  readable   x
+</programlisting>
+<para>
+The timestamp (in CLOCK_BOOTTIME milliseconds) for the last finished network scan.
+A value of -1 means the device never scanned for access points.
+</para>
+<para role="since">Since 1.12</para>
+</refsect2>
+</refsect1>
+</refentry>
+

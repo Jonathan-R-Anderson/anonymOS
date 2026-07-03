@@ -1,0 +1,366 @@
+<?xml version='1.0'?>
+<?xml-stylesheet type="text/xsl" href="http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
+"http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd" [
+<!ENTITY % entities SYSTEM "common.ent" >
+%entities;
+]>
+
+<!--
+  NetworkManager(8) manual page
+
+  Copyright 2005 - 2016 Red Hat, Inc.
+  Copyright 2005 - 2009 Novell, Inc.
+  Copyright 2005 Robert Love
+
+  Permission is granted to copy, distribute and/or modify this document
+  under the terms of the GNU Free Documentation License, Version 1.1
+  or any later version published by the Free Software Foundation;
+  with no Invariant Sections, no Front-Cover Texts, and no Back-Cover
+  Texts. You may obtain a copy of the GNU Free Documentation License
+  from the Free Software Foundation by visiting their Web site or by
+  writing to:
+
+  Free Software Foundation, Inc.,
+  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+-->
+
+<refentry id="NetworkManager">
+  <refentryinfo>
+    <title>NetworkManager</title>
+    <author>NetworkManager developers</author>
+  </refentryinfo>
+  <refmeta>
+    <refentrytitle>NetworkManager</refentrytitle>
+    <manvolnum>8</manvolnum>
+    <refmiscinfo class="source">NetworkManager</refmiscinfo>
+    <refmiscinfo class="manual">Network management daemons</refmiscinfo>
+    <refmiscinfo class="version">&NM_VERSION;</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>NetworkManager</refname>
+    <refpurpose>network management daemon</refpurpose>
+  </refnamediv>
+
+  <refsynopsisdiv>
+    <cmdsynopsis>
+      <command>NetworkManager <arg choice="opt" rep="repeat">OPTIONS</arg></command>
+    </cmdsynopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+    <para>
+      The NetworkManager daemon attempts to make networking
+      configuration and operation as painless and automatic as
+      possible by managing the primary network connection and other
+      network interfaces, like Ethernet, Wi-Fi, and Mobile Broadband
+      devices.  NetworkManager will connect any network device when a
+      connection for that device becomes available, unless that
+      behavior is disabled.  Information about networking is exported
+      via a D-Bus interface to any interested application, providing a
+      rich API with which to inspect and control network settings and
+      operation.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Dispatcher scripts</title>
+    <para>
+      NetworkManager-dispatcher service can execute scripts for the user
+        in response to network events. See
+        <link linkend='NetworkManager-dispatcher'><citerefentry><refentrytitle>NetworkManager-dispatcher</refentrytitle><manvolnum>8</manvolnum></citerefentry></link> manual.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Options</title>
+
+    <para>The following options are understood:</para>
+
+    <variablelist>
+      <varlistentry>
+        <term><option>--version</option> | <option>-V</option></term>
+        <listitem><para>Print the NetworkManager software version and exit.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--help</option> | <option>-h</option></term>
+        <listitem><para>Print NetworkManager's available options and exit.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--no-daemon</option> | <option>-n</option></term>
+        <listitem><para>Do not daemonize.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--debug</option> | <option>-d</option></term>
+        <listitem><para>Do not daemonize, and direct log output to the
+        controlling terminal in addition to syslog.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--pid-file</option> | <option>-p</option></term>
+        <listitem><para>Specify location of a PID file.  The PID file
+        is used for storing PID of the running process and prevents
+        running multiple instances.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--state-file</option></term>
+        <listitem><para>Specify file for storing state of the
+        NetworkManager persistently.  If not specified, the default
+        value of <filename>/var/lib/NetworkManager/NetworkManager.state</filename>
+        is used.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--config</option></term>
+        <listitem><para> Specify configuration file to set up various
+        settings for NetworkManager.  If not specified, the default
+        value of <filename>/etc/NetworkManager/NetworkManager.conf</filename>
+        is used with
+        a fallback to the older 'nm-system-settings.conf' if located
+        in the same directory.  See
+        <link linkend='NetworkManager.conf'><citerefentry><refentrytitle>NetworkManager.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>
+        for more information on configuration file.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><arg choice='plain'><option>--configure-and-quit</option></arg><arg>initrd</arg></term>
+        <listitem><para>Quit after all devices reach a stable state.
+        The optional <literal>initrd</literal> parameter enables mode, where no
+        processes are left running after NetworkManager stops, which is useful
+        for running from an initial ramdisk on rearly boot.</para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--plugins</option></term>
+        <listitem><para>List plugins used to manage system-wide
+        connection settings.  This list has preference over plugins
+        specified in the configuration file.  See <literal>main.plugins</literal>
+        setting in <link linkend='NetworkManager.conf'><citerefentry><refentrytitle>NetworkManager.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>
+        for supported options.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--log-level</option></term>
+        <listitem><para>
+          Sets how much information NetworkManager sends to the log destination (usually
+          syslog's "daemon" facility).  By default, only informational, warning, and error
+          messages are logged. See the section on <literal>logging</literal> in
+          <link linkend='NetworkManager.conf'><citerefentry><refentrytitle>NetworkManager.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>
+          for more information.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--log-domains</option></term>
+        <listitem><para>
+          A comma-separated list specifying which operations are logged to the log
+          destination (usually syslog). By default, most domains are logging-enabled.
+          See the section on <literal>logging</literal> in
+          <link linkend='NetworkManager.conf'><citerefentry><refentrytitle>NetworkManager.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>
+          for more information.
+        </para></listitem>
+      </varlistentry>
+      <varlistentry>
+        <term><option>--print-config</option></term>
+        <listitem>
+        <para>
+          Print the NetworkManager configuration to stdout and exit. See
+          <link linkend='NetworkManager.conf'><citerefentry><refentrytitle>NetworkManager.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>.
+          This does not include connection profiles. View them with <command>nmcli connection</command>.
+        </para>
+        <para>
+          This reads configuration files from disk. If NetworkManager is currently running,
+          make sure that it has the same configuration loaded.
+        </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+  <refsect1>
+    <title>Udev Properties</title>
+
+    <para>
+      <citerefentry><refentrytitle>udev</refentrytitle><manvolnum>7</manvolnum></citerefentry>
+      device manager is used for the network device discovery. The following
+      property influences how NetworkManager manages the devices:
+    </para>
+
+    <variablelist>
+      <varlistentry>
+        <term><varname>NM_UNMANAGED</varname></term>
+        <listitem><para>
+          If set to <literal>"1"</literal> or <literal>"true"</literal>, the device is
+          configured as unmanaged by NetworkManager. Note that the user still can
+          explicitly overrule this configuration via means like
+          <command>nmcli device set "$DEVICE" managed yes</command> or
+          <literal>"device*.managed=1"</literal> in NetworkManager.conf.
+        </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+  <refsect1>
+    <title>SIGNALS</title>
+    <para>
+      NetworkManager process handles the following signals:
+      <variablelist>
+        <varlistentry>
+          <term><varname>SIGHUP</varname></term>
+          <listitem><para>
+          The signal causes a reload of NetworkManager's configuration.
+          Note that not all configuration parameters can be changed at
+          runtime and therefore some changes may be applied only after
+          the next restart of the daemon.
+          A SIGHUP also involves further reloading actions, like doing
+          a DNS update and restarting the DNS plugin. The latter can be
+          useful for example when using the dnsmasq plugin and changing
+          its configuration in <filename>/etc/NetworkManager/dnsmasq.d</filename>.
+          However, it also means this will shortly interrupt name resolution.
+          In the future, there may be further actions added.
+          A SIGHUP means to update NetworkManager configuration and reload
+          everything that is supported. Note that this does not reload
+          connections from disk. For that there is a D-Bus API and
+          nmcli's reload action
+          </para></listitem>
+        </varlistentry>
+        <varlistentry>
+          <term><varname>SIGUSR1</varname></term>
+          <listitem><para>
+            The signal forces a rewrite of DNS configuration. Contrary
+            to SIGHUP, this does not restart the DNS plugin and will not
+            interrupt name resolution.
+
+            When NetworkManager is not managing DNS, the signal forces
+            a restart of operations that depend on the DNS
+            configuration (like the resolution of the system hostname
+            via reverse DNS, or the resolution of WireGuard peers);
+            therefore, it can be used to tell NetworkManager that the
+            content of resolv.conf was changed externally.
+
+            In the future, further actions may be added. A SIGUSR1
+            means to write out data like resolv.conf, or refresh a cache.
+            It is a subset of what is done for SIGHUP without reloading
+            configuration from disk.
+          </para></listitem>
+        </varlistentry>
+        <varlistentry>
+          <term><varname>SIGUSR2</varname></term>
+          <listitem><para>
+            The signal has no effect at the moment but is reserved for future
+            use.
+          </para></listitem>
+        </varlistentry>
+      </variablelist>
+    </para>
+    <para>
+      An alternative to a signal to reload configuration is the Reload D-Bus call.
+      It allows for more fine-grained selection of what to reload, it only returns
+      after the reload is complete, and it is guarded by PolicyKit.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Debugging</title>
+    <para>
+      NetworkManager only configures your system. So when your networking setup doesn't
+      work as expected, the first step is to look at your system to understand what is actually
+      configured, and whether that is correct. The second step is to find out how to tell
+      NetworkManager to do the right thing.
+    </para>
+    <para>
+      You can for example try to <command>ping</command> hosts (by
+      IP address or DNS name), look at <command>ip link show</command>, <command>ip address show</command> and <command>ip route show</command>,
+      and look at <filename>/etc/resolv.conf</filename> for name resolution issues.
+      Also look at the connection profiles that you have configured in NetworkManager (<command>nmcli connection</command>
+      and <command>nmcli connection show "$PROFILE"</command>)
+      and the configured interfaces (<command>nmcli device</command>).
+    </para>
+    <para>
+      If that does not suffice, look at the logfiles of NetworkManager. NetworkManager
+      logs to syslog, so depending on your system configuration you can call <command>journalctl</command>
+      to get the logs.
+      By default, NetworkManager logs are not verbose and thus not very helpful for investigating
+      a problem in detail. You can change the logging level at runtime with <command>nmcli general logging level TRACE domains ALL</command>.
+      But usually a better way is to collect full logs from the start, by configuring
+      <literal>level=TRACE</literal> in NetworkManager.conf. See
+      <link linkend='NetworkManager.conf'><citerefentry><refentrytitle>NetworkManager.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>
+      manual. Note that trace logs of NetworkManager are verbose and systemd-journald might rate limit
+      some lines. Possibly disable rate limiting first with the <literal>RateLimitIntervalSec</literal> and
+      <literal>RateLimitBurst</literal> options of journald (see
+      <link linkend='journald.conf'><citerefentry><refentrytitle>journald.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></link> manual).
+    </para>
+    <para>
+      NetworkManager does not log any secrets. However, you are advised to check whether anything
+      private sensitive gets logged before posting. When reporting an issue, provide complete
+      logs and avoid modifications (for privacy) that distort the meaning.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>/var/lib/NetworkManager/secret_key and /etc/machine-id</title>
+
+    <para>
+      The identity of a machine is important as various settings depend on it. For example,
+      <literal>ipv6.addr-gen-mode=stable</literal> and <literal>ethernet.cloned-mac-address=stable</literal>
+      generate identifiers by hashing the machine's identity. See also the
+      <literal>connection.stable-id</literal> connection property which is a per-profile seed
+      that gets hashed with the machine identity for generating such addresses and identifiers.
+    </para>
+    <para>
+      If you backup and restore a machine, the identity of the machine probably should be preserved.
+      In that case, preserve the files <filename>/var/lib/NetworkManager/secret_key</filename> and
+      <literal>/etc/machine-id</literal>. On the other hand, if you clone a virtual machine, you
+      probably want that the clone has a different identity. There is already existing tooling on Linux for
+      handling <literal>/etc/machine-id</literal> (see
+      <link linkend='machine-id'><citerefentry><refentrytitle>machine-id</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>).
+    </para>
+    <para>
+      The identity of the machine is determined by the <filename>/var/lib/NetworkManager/secret_key</filename>.
+      If such a file does not exist, NetworkManager will create a file with random content. To generate
+      a new identity just delete the file and after restart a new file will be created.
+      The file should be read-only to root and contain at least 16 bytes that will be used to seed the various places
+      where a stable identifier is used.
+    </para>
+    <para>
+      Since 1.16.0, NetworkManager supports a version 2 of secret-keys. For such keys
+      <filename>/var/lib/NetworkManager/secret_key</filename> starts with ASCII <literal>"nm-v2:"</literal>
+      followed by at least 32 bytes of random data.
+      Also, recent versions of NetworkManager always create such kinds of secret-keys, when
+      the file does not yet exist.
+      With version 2 of the secret-key, <literal>/etc/machine-id</literal> is also hashed as part
+      of the generation for addresses and identifiers. The advantage is that you can keep <filename>/var/lib/NetworkManager/secret_key</filename>
+      stable, and only regenerate <literal>/etc/machine-id</literal> when cloning a VM.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Bugs</title>
+    <para>
+      Please report any bugs you find in NetworkManager at the
+      <ulink url="https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues">NetworkManager issue tracker</ulink>.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+    <para>
+      <ulink url="https://networkmanager.dev">NetworkManager home page</ulink>,
+      <link linkend='NetworkManager.conf'><citerefentry><refentrytitle>NetworkManager.conf</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>,
+      <link linkend='NetworkManager-dispatcher'><citerefentry><refentrytitle>NetworkManager-dispatcher</refentrytitle><manvolnum>8</manvolnum></citerefentry></link>,
+      <link linkend='NetworkManager-wait-online.service'><citerefentry><refentrytitle>NetworkManager-wait-online.service</refentrytitle><manvolnum>8</manvolnum></citerefentry></link>,
+      <link linkend='nmcli'><citerefentry><refentrytitle>nmcli</refentrytitle><manvolnum>1</manvolnum></citerefentry></link>,
+      <link linkend='nmcli-examples'><citerefentry><refentrytitle>nmcli-examples</refentrytitle><manvolnum>7</manvolnum></citerefentry></link>,
+      <link linkend='nm-online'><citerefentry><refentrytitle>nm-online</refentrytitle><manvolnum>1</manvolnum></citerefentry></link>,
+      <link linkend='nm-settings'><citerefentry><refentrytitle>nm-settings</refentrytitle><manvolnum>5</manvolnum></citerefentry></link>,
+      <citerefentry><refentrytitle>nm-applet</refentrytitle><manvolnum>1</manvolnum></citerefentry>,
+      <citerefentry><refentrytitle>nm-connection-editor</refentrytitle><manvolnum>1</manvolnum></citerefentry>,
+      <citerefentry><refentrytitle>udev</refentrytitle><manvolnum>7</manvolnum></citerefentry>
+    </para>
+  </refsect1>
+</refentry>

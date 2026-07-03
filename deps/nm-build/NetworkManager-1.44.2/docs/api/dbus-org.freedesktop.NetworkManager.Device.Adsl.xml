@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Adsl">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Adsl.top_of_page">org.freedesktop.NetworkManager.Device.Adsl</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Adsl.top_of_page"><primary sortas=".Device.Adsl">org.freedesktop.NetworkManager.Device.Adsl</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Adsl</refname>    <refpurpose>ADSL Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Adsl.Carrier">Carrier</link>  readable   b
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Adsl">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Adsl">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Adsl.Carrier">
+  <title>The "Carrier" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Adsl.Carrier"><primary sortas=".Device.Adsl:Carrier">org.freedesktop.NetworkManager.Device.Adsl:Carrier</primary></indexterm>
+<programlisting>
+Carrier  readable   b
+</programlisting>
+<para>
+Indicates whether the physical carrier is found.
+</para><para>
+DEPRECATED: check for the "carrier" flag in the "InterfaceFlags"
+property on the "org.freedesktop.NetworkManager.Device" interface.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

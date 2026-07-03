@@ -1,0 +1,630 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingTeamPort: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingTCConfig.html" title="NMSettingTCConfig">
+<link rel="next" href="NMSettingTeam.html" title="NMSettingTeam">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingTeamPort.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingTCConfig.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingTeam.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingTeamPort"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingTeamPort.top_of_page"></a>NMSettingTeamPort</span></h2>
+<p>NMSettingTeamPort — Describes connection properties for team ports</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingTeamPort.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-new" title="nm_setting_team_port_new ()">nm_setting_team_port_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-get-config" title="nm_setting_team_port_get_config ()">nm_setting_team_port_get_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-get-queue-id" title="nm_setting_team_port_get_queue_id ()">nm_setting_team_port_get_queue_id</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-get-prio" title="nm_setting_team_port_get_prio ()">nm_setting_team_port_get_prio</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-get-sticky" title="nm_setting_team_port_get_sticky ()">nm_setting_team_port_get_sticky</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-get-lacp-prio" title="nm_setting_team_port_get_lacp_prio ()">nm_setting_team_port_get_lacp_prio</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-get-lacp-key" title="nm_setting_team_port_get_lacp_key ()">nm_setting_team_port_get_lacp_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-get-num-link-watchers" title="nm_setting_team_port_get_num_link_watchers ()">nm_setting_team_port_get_num_link_watchers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-get-link-watcher" title="nm_setting_team_port_get_link_watcher ()">nm_setting_team_port_get_link_watcher</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-add-link-watcher" title="nm_setting_team_port_add_link_watcher ()">nm_setting_team_port_add_link_watcher</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-remove-link-watcher" title="nm_setting_team_port_remove_link_watcher ()">nm_setting_team_port_remove_link_watcher</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-remove-link-watcher-by-value" title="nm_setting_team_port_remove_link_watcher_by_value ()">nm_setting_team_port_remove_link_watcher_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeamPort.html#nm-setting-team-port-clear-link-watchers" title="nm_setting_team_port_clear_link_watchers ()">nm_setting_team_port_clear_link_watchers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTeamPort.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-SETTING-NAME:CAPS" title="NM_SETTING_TEAM_PORT_SETTING_NAME">NM_SETTING_TEAM_PORT_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-CONFIG:CAPS" title="NM_SETTING_TEAM_PORT_CONFIG">NM_SETTING_TEAM_PORT_CONFIG</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-QUEUE-ID:CAPS" title="NM_SETTING_TEAM_PORT_QUEUE_ID">NM_SETTING_TEAM_PORT_QUEUE_ID</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-PRIO:CAPS" title="NM_SETTING_TEAM_PORT_PRIO">NM_SETTING_TEAM_PORT_PRIO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-STICKY:CAPS" title="NM_SETTING_TEAM_PORT_STICKY">NM_SETTING_TEAM_PORT_STICKY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-LACP-PRIO:CAPS" title="NM_SETTING_TEAM_PORT_LACP_PRIO">NM_SETTING_TEAM_PORT_LACP_PRIO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-LACP-KEY:CAPS" title="NM_SETTING_TEAM_PORT_LACP_KEY">NM_SETTING_TEAM_PORT_LACP_KEY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-LINK-WATCHERS:CAPS" title="NM_SETTING_TEAM_PORT_LINK_WATCHERS">NM_SETTING_TEAM_PORT_LINK_WATCHERS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-QUEUE-ID-DEFAULT:CAPS" title="NM_SETTING_TEAM_PORT_QUEUE_ID_DEFAULT">NM_SETTING_TEAM_PORT_QUEUE_ID_DEFAULT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeamPort.html#NM-SETTING-TEAM-PORT-LACP-PRIO-DEFAULT:CAPS" title="NM_SETTING_TEAM_PORT_LACP_PRIO_DEFAULT">NM_SETTING_TEAM_PORT_LACP_PRIO_DEFAULT</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTeamPort.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes
+optional properties that apply to team ports.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingTeamPort.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-team-port-new"></a><h3>nm_setting_team_port_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_team_port_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-team-port-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-get-config"></a><h3>nm_setting_team_port_get_config ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_team_port_get_config (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-config.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-config.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“config”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-get-queue-id"></a><h3>nm_setting_team_port_get_queue_id ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_port_get_queue_id (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-queue-id.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-queue-id.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“queue_id”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-get-prio"></a><h3>nm_setting_team_port_get_prio ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_port_get_prio (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-prio.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-prio.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“prio”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-get-sticky"></a><h3>nm_setting_team_port_get_sticky ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_port_get_sticky (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-sticky.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-sticky.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“sticky”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-get-lacp-prio"></a><h3>nm_setting_team_port_get_lacp_prio ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_port_get_lacp_prio (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-lacp-prio.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-lacp-prio.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“lacp-prio”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-get-lacp-key"></a><h3>nm_setting_team_port_get_lacp_key ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_port_get_lacp_key (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-lacp-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-lacp-key.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“lacp-key”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-get-num-link-watchers"></a><h3>nm_setting_team_port_get_num_link_watchers ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_team_port_get_num_link_watchers
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-num-link-watchers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-num-link-watchers.returns"></a><h4>Returns</h4>
+<p> the number of configured link watchers</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-get-link-watcher"></a><h3>nm_setting_team_port_get_link_watcher ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+nm_setting_team_port_get_link_watcher (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>,
+                                       <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-link-watcher.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the link watcher to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-get-link-watcher.returns"></a><h4>Returns</h4>
+<p>the link watcher at index <em class="parameter"><code>idx</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-add-link-watcher"></a><h3>nm_setting_team_port_add_link_watcher ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_port_add_link_watcher (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>,
+                                       <em class="parameter"><code><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *link_watcher</code></em>);</pre>
+<p>Appends a new link watcher to the setting.</p>
+<div class="refsect3">
+<a name="nm-setting-team-port-add-link-watcher.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>link_watcher</p></td>
+<td class="parameter_description"><p>the link watcher to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-add-link-watcher.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the link watcher is added; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if an identical link
+watcher was already there.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-remove-link-watcher"></a><h3>nm_setting_team_port_remove_link_watcher ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_team_port_remove_link_watcher
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the link watcher at index <span class="type">idx</span>.</p>
+<div class="refsect3">
+<a name="nm-setting-team-port-remove-link-watcher.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the link watcher to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-remove-link-watcher-by-value"></a><h3>nm_setting_team_port_remove_link_watcher_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_port_remove_link_watcher_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *link_watcher</code></em>);</pre>
+<p>Removes the link watcher entry matching link_watcher.</p>
+<div class="refsect3">
+<a name="nm-setting-team-port-remove-link-watcher-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>link_watcher</p></td>
+<td class="parameter_description"><p>the link watcher to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-port-remove-link-watcher-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the link watcher was found and removed, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-port-clear-link-watchers"></a><h3>nm_setting_team_port_clear_link_watchers ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_team_port_clear_link_watchers
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> *setting</code></em>);</pre>
+<p>Removes all configured link watchers.</p>
+<div class="refsect3">
+<a name="nm-setting-team-port-clear-link-watchers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTeamPort.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-SETTING-NAME:CAPS"></a><h3>NM_SETTING_TEAM_PORT_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_SETTING_NAME "team-port"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-CONFIG:CAPS"></a><h3>NM_SETTING_TEAM_PORT_CONFIG</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_CONFIG        "config"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-QUEUE-ID:CAPS"></a><h3>NM_SETTING_TEAM_PORT_QUEUE_ID</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_QUEUE_ID      "queue-id"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-PRIO:CAPS"></a><h3>NM_SETTING_TEAM_PORT_PRIO</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_PRIO          "prio"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-STICKY:CAPS"></a><h3>NM_SETTING_TEAM_PORT_STICKY</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_STICKY        "sticky"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-LACP-PRIO:CAPS"></a><h3>NM_SETTING_TEAM_PORT_LACP_PRIO</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_LACP_PRIO     "lacp-prio"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-LACP-KEY:CAPS"></a><h3>NM_SETTING_TEAM_PORT_LACP_KEY</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_LACP_KEY      "lacp-key"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-LINK-WATCHERS:CAPS"></a><h3>NM_SETTING_TEAM_PORT_LINK_WATCHERS</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_LINK_WATCHERS "link-watchers"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-QUEUE-ID-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_PORT_QUEUE_ID_DEFAULT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_QUEUE_ID_DEFAULT  -1
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-PORT-LACP-PRIO-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_PORT_LACP_PRIO_DEFAULT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_PORT_LACP_PRIO_DEFAULT 255
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

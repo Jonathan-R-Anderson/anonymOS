@@ -1,0 +1,1903 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NetworkManager.conf: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="manpages.html" title="Part I. Manual Pages">
+<link rel="prev" href="NetworkManager.html" title="NetworkManager">
+<link rel="next" href="NetworkManager-dispatcher.html" title="NetworkManager-dispatcher">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts"></td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="manpages.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NetworkManager.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NetworkManager-dispatcher.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NetworkManager.conf"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle">NetworkManager.conf</span></h2>
+<p>NetworkManager.conf — NetworkManager configuration file</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsynopsisdiv">
+<h2>Synopsis</h2>
+<p><code class="filename">/etc/NetworkManager/NetworkManager.conf</code>,
+    <code class="filename">/etc/NetworkManager/conf.d/<em class="replaceable"><code>name</code></em>.conf</code>,
+    <code class="filename">/run/NetworkManager/conf.d/<em class="replaceable"><code>name</code></em>.conf</code>,
+    <code class="filename">/usr/lib/NetworkManager/conf.d/<em class="replaceable"><code>name</code></em>.conf</code>,
+    <code class="filename">/var/lib/NetworkManager/NetworkManager-intern.conf</code>
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.5"></a><h2>Description</h2>
+<p><code class="literal">NetworkManager.conf</code> is the configuration file for NetworkManager. It is used
+    to set up various aspects of NetworkManager's behavior. The
+    location of the main file and configuration directories may be changed
+    through use of the <code class="option">--config</code>, <code class="option">--config-dir</code>,
+    <code class="option">--system-config-dir</code>, and <code class="option">--intern-config</code>
+    argument for NetworkManager, respectively.
+    </p>
+<p>If a default <code class="literal">NetworkManager.conf</code> is
+    provided by your distribution's packages, you should not modify
+    it, since your changes may get overwritten by package
+    updates. Instead, you can add additional <code class="literal">.conf</code>
+    files to the <code class="literal">/etc/NetworkManager/conf.d</code> directory.
+    These will be read in order, with later files overriding earlier ones.
+    Packages might install further configuration snippets to <code class="literal">/usr/lib/NetworkManager/conf.d</code>.
+    This directory is parsed first, even before <code class="literal">NetworkManager.conf</code>.
+    Scripts can also put per-boot configuration into <code class="literal">/run/NetworkManager/conf.d</code>.
+    This directory is parsed second, also before <code class="literal">NetworkManager.conf</code>.
+    The loading of a file <code class="literal">/run/NetworkManager/conf.d/<em class="replaceable"><code>name</code></em>.conf</code>
+    can be prevented by adding a file <code class="literal">/etc/NetworkManager/conf.d/<em class="replaceable"><code>name</code></em>.conf</code>.
+    Likewise, a file <code class="literal">/usr/lib/NetworkManager/conf.d/<em class="replaceable"><code>name</code></em>.conf</code>
+    can be shadowed by putting a file of the same name to either <code class="literal">/etc/NetworkManager/conf.d</code>
+    or <code class="literal">/run/NetworkManager/conf.d</code>.
+    </p>
+<p>
+    NetworkManager can overwrite certain user configuration options via D-Bus or other internal
+    operations. In this case it writes those changes to <code class="literal">/var/lib/NetworkManager/NetworkManager-intern.conf</code>.
+    This file is not intended to be modified by the user, but it is read last and can shadow
+    user configuration from <code class="literal">NetworkManager.conf</code>.
+    </p>
+<p>
+    Certain settings from the configuration can be reloaded at runtime either by sending SIGHUP signal or via
+    D-Bus' Reload call.
+    </p>
+<p>
+    NetworkManager does not require any configuration in <code class="literal">NetworkManager.conf</code>. Depending
+    on your use case, you may remove all files to restore the default configuration (factory reset). But
+    note that your distribution or other packages may drop configuration snippets for NetworkManager, such
+    that they are part of the factory default.
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.6"></a><h2>File Format</h2>
+<p>
+      The configuration file format is so-called key file (sort of
+      ini-style format).  It consists of sections (groups) of
+      key-value pairs. Lines beginning with a '#' and blank lines are
+      considered comments. Sections are started by a header line
+      containing the section enclosed in '[' and ']', and ended
+      implicitly by the start of the next section or the end of the
+      file. Each key-value pair must be contained in a section.
+    </p>
+<p>
+      For keys that take a list of devices as their value, you can
+      specify devices by their MAC addresses or interface names, or
+      "*" to specify all devices. See <a class="xref" href="NetworkManager.conf.html#device-spec" title="Device List Format">the section called “Device List Format”</a>
+      below.
+    </p>
+<p>
+      A simple configuration file looks like this:
+      </p>
+<pre class="programlisting">
+[main]
+plugins=keyfile
+</pre>
+<p>
+    </p>
+<p>
+      As an extension to the normal keyfile format, you can also
+      append a value to a previously-set list-valued key by doing:
+      </p>
+<pre class="programlisting">
+plugins+=another-plugin
+plugins-=remove-me
+</pre>
+<p>
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.7"></a><h2>
+<code class="literal">main</code> section</h2>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">plugins</code></span></p></td>
+<td>
+<p>
+            Lists system settings plugin names separated by ','. These
+            plugins are used to read and write system-wide
+            connection profiles. When multiple plugins are specified, the
+            connections are read from all listed plugins. When writing
+            connections, the plugins will be asked to save the
+            connection in the order listed here; if the first plugin
+            cannot write out that connection type (or can't write out
+            any connections) the next plugin is tried, etc. If none of
+            the plugins can save the connection, an error is returned
+            to the user.
+          </p>
+<p>
+            The default value and the number of available plugins is
+            distro-specific. See <a class="xref" href="NetworkManager.conf.html#settings-plugins" title="Plugins">the section called “Plugins”</a>
+            below for the available plugins.
+            Note that NetworkManager's native <code class="literal">keyfile</code>
+            plugin is always appended to the end of this list (if it doesn't
+            already appear earlier in the list).
+          </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">monitor-connection-files</code></span></p></td>
+<td><p>This setting is deprecated and has no effect. Profiles
+        from disk are never automatically reloaded. Use for example <code class="literal">nmcli connection (re)load</code>
+        for that.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">auth-polkit</code></span></p></td>
+<td><p>Whether the system uses PolicyKit for authorization.
+        If <code class="literal">true</code>, non-root requests are authorized using PolicyKit.
+        Requests from root (user ID zero) are always granted without asking PolicyKit.
+        If <code class="literal">false</code>, all requests will be allowed and PolicyKit is
+        not used. If set to <code class="literal">root-only</code> PolicyKit is not used and
+        all requests except root are denied.
+        The default value is <code class="literal">true</code>.
+        </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">dhcp</code></span></p></td>
+<td>
+<p>This key sets up what DHCP client
+        NetworkManager will use. Allowed values are
+        <code class="literal">dhclient</code>, <code class="literal">dhcpcd</code>, and
+        <code class="literal">internal</code>. The <code class="literal">dhclient</code>
+        and <code class="literal">dhcpcd</code> options require the indicated
+        clients to be installed. The <code class="literal">internal</code>
+        option uses a built-in DHCP client which is not currently as
+        featureful as the external clients.</p>
+<p>If this key is missing, it defaults to <code class="literal">internal</code>.
+        If the chosen plugin is not available, clients are looked for
+        in this order: <code class="literal">dhclient</code>, <code class="literal">dhcpcd</code>,
+        <code class="literal">internal</code>.</p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">no-auto-default</code></span></p></td>
+<td>
+<p>Specify devices for which
+        NetworkManager shouldn't create default wired connection
+        (Auto eth0).  By default, NetworkManager creates a temporary
+        wired connection for any Ethernet device that is managed and
+        doesn't have a connection configured. List a device in this
+        option to inhibit creating the default connection for the
+        device. May have the special value <code class="literal">*</code> to
+        apply to all devices.</p>
+<p>When the default wired connection is deleted or saved
+        to a new persistent connection by a plugin, the device is
+        added to a list in the file
+        <code class="filename">/var/lib/NetworkManager/no-auto-default.state</code>
+        to prevent creating the default connection for that device
+        again.</p>
+<p>See <a class="xref" href="NetworkManager.conf.html#device-spec" title="Device List Format">the section called “Device List Format”</a> for the syntax how to
+        specify a device.
+        </p>
+<p>
+          Example:
+          </p>
+<pre class="programlisting">
+no-auto-default=00:22:68:5c:5d:c4,00:1e:65:ff:aa:ee
+no-auto-default=eth0,eth1
+no-auto-default=*
+</pre>
+<p>
+        </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ignore-carrier</code></span></p></td>
+<td><p>
+            This setting is deprecated for the per-device setting
+            <code class="literal">ignore-carrier</code> which overwrites this setting
+            if specified (See <a class="xref" href="NetworkManager.conf.html#ignore-carrier"><code class="varname">ignore-carrier</code></a>).
+            Otherwise, it is a list of matches to specify for which device
+            carrier should be ignored. See <a class="xref" href="NetworkManager.conf.html#device-spec" title="Device List Format">the section called “Device List Format”</a> for the
+            syntax how to specify a device. Note that master types like
+            bond, bridge, and team ignore carrier by default. You can however
+            revert that default using the "except:" specifier (or better,
+            use the per-device setting instead of the deprecated setting).
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">assume-ipv6ll-only</code></span></p></td>
+<td>
+<p>
+            Specify devices for which NetworkManager will try to
+            generate a connection based on initial configuration when
+            the device only has an IPv6 link-local address.
+          </p>
+<p>See <a class="xref" href="NetworkManager.conf.html#device-spec" title="Device List Format">the section called “Device List Format”</a> for the syntax how to
+           specify a device.
+          </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">configure-and-quit</code></span></p></td>
+<td>
+<p>
+            This option is no longer useful to configure in NetworkManager.conf file.
+            It can however also be configured on the command line with the same
+            values, where it has some use.
+          </p>
+<p>
+            When set to '<code class="literal">initrd</code>', NetworkManager does not connect
+            to D-Bus and quits after configuring the network. This is an implementation
+            detail how the NetworkManager module of dracut can run NetworkManager.
+            An alternative to this is having NetworkManager as a systemd service
+            with D-Bus in initrd.
+          </p>
+<p>
+            The value '<code class="literal">true</code>' is unsupported since version 1.36.
+            Previously this was a mode where NetworkManager would quit after configuring
+            the network and run helper processes for DHCP and SLAAC.
+          </p>
+<p>
+            Otherwise, NetworkManager runs a system service with D-Bus and does not
+            quit during normal operation.
+          </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">hostname-mode</code></span></p></td>
+<td>
+<p>
+            Set the management mode of the hostname. This parameter will
+            affect only the transient hostname. If a valid static hostname is set,
+            NetworkManager will skip the update of the hostname despite the value of
+            this option. An hostname empty or equal to 'localhost', 'localhost6',
+            'localhost.localdomain' or 'localhost6.localdomain' is considered invalid.
+          </p>
+<p><code class="literal">default</code>: NetworkManager will update the
+          hostname with the one provided via DHCP or reverse DNS lookup of the
+          IP address on the connection with the default route or on any
+          connection with the property hostname.only-from-default set to
+          '<code class="literal">false</code>'. Connections are considered in order of
+          increasing value of the <code class="literal">hostname.priority</code>
+          property. In case multiple connections have the same priority,
+          connections activated earlier are considered first. If no hostname can
+          be determined in such way, the hostname will be updated to the last
+          one set outside NetworkManager or to 'localhost.localdomain'.
+          </p>
+<p><code class="literal">dhcp</code>: this is similar to
+          '<code class="literal">default</code>', with the difference that after trying to
+          get the DHCP hostname, reverse DNS lookup is not done. Note that
+          selecting this option is equivalent to setting the property
+          '<code class="literal">hostname.from-dns-lookup</code>' to
+          '<code class="literal">false</code>' globally for all connections in
+          NetworkManager.conf.
+          </p>
+<p><code class="literal">none</code>: NetworkManager will not manage the transient
+          hostname and will never set it.
+          </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">dns</code></span></p></td>
+<td>
+<p>Set the DNS processing mode.</p>
+<p>If the key is unspecified, <code class="literal">default</code> is used,
+        unless <code class="filename">/etc/resolv.conf</code> is a symlink to
+        <code class="filename">/run/systemd/resolve/stub-resolv.conf</code>,
+        <code class="filename">/run/systemd/resolve/resolv.conf</code>,
+        <code class="filename">/lib/systemd/resolv.conf</code> or
+        <code class="filename">/usr/lib/systemd/resolv.conf</code>.
+        In that case, <code class="literal">systemd-resolved</code> is chosen automatically.
+        </p>
+<p><code class="literal">default</code>: NetworkManager will update
+        <code class="filename">/etc/resolv.conf</code> to reflect the nameservers
+        provided by currently active connections. The <code class="literal">rc-manager</code>
+        setting (below) controls how this is done.</p>
+<p><code class="literal">dnsmasq</code>: NetworkManager will run
+        dnsmasq as a local caching nameserver, using "Conditional Forwarding"
+        if you are connected to a VPN, and then update
+        <code class="filename">resolv.conf</code> to point to the local
+        nameserver. It is possible to pass custom options to the
+        dnsmasq instance by adding them to files in the
+        "<code class="filename">/etc/NetworkManager/dnsmasq.d/</code>"
+        directory. Note that when multiple upstream servers are
+        available, dnsmasq will initially contact them in parallel and
+        then use the fastest to respond, probing again other servers
+        after some time. This behavior can be modified passing the
+        'all-servers' or 'strict-order' options to dnsmasq (see the
+        manual page for more details).</p>
+<p><code class="literal">systemd-resolved</code>: NetworkManager will
+        push the DNS configuration to systemd-resolved</p>
+<p><code class="literal">none</code>: NetworkManager will not
+        modify resolv.conf. This implies
+        <code class="literal">rc-manager</code> <code class="literal">unmanaged</code></p>
+<p>Note that the plugins <code class="literal">dnsmasq</code> and <code class="literal">systemd-resolved</code>
+        are caching local nameservers.
+        Hence, when NetworkManager writes <code class="filename">/run/NetworkManager/resolv.conf</code>
+        and <code class="filename">/etc/resolv.conf</code> (according to <code class="literal">rc-manager</code>
+        setting below), the name server there will be localhost only.
+        NetworkManager also writes a file <code class="filename">/run/NetworkManager/no-stub-resolv.conf</code>
+        that contains the original name servers pushed to the DNS plugin.</p>
+<p>When using <code class="literal">dnsmasq</code> and <code class="literal">systemd-resolved</code>,
+        per-connection added dns servers will always be queried using
+        the device the connection has been activated on.</p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">rc-manager</code></span></p></td>
+<td>
+<p>Set the <code class="filename">resolv.conf</code>
+          management mode. This option is about how NetworkManager writes to
+          <code class="filename">/etc/resolv.conf</code>, if at all.
+          The default value depends on NetworkManager build
+          options, and this version of NetworkManager was build with a default of
+          "<code class="literal">auto</code>".
+          Regardless of this setting, NetworkManager will
+          always write its version of resolv.conf to its runtime state directory
+          as <code class="filename">/run/NetworkManager/resolv.conf</code>.
+        </p>
+<p>If you configure <code class="literal">dns=none</code> or make <code class="filename">/etc/resolv.conf</code>
+          immutable with <code class="literal">chattr +i</code>, NetworkManager will ignore this setting and
+          always choose <code class="literal">unmanaged</code> (below).
+        </p>
+<p><code class="literal">auto</code>: if systemd-resolved plugin is configured via
+          the <code class="literal">dns</code> setting or if it gets detected as main DNS plugin,
+          NetworkManager will update systemd-resolved without touching <code class="filename">/etc/resolv.conf</code>.
+          Alternatively, if <code class="literal">resolvconf</code> or <code class="literal">netconfig</code> are enabled
+          at compile time and the respective binary is found, NetworkManager will automatically use it.
+          Note that if you install or uninstall these binaries, you need to reload the
+          <code class="literal">rc-manager</code> setting with SIGHUP or
+          <code class="literal">systemctl reload NetworkManager</code>. As last fallback
+          it uses the <code class="literal">symlink</code> option (see next).
+        </p>
+<p><code class="literal">symlink</code>: If <code class="filename">/etc/resolv.conf</code> is
+          a regular file or does not exist, NetworkManager will write the file directly.
+          If <code class="filename">/etc/resolv.conf</code> is instead a symlink, NetworkManager
+          will leave it alone. Unless the symlink points to the internal file
+          <code class="filename">/run/NetworkManager/resolv.conf</code>,
+          in which case the symlink will be updated to emit an inotify notification.
+          This allows the user to conveniently instruct NetworkManager not
+          to manage <code class="filename">/etc/resolv.conf</code> by replacing it with
+          a symlink.
+        </p>
+<p><code class="literal">file</code>: NetworkManager will write
+            <code class="filename">/etc/resolv.conf</code> as regular file. If it finds
+            a symlink to an existing target, it will follow the symlink and
+            update the target instead. In no case will an existing symlink
+            be replaced by a file. Note that older versions of NetworkManager
+            behaved differently and would replace dangling symlinks with a
+            plain file.
+        </p>
+<p><code class="literal">resolvconf</code>: NetworkManager will run
+          resolvconf to update the DNS configuration.</p>
+<p><code class="literal">netconfig</code>: NetworkManager will run
+          netconfig to update the DNS configuration.</p>
+<p><code class="literal">unmanaged</code>: don't touch
+          <code class="filename">/etc/resolv.conf</code>.</p>
+<p><code class="literal">none</code>: deprecated alias for
+          <code class="literal">symlink</code>.</p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">systemd-resolved</code></span></p></td>
+<td>
+<p>Additionally, send the connection DNS configuration to
+        <code class="literal">systemd-resolved</code>. Defaults to "<code class="literal">true</code>".
+        </p>
+<p>Note that this setting has no effect if the main <code class="varname">dns</code>
+        plugin is already <code class="literal">systemd-resolved</code>. It is complementary to the
+        <code class="varname">dns</code> setting to configure systemd-resolved alongside the
+        main plugin.</p>
+<p>If systemd-resolved is enabled, either via this setting or the main
+        DNS plugin, the connectivity check resolves the
+        hostname per-device.</p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">debug</code></span></p></td>
+<td>
+<p>Comma separated list of options to aid
+        debugging. This value will be combined with the environment
+        variable <code class="literal">NM_DEBUG</code>. Currently, the following
+        values are supported:</p>
+<p>
+          <code class="literal">RLIMIT_CORE</code>: set ulimit -c unlimited
+          to write out core dumps. Beware, that a core dump can contain
+          sensitive information such as passwords or configuration settings.
+        </p>
+<p>
+          <code class="literal">fatal-warnings</code>: set g_log_set_always_fatal()
+          to core dump on warning messages from glib. This is equivalent
+          to the --g-fatal-warnings command line option.
+        </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">autoconnect-retries-default</code></span></p></td>
+<td><p>
+            The number of times a connection activation should be
+            automatically tried before switching to another one. This
+            value applies only to connections that can auto-connect
+            and have a
+            <code class="literal">connection.autoconnect-retries</code> property
+            set to -1. If not specified, connections will be tried 4
+            times. Setting this value to 1 means to try activation once,
+            without retry.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">slaves-order</code></span></p></td>
+<td><p>
+            This key specifies in which order slave connections are
+            auto-activated on boot or when the master activates
+            them. Allowed values are <code class="literal">name</code> (order
+            connection by interface name, the default), or
+            <code class="literal">index</code> (order slaves by their kernel
+            index).
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">firewall-backend</code></span></p></td>
+<td><p>
+            The firewall backend for configuring masquerading
+            with shared mode.
+            Set to either <code class="literal">iptables</code>, <code class="literal">nftables</code>
+            or <code class="literal">none</code>.
+            <code class="literal">iptables</code> and <code class="literal">nftables</code>
+            require <code class="literal">iptables</code> and <code class="literal">nft</code>
+            application, respectively.
+            <code class="literal">none</code> means to skip firewall configuration if
+            the users wish to manage firewall themselves.
+            If unspecified, it will be auto detected.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">iwd-config-path</code></span></p></td>
+<td>
+<p>
+            If the value is "auto" (the default), IWD is queried for its
+            current state directory when it appears on D-Bus -- the
+            directory where IWD keeps its network configuration files --
+            usually /var/lib/iwd.  NetworkManager will then attempt to
+            write copies of new or modified Wi-Fi connection profiles,
+            converted into the IWD format, into this directory thus making
+            IWD connection properties editable.  NM will overwrite existing
+            files without preserving their contents.
+          </p>
+<p>
+            The path can also be overriden by pointing to a specific
+            existing and writable directory.  On the other hand setting
+            this to an empty string or any other value disables the
+            profile conversion mechanism.
+          </p>
+<p>
+            This mechanism allows editing connection profile settings such
+            as the 802.1x configuration using NetworkManager clients.
+            Without it such changes have no effect in IWD.
+          </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">migrate-ifcfg-rh</code></span></p></td>
+<td><p>Whether NetworkManager tries to automatically convert
+        any connection profile stored in ifcfg-rh format to the keyfile format.
+        Support for ifcfg-rh is deprecated and will be eventually removed. If
+        enabled, the migration is performed at every startup of the daemon.
+        The default value is <code class="literal">false</code>.
+        </p></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.8"></a><h2>
+<code class="literal">keyfile</code> section</h2>
+<p>This section contains keyfile-plugin-specific options, and
+    is normally only used when you are not using any other
+    distro-specific plugin.</p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">hostname</code></span></p></td>
+<td><p>This key is deprecated and has no effect
+          since the hostname is now stored in <code class="filename">/etc/hostname</code>
+          or other system configuration files according to build options.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">path</code></span></p></td>
+<td><p>The location where keyfiles are read and stored.
+            This defaults to "<code class="filename">/etc/NetworkManager/system-connections</code>".
+            </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">rename</code></span></p></td>
+<td><p>
+                NetworkManager automatically chooses a filename when storing
+                a new profile to disk. That name depends on the profile's name
+                (connection.id). When updating a profile's name, the file is
+                not renamed to not break scripts that rely on the filename
+                for the profile.
+                By setting this option to "true", NetworkManager renames
+                the keyfile on update of the profile, to follow the profile's
+                name. This defaults to "false".
+            </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">unmanaged-devices</code></span></p></td>
+<td>
+<p>Set devices that should be ignored by NetworkManager.
+            </p>
+<p>
+              A device unmanaged due to this option is strictly
+              unmanaged and cannot be overruled by using the API like
+              <span class="command"><strong>nmcli device set $IFNAME managed yes</strong></span>.
+              Also, a device that is unmanaged for other reasons, like
+              an udev rule, cannot be made managed with this option (e.g. by
+              using an <code class="literal">except:</code> specifier).
+              These two points make it different from the <code class="literal">device*.managed</code>
+              option which for that reason may be a better choice.
+            </p>
+<p>See <a class="xref" href="NetworkManager.conf.html#device-spec" title="Device List Format">the section called “Device List Format”</a> for the syntax on how to
+              specify a device.
+            </p>
+<p>
+              Example:
+              </p>
+<pre class="programlisting">
+unmanaged-devices=interface-name:em4
+unmanaged-devices=mac:00:22:68:1c:59:b1;mac:00:1E:65:30:D1:C4;interface-name:eth2
+</pre>
+<p>
+            </p>
+</td>
+</tr>
+</tbody>
+</table></div>
+<p>
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.9"></a><h2>
+<code class="literal">ifupdown</code> section</h2>
+<p>This section contains ifupdown-specific options and thus only
+    has effect when using the <code class="literal">ifupdown</code> plugin.</p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody><tr>
+<td><p><span class="term"><code class="varname">managed</code></span></p></td>
+<td>
+<p>If set to <code class="literal">true</code>, then
+          interfaces listed in
+          <code class="filename">/etc/network/interfaces</code> are managed by
+          NetworkManager.  If set to <code class="literal">false</code>, then
+          any interface listed in
+          <code class="filename">/etc/network/interfaces</code> will be ignored
+          by NetworkManager. Remember that NetworkManager controls the
+          default route, so because the interface is ignored,
+          NetworkManager may assign the default route to some other
+          interface.</p>
+<p>
+            The default value is <code class="literal">false</code>.
+          </p>
+</td>
+</tr></tbody>
+</table></div>
+<p>
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.10"></a><h2>
+<code class="literal">logging</code> section</h2>
+<p>
+    This section controls NetworkManager's logging.
+    Logging is very important to understand what NetworkManager is doing.
+    When you report a bug, do not unnecessarily filter or limit the log file.
+    Just enable <code class="literal">level=TRACE</code> and <code class="literal">domains=ALL</code>
+    to collect everything.
+    </p>
+<p>
+    The recommended way for enabling logging is with a file <code class="filename">/etc/NetworkManager/conf.d/95-logging.conf</code>
+    that contains
+</p>
+<pre class="programlisting">
+[logging]
+level=TRACE
+domains=ALL
+</pre>
+<p>
+    and restart the daemon with <span class="command"><strong>systemctl restart NetworkManager</strong></span>. Then
+    reproduce the problem. You can find the logs in syslog (for example <span class="command"><strong>journalctl</strong></span>).
+    </p>
+<p>
+    Any settings here are overridden by the <code class="option">--log-level</code>
+    and <code class="option">--log-domains</code> command-line options.
+    Logging can also be reconfigured at runtime with
+    <span class="command"><strong>nmcli general logging level "$LEVEL" domains "$DOMAINS"</strong></span>.
+    However, often it is interesting to get a complete log from the
+    start. Especially, when debugging an issue, enable debug logging
+    in NetworkManager.conf and restart the service to enable verbose logging
+    early on.
+    </p>
+<p>
+    By setting <code class="option">nm.debug</code> on the kernel command line (either from
+    <code class="filename">/run/NetworkManager/proc-cmdline</code> or <code class="filename">/proc/cmdline</code>),
+    debug logging is enabled. This overrides both the command-line options and the settings
+    from NetworkManager.conf.
+    </p>
+<p>
+    NetworkManager's logging aims not to contain private sensitive data
+    and you should be fine sharing the debug logs. Still, there will
+    be IP addresses and your network setup, if you consider that private
+    then review the log before sharing. However, try not to mangle the logfile
+    in a way that distorts the meaning too much.
+    </p>
+<p>
+    NetworkManager uses syslog or systemd-journald, depending on configuration.
+    In any case, debug logs are verbose and might be rate limited
+    or filtered by the logging daemon. For systemd-journald, see
+    <code class="literal">RateLimitIntervalSec</code> and <code class="literal">RateLimitBurst</code>
+    in <code class="literal">journald.conf</code> manual for how to disable that.
+    </p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">level</code></span></p></td>
+<td>
+<p>The default logging verbosity level.
+          One of <code class="literal">OFF</code>, <code class="literal">ERR</code>,
+          <code class="literal">WARN</code>, <code class="literal">INFO</code>,
+          <code class="literal">DEBUG</code>, <code class="literal">TRACE</code>,
+          in order of verbosity.
+          </p>
+<p>
+          <code class="literal">OFF</code> disables all logging. <code class="literal">INFO</code>
+          is the default verbosity for regular operation. <code class="literal">TRACE</code>
+          is for debugging.
+          </p>
+<p>
+          The other levels are in most cases not useful. For example, <code class="literal">DEBUG</code>
+          is between <code class="literal">TRACE</code> and <code class="literal">INFO</code>, but it's too
+          verbose for regular operation and lacks possibly interesting messages for debugging.
+          Almost always, when debugging an issue or reporting a bug, collect full
+          level <code class="literal">TRACE</code> logs to get the full picture.
+          </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">domains</code></span></p></td>
+<td>
+<p>Filter the messages by their topic. When debugging
+          an issue, it's better to collect all logs (<code class="literal">ALL</code> domain)
+          upfront. The unnecessary parts can always be ignored
+          later.
+          </p>
+<p>In the uncommon case to tune out certain topics, the following log
+          domains are available:
+          PLATFORM, RFKILL, ETHER, WIFI, BT, MB, DHCP4, DHCP6, PPP,
+          WIFI_SCAN, IP4, IP6, AUTOIP4, DNS, VPN, SHARING, SUPPLICANT,
+          AGENTS, SETTINGS, SUSPEND, CORE, DEVICE, OLPC, WIMAX,
+          INFINIBAND, FIREWALL, ADSL, BOND, VLAN, BRIDGE, DBUS_PROPS,
+          TEAM, CONCHECK, DCB, DISPATCH, AUDIT, SYSTEMD, VPN_PLUGIN,
+          PROXY.</p>
+<p>In addition, these special domains can be used: NONE,
+          ALL, DEFAULT, DHCP, IP.</p>
+<p>You can specify per-domain log level overrides by
+          adding a colon and a log level to any domain. E.g.,
+          "<code class="literal">WIFI:DEBUG,WIFI_SCAN:OFF</code>".
+          Another example is <code class="literal">ALL,VPN_PLUGIN:TRACE</code>
+          to enable all the logging there is (see about <code class="literal">VPN_PLUGIN</code>
+          below).
+          </p>
+</td>
+</tr>
+<tr>
+<td><p></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">backend</code></span></p></td>
+<td><p>The logging backend. Supported values
+          are "<code class="literal">syslog</code>" and "<code class="literal">journal</code>".
+          When NetworkManager is started with "<code class="literal">--debug</code>"
+          in addition all messages will be printed to stderr.
+          If unspecified, the default is "<code class="literal">syslog</code>".
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">audit</code></span></p></td>
+<td><p>Whether the audit records are delivered to
+          auditd, the audit daemon.  If <code class="literal">false</code>, audit
+          records will be sent only to the NetworkManager logging
+          system. If set to <code class="literal">true</code>, they will be also
+          sent to auditd.  The default value is <code class="literal">false</code>.
+          </p></td>
+</tr>
+</tbody>
+</table></div>
+<p>
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.11"></a><h2>
+<code class="literal">connection</code> section</h2>
+<p>Specify default values for connections.
+    </p>
+<p>
+      Such default values are only consulted if the corresponding per-connection property
+      explicitly allows for that. That means, all these properties correspond to
+      a property of the connection profile (for example <code class="literal">connection.mud-url</code>).
+      Only if the per-profile property is set to a special value that indicates to use the
+      default, the default value from NetworkManager.conf is consulted. It depends on the
+      property, which is the special value that indicates fallback to the default, but it
+      usually is something like empty, unset values or special numeric values like 0 or -1.
+      That means the effectively used value can first always be configured for each profile,
+      and these default values only matter if the per-profile values explicitly indicates
+      to use the default from <code class="literal">NetworkManager.conf</code>.
+    </p>
+<p>
+      Example:
+</p>
+<pre class="programlisting">
+[connection]
+ipv6.ip6-privacy=0
+</pre>
+<p>
+    </p>
+<div class="refsect2">
+<a name="id-1.2.3.11.5"></a><h3>Supported Properties</h3>
+<p>
+      Not all properties can be overwritten, only the following
+      properties are supported to have their default values configured
+      (see <span class="citerefentry"><span class="refentrytitle">nm-settings</span>(5)</span> for details).
+    </p>
+<p>
+      
+      
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">802-1x.auth-timeout</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">cdma.mtu</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.auth-retries</code></span></p></td>
+<td><p>If left unspecified, the default value is 3 tries before failing the connection.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.autoconnect-slaves</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.mud-url</code></span></p></td>
+<td><p>If unspecified, MUD URL defaults to <code class="literal">"none"</code>.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.lldp</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.llmnr</code></span></p></td>
+<td><p>If unspecified, the ultimate default values depends on the DNS plugin. With systemd-resolved the default currently is "yes" (2) and for all other plugins "no" (0).</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.mdns</code></span></p></td>
+<td><p>If unspecified, the ultimate default values depends on the DNS plugin. With systemd-resolved the default currently is "no" (0) and for all other plugins also "no" (0).</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.mptcp-flags</code></span></p></td>
+<td><p>If unspecified, the fallback is 0x22 (<code class="literal">"enabled,subflow"</code>). Note that if sysctl <code class="literal">/proc/sys/net/mptcp/enabled</code> is disabled, NetworkManager will still not configure endpoints.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.dns-over-tls</code></span></p></td>
+<td><p>If unspecified, the ultimate default values depends on the DNS plugin. With systemd-resolved the default currently is global setting and for all other plugins "no" (0).</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">connection.stable-id</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ethernet.cloned-mac-address</code></span></p></td>
+<td><p>If left unspecified, it defaults to "preserve".</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ethernet.generate-mac-address-mask</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ethernet.mtu</code></span></p></td>
+<td><p>If configured explicitly to 0, the MTU is not reconfigured during device activation unless it is required due to IPv6 constraints. If left unspecified, a DHCP/IPv6 SLAAC provided value is used or the MTU is not reconfigured during activation.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ethernet.wake-on-lan</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">gsm.mtu</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">hostname.from-dhcp</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">hostname.from-dns-lookup</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">hostname.only-from-default</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">hostname.priority</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">infiniband.mtu</code></span></p></td>
+<td><p>If configured explicitly to 0, the MTU is not reconfigured during device activation unless it is required due to IPv6 constraints. If left unspecified, a DHCP/IPv6 SLAAC provided value is used or the MTU is left unspecified on activation.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ip-tunnel.mtu</code></span></p></td>
+<td><p>If configured explicitly to 0, the MTU is not reconfigured during device activation unless it is required due to IPv6 constraints. If left unspecified, a DHCP/IPv6 SLAAC provided value is used or a default of 1500.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.dad-timeout</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.dhcp-client-id</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.dhcp-iaid</code></span></p></td>
+<td><p>If left unspecified, it defaults to "ifname".</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.dhcp-hostname-flags</code></span></p></td>
+<td><p>If left unspecified, the value 3 (fqdn-encoded,fqdn-serv-update) is used.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.dhcp-timeout</code></span></p></td>
+<td><p>If left unspecified, the default value for
+           the interface type is used.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.dhcp-vendor-class-identifier</code></span></p></td>
+<td><p>If left unspecified, the default is to not send the DHCP option to the server.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.dns-priority</code></span></p></td>
+<td><p>If unspecified or zero, use 50 for VPN profiles
+           and 100 for other profiles.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.required-timeout</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.link-local</code></span></p></td>
+<td><p>If left unspecified, fallback to "auto" which makes it dependent on "ipv4.method" setting.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.route-metric</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv4.route-table</code></span></p></td>
+<td><p>If left unspecified, routes are only added to the main table. Note that this
+            is different from explicitly selecting the main table 254, because of how NetworkManager
+            removes extraneous routes from the tables.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.addr-gen-mode</code></span></p></td>
+<td><p>If the per-profile setting is either "default" or "default-or-eui64", the
+            global default is used. If the default is unspecified, the fallback value is either "stable-privacy"
+            or "eui64", depending on whether the per-profile setting is "default" or "default-or-eui64, respectively.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.ra-timeout</code></span></p></td>
+<td><p>If left unspecified, the default value depends on the sysctl solicitation settings.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.dhcp-duid</code></span></p></td>
+<td><p>If left unspecified, it defaults to "lease".</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.dhcp-iaid</code></span></p></td>
+<td><p>If left unspecified, it defaults to "ifname".</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.dhcp-hostname-flags</code></span></p></td>
+<td><p>If left unspecified, the value 1 (fqdn-serv-update) is used.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.dhcp-timeout</code></span></p></td>
+<td><p>If left unspecified, the default value for
+           the interface type is used.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.dns-priority</code></span></p></td>
+<td><p>If unspecified or zero, use 50 for VPN profiles
+           and 100 for other profiles.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.ip6-privacy</code></span></p></td>
+<td><p>If <code class="literal">ipv6.ip6-privacy</code> is unset, use the content of
+            "/proc/sys/net/ipv6/conf/default/use_tempaddr" as last fallback.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.required-timeout</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.route-metric</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ipv6.route-table</code></span></p></td>
+<td><p>If left unspecified, routes are only added to the main table. Note that this
+            is different from explicitly selecting the main table 254, because of how NetworkManager
+            removes extraneous routes from the tables.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">loopback.mtu</code></span></p></td>
+<td><p>If configured explicitly to 0, the MTU is not reconfigured during device activation unless it is required due to IPv6 constraints. If left unspecified, a DHCP/IPv6 SLAAC provided value is used or the MTU is left unspecified on activation.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">sriov.autoprobe-drivers</code></span></p></td>
+<td><p>If left unspecified, drivers are autoprobed when the SR-IOV VF gets created.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">vpn.timeout</code></span></p></td>
+<td><p>If left unspecified, default value of 60 seconds is used.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.ap-isolation</code></span></p></td>
+<td><p>If left unspecified, AP isolation is disabled.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.cloned-mac-address</code></span></p></td>
+<td><p>If left unspecified, it defaults to "preserve".</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.generate-mac-address-mask</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.mac-address-randomization</code></span></p></td>
+<td><p>If left unspecified, MAC address randomization is disabled.
+            This setting is deprecated for <code class="literal">wifi.cloned-mac-address</code>.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.mtu</code></span></p></td>
+<td><p>If configured explicitly to 0, the MTU is not reconfigured during device activation unless it is required due to IPv6 constraints. If left unspecified, a DHCP/IPv6 SLAAC provided value is used or a default of 1500.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.powersave</code></span></p></td>
+<td><p>If left unspecified, the default value
+          "<code class="literal">ignore</code>" will be used.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi-sec.pmf</code></span></p></td>
+<td><p>If left unspecified, the default value
+          "<code class="literal">optional</code>" will be used.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi-sec.fils</code></span></p></td>
+<td><p>If left unspecified, the default value
+          "<code class="literal">optional</code>" will be used.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.wake-on-wlan</code></span></p></td>
+<td></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wireguard.mtu</code></span></p></td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<p>
+      
+      
+    </p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="connection-sections"></a><h3>Sections</h3>
+<p>
+        You can configure multiple <code class="literal">connection</code>
+        sections, by having different sections with a name that all start
+        with "connection".
+        Example:
+</p>
+<pre class="programlisting">
+[connection]
+ipv6.ip6-privacy=0
+connection.autoconnect-slaves=1
+vpn.timeout=120
+
+[connection-wifi-wlan0]
+match-device=interface-name:wlan0
+ipv4.route-metric=50
+
+[connection-wifi-other]
+match-device=type:wifi
+ipv4.route-metric=55
+ipv6.ip6-privacy=1
+</pre>
+<p>
+    </p>
+<p>
+        The sections within one file are considered in order of appearance, with the
+        exception that the <code class="literal">[connection]</code> section is always
+        considered last. In the example above, this order is <code class="literal">[connection-wifi-wlan0]</code>,
+        <code class="literal">[connection-wlan-other]</code>, and <code class="literal">[connection]</code>.
+        When checking for a default configuration value, the sections are searched until
+        the requested value is found.
+        In the example above, "ipv4.route-metric" for wlan0 interface is set to 50,
+        and for all other Wi-Fi typed interfaces to 55. Also, Wi-Fi devices would have
+        IPv6 private addresses enabled by default, but other devices would have it disabled.
+        Note that also "wlan0" gets "ipv6.ip6-privacy=1", because although the section
+        "[connection-wifi-wlan0]" matches the device, it does not contain that property
+        and the search continues.
+    </p>
+<p>
+        When having different sections in multiple files, sections from files that are read
+        later have higher priority. So within one file the priority of the sections is
+        top-to-bottom. Across multiple files later definitions take precedence.
+    </p>
+<p>
+      The following properties further control how a connection section applies.
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">match-device</code></span></p></td>
+<td><p>An optional device spec that restricts
+          when the section applies. See <a class="xref" href="NetworkManager.conf.html#device-spec" title="Device List Format">the section called “Device List Format”</a>
+          for the possible values.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">stop-match</code></span></p></td>
+<td><p>An optional boolean value which defaults to
+          <code class="literal">no</code>. If the section matches (based on
+          <code class="literal">match-device</code>), further sections will not be
+          considered even if the property in question is not present. In
+          the example above, if <code class="literal">[connection-wifi-wlan0]</code> would
+          have <code class="literal">stop-match</code> set to <code class="literal">yes</code>,
+          the device <code class="literal">wlan0</code> would have <code class="literal">ipv6.ip6-privacy</code>
+          property unspecified. That is, the search for the property would not continue
+          in the connection sections <code class="literal">[connection-wifi-other]</code>
+          or <code class="literal">[connection]</code>.
+          </p></td>
+</tr>
+</tbody>
+</table></div>
+<p>
+    </p>
+</div>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.12"></a><h2>
+<code class="literal">device</code> section</h2>
+<p>Contains per-device persistent configuration.
+    </p>
+<p>
+      Example:
+</p>
+<pre class="programlisting">
+[device]
+match-device=interface-name:eth3
+managed=1
+</pre>
+<p>
+    </p>
+<div class="refsect2">
+<a name="id-1.2.3.12.4"></a><h3>Supported Properties</h3>
+<p>
+      The following properties can be configured per-device.
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><a name="managed"></a><span class="term"><code class="varname">managed</code></span></p></td>
+<td><p>
+              Whether the device is managed or not. A device can be
+              marked as managed via udev rules (ENV{NM_UNMANAGED}),
+              or via setting plugins (keyfile.unmanaged-devices).
+              This is yet another way. Note that this configuration
+              can be overruled at runtime via D-Bus. Also, it has
+              higher priority then udev rules.
+            </p></td>
+</tr>
+<tr>
+<td><p><a name="carrier-wait-timeout"></a><span class="term"><code class="varname">carrier-wait-timeout</code></span></p></td>
+<td>
+<p>
+              Specify the timeout for waiting for carrier in milliseconds.
+              The default is 6000 milliseconds.
+              This setting exists because certain drivers/hardware can take
+              a long time to detect whether the cable is plugged in.
+            </p>
+<p>
+              When the device loses carrier, NetworkManager does not react
+              immediately. Instead, it waits for this timeout before considering
+              the link lost.
+            </p>
+<p>
+              Also, on startup, NetworkManager considers the
+              device as busy for this time, as long as the device has no carrier.
+              This delays startup-complete signal and NetworkManager-wait-online.
+              Configuring this too high means to block NetworkManager-wait-online
+              longer than necessary when booting with cable unplugged. Configuring
+              it too low, means that NetworkManager will declare startup-complete too
+              soon, although carrier is about to come and auto-activation to kick in.
+              Note that if a profile only has static IP configuration or Layer 3 configuration
+              disabled, then it can already autoconnect without carrier on the device.
+              Once such a profile reaches full activated state, startup-complete
+              is considered as reached even if the device has no carrier yet.
+            </p>
+</td>
+</tr>
+<tr>
+<td><p><a name="ignore-carrier"></a><span class="term"><code class="varname">ignore-carrier</code></span></p></td>
+<td>
+<p>
+              Specify devices for which NetworkManager will (partially)
+              ignore the carrier state. Normally, for
+              device types that support carrier-detect, such as Ethernet
+              and InfiniBand, NetworkManager will only allow a
+              connection to be activated on the device if carrier is
+              present (ie, a cable is plugged in), and it will
+              deactivate the device if carrier drops for more than a few
+              seconds.
+            </p>
+<p>
+              A device with carrier ignored will allow activating connections on
+              that device even when it does not have carrier, provided
+              that the connection uses only statically-configured IP
+              addresses. Additionally, it will allow any active
+              connection (whether static or dynamic) to remain active on
+              the device when carrier is lost.
+            </p>
+<p>
+              Note that the "carrier" property of NMDevices and device D-Bus
+              interfaces will still reflect the actual device state; it's just
+              that NetworkManager will not make use of that information.
+            </p>
+<p>
+              Master types like bond, bridge and team ignore carrier by default,
+              while other device types react on carrier changes by default.
+            </p>
+<p>
+              This setting overwrites the deprecated <code class="literal">main.ignore-carrier</code>
+              setting above.
+            </p>
+</td>
+</tr>
+<tr>
+<td><p><a name="keep-configuration"></a><span class="term"><code class="varname">keep-configuration</code></span></p></td>
+<td>
+<p>
+              On startup, NetworkManager tries to not interfere with
+              interfaces that are already configured. It does so by
+              generating a in-memory connection based on the interface
+              current configuration.
+            </p>
+<p>
+              If this generated connection matches one of the existing
+              persistent connections, the persistent connection gets
+              activated. If there is no match, the generated
+              connection gets activated as "external", which means
+              that the connection is considered as active, but
+              NetworkManager doesn't actually touch the interface.
+            </p>
+<p>
+              It is possible to disable this behavior by setting
+              <code class="literal">keep-configuration</code> to
+              <code class="literal">no</code>. In this way, on startup
+              NetworkManager always tries to activate the most
+              suitable persistent connection (the one with highest
+              autoconnect-priority or, in case of a tie, the one
+              activated most recently).
+            </p>
+<p>
+              Note that when NetworkManager gets restarted, it stores
+              the previous state in
+              <code class="filename">/run/NetworkManager</code>; in particular
+              it saves the UUID of the connection that was previously
+              active so that it can be activated again after the
+              restart. Therefore,
+              <code class="literal">keep-configuration</code> does not have
+              any effect on service restart.
+            </p>
+</td>
+</tr>
+<tr>
+<td><p><a name="allowed-connections"></a><span class="term"><code class="varname">allowed-connections</code></span></p></td>
+<td>
+<p>
+              A list of connections that can be activated on the
+              device. See <a class="xref" href="NetworkManager.conf.html#connection-spec" title="Connection List Format">the section called “Connection List Format”</a> for the
+              syntax to specify a connection. If this option is not
+              specified, all connections can be potentially activated
+              on the device, provided that the connection type and
+              other settings match.
+            </p>
+<p>
+              A notable use case for this is to filter which
+              connections can be activated based on how they were
+              created; see the <code class="literal">origin</code> keyword in
+              <a class="xref" href="NetworkManager.conf.html#connection-spec" title="Connection List Format">the section called “Connection List Format”</a>.
+            </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.scan-rand-mac-address</code></span></p></td>
+<td><p>
+              Configures MAC address randomization of a Wi-Fi device during
+              scanning. This defaults to <code class="literal">yes</code> in which case
+              a random, locally-administered MAC address will be used.
+              The setting <code class="literal">wifi.scan-generate-mac-address-mask</code>
+              allows to influence the generated MAC address to use certain vendor
+              OUIs.
+              If disabled, the MAC address during scanning is left unchanged to
+              whatever is configured.
+              For the configured MAC address while the device is associated, see instead
+              the per-connection setting <code class="literal">wifi.cloned-mac-address</code>.
+            </p></td>
+</tr>
+<tr>
+<td><p><a name="wifi.backend"></a><span class="term"><code class="varname">wifi.backend</code></span></p></td>
+<td><p>
+              Specify the Wi-Fi backend used for the device. Currently, supported
+              are <code class="literal">wpa_supplicant</code> and <code class="literal">iwd</code> (experimental).
+              If unspecified, the default is "<code class="literal">wpa_supplicant</code>".
+            </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.scan-generate-mac-address-mask</code></span></p></td>
+<td><p>
+              Like the per-connection settings <code class="literal">ethernet.generate-mac-address-mask</code>
+              and <code class="literal">wifi.generate-mac-address-mask</code>, this allows to configure the
+              generated MAC addresses during scanning. See <span class="citerefentry"><span class="refentrytitle">nm-settings</span>(5)</span>
+              for details.
+            </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">wifi.iwd.autoconnect</code></span></p></td>
+<td><p>
+              If <code class="literal">wifi.backend</code> is <code class="literal">iwd</code>, setting this to
+              <code class="literal">false</code> forces IWD's autoconnect mechanism to be disabled for
+              this device and connections will only be initiated by NetworkManager whether
+              commanded by a client or automatically.  Leaving it <code class="literal">true</code> (default)
+              stops NetworkManager from automatically initiating connections and allows
+              IWD to use its network ranking and scanning logic to decide the best networks
+              to autoconnect to next.  Connections' <code class="literal">autoconnect-priority</code>,
+              <code class="literal">autoconnect-retries</code> settings will be ignored.  Other settings
+              like <code class="literal">permissions</code> or <code class="literal">multi-connect</code> may interfere
+              with IWD connection attempts.
+            </p></td>
+</tr>
+<tr>
+<td><p><a name="sriov-num-vfs"></a><span class="term"><code class="varname">sriov-num-vfs</code></span></p></td>
+<td><p>
+              Specify the number of virtual functions (VF) to enable
+              for a PCI physical device that supports single-root I/O
+              virtualization (SR-IOV).
+            </p></td>
+</tr>
+</tbody>
+</table></div>
+<p>
+    </p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="id-1.2.3.12.5"></a><h3>Sections</h3>
+<p>
+        The <code class="literal">[device]</code> section works the same as the <code class="literal">[connection]</code> section.
+        That is, multiple sections that all start with the prefix "device" can be specified.
+        The settings "match-device" and "stop-match" are available to match a device section
+        on a device. The order of multiple sections is also top-down within the file and
+        later files overwrite previous settings. See <a class="xref" href="NetworkManager.conf.html#connection-sections" title="Sections">“Sections” under the section called “CONNECTION SECTION”</a>
+        for details.
+    </p>
+</div>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.13"></a><h2>
+<code class="literal">connectivity</code> section</h2>
+<p>This section controls NetworkManager's optional connectivity
+    checking functionality.  This allows NetworkManager to detect
+    whether or not the system can actually access the internet or
+    whether it is behind a captive portal.</p>
+<p>Connectivity checking serves two purposes. For one, it exposes
+    a connectivity state on D-Bus, which other applications may use. For example,
+    Gnome's portal helper uses this as signal to show a captive portal login
+    page.
+    The other use is that default-route of devices without global connectivity
+    get a penalty of +20000 to the route-metric. This has the purpose to give a
+    better default-route to devices that have global connectivity. For example,
+    when being connected to WWAN and to a Wi-Fi network which is behind a captive
+    portal, WWAN still gets preferred until login.</p>
+<p>Note that your distribution might set <code class="literal">/proc/sys/net/ipv4/conf/*/rp_filter</code> to
+    strict filtering. That works badly with per-device connectivity checking,
+    which uses SO_BINDDEVICE to send requests on all devices. A strict rp_filter
+    setting will reject any response and the connectivity check on all but the
+    best route will fail.</p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">enabled</code></span></p></td>
+<td><p>Whether connectivity check is enabled.
+          Note that to enable connectivity check, a valid uri must
+          also be configured. The value defaults to true, but since
+          the uri is unset by default, connectivity check may be disabled.
+          The main purpose of this option is to have a single flag
+          to disable connectivity check. Note that this setting can
+          also be set via D-Bus API at runtime. In that case, the value gets
+          stored in <code class="filename">/var/lib/NetworkManager/NetworkManager-intern.conf</code>
+          file.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">uri</code></span></p></td>
+<td><p>The URI of a web page to periodically
+          request when connectivity is being checked.  This page
+          should return the header "X-NetworkManager-Status" with a
+          value of "online".  Alternatively, its body content should
+          be set to "NetworkManager is online".  The body content
+          check can be controlled by the <code class="literal">response</code>
+          option.  If this option is blank or missing, connectivity
+          checking is disabled.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">interval</code></span></p></td>
+<td><p>Specified in seconds; controls how often
+          connectivity is checked when a network connection exists. If
+          set to 0 connectivity checking is disabled.  If missing, the
+          default is 300 seconds.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">response</code></span></p></td>
+<td><p>If set, controls what body content
+          NetworkManager checks for when requesting the URI for
+          connectivity checking.  Note that this only compares
+          that the HTTP response starts with the specifid text,
+          it does not compare the exact string. This behavior
+          might change in the future, so avoid relying on it.
+          If missing, the response defaults to "NetworkManager is online".
+          If set to empty, the HTTP server is expected to answer with
+          status code 204 or send no data.</p></td>
+</tr>
+</tbody>
+</table></div>
+<p>
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.14"></a><h2>
+<code class="literal">global-dns</code> section</h2>
+<p>This section specifies DNS settings that are applied
+    globally, in addition to connection-specific ones.</p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">searches</code></span></p></td>
+<td><p>
+             A list of search domains to be used during hostname lookup.
+           </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">options</code></span></p></td>
+<td><p>
+             A list of options to be passed to the hostname resolver.
+           </p></td>
+</tr>
+</tbody>
+</table></div>
+<p>
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.15"></a><h2>
+<code class="literal">global-dns-domain</code> sections</h2>
+<p>Sections with a name starting with the "global-dns-domain-"
+    prefix allow to define global DNS configuration for specific
+    domains.  The part of section name after "global-dns-domain-"
+    specifies the domain name a section applies to (for example, a
+    section could be named "global-dns-domain-foobar.com").  More
+    specific domains have the precedence over less specific ones and
+    the default domain is represented by the wildcard "*".
+
+    To be valid, global DNS domains must include a section for the
+    default domain "*". When the global DNS domains are valid, the
+    name servers and domains defined globally override the ones from
+    active connections.
+    </p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">servers</code></span></p></td>
+<td><p>
+             A list of addresses of DNS servers to be used for the given domain.
+           </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">options</code></span></p></td>
+<td><p>
+             A list of domain-specific DNS options. Not used at the moment.
+           </p></td>
+</tr>
+</tbody>
+</table></div>
+<p>
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.16"></a><h2>
+<code class="literal">.config</code> sections</h2>
+<p>This is a special section that contains options which apply
+      to the configuration file that contains the option.
+    </p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody><tr>
+<td><p><span class="term"><code class="varname">enable</code></span></p></td>
+<td>
+<p>
+              Defaults to "<code class="literal">true</code>". If "<code class="literal">false</code>",
+              the configuration file will be skipped during loading.
+              Note that the main configuration file <code class="literal">NetworkManager.conf</code>
+              cannot be disabled.
+</p>
+<pre class="programlisting">
+# always skip loading the config file
+[.config]
+enable=false
+</pre>
+<p>
+            </p>
+<p>
+              You can also match against the version of NetworkManager. For example
+              the following are valid configurations:
+</p>
+<pre class="programlisting">
+# only load on version 1.0.6
+[.config]
+enable=nm-version:1.0.6
+
+# load on all versions 1.0.x, but not 1.2.x
+[.config]
+enable=nm-version:1.0
+
+# only load on versions &gt;= 1.1.6. This does not match
+# with version 1.2.0 or 1.4.4. Only the last digit is considered.
+[.config]
+enable=nm-version-min:1.1.6
+
+# only load on versions &gt;= 1.2. Contrary to the previous
+# example, this also matches with 1.2.0, 1.2.10, 1.4.4, etc.
+[.config]
+enable=nm-version-min:1.2
+
+# Match against the maximum allowed version. The example matches
+# versions 1.2.0, 1.2.2, 1.2.4. Again, only the last version digit
+# is allowed to be smaller. So this would not match on 1.1.10.
+[.config]
+enable=nm-version-max:1.2.6
+</pre>
+<p>
+            </p>
+<p>
+              You can also match against the value of the environment variable
+              <code class="literal">NM_CONFIG_ENABLE_TAG</code>, like:
+</p>
+<pre class="programlisting">
+# only load the file when running NetworkManager with
+# environment variable "NM_CONFIG_ENABLE_TAG=TAG1"
+[.config]
+enable=env:TAG1
+</pre>
+<p>
+            </p>
+<p>
+              More then one match can be specified. The configuration will be
+              enabled if one of the predicates matches ("or"). The special prefix "except:" can
+              be used to negate the match. Note that if one except-predicate
+              matches, the entire configuration will be disabled.
+              In other words, a except predicate always wins over other predicates.
+              If the setting only consists of "except:" matches and none of the
+              negative conditions are satisfied, the configuration is still enabled.
+</p>
+<pre class="programlisting">
+# enable the configuration either when the environment variable
+# is present or the version is at least 1.2.0.
+[.config]
+enable=env:TAG2,nm-version-min:1.2
+
+# enable the configuration for version &gt;= 1.2.0, but disable
+# it when the environment variable is set to "TAG3"
+[.config]
+enable=except:env:TAG3,nm-version-min:1.2
+
+# enable the configuration on &gt;= 1.3, &gt;= 1.2.6, and &gt;= 1.0.16.
+# Useful if a certain feature is only present since those releases.
+[.config]
+enable=nm-version-min:1.3,nm-version-min:1.2.6,nm-version-min:1.0.16
+</pre>
+<p>
+            </p>
+</td>
+</tr></tbody>
+</table></div>
+<p>
+    </p>
+</div>
+<div class="refsect1">
+<a name="settings-plugins"></a><h2>Plugins</h2>
+<p>
+      Settings plugins for reading and writing connection profiles. The number of
+      available plugins is distribution specific.
+    </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term"><code class="varname">keyfile</code></span></p></td>
+<td>
+<p>
+            The <code class="literal">keyfile</code> plugin is the generic
+            plugin that supports all the connection types and
+            capabilities that NetworkManager has. It writes files out
+            in an .ini-style format in
+            <code class="filename">/etc/NetworkManager/system-connections</code>.
+            See <a class="link" href="nm-settings-keyfile.html" title="nm-settings-keyfile"><span class="citerefentry"><span class="refentrytitle">nm-settings-keyfile</span>(5)</span></a>
+            for details about the file format.
+          </p>
+<p>
+            The stored connection file may contain passwords, secrets and
+            private keys in plain text, so it will be made readable only to
+            root, and the plugin will ignore files that are readable or
+            writable by any user or group other than root. See "Secret flag types"
+            in <span class="citerefentry"><span class="refentrytitle">nm-settings</span>(5)</span>
+            for how to avoid storing passwords in plain text.
+          </p>
+<p>
+            This plugin is always active, and will automatically be
+            used to store any connections that aren't supported by any
+            other active plugin.
+          </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ifcfg-rh</code></span></p></td>
+<td><p>
+            This plugin is now deprecated; it can be used on the
+            Fedora and Red Hat Enterprise Linux distributions to read
+            and write configuration from the standard
+            <code class="filename">/etc/sysconfig/network-scripts/ifcfg-*</code>
+            files. It currently supports reading Ethernet, Wi-Fi,
+            InfiniBand, VLAN, Bond, Bridge, and Team connections.
+            Enabling <code class="literal">ifcfg-rh</code> implicitly enables
+            <code class="literal">ibft</code> plugin, if it is available.
+            This can be disabled by adding <code class="literal">no-ibft</code>.
+            See <code class="filename">/usr/share/doc/initscripts/sysconfig.txt</code>
+            and <a class="link" href="nm-settings-ifcfg-rh.html" title="nm-settings-ifcfg-rh"><span class="citerefentry"><span class="refentrytitle">nm-settings-ifcfg-rh</span>(5)</span></a>
+            for more information about the ifcfg file format.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ifupdown</code></span></p></td>
+<td>
+<p>
+            This plugin is used on the Debian and Ubuntu
+            distributions, and reads Ethernet and Wi-Fi connections
+            from <code class="filename">/etc/network/interfaces</code>.
+          </p>
+<p>
+            This plugin is read-only; any connections (of any type)
+            added from within NetworkManager when you are using this
+            plugin will be saved using the <code class="literal">keyfile</code>
+            plugin instead.
+          </p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ibft</code>, <code class="varname">no-ibft</code></span></p></td>
+<td><p>
+            These plugins are deprecated and their selection has no effect.
+            This is now handled by nm-initrd-generator.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term"><code class="varname">ifcfg-suse</code>, <code class="varname">ifnet</code></span></p></td>
+<td><p>
+            These plugins are deprecated and their selection has no effect.
+            The <code class="literal">keyfile</code> plugin should be used
+            instead.
+          </p></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.18"></a><h2>Appendix</h2>
+<div class="refsect2">
+<a name="device-spec"></a><h3>Device List Format</h3>
+<p>
+          The configuration options <code class="literal">main.no-auto-default</code>, <code class="literal">main.ignore-carrier</code>,
+          <code class="literal">keyfile.unmanaged-devices</code>, <code class="literal">connection*.match-device</code> and
+          <code class="literal">device*.match-device</code> select devices based on a list of matchings.
+          Devices can be specified using the following format:
+      </p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term">*</span></p></td>
+<td><p>Matches every device.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">IFNAME</span></p></td>
+<td><p>Case sensitive match of interface name of the device. Globbing is not supported.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">HWADDR</span></p></td>
+<td><p>Match the permanent MAC address of the device. Globbing is not supported</p></td>
+</tr>
+<tr>
+<td><p><span class="term">interface-name:IFNAME, </span><span class="term">interface-name:~IFNAME</span></p></td>
+<td><p>Case sensitive match of interface name of the device. Simple globbing is supported with
+             <code class="literal">*</code> and <code class="literal">?</code>. Ranges and escaping is not supported.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">interface-name:=IFNAME</span></p></td>
+<td><p>Case sensitive match of interface name of the device. Globbing is disabled and <code class="literal">IFNAME</code>
+             is taken literally.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">mac:HWADDR</span></p></td>
+<td><p>Match the permanent MAC address of the device. Globbing is not supported</p></td>
+</tr>
+<tr>
+<td><p><span class="term">s390-subchannels:HWADDR</span></p></td>
+<td><p>Match the device based on the subchannel address. Globbing is not supported</p></td>
+</tr>
+<tr>
+<td><p><span class="term">type:TYPE</span></p></td>
+<td><p>Match the device type. Valid type names are as reported by "<code class="literal">nmcli -f GENERAL.TYPE device show</code>".
+          Globbing is not supported.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">driver:DRIVER</span></p></td>
+<td><p>Match the device driver as reported by "<code class="literal">nmcli -f GENERAL.DRIVER,GENERAL.DRIVER-VERSION device show</code>".
+          "<code class="literal">DRIVER</code>" must match the driver name exactly and does not support globbing.
+          Optionally, a driver version may be specified separated by '/'. Globbing is supported for the version.
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term">dhcp-plugin:DHCP</span></p></td>
+<td><p>Match the configured DHCP plugin "<code class="literal">main.dhcp</code>".
+          </p></td>
+</tr>
+<tr>
+<td><p><span class="term">except:SPEC</span></p></td>
+<td>
+<p>Negative match of a device. <code class="literal">SPEC</code> must be explicitly qualified with
+             a prefix such as <code class="literal">interface-name:</code>. A negative match has higher priority then the positive
+             matches above.</p>
+<p>If there is a list consisting only of negative matches, the behavior is the same as if there
+             is also match-all. That means, if none of all the negative matches is satisfied, the overall result is
+             still a positive match. That means, <code class="literal">"except:interface-name:eth0"</code> is the same as
+             <code class="literal">"*,except:interface-name:eth0"</code>.</p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term">SPEC[,;]SPEC</span></p></td>
+<td>
+<p>Multiple specs can be concatenated with commas or semicolons. The order does not matter as
+            matches are either inclusive or negative (<code class="literal">except:</code>), with negative matches having higher
+            priority.
+            </p>
+<p>Backslash is supported to escape the separators ';' and ',', and to express special
+            characters such as newline ('\n'), tabulator ('\t'), whitespace ('\s') and backslash ('\\'). The globbing of
+            interface names cannot be escaped. Whitespace is not a separator but will be trimmed between
+            two specs (unless escaped as '\s').
+            </p>
+</td>
+</tr>
+</tbody>
+</table></div>
+<p>
+      </p>
+<p>
+        Example:
+        </p>
+<pre class="programlisting">
+interface-name:em4
+mac:00:22:68:1c:59:b1;mac:00:1E:65:30:D1:C4;interface-name:eth2
+interface-name:vboxnet*,except:interface-name:vboxnet2
+*,except:mac:00:22:68:1c:59:b1
+</pre>
+<p>
+      </p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="connection-spec"></a><h3>Connection List Format</h3>
+<p>
+          Connections can be specified using the following format:
+      </p>
+<p>
+      </p>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term">*</span></p></td>
+<td><p>Matches every connection.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">uuid:UUID</span></p></td>
+<td><p>Match the connection by UUID, for example
+          <code class="literal">"uuid:83037490-1d17-4986-a397-01f1db3a7fc2"</code></p></td>
+</tr>
+<tr>
+<td><p><span class="term">id=ID</span></p></td>
+<td><p>Match the connection by name.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">origin:ORIGIN</span></p></td>
+<td><p>Match the connection by origin, stored in the
+          <code class="literal">org.freedesktop.NetworkManager.origin</code> tag of the user setting. For example, use
+          <code class="literal">"except:origin:nm-initrd-generator"</code> to forbid activation of connections created by the
+          initrd generator.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">except:SPEC</span></p></td>
+<td>
+<p>Negative match of a connection. A negative match has higher priority then the positive
+          matches above.</p>
+<p>If there is a list consisting only of negative matches, the behavior is the same as if there is also
+          match-all. That means, if none of all the negative matches is satisfied, the overall result is still a
+          positive match.</p>
+</td>
+</tr>
+<tr>
+<td><p><span class="term">SPEC[,;]SPEC</span></p></td>
+<td>
+<p>Multiple specs can be concatenated with commas or semicolons. The order does not matter as
+          matches are either inclusive or negative (<code class="literal">except:</code>), with negative matches having higher
+          priority.</p>
+<p>Backslash is supported to escape the separators ';' and ',', and to express special characters such as
+          newline ('\n'), tabulator ('\t'), whitespace ('\s') and backslash ('\\'). Whitespace is not a separator but
+          will be trimmed between two specs (unless escaped as '\s').</p>
+</td>
+</tr>
+</tbody>
+</table></div>
+<p>
+      </p>
+</div>
+</div>
+<div class="refsect1">
+<a name="id-1.2.3.19"></a><h2>See Also</h2>
+<p>
+      <a class="link" href="NetworkManager.html" title="NetworkManager"><span class="citerefentry"><span class="refentrytitle">NetworkManager</span>(8)</span></a>,
+      <a class="link" href="nmcli.html" title="nmcli"><span class="citerefentry"><span class="refentrytitle">nmcli</span>(1)</span></a>,
+      <a class="link" href="nmcli-examples.html" title="nmcli-examples"><span class="citerefentry"><span class="refentrytitle">nmcli-examples</span>(7)</span></a>,
+      <a class="link" href="nm-online.html" title="nm-online"><span class="citerefentry"><span class="refentrytitle">nm-online</span>(1)</span></a>,
+      <span class="citerefentry"><span class="refentrytitle">nm-settings</span>(5)</span>,
+      <span class="citerefentry"><span class="refentrytitle">nm-applet</span>(1)</span>,
+      <span class="citerefentry"><span class="refentrytitle">nm-connection-editor</span>(1)</span>
+    </p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

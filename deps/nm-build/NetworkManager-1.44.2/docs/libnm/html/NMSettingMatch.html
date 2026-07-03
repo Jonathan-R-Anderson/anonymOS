@@ -1,0 +1,1253 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingMatch: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingMacvlan.html" title="NMSettingMacvlan">
+<link rel="next" href="NMSettingOlpcMesh.html" title="NMSettingOlpcMesh">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingMatch.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingMacvlan.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingOlpcMesh.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingMatch"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingMatch.top_of_page"></a>NMSettingMatch</span></h2>
+<p>NMSettingMatch — Properties to match a connection with a device.</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingMatch.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-new" title="nm_setting_match_new ()">nm_setting_match_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-num-interface-names" title="nm_setting_match_get_num_interface_names ()">nm_setting_match_get_num_interface_names</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-interface-name" title="nm_setting_match_get_interface_name ()">nm_setting_match_get_interface_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-remove-interface-name" title="nm_setting_match_remove_interface_name ()">nm_setting_match_remove_interface_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-remove-interface-name-by-value" title="nm_setting_match_remove_interface_name_by_value ()">nm_setting_match_remove_interface_name_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-add-interface-name" title="nm_setting_match_add_interface_name ()">nm_setting_match_add_interface_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-clear-interface-names" title="nm_setting_match_clear_interface_names ()">nm_setting_match_clear_interface_names</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-interface-names" title="nm_setting_match_get_interface_names ()">nm_setting_match_get_interface_names</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-num-kernel-command-lines" title="nm_setting_match_get_num_kernel_command_lines ()">nm_setting_match_get_num_kernel_command_lines</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-kernel-command-line" title="nm_setting_match_get_kernel_command_line ()">nm_setting_match_get_kernel_command_line</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-remove-kernel-command-line" title="nm_setting_match_remove_kernel_command_line ()">nm_setting_match_remove_kernel_command_line</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-remove-kernel-command-line-by-value" title="nm_setting_match_remove_kernel_command_line_by_value ()">nm_setting_match_remove_kernel_command_line_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-add-kernel-command-line" title="nm_setting_match_add_kernel_command_line ()">nm_setting_match_add_kernel_command_line</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-clear-kernel-command-lines" title="nm_setting_match_clear_kernel_command_lines ()">nm_setting_match_clear_kernel_command_lines</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-kernel-command-lines" title="nm_setting_match_get_kernel_command_lines ()">nm_setting_match_get_kernel_command_lines</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-num-drivers" title="nm_setting_match_get_num_drivers ()">nm_setting_match_get_num_drivers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-driver" title="nm_setting_match_get_driver ()">nm_setting_match_get_driver</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-remove-driver" title="nm_setting_match_remove_driver ()">nm_setting_match_remove_driver</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-remove-driver-by-value" title="nm_setting_match_remove_driver_by_value ()">nm_setting_match_remove_driver_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-add-driver" title="nm_setting_match_add_driver ()">nm_setting_match_add_driver</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-clear-drivers" title="nm_setting_match_clear_drivers ()">nm_setting_match_clear_drivers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-drivers" title="nm_setting_match_get_drivers ()">nm_setting_match_get_drivers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-num-paths" title="nm_setting_match_get_num_paths ()">nm_setting_match_get_num_paths</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-path" title="nm_setting_match_get_path ()">nm_setting_match_get_path</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-remove-path" title="nm_setting_match_remove_path ()">nm_setting_match_remove_path</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-remove-path-by-value" title="nm_setting_match_remove_path_by_value ()">nm_setting_match_remove_path_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-add-path" title="nm_setting_match_add_path ()">nm_setting_match_add_path</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-clear-paths" title="nm_setting_match_clear_paths ()">nm_setting_match_clear_paths</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMatch.html#nm-setting-match-get-paths" title="nm_setting_match_get_paths ()">nm_setting_match_get_paths</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMatch.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMatch.html#NM-SETTING-MATCH-SETTING-NAME:CAPS" title="NM_SETTING_MATCH_SETTING_NAME">NM_SETTING_MATCH_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMatch.html#NM-SETTING-MATCH-INTERFACE-NAME:CAPS" title="NM_SETTING_MATCH_INTERFACE_NAME">NM_SETTING_MATCH_INTERFACE_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMatch.html#NM-SETTING-MATCH-KERNEL-COMMAND-LINE:CAPS" title="NM_SETTING_MATCH_KERNEL_COMMAND_LINE">NM_SETTING_MATCH_KERNEL_COMMAND_LINE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMatch.html#NM-SETTING-MATCH-DRIVER:CAPS" title="NM_SETTING_MATCH_DRIVER">NM_SETTING_MATCH_DRIVER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMatch.html#NM-SETTING-MATCH-PATH:CAPS" title="NM_SETTING_MATCH_PATH">NM_SETTING_MATCH_PATH</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMatch.includes"></a><h2>Includes</h2>
+<pre class="synopsis">#include &lt;nm-setting-match.h&gt;
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingMatch.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMSettingMatch.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-match-new"></a><h3>nm_setting_match_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_match_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-match-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> object</p>
+<p>Note that this function was present in header files since version 1.14.
+But due to a bug the symbol is only exposed and usable since version 1.32.
+As workaround, use g_object_new(NM_TYPE_SETTING_MATCH) which works with all
+versions since 1.14. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.32</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-num-interface-names"></a><h3>nm_setting_match_get_num_interface_names ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_match_get_num_interface_names
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-match-get-num-interface-names.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-num-interface-names.returns"></a><h4>Returns</h4>
+<p> the number of configured interface names</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-interface-name"></a><h3>nm_setting_match_get_interface_name ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_match_get_interface_name (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                     <em class="parameter"><code><span class="type">int</span> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-match-get-interface-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the DNS search domain to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-interface-name.returns"></a><h4>Returns</h4>
+<p> the interface name at index <em class="parameter"><code>idx</code></em>
+</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-remove-interface-name"></a><h3>nm_setting_match_remove_interface_name ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_remove_interface_name
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code><span class="type">int</span> idx</code></em>);</pre>
+<p>Removes the interface name at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-match-remove-interface-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the interface name</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-remove-interface-name-by-value"></a><h3>nm_setting_match_remove_interface_name_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_match_remove_interface_name_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *interface_name</code></em>);</pre>
+<p>Removes <em class="parameter"><code>interface_name</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-match-remove-interface-name-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>interface_name</p></td>
+<td class="parameter_description"><p>the interface name to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-remove-interface-name-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the interface name was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-add-interface-name"></a><h3>nm_setting_match_add_interface_name ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_add_interface_name (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                     <em class="parameter"><code>const <span class="type">char</span> *interface_name</code></em>);</pre>
+<p>Adds a new interface name to the setting.</p>
+<div class="refsect3">
+<a name="nm-setting-match-add-interface-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>interface_name</p></td>
+<td class="parameter_description"><p>the interface name to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-clear-interface-names"></a><h3>nm_setting_match_clear_interface_names ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_clear_interface_names
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>);</pre>
+<p>Removes all configured interface names.</p>
+<div class="refsect3">
+<a name="nm-setting-match-clear-interface-names.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-interface-names"></a><h3>nm_setting_match_get_interface_names ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_match_get_interface_names (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                      <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *length</code></em>);</pre>
+<p>Returns all the interface names.</p>
+<div class="refsect3">
+<a name="nm-setting-match-get-interface-names.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>length</p></td>
+<td class="parameter_description"><p>the length of the returned interface names array. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-interface-names.returns"></a><h4>Returns</h4>
+<p>the NULL terminated list of
+configured interface names.</p>
+<p>Before 1.26, the returned array was not <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> terminated and you MUST provide a length. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=length]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-num-kernel-command-lines"></a><h3>nm_setting_match_get_num_kernel_command_lines ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_match_get_num_kernel_command_lines
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-match-get-num-kernel-command-lines.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-num-kernel-command-lines.returns"></a><h4>Returns</h4>
+<p> the number of configured kernel command line arguments</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-kernel-command-line"></a><h3>nm_setting_match_get_kernel_command_line ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_match_get_kernel_command_line
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-match-get-kernel-command-line.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the kernel command line argument to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-kernel-command-line.returns"></a><h4>Returns</h4>
+<p> the kernel command line argument at index <em class="parameter"><code>idx</code></em>
+</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-remove-kernel-command-line"></a><h3>nm_setting_match_remove_kernel_command_line ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_remove_kernel_command_line
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the kernel command line argument at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-match-remove-kernel-command-line.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the kernel command line argument</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-remove-kernel-command-line-by-value"></a><h3>nm_setting_match_remove_kernel_command_line_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_match_remove_kernel_command_line_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *kernel_command_line</code></em>);</pre>
+<p>Removes <em class="parameter"><code>kernel_command_line</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-match-remove-kernel-command-line-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>kernel_command_line</p></td>
+<td class="parameter_description"><p>the kernel command line argument name to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-remove-kernel-command-line-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the kernel command line argument was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-add-kernel-command-line"></a><h3>nm_setting_match_add_kernel_command_line ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_add_kernel_command_line
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *kernel_command_line</code></em>);</pre>
+<p>Adds a new kernel command line argument to the setting.</p>
+<div class="refsect3">
+<a name="nm-setting-match-add-kernel-command-line.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>kernel_command_line</p></td>
+<td class="parameter_description"><p>the kernel command line argument to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-clear-kernel-command-lines"></a><h3>nm_setting_match_clear_kernel_command_lines ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_clear_kernel_command_lines
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>);</pre>
+<p>Removes all configured kernel command line arguments.</p>
+<div class="refsect3">
+<a name="nm-setting-match-clear-kernel-command-lines.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-kernel-command-lines"></a><h3>nm_setting_match_get_kernel_command_lines ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_match_get_kernel_command_lines
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *length</code></em>);</pre>
+<p>Returns all the interface names.</p>
+<div class="refsect3">
+<a name="nm-setting-match-get-kernel-command-lines.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>length</p></td>
+<td class="parameter_description"><p>the length of the returned interface names array. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-kernel-command-lines.returns"></a><h4>Returns</h4>
+<p>the configured interface names. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=length]</span></p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-num-drivers"></a><h3>nm_setting_match_get_num_drivers ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_match_get_num_drivers (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-match-get-num-drivers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-num-drivers.returns"></a><h4>Returns</h4>
+<p> the number of configured drivers</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-driver"></a><h3>nm_setting_match_get_driver ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_match_get_driver (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                             <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-match-get-driver.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the DNS search domain to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-driver.returns"></a><h4>Returns</h4>
+<p> the driver at index <em class="parameter"><code>idx</code></em>
+</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-remove-driver"></a><h3>nm_setting_match_remove_driver ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_remove_driver (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the driver at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-match-remove-driver.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the driver</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-remove-driver-by-value"></a><h3>nm_setting_match_remove_driver_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_match_remove_driver_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *driver</code></em>);</pre>
+<p>Removes <em class="parameter"><code>driver</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-match-remove-driver-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>driver</p></td>
+<td class="parameter_description"><p>the driver to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-remove-driver-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the driver was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-add-driver"></a><h3>nm_setting_match_add_driver ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_add_driver (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                             <em class="parameter"><code>const <span class="type">char</span> *driver</code></em>);</pre>
+<p>Adds a new driver to the setting.</p>
+<div class="refsect3">
+<a name="nm-setting-match-add-driver.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>driver</p></td>
+<td class="parameter_description"><p>the driver to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-clear-drivers"></a><h3>nm_setting_match_clear_drivers ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_clear_drivers (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>);</pre>
+<p>Removes all configured drivers.</p>
+<div class="refsect3">
+<a name="nm-setting-match-clear-drivers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-drivers"></a><h3>nm_setting_match_get_drivers ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_match_get_drivers (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *length</code></em>);</pre>
+<p>Returns all the drivers.</p>
+<div class="refsect3">
+<a name="nm-setting-match-get-drivers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>length</p></td>
+<td class="parameter_description"><p>the length of the returned interface names array. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-drivers.returns"></a><h4>Returns</h4>
+<p>the configured drivers. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=length]</span></p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-num-paths"></a><h3>nm_setting_match_get_num_paths ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_match_get_num_paths (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-match-get-num-paths.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-num-paths.returns"></a><h4>Returns</h4>
+<p> the number of configured paths</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-path"></a><h3>nm_setting_match_get_path ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_match_get_path (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                           <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-match-get-path.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the path to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-path.returns"></a><h4>Returns</h4>
+<p> the path at index <em class="parameter"><code>idx</code></em>
+</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-remove-path"></a><h3>nm_setting_match_remove_path ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_remove_path (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the path at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-match-remove-path.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the path</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-remove-path-by-value"></a><h3>nm_setting_match_remove_path_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_match_remove_path_by_value (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                                       <em class="parameter"><code>const <span class="type">char</span> *path</code></em>);</pre>
+<p>Removes <em class="parameter"><code>path</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-match-remove-path-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>path</p></td>
+<td class="parameter_description"><p>the path to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-remove-path-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the path was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-add-path"></a><h3>nm_setting_match_add_path ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_add_path (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                           <em class="parameter"><code>const <span class="type">char</span> *path</code></em>);</pre>
+<p>Adds a new path to the setting.</p>
+<div class="refsect3">
+<a name="nm-setting-match-add-path.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>path</p></td>
+<td class="parameter_description"><p>the path to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-clear-paths"></a><h3>nm_setting_match_clear_paths ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_match_clear_paths (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>);</pre>
+<p>Removes all configured paths.</p>
+<div class="refsect3">
+<a name="nm-setting-match-clear-paths.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-match-get-paths"></a><h3>nm_setting_match_get_paths ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_match_get_paths (<em class="parameter"><code><a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a> *setting</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *length</code></em>);</pre>
+<p>Returns all the paths.</p>
+<div class="refsect3">
+<a name="nm-setting-match-get-paths.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMatch.html" title="NMSettingMatch"><span class="type">NMSettingMatch</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>length</p></td>
+<td class="parameter_description"><p>the length of the returned paths array. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-match-get-paths.returns"></a><h4>Returns</h4>
+<p>the configured paths. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=length]</span></p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMatch.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-MATCH-SETTING-NAME:CAPS"></a><h3>NM_SETTING_MATCH_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_MATCH_SETTING_NAME "match"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MATCH-INTERFACE-NAME:CAPS"></a><h3>NM_SETTING_MATCH_INTERFACE_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_MATCH_INTERFACE_NAME      "interface-name"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MATCH-KERNEL-COMMAND-LINE:CAPS"></a><h3>NM_SETTING_MATCH_KERNEL_COMMAND_LINE</h3>
+<pre class="programlisting">#define NM_SETTING_MATCH_KERNEL_COMMAND_LINE "kernel-command-line"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MATCH-DRIVER:CAPS"></a><h3>NM_SETTING_MATCH_DRIVER</h3>
+<pre class="programlisting">#define NM_SETTING_MATCH_DRIVER              "driver"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MATCH-PATH:CAPS"></a><h3>NM_SETTING_MATCH_PATH</h3>
+<pre class="programlisting">#define NM_SETTING_MATCH_PATH                "path"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

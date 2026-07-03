@@ -1,0 +1,442 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingEthtool: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingDummy.html" title="NMSettingDummy">
+<link rel="next" href="NMSettingGeneric.html" title="NMSettingGeneric">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingEthtool.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingDummy.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingGeneric.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingEthtool"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingEthtool.top_of_page"></a>NMSettingEthtool</span></h2>
+<p>NMSettingEthtool — Describes connection properties for ethtool related options</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingEthtool.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-feature" title="nm_ethtool_optname_is_feature ()">nm_ethtool_optname_is_feature</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-coalesce" title="nm_ethtool_optname_is_coalesce ()">nm_ethtool_optname_is_coalesce</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-ring" title="nm_ethtool_optname_is_ring ()">nm_ethtool_optname_is_ring</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-pause" title="nm_ethtool_optname_is_pause ()">nm_ethtool_optname_is_pause</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-setting-ethtool-new" title="nm_setting_ethtool_new ()">nm_setting_ethtool_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> **
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-setting-ethtool-get-optnames" title="nm_setting_ethtool_get_optnames ()">nm_setting_ethtool_get_optnames</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-setting-ethtool-get-feature" title="nm_setting_ethtool_get_feature ()">nm_setting_ethtool_get_feature</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-setting-ethtool-set-feature" title="nm_setting_ethtool_set_feature ()">nm_setting_ethtool_set_feature</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingEthtool.html#nm-setting-ethtool-clear-features" title="nm_setting_ethtool_clear_features ()">nm_setting_ethtool_clear_features</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingEthtool.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody><tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingEthtool.html#NM-SETTING-ETHTOOL-SETTING-NAME:CAPS" title="NM_SETTING_ETHTOOL_SETTING_NAME">NM_SETTING_ETHTOOL_SETTING_NAME</a></td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingEthtool.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+to control network driver and hardware settings.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingEthtool.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-ethtool-optname-is-feature"></a><h3>nm_ethtool_optname_is_feature ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_ethtool_optname_is_feature (<em class="parameter"><code>const <span class="type">char</span> *optname</code></em>);</pre>
+<p>Checks whether <em class="parameter"><code>optname</code></em>
+ is a valid option name for an offload feature.</p>
+<div class="refsect3">
+<a name="nm-ethtool-optname-is-feature.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>optname</p></td>
+<td class="parameter_description"><p>the option name to check. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-ethtool-optname-is-feature.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, if <em class="parameter"><code>optname</code></em>
+is valid</p>
+<p>Note that <a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-feature" title="nm_ethtool_optname_is_feature ()"><code class="function">nm_ethtool_optname_is_feature()</code></a> was first added to the libnm header files
+in 1.14.0 but forgot to actually add to the library. This happened belatedly in 1.20.0 and
+the stable versions 1.18.2, 1.16.4 and 1.14.8 (with linker version "libnm_1_14_8").</p>
+</div>
+<p class="since">Since: 1.20</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-ethtool-optname-is-coalesce"></a><h3>nm_ethtool_optname_is_coalesce ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_ethtool_optname_is_coalesce (<em class="parameter"><code>const <span class="type">char</span> *optname</code></em>);</pre>
+<p>Checks whether <em class="parameter"><code>optname</code></em>
+ is a valid option name for a coalesce setting.</p>
+<div class="refsect3">
+<a name="nm-ethtool-optname-is-coalesce.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>optname</p></td>
+<td class="parameter_description"><p>the option name to check. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-ethtool-optname-is-coalesce.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, if <em class="parameter"><code>optname</code></em>
+is valid</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-ethtool-optname-is-ring"></a><h3>nm_ethtool_optname_is_ring ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_ethtool_optname_is_ring (<em class="parameter"><code>const <span class="type">char</span> *optname</code></em>);</pre>
+<p>Checks whether <em class="parameter"><code>optname</code></em>
+ is a valid option name for a ring setting.</p>
+<div class="refsect3">
+<a name="nm-ethtool-optname-is-ring.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>optname</p></td>
+<td class="parameter_description"><p>the option name to check. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-ethtool-optname-is-ring.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, if <em class="parameter"><code>optname</code></em>
+is valid</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-ethtool-optname-is-pause"></a><h3>nm_ethtool_optname_is_pause ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_ethtool_optname_is_pause (<em class="parameter"><code>const <span class="type">char</span> *optname</code></em>);</pre>
+<p>Checks whether <em class="parameter"><code>optname</code></em>
+ is a valid option name for a pause setting.</p>
+<div class="refsect3">
+<a name="nm-ethtool-optname-is-pause.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>optname</p></td>
+<td class="parameter_description"><p>the option name to check. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-ethtool-optname-is-pause.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, if <em class="parameter"><code>optname</code></em>
+is valid</p>
+</div>
+<p class="since">Since: 1.32</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ethtool-new"></a><h3>nm_setting_ethtool_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_ethtool_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-ethtool-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ethtool-get-optnames"></a><h3>nm_setting_ethtool_get_optnames ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> **
+nm_setting_ethtool_get_optnames (<em class="parameter"><code><a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> *setting</code></em>,
+                                 <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *out_length</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_setting_ethtool_get_optnames</code> has been deprecated since version 1.26 and should not be used in newly-written code.</p>
+<p>use <a class="link" href="NMSetting.html#nm-setting-option-get-all-names" title="nm_setting_option_get_all_names ()"><code class="function">nm_setting_option_get_all_names()</code></a> instead.</p>
+</div>
+<p>This returns all options names that are set. This includes the feature names
+like <a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-GRO:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_GRO"><code class="literal">NM_ETHTOOL_OPTNAME_FEATURE_GRO</code></a>. See <a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-feature" title="nm_ethtool_optname_is_feature ()"><code class="function">nm_ethtool_optname_is_feature()</code></a> to
+check whether the option name is valid for offload features.</p>
+<div class="refsect3">
+<a name="nm-setting-ethtool-get-optnames.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> instance.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_length</p></td>
+<td class="parameter_description"><p>return location for the number of keys returned, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ethtool-get-optnames.returns"></a><h4>Returns</h4>
+<p>list of set option
+names or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if no options are set. The option names are still owned by
+<em class="parameter"><code>setting</code></em>
+and may get invalidated when <em class="parameter"><code>setting</code></em>
+gets modified. </p>
+<p><span class="annotation">[<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> zero-terminated=1][<acronym title="The caller owns the data container, but not the data inside it."><span class="acronym">transfer container</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.20</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ethtool-get-feature"></a><h3>nm_setting_ethtool_get_feature ()</h3>
+<pre class="programlisting"><a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+nm_setting_ethtool_get_feature (<em class="parameter"><code><a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *optname</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_setting_ethtool_get_feature</code> has been deprecated since version 1.26 and should not be used in newly-written code.</p>
+<p>use <a class="link" href="NMSetting.html#nm-setting-option-get-boolean" title="nm_setting_option_get_boolean ()"><code class="function">nm_setting_option_get_boolean()</code></a> instead.</p>
+</div>
+<p>Gets and offload feature setting. Returns <a class="link" href="libnm-nm-dbus-interface.html#NM-TERNARY-DEFAULT:CAPS"><code class="literal">NM_TERNARY_DEFAULT</code></a> if the
+feature is not set.</p>
+<p>Note that <em class="parameter"><code>optname</code></em>
+ must be a valid name for a feature, according to
+<a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-feature" title="nm_ethtool_optname_is_feature ()"><code class="function">nm_ethtool_optname_is_feature()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-ethtool-get-feature.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>optname</p></td>
+<td class="parameter_description"><p>option name of the offload feature to get</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ethtool-get-feature.returns"></a><h4>Returns</h4>
+<p> a <a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="type">NMTernary</span></a> value indicating whether the offload feature
+is enabled, disabled, or left untouched.</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ethtool-set-feature"></a><h3>nm_setting_ethtool_set_feature ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_ethtool_set_feature (<em class="parameter"><code><a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *optname</code></em>,
+                                <em class="parameter"><code><a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="type">NMTernary</span></a> value</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_setting_ethtool_set_feature</code> has been deprecated since version 1.26 and should not be used in newly-written code.</p>
+<p>use <a class="link" href="NMSetting.html#nm-setting-option-set" title="nm_setting_option_set ()"><code class="function">nm_setting_option_set()</code></a> or <a class="link" href="NMSetting.html#nm-setting-option-set-boolean" title="nm_setting_option_set_boolean ()"><code class="function">nm_setting_option_set_boolean()</code></a> instead.</p>
+</div>
+<p>Sets and offload feature setting.</p>
+<p>Note that <em class="parameter"><code>optname</code></em>
+ must be a valid name for a feature, according to
+<a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-feature" title="nm_ethtool_optname_is_feature ()"><code class="function">nm_ethtool_optname_is_feature()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-ethtool-set-feature.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>optname</p></td>
+<td class="parameter_description"><p>option name of the offload feature to get</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the new value to set. The special value <a class="link" href="libnm-nm-dbus-interface.html#NM-TERNARY-DEFAULT:CAPS"><code class="literal">NM_TERNARY_DEFAULT</code></a>
+means to clear the offload feature setting.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ethtool-clear-features"></a><h3>nm_setting_ethtool_clear_features ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_ethtool_clear_features (<em class="parameter"><code><a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> *setting</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_setting_ethtool_clear_features</code> has been deprecated since version 1.26 and should not be used in newly-written code.</p>
+<p>use <a class="link" href="NMSetting.html#nm-setting-option-clear-by-name" title="nm_setting_option_clear_by_name ()"><code class="function">nm_setting_option_clear_by_name()</code></a> with <a class="link" href="NMSettingEthtool.html#nm-ethtool-optname-is-feature" title="nm_ethtool_optname_is_feature ()"><code class="function">nm_ethtool_optname_is_feature()</code></a> predicate instead.</p>
+</div>
+<p>Clears all offload features settings</p>
+<div class="refsect3">
+<a name="nm-setting-ethtool-clear-features.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingEthtool.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-ETHTOOL-SETTING-NAME:CAPS"></a><h3>NM_SETTING_ETHTOOL_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_ETHTOOL_SETTING_NAME "ethtool"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

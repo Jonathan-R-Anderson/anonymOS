@@ -1,0 +1,337 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingOvsExternalIDs: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingOvsDpdk.html" title="NMSettingOvsDpdk">
+<link rel="next" href="NMSettingOvsInterface.html" title="NMSettingOvsInterface">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingOvsExternalIDs.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingOvsDpdk.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingOvsInterface.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingOvsExternalIDs"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingOvsExternalIDs.top_of_page"></a>NMSettingOvsExternalIDs</span></h2>
+<p>NMSettingOvsExternalIDs — External-IDs for OVS database</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingOvsExternalIDs.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsExternalIDs.html#nm-setting-ovs-external-ids-new" title="nm_setting_ovs_external_ids_new ()">nm_setting_ovs_external_ids_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsExternalIDs.html#nm-setting-ovs-external-ids-get-data-keys" title="nm_setting_ovs_external_ids_get_data_keys ()">nm_setting_ovs_external_ids_get_data_keys</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsExternalIDs.html#nm-setting-ovs-external-ids-get-data" title="nm_setting_ovs_external_ids_get_data ()">nm_setting_ovs_external_ids_get_data</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsExternalIDs.html#nm-setting-ovs-external-ids-set-data" title="nm_setting_ovs_external_ids_set_data ()">nm_setting_ovs_external_ids_set_data</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsExternalIDs.html#nm-setting-ovs-external-ids-check-key" title="nm_setting_ovs_external_ids_check_key ()">nm_setting_ovs_external_ids_check_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsExternalIDs.html#nm-setting-ovs-external-ids-check-val" title="nm_setting_ovs_external_ids_check_val ()">nm_setting_ovs_external_ids_check_val</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingOvsExternalIDs.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsExternalIDs.html#NM-SETTING-OVS-EXTERNAL-IDS-SETTING-NAME:CAPS" title="NM_SETTING_OVS_EXTERNAL_IDS_SETTING_NAME">NM_SETTING_OVS_EXTERNAL_IDS_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsExternalIDs.html#NM-SETTING-OVS-EXTERNAL-IDS-DATA:CAPS" title="NM_SETTING_OVS_EXTERNAL_IDS_DATA">NM_SETTING_OVS_EXTERNAL_IDS_DATA</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingOvsExternalIDs.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that allow to
+configure external ids for OVS.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingOvsExternalIDs.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-ovs-external-ids-new"></a><h3>nm_setting_ovs_external_ids_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_ovs_external_ids_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-new.returns"></a><h4>Returns</h4>
+<p>the new empty
+<a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>][<acronym title="Override the parsed C type with given type."><span class="acronym">type</span></acronym> NMSettingOvsExternalIDs]</span></p>
+</div>
+<p class="since">Since: 1.30</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-external-ids-get-data-keys"></a><h3>nm_setting_ovs_external_ids_get_data_keys ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_ovs_external_ids_get_data_keys
+                               (<em class="parameter"><code><a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *out_len</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-get-data-keys.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_len</p></td>
+<td class="parameter_description"><p>the length of the returned array. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-get-data-keys.returns"></a><h4>Returns</h4>
+<p>a
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated array containing each key from the table. </p>
+<p><span class="annotation">[<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=out_len][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.30</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-external-ids-get-data"></a><h3>nm_setting_ovs_external_ids_get_data ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_ovs_external_ids_get_data (<em class="parameter"><code><a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a> *setting</code></em>,
+                                      <em class="parameter"><code>const <span class="type">char</span> *key</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-get-data.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the external-id to lookup</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-get-data.returns"></a><h4>Returns</h4>
+<p>the value associated with <em class="parameter"><code>key</code></em>
+or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if no such
+value exists. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.30</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-external-ids-set-data"></a><h3>nm_setting_ovs_external_ids_set_data ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_ovs_external_ids_set_data (<em class="parameter"><code><a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a> *setting</code></em>,
+                                      <em class="parameter"><code>const <span class="type">char</span> *key</code></em>,
+                                      <em class="parameter"><code>const <span class="type">char</span> *val</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-set-data.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsExternalIDs.html" title="NMSettingOvsExternalIDs"><span class="type">NMSettingOvsExternalIDs</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the key to set</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>val</p></td>
+<td class="parameter_description"><p>the value to set or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> to clear a key. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.30</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-external-ids-check-key"></a><h3>nm_setting_ovs_external_ids_check_key ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ovs_external_ids_check_key (<em class="parameter"><code>const <span class="type">char</span> *key</code></em>,
+                                       <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Checks whether <em class="parameter"><code>key</code></em>
+ is a valid key for OVS' external-ids.
+This means, the key cannot be <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>, not too large and valid ASCII.
+Also, only digits and numbers are allowed with a few special
+characters. They key must also not start with "NM.".</p>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-check-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the key to check. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>a <a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a>, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> to ignore.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-check-key.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if <em class="parameter"><code>key</code></em>
+is a valid user data key.</p>
+</div>
+<p class="since">Since: 1.30</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-external-ids-check-val"></a><h3>nm_setting_ovs_external_ids_check_val ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ovs_external_ids_check_val (<em class="parameter"><code>const <span class="type">char</span> *val</code></em>,
+                                       <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Checks whether <em class="parameter"><code>val</code></em>
+ is a valid user data value. This means,
+value is not <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>, not too large and valid UTF-8.</p>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-check-val.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>val</p></td>
+<td class="parameter_description"><p>the value to check. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>a <a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a>, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> to ignore.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-external-ids-check-val.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if <em class="parameter"><code>val</code></em>
+is a valid user data value.</p>
+</div>
+<p class="since">Since: 1.30</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingOvsExternalIDs.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-EXTERNAL-IDS-SETTING-NAME:CAPS"></a><h3>NM_SETTING_OVS_EXTERNAL_IDS_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_EXTERNAL_IDS_SETTING_NAME "ovs-external-ids"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-EXTERNAL-IDS-DATA:CAPS"></a><h3>NM_SETTING_OVS_EXTERNAL_IDS_DATA</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_EXTERNAL_IDS_DATA "data"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

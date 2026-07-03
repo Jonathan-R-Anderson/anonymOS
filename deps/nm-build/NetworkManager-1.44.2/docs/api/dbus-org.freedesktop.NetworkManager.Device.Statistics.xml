@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Statistics">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Statistics.top_of_page">org.freedesktop.NetworkManager.Device.Statistics</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Statistics.top_of_page"><primary sortas=".Device.Statistics">org.freedesktop.NetworkManager.Device.Statistics</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Statistics</refname>    <refpurpose>Device Statistic Counters.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.RefreshRateMs">RefreshRateMs</link>  readwrite  u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.TxBytes">TxBytes</link>        readable   t
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.RxBytes">RxBytes</link>        readable   t
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Statistics">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Statistics">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.RefreshRateMs">
+  <title>The "RefreshRateMs" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.RefreshRateMs"><primary sortas=".Device.Statistics:RefreshRateMs">org.freedesktop.NetworkManager.Device.Statistics:RefreshRateMs</primary></indexterm>
+<programlisting>
+RefreshRateMs  readwrite  u
+</programlisting>
+<para>
+Refresh rate of the rest of properties of this interface. The properties
+are guaranteed to be refreshed each RefreshRateMs milliseconds in case
+the underlying counter has changed too.
+If zero, there is no guaranteed refresh rate of the properties.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.TxBytes">
+  <title>The "TxBytes" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.TxBytes"><primary sortas=".Device.Statistics:TxBytes">org.freedesktop.NetworkManager.Device.Statistics:TxBytes</primary></indexterm>
+<programlisting>
+TxBytes  readable   t
+</programlisting>
+<para>
+Number of transmitted bytes
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.RxBytes">
+  <title>The "RxBytes" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Statistics.RxBytes"><primary sortas=".Device.Statistics:RxBytes">org.freedesktop.NetworkManager.Device.Statistics:RxBytes</primary></indexterm>
+<programlisting>
+RxBytes  readable   t
+</programlisting>
+<para>
+Number of received bytes
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

@@ -1,0 +1,161 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>vxlan: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="ch01.html" title="Configuration Settings">
+<link rel="prev" href="settings-vrf.html" title="vrf">
+<link rel="next" href="settings-wifi-p2p.html" title="wifi-p2p">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#settings-vxlan.properties" class="shortcut">
+            Properties
+        </a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch01.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="settings-vrf.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="settings-wifi-p2p.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="settings-vxlan"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2>vxlan</h2>
+<p>vxlan — VXLAN Settings</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.3.3.42.2"></a><h2>
+            Properties
+        </h2>
+<div class="table">
+<a name="id-1.3.3.42.2.2.1"></a><p class="title"><b>Table 76. </b></p>
+<div class="table-contents"><table class="table" border="1">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>Key Name</th>
+<th>Value Type</th>
+<th>Default Value</th>
+<th>Value Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><pre class="screen">ageing</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">300</pre></td>
+<td>Specifies the lifetime in seconds of FDB entries learnt by the kernel.</td>
+</tr>
+<tr>
+<td><pre class="screen">destination-port</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">8472</pre></td>
+<td>Specifies the UDP destination port to communicate to the remote VXLAN tunnel endpoint.</td>
+</tr>
+<tr>
+<td><pre class="screen">id</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Specifies the VXLAN Network Identifier (or VXLAN Segment Identifier) to use.</td>
+</tr>
+<tr>
+<td><pre class="screen">l2-miss</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>Specifies whether netlink LL ADDR miss notifications are generated.</td>
+</tr>
+<tr>
+<td><pre class="screen">l3-miss</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>Specifies whether netlink IP ADDR miss notifications are generated.</td>
+</tr>
+<tr>
+<td><pre class="screen">learning</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">TRUE</pre></td>
+<td>Specifies whether unknown source link layer addresses and IP addresses are entered into the VXLAN device forwarding database.</td>
+</tr>
+<tr>
+<td><pre class="screen">limit</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Specifies the maximum number of FDB entries. A value of zero means that the kernel will store unlimited entries.</td>
+</tr>
+<tr>
+<td><pre class="screen">local</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If given, specifies the source IP address to use in outgoing packets.</td>
+</tr>
+<tr>
+<td><pre class="screen">parent</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If given, specifies the parent interface name or parent connection UUID.</td>
+</tr>
+<tr>
+<td><pre class="screen">proxy</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>Specifies whether ARP proxy is turned on.</td>
+</tr>
+<tr>
+<td><pre class="screen">remote</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Specifies the unicast destination IP address to use in outgoing packets when the destination link layer address is not known in the VXLAN device forwarding database, or the multicast IP address to join.</td>
+</tr>
+<tr>
+<td><pre class="screen">rsc</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>Specifies whether route short circuit is turned on.</td>
+</tr>
+<tr>
+<td><pre class="screen">source-port-max</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Specifies the maximum UDP source port to communicate to the remote VXLAN tunnel endpoint.</td>
+</tr>
+<tr>
+<td><pre class="screen">source-port-min</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Specifies the minimum UDP source port to communicate to the remote VXLAN tunnel endpoint.</td>
+</tr>
+<tr>
+<td><pre class="screen">tos</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Specifies the TOS value to use in outgoing packets.</td>
+</tr>
+<tr>
+<td><pre class="screen">ttl</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Specifies the time-to-live value to use in outgoing packets.</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p><br class="table-break"></p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

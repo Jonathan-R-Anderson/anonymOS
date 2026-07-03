@@ -1,0 +1,111 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>vlan: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="ch01.html" title="Configuration Settings">
+<link rel="prev" href="settings-user.html" title="user">
+<link rel="next" href="settings-vpn.html" title="vpn">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#settings-vlan.properties" class="shortcut">
+            Properties
+        </a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch01.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="settings-user.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="settings-vpn.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="settings-vlan"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2>vlan</h2>
+<p>vlan — VLAN Settings</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.3.3.39.2"></a><h2>
+            Properties
+        </h2>
+<div class="table">
+<a name="id-1.3.3.39.2.2.1"></a><p class="title"><b>Table 73. </b></p>
+<div class="table-contents"><table class="table" border="1">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>Key Name</th>
+<th>Value Type</th>
+<th>Default Value</th>
+<th>Value Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><pre class="screen">egress-priority-map</pre></td>
+<td><pre class="screen">array of string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>For outgoing packets, a list of mappings from Linux SKB priorities to 802.1p priorities.  The mapping is given in the format "from:to" where both "from" and "to" are unsigned integers, ie "7:3".</td>
+</tr>
+<tr>
+<td><pre class="screen">flags</pre></td>
+<td><pre class="screen">NMVlanFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>One or more flags which control the behavior and features of the VLAN interface.  Flags include NM_VLAN_FLAG_REORDER_HEADERS (0x1) (reordering of output packet headers), NM_VLAN_FLAG_GVRP (0x2) (use of the GVRP protocol), and NM_VLAN_FLAG_LOOSE_BINDING (0x4) (loose binding of the interface to its master device's operating state). NM_VLAN_FLAG_MVRP (0x8) (use of the MVRP protocol).
+
+The default value of this property is NM_VLAN_FLAG_REORDER_HEADERS, but it used to be 0. To preserve backward compatibility, the default-value in the D-Bus API continues to be 0 and a missing property on D-Bus is still considered as 0.</td>
+</tr>
+<tr>
+<td><pre class="screen">id</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>The VLAN identifier that the interface created by this connection should be assigned. The valid range is from 0 to 4094, without the reserved id 4095.</td>
+</tr>
+<tr>
+<td><pre class="screen">ingress-priority-map</pre></td>
+<td><pre class="screen">array of string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>For incoming packets, a list of mappings from 802.1p priorities to Linux SKB priorities.  The mapping is given in the format "from:to" where both "from" and "to" are unsigned integers, ie "7:3".</td>
+</tr>
+<tr>
+<td><pre class="screen">interface-name</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Deprecated in favor of connection.interface-name, but can be used for backward-compatibility with older daemons, to set the vlan's interface name.</td>
+</tr>
+<tr>
+<td><pre class="screen">parent</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If given, specifies the parent interface name or parent connection UUID from which this VLAN interface should be created.  If this property is not specified, the connection must contain an "802-3-ethernet" setting with a "mac-address" property.</td>
+</tr>
+<tr>
+<td><pre class="screen">protocol</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Specifies the VLAN protocol to use for encapsulation.
+
+Supported values are: '802.1Q', '802.1ad'. If not specified the default value is '802.1Q'.</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p><br class="table-break"></p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

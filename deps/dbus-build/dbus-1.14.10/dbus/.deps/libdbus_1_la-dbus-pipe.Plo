@@ -1,0 +1,38 @@
+libdbus_1_la-dbus-pipe.lo: dbus-pipe.c ../config.h dbus-pipe.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  ../dbus/dbus-arch-deps.h ../dbus/dbus-macros.h ../dbus/dbus-errors.h \
+  ../dbus/dbus-protocol.h ../dbus/dbus-string.h ../dbus/dbus-memory.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  ../dbus/dbus-sysdeps.h ../dbus/dbus-file.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h
+../config.h:
+dbus-pipe.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-protocol.h:
+../dbus/dbus-string.h:
+../dbus/dbus-memory.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+../dbus/dbus-sysdeps.h:
+../dbus/dbus-file.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h:

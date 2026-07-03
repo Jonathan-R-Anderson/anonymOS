@@ -1,0 +1,247 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>bridge: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="ch01.html" title="Configuration Settings">
+<link rel="prev" href="settings-bond.html" title="bond">
+<link rel="next" href="settings-bridge-port.html" title="bridge-port">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#settings-bridge.properties" class="shortcut">
+            Properties
+        </a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch01.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="settings-bond.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="settings-bridge-port.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="settings-bridge"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2>bridge</h2>
+<p>bridge — Bridging Settings</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.3.3.8.2"></a><h2>
+            Properties
+        </h2>
+<div class="table">
+<a name="id-1.3.3.8.2.2.1"></a><p class="title"><b>Table 42. </b></p>
+<div class="table-contents"><table class="table" border="1">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>Key Name</th>
+<th>Value Type</th>
+<th>Default Value</th>
+<th>Value Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><pre class="screen">ageing-time</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">300</pre></td>
+<td>The Ethernet MAC address aging time, in seconds.</td>
+</tr>
+<tr>
+<td><pre class="screen">forward-delay</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">15</pre></td>
+<td>The Spanning Tree Protocol (STP) forwarding delay, in seconds.</td>
+</tr>
+<tr>
+<td><pre class="screen">group-address</pre></td>
+<td><pre class="screen">byte array</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If specified, The MAC address of the multicast group this bridge uses for STP.
+
+The address must be a link-local address in standard Ethernet MAC address format, ie an address of the form 01:80:C2:00:00:0X, with X in [0, 4..F]. If not specified the default value is 01:80:C2:00:00:00.</td>
+</tr>
+<tr>
+<td><pre class="screen">group-forward-mask</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>A mask of group addresses to forward. Usually, group addresses in the range from 01:80:C2:00:00:00 to 01:80:C2:00:00:0F are not forwarded according to standards. This property is a mask of 16 bits, each corresponding to a group address in that range that must be forwarded. The mask can't have bits 0, 1 or 2 set because they are used for STP, MAC pause frames and LACP.</td>
+</tr>
+<tr>
+<td><pre class="screen">hello-time</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">2</pre></td>
+<td>The Spanning Tree Protocol (STP) hello time, in seconds.</td>
+</tr>
+<tr>
+<td><pre class="screen">interface-name</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Deprecated in favor of connection.interface-name, but can be used for backward-compatibility with older daemons, to set the bridge's interface name.</td>
+</tr>
+<tr>
+<td><pre class="screen">mac-address</pre></td>
+<td><pre class="screen">byte array</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If specified, the MAC address of bridge. When creating a new bridge, this MAC address will be set.
+
+If this field is left unspecified, the "ethernet.cloned-mac-address" is referred instead to generate the initial MAC address. Note that setting "ethernet.cloned-mac-address" anyway overwrites the MAC address of the bridge later while activating the bridge.</td>
+</tr>
+<tr>
+<td><pre class="screen">max-age</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">20</pre></td>
+<td>The Spanning Tree Protocol (STP) maximum message age, in seconds.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-hash-max</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">4096</pre></td>
+<td>Set maximum size of multicast hash table (value must be a power of 2).</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-last-member-count</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">2</pre></td>
+<td>Set the number of queries the bridge will send before stopping forwarding a multicast group after a "leave" message has been received.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-last-member-interval</pre></td>
+<td><pre class="screen">uint64</pre></td>
+<td><pre class="screen">100</pre></td>
+<td>Set interval (in deciseconds) between queries to find remaining members of a group, after a "leave" message is received.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-membership-interval</pre></td>
+<td><pre class="screen">uint64</pre></td>
+<td><pre class="screen">26000</pre></td>
+<td>Set delay (in deciseconds) after which the bridge will leave a group, if no membership reports for this group are received.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-querier</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>Enable or disable sending of multicast queries by the bridge. If not specified the option is disabled.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-querier-interval</pre></td>
+<td><pre class="screen">uint64</pre></td>
+<td><pre class="screen">25500</pre></td>
+<td>If no queries are seen after this delay (in deciseconds) has passed, the bridge will start to send its own queries.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-query-interval</pre></td>
+<td><pre class="screen">uint64</pre></td>
+<td><pre class="screen">12500</pre></td>
+<td>Interval (in deciseconds) between queries sent by the bridge after the end of the startup phase.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-query-response-interval</pre></td>
+<td><pre class="screen">uint64</pre></td>
+<td><pre class="screen">1000</pre></td>
+<td>Set the Max Response Time/Max Response Delay (in deciseconds) for IGMP/MLD queries sent by the bridge.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-query-use-ifaddr</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>If enabled the bridge's own IP address is used as the source address for IGMP queries otherwise the default of 0.0.0.0 is used.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-router</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Sets bridge's multicast router. Multicast-snooping must be enabled for this option to work.
+
+Supported values are: 'auto', 'disabled', 'enabled' to which kernel assigns the numbers 1, 0, and 2, respectively. If not specified the default value is 'auto' (1).</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-snooping</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">TRUE</pre></td>
+<td>Controls whether IGMP snooping is enabled for this bridge. Note that if snooping was automatically disabled due to hash collisions, the system may refuse to enable the feature until the collisions are resolved.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-startup-query-count</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">2</pre></td>
+<td>Set the number of IGMP queries to send during startup phase.</td>
+</tr>
+<tr>
+<td><pre class="screen">multicast-startup-query-interval</pre></td>
+<td><pre class="screen">uint64</pre></td>
+<td><pre class="screen">3125</pre></td>
+<td>Sets the time (in deciseconds) between queries sent out at startup to determine membership information.</td>
+</tr>
+<tr>
+<td><pre class="screen">priority</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">32768</pre></td>
+<td>Sets the Spanning Tree Protocol (STP) priority for this bridge.  Lower values are "better"; the lowest priority bridge will be elected the root bridge.</td>
+</tr>
+<tr>
+<td><pre class="screen">stp</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">TRUE</pre></td>
+<td>Controls whether Spanning Tree Protocol (STP) is enabled for this bridge.</td>
+</tr>
+<tr>
+<td><pre class="screen">vlan-default-pvid</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">1</pre></td>
+<td>The default PVID for the ports of the bridge, that is the VLAN id assigned to incoming untagged frames.</td>
+</tr>
+<tr>
+<td><pre class="screen">vlan-filtering</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>Control whether VLAN filtering is enabled on the bridge.</td>
+</tr>
+<tr>
+<td><pre class="screen">vlan-protocol</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If specified, the protocol used for VLAN filtering.
+
+Supported values are: '802.1Q', '802.1ad'. If not specified the default value is '802.1Q'.</td>
+</tr>
+<tr>
+<td><pre class="screen">vlan-stats-enabled</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>Controls whether per-VLAN stats accounting is enabled.</td>
+</tr>
+<tr>
+<td><pre class="screen">vlans</pre></td>
+<td><pre class="screen">array of vardict</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Array of bridge VLAN objects. In addition to the VLANs specified here, the bridge will also have the default-pvid VLAN configured  by the bridge.vlan-default-pvid property.
+
+In nmcli the VLAN list can be specified with the following syntax:
+
+$vid [pvid] [untagged] [, $vid [pvid] [untagged]]...
+
+where $vid is either a single id between 1 and 4094 or a range, represented as a couple of ids separated by a dash.</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p><br class="table-break"></p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

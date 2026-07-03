@@ -1,0 +1,604 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingMacsec: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingLoopback.html" title="NMSettingLoopback">
+<link rel="next" href="NMSettingMacvlan.html" title="NMSettingMacvlan">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingMacsec.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingMacsec.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingLoopback.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingMacvlan.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingMacsec"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingMacsec.top_of_page"></a>NMSettingMacsec</span></h2>
+<p>NMSettingMacsec — Describes connection properties for MACSEC interfaces</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingMacsec.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-new" title="nm_setting_macsec_new ()">nm_setting_macsec_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-parent" title="nm_setting_macsec_get_parent ()">nm_setting_macsec_get_parent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingMacsec.html#NMSettingMacsecMode" title="enum NMSettingMacsecMode"><span class="returnvalue">NMSettingMacsecMode</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-mode" title="nm_setting_macsec_get_mode ()">nm_setting_macsec_get_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-encrypt" title="nm_setting_macsec_get_encrypt ()">nm_setting_macsec_get_encrypt</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-mka-cak" title="nm_setting_macsec_get_mka_cak ()">nm_setting_macsec_get_mka_cak</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="returnvalue">NMSettingSecretFlags</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-mka-cak-flags" title="nm_setting_macsec_get_mka_cak_flags ()">nm_setting_macsec_get_mka_cak_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-mka-ckn" title="nm_setting_macsec_get_mka_ckn ()">nm_setting_macsec_get_mka_ckn</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-port" title="nm_setting_macsec_get_port ()">nm_setting_macsec_get_port</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingMacsec.html#NMSettingMacsecValidation" title="enum NMSettingMacsecValidation"><span class="returnvalue">NMSettingMacsecValidation</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-validation" title="nm_setting_macsec_get_validation ()">nm_setting_macsec_get_validation</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacsec.html#nm-setting-macsec-get-send-sci" title="nm_setting_macsec_get_send_sci ()">nm_setting_macsec_get_send_sci</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacsec.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-SETTING-NAME:CAPS" title="NM_SETTING_MACSEC_SETTING_NAME">NM_SETTING_MACSEC_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-PARENT:CAPS" title="NM_SETTING_MACSEC_PARENT">NM_SETTING_MACSEC_PARENT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-MODE:CAPS" title="NM_SETTING_MACSEC_MODE">NM_SETTING_MACSEC_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-ENCRYPT:CAPS" title="NM_SETTING_MACSEC_ENCRYPT">NM_SETTING_MACSEC_ENCRYPT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-MKA-CAK:CAPS" title="NM_SETTING_MACSEC_MKA_CAK">NM_SETTING_MACSEC_MKA_CAK</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-MKA-CAK-FLAGS:CAPS" title="NM_SETTING_MACSEC_MKA_CAK_FLAGS">NM_SETTING_MACSEC_MKA_CAK_FLAGS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-MKA-CKN:CAPS" title="NM_SETTING_MACSEC_MKA_CKN">NM_SETTING_MACSEC_MKA_CKN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-PORT:CAPS" title="NM_SETTING_MACSEC_PORT">NM_SETTING_MACSEC_PORT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-VALIDATION:CAPS" title="NM_SETTING_MACSEC_VALIDATION">NM_SETTING_MACSEC_VALIDATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-SEND-SCI:CAPS" title="NM_SETTING_MACSEC_SEND_SCI">NM_SETTING_MACSEC_SEND_SCI</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NMSettingMacsecMode" title="enum NMSettingMacsecMode">NMSettingMacsecMode</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NMSettingMacsecValidation" title="enum NMSettingMacsecValidation">NMSettingMacsecValidation</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-MKA-CAK-LENGTH:CAPS" title="NM_SETTING_MACSEC_MKA_CAK_LENGTH">NM_SETTING_MACSEC_MKA_CAK_LENGTH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacsec.html#NM-SETTING-MACSEC-MKA-CKN-LENGTH:CAPS" title="NM_SETTING_MACSEC_MKA_CKN_LENGTH">NM_SETTING_MACSEC_MKA_CKN_LENGTH</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacsec.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GEnum</a>
+    <span class="lineart">├──</span> NMSettingMacsecMode
+    <span class="lineart">╰──</span> NMSettingMacsecValidation
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacsec.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for connection to MACsec (IEEE 802.1AE) interfaces.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacsec.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-macsec-new"></a><h3>nm_setting_macsec_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_macsec_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-macsec-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-parent"></a><h3>nm_setting_macsec_get_parent ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_macsec_get_parent (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-parent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-parent.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“parent”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-mode"></a><h3>nm_setting_macsec_get_mode ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingMacsec.html#NMSettingMacsecMode" title="enum NMSettingMacsecMode"><span class="returnvalue">NMSettingMacsecMode</span></a>
+nm_setting_macsec_get_mode (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-mode.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mode”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-encrypt"></a><h3>nm_setting_macsec_get_encrypt ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_macsec_get_encrypt (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-encrypt.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-encrypt.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“encrypt”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-mka-cak"></a><h3>nm_setting_macsec_get_mka_cak ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_macsec_get_mka_cak (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-mka-cak.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-mka-cak.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mka-cak”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-mka-cak-flags"></a><h3>nm_setting_macsec_get_mka_cak_flags ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="returnvalue">NMSettingSecretFlags</span></a>
+nm_setting_macsec_get_mka_cak_flags (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-mka-cak-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-mka-cak-flags.returns"></a><h4>Returns</h4>
+<p> the <a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> pertaining to the <span class="type">“mka-cak”</span></p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-mka-ckn"></a><h3>nm_setting_macsec_get_mka_ckn ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_macsec_get_mka_ckn (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-mka-ckn.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-mka-ckn.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mka-ckn”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-port"></a><h3>nm_setting_macsec_get_port ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_macsec_get_port (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-port.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-port.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“port”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-validation"></a><h3>nm_setting_macsec_get_validation ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingMacsec.html#NMSettingMacsecValidation" title="enum NMSettingMacsecValidation"><span class="returnvalue">NMSettingMacsecValidation</span></a>
+nm_setting_macsec_get_validation (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-validation.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-validation.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“validation”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macsec-get-send-sci"></a><h3>nm_setting_macsec_get_send_sci ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_macsec_get_send_sci (<em class="parameter"><code><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-send-sci.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macsec-get-send-sci.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“send-sci”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacsec.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-SETTING-NAME:CAPS"></a><h3>NM_SETTING_MACSEC_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_SETTING_NAME "macsec"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-PARENT:CAPS"></a><h3>NM_SETTING_MACSEC_PARENT</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_PARENT        "parent"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-MODE:CAPS"></a><h3>NM_SETTING_MACSEC_MODE</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_MODE          "mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-ENCRYPT:CAPS"></a><h3>NM_SETTING_MACSEC_ENCRYPT</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_ENCRYPT       "encrypt"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-MKA-CAK:CAPS"></a><h3>NM_SETTING_MACSEC_MKA_CAK</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_MKA_CAK       "mka-cak"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-MKA-CAK-FLAGS:CAPS"></a><h3>NM_SETTING_MACSEC_MKA_CAK_FLAGS</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_MKA_CAK_FLAGS "mka-cak-flags"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-MKA-CKN:CAPS"></a><h3>NM_SETTING_MACSEC_MKA_CKN</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_MKA_CKN       "mka-ckn"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-PORT:CAPS"></a><h3>NM_SETTING_MACSEC_PORT</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_PORT          "port"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-VALIDATION:CAPS"></a><h3>NM_SETTING_MACSEC_VALIDATION</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_VALIDATION    "validation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-SEND-SCI:CAPS"></a><h3>NM_SETTING_MACSEC_SEND_SCI</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_SEND_SCI      "send-sci"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingMacsecMode"></a><h3>enum NMSettingMacsecMode</h3>
+<p><a class="link" href="NMSettingMacsec.html#NMSettingMacsecMode" title="enum NMSettingMacsecMode"><span class="type">NMSettingMacsecMode</span></a> controls how the CAK (Connectivity Association Key) used
+in MKA (MACsec Key Agreement) is obtained.</p>
+<div class="refsect3">
+<a name="NMSettingMacsecMode.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACSEC-MODE-PSK:CAPS"></a>NM_SETTING_MACSEC_MODE_PSK</p></td>
+<td class="enum_member_description">
+<p>The CAK is pre-shared</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACSEC-MODE-EAP:CAPS"></a>NM_SETTING_MACSEC_MODE_EAP</p></td>
+<td class="enum_member_description">
+<p>The CAK is the result of participation in EAP</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingMacsecValidation"></a><h3>enum NMSettingMacsecValidation</h3>
+<p><a class="link" href="NMSettingMacsec.html#NMSettingMacsecValidation" title="enum NMSettingMacsecValidation"><span class="type">NMSettingMacsecValidation</span></a> specifies a validation mode for incoming frames.</p>
+<div class="refsect3">
+<a name="NMSettingMacsecValidation.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACSEC-VALIDATION-DISABLE:CAPS"></a>NM_SETTING_MACSEC_VALIDATION_DISABLE</p></td>
+<td class="enum_member_description">
+<p>All incoming frames are accepted if
+possible</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACSEC-VALIDATION-CHECK:CAPS"></a>NM_SETTING_MACSEC_VALIDATION_CHECK</p></td>
+<td class="enum_member_description">
+<p>Non protected, invalid, or impossible to
+verify frames are accepted and counted as "invalid"</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACSEC-VALIDATION-STRICT:CAPS"></a>NM_SETTING_MACSEC_VALIDATION_STRICT</p></td>
+<td class="enum_member_description">
+<p>Non protected, invalid, or impossible to
+verify frames are dropped</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-MKA-CAK-LENGTH:CAPS"></a><h3>NM_SETTING_MACSEC_MKA_CAK_LENGTH</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_MKA_CAK_LENGTH 32
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACSEC-MKA-CKN-LENGTH:CAPS"></a><h3>NM_SETTING_MACSEC_MKA_CKN_LENGTH</h3>
+<pre class="programlisting">#define NM_SETTING_MACSEC_MKA_CKN_LENGTH 64
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

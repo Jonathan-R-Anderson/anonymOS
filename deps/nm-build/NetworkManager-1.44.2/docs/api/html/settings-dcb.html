@@ -1,0 +1,157 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>dcb: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="ch01.html" title="Configuration Settings">
+<link rel="prev" href="settings-cdma.html" title="cdma">
+<link rel="next" href="settings-dummy.html" title="dummy">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#settings-dcb.properties" class="shortcut">
+            Properties
+        </a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch01.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="settings-cdma.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="settings-dummy.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="settings-dcb"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2>dcb</h2>
+<p>dcb — Data Center Bridging Settings</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.3.3.11.2"></a><h2>
+            Properties
+        </h2>
+<div class="table">
+<a name="id-1.3.3.11.2.2.1"></a><p class="title"><b>Table 45. </b></p>
+<div class="table-contents"><table class="table" border="1">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>Key Name</th>
+<th>Value Type</th>
+<th>Default Value</th>
+<th>Value Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><pre class="screen">app-fcoe-flags</pre></td>
+<td><pre class="screen">NMSettingDcbFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Specifies the NMSettingDcbFlags for the DCB FCoE application.  Flags may be any combination of NM_SETTING_DCB_FLAG_ENABLE (0x1), NM_SETTING_DCB_FLAG_ADVERTISE (0x2), and NM_SETTING_DCB_FLAG_WILLING (0x4).</td>
+</tr>
+<tr>
+<td><pre class="screen">app-fcoe-mode</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The FCoE controller mode; either "fabric" or "vn2vn".
+
+Since 1.34, NULL is the default and means "fabric". Before 1.34, NULL was rejected as invalid and the default was "fabric".</td>
+</tr>
+<tr>
+<td><pre class="screen">app-fcoe-priority</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>The highest User Priority (0 - 7) which FCoE frames should use, or -1 for default priority.  Only used when the "app-fcoe-flags" property includes the NM_SETTING_DCB_FLAG_ENABLE (0x1) flag.</td>
+</tr>
+<tr>
+<td><pre class="screen">app-fip-flags</pre></td>
+<td><pre class="screen">NMSettingDcbFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Specifies the NMSettingDcbFlags for the DCB FIP application.  Flags may be any combination of NM_SETTING_DCB_FLAG_ENABLE (0x1), NM_SETTING_DCB_FLAG_ADVERTISE (0x2), and NM_SETTING_DCB_FLAG_WILLING (0x4).</td>
+</tr>
+<tr>
+<td><pre class="screen">app-fip-priority</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>The highest User Priority (0 - 7) which FIP frames should use, or -1 for default priority.  Only used when the "app-fip-flags" property includes the NM_SETTING_DCB_FLAG_ENABLE (0x1) flag.</td>
+</tr>
+<tr>
+<td><pre class="screen">app-iscsi-flags</pre></td>
+<td><pre class="screen">NMSettingDcbFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Specifies the NMSettingDcbFlags for the DCB iSCSI application.  Flags may be any combination of NM_SETTING_DCB_FLAG_ENABLE (0x1), NM_SETTING_DCB_FLAG_ADVERTISE (0x2), and NM_SETTING_DCB_FLAG_WILLING (0x4).</td>
+</tr>
+<tr>
+<td><pre class="screen">app-iscsi-priority</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">-1</pre></td>
+<td>The highest User Priority (0 - 7) which iSCSI frames should use, or -1 for default priority. Only used when the "app-iscsi-flags" property includes the NM_SETTING_DCB_FLAG_ENABLE (0x1) flag.</td>
+</tr>
+<tr>
+<td><pre class="screen">priority-bandwidth</pre></td>
+<td><pre class="screen">array of uint32</pre></td>
+<td><pre class="screen"></pre></td>
+<td>An array of 8 uint values, where the array index corresponds to the User Priority (0 - 7) and the value indicates the percentage of bandwidth of the priority's assigned group that the priority may use.  The sum of all percentages for priorities which belong to the same group must total 100 percents.</td>
+</tr>
+<tr>
+<td><pre class="screen">priority-flow-control</pre></td>
+<td><pre class="screen">array of uint32</pre></td>
+<td><pre class="screen"></pre></td>
+<td>An array of 8 boolean values, where the array index corresponds to the User Priority (0 - 7) and the value indicates whether or not the corresponding priority should transmit priority pause.</td>
+</tr>
+<tr>
+<td><pre class="screen">priority-flow-control-flags</pre></td>
+<td><pre class="screen">NMSettingDcbFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Specifies the NMSettingDcbFlags for DCB Priority Flow Control (PFC). Flags may be any combination of NM_SETTING_DCB_FLAG_ENABLE (0x1), NM_SETTING_DCB_FLAG_ADVERTISE (0x2), and NM_SETTING_DCB_FLAG_WILLING (0x4).</td>
+</tr>
+<tr>
+<td><pre class="screen">priority-group-bandwidth</pre></td>
+<td><pre class="screen">array of uint32</pre></td>
+<td><pre class="screen"></pre></td>
+<td>An array of 8 uint values, where the array index corresponds to the Priority Group ID (0 - 7) and the value indicates the percentage of link bandwidth allocated to that group.  Allowed values are 0 - 100, and the sum of all values must total 100 percents.</td>
+</tr>
+<tr>
+<td><pre class="screen">priority-group-flags</pre></td>
+<td><pre class="screen">NMSettingDcbFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Specifies the NMSettingDcbFlags for DCB Priority Groups.  Flags may be any combination of NM_SETTING_DCB_FLAG_ENABLE (0x1), NM_SETTING_DCB_FLAG_ADVERTISE (0x2), and NM_SETTING_DCB_FLAG_WILLING (0x4).</td>
+</tr>
+<tr>
+<td><pre class="screen">priority-group-id</pre></td>
+<td><pre class="screen">array of uint32</pre></td>
+<td><pre class="screen"></pre></td>
+<td>An array of 8 uint values, where the array index corresponds to the User Priority (0 - 7) and the value indicates the Priority Group ID.  Allowed Priority Group ID values are 0 - 7 or 15 for the unrestricted group.</td>
+</tr>
+<tr>
+<td><pre class="screen">priority-strict-bandwidth</pre></td>
+<td><pre class="screen">array of uint32</pre></td>
+<td><pre class="screen"></pre></td>
+<td>An array of 8 boolean values, where the array index corresponds to the User Priority (0 - 7) and the value indicates whether or not the priority may use all of the bandwidth allocated to its assigned group.</td>
+</tr>
+<tr>
+<td><pre class="screen">priority-traffic-class</pre></td>
+<td><pre class="screen">array of uint32</pre></td>
+<td><pre class="screen"></pre></td>
+<td>An array of 8 uint values, where the array index corresponds to the User Priority (0 - 7) and the value indicates the traffic class (0 - 7) to which the priority is mapped.</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p><br class="table-break"></p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

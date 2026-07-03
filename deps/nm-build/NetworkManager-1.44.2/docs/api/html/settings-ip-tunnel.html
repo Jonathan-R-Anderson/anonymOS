@@ -1,0 +1,149 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>ip-tunnel: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="ch01.html" title="Configuration Settings">
+<link rel="prev" href="settings-ipv6.html" title="ipv6">
+<link rel="next" href="settings-macsec.html" title="macsec">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#settings-ip-tunnel.properties" class="shortcut">
+            Properties
+        </a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch01.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="settings-ipv6.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="settings-macsec.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="settings-ip-tunnel"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2>ip-tunnel</h2>
+<p>ip-tunnel — IP Tunneling Settings</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.3.3.19.2"></a><h2>
+            Properties
+        </h2>
+<div class="table">
+<a name="id-1.3.3.19.2.2.1"></a><p class="title"><b>Table 53. </b></p>
+<div class="table-contents"><table class="table" border="1">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>Key Name</th>
+<th>Value Type</th>
+<th>Default Value</th>
+<th>Value Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><pre class="screen">encapsulation-limit</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>How many additional levels of encapsulation are permitted to be prepended to packets. This property applies only to IPv6 tunnels. To disable this option, add NM_IP_TUNNEL_FLAG_IP6_IGN_ENCAP_LIMIT (0x1) to ip-tunnel flags.</td>
+</tr>
+<tr>
+<td><pre class="screen">flags</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Tunnel flags. Currently, the following values are supported: NM_IP_TUNNEL_FLAG_IP6_IGN_ENCAP_LIMIT (0x1), NM_IP_TUNNEL_FLAG_IP6_USE_ORIG_TCLASS (0x2), NM_IP_TUNNEL_FLAG_IP6_USE_ORIG_FLOWLABEL (0x4), NM_IP_TUNNEL_FLAG_IP6_MIP6_DEV (0x8), NM_IP_TUNNEL_FLAG_IP6_RCV_DSCP_COPY (0x10), NM_IP_TUNNEL_FLAG_IP6_USE_ORIG_FWMARK (0x20). They are valid only for IPv6 tunnels.</td>
+</tr>
+<tr>
+<td><pre class="screen">flow-label</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>The flow label to assign to tunnel packets. This property applies only to IPv6 tunnels.</td>
+</tr>
+<tr>
+<td><pre class="screen">fwmark</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>The fwmark value to assign to tunnel packets. This property can be set to a non zero value only on VTI and VTI6 tunnels.</td>
+</tr>
+<tr>
+<td><pre class="screen">input-key</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The key used for tunnel input packets; the property is valid only for certain tunnel modes (GRE, IP6GRE). If empty, no key is used.</td>
+</tr>
+<tr>
+<td><pre class="screen">local</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The local endpoint of the tunnel; the value can be empty, otherwise it must contain an IPv4 or IPv6 address.</td>
+</tr>
+<tr>
+<td><pre class="screen">mode</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>The tunneling mode. Valid values: NM_IP_TUNNEL_MODE_IPIP (1), NM_IP_TUNNEL_MODE_GRE (2), NM_IP_TUNNEL_MODE_SIT (3), NM_IP_TUNNEL_MODE_ISATAP (4), NM_IP_TUNNEL_MODE_VTI (5), NM_IP_TUNNEL_MODE_IP6IP6 (6), NM_IP_TUNNEL_MODE_IPIP6 (7), NM_IP_TUNNEL_MODE_IP6GRE (8), NM_IP_TUNNEL_MODE_VTI6 (9), NM_IP_TUNNEL_MODE_GRETAP (10) and NM_IP_TUNNEL_MODE_IP6GRETAP (11)</td>
+</tr>
+<tr>
+<td><pre class="screen">mtu</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>If non-zero, only transmit packets of the specified size or smaller, breaking larger packets up into multiple fragments.</td>
+</tr>
+<tr>
+<td><pre class="screen">output-key</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The key used for tunnel output packets; the property is valid only for certain tunnel modes (GRE, IP6GRE). If empty, no key is used.</td>
+</tr>
+<tr>
+<td><pre class="screen">parent</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If given, specifies the parent interface name or parent connection UUID the new device will be bound to so that tunneled packets will only be routed via that interface.</td>
+</tr>
+<tr>
+<td><pre class="screen">path-mtu-discovery</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">TRUE</pre></td>
+<td>Whether to enable Path MTU Discovery on this tunnel.</td>
+</tr>
+<tr>
+<td><pre class="screen">remote</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The remote endpoint of the tunnel; the value must contain an IPv4 or IPv6 address.</td>
+</tr>
+<tr>
+<td><pre class="screen">tos</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>The type of service (IPv4) or traffic class (IPv6) field to be set on tunneled packets.</td>
+</tr>
+<tr>
+<td><pre class="screen">ttl</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>The TTL to assign to tunneled packets. 0 is a special value meaning that packets inherit the TTL value.</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p><br class="table-break"></p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

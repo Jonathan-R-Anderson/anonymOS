@@ -1,0 +1,1247 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingSriov: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingSerial.html" title="NMSettingSerial">
+<link rel="next" href="NMSettingTCConfig.html" title="NMSettingTCConfig">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingSriov.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingSriov.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingSerial.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingTCConfig.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingSriov"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingSriov.top_of_page"></a>NMSettingSriov</span></h2>
+<p>NMSettingSriov — Describes SR-IOV connection properties</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingSriov.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-new" title="nm_setting_sriov_new ()">nm_setting_sriov_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-get-total-vfs" title="nm_setting_sriov_get_total_vfs ()">nm_setting_sriov_get_total_vfs</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-get-num-vfs" title="nm_setting_sriov_get_num_vfs ()">nm_setting_sriov_get_num_vfs</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="returnvalue">NMSriovVF</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-get-vf" title="nm_setting_sriov_get_vf ()">nm_setting_sriov_get_vf</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-add-vf" title="nm_setting_sriov_add_vf ()">nm_setting_sriov_add_vf</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-remove-vf" title="nm_setting_sriov_remove_vf ()">nm_setting_sriov_remove_vf</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-remove-vf-by-index" title="nm_setting_sriov_remove_vf_by_index ()">nm_setting_sriov_remove_vf_by_index</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-clear-vfs" title="nm_setting_sriov_clear_vfs ()">nm_setting_sriov_clear_vfs</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-setting-sriov-get-autoprobe-drivers" title="nm_setting_sriov_get_autoprobe_drivers ()">nm_setting_sriov_get_autoprobe_drivers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-add-vlan" title="nm_sriov_vf_add_vlan ()">nm_sriov_vf_add_vlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-remove-vlan" title="nm_sriov_vf_remove_vlan ()">nm_sriov_vf_remove_vlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-get-vlan-ids" title="nm_sriov_vf_get_vlan_ids ()">nm_sriov_vf_get_vlan_ids</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-set-vlan-qos" title="nm_sriov_vf_set_vlan_qos ()">nm_sriov_vf_set_vlan_qos</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-set-vlan-protocol" title="nm_sriov_vf_set_vlan_protocol ()">nm_sriov_vf_set_vlan_protocol</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-get-vlan-qos" title="nm_sriov_vf_get_vlan_qos ()">nm_sriov_vf_get_vlan_qos</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingSriov.html#NMSriovVFVlanProtocol" title="enum NMSriovVFVlanProtocol"><span class="returnvalue">NMSriovVFVlanProtocol</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-get-vlan-protocol" title="nm_sriov_vf_get_vlan_protocol ()">nm_sriov_vf_get_vlan_protocol</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="returnvalue">NMSriovVF</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-new" title="nm_sriov_vf_new ()">nm_sriov_vf_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-ref" title="nm_sriov_vf_ref ()">nm_sriov_vf_ref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-unref" title="nm_sriov_vf_unref ()">nm_sriov_vf_unref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-equal" title="nm_sriov_vf_equal ()">nm_sriov_vf_equal</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="returnvalue">NMSriovVF</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-dup" title="nm_sriov_vf_dup ()">nm_sriov_vf_dup</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-get-index" title="nm_sriov_vf_get_index ()">nm_sriov_vf_get_index</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-set-attribute" title="nm_sriov_vf_set_attribute ()">nm_sriov_vf_set_attribute</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> **
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-get-attribute-names" title="nm_sriov_vf_get_attribute_names ()">nm_sriov_vf_get_attribute_names</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-get-attribute" title="nm_sriov_vf_get_attribute ()">nm_sriov_vf_get_attribute</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingSriov.html#nm-sriov-vf-attribute-validate" title="nm_sriov_vf_attribute_validate ()">nm_sriov_vf_attribute_validate</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<a name="NMSriovVF"></a><div class="refsect1">
+<a name="NMSettingSriov.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SETTING-SRIOV-SETTING-NAME:CAPS" title="NM_SETTING_SRIOV_SETTING_NAME">NM_SETTING_SRIOV_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SETTING-SRIOV-TOTAL-VFS:CAPS" title="NM_SETTING_SRIOV_TOTAL_VFS">NM_SETTING_SRIOV_TOTAL_VFS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SETTING-SRIOV-VFS:CAPS" title="NM_SETTING_SRIOV_VFS">NM_SETTING_SRIOV_VFS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SETTING-SRIOV-AUTOPROBE-DRIVERS:CAPS" title="NM_SETTING_SRIOV_AUTOPROBE_DRIVERS">NM_SETTING_SRIOV_AUTOPROBE_DRIVERS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SRIOV-VF-ATTRIBUTE-MAC:CAPS" title="NM_SRIOV_VF_ATTRIBUTE_MAC">NM_SRIOV_VF_ATTRIBUTE_MAC</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SRIOV-VF-ATTRIBUTE-SPOOF-CHECK:CAPS" title="NM_SRIOV_VF_ATTRIBUTE_SPOOF_CHECK">NM_SRIOV_VF_ATTRIBUTE_SPOOF_CHECK</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SRIOV-VF-ATTRIBUTE-TRUST:CAPS" title="NM_SRIOV_VF_ATTRIBUTE_TRUST">NM_SRIOV_VF_ATTRIBUTE_TRUST</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SRIOV-VF-ATTRIBUTE-MIN-TX-RATE:CAPS" title="NM_SRIOV_VF_ATTRIBUTE_MIN_TX_RATE">NM_SRIOV_VF_ATTRIBUTE_MIN_TX_RATE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NM-SRIOV-VF-ATTRIBUTE-MAX-TX-RATE:CAPS" title="NM_SRIOV_VF_ATTRIBUTE_MAX_TX_RATE">NM_SRIOV_VF_ATTRIBUTE_MAX_TX_RATE</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingSriov.html#NMSriovVFVlanProtocol" title="enum NMSriovVFVlanProtocol">NMSriovVFVlanProtocol</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingSriov.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Boxed-Types.html">GBoxed</a>
+    <span class="lineart">╰──</span> NMSriovVF
+    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GEnum</a>
+    <span class="lineart">╰──</span> NMSriovVFVlanProtocol
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingSriov.includes"></a><h2>Includes</h2>
+<pre class="synopsis">#include &lt;nm-setting-sriov.h&gt;
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingSriov.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMSettingSriov.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-sriov-new"></a><h3>nm_setting_sriov_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_sriov_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-sriov-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-sriov-get-total-vfs"></a><h3>nm_setting_sriov_get_total_vfs ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_sriov_get_total_vfs (<em class="parameter"><code><a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“total-vfs”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-sriov-get-total-vfs.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-sriov-get-total-vfs.returns"></a><h4>Returns</h4>
+<p> the total number of SR-IOV virtual functions to create</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-sriov-get-num-vfs"></a><h3>nm_setting_sriov_get_num_vfs ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_sriov_get_num_vfs (<em class="parameter"><code><a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-sriov-get-num-vfs.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-sriov-get-num-vfs.returns"></a><h4>Returns</h4>
+<p> the number of configured VFs</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-sriov-get-vf"></a><h3>nm_setting_sriov_get_vf ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="returnvalue">NMSriovVF</span></a> *
+nm_setting_sriov_get_vf (<em class="parameter"><code><a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> *setting</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-sriov-get-vf.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the VF to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-sriov-get-vf.returns"></a><h4>Returns</h4>
+<p>the VF at index <em class="parameter"><code>idx</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-sriov-add-vf"></a><h3>nm_setting_sriov_add_vf ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_sriov_add_vf (<em class="parameter"><code><a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> *setting</code></em>,
+                         <em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>);</pre>
+<p>Appends a new VF and associated information to the setting.  The
+given VF is duplicated internally and is not changed by this function.</p>
+<div class="refsect3">
+<a name="nm-setting-sriov-add-vf.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the VF to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-sriov-remove-vf"></a><h3>nm_setting_sriov_remove_vf ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_sriov_remove_vf (<em class="parameter"><code><a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> *setting</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the VF at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-sriov-remove-vf.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the VF</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-sriov-remove-vf-by-index"></a><h3>nm_setting_sriov_remove_vf_by_index ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_sriov_remove_vf_by_index (<em class="parameter"><code><a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> *setting</code></em>,
+                                     <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> index</code></em>);</pre>
+<p>Removes the VF with VF index <em class="parameter"><code>index</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-sriov-remove-vf-by-index.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>index</p></td>
+<td class="parameter_description"><p>the VF index of the VF to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-sriov-remove-vf-by-index.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the VF was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-sriov-clear-vfs"></a><h3>nm_setting_sriov_clear_vfs ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_sriov_clear_vfs (<em class="parameter"><code><a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> *setting</code></em>);</pre>
+<p>Removes all configured VFs.</p>
+<div class="refsect3">
+<a name="nm-setting-sriov-clear-vfs.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-sriov-get-autoprobe-drivers"></a><h3>nm_setting_sriov_get_autoprobe_drivers ()</h3>
+<pre class="programlisting"><a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+nm_setting_sriov_get_autoprobe_drivers
+                               (<em class="parameter"><code><a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“autoprobe-drivers”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-sriov-get-autoprobe-drivers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html" title="NMSettingSriov"><span class="type">NMSettingSriov</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-sriov-get-autoprobe-drivers.returns"></a><h4>Returns</h4>
+<p> the autoprobe-drivers property value</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-add-vlan"></a><h3>nm_sriov_vf_add_vlan ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_sriov_vf_add_vlan (<em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                      <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> vlan_id</code></em>);</pre>
+<p>Adds a VLAN to the VF. Currently kernel only supports one VLAN per VF.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-add-vlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vlan_id</p></td>
+<td class="parameter_description"><p>the VLAN id</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-add-vlan.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the VLAN was added; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it already existed</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-remove-vlan"></a><h3>nm_sriov_vf_remove_vlan ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_sriov_vf_remove_vlan (<em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> vlan_id</code></em>);</pre>
+<p>Removes a VLAN from a VF.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-remove-vlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vlan_id</p></td>
+<td class="parameter_description"><p>the VLAN id</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-remove-vlan.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the VLAN was removed, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if the VLAN <em class="parameter"><code>vlan_id</code></em>
+did not belong to the VF.</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-get-vlan-ids"></a><h3>nm_sriov_vf_get_vlan_ids ()</h3>
+<pre class="programlisting">const <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a> *
+nm_sriov_vf_get_vlan_ids (<em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                          <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *length</code></em>);</pre>
+<p>Returns the VLANs currently configured on the VF. Currently kernel only
+supports one VLAN per VF.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-vlan-ids.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>length</p></td>
+<td class="parameter_description"><p>on return, the number of VLANs configured. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-vlan-ids.returns"></a><h4>Returns</h4>
+<p>a list of VLAN ids configured on the VF. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=length]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-set-vlan-qos"></a><h3>nm_sriov_vf_set_vlan_qos ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_sriov_vf_set_vlan_qos (<em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                          <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> vlan_id</code></em>,
+                          <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> qos</code></em>);</pre>
+<p>Sets a QoS value for the given VLAN.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-set-vlan-qos.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vlan_id</p></td>
+<td class="parameter_description"><p>the VLAN id</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>qos</p></td>
+<td class="parameter_description"><p>a QoS (priority) value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-set-vlan-protocol"></a><h3>nm_sriov_vf_set_vlan_protocol ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_sriov_vf_set_vlan_protocol (<em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> vlan_id</code></em>,
+                               <em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVFVlanProtocol" title="enum NMSriovVFVlanProtocol"><span class="type">NMSriovVFVlanProtocol</span></a> protocol</code></em>);</pre>
+<p>Sets the protocol for the given VLAN.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-set-vlan-protocol.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vlan_id</p></td>
+<td class="parameter_description"><p>the VLAN id</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>protocol</p></td>
+<td class="parameter_description"><p>the VLAN protocol</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-get-vlan-qos"></a><h3>nm_sriov_vf_get_vlan_qos ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_sriov_vf_get_vlan_qos (<em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                          <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> vlan_id</code></em>);</pre>
+<p>Returns the QoS value for the given VLAN.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-vlan-qos.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vlan_id</p></td>
+<td class="parameter_description"><p>the VLAN id</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-vlan-qos.returns"></a><h4>Returns</h4>
+<p> the QoS value</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-get-vlan-protocol"></a><h3>nm_sriov_vf_get_vlan_protocol ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingSriov.html#NMSriovVFVlanProtocol" title="enum NMSriovVFVlanProtocol"><span class="returnvalue">NMSriovVFVlanProtocol</span></a>
+nm_sriov_vf_get_vlan_protocol (<em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> vlan_id</code></em>);</pre>
+<p>Returns the configured protocol for the given VLAN.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-vlan-protocol.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vlan_id</p></td>
+<td class="parameter_description"><p>the VLAN id</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-vlan-protocol.returns"></a><h4>Returns</h4>
+<p> the configured protocol</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-new"></a><h3>nm_sriov_vf_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="returnvalue">NMSriovVF</span></a> *
+nm_sriov_vf_new (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> index</code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> object.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-new.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>index</p></td>
+<td class="parameter_description"><p>the VF index</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-new.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-ref"></a><h3>nm_sriov_vf_ref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_sriov_vf_ref (<em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>);</pre>
+<p>Increases the reference count of the object.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-ref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-unref"></a><h3>nm_sriov_vf_unref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_sriov_vf_unref (<em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>);</pre>
+<p>Decreases the reference count of the object.  If the reference count
+reaches zero, the object will be destroyed.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-unref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-equal"></a><h3>nm_sriov_vf_equal ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_sriov_vf_equal (<em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                   <em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *other</code></em>);</pre>
+<p>Determines if two <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> objects have the same index,
+attributes and VLANs.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-equal.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>other</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> to compare <em class="parameter"><code>vf</code></em>
+to.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-equal.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the objects contain the same values, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>
+if they do not.</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-dup"></a><h3>nm_sriov_vf_dup ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="returnvalue">NMSriovVF</span></a> *
+nm_sriov_vf_dup (<em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>);</pre>
+<p>Creates a copy of <em class="parameter"><code>vf</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-dup.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-dup.returns"></a><h4>Returns</h4>
+<p>a copy of <em class="parameter"><code>vf</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-get-index"></a><h3>nm_sriov_vf_get_index ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_sriov_vf_get_index (<em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>);</pre>
+<p>Gets the index property of this VF object.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-index.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-index.returns"></a><h4>Returns</h4>
+<p> the VF index</p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-set-attribute"></a><h3>nm_sriov_vf_set_attribute ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_sriov_vf_set_attribute (<em class="parameter"><code><a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                           <em class="parameter"><code>const <span class="type">char</span> *name</code></em>,
+                           <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *value</code></em>);</pre>
+<p>Sets the named attribute on <em class="parameter"><code>vf</code></em>
+ to the given value.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-set-attribute.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>the name of a route attribute</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the value. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-get-attribute-names"></a><h3>nm_sriov_vf_get_attribute_names ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> **
+nm_sriov_vf_get_attribute_names (<em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>);</pre>
+<p>Gets an array of attribute names defined on <em class="parameter"><code>vf</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-attribute-names.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-attribute-names.returns"></a><h4>Returns</h4>
+<p>a <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated array of attribute names. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data container, but not the data inside it."><span class="acronym">transfer container</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-get-attribute"></a><h3>nm_sriov_vf_get_attribute ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+nm_sriov_vf_get_attribute (<em class="parameter"><code>const <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a> *vf</code></em>,
+                           <em class="parameter"><code>const <span class="type">char</span> *name</code></em>);</pre>
+<p>Gets the value of the attribute with name <em class="parameter"><code>name</code></em>
+ on <em class="parameter"><code>vf</code></em>
+</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-attribute.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>vf</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingSriov.html#NMSriovVF"><span class="type">NMSriovVF</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>the name of a VF attribute</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-get-attribute.returns"></a><h4>Returns</h4>
+<p>the value of the attribute with name <em class="parameter"><code>name</code></em>
+on
+<em class="parameter"><code>vf</code></em>
+, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if <em class="parameter"><code>vf</code></em>
+has no such attribute. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-sriov-vf-attribute-validate"></a><h3>nm_sriov_vf_attribute_validate ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_sriov_vf_attribute_validate (<em class="parameter"><code>const <span class="type">char</span> *name</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *value</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> *known</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Validates a VF attribute, i.e. checks that the attribute is a known one,
+the value is of the correct type and well-formed.</p>
+<div class="refsect3">
+<a name="nm-sriov-vf-attribute-validate.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>the attribute name</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the attribute value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>known</p></td>
+<td class="parameter_description"><p>on return, whether the attribute name is a known one. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>return location for a <a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a>, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-sriov-vf-attribute-validate.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the attribute is valid, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingSriov.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-SRIOV-SETTING-NAME:CAPS"></a><h3>NM_SETTING_SRIOV_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_SRIOV_SETTING_NAME "sriov"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-SRIOV-TOTAL-VFS:CAPS"></a><h3>NM_SETTING_SRIOV_TOTAL_VFS</h3>
+<pre class="programlisting">#define NM_SETTING_SRIOV_TOTAL_VFS         "total-vfs"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-SRIOV-VFS:CAPS"></a><h3>NM_SETTING_SRIOV_VFS</h3>
+<pre class="programlisting">#define NM_SETTING_SRIOV_VFS               "vfs"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-SRIOV-AUTOPROBE-DRIVERS:CAPS"></a><h3>NM_SETTING_SRIOV_AUTOPROBE_DRIVERS</h3>
+<pre class="programlisting">#define NM_SETTING_SRIOV_AUTOPROBE_DRIVERS "autoprobe-drivers"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SRIOV-VF-ATTRIBUTE-MAC:CAPS"></a><h3>NM_SRIOV_VF_ATTRIBUTE_MAC</h3>
+<pre class="programlisting">#define NM_SRIOV_VF_ATTRIBUTE_MAC         "mac"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SRIOV-VF-ATTRIBUTE-SPOOF-CHECK:CAPS"></a><h3>NM_SRIOV_VF_ATTRIBUTE_SPOOF_CHECK</h3>
+<pre class="programlisting">#define NM_SRIOV_VF_ATTRIBUTE_SPOOF_CHECK "spoof-check"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SRIOV-VF-ATTRIBUTE-TRUST:CAPS"></a><h3>NM_SRIOV_VF_ATTRIBUTE_TRUST</h3>
+<pre class="programlisting">#define NM_SRIOV_VF_ATTRIBUTE_TRUST       "trust"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SRIOV-VF-ATTRIBUTE-MIN-TX-RATE:CAPS"></a><h3>NM_SRIOV_VF_ATTRIBUTE_MIN_TX_RATE</h3>
+<pre class="programlisting">#define NM_SRIOV_VF_ATTRIBUTE_MIN_TX_RATE "min-tx-rate"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SRIOV-VF-ATTRIBUTE-MAX-TX-RATE:CAPS"></a><h3>NM_SRIOV_VF_ATTRIBUTE_MAX_TX_RATE</h3>
+<pre class="programlisting">#define NM_SRIOV_VF_ATTRIBUTE_MAX_TX_RATE "max-tx-rate"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSriovVFVlanProtocol"></a><h3>enum NMSriovVFVlanProtocol</h3>
+<p><a class="link" href="NMSettingSriov.html#NMSriovVFVlanProtocol" title="enum NMSriovVFVlanProtocol"><span class="type">NMSriovVFVlanProtocol</span></a> indicates the VLAN protocol to use.</p>
+<div class="refsect3">
+<a name="NMSriovVFVlanProtocol.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SRIOV-VF-VLAN-PROTOCOL-802-1Q:CAPS"></a>NM_SRIOV_VF_VLAN_PROTOCOL_802_1Q</p></td>
+<td class="enum_member_description">
+<p>use 802.1Q</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SRIOV-VF-VLAN-PROTOCOL-802-1AD:CAPS"></a>NM_SRIOV_VF_VLAN_PROTOCOL_802_1AD</p></td>
+<td class="enum_member_description">
+<p>use 802.1ad</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

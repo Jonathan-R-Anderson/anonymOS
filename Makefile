@@ -104,6 +104,16 @@ WLFILES_BIN := build/wl-files
 WLDOMAINMGR_BIN := build/wl-domain-manager
 IDLE_BIN := build/idle
 HOS_SH_BIN := build/hos-sh
+HOS_WIFI_BIN := build/hos-wifi
+NSHIM_SO := build/libnshim.so
+NETTEST_BIN := build/hos-nettest
+NETLAUNCH_BIN := build/hos-netlaunch
+DBUSLAUNCH_BIN := build/hos-dbus-launch
+DBUSTEST_BIN := build/hos-dbus-test
+NMLAUNCH_BIN := build/hos-nm-launch
+NMCLITEST_BIN := build/hos-nmcli-test
+WIFITERM_BIN := build/hos-wifiterm
+THREADTEST_BIN := build/hos-thread-test
 STORE_APP_BIN := build/store-app
 ZSH_BIN := deps/zsh/zsh           # Z1: real upstream zsh (built by deps/zsh/Makefile, Z0)
 DISPLAYINFO_BIN := build/display-info
@@ -416,6 +426,47 @@ $(IDLE_BIN): src/util/idle.c
 	@echo "==== Building idle task (scheduler idle spinner) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/idle.c
 
+$(HOS_WIFI_BIN): src/util/hos-wifi.c src/lkl/hos-net-proto.h
+	@echo "==== Building hos-wifi (H1b native netlink client -> cap-gated LKL net provider) ===="
+	$(MUSL_CC) -static -O2 -Isrc/lkl -o $@ src/util/hos-wifi.c
+
+# H1b.3 LD_PRELOAD verification: interposer .so + dynamic target + static launcher
+$(NSHIM_SO): src/util/libnshim.c src/lkl/hos-net-proto.h
+	@echo "==== Building libnshim.so (H1b.3 transparent socket-family interposer) ===="
+	$(MUSL_CC) -O2 -fPIC -shared -pthread -Isrc/lkl -o $@ src/util/libnshim.c
+
+$(NETTEST_BIN): src/util/hos-nettest.c src/lkl/hos-net-proto.h
+	@echo "==== Building hos-nettest (H1b.3 dynamic-musl LD_PRELOAD target) ===="
+	$(MUSL_CC) -O2 -Isrc/lkl -o $@ src/util/hos-nettest.c
+
+$(NETLAUNCH_BIN): src/util/hos-netlaunch.c src/lkl/hos-net-proto.h
+	@echo "==== Building hos-netlaunch (H1b.3 static LD_PRELOAD launcher) ===="
+	$(MUSL_CC) -static -O2 -Isrc/lkl -o $@ src/util/hos-netlaunch.c
+
+$(DBUSLAUNCH_BIN): src/util/hos-dbus-launch.c
+	@echo "==== Building hos-dbus-launch (M0 static launcher for the persistent system bus) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/hos-dbus-launch.c
+
+$(DBUSTEST_BIN): src/util/hos-dbus-test.c
+	@echo "==== Building hos-dbus-test (M0 static launcher: dbus-send GetId EXTERNAL-auth test) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/hos-dbus-test.c
+
+$(NMLAUNCH_BIN): src/util/hos-nm-launch.c
+	@echo "==== Building hos-nm-launch (M2b static launcher for the real NetworkManager daemon) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/hos-nm-launch.c
+
+$(NMCLITEST_BIN): src/util/hos-nmcli-test.c src/lkl/hos-net-proto.h
+	@echo "==== Building hos-nmcli-test (M2b nmcli D-Bus probe) ===="
+	$(MUSL_CC) -static -O2 -Isrc/lkl -o $@ src/util/hos-nmcli-test.c
+
+$(WIFITERM_BIN): src/util/hos-wifiterm.c
+	@echo "==== Building hos-wifiterm (TEMP lightweight terminal launcher) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/hos-wifiterm.c
+
+$(THREADTEST_BIN): src/util/hos-thread-test.c
+	@echo "==== Building hos-thread-test (diag: cross-thread wakeup) ===="
+	$(MUSL_CC) -static -O2 -pthread -o $@ src/util/hos-thread-test.c
+
 # Track B: the native EpinAnonymOS object shell (-sh / dash), written in D (-betterC,
 # same language as the kernel) and linked against musl for crt0 + stdio. It drives the
 # native object syscall ABI (HOS_SYS_QUERY) instead of the Linux-compat layer.
@@ -450,7 +501,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -533,6 +584,54 @@ stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(
 
 	cp $(HOS_SH_BIN) cd/hos-sh
 	@echo "Included hos-sh (native object shell)"
+
+	cp $(HOS_WIFI_BIN) cd/hos-wifi
+	@echo "Included hos-wifi (H1a native WiFi client for the cap-gated LKL net provider)"
+
+	cp $(NETLAUNCH_BIN) cd/hos-netlaunch
+	cp $(NETTEST_BIN) cd/hos-nettest
+	cp $(NSHIM_SO) cd/libnshim.so
+	printf '\n    module_path: boot():/hos-netlaunch\n    module_path: boot():/hos-nettest\n    module_path: boot():/libnshim.so\n' >> cd/boot/limine/limine.conf
+	@# M0: stage the REAL system dbus-daemon (dynamic musl) + libdbus-1.so.3 + dbus-send + launcher
+	@if [ -f deps/dbus-build/install/bin/dbus-daemon ]; then \
+		cp deps/dbus-build/install/bin/dbus-daemon cd/dbus-daemon; \
+		cp deps/dbus-build/install/bin/dbus-send cd/dbus-send; \
+		cp deps/dbus-build/install/lib/libdbus-1.so.3.32.4 cd/libdbus-1.so.3; \
+		cp $(DBUSLAUNCH_BIN) cd/hos-dbus-launch; \
+		cp $(DBUSTEST_BIN) cd/hos-dbus-test; \
+		printf '    module_path: boot():/dbus-daemon\n    module_path: boot():/dbus-send\n    module_path: boot():/libdbus-1.so.3\n    module_path: boot():/hos-dbus-launch\n    module_path: boot():/hos-dbus-test\n' >> cd/boot/limine/limine.conf; \
+		echo "Included M0 real dbus-daemon (system bus) + libdbus-1.so.3 + dbus-send + hos-dbus-launch + hos-dbus-test"; \
+	fi
+	@# M2b: stage the REAL NetworkManager daemon + nmcli + libnm.so.0 + libndp.so.0 + launcher
+	@if [ -f deps/nm-build/NetworkManager-1.44.2/build-epin/src/core/NetworkManager ]; then \
+		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/core/NetworkManager cd/NetworkManager; \
+		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/nmcli/nmcli cd/nmcli; \
+		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/libnm-client-impl/libnm.so.0.1.0 cd/libnm.so.0; \
+		cp deps/gtk-stack/sysroot/lib/libndp.so.0.2.0 cd/libndp.so.0; \
+		cp $(NMLAUNCH_BIN) cd/hos-nm-launch; \
+		cp $(NMCLITEST_BIN) cd/hos-nmcli-test; \
+		printf '    module_path: boot():/NetworkManager\n    module_path: boot():/nmcli\n    module_path: boot():/libnm.so.0\n    module_path: boot():/libndp.so.0\n    module_path: boot():/hos-nm-launch\n    module_path: boot():/hos-nmcli-test\n' >> cd/boot/limine/limine.conf; \
+		echo "Included M2b real NetworkManager daemon + nmcli + libnm.so.0 + libndp.so.0 + hos-nm-launch + hos-nmcli-test"; \
+	fi
+	cp $(THREADTEST_BIN) cd/hos-thread-test
+	printf '    module_path: boot():/hos-thread-test\n' >> cd/boot/limine/limine.conf
+	@echo "Included hos-thread-test (diag: cross-thread wakeup)"
+	cp $(WIFITERM_BIN) cd/hos-wifiterm
+	printf '    module_path: boot():/hos-wifiterm\n' >> cd/boot/limine/limine.conf
+	@echo "Included hos-wifiterm (TEMP lightweight WiFi-check terminal)"
+	@# H3: stage wpa_supplicant (dynamic musl) + libnl-tiny.so if built
+	@if [ -f deps/wpa-build/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant ]; then \
+		cp deps/wpa-build/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant cd/wpa_supplicant; \
+		cp deps/wpa-build/wpa_supplicant-2.10/wpa_supplicant/wpa_cli cd/wpa_cli; \
+		cp deps/wpa-build/libnl-tiny/libnl-tiny.so cd/libnl-tiny.so; \
+		printf '    module_path: boot():/wpa_supplicant\n    module_path: boot():/wpa_cli\n    module_path: boot():/libnl-tiny.so\n' >> cd/boot/limine/limine.conf; \
+		echo "Included wpa_supplicant (H3: real wpa, dynamic musl, under the shim) + libnl-tiny.so"; \
+	fi
+	@if ! grep -q 'boot():/ld-musl-x86_64.so.1' cd/boot/limine/limine.conf; then \
+		cp deps/musl/install/lib/libc.so cd/ld-musl-x86_64.so.1; \
+		printf '    module_path: boot():/ld-musl-x86_64.so.1\n' >> cd/boot/limine/limine.conf; \
+	fi
+	@echo "Included H1b.3 LD_PRELOAD test (hos-netlaunch -> hos-nettest + libnshim.so via ld-musl)"
 
 	cp $(ZSH_BIN) cd/zsh
 	@echo "Included zsh (Z2: real upstream zsh, dynamic musl)"

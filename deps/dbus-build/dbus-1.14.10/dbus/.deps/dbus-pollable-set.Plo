@@ -1,0 +1,54 @@
+dbus-pollable-set.lo: dbus-pollable-set.c ../config.h \
+  ../dbus/dbus-pollable-set.h ../dbus/dbus.h ../dbus/dbus-arch-deps.h \
+  ../dbus/dbus-macros.h ../dbus/dbus-address.h ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  ../dbus/dbus-errors.h ../dbus/dbus-protocol.h ../dbus/dbus-bus.h \
+  ../dbus/dbus-connection.h ../dbus/dbus-memory.h ../dbus/dbus-message.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  ../dbus/dbus-shared.h ../dbus/dbus-misc.h ../dbus/dbus-pending-call.h \
+  ../dbus/dbus-server.h ../dbus/dbus-signature.h ../dbus/dbus-syntax.h \
+  ../dbus/dbus-threads.h ../dbus/dbus-sysdeps.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  ../dbus/dbus-file.h ../dbus/dbus-string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h
+../config.h:
+../dbus/dbus-pollable-set.h:
+../dbus/dbus.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-address.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-protocol.h:
+../dbus/dbus-bus.h:
+../dbus/dbus-connection.h:
+../dbus/dbus-memory.h:
+../dbus/dbus-message.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+../dbus/dbus-shared.h:
+../dbus/dbus-misc.h:
+../dbus/dbus-pending-call.h:
+../dbus/dbus-server.h:
+../dbus/dbus-signature.h:
+../dbus/dbus-syntax.h:
+../dbus/dbus-threads.h:
+../dbus/dbus-sysdeps.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+../dbus/dbus-file.h:
+../dbus/dbus-string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h:

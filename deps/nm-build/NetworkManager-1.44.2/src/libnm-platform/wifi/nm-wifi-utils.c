@@ -1,0 +1,234 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/*
+ * Copyright (C) 2005 - 2018 Red Hat, Inc.
+ * Copyright (C) 2006 - 2008 Novell, Inc.
+ */
+
+#include "libnm-glib-aux/nm-default-glib-i18n-lib.h"
+
+#include "nm-wifi-utils.h"
+
+#include <sys/stat.h>
+#include <stdio.h>
+#include <fcntl.h>
+
+#include "nm-wifi-utils-private.h"
+#include "nm-wifi-utils-nl80211.h"
+#if HAVE_WEXT
+#include "nm-wifi-utils-wext.h"
+#endif
+#include "libnm-platform/nm-platform-utils.h"
+
+G_DEFINE_ABSTRACT_TYPE(NMWifiUtils, nm_wifi_utils, G_TYPE_OBJECT)
+
+/*****************************************************************************/
+
+static void
+nm_wifi_utils_init(NMWifiUtils *self)
+{}
+
+static void
+nm_wifi_utils_class_init(NMWifiUtilsClass *klass)
+{}
+
+NMWifiUtils *
+nm_wifi_utils_new(struct nl_sock *genl, guint16 genl_family_id, int ifindex, gboolean check_scan)
+{
+    NMWifiUtils *ret;
+
+    g_return_val_if_fail(ifindex > 0, NULL);
+
+    ret = nm_wifi_utils_nl80211_new(genl, genl_family_id, ifindex);
+
+#if HAVE_WEXT
+    if (!ret)
+        ret = nm_wifi_utils_wext_new(ifindex, check_scan);
+#endif
+
+    return ret;
+}
+
+_NMDeviceWifiCapabilities
+nm_wifi_utils_get_caps(NMWifiUtils *data)
+{
+    g_return_val_if_fail(data != NULL, _NM_WIFI_DEVICE_CAP_NONE);
+
+    return data->caps;
+}
+
+_NM80211Mode
+nm_wifi_utils_get_mode(NMWifiUtils *data)
+{
+    g_return_val_if_fail(data != NULL, _NM_802_11_MODE_UNKNOWN);
+
+    return NM_WIFI_UTILS_GET_CLASS(data)->get_mode(data);
+}
+
+gboolean
+nm_wifi_utils_set_mode(NMWifiUtils *data, const _NM80211Mode mode)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+    g_return_val_if_fail((mode == _NM_802_11_MODE_INFRA) || (mode == _NM_802_11_MODE_AP)
+                             || (mode == _NM_802_11_MODE_ADHOC) || (mode == _NM_802_11_MODE_MESH),
+                         FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+
+    /* nl80211 probably doesn't need this */
+    return klass->set_mode ? klass->set_mode(data, mode) : TRUE;
+}
+
+gboolean
+nm_wifi_utils_set_powersave(NMWifiUtils *data, guint32 powersave)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+    return klass->set_powersave ? klass->set_powersave(data, powersave) : TRUE;
+}
+
+_NMSettingWirelessWakeOnWLan
+nm_wifi_utils_get_wake_on_wlan(NMWifiUtils *data)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, _NM_SETTING_WIRELESS_WAKE_ON_WLAN_IGNORE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+
+    return klass->get_wake_on_wlan ? klass->get_wake_on_wlan(data)
+                                   : _NM_SETTING_WIRELESS_WAKE_ON_WLAN_IGNORE;
+}
+
+gboolean
+nm_wifi_utils_set_wake_on_wlan(NMWifiUtils *data, _NMSettingWirelessWakeOnWLan wowl)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+    return klass->set_wake_on_wlan ? klass->set_wake_on_wlan(data, wowl) : FALSE;
+}
+
+guint32
+nm_wifi_utils_get_freq(NMWifiUtils *data)
+{
+    g_return_val_if_fail(data != NULL, 0);
+
+    return NM_WIFI_UTILS_GET_CLASS(data)->get_freq(data);
+}
+
+guint32
+nm_wifi_utils_find_freq(NMWifiUtils *data, const guint32 *freqs, gboolean ap)
+{
+    g_return_val_if_fail(data != NULL, 0);
+    g_return_val_if_fail(freqs != NULL, 0);
+
+    return NM_WIFI_UTILS_GET_CLASS(data)->find_freq(data, freqs, ap);
+}
+
+gboolean
+nm_wifi_utils_get_station(NMWifiUtils *data,
+                          NMEtherAddr *out_bssid,
+                          int         *out_quality,
+                          guint32     *out_rate)
+{
+    g_return_val_if_fail(data != NULL, FALSE);
+
+    return NM_WIFI_UTILS_GET_CLASS(data)->get_station(data, out_bssid, out_quality, out_rate);
+}
+
+gboolean
+nm_wifi_utils_is_wifi(int dirfd, const char *ifname)
+{
+    g_return_val_if_fail(dirfd >= 0, FALSE);
+
+    if (faccessat(dirfd, "phy80211", F_OK, 0) == 0)
+        return TRUE;
+#if HAVE_WEXT
+    if (nm_wifi_utils_wext_is_wifi(ifname))
+        return TRUE;
+#endif
+    return FALSE;
+}
+
+gboolean
+nm_wifi_utils_get_csme_conn_info(NMWifiUtils *data, NMPlatformCsmeConnInfo *out_conn_info)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+    return klass->get_csme_conn_info ? klass->get_csme_conn_info(data, out_conn_info) : FALSE;
+}
+
+gboolean
+nm_wifi_utils_get_device_from_csme(NMWifiUtils *data)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+    return klass->get_device_from_csme ? klass->get_device_from_csme(data) : FALSE;
+}
+
+/* OLPC Mesh-only functions */
+
+guint32
+nm_wifi_utils_get_mesh_channel(NMWifiUtils *data)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+    g_return_val_if_fail(klass->get_mesh_channel != NULL, FALSE);
+
+    return klass->get_mesh_channel(data);
+}
+
+gboolean
+nm_wifi_utils_set_mesh_channel(NMWifiUtils *data, guint32 channel)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+    g_return_val_if_fail(channel <= 13, FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+    g_return_val_if_fail(klass->set_mesh_channel != NULL, FALSE);
+
+    return klass->set_mesh_channel(data, channel);
+}
+
+gboolean
+nm_wifi_utils_set_mesh_ssid(NMWifiUtils *data, const guint8 *ssid, gsize len)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+    g_return_val_if_fail(klass->set_mesh_ssid != NULL, FALSE);
+
+    return klass->set_mesh_ssid(data, ssid, len);
+}
+
+gboolean
+nm_wifi_utils_indicate_addressing_running(NMWifiUtils *data, gboolean running)
+{
+    NMWifiUtilsClass *klass;
+
+    g_return_val_if_fail(data != NULL, FALSE);
+
+    klass = NM_WIFI_UTILS_GET_CLASS(data);
+    return klass->indicate_addressing_running ? klass->indicate_addressing_running(data, running)
+                                              : FALSE;
+}

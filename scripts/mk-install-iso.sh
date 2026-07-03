@@ -6,11 +6,11 @@
 #
 # Prereq: `make stage-iso-tree` has populated cd/ (the boot tree). This script is idempotent.
 #
-# Usage:  scripts/mk-install-iso.sh [ESP_MiB]      (default 240; must exceed du(cd) + slack)
+# Usage:  scripts/mk-install-iso.sh [ESP_MiB]      (default 320; must exceed du(cd) + slack)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ESP_MB="${1:-240}"
+ESP_MB="${1:-320}"
 BOOTX64="deps/bdepend/boot/limine-bin/BOOTX64.EFI"
 PREBOOT_EFI="deps/veracrypt/build/preboot.efi"
 STAGE2_EFI="deps/veracrypt/build/stage2.efi"

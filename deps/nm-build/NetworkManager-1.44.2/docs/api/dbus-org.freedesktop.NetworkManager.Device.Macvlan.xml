@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Macvlan">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Macvlan.top_of_page">org.freedesktop.NetworkManager.Device.Macvlan</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Macvlan.top_of_page"><primary sortas=".Device.Macvlan">org.freedesktop.NetworkManager.Device.Macvlan</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Macvlan</refname>    <refpurpose>MAC VLAN Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Parent">Parent</link>     readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Mode">Mode</link>       readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.NoPromisc">NoPromisc</link>  readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Tap">Tap</link>        readable   b
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Macvlan">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Macvlan">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Parent">
+  <title>The "Parent" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Parent"><primary sortas=".Device.Macvlan:Parent">org.freedesktop.NetworkManager.Device.Macvlan:Parent</primary></indexterm>
+<programlisting>
+Parent  readable   o
+</programlisting>
+<para>
+The object path of the parent device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Mode">
+  <title>The "Mode" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Mode"><primary sortas=".Device.Macvlan:Mode">org.freedesktop.NetworkManager.Device.Macvlan:Mode</primary></indexterm>
+<programlisting>
+Mode  readable   s
+</programlisting>
+<para>
+The macvlan mode, one of "private", "vepa", "bridge", or "passthru".
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.NoPromisc">
+  <title>The "NoPromisc" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.NoPromisc"><primary sortas=".Device.Macvlan:NoPromisc">org.freedesktop.NetworkManager.Device.Macvlan:NoPromisc</primary></indexterm>
+<programlisting>
+NoPromisc  readable   b
+</programlisting>
+<para>
+Whether the device is blocked from going into promiscuous mode.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Tap">
+  <title>The "Tap" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macvlan.Tap"><primary sortas=".Device.Macvlan:Tap">org.freedesktop.NetworkManager.Device.Macvlan:Tap</primary></indexterm>
+<programlisting>
+Tap  readable   b
+</programlisting>
+<para>
+Whether the device is a macvtap.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

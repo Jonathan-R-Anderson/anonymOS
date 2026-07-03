@@ -1,0 +1,925 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>nm-ethtool-utils: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch05.html" title="Utility API Reference">
+<link rel="prev" href="libnm-nm-conn-utils.html" title="nm-conn-utils">
+<link rel="next" href="libnm-nm-version.html" title="nm-version">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#libnm-nm-ethtool-utils.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch05.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="libnm-nm-conn-utils.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="libnm-nm-version.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="libnm-nm-ethtool-utils"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="libnm-nm-ethtool-utils.top_of_page"></a>nm-ethtool-utils</span></h2>
+<p>nm-ethtool-utils</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="libnm-nm-ethtool-utils.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-ESP-HW-OFFLOAD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_ESP_HW_OFFLOAD">NM_ETHTOOL_OPTNAME_FEATURE_ESP_HW_OFFLOAD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-ESP-TX-CSUM-HW-OFFLOAD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_ESP_TX_CSUM_HW_OFFLOAD">NM_ETHTOOL_OPTNAME_FEATURE_ESP_TX_CSUM_HW_OFFLOAD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-FCOE-MTU:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_FCOE_MTU">NM_ETHTOOL_OPTNAME_FEATURE_FCOE_MTU</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-GRO:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_GRO">NM_ETHTOOL_OPTNAME_FEATURE_GRO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-GSO:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_GSO">NM_ETHTOOL_OPTNAME_FEATURE_GSO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-HIGHDMA:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_HIGHDMA">NM_ETHTOOL_OPTNAME_FEATURE_HIGHDMA</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-HW-TC-OFFLOAD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_HW_TC_OFFLOAD">NM_ETHTOOL_OPTNAME_FEATURE_HW_TC_OFFLOAD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-L2-FWD-OFFLOAD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_L2_FWD_OFFLOAD">NM_ETHTOOL_OPTNAME_FEATURE_L2_FWD_OFFLOAD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-LOOPBACK:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_LOOPBACK">NM_ETHTOOL_OPTNAME_FEATURE_LOOPBACK</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-LRO:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_LRO">NM_ETHTOOL_OPTNAME_FEATURE_LRO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-MACSEC-HW-OFFLOAD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_MACSEC_HW_OFFLOAD">NM_ETHTOOL_OPTNAME_FEATURE_MACSEC_HW_OFFLOAD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-NTUPLE:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_NTUPLE">NM_ETHTOOL_OPTNAME_FEATURE_NTUPLE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX">NM_ETHTOOL_OPTNAME_FEATURE_RX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RXHASH:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RXHASH">NM_ETHTOOL_OPTNAME_FEATURE_RXHASH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RXVLAN:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RXVLAN">NM_ETHTOOL_OPTNAME_FEATURE_RXVLAN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-ALL:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_ALL">NM_ETHTOOL_OPTNAME_FEATURE_RX_ALL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-FCS:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_FCS">NM_ETHTOOL_OPTNAME_FEATURE_RX_FCS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-GRO-HW:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_GRO_HW">NM_ETHTOOL_OPTNAME_FEATURE_RX_GRO_HW</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-GRO-LIST:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_GRO_LIST">NM_ETHTOOL_OPTNAME_FEATURE_RX_GRO_LIST</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-UDP-GRO-FORWARDING:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_UDP_GRO_FORWARDING">NM_ETHTOOL_OPTNAME_FEATURE_RX_UDP_GRO_FORWARDING</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-UDP-TUNNEL-PORT-OFFLOAD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_UDP_TUNNEL_PORT_OFFLOAD">NM_ETHTOOL_OPTNAME_FEATURE_RX_UDP_TUNNEL_PORT_OFFLOAD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-VLAN-FILTER:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_FILTER">NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_FILTER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-VLAN-STAG-FILTER:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_STAG_FILTER">NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_STAG_FILTER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-RX-VLAN-STAG-HW-PARSE:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_STAG_HW_PARSE">NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_STAG_HW_PARSE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-SG:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_SG">NM_ETHTOOL_OPTNAME_FEATURE_SG</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TLS-HW-RECORD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_RECORD">NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_RECORD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TLS-HW-RX-OFFLOAD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_RX_OFFLOAD">NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_RX_OFFLOAD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TLS-HW-TX-OFFLOAD:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_TX_OFFLOAD">NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_TX_OFFLOAD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TSO:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TSO">NM_ETHTOOL_OPTNAME_FEATURE_TSO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX">NM_ETHTOOL_OPTNAME_FEATURE_TX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TXVLAN:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TXVLAN">NM_ETHTOOL_OPTNAME_FEATURE_TXVLAN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-FCOE-CRC:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_FCOE_CRC">NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_FCOE_CRC</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-IPV4:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IPV4">NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IPV4</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-IPV6:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IPV6">NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IPV6</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-IP-GENERIC:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IP_GENERIC">NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IP_GENERIC</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-SCTP:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_SCTP">NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_SCTP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-ESP-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_ESP_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_ESP_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-FCOE-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_FCOE_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_FCOE_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-GRE-CSUM-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_GRE_CSUM_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_GRE_CSUM_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-GRE-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_GRE_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_GRE_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-GSO-LIST:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_LIST">NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_LIST</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-GSO-PARTIAL:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_PARTIAL">NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_PARTIAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-GSO-ROBUST:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_ROBUST">NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_ROBUST</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-IPXIP4-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_IPXIP4_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_IPXIP4_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-IPXIP6-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_IPXIP6_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_IPXIP6_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-NOCACHE-COPY:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_NOCACHE_COPY">NM_ETHTOOL_OPTNAME_FEATURE_TX_NOCACHE_COPY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-SCATTER-GATHER:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_SCATTER_GATHER">NM_ETHTOOL_OPTNAME_FEATURE_TX_SCATTER_GATHER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-SCATTER-GATHER-FRAGLIST:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_SCATTER_GATHER_FRAGLIST">NM_ETHTOOL_OPTNAME_FEATURE_TX_SCATTER_GATHER_FRAGLIST</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-SCTP-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_SCTP_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_SCTP_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-TCP6-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP6_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP6_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-TCP-ECN-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_ECN_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_ECN_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-TCP-MANGLEID-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_MANGLEID_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_MANGLEID_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-TCP-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-TUNNEL-REMCSUM-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_TUNNEL_REMCSUM_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_TUNNEL_REMCSUM_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-UDP-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-UDP-TNL-CSUM-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_TNL_CSUM_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_TNL_CSUM_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-UDP-TNL-SEGMENTATION:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_TNL_SEGMENTATION">NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_TNL_SEGMENTATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-FEATURE-TX-VLAN-STAG-HW-INSERT:CAPS" title="NM_ETHTOOL_OPTNAME_FEATURE_TX_VLAN_STAG_HW_INSERT">NM_ETHTOOL_OPTNAME_FEATURE_TX_VLAN_STAG_HW_INSERT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-ADAPTIVE-RX:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_ADAPTIVE_RX">NM_ETHTOOL_OPTNAME_COALESCE_ADAPTIVE_RX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-ADAPTIVE-TX:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_ADAPTIVE_TX">NM_ETHTOOL_OPTNAME_COALESCE_ADAPTIVE_TX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-PKT-RATE-HIGH:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_PKT_RATE_HIGH">NM_ETHTOOL_OPTNAME_COALESCE_PKT_RATE_HIGH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-PKT-RATE-LOW:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_PKT_RATE_LOW">NM_ETHTOOL_OPTNAME_COALESCE_PKT_RATE_LOW</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-RX-FRAMES:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES">NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-RX-FRAMES-HIGH:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_HIGH">NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_HIGH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-RX-FRAMES-IRQ:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_IRQ">NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_IRQ</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-RX-FRAMES-LOW:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_LOW">NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_LOW</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-RX-USECS:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS">NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-RX-USECS-HIGH:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_HIGH">NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_HIGH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-RX-USECS-IRQ:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_IRQ">NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_IRQ</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-RX-USECS-LOW:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_LOW">NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_LOW</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-SAMPLE-INTERVAL:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_SAMPLE_INTERVAL">NM_ETHTOOL_OPTNAME_COALESCE_SAMPLE_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-STATS-BLOCK-USECS:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_STATS_BLOCK_USECS">NM_ETHTOOL_OPTNAME_COALESCE_STATS_BLOCK_USECS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-TX-FRAMES:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES">NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-TX-FRAMES-HIGH:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_HIGH">NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_HIGH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-TX-FRAMES-IRQ:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_IRQ">NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_IRQ</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-TX-FRAMES-LOW:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_LOW">NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_LOW</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-TX-USECS:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS">NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-TX-USECS-HIGH:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_HIGH">NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_HIGH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-TX-USECS-IRQ:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_IRQ">NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_IRQ</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-COALESCE-TX-USECS-LOW:CAPS" title="NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_LOW">NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_LOW</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-RING-RX:CAPS" title="NM_ETHTOOL_OPTNAME_RING_RX">NM_ETHTOOL_OPTNAME_RING_RX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-RING-RX-JUMBO:CAPS" title="NM_ETHTOOL_OPTNAME_RING_RX_JUMBO">NM_ETHTOOL_OPTNAME_RING_RX_JUMBO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-RING-RX-MINI:CAPS" title="NM_ETHTOOL_OPTNAME_RING_RX_MINI">NM_ETHTOOL_OPTNAME_RING_RX_MINI</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-RING-TX:CAPS" title="NM_ETHTOOL_OPTNAME_RING_TX">NM_ETHTOOL_OPTNAME_RING_TX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-PAUSE-AUTONEG:CAPS" title="NM_ETHTOOL_OPTNAME_PAUSE_AUTONEG">NM_ETHTOOL_OPTNAME_PAUSE_AUTONEG</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-PAUSE-RX:CAPS" title="NM_ETHTOOL_OPTNAME_PAUSE_RX">NM_ETHTOOL_OPTNAME_PAUSE_RX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="libnm-nm-ethtool-utils.html#NM-ETHTOOL-OPTNAME-PAUSE-TX:CAPS" title="NM_ETHTOOL_OPTNAME_PAUSE_TX">NM_ETHTOOL_OPTNAME_PAUSE_TX</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="libnm-nm-ethtool-utils.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="libnm-nm-ethtool-utils.functions_details"></a><h2>Functions</h2>
+<p></p>
+</div>
+<div class="refsect1">
+<a name="libnm-nm-ethtool-utils.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-ESP-HW-OFFLOAD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_ESP_HW_OFFLOAD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_ESP_HW_OFFLOAD             "feature-esp-hw-offload"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-ESP-TX-CSUM-HW-OFFLOAD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_ESP_TX_CSUM_HW_OFFLOAD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_ESP_TX_CSUM_HW_OFFLOAD     "feature-esp-tx-csum-hw-offload"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-FCOE-MTU:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_FCOE_MTU</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_FCOE_MTU                   "feature-fcoe-mtu"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-GRO:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_GRO</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_GRO                        "feature-gro"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-GSO:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_GSO</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_GSO                        "feature-gso"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-HIGHDMA:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_HIGHDMA</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_HIGHDMA                    "feature-highdma"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-HW-TC-OFFLOAD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_HW_TC_OFFLOAD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_HW_TC_OFFLOAD              "feature-hw-tc-offload"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-L2-FWD-OFFLOAD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_L2_FWD_OFFLOAD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_L2_FWD_OFFLOAD             "feature-l2-fwd-offload"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-LOOPBACK:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_LOOPBACK</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_LOOPBACK                   "feature-loopback"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-LRO:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_LRO</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_LRO                        "feature-lro"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-MACSEC-HW-OFFLOAD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_MACSEC_HW_OFFLOAD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_MACSEC_HW_OFFLOAD          "feature-macsec-hw-offload"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-NTUPLE:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_NTUPLE</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_NTUPLE                     "feature-ntuple"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX                         "feature-rx"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RXHASH:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RXHASH</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RXHASH                     "feature-rxhash"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RXVLAN:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RXVLAN</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RXVLAN                     "feature-rxvlan"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-ALL:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_ALL</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_ALL                     "feature-rx-all"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-FCS:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_FCS</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_FCS                     "feature-rx-fcs"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-GRO-HW:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_GRO_HW</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_GRO_HW                  "feature-rx-gro-hw"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-GRO-LIST:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_GRO_LIST</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_GRO_LIST                "feature-rx-gro-list"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-UDP-GRO-FORWARDING:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_UDP_GRO_FORWARDING</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_UDP_GRO_FORWARDING      "feature-rx-udp-gro-forwarding"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-UDP-TUNNEL-PORT-OFFLOAD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_UDP_TUNNEL_PORT_OFFLOAD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_UDP_TUNNEL_PORT_OFFLOAD "feature-rx-udp_tunnel-port-offload"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-VLAN-FILTER:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_FILTER</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_FILTER             "feature-rx-vlan-filter"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-VLAN-STAG-FILTER:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_STAG_FILTER</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_STAG_FILTER        "feature-rx-vlan-stag-filter"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-RX-VLAN-STAG-HW-PARSE:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_STAG_HW_PARSE</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_RX_VLAN_STAG_HW_PARSE      "feature-rx-vlan-stag-hw-parse"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-SG:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_SG</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_SG                         "feature-sg"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TLS-HW-RECORD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_RECORD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_RECORD              "feature-tls-hw-record"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TLS-HW-RX-OFFLOAD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_RX_OFFLOAD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_RX_OFFLOAD          "feature-tls-hw-rx-offload"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TLS-HW-TX-OFFLOAD:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_TX_OFFLOAD</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TLS_HW_TX_OFFLOAD          "feature-tls-hw-tx-offload"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TSO:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TSO</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TSO                        "feature-tso"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX                         "feature-tx"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TXVLAN:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TXVLAN</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TXVLAN                     "feature-txvlan"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-FCOE-CRC:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_FCOE_CRC</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_FCOE_CRC       "feature-tx-checksum-fcoe-crc"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-IPV4:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IPV4</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IPV4           "feature-tx-checksum-ipv4"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-IPV6:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IPV6</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IPV6           "feature-tx-checksum-ipv6"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-IP-GENERIC:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IP_GENERIC</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_IP_GENERIC     "feature-tx-checksum-ip-generic"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-CHECKSUM-SCTP:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_SCTP</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_CHECKSUM_SCTP           "feature-tx-checksum-sctp"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-ESP-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_ESP_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_ESP_SEGMENTATION        "feature-tx-esp-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-FCOE-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_FCOE_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_FCOE_SEGMENTATION       "feature-tx-fcoe-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-GRE-CSUM-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_GRE_CSUM_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_GRE_CSUM_SEGMENTATION   "feature-tx-gre-csum-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-GRE-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_GRE_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_GRE_SEGMENTATION        "feature-tx-gre-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-GSO-LIST:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_LIST</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_LIST                "feature-tx-gso-list"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-GSO-PARTIAL:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_PARTIAL</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_PARTIAL             "feature-tx-gso-partial"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-GSO-ROBUST:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_ROBUST</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_GSO_ROBUST              "feature-tx-gso-robust"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-IPXIP4-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_IPXIP4_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_IPXIP4_SEGMENTATION     "feature-tx-ipxip4-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-IPXIP6-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_IPXIP6_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_IPXIP6_SEGMENTATION     "feature-tx-ipxip6-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-NOCACHE-COPY:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_NOCACHE_COPY</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_NOCACHE_COPY            "feature-tx-nocache-copy"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-SCATTER-GATHER:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_SCATTER_GATHER</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_SCATTER_GATHER          "feature-tx-scatter-gather"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-SCATTER-GATHER-FRAGLIST:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_SCATTER_GATHER_FRAGLIST</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_SCATTER_GATHER_FRAGLIST "feature-tx-scatter-gather-fraglist"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-SCTP-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_SCTP_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_SCTP_SEGMENTATION       "feature-tx-sctp-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-TCP6-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP6_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP6_SEGMENTATION       "feature-tx-tcp6-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-TCP-ECN-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_ECN_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_ECN_SEGMENTATION    "feature-tx-tcp-ecn-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-TCP-MANGLEID-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_MANGLEID_SEGMENTATION</h3>
+<pre class="programlisting">#define             NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_MANGLEID_SEGMENTATION</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-TCP-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_TCP_SEGMENTATION "feature-tx-tcp-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-TUNNEL-REMCSUM-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_TUNNEL_REMCSUM_SEGMENTATION</h3>
+<pre class="programlisting">#define             NM_ETHTOOL_OPTNAME_FEATURE_TX_TUNNEL_REMCSUM_SEGMENTATION</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-UDP-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_SEGMENTATION "feature-tx-udp-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-UDP-TNL-CSUM-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_TNL_CSUM_SEGMENTATION</h3>
+<pre class="programlisting">#define             NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_TNL_CSUM_SEGMENTATION</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-UDP-TNL-SEGMENTATION:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_TNL_SEGMENTATION</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_UDP_TNL_SEGMENTATION "feature-tx-udp_tnl-segmentation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-FEATURE-TX-VLAN-STAG-HW-INSERT:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_FEATURE_TX_VLAN_STAG_HW_INSERT</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_FEATURE_TX_VLAN_STAG_HW_INSERT  "feature-tx-vlan-stag-hw-insert"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-ADAPTIVE-RX:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_ADAPTIVE_RX</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_ADAPTIVE_RX       "coalesce-adaptive-rx"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-ADAPTIVE-TX:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_ADAPTIVE_TX</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_ADAPTIVE_TX       "coalesce-adaptive-tx"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-PKT-RATE-HIGH:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_PKT_RATE_HIGH</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_PKT_RATE_HIGH     "coalesce-pkt-rate-high"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-PKT-RATE-LOW:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_PKT_RATE_LOW</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_PKT_RATE_LOW      "coalesce-pkt-rate-low"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-RX-FRAMES:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES         "coalesce-rx-frames"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-RX-FRAMES-HIGH:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_HIGH</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_HIGH    "coalesce-rx-frames-high"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-RX-FRAMES-IRQ:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_IRQ</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_IRQ     "coalesce-rx-frames-irq"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-RX-FRAMES-LOW:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_LOW</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_RX_FRAMES_LOW     "coalesce-rx-frames-low"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-RX-USECS:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS          "coalesce-rx-usecs"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-RX-USECS-HIGH:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_HIGH</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_HIGH     "coalesce-rx-usecs-high"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-RX-USECS-IRQ:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_IRQ</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_IRQ      "coalesce-rx-usecs-irq"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-RX-USECS-LOW:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_LOW</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_RX_USECS_LOW      "coalesce-rx-usecs-low"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-SAMPLE-INTERVAL:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_SAMPLE_INTERVAL</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_SAMPLE_INTERVAL   "coalesce-sample-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-STATS-BLOCK-USECS:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_STATS_BLOCK_USECS</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_STATS_BLOCK_USECS "coalesce-stats-block-usecs"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-TX-FRAMES:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES         "coalesce-tx-frames"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-TX-FRAMES-HIGH:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_HIGH</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_HIGH    "coalesce-tx-frames-high"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-TX-FRAMES-IRQ:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_IRQ</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_IRQ     "coalesce-tx-frames-irq"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-TX-FRAMES-LOW:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_LOW</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_TX_FRAMES_LOW     "coalesce-tx-frames-low"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-TX-USECS:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS          "coalesce-tx-usecs"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-TX-USECS-HIGH:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_HIGH</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_HIGH     "coalesce-tx-usecs-high"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-TX-USECS-IRQ:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_IRQ</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_IRQ      "coalesce-tx-usecs-irq"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-COALESCE-TX-USECS-LOW:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_LOW</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_COALESCE_TX_USECS_LOW      "coalesce-tx-usecs-low"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-RING-RX:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_RING_RX</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_RING_RX       "ring-rx"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-RING-RX-JUMBO:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_RING_RX_JUMBO</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_RING_RX_JUMBO "ring-rx-jumbo"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-RING-RX-MINI:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_RING_RX_MINI</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_RING_RX_MINI  "ring-rx-mini"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-RING-TX:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_RING_TX</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_RING_TX       "ring-tx"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-PAUSE-AUTONEG:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_PAUSE_AUTONEG</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_PAUSE_AUTONEG "pause-autoneg"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-PAUSE-RX:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_PAUSE_RX</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_PAUSE_RX      "pause-rx"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-ETHTOOL-OPTNAME-PAUSE-TX:CAPS"></a><h3>NM_ETHTOOL_OPTNAME_PAUSE_TX</h3>
+<pre class="programlisting">#define NM_ETHTOOL_OPTNAME_PAUSE_TX      "pause-tx"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

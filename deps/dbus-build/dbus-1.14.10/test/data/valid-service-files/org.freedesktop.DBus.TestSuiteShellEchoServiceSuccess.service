@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.freedesktop.DBus.TestSuiteShellEchoServiceSuccess
+Exec=/home/bruns/Documents/EpinAnonymOS/deps/dbus-build/dbus-1.14.10/test/test-shell-service -test "that" 'we get' back --what "we put in"
+

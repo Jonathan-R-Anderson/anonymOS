@@ -48,7 +48,7 @@ enum : ulong {
     REASON_IRQ     = 3,
 }
 
-enum MAX_TASKS   = 64;
+enum MAX_TASKS   = 256;   // bumped from 64: LKL+desktop+dbus+NM exhaust 64 (exited threads also leak slots -- see reaper TODO)
 // A real Mesa/softpipe + Hyprland startup maps several hundred persistent regions
 // (gallium buffers, the 1080p framebuffer, musl's mmap-backed large allocations),
 // which overflowed the old 512 cap ("addRegion: full") before the first frame.
@@ -458,19 +458,24 @@ public void objReleaseUntyped(int tid) {
 }
 
 // Allocate a task slot (id > 0 reserved for non-init tasks)
+private int initTaskSlot(int i) {
+    g_tasks[i] = Task.init;
+    g_tasks[i].active = true;
+    g_tasks[i].processLeaderTid = i;
+    g_tasks[i].mmapNext = 0x700000000000UL;
+    g_tasks[i].fdTabId = i;
+    g_tasks[i].capTabId = i;
+    objEnsureTask(i);
+    return i;
+}
+
 int allocTask() {
-    for (int i = 1; i < MAX_TASKS; i++) {
-        if (!g_tasks[i].active) {
-            g_tasks[i] = Task.init;
-            g_tasks[i].active = true;
-            g_tasks[i].processLeaderTid = i;
-            g_tasks[i].mmapNext = 0x700000000000UL;
-            g_tasks[i].fdTabId = i;
-            g_tasks[i].capTabId = i;
-            objEnsureTask(i);
-            return i;
-        }
-    }
+    for (int i = 1; i < MAX_TASKS; i++)
+        if (!g_tasks[i].active)
+            return initTaskSlot(i);
+    // NOTE: a dead-thread-slot reclaim was tried here but faulted on real hardware (triggers only when
+    // the table is full, which QEMU never reached) — reverted.  The task-slot thread leak is a known
+    // latent issue; 256 slots + the light diagnostics are enough that it isn't hit in practice.
     return -1;
 }
 

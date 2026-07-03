@@ -1,0 +1,258 @@
+'\" t
+.\"     Title: NetworkManager
+.\"    Author: 
+.\" Generator: DocBook XSL Stylesheets vsnapshot <http://docbook.sf.net/>
+.\"      Date: 10/03/2023
+.\"    Manual: Network management daemons
+.\"    Source: NetworkManager 1.44.2
+.\"  Language: English
+.\"
+.TH "NETWORKMANAGER" "8" "" "NetworkManager 1\&.44\&.2" "Network management daemons"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+NetworkManager \- network management daemon
+.SH "SYNOPSIS"
+.HP \w'\fBNetworkManager\ \fR\fB[OPTIONS...]\fR\ 'u
+\fBNetworkManager \fR\fB[OPTIONS...]\fR
+.SH "DESCRIPTION"
+.PP
+The NetworkManager daemon attempts to make networking configuration and operation as painless and automatic as possible by managing the primary network connection and other network interfaces, like Ethernet, Wi\-Fi, and Mobile Broadband devices\&. NetworkManager will connect any network device when a connection for that device becomes available, unless that behavior is disabled\&. Information about networking is exported via a D\-Bus interface to any interested application, providing a rich API with which to inspect and control network settings and operation\&.
+.SH "DISPATCHER SCRIPTS"
+.PP
+NetworkManager\-dispatcher service can execute scripts for the user in response to network events\&. See
+\fBNetworkManager-dispatcher\fR(8)
+manual\&.
+.SH "OPTIONS"
+.PP
+The following options are understood:
+.PP
+\fB\-\-version\fR | \fB\-V\fR
+.RS 4
+Print the NetworkManager software version and exit\&.
+.RE
+.PP
+\fB\-\-help\fR | \fB\-h\fR
+.RS 4
+Print NetworkManager\*(Aqs available options and exit\&.
+.RE
+.PP
+\fB\-\-no\-daemon\fR | \fB\-n\fR
+.RS 4
+Do not daemonize\&.
+.RE
+.PP
+\fB\-\-debug\fR | \fB\-d\fR
+.RS 4
+Do not daemonize, and direct log output to the controlling terminal in addition to syslog\&.
+.RE
+.PP
+\fB\-\-pid\-file\fR | \fB\-p\fR
+.RS 4
+Specify location of a PID file\&. The PID file is used for storing PID of the running process and prevents running multiple instances\&.
+.RE
+.PP
+\fB\-\-state\-file\fR
+.RS 4
+Specify file for storing state of the NetworkManager persistently\&. If not specified, the default value of
+/var/lib/NetworkManager/NetworkManager\&.state
+is used\&.
+.RE
+.PP
+\fB\-\-config\fR
+.RS 4
+Specify configuration file to set up various settings for NetworkManager\&. If not specified, the default value of
+/etc/NetworkManager/NetworkManager\&.conf
+is used with a fallback to the older \*(Aqnm\-system\-settings\&.conf\*(Aq if located in the same directory\&. See
+\fBNetworkManager.conf\fR(5)
+for more information on configuration file\&.
+.RE
+.PP
+\fB\-\-configure\-and\-quit\fR [initrd]
+.RS 4
+Quit after all devices reach a stable state\&. The optional
+initrd
+parameter enables mode, where no processes are left running after NetworkManager stops, which is useful for running from an initial ramdisk on rearly boot\&.
+.RE
+.PP
+\fB\-\-plugins\fR
+.RS 4
+List plugins used to manage system\-wide connection settings\&. This list has preference over plugins specified in the configuration file\&. See
+main\&.plugins
+setting in
+\fBNetworkManager.conf\fR(5)
+for supported options\&.
+.RE
+.PP
+\fB\-\-log\-level\fR
+.RS 4
+Sets how much information NetworkManager sends to the log destination (usually syslog\*(Aqs "daemon" facility)\&. By default, only informational, warning, and error messages are logged\&. See the section on
+logging
+in
+\fBNetworkManager.conf\fR(5)
+for more information\&.
+.RE
+.PP
+\fB\-\-log\-domains\fR
+.RS 4
+A comma\-separated list specifying which operations are logged to the log destination (usually syslog)\&. By default, most domains are logging\-enabled\&. See the section on
+logging
+in
+\fBNetworkManager.conf\fR(5)
+for more information\&.
+.RE
+.PP
+\fB\-\-print\-config\fR
+.RS 4
+Print the NetworkManager configuration to stdout and exit\&. See
+\fBNetworkManager.conf\fR(5)\&. This does not include connection profiles\&. View them with
+\fBnmcli connection\fR\&.
+.sp
+This reads configuration files from disk\&. If NetworkManager is currently running, make sure that it has the same configuration loaded\&.
+.RE
+.SH "UDEV PROPERTIES"
+.PP
+\fBudev\fR(7)
+device manager is used for the network device discovery\&. The following property influences how NetworkManager manages the devices:
+.PP
+\fINM_UNMANAGED\fR
+.RS 4
+If set to
+"1"
+or
+"true", the device is configured as unmanaged by NetworkManager\&. Note that the user still can explicitly overrule this configuration via means like
+\fBnmcli device set "$DEVICE" managed yes\fR
+or
+"device*\&.managed=1"
+in NetworkManager\&.conf\&.
+.RE
+.SH "SIGNALS"
+.PP
+NetworkManager process handles the following signals:
+.PP
+\fISIGHUP\fR
+.RS 4
+The signal causes a reload of NetworkManager\*(Aqs configuration\&. Note that not all configuration parameters can be changed at runtime and therefore some changes may be applied only after the next restart of the daemon\&. A SIGHUP also involves further reloading actions, like doing a DNS update and restarting the DNS plugin\&. The latter can be useful for example when using the dnsmasq plugin and changing its configuration in
+/etc/NetworkManager/dnsmasq\&.d\&. However, it also means this will shortly interrupt name resolution\&. In the future, there may be further actions added\&. A SIGHUP means to update NetworkManager configuration and reload everything that is supported\&. Note that this does not reload connections from disk\&. For that there is a D\-Bus API and nmcli\*(Aqs reload action
+.RE
+.PP
+\fISIGUSR1\fR
+.RS 4
+The signal forces a rewrite of DNS configuration\&. Contrary to SIGHUP, this does not restart the DNS plugin and will not interrupt name resolution\&. When NetworkManager is not managing DNS, the signal forces a restart of operations that depend on the DNS configuration (like the resolution of the system hostname via reverse DNS, or the resolution of WireGuard peers); therefore, it can be used to tell NetworkManager that the content of resolv\&.conf was changed externally\&. In the future, further actions may be added\&. A SIGUSR1 means to write out data like resolv\&.conf, or refresh a cache\&. It is a subset of what is done for SIGHUP without reloading configuration from disk\&.
+.RE
+.PP
+\fISIGUSR2\fR
+.RS 4
+The signal has no effect at the moment but is reserved for future use\&.
+.RE
+.PP
+An alternative to a signal to reload configuration is the Reload D\-Bus call\&. It allows for more fine\-grained selection of what to reload, it only returns after the reload is complete, and it is guarded by PolicyKit\&.
+.SH "DEBUGGING"
+.PP
+NetworkManager only configures your system\&. So when your networking setup doesn\*(Aqt work as expected, the first step is to look at your system to understand what is actually configured, and whether that is correct\&. The second step is to find out how to tell NetworkManager to do the right thing\&.
+.PP
+You can for example try to
+\fBping\fR
+hosts (by IP address or DNS name), look at
+\fBip link show\fR,
+\fBip address show\fR
+and
+\fBip route show\fR, and look at
+/etc/resolv\&.conf
+for name resolution issues\&. Also look at the connection profiles that you have configured in NetworkManager (\fBnmcli connection\fR
+and
+\fBnmcli connection show "$PROFILE"\fR) and the configured interfaces (\fBnmcli device\fR)\&.
+.PP
+If that does not suffice, look at the logfiles of NetworkManager\&. NetworkManager logs to syslog, so depending on your system configuration you can call
+\fBjournalctl\fR
+to get the logs\&. By default, NetworkManager logs are not verbose and thus not very helpful for investigating a problem in detail\&. You can change the logging level at runtime with
+\fBnmcli general logging level TRACE domains ALL\fR\&. But usually a better way is to collect full logs from the start, by configuring
+level=TRACE
+in NetworkManager\&.conf\&. See
+\fBNetworkManager.conf\fR(5)
+manual\&. Note that trace logs of NetworkManager are verbose and systemd\-journald might rate limit some lines\&. Possibly disable rate limiting first with the
+RateLimitIntervalSec
+and
+RateLimitBurst
+options of journald (see
+\fBjournald.conf\fR(5)
+manual)\&.
+.PP
+NetworkManager does not log any secrets\&. However, you are advised to check whether anything private sensitive gets logged before posting\&. When reporting an issue, provide complete logs and avoid modifications (for privacy) that distort the meaning\&.
+.SH "/VAR/LIB/NETWORKMANAGER/SECRET_KEY AND /ETC/MACHINE\-ID"
+.PP
+The identity of a machine is important as various settings depend on it\&. For example,
+ipv6\&.addr\-gen\-mode=stable
+and
+ethernet\&.cloned\-mac\-address=stable
+generate identifiers by hashing the machine\*(Aqs identity\&. See also the
+connection\&.stable\-id
+connection property which is a per\-profile seed that gets hashed with the machine identity for generating such addresses and identifiers\&.
+.PP
+If you backup and restore a machine, the identity of the machine probably should be preserved\&. In that case, preserve the files
+/var/lib/NetworkManager/secret_key
+and
+/etc/machine\-id\&. On the other hand, if you clone a virtual machine, you probably want that the clone has a different identity\&. There is already existing tooling on Linux for handling
+/etc/machine\-id
+(see
+\fBmachine-id\fR(5))\&.
+.PP
+The identity of the machine is determined by the
+/var/lib/NetworkManager/secret_key\&. If such a file does not exist, NetworkManager will create a file with random content\&. To generate a new identity just delete the file and after restart a new file will be created\&. The file should be read\-only to root and contain at least 16 bytes that will be used to seed the various places where a stable identifier is used\&.
+.PP
+Since 1\&.16\&.0, NetworkManager supports a version 2 of secret\-keys\&. For such keys
+/var/lib/NetworkManager/secret_key
+starts with ASCII
+"nm\-v2:"
+followed by at least 32 bytes of random data\&. Also, recent versions of NetworkManager always create such kinds of secret\-keys, when the file does not yet exist\&. With version 2 of the secret\-key,
+/etc/machine\-id
+is also hashed as part of the generation for addresses and identifiers\&. The advantage is that you can keep
+/var/lib/NetworkManager/secret_key
+stable, and only regenerate
+/etc/machine\-id
+when cloning a VM\&.
+.SH "BUGS"
+.PP
+Please report any bugs you find in NetworkManager at the
+\m[blue]\fBNetworkManager issue tracker\fR\m[]\&\s-2\u[1]\d\s+2\&.
+.SH "SEE ALSO"
+.PP
+\m[blue]\fBNetworkManager home page\fR\m[]\&\s-2\u[2]\d\s+2,
+\fBNetworkManager.conf\fR(5),
+\fBNetworkManager-dispatcher\fR(8),
+\fBNetworkManager-wait-online.service\fR(8),
+\fBnmcli\fR(1),
+\fBnmcli-examples\fR(7),
+\fBnm-online\fR(1),
+\fBnm-settings\fR(5),
+\fBnm-applet\fR(1),
+\fBnm-connection-editor\fR(1),
+\fBudev\fR(7)
+.SH "NOTES"
+.IP " 1." 4
+NetworkManager issue tracker
+.RS 4
+\%https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues
+.RE
+.IP " 2." 4
+NetworkManager home page
+.RS 4
+\%https://networkmanager.dev
+.RE

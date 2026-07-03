@@ -1,0 +1,43 @@
+dbus_launch-dbus-launch-x11.o: dbus-launch-x11.c ../config.h \
+  dbus-launch.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/endian.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/select.h \
+  ../dbus/dbus.h ../dbus/dbus-arch-deps.h ../dbus/dbus-macros.h \
+  ../dbus/dbus-address.h ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  ../dbus/dbus-errors.h ../dbus/dbus-protocol.h ../dbus/dbus-bus.h \
+  ../dbus/dbus-connection.h ../dbus/dbus-memory.h ../dbus/dbus-message.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  ../dbus/dbus-shared.h ../dbus/dbus-misc.h ../dbus/dbus-pending-call.h \
+  ../dbus/dbus-server.h ../dbus/dbus-signature.h ../dbus/dbus-syntax.h \
+  ../dbus/dbus-threads.h
+../config.h:
+dbus-launch.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/endian.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/select.h:
+../dbus/dbus.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-address.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-protocol.h:
+../dbus/dbus-bus.h:
+../dbus/dbus-connection.h:
+../dbus/dbus-memory.h:
+../dbus/dbus-message.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+../dbus/dbus-shared.h:
+../dbus/dbus-misc.h:
+../dbus/dbus-pending-call.h:
+../dbus/dbus-server.h:
+../dbus/dbus-signature.h:
+../dbus/dbus-syntax.h:
+../dbus/dbus-threads.h:

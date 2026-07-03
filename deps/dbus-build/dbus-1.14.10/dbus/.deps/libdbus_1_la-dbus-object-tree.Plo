@@ -1,0 +1,69 @@
+libdbus_1_la-dbus-object-tree.lo: dbus-object-tree.c ../config.h \
+  dbus-object-tree.h ../dbus/dbus-connection.h ../dbus/dbus-errors.h \
+  ../dbus/dbus-macros.h ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  ../dbus/dbus-arch-deps.h ../dbus/dbus-protocol.h ../dbus/dbus-memory.h \
+  ../dbus/dbus-message.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  ../dbus/dbus-shared.h dbus-connection-internal.h \
+  ../dbus/dbus-internals.h ../dbus/dbus-sysdeps.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  ../dbus/dbus-file.h ../dbus/dbus-string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h \
+  ../dbus/dbus-threads-internal.h ../dbus/dbus-threads.h \
+  ../dbus/dbus-credentials.h ../dbus/dbus-transport.h \
+  ../dbus/dbus-address.h ../dbus/dbus-resources.h ../dbus/dbus-list.h \
+  ../dbus/dbus-timeout.h ../dbus/dbus-dataslot.h dbus-internals.h \
+  dbus-hash.h dbus-protocol.h dbus-string.h ../dbus/dbus-test-tap.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h
+../config.h:
+dbus-object-tree.h:
+../dbus/dbus-connection.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-protocol.h:
+../dbus/dbus-memory.h:
+../dbus/dbus-message.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+../dbus/dbus-shared.h:
+dbus-connection-internal.h:
+../dbus/dbus-internals.h:
+../dbus/dbus-sysdeps.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+../dbus/dbus-file.h:
+../dbus/dbus-string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h:
+../dbus/dbus-threads-internal.h:
+../dbus/dbus-threads.h:
+../dbus/dbus-credentials.h:
+../dbus/dbus-transport.h:
+../dbus/dbus-address.h:
+../dbus/dbus-resources.h:
+../dbus/dbus-list.h:
+../dbus/dbus-timeout.h:
+../dbus/dbus-dataslot.h:
+dbus-internals.h:
+dbus-hash.h:
+dbus-protocol.h:
+dbus-string.h:
+../dbus/dbus-test-tap.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h:

@@ -1,0 +1,171 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>802-3-ethernet: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="ch01.html" title="Configuration Settings">
+<link rel="prev" href="settings-wimax.html" title="wimax">
+<link rel="next" href="settings-wireguard.html" title="wireguard">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#settings-802-3-ethernet.properties" class="shortcut">
+            Properties
+        </a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch01.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="settings-wimax.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="settings-wireguard.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="settings-802-3-ethernet"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2>802-3-ethernet</h2>
+<p>802-3-ethernet — Wired Ethernet Settings</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.3.3.45.2"></a><h2>
+            Properties
+        </h2>
+<div class="table">
+<a name="id-1.3.3.45.2.2.1"></a><p class="title"><b>Table 79. </b></p>
+<div class="table-contents"><table class="table" border="1">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>Key Name</th>
+<th>Value Type</th>
+<th>Default Value</th>
+<th>Value Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><pre class="screen">accept-all-mac-addresses</pre></td>
+<td><pre class="screen">NMTernary (int32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>When TRUE, setup the interface to accept packets for all MAC addresses. This is enabling the kernel interface flag IFF_PROMISC. When FALSE, the interface will only accept the packets with the interface destination mac address or broadcast.</td>
+</tr>
+<tr>
+<td><pre class="screen">assigned-mac-address</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The new field for the cloned MAC address. It can be either a hardware address in ASCII representation, or one of the special values "preserve", "permanent", "random" or "stable". This field replaces the deprecated "cloned-mac-address" on D-Bus, which can only contain explicit hardware addresses. Note that this property only exists in D-Bus API. libnm and nmcli continue to call this property "cloned-mac-address".</td>
+</tr>
+<tr>
+<td><pre class="screen">auto-negotiate</pre></td>
+<td><pre class="screen">boolean</pre></td>
+<td><pre class="screen">FALSE</pre></td>
+<td>When TRUE, enforce auto-negotiation of speed and duplex mode. If "speed" and "duplex" properties are both specified, only that single mode will be advertised and accepted during the link auto-negotiation process: this works only for BASE-T 802.3 specifications and is useful for enforcing gigabits modes, as in these cases link negotiation is mandatory. When FALSE, "speed" and "duplex" properties should be both set or link configuration will be skipped.</td>
+</tr>
+<tr>
+<td><pre class="screen">cloned-mac-address</pre></td>
+<td><pre class="screen">byte array</pre></td>
+<td><pre class="screen"></pre></td>
+<td>This D-Bus field is deprecated in favor of "assigned-mac-address" which is more flexible and allows specifying special variants like "random". For libnm and nmcli, this field is called "cloned-mac-address".</td>
+</tr>
+<tr>
+<td><pre class="screen">duplex</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>When a value is set, either "half" or "full", configures the device to use the specified duplex mode. If "auto-negotiate" is "yes" the specified duplex mode will be the only one advertised during link negotiation: this works only for BASE-T 802.3 specifications and is useful for enforcing gigabits modes, as in these cases link negotiation is mandatory. If the value is unset (the default), the link configuration will be either skipped (if "auto-negotiate" is "no", the default) or will be auto-negotiated (if "auto-negotiate" is "yes") and the local device will advertise all the supported duplex modes. Must be set together with the "speed" property if specified. Before specifying a duplex mode be sure your device supports it.</td>
+</tr>
+<tr>
+<td><pre class="screen">generate-mac-address-mask</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>With "cloned-mac-address" setting "random" or "stable", by default all bits of the MAC address are scrambled and a locally-administered, unicast MAC address is created. This property allows to specify that certain bits are fixed. Note that the least significant bit of the first MAC address will always be unset to create a unicast MAC address.
+
+If the property is NULL, it is eligible to be overwritten by a default connection setting. If the value is still NULL or an empty string, the default is to create a locally-administered, unicast MAC address.
+
+If the value contains one MAC address, this address is used as mask. The set bits of the mask are to be filled with the current MAC address of the device, while the unset bits are subject to randomization. Setting "FE:FF:FF:00:00:00" means to preserve the OUI of the current MAC address and only randomize the lower 3 bytes using the "random" or "stable" algorithm.
+
+If the value contains one additional MAC address after the mask, this address is used instead of the current MAC address to fill the bits that shall not be randomized. For example, a value of "FE:FF:FF:00:00:00 68:F7:28:00:00:00" will set the OUI of the MAC address to 68:F7:28, while the lower bits are randomized. A value of "02:00:00:00:00:00 00:00:00:00:00:00" will create a fully scrambled globally-administered, burned-in MAC address.
+
+If the value contains more than one additional MAC addresses, one of them is chosen randomly. For example, "02:00:00:00:00:00 00:00:00:00:00:00 02:00:00:00:00:00" will create a fully scrambled MAC address, randomly locally or globally administered.</td>
+</tr>
+<tr>
+<td><pre class="screen">mac-address</pre></td>
+<td><pre class="screen">byte array</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If specified, this connection will only apply to the Ethernet device whose permanent MAC address matches. This property does not change the MAC address of the device (i.e. MAC spoofing).</td>
+</tr>
+<tr>
+<td><pre class="screen">mac-address-blacklist</pre></td>
+<td><pre class="screen">array of string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If specified, this connection will never apply to the Ethernet device whose permanent MAC address matches an address in the list.  Each MAC address is in the standard hex-digits-and-colons notation (00:11:22:33:44:55).</td>
+</tr>
+<tr>
+<td><pre class="screen">mtu</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>If non-zero, only transmit packets of the specified size or smaller, breaking larger packets up into multiple Ethernet frames.</td>
+</tr>
+<tr>
+<td><pre class="screen">port</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Specific port type to use if the device supports multiple attachment methods.  One of "tp" (Twisted Pair), "aui" (Attachment Unit Interface), "bnc" (Thin Ethernet) or "mii" (Media Independent Interface). If the device supports only one port type, this setting is ignored.</td>
+</tr>
+<tr>
+<td><pre class="screen">s390-nettype</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>s390 network device type; one of "qeth", "lcs", or "ctc", representing the different types of virtual network devices available on s390 systems.</td>
+</tr>
+<tr>
+<td><pre class="screen">s390-options</pre></td>
+<td><pre class="screen">dict of string to string</pre></td>
+<td><pre class="screen">{}</pre></td>
+<td>Dictionary of key/value pairs of s390-specific device options.  Both keys and values must be strings.  Allowed keys include "portno", "layer2", "portname", "protocol", among others.  Key names must contain only alphanumeric characters (ie, [a-zA-Z0-9]).
+
+Currently, NetworkManager itself does nothing with this information. However, s390utils ships a udev rule which parses this information and applies it to the interface.</td>
+</tr>
+<tr>
+<td><pre class="screen">s390-subchannels</pre></td>
+<td><pre class="screen">array of string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Identifies specific subchannels that this network device uses for communication with z/VM or s390 host.  Like the "mac-address" property for non-z/VM devices, this property can be used to ensure this connection only applies to the network device that uses these subchannels.  The list should contain exactly 3 strings, and each string may only be composed of hexadecimal characters and the period (.) character.</td>
+</tr>
+<tr>
+<td><pre class="screen">speed</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>When a value greater than 0 is set, configures the device to use the specified speed. If "auto-negotiate" is "yes" the specified speed will be the only one advertised during link negotiation: this works only for BASE-T 802.3 specifications and is useful for enforcing gigabit speeds, as in this case link negotiation is mandatory. If the value is unset (0, the default), the link configuration will be either skipped (if "auto-negotiate" is "no", the default) or will be auto-negotiated (if "auto-negotiate" is "yes") and the local device will advertise all the supported speeds. In Mbit/s, ie 100 == 100Mbit/s. Must be set together with the "duplex" property when non-zero. Before specifying a speed value be sure your device supports it.</td>
+</tr>
+<tr>
+<td><pre class="screen">wake-on-lan</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">1</pre></td>
+<td>The NMSettingWiredWakeOnLan options to enable. Not all devices support all options. May be any combination of NM_SETTING_WIRED_WAKE_ON_LAN_PHY (0x2), NM_SETTING_WIRED_WAKE_ON_LAN_UNICAST (0x4), NM_SETTING_WIRED_WAKE_ON_LAN_MULTICAST (0x8), NM_SETTING_WIRED_WAKE_ON_LAN_BROADCAST (0x10), NM_SETTING_WIRED_WAKE_ON_LAN_ARP (0x20), NM_SETTING_WIRED_WAKE_ON_LAN_MAGIC (0x40) or the special values NM_SETTING_WIRED_WAKE_ON_LAN_DEFAULT (0x1) (to use global settings) and NM_SETTING_WIRED_WAKE_ON_LAN_IGNORE (0x8000) (to disable management of Wake-on-LAN in NetworkManager).</td>
+</tr>
+<tr>
+<td><pre class="screen">wake-on-lan-password</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>If specified, the password used with magic-packet-based Wake-on-LAN, represented as an Ethernet MAC address.  If NULL, no password will be required.</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p><br class="table-break"></p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NetworkManager-wait-online.service: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="manpages.html" title="Part I. Manual Pages">
+<link rel="prev" href="NetworkManager-dispatcher.html" title="NetworkManager-dispatcher">
+<link rel="next" href="nmcli.html" title="nmcli">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts"></td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="manpages.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NetworkManager-dispatcher.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="nmcli.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NetworkManager-wait-online.service"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle">NetworkManager-wait-online.service</span></h2>
+<p>NetworkManager-wait-online.service — Wait for the network to come online</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.2.5.4"></a><h2>Description</h2>
+<p>
+      The <code class="literal">NetworkManager-wait-online</code> service is a <code class="literal">oneshot</code>
+      systemd service that delays reaching the <code class="literal">network-online</code> target until
+      NetworkManager reports that the startup is completed on the D-Bus.
+    </p>
+<p>
+      When the system boots, for example, remote mounts defined in <code class="literal">/etc/fstab</code>,
+      require that the network is up. For this, these systemd units contain the
+      <code class="literal">After=network-online.target</code> setting to order themselves after this
+      target. <code class="literal">NetworkManager-wait-online</code> ensures that the
+      <code class="literal">network-online</code> target is reached only after the network is available.
+    </p>
+<p>
+      Optimally, all services on the host react dynamically to network changes and systemd
+      services do not need to be configured to start after reaching the
+      <code class="literal">network-online</code> target. In this case,
+      <code class="literal">NetworkManager-wait-online.service</code> has no effect and does not delay
+      the boot time. On the other hand, if you encounter a long boot time due to the delay
+      of <code class="literal">NetworkManager-wait-online</code>, investigate the services that require
+      network access and fix them.
+    </p>
+<p>
+      Except for the time out value in the <code class="literal">NetworkManager-wait-online.service</code>
+      unit, you cannot configure this service. Instead, settings in NetworkManager and the
+      connection profiles affect the behavior:
+    </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem">
+<p>
+          Startup is not complete as long as NetworkManager profiles are in an activating
+	  state. During boot, NetworkManager starts profiles with the
+	  <code class="literal">connection.autoconnect=yes</code> setting. If activation fails,
+	  NetworkManager retries the activation depending on the value of the
+	  <code class="literal">connection.autoconnect-retries</code> setting.
+        </p>
+<p>
+          NetworkManager reports startup complete when all profiles and devices are either
+	  activated or in a disconnect state and no further events are expected.
+        </p>
+</li>
+<li class="listitem">
+<p>
+          When a device reaches the activate state depends on its configuration. For example,
+	  with a profile that has both IPv4 and IPv6 enabled, by default, NetworkManager
+	  considers the device as fully activated already when only one of the address
+	  families is ready.
+        </p>
+<p>
+          The <code class="literal">ipv4.may-fail</code> and <code class="literal">ipv6.may-fail</code> settings
+	  control this behavior. Additionally, the following settings influence when the
+	  two address families complete: <code class="literal">ipv4.required-timeout</code>,
+	  <code class="literal">ipv6.required-timeout</code>, <code class="literal">ipv4.dhcp-timeout</code>,
+	  and <code class="literal">ipv6.ra-timeout</code>. For details, see
+	  <a class="link" href="nm-settings-nmcli.html" title="nm-settings-nmcli"><span class="citerefentry"><span class="refentrytitle">nm-settings-nmcli</span>(5)</span></a>.
+        </p>
+</li>
+<li class="listitem"><p>
+          NetworkManager cannot set IP addresses on bridge and bond devices that have ports
+	  that do not auto-activate. Because of this configuration error,
+	  <code class="literal">NetworkManager-wait-online</code> blocks until the service reaches
+	  its timeout value.
+        </p></li>
+<li class="listitem"><p>
+          Dispatcher scripts for the <code class="literal">pre-up</code> event run at a late stage
+	  during activation of a profile. These scripts block the activation for when
+	  NetworkManager considers the profile fully activated. For details, see
+	  <a class="link" href="NetworkManager-dispatcher.html" title="NetworkManager-dispatcher"><span class="citerefentry"><span class="refentrytitle">NetworkManager-dispatcher</span>(8)</span></a>.
+        </p></li>
+<li class="listitem"><p>
+          The property <code class="literal">connection.wait-activation-delay</code> adds an additional
+	  delay during activation and delays startup complete. This setting works around
+	  certain cases where a device is known to not be ready for a certain amount of time.
+        </p></li>
+<li class="listitem"><p>
+          The property <code class="literal">connection.wait-device-timeout</code> in the connection
+	  profiles cause a delay until the waiting devices appear. This is useful if the
+	  driver takes a longer time to detect the networking interfaces. This setting is
+	  similar to the <code class="literal">connection.gateway-ping-timeout</code> property.
+        </p></li>
+<li class="listitem"><p>
+          With Wi-Fi devices, NetworkManager needs to wait for the first scan result to
+	  know which networks are available. That adds a delay.
+        </p></li>
+<li class="listitem"><p>
+         With Ethernet devices, NetworkManager waits for the carrier until the value in
+	 <code class="literal">[device*].carrier-wait-timeout</code> is reached. This is because some
+	 devices take a long time to detect the carrier. Consequently, booting with cable
+	 unplugged, unnecessarily delays <code class="literal">NetworkManager-wait-online.service</code>.
+       </p></li>
+</ul></div>
+</div>
+<div class="refsect1">
+<a name="id-1.2.5.5"></a><h2>Bugs</h2>
+<p>
+      Please report any bugs in NetworkManager at the
+      <a class="ulink" href="https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues" target="_top">NetworkManager issue tracker</a>.
+    </p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.5.6"></a><h2>See Also</h2>
+<p>
+      <a class="ulink" href="https://networkmanager.dev" target="_top">NetworkManager home page</a>,
+      <a class="link" href="NetworkManager.html" title="NetworkManager"><span class="citerefentry"><span class="refentrytitle">NetworkManager</span>(8)</span></a>,
+      <a class="link" href="nm-online.html" title="nm-online"><span class="citerefentry"><span class="refentrytitle">nm-online</span>(1)</span></a>,
+      the <code class="literal">network-online.target</code> description in <span class="citerefentry"><span class="refentrytitle">systemd.special</span>(7)</span>
+    </p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

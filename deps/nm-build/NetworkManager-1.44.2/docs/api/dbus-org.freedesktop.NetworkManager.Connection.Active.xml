@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Connection.Active">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Connection-Active.top_of_page">org.freedesktop.NetworkManager.Connection.Active</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Connection-Active.top_of_page"><primary sortas="ActiveConnection">org.freedesktop.NetworkManager.Connection.Active</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Connection.Active</refname>    <refpurpose>Active Connection.</refpurpose>  </refnamediv>  <refsect1 role="signal_proto">
+    <title role="signal_proto.title">Signals</title>
+    <synopsis>
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-Connection-Active.StateChanged">StateChanged</link> (u state,
+              u reason);
+</synopsis>
+  </refsect1>
+  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Connection">Connection</link>      readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.SpecificObject">SpecificObject</link>  readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Id">Id</link>              readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Uuid">Uuid</link>            readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Type">Type</link>            readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Devices">Devices</link>         readable   ao
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.State">State</link>           readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.StateFlags">StateFlags</link>      readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Default">Default</link>         readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Ip4Config">Ip4Config</link>       readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Dhcp4Config">Dhcp4Config</link>     readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Default6">Default6</link>        readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Ip6Config">Ip6Config</link>       readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Dhcp6Config">Dhcp6Config</link>     readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Vpn">Vpn</link>             readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Controller">Controller</link>      readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Master">Master</link>          readable   o
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Connection-Active">
+  <title role="desc.title">Description</title>
+  <para>
+Objects that implement the Connection.Active interface represent an
+attempt to connect to a network using the details provided by a Connection
+object. The Connection.Active object tracks the life-cycle of the
+connection attempt and if successful indicates whether the connected
+network is the "default" or preferred network for access. NetworkManager
+has the concept of connections, which can be thought of as settings, a
+profile or a configuration that can be applied on a networking device.
+Such settings-connections are exposed as D-Bus object and the
+active-connection expresses this relationship between device and
+settings-connection. At any time a settings-connection can only be
+activated on one device and vice versa. However, during activation and
+deactivation multiple active-connections can reference the same device or
+settings-connection as they are waiting to be activated or to be
+deactivated.
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-signals-org.freedesktop.NetworkManager.Connection.Active">
+  <title role="details.title">Signal Details</title>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-Connection-Active.StateChanged">
+  <title>The "StateChanged" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-Connection-Active.StateChanged"><primary sortas="ActiveConnection::StateChanged">org.freedesktop.NetworkManager.Connection.Active::StateChanged</primary></indexterm>
+<programlisting>
+StateChanged (u state,
+              u reason);
+</programlisting>
+<para>
+Emitted when the state of the active connection has changed.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>u <parameter>state</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMActiveConnectionState">NMActiveConnectionState</link>) The new state of the active connection.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>u <parameter>reason</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMActiveConnectionStateReason">NMActiveConnectionStateReason</link>) Reason code describing the change to the new state.
+</para></listitem>
+</varlistentry>
+</variablelist>
+<para role="since">Since 1.8</para>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Connection.Active">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Connection">
+  <title>The "Connection" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Connection"><primary sortas="ActiveConnection:Connection">org.freedesktop.NetworkManager.Connection.Active:Connection</primary></indexterm>
+<programlisting>
+Connection  readable   o
+</programlisting>
+<para>
+The path of the connection.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.SpecificObject">
+  <title>The "SpecificObject" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.SpecificObject"><primary sortas="ActiveConnection:SpecificObject">org.freedesktop.NetworkManager.Connection.Active:SpecificObject</primary></indexterm>
+<programlisting>
+SpecificObject  readable   o
+</programlisting>
+<para>
+A specific object associated with the active connection. This property
+reflects the specific object used during connection activation, and will
+not change over the lifetime of the ActiveConnection once set.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Id">
+  <title>The "Id" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Id"><primary sortas="ActiveConnection:Id">org.freedesktop.NetworkManager.Connection.Active:Id</primary></indexterm>
+<programlisting>
+Id  readable   s
+</programlisting>
+<para>
+The ID of the connection, provided as a convenience so that clients do not
+have to retrieve all connection details.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Uuid">
+  <title>The "Uuid" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Uuid"><primary sortas="ActiveConnection:Uuid">org.freedesktop.NetworkManager.Connection.Active:Uuid</primary></indexterm>
+<programlisting>
+Uuid  readable   s
+</programlisting>
+<para>
+The UUID of the connection, provided as a convenience so that clients do
+not have to retrieve all connection details.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Type">
+  <title>The "Type" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Type"><primary sortas="ActiveConnection:Type">org.freedesktop.NetworkManager.Connection.Active:Type</primary></indexterm>
+<programlisting>
+Type  readable   s
+</programlisting>
+<para>
+The type of the connection, provided as a convenience so that clients do
+not have to retrieve all connection details.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Devices">
+  <title>The "Devices" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Devices"><primary sortas="ActiveConnection:Devices">org.freedesktop.NetworkManager.Connection.Active:Devices</primary></indexterm>
+<programlisting>
+Devices  readable   ao
+</programlisting>
+<para>
+Array of object paths representing devices which are part of this active
+connection.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.State">
+  <title>The "State" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.State"><primary sortas="ActiveConnection:State">org.freedesktop.NetworkManager.Connection.Active:State</primary></indexterm>
+<programlisting>
+State  readable   u
+</programlisting>
+<para>
+The state of this active connection.
+</para><para>
+Returns: <link linkend="NMActiveConnectionState">NMActiveConnectionState</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.StateFlags">
+  <title>The "StateFlags" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.StateFlags"><primary sortas="ActiveConnection:StateFlags">org.freedesktop.NetworkManager.Connection.Active:StateFlags</primary></indexterm>
+<programlisting>
+StateFlags  readable   u
+</programlisting>
+<para>
+The state flags of this active connection.
+</para><para>
+Returns: <link linkend="NMActivationStateFlags">NMActivationStateFlags</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Default">
+  <title>The "Default" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Default"><primary sortas="ActiveConnection:Default">org.freedesktop.NetworkManager.Connection.Active:Default</primary></indexterm>
+<programlisting>
+Default  readable   b
+</programlisting>
+<para>
+Whether this active connection is the default IPv4 connection, i.e.
+whether it currently owns the default IPv4 route.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Ip4Config">
+  <title>The "Ip4Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Ip4Config"><primary sortas="ActiveConnection:Ip4Config">org.freedesktop.NetworkManager.Connection.Active:Ip4Config</primary></indexterm>
+<programlisting>
+Ip4Config  readable   o
+</programlisting>
+<para>
+Object path of the Ip4Config object describing the configuration of the
+connection. Only valid when the connection is in the
+NM_ACTIVE_CONNECTION_STATE_ACTIVATED state.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Dhcp4Config">
+  <title>The "Dhcp4Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Dhcp4Config"><primary sortas="ActiveConnection:Dhcp4Config">org.freedesktop.NetworkManager.Connection.Active:Dhcp4Config</primary></indexterm>
+<programlisting>
+Dhcp4Config  readable   o
+</programlisting>
+<para>
+Object path of the Dhcp4Config object describing the DHCP options returned
+by the DHCP server (assuming the connection used DHCP). Only valid when
+the connection is in the NM_ACTIVE_CONNECTION_STATE_ACTIVATED state.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Default6">
+  <title>The "Default6" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Default6"><primary sortas="ActiveConnection:Default6">org.freedesktop.NetworkManager.Connection.Active:Default6</primary></indexterm>
+<programlisting>
+Default6  readable   b
+</programlisting>
+<para>
+Whether this active connection is the default IPv6 connection, i.e.
+whether it currently owns the default IPv6 route.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Ip6Config">
+  <title>The "Ip6Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Ip6Config"><primary sortas="ActiveConnection:Ip6Config">org.freedesktop.NetworkManager.Connection.Active:Ip6Config</primary></indexterm>
+<programlisting>
+Ip6Config  readable   o
+</programlisting>
+<para>
+Object path of the Ip6Config object describing the configuration of the
+connection. Only valid when the connection is in the
+NM_ACTIVE_CONNECTION_STATE_ACTIVATED state.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Dhcp6Config">
+  <title>The "Dhcp6Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Dhcp6Config"><primary sortas="ActiveConnection:Dhcp6Config">org.freedesktop.NetworkManager.Connection.Active:Dhcp6Config</primary></indexterm>
+<programlisting>
+Dhcp6Config  readable   o
+</programlisting>
+<para>
+Object path of the Dhcp6Config object describing the DHCP options returned
+by the DHCP server (assuming the connection used DHCP). Only valid when
+the connection is in the NM_ACTIVE_CONNECTION_STATE_ACTIVATED state.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Vpn">
+  <title>The "Vpn" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Vpn"><primary sortas="ActiveConnection:Vpn">org.freedesktop.NetworkManager.Connection.Active:Vpn</primary></indexterm>
+<programlisting>
+Vpn  readable   b
+</programlisting>
+<para>
+Whether this active connection is also a VPN connection.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Controller">
+  <title>The "Controller" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Controller"><primary sortas="ActiveConnection:Controller">org.freedesktop.NetworkManager.Connection.Active:Controller</primary></indexterm>
+<programlisting>
+Controller  readable   o
+</programlisting>
+<para>
+The path to the controller device if the connection is a port. This
+property replaces the deprecated 'Master' property.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Master">
+  <title>The "Master" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Connection-Active.Master"><primary sortas="ActiveConnection:Master">org.freedesktop.NetworkManager.Connection.Active:Master</primary></indexterm>
+<programlisting>
+Master  readable   o
+</programlisting>
+<para>
+The path to the controller device if the connection is a port.
+</para><para>
+DEPRECATED. This property is deprecated in favor of the 'Controller'
+property since 1.44.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

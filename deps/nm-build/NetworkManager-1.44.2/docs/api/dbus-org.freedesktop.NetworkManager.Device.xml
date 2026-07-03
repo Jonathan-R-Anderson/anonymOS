@@ -1,0 +1,636 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device.top_of_page">org.freedesktop.NetworkManager.Device</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device.top_of_page"><primary sortas=".Device">org.freedesktop.NetworkManager.Device</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device</refname>    <refpurpose>Device.</refpurpose>  </refnamediv>  <refsynopsisdiv role="synopsis">
+    <title role="synopsis.title">Methods</title>
+    <synopsis>
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device.Reapply">Reapply</link>              (IN  a{sa{sv}} connection,
+                      IN  t         version_id,
+                      IN  u         flags);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device.GetAppliedConnection">GetAppliedConnection</link> (IN  u         flags,
+                      OUT a{sa{sv}} connection,
+                      OUT t         version_id);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device.Disconnect">Disconnect</link>           ();
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device.Delete">Delete</link>               ();
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1 role="signal_proto">
+    <title role="signal_proto.title">Signals</title>
+    <synopsis>
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-Device.StateChanged">StateChanged</link> (u new_state,
+              u old_state,
+              u reason);
+</synopsis>
+  </refsect1>
+  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Udi">Udi</link>                   readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Path">Path</link>                  readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Interface">Interface</link>             readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.IpInterface">IpInterface</link>           readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Driver">Driver</link>                readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.DriverVersion">DriverVersion</link>         readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.FirmwareVersion">FirmwareVersion</link>       readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Capabilities">Capabilities</link>          readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Address">Ip4Address</link>            readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.State">State</link>                 readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.StateReason">StateReason</link>           readable   (uu)
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.ActiveConnection">ActiveConnection</link>      readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Config">Ip4Config</link>             readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Dhcp4Config">Dhcp4Config</link>           readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Ip6Config">Ip6Config</link>             readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Dhcp6Config">Dhcp6Config</link>           readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Managed">Managed</link>               readwrite  b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Autoconnect">Autoconnect</link>           readwrite  b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.FirmwareMissing">FirmwareMissing</link>       readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.NmPluginMissing">NmPluginMissing</link>       readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.DeviceType">DeviceType</link>            readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.AvailableConnections">AvailableConnections</link>  readable   ao
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.PhysicalPortId">PhysicalPortId</link>        readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Mtu">Mtu</link>                   readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Metered">Metered</link>               readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.LldpNeighbors">LldpNeighbors</link>         readable   aa{sv}
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Real">Real</link>                  readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Connectivity">Ip4Connectivity</link>       readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Ip6Connectivity">Ip6Connectivity</link>       readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.InterfaceFlags">InterfaceFlags</link>        readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.HwAddress">HwAddress</link>             readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device.Ports">Ports</link>                 readable   ao
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-methods-org.freedesktop.NetworkManager.Device">
+  <title role="details.title">Method Details</title>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device.Reapply">
+  <title>The Reapply() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device.Reapply"><primary sortas=".Device.Reapply">org.freedesktop.NetworkManager.Device.Reapply()</primary></indexterm>
+<programlisting>
+Reapply (IN  a{sa{sv}} connection,
+         IN  t         version_id,
+         IN  u         flags);
+</programlisting>
+<para>
+Attempts to update the configuration of a device without deactivating it.
+NetworkManager has the concept of connections, which are profiles that
+contain the configuration for a networking device. Those connections are
+exposed via D-Bus as individual objects that can be created, modified and
+deleted. When activating such a settings-connection on a device, the
+settings-connection is cloned to become an applied-connection and used to
+configure the device (see GetAppliedConnection). Subsequent modification
+of the settings-connection don't propagate automatically to the device's
+applied-connection (with exception of the firewall-zone and the metered
+property). For the changes to take effect, you can either re-activate the
+settings-connection, or call Reapply. The Reapply call allows you to
+directly update the applied-connection and reconfigure the device. Reapply
+can also be useful if the currently applied-connection is equal to the
+connection that is about to be reapplied. This allows to reconfigure the
+device and revert external changes like removing or adding an IP address
+(which NetworkManager doesn't revert automatically because it is assumed
+that the user made these changes intentionally outside of NetworkManager).
+Reapply can make the applied-connection different from the
+settings-connection, just like updating the settings-connection can make
+them different.
+</para><para>
+Since 1.42, "preserve-external-ip" flag (0x1) is supported to not remove
+externally added IP addresses and routes on the device during reapply.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sa{sv}} <parameter>connection</parameter></literal>:</term>
+  <listitem><para>
+The optional connection settings that will be reapplied on the device. If empty, the currently active settings-connection will be used. The connection cannot arbitrarily differ from the current applied-connection otherwise the call will fail. Only certain changes are supported, like adding or removing IP addresses.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>IN t <parameter>version_id</parameter></literal>:</term>
+  <listitem><para>
+If non-zero, the current version id of the applied-connection must match. The current version id can be retrieved via GetAppliedConnection. This optional argument allows to catch concurrent modifications between the GetAppliedConnection call and Reapply.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>IN u <parameter>flags</parameter></literal>:</term>
+  <listitem><para>
+Flags which would modify the behavior of the Reapply call. Invalid flags are rejected.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device.GetAppliedConnection">
+  <title>The GetAppliedConnection() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device.GetAppliedConnection"><primary sortas=".Device.GetAppliedConnection">org.freedesktop.NetworkManager.Device.GetAppliedConnection()</primary></indexterm>
+<programlisting>
+GetAppliedConnection (IN  u         flags,
+                      OUT a{sa{sv}} connection,
+                      OUT t         version_id);
+</programlisting>
+<para>
+Get the currently applied connection on the device. This is a snapshot of
+the last activated connection on the device, that is the configuration
+that is currently applied on the device. Usually this is the same as
+GetSettings of the referenced settings connection. However, it can differ
+if the settings connection was subsequently modified or the applied
+connection was modified by Reapply. The applied connection is set when
+activating a device or when calling Reapply.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN u <parameter>flags</parameter></literal>:</term>
+  <listitem><para>
+Flags which would modify the behavior of the GetAppliedConnection call. There are no flags defined currently and the users should use the value of 0.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>OUT a{sa{sv}} <parameter>connection</parameter></literal>:</term>
+  <listitem><para>
+The effective connection settings that the connection has currently applied.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>OUT t <parameter>version_id</parameter></literal>:</term>
+  <listitem><para>
+The version-id of the currently applied connection. This can be specified during Reapply to avoid races where you first fetch the applied connection, modify it and try to reapply it. If the applied connection is modified in the meantime, the version_id gets incremented and Reapply will fail.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device.Disconnect">
+  <title>The Disconnect() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device.Disconnect"><primary sortas=".Device.Disconnect">org.freedesktop.NetworkManager.Device.Disconnect()</primary></indexterm>
+<programlisting>
+Disconnect ();
+</programlisting>
+<para>
+Disconnects a device and prevents the device from automatically activating
+further connections without user intervention.
+</para>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device.Delete">
+  <title>The Delete() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device.Delete"><primary sortas=".Device.Delete">org.freedesktop.NetworkManager.Device.Delete()</primary></indexterm>
+<programlisting>
+Delete ();
+</programlisting>
+<para>
+Deletes a software device from NetworkManager and removes the interface
+from the system. The method returns an error when called for a hardware
+device.
+</para>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-signals-org.freedesktop.NetworkManager.Device">
+  <title role="details.title">Signal Details</title>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-Device.StateChanged">
+  <title>The "StateChanged" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-Device.StateChanged"><primary sortas=".Device::StateChanged">org.freedesktop.NetworkManager.Device::StateChanged</primary></indexterm>
+<programlisting>
+StateChanged (u new_state,
+              u old_state,
+              u reason);
+</programlisting>
+<para>
+</para><para>
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>u <parameter>new_state</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMDeviceState">NMDeviceState</link>) The new state of the device.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>u <parameter>old_state</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMDeviceState">NMDeviceState</link>) The previous state of the device.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>u <parameter>reason</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMDeviceStateReason">NMDeviceStateReason</link>) A reason for the state transition.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Udi">
+  <title>The "Udi" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Udi"><primary sortas=".Device:Udi">org.freedesktop.NetworkManager.Device:Udi</primary></indexterm>
+<programlisting>
+Udi  readable   s
+</programlisting>
+<para>
+Operating-system specific transient device hardware identifier. This is an
+opaque string representing the underlying hardware for the device, and
+shouldn't be used to keep track of individual devices. For some device
+types (Bluetooth, Modems) it is an identifier used by the hardware service
+(ie bluez or ModemManager) to refer to that device, and client programs
+use it get additional information from those services which NM does not
+provide. The Udi is not guaranteed to be consistent across reboots or
+hotplugs of the hardware. If you're looking for a way to uniquely track
+each device in your application, use the object path. If you're looking
+for a way to track a specific piece of hardware across reboot or hotplug,
+use a MAC address or USB serial number.
+</para><para>
+Note that non-UTF-8 characters are backslash escaped. Use g_strcompress()
+to obtain the true (non-UTF-8) string.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Path">
+  <title>The "Path" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Path"><primary sortas=".Device:Path">org.freedesktop.NetworkManager.Device:Path</primary></indexterm>
+<programlisting>
+Path  readable   s
+</programlisting>
+<para>
+The path of the device as exposed by the udev property ID_PATH.
+</para><para>
+Note that non-UTF-8 characters are backslash escaped. Use g_strcompress()
+to obtain the true (non-UTF-8) string.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Interface">
+  <title>The "Interface" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Interface"><primary sortas=".Device:Interface">org.freedesktop.NetworkManager.Device:Interface</primary></indexterm>
+<programlisting>
+Interface  readable   s
+</programlisting>
+<para>
+The name of the device's control (and often data) interface.
+Note that non UTF-8 characters are backslash escaped, so the
+resulting name may be longer then 15 characters. Use g_strcompress()
+to revert the escaping.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.IpInterface">
+  <title>The "IpInterface" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.IpInterface"><primary sortas=".Device:IpInterface">org.freedesktop.NetworkManager.Device:IpInterface</primary></indexterm>
+<programlisting>
+IpInterface  readable   s
+</programlisting>
+<para>
+The name of the device's data interface when available. This property may
+not refer to the actual data interface until the device has successfully
+established a data connection, indicated by the device's State becoming
+ACTIVATED.
+Note that non UTF-8 characters are backslash escaped, so the
+resulting name may be longer then 15 characters. Use g_strcompress()
+to revert the escaping.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Driver">
+  <title>The "Driver" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Driver"><primary sortas=".Device:Driver">org.freedesktop.NetworkManager.Device:Driver</primary></indexterm>
+<programlisting>
+Driver  readable   s
+</programlisting>
+<para>
+The driver handling the device.
+Non-UTF-8 sequences are backslash escaped. Use g_strcompress()
+to revert.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.DriverVersion">
+  <title>The "DriverVersion" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.DriverVersion"><primary sortas=".Device:DriverVersion">org.freedesktop.NetworkManager.Device:DriverVersion</primary></indexterm>
+<programlisting>
+DriverVersion  readable   s
+</programlisting>
+<para>
+The version of the driver handling the device.
+Non-UTF-8 sequences are backslash escaped. Use g_strcompress()
+to revert.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.FirmwareVersion">
+  <title>The "FirmwareVersion" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.FirmwareVersion"><primary sortas=".Device:FirmwareVersion">org.freedesktop.NetworkManager.Device:FirmwareVersion</primary></indexterm>
+<programlisting>
+FirmwareVersion  readable   s
+</programlisting>
+<para>
+The firmware version for the device.
+Non-UTF-8 sequences are backslash escaped. Use g_strcompress()
+to revert.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Capabilities">
+  <title>The "Capabilities" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Capabilities"><primary sortas=".Device:Capabilities">org.freedesktop.NetworkManager.Device:Capabilities</primary></indexterm>
+<programlisting>
+Capabilities  readable   u
+</programlisting>
+<para>
+Flags describing the capabilities of the device.
+</para><para>
+Returns: <link linkend="NMDeviceCapabilities">NMDeviceCapabilities</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Address">
+  <title>The "Ip4Address" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Address"><primary sortas=".Device:Ip4Address">org.freedesktop.NetworkManager.Device:Ip4Address</primary></indexterm>
+<programlisting>
+Ip4Address  readable   u
+</programlisting>
+<para>
+DEPRECATED; use the 'Addresses' property of the 'Ip4Config' object
+instead. This property always returns 0.0.0.0 (numeric 0) as address.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.State">
+  <title>The "State" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.State"><primary sortas=".Device:State">org.freedesktop.NetworkManager.Device:State</primary></indexterm>
+<programlisting>
+State  readable   u
+</programlisting>
+<para>
+The current state of the device.
+</para><para>
+Returns: <link linkend="NMDeviceState">NMDeviceState</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.StateReason">
+  <title>The "StateReason" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.StateReason"><primary sortas=".Device:StateReason">org.freedesktop.NetworkManager.Device:StateReason</primary></indexterm>
+<programlisting>
+StateReason  readable   (uu)
+</programlisting>
+<para>
+The current state and reason for changing to that state.
+</para><para>
+Returns: A tuple of  <link linkend="NMDeviceState">NMDeviceState</link> and  <link linkend="NMDeviceStateReason">NMDeviceStateReason</link>.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.ActiveConnection">
+  <title>The "ActiveConnection" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.ActiveConnection"><primary sortas=".Device:ActiveConnection">org.freedesktop.NetworkManager.Device:ActiveConnection</primary></indexterm>
+<programlisting>
+ActiveConnection  readable   o
+</programlisting>
+<para>
+Object path of an ActiveConnection object that "owns" this device during
+activation. The ActiveConnection object tracks the life-cycle of a
+connection to a specific network and implements the
+org.freedesktop.NetworkManager.Connection.Active D-Bus interface.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Config">
+  <title>The "Ip4Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Config"><primary sortas=".Device:Ip4Config">org.freedesktop.NetworkManager.Device:Ip4Config</primary></indexterm>
+<programlisting>
+Ip4Config  readable   o
+</programlisting>
+<para>
+Object path of the Ip4Config object describing the configuration of the
+device. Only valid when the device is in the NM_DEVICE_STATE_ACTIVATED
+state.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Dhcp4Config">
+  <title>The "Dhcp4Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Dhcp4Config"><primary sortas=".Device:Dhcp4Config">org.freedesktop.NetworkManager.Device:Dhcp4Config</primary></indexterm>
+<programlisting>
+Dhcp4Config  readable   o
+</programlisting>
+<para>
+Object path of the Dhcp4Config object describing the DHCP options returned
+by the DHCP server. Only valid when the device is in the
+NM_DEVICE_STATE_ACTIVATED state.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Ip6Config">
+  <title>The "Ip6Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Ip6Config"><primary sortas=".Device:Ip6Config">org.freedesktop.NetworkManager.Device:Ip6Config</primary></indexterm>
+<programlisting>
+Ip6Config  readable   o
+</programlisting>
+<para>
+Object path of the Ip6Config object describing the configuration of the
+device. Only valid when the device is in the NM_DEVICE_STATE_ACTIVATED
+state.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Dhcp6Config">
+  <title>The "Dhcp6Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Dhcp6Config"><primary sortas=".Device:Dhcp6Config">org.freedesktop.NetworkManager.Device:Dhcp6Config</primary></indexterm>
+<programlisting>
+Dhcp6Config  readable   o
+</programlisting>
+<para>
+Object path of the Dhcp6Config object describing the DHCP options returned
+by the DHCP server. Only valid when the device is in the
+NM_DEVICE_STATE_ACTIVATED state.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Managed">
+  <title>The "Managed" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Managed"><primary sortas=".Device:Managed">org.freedesktop.NetworkManager.Device:Managed</primary></indexterm>
+<programlisting>
+Managed  readwrite  b
+</programlisting>
+<para>
+Whether or not this device is managed by NetworkManager. Setting this
+property has a similar effect to configuring the device as unmanaged via
+the keyfile.unmanaged-devices setting in NetworkManager.conf. Changes to
+this value are not persistent and lost after NetworkManager restart.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Autoconnect">
+  <title>The "Autoconnect" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Autoconnect"><primary sortas=".Device:Autoconnect">org.freedesktop.NetworkManager.Device:Autoconnect</primary></indexterm>
+<programlisting>
+Autoconnect  readwrite  b
+</programlisting>
+<para>
+If TRUE, indicates the device is allowed to autoconnect. If FALSE, manual
+intervention is required before the device will automatically connect to a
+known network, such as activating a connection using the device, or
+setting this property to TRUE. This property cannot be set to TRUE for
+default-unmanaged devices, since they never autoconnect.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.FirmwareMissing">
+  <title>The "FirmwareMissing" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.FirmwareMissing"><primary sortas=".Device:FirmwareMissing">org.freedesktop.NetworkManager.Device:FirmwareMissing</primary></indexterm>
+<programlisting>
+FirmwareMissing  readable   b
+</programlisting>
+<para>
+If TRUE, indicates the device is likely missing firmware necessary for its
+operation.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.NmPluginMissing">
+  <title>The "NmPluginMissing" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.NmPluginMissing"><primary sortas=".Device:NmPluginMissing">org.freedesktop.NetworkManager.Device:NmPluginMissing</primary></indexterm>
+<programlisting>
+NmPluginMissing  readable   b
+</programlisting>
+<para>
+If TRUE, indicates the NetworkManager plugin for the device is likely
+missing or misconfigured.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.DeviceType">
+  <title>The "DeviceType" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.DeviceType"><primary sortas=".Device:DeviceType">org.freedesktop.NetworkManager.Device:DeviceType</primary></indexterm>
+<programlisting>
+DeviceType  readable   u
+</programlisting>
+<para>
+The general type of the network device; ie Ethernet, Wi-Fi, etc.
+</para><para>
+Returns: <link linkend="NMDeviceType">NMDeviceType</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.AvailableConnections">
+  <title>The "AvailableConnections" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.AvailableConnections"><primary sortas=".Device:AvailableConnections">org.freedesktop.NetworkManager.Device:AvailableConnections</primary></indexterm>
+<programlisting>
+AvailableConnections  readable   ao
+</programlisting>
+<para>
+An array of object paths of every configured connection that is currently
+'available' through this device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.PhysicalPortId">
+  <title>The "PhysicalPortId" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.PhysicalPortId"><primary sortas=".Device:PhysicalPortId">org.freedesktop.NetworkManager.Device:PhysicalPortId</primary></indexterm>
+<programlisting>
+PhysicalPortId  readable   s
+</programlisting>
+<para>
+If non-empty, an (opaque) indicator of the physical network port
+associated with the device. This can be used to recognize when two
+seemingly-separate hardware devices are actually just different virtual
+interfaces to the same physical port.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Mtu">
+  <title>The "Mtu" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Mtu"><primary sortas=".Device:Mtu">org.freedesktop.NetworkManager.Device:Mtu</primary></indexterm>
+<programlisting>
+Mtu  readable   u
+</programlisting>
+<para>
+The device MTU (maximum transmission unit).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Metered">
+  <title>The "Metered" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Metered"><primary sortas=".Device:Metered">org.freedesktop.NetworkManager.Device:Metered</primary></indexterm>
+<programlisting>
+Metered  readable   u
+</programlisting>
+<para>
+Whether the amount of traffic flowing through the device is subject to
+limitations, for example set by service providers.
+</para><para>
+Returns: <link linkend="NMMetered">NMMetered</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.LldpNeighbors">
+  <title>The "LldpNeighbors" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.LldpNeighbors"><primary sortas=".Device:LldpNeighbors">org.freedesktop.NetworkManager.Device:LldpNeighbors</primary></indexterm>
+<programlisting>
+LldpNeighbors  readable   aa{sv}
+</programlisting>
+<para>
+Array of LLDP neighbors; each element is a dictionary mapping LLDP TLV
+names to variant boxed values.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Real">
+  <title>The "Real" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Real"><primary sortas=".Device:Real">org.freedesktop.NetworkManager.Device:Real</primary></indexterm>
+<programlisting>
+Real  readable   b
+</programlisting>
+<para>
+True if the device exists, or False for placeholder devices that do not
+yet exist but could be automatically created by NetworkManager if one of
+their AvailableConnections was activated.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Connectivity">
+  <title>The "Ip4Connectivity" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Ip4Connectivity"><primary sortas=".Device:Ip4Connectivity">org.freedesktop.NetworkManager.Device:Ip4Connectivity</primary></indexterm>
+<programlisting>
+Ip4Connectivity  readable   u
+</programlisting>
+<para>
+The result of the last IPv4 connectivity check.
+</para><para>
+Returns: <link linkend="NMConnectivityState">NMConnectivityState</link>
+</para>
+<para role="since">Since 1.16</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Ip6Connectivity">
+  <title>The "Ip6Connectivity" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Ip6Connectivity"><primary sortas=".Device:Ip6Connectivity">org.freedesktop.NetworkManager.Device:Ip6Connectivity</primary></indexterm>
+<programlisting>
+Ip6Connectivity  readable   u
+</programlisting>
+<para>
+The result of the last IPv6 connectivity check.
+</para><para>
+Returns: <link linkend="NMConnectivityState">NMConnectivityState</link>
+</para>
+<para role="since">Since 1.16</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.InterfaceFlags">
+  <title>The "InterfaceFlags" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.InterfaceFlags"><primary sortas=".Device:InterfaceFlags">org.freedesktop.NetworkManager.Device:InterfaceFlags</primary></indexterm>
+<programlisting>
+InterfaceFlags  readable   u
+</programlisting>
+<para>
+The flags of the network interface. See
+<link linkend="NMDeviceInterfaceFlags">NMDeviceInterfaceFlags</link> for
+the currently defined flags.
+</para>
+<para role="since">Since 1.22</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.HwAddress"><primary sortas=".Device:HwAddress">org.freedesktop.NetworkManager.Device:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+The hardware address of the device.
+</para><para>
+This replaces the other 'HwAddress' properties on the device-specific D-Bus interfaces.
+</para>
+<para role="since">Since 1.24</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device.Ports">
+  <title>The "Ports" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device.Ports"><primary sortas=".Device:Ports">org.freedesktop.NetworkManager.Device:Ports</primary></indexterm>
+<programlisting>
+Ports  readable   ao
+</programlisting>
+<para>
+The port devices of the controller device.
+</para><para>
+Array of object paths representing devices which are currently set as
+port of this device. This replaces the 'Slaves' properties on the
+device-specific D-Bus interfaces.
+</para>
+<para role="since">Since 1.34</para>
+</refsect2>
+</refsect1>
+</refentry>
+

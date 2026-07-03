@@ -1,0 +1,76 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+
+#include "nm-sd-adapt-shared.h"
+
+#include <stdbool.h>
+
+#include "string-util.h"
+#include "strv.h"
+#include "utf8.h"
+#include "web-util.h"
+
+#if 0 /* NM_IGNORED */
+bool http_etag_is_valid(const char *etag) {
+        if (isempty(etag))
+                return false;
+
+        if (!endswith(etag, "\""))
+                return false;
+
+        if (!STARTSWITH_SET(etag, "\"", "W/\""))
+                return false;
+
+        return true;
+}
+#endif /* NM_IGNORED */
+
+/* NM: we use http_url_is_valid() for our own code, and it must not
+ * change behavior. If a re-import results in a merge-conflict, you must
+ * ensure that it does not change behavior, and possibly do something
+ * about that. */
+/**/   bool http_url_is_valid(const char *url) {
+/**/           const char *p;
+/**/
+/**/           if (isempty(url))
+/**/                   return false;
+/**/
+/**/           p = STARTSWITH_SET(url, "http://", "https://");
+/**/           if (!p)
+/**/                   return false;
+/**/
+/**/           if (isempty(p))
+/**/                   return false;
+/**/
+/**/           return ascii_is_valid(p);
+/**/   }
+
+#if 0 /* NM_IGNORED */
+bool file_url_is_valid(const char *url) {
+        const char *p;
+
+        if (isempty(url))
+                return false;
+
+        p = startswith(url, "file:/");
+        if (isempty(p))
+                return false;
+
+        return ascii_is_valid(p);
+}
+
+bool documentation_url_is_valid(const char *url) {
+        const char *p;
+
+        if (isempty(url))
+                return false;
+
+        if (http_url_is_valid(url) || file_url_is_valid(url))
+                return true;
+
+        p = STARTSWITH_SET(url, "info:", "man:");
+        if (isempty(p))
+                return false;
+
+        return ascii_is_valid(p);
+}
+#endif /* NM_IGNORED */

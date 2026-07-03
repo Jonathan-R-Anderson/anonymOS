@@ -1,0 +1,393 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMDeviceMacvlan: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch04.html" title="Device and Runtime Configuration API Reference">
+<link rel="prev" href="NMDeviceMacsec.html" title="NMDeviceMacsec">
+<link rel="next" href="NMDeviceModem.html" title="NMDeviceModem">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMDeviceMacvlan.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMDeviceMacvlan.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMDeviceMacvlan.properties" class="shortcut">Properties</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch04.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMDeviceMacsec.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMDeviceModem.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMDeviceMacvlan"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMDeviceMacvlan.top_of_page"></a>NMDeviceMacvlan</span></h2>
+<p>NMDeviceMacvlan</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMDeviceMacvlan.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMDevice.html" title="NMDevice"><span class="returnvalue">NMDevice</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacvlan.html#nm-device-macvlan-get-parent" title="nm_device_macvlan_get_parent ()">nm_device_macvlan_get_parent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacvlan.html#nm-device-macvlan-get-mode" title="nm_device_macvlan_get_mode ()">nm_device_macvlan_get_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacvlan.html#nm-device-macvlan-get-no-promisc" title="nm_device_macvlan_get_no_promisc ()">nm_device_macvlan_get_no_promisc</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacvlan.html#nm-device-macvlan-get-tap" title="nm_device_macvlan_get_tap ()">nm_device_macvlan_get_tap</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceMacvlan.html#nm-device-macvlan-get-hw-address" title="nm_device_macvlan_get_hw_address ()">nm_device_macvlan_get_hw_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacvlan.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceMacvlan.html#NMDeviceMacvlan--mode" title="The “mode” property">mode</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacvlan.html#NMDeviceMacvlan--no-promisc" title="The “no-promisc” property">no-promisc</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<a class="link" href="NMDevice.html" title="NMDevice"><span class="type">NMDevice</span></a> *</td>
+<td class="property_name"><a class="link" href="NMDeviceMacvlan.html#NMDeviceMacvlan--parent" title="The “parent” property">parent</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceMacvlan.html#NMDeviceMacvlan--tap" title="The “tap” property">tap</a></td>
+<td class="property_flags">Read</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacvlan.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacvlan.html#NM-DEVICE-MACVLAN-PARENT:CAPS" title="NM_DEVICE_MACVLAN_PARENT">NM_DEVICE_MACVLAN_PARENT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacvlan.html#NM-DEVICE-MACVLAN-MODE:CAPS" title="NM_DEVICE_MACVLAN_MODE">NM_DEVICE_MACVLAN_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacvlan.html#NM-DEVICE-MACVLAN-NO-PROMISC:CAPS" title="NM_DEVICE_MACVLAN_NO_PROMISC">NM_DEVICE_MACVLAN_NO_PROMISC</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacvlan.html#NM-DEVICE-MACVLAN-TAP:CAPS" title="NM_DEVICE_MACVLAN_TAP">NM_DEVICE_MACVLAN_TAP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceMacvlan.html#NM-DEVICE-MACVLAN-HW-ADDRESS:CAPS" title="NM_DEVICE_MACVLAN_HW_ADDRESS">NM_DEVICE_MACVLAN_HW_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMDeviceMacvlan.html#NMDeviceMacvlan-struct" title="NMDeviceMacvlan">NMDeviceMacvlan</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacvlan.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> <a class="link" href="NMObject.html" title="NMObject">NMObject</a>
+        <span class="lineart">╰──</span> <a class="link" href="NMDevice.html" title="NMDevice">NMDevice</a>
+            <span class="lineart">╰──</span> NMDeviceMacvlan
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacvlan.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacvlan.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-device-macvlan-get-parent"></a><h3>nm_device_macvlan_get_parent ()</h3>
+<pre class="programlisting"><a class="link" href="NMDevice.html" title="NMDevice"><span class="returnvalue">NMDevice</span></a> *
+nm_device_macvlan_get_parent (<em class="parameter"><code><a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a> *device</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-parent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-parent.returns"></a><h4>Returns</h4>
+<p>the device's parent device. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macvlan-get-mode"></a><h3>nm_device_macvlan_get_mode ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_macvlan_get_mode (<em class="parameter"><code><a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a> *device</code></em>);</pre>
+<p>Gets the MACVLAN mode of the device.</p>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-mode.returns"></a><h4>Returns</h4>
+<p> the MACVLAN mode. This is the internal string used by the
+device, and must not be modified.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macvlan-get-no-promisc"></a><h3>nm_device_macvlan_get_no_promisc ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_macvlan_get_no_promisc (<em class="parameter"><code><a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a> *device</code></em>);</pre>
+<p>Gets the no-promiscuous flag of the device.</p>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-no-promisc.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-no-promisc.returns"></a><h4>Returns</h4>
+<p> the no-promiscuous flag of the device.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macvlan-get-tap"></a><h3>nm_device_macvlan_get_tap ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_macvlan_get_tap (<em class="parameter"><code><a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a> *device</code></em>);</pre>
+<p>Gets the device type (MACVLAN or MACVTAP).</p>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-tap.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-tap.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the device is a MACVTAP, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it is a MACVLAN.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-macvlan-get-hw-address"></a><h3>nm_device_macvlan_get_hw_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_macvlan_get_hw_address (<em class="parameter"><code><a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a> *device</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_device_macvlan_get_hw_address</code> has been deprecated since version 1.24 and should not be used in newly-written code.</p>
+<p>Use <a class="link" href="NMDevice.html#nm-device-get-hw-address" title="nm_device_get_hw_address ()"><code class="function">nm_device_get_hw_address()</code></a> instead.</p>
+</div>
+<p>Gets the hardware (MAC) address of the <a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a></p>
+<p><span class="annotation">[<acronym title="Exposed in C code, not necessarily available in other languages."><span class="acronym">skip</span></acronym>]</span></p>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-hw-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceMacvlan.html" title="NMDeviceMacvlan"><span class="type">NMDeviceMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-macvlan-get-hw-address.returns"></a><h4>Returns</h4>
+<p> the hardware address. This is the internal string used by the
+device, and must not be modified.</p>
+<p>This property is not implemented yet, and the function always return NULL.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacvlan.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-DEVICE-MACVLAN-PARENT:CAPS"></a><h3>NM_DEVICE_MACVLAN_PARENT</h3>
+<pre class="programlisting">#define NM_DEVICE_MACVLAN_PARENT     "parent"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACVLAN-MODE:CAPS"></a><h3>NM_DEVICE_MACVLAN_MODE</h3>
+<pre class="programlisting">#define NM_DEVICE_MACVLAN_MODE       "mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACVLAN-NO-PROMISC:CAPS"></a><h3>NM_DEVICE_MACVLAN_NO_PROMISC</h3>
+<pre class="programlisting">#define NM_DEVICE_MACVLAN_NO_PROMISC "no-promisc"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACVLAN-TAP:CAPS"></a><h3>NM_DEVICE_MACVLAN_TAP</h3>
+<pre class="programlisting">#define NM_DEVICE_MACVLAN_TAP        "tap"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-MACVLAN-HW-ADDRESS:CAPS"></a><h3>NM_DEVICE_MACVLAN_HW_ADDRESS</h3>
+<pre class="programlisting">#define NM_DEVICE_MACVLAN_HW_ADDRESS "hw-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacvlan-struct"></a><h3>NMDeviceMacvlan</h3>
+<pre class="programlisting">typedef struct _NMDeviceMacvlan NMDeviceMacvlan;</pre>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceMacvlan.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMDeviceMacvlan--mode"></a><h3>The <code class="literal">“mode”</code> property</h3>
+<pre class="programlisting">  “mode”                     <span class="type">char</span> *</pre>
+<p>The MACVLAN mode.</p>
+<p>Owner: NMDeviceMacvlan</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacvlan--no-promisc"></a><h3>The <code class="literal">“no-promisc”</code> property</h3>
+<pre class="programlisting">  “no-promisc”               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether the device has the no-promiscuos flag.</p>
+<p>Owner: NMDeviceMacvlan</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacvlan--parent"></a><h3>The <code class="literal">“parent”</code> property</h3>
+<pre class="programlisting">  “parent”                   <a class="link" href="NMDevice.html" title="NMDevice"><span class="type">NMDevice</span></a> *</pre>
+<p>The devices's parent device.</p>
+<p>Owner: NMDeviceMacvlan</p>
+<p>Flags: Read</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceMacvlan--tap"></a><h3>The <code class="literal">“tap”</code> property</h3>
+<pre class="programlisting">  “tap”                      <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether the device is a MACVTAP.</p>
+<p>Owner: NMDeviceMacvlan</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMDeviceOvsPort: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch04.html" title="Device and Runtime Configuration API Reference">
+<link rel="prev" href="NMDeviceOvsInterface.html" title="NMDeviceOvsInterface">
+<link rel="next" href="NMDevicePpp.html" title="NMDevicePpp">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMDeviceOvsPort.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMDeviceOvsPort.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMDeviceOvsPort.properties" class="shortcut">Properties</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch04.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMDeviceOvsInterface.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMDevicePpp.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMDeviceOvsPort"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMDeviceOvsPort.top_of_page"></a>NMDeviceOvsPort</span></h2>
+<p>NMDeviceOvsPort</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMDeviceOvsPort.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody><tr>
+<td class="function_type">const <a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#GPtrArray"><span class="returnvalue">GPtrArray</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceOvsPort.html#nm-device-ovs-port-get-slaves" title="nm_device_ovs_port_get_slaves ()">nm_device_ovs_port_get_slaves</a> <span class="c_punctuation">()</span>
+</td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceOvsPort.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody><tr>
+<td class="property_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#GPtrArray"><span class="type">GPtrArray</span></a> *</td>
+<td class="property_name"><a class="link" href="NMDeviceOvsPort.html#NMDeviceOvsPort--slaves" title="The “slaves” property">slaves</a></td>
+<td class="property_flags">Read</td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceOvsPort.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceOvsPort.html#NM-DEVICE-OVS-PORT-SLAVES:CAPS" title="NM_DEVICE_OVS_PORT_SLAVES">NM_DEVICE_OVS_PORT_SLAVES</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMDeviceOvsPort.html#NMDeviceOvsPort-struct" title="NMDeviceOvsPort">NMDeviceOvsPort</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceOvsPort.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> <a class="link" href="NMObject.html" title="NMObject">NMObject</a>
+        <span class="lineart">╰──</span> <a class="link" href="NMDevice.html" title="NMDevice">NMDevice</a>
+            <span class="lineart">╰──</span> NMDeviceOvsPort
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMDeviceOvsPort.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMDeviceOvsPort.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-device-ovs-port-get-slaves"></a><h3>nm_device_ovs_port_get_slaves ()</h3>
+<pre class="programlisting">const <a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#GPtrArray"><span class="returnvalue">GPtrArray</span></a> *
+nm_device_ovs_port_get_slaves (<em class="parameter"><code><a class="link" href="NMDeviceOvsPort.html" title="NMDeviceOvsPort"><span class="type">NMDeviceOvsPort</span></a> *device</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_device_ovs_port_get_slaves</code> has been deprecated since version 1.34 and should not be used in newly-written code.</p>
+<p>Use <a class="link" href="NMDevice.html#nm-device-get-ports" title="nm_device_get_ports ()"><code class="function">nm_device_get_ports()</code></a> instead.</p>
+</div>
+<p>Gets the interfaces currently enslaved to <em class="parameter"><code>device</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-device-ovs-port-get-slaves.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceOvsPort.html" title="NMDeviceOvsPort"><span class="type">NMDeviceOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ovs-port-get-slaves.returns"></a><h4>Returns</h4>
+<p>the <a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#GPtrArray"><span class="type">GPtrArray</span></a> containing
+<span class="type">NMDevices</span> that are slaves of <em class="parameter"><code>device</code></em>
+. This is the internal
+copy used by the device, and must not be modified. </p>
+<p><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMDevice]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceOvsPort.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-DEVICE-OVS-PORT-SLAVES:CAPS"></a><h3>NM_DEVICE_OVS_PORT_SLAVES</h3>
+<pre class="programlisting">#define NM_DEVICE_OVS_PORT_SLAVES "slaves"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceOvsPort-struct"></a><h3>NMDeviceOvsPort</h3>
+<pre class="programlisting">typedef struct _NMDeviceOvsPort NMDeviceOvsPort;</pre>
+<p class="since">Since: 1.10</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceOvsPort.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMDeviceOvsPort--slaves"></a><h3>The <code class="literal">“slaves”</code> property</h3>
+<pre class="programlisting">  “slaves”                   <a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#GPtrArray"><span class="type">GPtrArray</span></a> *</pre>
+<p>Gets the interfaces currently enslaved to the device.</p>
+<p><span class="annotation">[<acronym title="Override the parsed C type with given type."><span class="acronym">type</span></acronym> GPtrArray(NMDevice)]</span></p>
+<p>Owner: NMDeviceOvsPort</p>
+<p>Flags: Read</p>
+<p class="since">Since: 1.22</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

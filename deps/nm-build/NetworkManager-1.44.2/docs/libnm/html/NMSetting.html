@@ -1,0 +1,1746 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSetting: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMRemoteConnection.html" title="NMRemoteConnection">
+<link rel="next" href="NMSettingConnection.html" title="NMSettingConnection">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSetting.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSetting.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMRemoteConnection.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingConnection.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSetting"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSetting.top_of_page"></a>NMSetting</span></h2>
+<p>NMSetting — Describes related configuration information</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSetting.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<span class="c_punctuation">(</span><a class="link" href="NMSetting.html#NMSettingClearSecretsWithFlagsFn" title="NMSettingClearSecretsWithFlagsFn ()">*NMSettingClearSecretsWithFlagsFn</a><span class="c_punctuation">)</span> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<span class="c_punctuation">(</span><a class="link" href="NMSetting.html#NMSettingValueIterFn" title="NMSettingValueIterFn ()">*NMSettingValueIterFn</a><span class="c_punctuation">)</span> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="returnvalue">GType</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-lookup-type" title="nm_setting_lookup_type ()">nm_setting_lookup_type</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-duplicate" title="nm_setting_duplicate ()">nm_setting_duplicate</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-get-name" title="nm_setting_get_name ()">nm_setting_get_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-verify" title="nm_setting_verify ()">nm_setting_verify</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-verify-secrets" title="nm_setting_verify_secrets ()">nm_setting_verify_secrets</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-compare" title="nm_setting_compare ()">nm_setting_compare</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-diff" title="nm_setting_diff ()">nm_setting_diff</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-enumerate-values" title="nm_setting_enumerate_values ()">nm_setting_enumerate_values</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-to-string" title="nm_setting_to_string ()">nm_setting_to_string</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-get-secret-flags" title="nm_setting_get_secret_flags ()">nm_setting_get_secret_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-set-secret-flags" title="nm_setting_set_secret_flags ()">nm_setting_set_secret_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-option-get" title="nm_setting_option_get ()">nm_setting_option_get</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-option-get-boolean" title="nm_setting_option_get_boolean ()">nm_setting_option_get_boolean</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-option-get-uint32" title="nm_setting_option_get_uint32 ()">nm_setting_option_get_uint32</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-option-set" title="nm_setting_option_set ()">nm_setting_option_set</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-option-set-uint32" title="nm_setting_option_set_uint32 ()">nm_setting_option_set_uint32</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-option-set-boolean" title="nm_setting_option_set_boolean ()">nm_setting_option_set_boolean</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-option-get-all-names" title="nm_setting_option_get_all_names ()">nm_setting_option_get_all_names</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-option-clear-by-name" title="nm_setting_option_clear_by_name ()">nm_setting_option_clear_by_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <a href="https://developer.gnome.org/glib/unstable/glib-GVariantType.html#GVariantType"><span class="returnvalue">GVariantType</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-setting-get-dbus-property-type" title="nm_setting_get_dbus_property_type ()">nm_setting_get_dbus_property_type</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html#NMRange"><span class="returnvalue">NMRange</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-range-new" title="nm_range_new ()">nm_range_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html#NMRange"><span class="returnvalue">NMRange</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-range-ref" title="nm_range_ref ()">nm_range_ref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-range-unref" title="nm_range_unref ()">nm_range_unref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-range-cmp" title="nm_range_cmp ()">nm_range_cmp</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-range-get-range" title="nm_range_get_range ()">nm_range_get_range</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-range-to-str" title="nm_range_to_str ()">nm_range_to_str</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html#NMRange"><span class="returnvalue">NMRange</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSetting.html#nm-range-from-str" title="nm_range_from_str ()">nm_range_from_str</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<a name="NMRange"></a><div class="refsect1">
+<a name="NMSetting.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSetting.html#NM-SETTING-PARAM-REQUIRED:CAPS" title="NM_SETTING_PARAM_REQUIRED">NM_SETTING_PARAM_REQUIRED</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSetting.html#NM-SETTING-PARAM-SECRET:CAPS" title="NM_SETTING_PARAM_SECRET">NM_SETTING_PARAM_SECRET</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSetting.html#NM-SETTING-PARAM-FUZZY-IGNORE:CAPS" title="NM_SETTING_PARAM_FUZZY_IGNORE">NM_SETTING_PARAM_FUZZY_IGNORE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSetting.html#NM-SETTING-NAME:CAPS" title="NM_SETTING_NAME">NM_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags">NMSettingSecretFlags</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags">NMSettingCompareFlags</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSetting.html#NMSettingMacRandomization" title="enum NMSettingMacRandomization">NMSettingMacRandomization</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSetting.html#NMSettingDiffResult" title="enum NMSettingDiffResult">NMSettingDiffResult</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSetting.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Boxed-Types.html">GBoxed</a>
+    <span class="lineart">╰──</span> NMRange
+    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GEnum</a>
+    <span class="lineart">├──</span> NMSettingCompareFlags
+    <span class="lineart">├──</span> NMSettingDiffResult
+    <span class="lineart">╰──</span> NMSettingMacRandomization
+    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GFlags</a>
+    <span class="lineart">╰──</span> NMSettingSecretFlags
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSetting.description"></a><h2>Description</h2>
+<p>Each <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> contains properties that describe configuration that applies
+to a specific network layer (like IPv4 or IPv6 configuration) or device type
+(like Ethernet, or Wi-Fi).  A collection of individual settings together
+make up an <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>. Each property is strongly typed and usually has
+a number of allowed values.  See each <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass for a description
+of properties and allowed values.</p>
+</div>
+<div class="refsect1">
+<a name="NMSetting.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="NMSettingClearSecretsWithFlagsFn"></a><h3>NMSettingClearSecretsWithFlagsFn ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+<span class="c_punctuation">(</span>*NMSettingClearSecretsWithFlagsFn<span class="c_punctuation">)</span> (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                                     <em class="parameter"><code>const <span class="type">char</span> *secret</code></em>,
+                                     <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> flags</code></em>,
+                                     <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a> user_data</code></em>);</pre>
+<div class="refsect3">
+<a name="NMSettingClearSecretsWithFlagsFn.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>The setting for which secrets are being iterated</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>secret</p></td>
+<td class="parameter_description"><p>The secret's name</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>The secret's flags, eg <a class="link" href="NMSetting.html#NM-SETTING-SECRET-FLAG-AGENT-OWNED:CAPS"><code class="literal">NM_SETTING_SECRET_FLAG_AGENT_OWNED</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>user_data</p></td>
+<td class="parameter_description"><p>User data passed to <a class="link" href="NMConnection.html#nm-connection-clear-secrets-with-flags" title="nm_connection_clear_secrets_with_flags ()"><code class="function">nm_connection_clear_secrets_with_flags()</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="NMSettingClearSecretsWithFlagsFn.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> to clear the secret, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> to not clear the secret</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingValueIterFn"></a><h3>NMSettingValueIterFn ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+<span class="c_punctuation">(</span>*NMSettingValueIterFn<span class="c_punctuation">)</span> (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                         <em class="parameter"><code>const <span class="type">char</span> *key</code></em>,
+                         <em class="parameter"><code>const <a href="https://developer.gnome.org/gobject/unstable/gobject-Generic-values.html#GValue-struct"><span class="type">GValue</span></a> *value</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/gobject/unstable/gobject-GParamSpec.html#GParamFlags"><span class="type">GParamFlags</span></a> flags</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a> user_data</code></em>);</pre>
+<div class="refsect3">
+<a name="NMSettingValueIterFn.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>The setting for which properties are being iterated, given to
+<a class="link" href="NMSetting.html#nm-setting-enumerate-values" title="nm_setting_enumerate_values ()"><code class="function">nm_setting_enumerate_values()</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>The value/property name</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>The property's value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>The property's flags, like <a class="link" href="NMSetting.html#NM-SETTING-PARAM-SECRET:CAPS" title="NM_SETTING_PARAM_SECRET"><code class="literal">NM_SETTING_PARAM_SECRET</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>user_data</p></td>
+<td class="parameter_description"><p>User data passed to <a class="link" href="NMSetting.html#nm-setting-enumerate-values" title="nm_setting_enumerate_values ()"><code class="function">nm_setting_enumerate_values()</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-lookup-type"></a><h3>nm_setting_lookup_type ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="returnvalue">GType</span></a>
+nm_setting_lookup_type (<em class="parameter"><code>const <span class="type">char</span> *name</code></em>);</pre>
+<p>Returns the <a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="type">GType</span></a> of the setting's class for a given setting name.</p>
+<div class="refsect3">
+<a name="nm-setting-lookup-type.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>a setting name</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-lookup-type.returns"></a><h4>Returns</h4>
+<p> the <a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="type">GType</span></a> of the setting's class, or <a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#G-TYPE-INVALID:CAPS"><code class="literal">G_TYPE_INVALID</code></a> if
+<em class="parameter"><code>name</code></em>
+is not recognized.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-duplicate"></a><h3>nm_setting_duplicate ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_duplicate (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>);</pre>
+<p>Duplicates a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-duplicate.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> to duplicate</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-duplicate.returns"></a><h4>Returns</h4>
+<p>a new <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> containing the same properties and values as the
+source <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a>. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-get-name"></a><h3>nm_setting_get_name ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_get_name (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>);</pre>
+<p>Returns the type name of the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> object</p>
+<div class="refsect3">
+<a name="nm-setting-get-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-get-name.returns"></a><h4>Returns</h4>
+<p> a string containing the type name of the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> object,
+like 'ppp' or 'wireless' or 'wired'.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-verify"></a><h3>nm_setting_verify ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_verify (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                   <em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                   <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Validates the setting.  Each setting's properties have allowed values, and
+some are dependent on other values (hence the need for <em class="parameter"><code>connection</code></em>
+).  The
+returned <a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> contains information about which property of the setting
+failed validation, and in what way that property failed validation.</p>
+<div class="refsect3">
+<a name="nm-setting-verify.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> to verify</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> that <em class="parameter"><code>setting</code></em>
+came from, or
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if <em class="parameter"><code>setting</code></em>
+is being verified in isolation. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-verify.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the setting is valid, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it is not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-verify-secrets"></a><h3>nm_setting_verify_secrets ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_verify_secrets (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                           <em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                           <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Verifies the secrets in the setting.
+The returned <a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> contains information about which secret of the setting
+failed validation, and in what way that secret failed validation.
+The secret validation is done separately from main setting validation, because
+in some cases connection failure is not desired just for the secrets.</p>
+<div class="refsect3">
+<a name="nm-setting-verify-secrets.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> to verify secrets in</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> that <em class="parameter"><code>setting</code></em>
+came from, or
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if <em class="parameter"><code>setting</code></em>
+is being verified in isolation. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-verify-secrets.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the setting secrets are valid, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they are not</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-compare"></a><h3>nm_setting_compare ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_compare (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *a</code></em>,
+                    <em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *b</code></em>,
+                    <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags"><span class="type">NMSettingCompareFlags</span></a> flags</code></em>);</pre>
+<p>Compares two <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> objects for similarity, with comparison behavior
+modified by a set of flags.  See the documentation for <a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags"><span class="type">NMSettingCompareFlags</span></a>
+for a description of each flag's behavior.</p>
+<div class="refsect3">
+<a name="nm-setting-compare.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>a</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>b</p></td>
+<td class="parameter_description"><p>a second <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> to compare with the first</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>compare flags, e.g. <a class="link" href="NMSetting.html#NM-SETTING-COMPARE-FLAG-EXACT:CAPS"><code class="literal">NM_SETTING_COMPARE_FLAG_EXACT</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-compare.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the comparison succeeds, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it does not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-diff"></a><h3>nm_setting_diff ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_diff (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *a</code></em>,
+                 <em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *b</code></em>,
+                 <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags"><span class="type">NMSettingCompareFlags</span></a> flags</code></em>,
+                 <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> invert_results</code></em>,
+                 <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> **results</code></em>);</pre>
+<p>Compares two <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> objects for similarity, with comparison behavior
+modified by a set of flags.  See the documentation for <a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags"><span class="type">NMSettingCompareFlags</span></a>
+for a description of each flag's behavior.  If the settings differ, the keys
+of each setting that differ from the other are added to <em class="parameter"><code>results</code></em>
+, mapped to
+one or more <a class="link" href="NMSetting.html#NMSettingDiffResult" title="enum NMSettingDiffResult"><span class="type">NMSettingDiffResult</span></a> values.</p>
+<div class="refsect3">
+<a name="nm-setting-diff.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>a</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>b</p></td>
+<td class="parameter_description"><p>a second <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> to compare with the first</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>compare flags, e.g. <a class="link" href="NMSetting.html#NM-SETTING-COMPARE-FLAG-EXACT:CAPS"><code class="literal">NM_SETTING_COMPARE_FLAG_EXACT</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>invert_results</p></td>
+<td class="parameter_description"><p>this parameter is used internally by libnm and should
+be set to <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>.  If <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> inverts the meaning of the <a class="link" href="NMSetting.html#NMSettingDiffResult" title="enum NMSettingDiffResult"><span class="type">NMSettingDiffResult</span></a>.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>results</p></td>
+<td class="parameter_description"><p>if the
+settings differ, on return a hash table mapping the differing keys to one or
+more <a class="link" href="NMSetting.html#NMSettingDiffResult" title="enum NMSettingDiffResult"><code class="literal">NMSettingDiffResult</code></a> values OR-ed together.  If the settings do not
+differ, any hash table passed in is unmodified.  If no hash table is passed
+in and the settings differ, a new one is created and returned. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for input and for returning results. Default is transfer full."><span class="acronym">inout</span></acronym>][<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>][<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> utf8 guint32]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-diff.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the settings contain the same values, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they do not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-enumerate-values"></a><h3>nm_setting_enumerate_values ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_enumerate_values (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                             <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingValueIterFn" title="NMSettingValueIterFn ()"><span class="type">NMSettingValueIterFn</span></a> func</code></em>,
+                             <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a> user_data</code></em>);</pre>
+<p>Iterates over each property of the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> object, calling the supplied
+user function for each property.</p>
+<div class="refsect3">
+<a name="nm-setting-enumerate-values.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>func</p></td>
+<td class="parameter_description"><p>user-supplied function called for each property of the setting. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The callback is valid only during the call to the method."><span class="acronym">scope call</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>user_data</p></td>
+<td class="parameter_description"><p>user data passed to <em class="parameter"><code>func</code></em>
+at each invocation</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-to-string"></a><h3>nm_setting_to_string ()</h3>
+<pre class="programlisting"><span class="returnvalue">char</span> *
+nm_setting_to_string (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>);</pre>
+<p>Convert the setting (including secrets!) into a string. For debugging
+purposes ONLY, should NOT be used for serialization of the setting,
+or machine-parsed in any way. The output format is not guaranteed to
+be stable and may change at any time.</p>
+<div class="refsect3">
+<a name="nm-setting-to-string.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-to-string.returns"></a><h4>Returns</h4>
+<p> an allocated string containing a textual representation of the
+setting's properties and values, which the caller should
+free with <a href="https://developer.gnome.org/glib/unstable/glib-Memory-Allocation.html#g-free"><code class="function">g_free()</code></a></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-get-secret-flags"></a><h3>nm_setting_get_secret_flags ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_get_secret_flags (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                             <em class="parameter"><code>const <span class="type">char</span> *secret_name</code></em>,
+                             <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> *out_flags</code></em>,
+                             <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>For a given secret, retrieves the <a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> describing how to
+handle that secret.</p>
+<div class="refsect3">
+<a name="nm-setting-get-secret-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>secret_name</p></td>
+<td class="parameter_description"><p>the secret key name to get flags for</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_flags</p></td>
+<td class="parameter_description"><p>on success, the <a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> for the secret</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-get-secret-flags.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> on success (if the given secret name was a valid property of
+this setting, and if that property is secret), <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-set-secret-flags"></a><h3>nm_setting_set_secret_flags ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_set_secret_flags (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                             <em class="parameter"><code>const <span class="type">char</span> *secret_name</code></em>,
+                             <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> flags</code></em>,
+                             <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>For a given secret, stores the <a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> describing how to
+handle that secret.</p>
+<div class="refsect3">
+<a name="nm-setting-set-secret-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>secret_name</p></td>
+<td class="parameter_description"><p>the secret key name to set flags for</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> for the secret</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-set-secret-flags.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> on success (if the given secret name was a valid property of
+this setting, and if that property is secret), <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-option-get"></a><h3>nm_setting_option_get ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+nm_setting_option_get (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                       <em class="parameter"><code>const <span class="type">char</span> *opt_name</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-option-get.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>opt_name</p></td>
+<td class="parameter_description"><p>the option name to request.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-option-get.returns"></a><h4>Returns</h4>
+<p>the <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if the option
+is not set. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-option-get-boolean"></a><h3>nm_setting_option_get_boolean ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_option_get_boolean (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                               <em class="parameter"><code>const <span class="type">char</span> *opt_name</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> *out_value</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-option-get-boolean.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>opt_name</p></td>
+<td class="parameter_description"><p>the option to get</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_value</p></td>
+<td class="parameter_description"><p>the optional output value.
+If the option is unset, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> will be returned. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-option-get-boolean.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if <em class="parameter"><code>opt_name</code></em>
+is set to a boolean variant.</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-option-get-uint32"></a><h3>nm_setting_option_get_uint32 ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_option_get_uint32 (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                              <em class="parameter"><code>const <span class="type">char</span> *opt_name</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> *out_value</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-option-get-uint32.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>opt_name</p></td>
+<td class="parameter_description"><p>the option to get</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_value</p></td>
+<td class="parameter_description"><p>the optional output value.
+If the option is unset, 0 will be returned. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-option-get-uint32.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if <em class="parameter"><code>opt_name</code></em>
+is set to a uint32 variant.</p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-option-set"></a><h3>nm_setting_option_set ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_option_set (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                       <em class="parameter"><code>const <span class="type">char</span> *opt_name</code></em>,
+                       <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *variant</code></em>);</pre>
+<p>If <em class="parameter"><code>variant</code></em>
+ is <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>, this clears the option if it is set.
+Otherwise, <em class="parameter"><code>variant</code></em>
+ is set as the option. If <em class="parameter"><code>variant</code></em>
+ is
+a floating reference, it will be consumed.</p>
+<p>Note that not all setting types support options. It is a bug
+setting a variant to a setting that doesn't support it.
+Currently, only <a class="link" href="NMSettingEthtool.html" title="NMSettingEthtool"><span class="type">NMSettingEthtool</span></a> supports it.</p>
+<div class="refsect3">
+<a name="nm-setting-option-set.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>opt_name</p></td>
+<td class="parameter_description"><p>the option name to set</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>variant</p></td>
+<td class="parameter_description"><p>the variant to set. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-option-set-uint32"></a><h3>nm_setting_option_set_uint32 ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_option_set_uint32 (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                              <em class="parameter"><code>const <span class="type">char</span> *opt_name</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> value</code></em>);</pre>
+<p>Like <a class="link" href="NMSetting.html#nm-setting-option-set" title="nm_setting_option_set ()"><code class="function">nm_setting_option_set()</code></a> to set a uint32 GVariant.</p>
+<div class="refsect3">
+<a name="nm-setting-option-set-uint32.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the value to set.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-option-set-boolean"></a><h3>nm_setting_option_set_boolean ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_option_set_boolean (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                               <em class="parameter"><code>const <span class="type">char</span> *opt_name</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> value</code></em>);</pre>
+<p>Like <a class="link" href="NMSetting.html#nm-setting-option-set" title="nm_setting_option_set ()"><code class="function">nm_setting_option_set()</code></a> to set a boolean GVariant.</p>
+<div class="refsect3">
+<a name="nm-setting-option-set-boolean.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the value to set.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-option-get-all-names"></a><h3>nm_setting_option_get_all_names ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_option_get_all_names (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                                 <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *out_len</code></em>);</pre>
+<p>Gives the name of all set options.</p>
+<div class="refsect3">
+<a name="nm-setting-option-get-all-names.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_len</p></td>
+<td class="parameter_description"><p>. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-option-get-all-names.returns"></a><h4>Returns</h4>
+<p>A <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> terminated array of key names. If no names are present, this returns
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. The returned array and the names are owned by <a class="link" href="NMSetting.html" title="NMSetting"><code class="literal">NMSetting</code></a> and might be invalidated
+by the next operation. </p>
+<p><span class="annotation">[<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=out_len zero-terminated=1][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-option-clear-by-name"></a><h3>nm_setting_option_clear_by_name ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_option_clear_by_name (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                                 <em class="parameter"><code><span class="type">NMUtilsPredicateStr</span> predicate</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-option-clear-by-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>predicate</p></td>
+<td class="parameter_description"><p>the predicate for which names
+should be clear.
+If the predicate returns <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> for an option name, the option
+gets removed. If <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>, all options will be removed. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>][<acronym title="The callback is valid only during the call to the method."><span class="acronym">scope call</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.26</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-get-dbus-property-type"></a><h3>nm_setting_get_dbus_property_type ()</h3>
+<pre class="programlisting">const <a href="https://developer.gnome.org/glib/unstable/glib-GVariantType.html#GVariantType"><span class="returnvalue">GVariantType</span></a> *
+nm_setting_get_dbus_property_type (<em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>,
+                                   <em class="parameter"><code>const <span class="type">char</span> *property_name</code></em>);</pre>
+<p>Gets the D-Bus marshalling type of a property. <em class="parameter"><code>property_name</code></em>
+ is a D-Bus
+property name, which may not necessarily be a <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct"><span class="type">GObject</span></a> property.</p>
+<div class="refsect3">
+<a name="nm-setting-get-dbus-property-type.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>an <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>property_name</p></td>
+<td class="parameter_description"><p>the property of <em class="parameter"><code>setting</code></em>
+to get the type of</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-get-dbus-property-type.returns"></a><h4>Returns</h4>
+<p> the D-Bus marshalling type of <em class="parameter"><code>property</code></em>
+on <em class="parameter"><code>setting</code></em>
+.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-range-new"></a><h3>nm_range_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html#NMRange"><span class="returnvalue">NMRange</span></a> *
+nm_range_new (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="type">guint64</span></a> start</code></em>,
+              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="type">guint64</span></a> end</code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> object for the given range. Setting <em class="parameter"><code>end</code></em>
+
+equal to <em class="parameter"><code>start</code></em>
+ creates a single-element range.</p>
+<div class="refsect3">
+<a name="nm-range-new.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>start</p></td>
+<td class="parameter_description"><p>the first element of the range</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>end</p></td>
+<td class="parameter_description"><p>the last element of the range, must be greater than or equal
+to <em class="parameter"><code>start</code></em>
+.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-range-new.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-range-ref"></a><h3>nm_range_ref ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html#NMRange"><span class="returnvalue">NMRange</span></a> *
+nm_range_ref (<em class="parameter"><code>const <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> *range</code></em>);</pre>
+<p>Increases the reference count of the object.
+This is thread-safe.</p>
+<div class="refsect3">
+<a name="nm-range-ref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>range</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-range-ref.returns"></a><h4>Returns</h4>
+<p> the input argument <em class="parameter"><code>range</code></em>
+object.</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-range-unref"></a><h3>nm_range_unref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_range_unref (<em class="parameter"><code>const <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> *range</code></em>);</pre>
+<p>Decreases the reference count of the object.  If the reference count
+reaches zero the object will be destroyed.
+This is thread-safe.</p>
+<div class="refsect3">
+<a name="nm-range-unref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>range</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-range-cmp"></a><h3>nm_range_cmp ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_range_cmp (<em class="parameter"><code>const <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> *a</code></em>,
+              <em class="parameter"><code>const <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> *b</code></em>);</pre>
+<p>Compare two ranges.</p>
+<div class="refsect3">
+<a name="nm-range-cmp.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>a</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>b</p></td>
+<td class="parameter_description"><p>another <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-range-cmp.returns"></a><h4>Returns</h4>
+<p> zero if the two instances are equivalent or
+a non-zero integer otherwise. This defines a total ordering
+over the ranges.</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-range-get-range"></a><h3>nm_range_get_range ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_range_get_range (<em class="parameter"><code>const <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> *range</code></em>,
+                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="type">guint64</span></a> *start</code></em>,
+                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint64"><span class="type">guint64</span></a> *end</code></em>);</pre>
+<p>Gets the start and end values for the range.</p>
+<div class="refsect3">
+<a name="nm-range-get-range.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>range</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>start</p></td>
+<td class="parameter_description"><p>location to store the start value. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>end</p></td>
+<td class="parameter_description"><p>location to store the end value. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-range-get-range.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the range contains more than one
+element, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise.</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-range-to-str"></a><h3>nm_range_to_str ()</h3>
+<pre class="programlisting"><span class="returnvalue">char</span> *
+nm_range_to_str (<em class="parameter"><code>const <a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> *range</code></em>);</pre>
+<p>Convert a <a class="link" href="NMSetting.html#NMRange"><code class="literal">NMRange</code></a> to a string.</p>
+<div class="refsect3">
+<a name="nm-range-to-str.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>range</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html#NMRange"><code class="literal">NMRange</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-range-to-str.returns"></a><h4>Returns</h4>
+<p>a string representing the range. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-range-from-str"></a><h3>nm_range_from_str ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html#NMRange"><span class="returnvalue">NMRange</span></a> *
+nm_range_from_str (<em class="parameter"><code>const <span class="type">char</span> *str</code></em>,
+                   <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Parses the string representation of the range to create a <a class="link" href="NMSetting.html#NMRange"><code class="literal">NMRange</code></a>
+instance.</p>
+<div class="refsect3">
+<a name="nm-range-from-str.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>str</p></td>
+<td class="parameter_description"><p>the string representation of a range</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store the error on failure</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-range-from-str.returns"></a><h4>Returns</h4>
+<p>the <a class="link" href="NMSetting.html#NMRange"><code class="literal">NMRange</code></a> or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSetting.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-PARAM-REQUIRED:CAPS"></a><h3>NM_SETTING_PARAM_REQUIRED</h3>
+<pre class="programlisting">#define NM_SETTING_PARAM_REQUIRED 0x200
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PARAM-SECRET:CAPS"></a><h3>NM_SETTING_PARAM_SECRET</h3>
+<pre class="programlisting">#define NM_SETTING_PARAM_SECRET 0x400
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-PARAM-FUZZY-IGNORE:CAPS"></a><h3>NM_SETTING_PARAM_FUZZY_IGNORE</h3>
+<pre class="programlisting">#define NM_SETTING_PARAM_FUZZY_IGNORE 0x800
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-NAME:CAPS"></a><h3>NM_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_NAME "name"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingSecretFlags"></a><h3>enum NMSettingSecretFlags</h3>
+<p>These flags indicate specific behavior related to handling of a secret.  Each
+secret has a corresponding set of these flags which indicate how the secret
+is to be stored and/or requested when it is needed.</p>
+<div class="refsect3">
+<a name="NMSettingSecretFlags.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-SECRET-FLAG-NONE:CAPS"></a>NM_SETTING_SECRET_FLAG_NONE</p></td>
+<td class="enum_member_description">
+<p>the system is responsible for providing and
+storing this secret (default)</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-SECRET-FLAG-AGENT-OWNED:CAPS"></a>NM_SETTING_SECRET_FLAG_AGENT_OWNED</p></td>
+<td class="enum_member_description">
+<p>a user secret agent is responsible
+for providing and storing this secret; when it is required agents will be
+asked to retrieve it</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-SECRET-FLAG-NOT-SAVED:CAPS"></a>NM_SETTING_SECRET_FLAG_NOT_SAVED</p></td>
+<td class="enum_member_description">
+<p>this secret should not be saved, but
+should be requested from the user each time it is needed</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-SECRET-FLAG-NOT-REQUIRED:CAPS"></a>NM_SETTING_SECRET_FLAG_NOT_REQUIRED</p></td>
+<td class="enum_member_description">
+<p>in situations where it cannot be
+automatically determined that the secret is required (some VPNs and PPP
+providers don't require all secrets) this flag indicates that the specific
+secret is not required</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingCompareFlags"></a><h3>enum NMSettingCompareFlags</h3>
+<p>These flags modify the comparison behavior when comparing two settings or
+two connections.</p>
+<div class="refsect3">
+<a name="NMSettingCompareFlags.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-EXACT:CAPS"></a>NM_SETTING_COMPARE_FLAG_EXACT</p></td>
+<td class="enum_member_description">
+<p>match all properties exactly</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-FUZZY:CAPS"></a>NM_SETTING_COMPARE_FLAG_FUZZY</p></td>
+<td class="enum_member_description">
+<p>match only important attributes, like SSID,
+type, security settings, etc.  Does not match, for example, connection ID
+or UUID.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-IGNORE-ID:CAPS"></a>NM_SETTING_COMPARE_FLAG_IGNORE_ID</p></td>
+<td class="enum_member_description">
+<p>ignore the connection's ID</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-IGNORE-SECRETS:CAPS"></a>NM_SETTING_COMPARE_FLAG_IGNORE_SECRETS</p></td>
+<td class="enum_member_description">
+<p>ignore all secrets</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-IGNORE-AGENT-OWNED-SECRETS:CAPS"></a>NM_SETTING_COMPARE_FLAG_IGNORE_AGENT_OWNED_SECRETS</p></td>
+<td class="enum_member_description">
+<p>ignore secrets for which
+the secret's flags indicate the secret is owned by a user secret agent
+(ie, the secret's flag includes <em class="parameter"><code>NM_SETTING_SECRET_FLAG_AGENT_OWNED</code></em>
+)</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-IGNORE-NOT-SAVED-SECRETS:CAPS"></a>NM_SETTING_COMPARE_FLAG_IGNORE_NOT_SAVED_SECRETS</p></td>
+<td class="enum_member_description">
+<p>ignore secrets for which
+the secret's flags indicate the secret should not be saved to persistent
+storage (ie, the secret's flag includes <em class="parameter"><code>NM_SETTING_SECRET_FLAG_NOT_SAVED</code></em>
+)</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-DIFF-RESULT-WITH-DEFAULT:CAPS"></a>NM_SETTING_COMPARE_FLAG_DIFF_RESULT_WITH_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>if this flag is set,
+<a class="link" href="NMSetting.html#nm-setting-diff" title="nm_setting_diff ()"><code class="function">nm_setting_diff()</code></a> and <a class="link" href="NMConnection.html#nm-connection-diff" title="nm_connection_diff ()"><code class="function">nm_connection_diff()</code></a> will also include properties that
+are set to their default value. See also <em class="parameter"><code>NM_SETTING_COMPARE_FLAG_DIFF_RESULT_NO_DEFAULT</code></em>
+.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-DIFF-RESULT-NO-DEFAULT:CAPS"></a>NM_SETTING_COMPARE_FLAG_DIFF_RESULT_NO_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>if this flag is set,
+<a class="link" href="NMSetting.html#nm-setting-diff" title="nm_setting_diff ()"><code class="function">nm_setting_diff()</code></a> and <a class="link" href="NMConnection.html#nm-connection-diff" title="nm_connection_diff ()"><code class="function">nm_connection_diff()</code></a> will not include properties that
+are set to their default value. This is the opposite of
+<em class="parameter"><code>NM_SETTING_COMPARE_FLAG_DIFF_RESULT_WITH_DEFAULT</code></em>
+. If both flags are set together,
+<em class="parameter"><code>NM_SETTING_COMPARE_FLAG_DIFF_RESULT_WITH_DEFAULT</code></em>
+ wins. If both flags are unset,
+this means to exclude default properties if there is a setting to compare,
+but include all properties, if the setting 'b' is missing. This is the legacy
+behaviour of libnm-util, where <a class="link" href="NMSetting.html#nm-setting-diff" title="nm_setting_diff ()"><code class="function">nm_setting_diff()</code></a> behaved differently depending
+on whether the setting 'b' was available. If <em class="parameter"><code>NM_SETTING_COMPARE_FLAG_DIFF_RESULT_WITH_DEFAULT</code></em>
+
+is set, <a class="link" href="NMSetting.html#nm-setting-diff" title="nm_setting_diff ()"><code class="function">nm_setting_diff()</code></a> will also set the flags <em class="parameter"><code>NM_SETTING_DIFF_RESULT_IN_A_DEFAULT</code></em>
+
+and <em class="parameter"><code>NM_SETTING_DIFF_RESULT_IN_B_DEFAULT</code></em>
+, if the values are default values.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-COMPARE-FLAG-IGNORE-TIMESTAMP:CAPS"></a>NM_SETTING_COMPARE_FLAG_IGNORE_TIMESTAMP</p></td>
+<td class="enum_member_description">
+<p>ignore the connection's timestamp</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingMacRandomization"></a><h3>enum NMSettingMacRandomization</h3>
+<p>Controls if and how the MAC address of a device is randomzied.</p>
+<div class="refsect3">
+<a name="NMSettingMacRandomization.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MAC-RANDOMIZATION-DEFAULT:CAPS"></a>NM_SETTING_MAC_RANDOMIZATION_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>the default value, which unless
+overridden by user-controlled defaults configuration, is "never".</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MAC-RANDOMIZATION-NEVER:CAPS"></a>NM_SETTING_MAC_RANDOMIZATION_NEVER</p></td>
+<td class="enum_member_description">
+<p>the device's MAC address is always used.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MAC-RANDOMIZATION-ALWAYS:CAPS"></a>NM_SETTING_MAC_RANDOMIZATION_ALWAYS</p></td>
+<td class="enum_member_description">
+<p>a random MAC address is used.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingDiffResult"></a><h3>enum NMSettingDiffResult</h3>
+<p>These values indicate the result of a setting difference operation.</p>
+<div class="refsect3">
+<a name="NMSettingDiffResult.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-DIFF-RESULT-UNKNOWN:CAPS"></a>NM_SETTING_DIFF_RESULT_UNKNOWN</p></td>
+<td class="enum_member_description">
+<p>unknown result</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-DIFF-RESULT-IN-A:CAPS"></a>NM_SETTING_DIFF_RESULT_IN_A</p></td>
+<td class="enum_member_description">
+<p>the property is present in setting A</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-DIFF-RESULT-IN-B:CAPS"></a>NM_SETTING_DIFF_RESULT_IN_B</p></td>
+<td class="enum_member_description">
+<p>the property is present in setting B</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-DIFF-RESULT-IN-A-DEFAULT:CAPS"></a>NM_SETTING_DIFF_RESULT_IN_A_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>the property is present in
+setting A but is set to the default value. This flag is only set,
+if you specify <em class="parameter"><code>NM_SETTING_COMPARE_FLAG_DIFF_RESULT_WITH_DEFAULT</code></em>
+.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-DIFF-RESULT-IN-B-DEFAULT:CAPS"></a>NM_SETTING_DIFF_RESULT_IN_B_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>analog to <em class="parameter"><code>NM_SETTING_DIFF_RESULT_IN_A_DEFAULT</code></em>
+.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

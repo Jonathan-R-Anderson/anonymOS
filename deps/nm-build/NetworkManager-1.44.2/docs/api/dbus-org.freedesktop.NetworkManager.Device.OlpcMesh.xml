@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.OlpcMesh">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-OlpcMesh.top_of_page">org.freedesktop.NetworkManager.Device.OlpcMesh</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-OlpcMesh.top_of_page"><primary sortas=".Device.OlpcMesh">org.freedesktop.NetworkManager.Device.OlpcMesh</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.OlpcMesh</refname>    <refpurpose>OLPC Wireless Mesh Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.HwAddress">HwAddress</link>      readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.Companion">Companion</link>      readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.ActiveChannel">ActiveChannel</link>  readable   u
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-OlpcMesh">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.OlpcMesh">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.HwAddress"><primary sortas=".Device.OlpcMesh:HwAddress">org.freedesktop.NetworkManager.Device.OlpcMesh:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+The hardware address of the device.
+</para><para>
+DEPRECATED. Use the "HwAddress" property in "org.freedesktop.NetworkManager.Device" instead which exists since version NetworkManager 1.24.0.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.Companion">
+  <title>The "Companion" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.Companion"><primary sortas=".Device.OlpcMesh:Companion">org.freedesktop.NetworkManager.Device.OlpcMesh:Companion</primary></indexterm>
+<programlisting>
+Companion  readable   o
+</programlisting>
+<para>
+The object path of the companion device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.ActiveChannel">
+  <title>The "ActiveChannel" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-OlpcMesh.ActiveChannel"><primary sortas=".Device.OlpcMesh:ActiveChannel">org.freedesktop.NetworkManager.Device.OlpcMesh:ActiveChannel</primary></indexterm>
+<programlisting>
+ActiveChannel  readable   u
+</programlisting>
+<para>
+The currently active channel.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

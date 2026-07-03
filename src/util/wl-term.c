@@ -717,7 +717,12 @@ static int spawn_shell(struct app *a) {
     // personality (/hos-zsh, the object shell); "windows" = not implemented (notice).
     const char *flavor = getenv("EPIN_SHELL");
     const int is_native = (flavor && strcmp(flavor, "native") == 0);
-    if (flavor && *flavor && strcmp(flavor, "linux") != 0 && !is_native) {
+    // "light" = zsh with NO startup files (zsh -f -i): skips compinit / oh-my-zsh / powerlevel10k,
+    // which otherwise fork a storm of short-lived processes at startup.  Used for lightweight/utility
+    // terminals (e.g. the temporary WiFi-check terminal) so they don't starve the cooperative
+    // scheduler or exhaust the task table.
+    const int is_light = (flavor && strcmp(flavor, "light") == 0);
+    if (flavor && *flavor && strcmp(flavor, "linux") != 0 && !is_native && !is_light) {
         char l1[80];
         snprintf(l1, sizeof(l1), "Domain: %s", g_has_domain ? g_domain : "(none)");
         term_notice(a, l1, "Windows subsystem is not implemented yet.",
@@ -824,11 +829,12 @@ static int spawn_shell(struct app *a) {
         // Make EPIN_SHELL in the child reflect the shell actually launched, so the zshrc's
         // native-only object-command block (Z4c) keys off the real flavor — not just whatever
         // the Domain Manager passed in.
-        setenv("EPIN_SHELL", is_native ? "native" : "linux", 1);
-        // Launch the chosen shell on the pty.  For busybox, argv[0]="-sh" makes ash
-        // an interactive login shell; for the native shell, /hos-sh.
-        char *argv[] = { shell_arg0, NULL };
-        execve(shell_path, argv, environ);
+        setenv("EPIN_SHELL", is_native ? "native" : (is_light ? "light" : "linux"), 1);
+        // Launch the chosen shell on the pty.  Login zsh (argv0="-zsh") reads the rc files;
+        // the "light" shell runs `zsh -f -i` (interactive, NO rc files) so it starts instantly.
+        char *argv_norm[]  = { shell_arg0, NULL };
+        char *argv_light[] = { "zsh", "-f", "-i", NULL };
+        execve(shell_path, is_light ? argv_light : argv_norm, environ);
         _exit(127);
     }
 

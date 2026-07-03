@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.WireGuard">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-WireGuard.top_of_page">org.freedesktop.NetworkManager.Device.WireGuard</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-WireGuard.top_of_page"><primary sortas=".Device.WireGuard">org.freedesktop.NetworkManager.Device.WireGuard</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.WireGuard</refname>    <refpurpose>WireGuard Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.PublicKey">PublicKey</link>   readable   ay
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.ListenPort">ListenPort</link>  readable   q
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.FwMark">FwMark</link>      readable   u
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-WireGuard">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.WireGuard">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.PublicKey">
+  <title>The "PublicKey" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.PublicKey"><primary sortas=".Device.WireGuard:PublicKey">org.freedesktop.NetworkManager.Device.WireGuard:PublicKey</primary></indexterm>
+<programlisting>
+PublicKey  readable   ay
+</programlisting>
+<para>
+32-byte public WireGuard key.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.ListenPort">
+  <title>The "ListenPort" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.ListenPort"><primary sortas=".Device.WireGuard:ListenPort">org.freedesktop.NetworkManager.Device.WireGuard:ListenPort</primary></indexterm>
+<programlisting>
+ListenPort  readable   q
+</programlisting>
+<para>
+Local UDP listening port.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.FwMark">
+  <title>The "FwMark" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-WireGuard.FwMark"><primary sortas=".Device.WireGuard:FwMark">org.freedesktop.NetworkManager.Device.WireGuard:FwMark</primary></indexterm>
+<programlisting>
+FwMark  readable   u
+</programlisting>
+<para>
+Optional 32-bit mark used to set routing policy for outgoing encrypted packets.
+See: ip-rule(8)
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

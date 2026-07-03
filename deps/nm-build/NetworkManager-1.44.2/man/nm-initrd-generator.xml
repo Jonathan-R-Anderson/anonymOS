@@ -1,0 +1,247 @@
+<?xml version='1.0'?>
+<?xml-stylesheet type="text/xsl" href="http://docbook.sourceforge.net/release/xsl/current/xhtml/docbook.xsl"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
+"http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd" [
+<!ENTITY % entities SYSTEM "common.ent" >
+%entities;
+]>
+
+<!--
+  nm-initrd-generator(8) manual page
+
+  Copyright 2018 Red Hat, Inc.
+
+  Permission is granted to copy, distribute and/or modify this document
+  under the terms of the GNU Free Documentation License, Version 1.1
+  or any later version published by the Free Software Foundation;
+  with no Invariant Sections, no Front-Cover Texts, and no Back-Cover
+  Texts. You may obtain a copy of the GNU Free Documentation License
+  from the Free Software Foundation by visiting their Web site or by
+  writing to:
+
+  Free Software Foundation, Inc.,
+  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+-->
+
+<refentry id='nm-initrd-generator'>
+
+  <refentryinfo>
+    <title>nm-initrd-generator</title>
+    <author>NetworkManager developers</author>
+  </refentryinfo>
+
+  <refmeta>
+    <refentrytitle>nm-initrd-generator</refentrytitle>
+    <manvolnum>8</manvolnum>
+    <refmiscinfo class="source">NetworkManager</refmiscinfo>
+    <refmiscinfo class="manual">System Administration</refmiscinfo>
+    <refmiscinfo class="version">&NM_VERSION;</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>nm-initrd-generator</refname>
+    <refpurpose>early boot NetworkManager configuration generator</refpurpose>
+  </refnamediv>
+
+  <refsynopsisdiv id='synopsis'>
+    <cmdsynopsis>
+      <command>nm-initrd-generator</command>
+      <arg choice="opt" rep="repeat"><replaceable>OPTIONS</replaceable></arg>
+      <arg choice="plain">--</arg>
+      <arg choice="opt" rep="repeat"><replaceable>CMDLINE</replaceable></arg>
+    </cmdsynopsis>
+  </refsynopsisdiv>
+
+  <refsect1 id='description'><title>Description</title>
+    <para><command>nm-initrd-generator</command> scans the command line for options
+    relevant to network configuration and creates configuration files for an early
+    instance of NetworkManager run from the initial ramdisk during early boot.</para>
+  </refsect1>
+
+  <refsect1 id='options'><title>Options</title>
+    <variablelist>
+      <varlistentry>
+        <term>
+          <group choice='plain'>
+            <arg choice='plain'><option>-c</option></arg>
+            <arg choice='plain'><option>--connections-dir</option></arg>
+          </group>
+          <arg choice='plain'><replaceable>path</replaceable></arg>
+        </term>
+
+        <listitem>
+          <para>Output connection directory.</para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <group choice='plain'>
+            <arg choice='plain'><option>-p</option></arg>
+            <arg choice='plain'><option>--persistent-connections-dir</option></arg>
+          </group>
+          <arg choice='plain'><replaceable>path</replaceable></arg>
+        </term>
+
+        <listitem>
+          <para>Persistent connection directory. If it exists, rd.neednet will not
+          cause a default connection to be generated in absence of other options.</para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <group choice='plain'>
+            <arg choice='plain'><option>-i</option></arg>
+            <arg choice='plain'><option>--initrd-data-dir</option></arg>
+          </group>
+          <arg choice='plain'><replaceable>path</replaceable></arg>
+        </term>
+
+        <listitem>
+          <para>Output directory for initrd data (e.g. hostname).</para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <group choice='plain'>
+            <arg choice='plain'><option>-d</option></arg>
+            <arg choice='plain'><option>--sysfs-dir</option></arg>
+          </group>
+          <arg choice='plain'><replaceable>path</replaceable></arg>
+        </term>
+
+        <listitem>
+          <para>The sysfs mount point.</para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <group choice='plain'>
+            <arg choice='plain'><option>-r</option></arg>
+            <arg choice='plain'><option>--run-config-dir</option></arg>
+          </group>
+          <arg choice='plain'><replaceable>path</replaceable></arg>
+        </term>
+
+        <listitem>
+          <para>Output directory for config files.</para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <group choice='plain'>
+            <arg choice='plain'><option>-s</option></arg>
+            <arg choice='plain'><option>--stdout</option></arg>
+          </group>
+        </term>
+
+        <listitem>
+          <para>Dump connections to standard output. Useful for debugging.</para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><replaceable>CMDLINE</replaceable></term>
+
+        <listitem>
+          <para>The options that appear on the kernel command line. The following options are recognized:</para>
+
+          <simplelist>
+            <member><option>ip</option></member>
+            <member><option>rd.route</option></member>
+            <member><option>bridge</option></member>
+            <member><option>bond</option></member>
+            <member><option>team</option></member>
+            <member><option>vlan</option></member>
+            <member><option>ib.pkey</option></member>
+            <member><option>bootdev</option></member>
+            <member><option>nameserver</option></member>
+            <member><option>net.ifnames</option></member>
+            <member><option>rd.peerdns</option></member>
+            <member><option>rd.iscsi.ibft</option></member>
+            <member><option>rd.bootif</option></member>
+            <member><option>rd.neednet</option></member>
+            <member><option>rd.ethtool</option></member>
+            <member><option>rd.net.timeout.dhcp</option></member>
+            <member><option>rd.net.dhcp.retry</option></member>
+            <member><option>rd.net.dhcp.vendor-class</option></member>
+            <member><option>rd.net.timeout.carrier</option></member>
+            <member><option>rd.znet</option></member>
+            <member><option>rd.znet_ifname</option></member>
+            <member><option>BOOTIF</option></member>
+          </simplelist>
+
+          <para>Please consult the <citerefentry><refentrytitle>dracut.cmdline</refentrytitle><manvolnum>7</manvolnum></citerefentry>
+          manual for the documentation of the precise format of the values supported.</para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+  <refsect1 id='differences_from_network_legacy'><title>Differences from the network-legacy dracut module</title>
+
+    <para><command>nm-initrd-generator</command> generates a set of
+    connections that are then configured by the NetworkManager
+    instance running in the initrd. There are some differences in
+    behavior compared to the network-legacy dracut module:</para>
+
+    <itemizedlist>
+      <listitem>
+        <para>When an interface is configured with a static address
+        and a gateway, the network-legacy module waits that the
+        gateway responds to arping requests before proceeding, while
+        NetworkManager doesn't.</para>
+      </listitem>
+
+      <listitem>
+        <para>network-legacy configures interfaces one by one in the
+        order in which they are announced by udev. If multiple
+        interfaces specify a hostname (from command line or from
+        DHCP), the one from the last interface activated wins. With
+        NetworkManager, hostnames from command line have higher
+        precedence over ones from DHCP, and the last that appears in
+        the command line wins.</para>
+      </listitem>
+
+      <listitem>
+        <para>NetworkManager supports the
+        <option>ib.pkey</option>=<replaceable>PARENT</replaceable>.<replaceable>PKEY</replaceable>
+        argument to set up an Infiniband partition on IPoIB parent
+        device <replaceable>PARENT</replaceable> using the specified
+        partition key <replaceable>PKEY</replaceable>. The partition
+        key must be in hexadecimal notation without leading "0x", for
+        example "ib.pkey=ib0.8004".
+        </para>
+      </listitem>
+
+      <listitem>
+        <para>NetworkManager supports the 
+        <option>rd.ethtool</option>=<replaceable>INTERFACE</replaceable>:<replaceable>AUTONEG</replaceable>:<replaceable>SPEED</replaceable> 
+        kernel command line option to set up ethtool NIC configuration parameters 
+        <replaceable>AUTONEG</replaceable> and <replaceable>SPEED</replaceable>. 
+        The <replaceable>INTERFACE</replaceable> being configured must be 
+        specified, and the other parameters are optional and can be left blank. 
+        When <replaceable>SPEED</replaceable> is set, duplex mode is 
+        automatically set to 'full'. <replaceable>INTERFACE</replaceable> 
+        accepts string values, <replaceable>AUTONEG</replaceable> accepts 
+        boolean values (true and false / on or off / 0 or 1), and 
+        <replaceable>SPEED</replaceable> accepts positive integer values.
+        </para>
+      </listitem>
+    </itemizedlist>
+  </refsect1>
+
+  <refsect1 id='exit_status'><title>Exit Status</title>
+    <para><command>nm-initrd-generator</command> exits with status 0. It ignores unrecognized
+    options and prints an error message if it encounters a malformed option.</para>
+  </refsect1>
+
+  <refsect1 id='see_also'><title>See Also</title>
+    <para><link linkend='dracut.cmdline'><citerefentry><refentrytitle>dracut.cmdline</refentrytitle><manvolnum>7</manvolnum></citerefentry></link>,
+    <link linkend='NetworkManager'><citerefentry><refentrytitle>NetworkManager</refentrytitle><manvolnum>8</manvolnum></citerefentry></link>.</para>
+  </refsect1>
+</refentry>

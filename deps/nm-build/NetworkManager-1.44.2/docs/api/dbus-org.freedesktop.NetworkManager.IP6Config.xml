@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.IP6Config">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-IP6Config.top_of_page">org.freedesktop.NetworkManager.IP6Config</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-IP6Config.top_of_page"><primary sortas=".IP6Config">org.freedesktop.NetworkManager.IP6Config</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.IP6Config</refname>    <refpurpose>IPv6 Configuration Set.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Addresses">Addresses</link>    readable   a(ayuay)
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.AddressData">AddressData</link>  readable   aa{sv}
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Gateway">Gateway</link>      readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Routes">Routes</link>       readable   a(ayuayu)
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.RouteData">RouteData</link>    readable   aa{sv}
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Nameservers">Nameservers</link>  readable   aay
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Domains">Domains</link>      readable   as
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Searches">Searches</link>     readable   as
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.DnsOptions">DnsOptions</link>   readable   as
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP6Config.DnsPriority">DnsPriority</link>  readable   i
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-IP6Config">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.IP6Config">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Addresses">
+  <title>The "Addresses" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Addresses"><primary sortas=".IP6Config:Addresses">org.freedesktop.NetworkManager.IP6Config:Addresses</primary></indexterm>
+<programlisting>
+Addresses  readable   a(ayuay)
+</programlisting>
+<para>
+Array of tuples of IPv6 address/prefix/gateway. Deprecated: use
+AddressData and Gateway.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.AddressData">
+  <title>The "AddressData" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.AddressData"><primary sortas=".IP6Config:AddressData">org.freedesktop.NetworkManager.IP6Config:AddressData</primary></indexterm>
+<programlisting>
+AddressData  readable   aa{sv}
+</programlisting>
+<para>
+Array of IP address data objects. All addresses will include "address" (an
+IP address string), and "prefix" (a uint). Some addresses may include
+additional attributes.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Gateway">
+  <title>The "Gateway" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Gateway"><primary sortas=".IP6Config:Gateway">org.freedesktop.NetworkManager.IP6Config:Gateway</primary></indexterm>
+<programlisting>
+Gateway  readable   s
+</programlisting>
+<para>
+The gateway in use.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Routes">
+  <title>The "Routes" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Routes"><primary sortas=".IP6Config:Routes">org.freedesktop.NetworkManager.IP6Config:Routes</primary></indexterm>
+<programlisting>
+Routes  readable   a(ayuayu)
+</programlisting>
+<para>
+Tuples of IPv6 route/prefix/next-hop/metric. Deprecated: use RouteData
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.RouteData">
+  <title>The "RouteData" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.RouteData"><primary sortas=".IP6Config:RouteData">org.freedesktop.NetworkManager.IP6Config:RouteData</primary></indexterm>
+<programlisting>
+RouteData  readable   aa{sv}
+</programlisting>
+<para>
+Array of IP route data objects. All routes will include "dest" (an IP
+address string) and "prefix" (a uint). Some routes may include "next-hop"
+(an IP address string), "metric" (a uint), and additional attributes.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Nameservers">
+  <title>The "Nameservers" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Nameservers"><primary sortas=".IP6Config:Nameservers">org.freedesktop.NetworkManager.IP6Config:Nameservers</primary></indexterm>
+<programlisting>
+Nameservers  readable   aay
+</programlisting>
+<para>
+The nameservers in use.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Domains">
+  <title>The "Domains" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Domains"><primary sortas=".IP6Config:Domains">org.freedesktop.NetworkManager.IP6Config:Domains</primary></indexterm>
+<programlisting>
+Domains  readable   as
+</programlisting>
+<para>
+A list of domains this address belongs to.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Searches">
+  <title>The "Searches" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.Searches"><primary sortas=".IP6Config:Searches">org.freedesktop.NetworkManager.IP6Config:Searches</primary></indexterm>
+<programlisting>
+Searches  readable   as
+</programlisting>
+<para>
+A list of dns searches.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.DnsOptions">
+  <title>The "DnsOptions" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.DnsOptions"><primary sortas=".IP6Config:DnsOptions">org.freedesktop.NetworkManager.IP6Config:DnsOptions</primary></indexterm>
+<programlisting>
+DnsOptions  readable   as
+</programlisting>
+<para>
+A list of DNS options that modify the behavior of the DNS resolver. See
+resolv.conf(5) manual page for the list of supported options.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP6Config.DnsPriority">
+  <title>The "DnsPriority" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP6Config.DnsPriority"><primary sortas=".IP6Config:DnsPriority">org.freedesktop.NetworkManager.IP6Config:DnsPriority</primary></indexterm>
+<programlisting>
+DnsPriority  readable   i
+</programlisting>
+<para>
+The relative priority of DNS servers.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

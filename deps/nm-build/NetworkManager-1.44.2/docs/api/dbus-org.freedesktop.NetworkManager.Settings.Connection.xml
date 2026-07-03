@@ -1,0 +1,350 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Settings.Connection">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Settings-Connection.top_of_page">org.freedesktop.NetworkManager.Settings.Connection</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Settings-Connection.top_of_page"><primary sortas=".Settings.Connection">org.freedesktop.NetworkManager.Settings.Connection</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Settings.Connection</refname>    <refpurpose>Connection Settings Profile.</refpurpose>  </refnamediv>  <refsynopsisdiv role="synopsis">
+    <title role="synopsis.title">Methods</title>
+    <synopsis>
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Update">Update</link>        (IN  a{sa{sv}} properties);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.UpdateUnsaved">UpdateUnsaved</link> (IN  a{sa{sv}} properties);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Delete">Delete</link>        ();
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.GetSettings">GetSettings</link>   (OUT a{sa{sv}} settings);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.GetSecrets">GetSecrets</link>    (IN  s         setting_name,
+               OUT a{sa{sv}} secrets);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.ClearSecrets">ClearSecrets</link>  ();
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Save">Save</link>          ();
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Update2">Update2</link>       (IN  a{sa{sv}} settings,
+               IN  u         flags,
+               IN  a{sv}     args,
+               OUT a{sv}     result);
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1 role="signal_proto">
+    <title role="signal_proto.title">Signals</title>
+    <synopsis>
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-Settings-Connection.Updated">Updated</link> ();
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-Settings-Connection.Removed">Removed</link> ();
+</synopsis>
+  </refsect1>
+  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Unsaved">Unsaved</link>   readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Flags">Flags</link>     readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Filename">Filename</link>  readable   s
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Settings-Connection">
+  <title role="desc.title">Description</title>
+  <para>
+Represents a single network connection configuration.
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-methods-org.freedesktop.NetworkManager.Settings.Connection">
+  <title role="details.title">Method Details</title>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Update">
+  <title>The Update() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Update"><primary sortas=".Settings.Connection.Update">org.freedesktop.NetworkManager.Settings.Connection.Update()</primary></indexterm>
+<programlisting>
+Update (IN  a{sa{sv}} properties);
+</programlisting>
+<para>
+Update the connection with new settings and properties (replacing all
+previous settings and properties) and save the connection to disk. Secrets
+may be part of the update request, and will be either stored in persistent
+storage or sent to a Secret Agent for storage, depending on the flags
+associated with each secret.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sa{sv}} <parameter>properties</parameter></literal>:</term>
+  <listitem><para>
+New connection settings, properties, and (optionally) secrets.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.UpdateUnsaved">
+  <title>The UpdateUnsaved() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.UpdateUnsaved"><primary sortas=".Settings.Connection.UpdateUnsaved">org.freedesktop.NetworkManager.Settings.Connection.UpdateUnsaved()</primary></indexterm>
+<programlisting>
+UpdateUnsaved (IN  a{sa{sv}} properties);
+</programlisting>
+<para>
+Update the connection with new settings and properties (replacing all
+previous settings and properties) but do not immediately save the
+connection to disk. Secrets may be part of the update request and may sent
+to a Secret Agent for storage, depending on the flags associated with each
+secret. Use the 'Save' method to save these changes to disk. Note that
+unsaved changes will be lost if the connection is reloaded from disk
+(either automatically on file change or due to an explicit
+ReloadConnections call).
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sa{sv}} <parameter>properties</parameter></literal>:</term>
+  <listitem><para>
+New connection settings, properties, and (optionally) secrets.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Delete">
+  <title>The Delete() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Delete"><primary sortas=".Settings.Connection.Delete">org.freedesktop.NetworkManager.Settings.Connection.Delete()</primary></indexterm>
+<programlisting>
+Delete ();
+</programlisting>
+<para>
+Delete the connection.
+</para>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.GetSettings">
+  <title>The GetSettings() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.GetSettings"><primary sortas=".Settings.Connection.GetSettings">org.freedesktop.NetworkManager.Settings.Connection.GetSettings()</primary></indexterm>
+<programlisting>
+GetSettings (OUT a{sa{sv}} settings);
+</programlisting>
+<para>
+Get the settings maps describing this network configuration. This will
+never include any secrets required for connection to the network, as those
+are often protected. Secrets must be requested separately using the
+GetSecrets() call.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>OUT a{sa{sv}} <parameter>settings</parameter></literal>:</term>
+  <listitem><para>
+The nested settings maps describing this object.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.GetSecrets">
+  <title>The GetSecrets() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.GetSecrets"><primary sortas=".Settings.Connection.GetSecrets">org.freedesktop.NetworkManager.Settings.Connection.GetSecrets()</primary></indexterm>
+<programlisting>
+GetSecrets (IN  s         setting_name,
+            OUT a{sa{sv}} secrets);
+</programlisting>
+<para>
+Get the secrets belonging to this network configuration. Only secrets from
+persistent storage or a Secret Agent running in the requestor's session
+will be returned. The user will never be prompted for secrets as a result
+of this request.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN s <parameter>setting_name</parameter></literal>:</term>
+  <listitem><para>
+Name of the setting to return secrets for. If empty, all secrets will be returned.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>OUT a{sa{sv}} <parameter>secrets</parameter></literal>:</term>
+  <listitem><para>
+Nested settings maps containing secrets.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.ClearSecrets">
+  <title>The ClearSecrets() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.ClearSecrets"><primary sortas=".Settings.Connection.ClearSecrets">org.freedesktop.NetworkManager.Settings.Connection.ClearSecrets()</primary></indexterm>
+<programlisting>
+ClearSecrets ();
+</programlisting>
+<para>
+Clear the secrets belonging to this network connection profile.
+</para>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Save">
+  <title>The Save() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Save"><primary sortas=".Settings.Connection.Save">org.freedesktop.NetworkManager.Settings.Connection.Save()</primary></indexterm>
+<programlisting>
+Save ();
+</programlisting>
+<para>
+Saves a "dirty" connection (that had previously been updated with
+UpdateUnsaved) to persistent storage.
+</para>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Update2">
+  <title>The Update2() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Update2"><primary sortas=".Settings.Connection.Update2">org.freedesktop.NetworkManager.Settings.Connection.Update2()</primary></indexterm>
+<programlisting>
+Update2 (IN  a{sa{sv}} settings,
+         IN  u         flags,
+         IN  a{sv}     args,
+         OUT a{sv}     result);
+</programlisting>
+<para>
+Update the connection with new settings and properties (replacing all
+previous settings and properties).
+</para><para>
+Update2 is an alternative to
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Update">Update</link>,
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.UpdateUnsaved">UpdateUnsaved</link>
+and <link linkend="gdbus-method-org-freedesktop-NetworkManager-Settings-Connection.Save">Save</link>
+extensible with extra <constant>flags</constant> and <constant>args</constant> arguments.
+</para><para>
+The <constant>flags</constant> argument accepts the combination of following values,
+logically or-ed together:
+</para><para>
+<variablelist>
+<varlistentry>
+<term><literal>0x1 (to-disk)</literal>:</term>
+<listitem><para>The connection is persisted to disk.</para></listitem>
+</varlistentry>
+<varlistentry>
+<term><literal>0x2 (in-memory)</literal>:</term>
+<listitem><para>The change is only made in memory (without touching an eventual
+profile on disk). If neither 0x1 nor 0x2 is set, the change is made in memory
+only, if the connection is already in memory only.</para></listitem>
+</varlistentry>
+<varlistentry>
+<term><literal>0x4 (in-memory-detached)</literal>:</term>
+<listitem><para>Like "in-memory", but behaves slightly different when migrating
+the profile from disk to in-memory.</para></listitem>
+</varlistentry>
+<varlistentry>
+<term><literal>0x8 (in-memory-only)</literal>:</term>
+<listitem><para>Like "in-memory", but behaves slightly different when migrating
+the profile from disk to in-memory.</para></listitem>
+</varlistentry>
+<varlistentry>
+<term><literal>0x10 (volatile)</literal>:</term>
+</varlistentry>
+<varlistentry>
+<term><literal>0x20 (block-autoconnect)</literal>:</term>
+<listitem><para>Blocks auto-connect on the updated profile</para></listitem>
+</varlistentry>
+<varlistentry>
+<term><literal>0x40 (no-reapply)</literal>:</term>
+<listitem><para>Prevents "connection.zone" and "connection.metered" properties
+to take effect on currently active devices.</para></listitem>
+</varlistentry>
+</variablelist>
+</para><para>
+The <constant>args</constant> argument accepts the following keys:
+</para><para>
+<variablelist>
+<varlistentry>
+<term><literal>plugin</literal>:</term>
+<listitem><para>The settings plugin the connection will be migrated to
+such as "keyfile" or "ifcfg-rh".</para>
+<para role="since">Since 1.38</para></listitem>
+<term><literal>version-id</literal>:</term>
+<listitem><para>If specified, the update request is rejected if the
+profile's version-id does not match. This can be used to catch concurrent
+modifications. Zero means no version check.</para><para role="since">Since 1.44</para></listitem>
+</varlistentry>
+</variablelist>
+</para><para>
+Secrets may be part of the update request, and will be either stored in persistent
+storage or sent to a Secret Agent for storage, depending on the flags
+associated with each secret.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sa{sv}} <parameter>settings</parameter></literal>:</term>
+  <listitem><para>
+New connection settings, properties, and (optionally) secrets. Provide an empty array to use the current settings.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>IN u <parameter>flags</parameter></literal>:</term>
+  <listitem><para>
+Optional flags. Unknown flags cause the call to fail.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>args</parameter></literal>:</term>
+  <listitem><para>
+Optional arguments dictionary, for extentibility. Specifying unknown keys causes the call to fail.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>OUT a{sv} <parameter>result</parameter></literal>:</term>
+  <listitem><para>
+Currently no results are returned.
+</para></listitem>
+</varlistentry>
+</variablelist>
+<para role="since">Since 1.12</para>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-signals-org.freedesktop.NetworkManager.Settings.Connection">
+  <title role="details.title">Signal Details</title>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-Settings-Connection.Updated">
+  <title>The "Updated" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-Settings-Connection.Updated"><primary sortas=".Settings.Connection::Updated">org.freedesktop.NetworkManager.Settings.Connection::Updated</primary></indexterm>
+<programlisting>
+Updated ();
+</programlisting>
+<para>
+Emitted when any settings or permissions change. When handling this
+signal, clients should re-read the connection using the GetSettings method
+to get the changes and to ensure the client still has permission to access
+the connection.
+</para>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-Settings-Connection.Removed">
+  <title>The "Removed" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-Settings-Connection.Removed"><primary sortas=".Settings.Connection::Removed">org.freedesktop.NetworkManager.Settings.Connection::Removed</primary></indexterm>
+<programlisting>
+Removed ();
+</programlisting>
+<para>
+Emitted when this connection is no longer available. This happens when the
+connection is deleted or if it is no longer accessible by any of the
+system's logged-in users. After receipt of this signal, the object no
+longer exists. Also see the Settings.ConnectionRemoved signal.
+</para>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Settings.Connection">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Unsaved">
+  <title>The "Unsaved" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Unsaved"><primary sortas=".Settings.Connection:Unsaved">org.freedesktop.NetworkManager.Settings.Connection:Unsaved</primary></indexterm>
+<programlisting>
+Unsaved  readable   b
+</programlisting>
+<para>
+If set, indicates that the in-memory state of the connection does not
+match the on-disk state. This flag will be set when UpdateUnsaved() is
+called or when any connection details change, and cleared when the
+connection is saved to disk via Save() or from internal operations.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Flags">
+  <title>The "Flags" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Flags"><primary sortas=".Settings.Connection:Flags">org.freedesktop.NetworkManager.Settings.Connection:Flags</primary></indexterm>
+<programlisting>
+Flags  readable   u
+</programlisting>
+<para>
+Additional flags of the connection profile.
+</para><para>
+Returns: <link linkend="NMSettingsConnectionFlags">NMSettingsConnectionFlags</link>
+</para>
+<para role="since">Since 1.12</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Filename">
+  <title>The "Filename" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Settings-Connection.Filename"><primary sortas=".Settings.Connection:Filename">org.freedesktop.NetworkManager.Settings.Connection:Filename</primary></indexterm>
+<programlisting>
+Filename  readable   s
+</programlisting>
+<para>
+File that stores the connection in case the connection is file-backed.
+</para>
+<para role="since">Since 1.12</para>
+</refsect2>
+</refsect1>
+</refentry>
+

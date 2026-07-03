@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<node name="/">
+  <!--
+      org.freedesktop.NetworkManager.Device.Adsl:
+      @short_description: ADSL Device.
+
+  -->
+  <interface name="org.freedesktop.NetworkManager.Device.Adsl">
+
+    <!--
+        Carrier:
+
+        Indicates whether the physical carrier is found.
+
+        DEPRECATED: check for the "carrier" flag in the "InterfaceFlags"
+        property on the "org.freedesktop.NetworkManager.Device" interface.
+    -->
+    <property name="Carrier" type="b" access="read"/>
+
+  </interface>
+</node>

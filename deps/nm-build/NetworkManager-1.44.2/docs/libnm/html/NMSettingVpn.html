@@ -1,0 +1,879 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingVpn: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingVlan.html" title="NMSettingVlan">
+<link rel="next" href="NMSettingVrf.html" title="NMSettingVrf">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingVpn.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingVlan.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingVrf.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingVpn"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingVpn.top_of_page"></a>NMSettingVpn</span></h2>
+<p>NMSettingVpn — Describes connection properties for Virtual Private Networks</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingVpn.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<span class="c_punctuation">(</span><a class="link" href="NMSettingVpn.html#NMVpnIterFunc" title="NMVpnIterFunc ()">*NMVpnIterFunc</a><span class="c_punctuation">)</span> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-new" title="nm_setting_vpn_new ()">nm_setting_vpn_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-service-type" title="nm_setting_vpn_get_service_type ()">nm_setting_vpn_get_service_type</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-user-name" title="nm_setting_vpn_get_user_name ()">nm_setting_vpn_get_user_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-persistent" title="nm_setting_vpn_get_persistent ()">nm_setting_vpn_get_persistent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-num-data-items" title="nm_setting_vpn_get_num_data_items ()">nm_setting_vpn_get_num_data_items</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-add-data-item" title="nm_setting_vpn_add_data_item ()">nm_setting_vpn_add_data_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-data-item" title="nm_setting_vpn_get_data_item ()">nm_setting_vpn_get_data_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-remove-data-item" title="nm_setting_vpn_remove_data_item ()">nm_setting_vpn_remove_data_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-foreach-data-item" title="nm_setting_vpn_foreach_data_item ()">nm_setting_vpn_foreach_data_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> **
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-data-keys" title="nm_setting_vpn_get_data_keys ()">nm_setting_vpn_get_data_keys</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-num-secrets" title="nm_setting_vpn_get_num_secrets ()">nm_setting_vpn_get_num_secrets</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-add-secret" title="nm_setting_vpn_add_secret ()">nm_setting_vpn_add_secret</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-secret" title="nm_setting_vpn_get_secret ()">nm_setting_vpn_get_secret</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-remove-secret" title="nm_setting_vpn_remove_secret ()">nm_setting_vpn_remove_secret</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-foreach-secret" title="nm_setting_vpn_foreach_secret ()">nm_setting_vpn_foreach_secret</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> **
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-secret-keys" title="nm_setting_vpn_get_secret_keys ()">nm_setting_vpn_get_secret_keys</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-get-timeout" title="nm_setting_vpn_get_timeout ()">nm_setting_vpn_get_timeout</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingVpn.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingVpn.html#NM-SETTING-VPN-SETTING-NAME:CAPS" title="NM_SETTING_VPN_SETTING_NAME">NM_SETTING_VPN_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingVpn.html#NM-SETTING-VPN-SERVICE-TYPE:CAPS" title="NM_SETTING_VPN_SERVICE_TYPE">NM_SETTING_VPN_SERVICE_TYPE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingVpn.html#NM-SETTING-VPN-USER-NAME:CAPS" title="NM_SETTING_VPN_USER_NAME">NM_SETTING_VPN_USER_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingVpn.html#NM-SETTING-VPN-PERSISTENT:CAPS" title="NM_SETTING_VPN_PERSISTENT">NM_SETTING_VPN_PERSISTENT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingVpn.html#NM-SETTING-VPN-DATA:CAPS" title="NM_SETTING_VPN_DATA">NM_SETTING_VPN_DATA</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingVpn.html#NM-SETTING-VPN-SECRETS:CAPS" title="NM_SETTING_VPN_SECRETS">NM_SETTING_VPN_SECRETS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingVpn.html#NM-SETTING-VPN-TIMEOUT:CAPS" title="NM_SETTING_VPN_TIMEOUT">NM_SETTING_VPN_TIMEOUT</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingVpn.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for connection to Virtual Private Networks.  NetworkManager uses
+a plugin architecture to allow easier use of new VPN types, and this
+setting abstracts the configuration for those plugins.  Since the configuration
+options are only known to the VPN plugins themselves, the VPN configuration
+options are stored as key/value pairs of strings rather than GObject
+properties.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingVpn.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="NMVpnIterFunc"></a><h3>NMVpnIterFunc ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+<span class="c_punctuation">(</span>*NMVpnIterFunc<span class="c_punctuation">)</span> (<em class="parameter"><code>const <span class="type">char</span> *key</code></em>,
+                  <em class="parameter"><code>const <span class="type">char</span> *value</code></em>,
+                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a> user_data</code></em>);</pre>
+<div class="refsect3">
+<a name="NMVpnIterFunc.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the name of the data or secret item</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>the value of the data or secret item</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>user_data</p></td>
+<td class="parameter_description"><p>User data passed to <a class="link" href="NMSettingVpn.html#nm-setting-vpn-foreach-data-item" title="nm_setting_vpn_foreach_data_item ()"><code class="function">nm_setting_vpn_foreach_data_item()</code></a> or
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-foreach-secret" title="nm_setting_vpn_foreach_secret ()"><code class="function">nm_setting_vpn_foreach_secret()</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-new"></a><h3>nm_setting_vpn_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_vpn_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-service-type"></a><h3>nm_setting_vpn_get_service_type ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_vpn_get_service_type (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>);</pre>
+<p>Returns the service name of the VPN, which identifies the specific VPN
+plugin that should be used to connect to this VPN.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-service-type.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-service-type.returns"></a><h4>Returns</h4>
+<p> the VPN plugin's service name</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-user-name"></a><h3>nm_setting_vpn_get_user_name ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_vpn_get_user_name (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-user-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-user-name.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“user-name”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-persistent"></a><h3>nm_setting_vpn_get_persistent ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_vpn_get_persistent (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-persistent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-persistent.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“persistent”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-num-data-items"></a><h3>nm_setting_vpn_get_num_data_items ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_vpn_get_num_data_items (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>);</pre>
+<p>Gets number of key/value pairs of VPN configuration data.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-num-data-items.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-num-data-items.returns"></a><h4>Returns</h4>
+<p> the number of VPN plugin specific configuration data items</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-add-data-item"></a><h3>nm_setting_vpn_add_data_item ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_vpn_add_data_item (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                              <em class="parameter"><code>const <span class="type">char</span> *key</code></em>,
+                              <em class="parameter"><code>const <span class="type">char</span> *item</code></em>);</pre>
+<p>Establishes a relationship between <em class="parameter"><code>key</code></em>
+ and <em class="parameter"><code>item</code></em>
+ internally in the
+setting which may be retrieved later.  Should not be used to store passwords
+or other secrets, which is what <a class="link" href="NMSettingVpn.html#nm-setting-vpn-add-secret" title="nm_setting_vpn_add_secret ()"><code class="function">nm_setting_vpn_add_secret()</code></a> is for.</p>
+<p>Before 1.24, <em class="parameter"><code>item</code></em>
+ must not be <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> and not an empty string. Since 1.24,
+<em class="parameter"><code>item</code></em>
+ can be set to an empty string. It can also be set to <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> to unset
+the key. In that case, the behavior is as if calling <a class="link" href="NMSettingVpn.html#nm-setting-vpn-remove-data-item" title="nm_setting_vpn_remove_data_item ()"><code class="function">nm_setting_vpn_remove_data_item()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-add-data-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>a name that uniquely identifies the given value <em class="parameter"><code>item</code></em>
+</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>item</p></td>
+<td class="parameter_description"><p>the value to be referenced by <em class="parameter"><code>key</code></em>
+. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-data-item"></a><h3>nm_setting_vpn_get_data_item ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_vpn_get_data_item (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                              <em class="parameter"><code>const <span class="type">char</span> *key</code></em>);</pre>
+<p>Retrieves the data item of a key/value relationship previously established
+by <a class="link" href="NMSettingVpn.html#nm-setting-vpn-add-data-item" title="nm_setting_vpn_add_data_item ()"><code class="function">nm_setting_vpn_add_data_item()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-data-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the name of the data item to retrieve</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-data-item.returns"></a><h4>Returns</h4>
+<p> the data item, if any</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-remove-data-item"></a><h3>nm_setting_vpn_remove_data_item ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_vpn_remove_data_item (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                                 <em class="parameter"><code>const <span class="type">char</span> *key</code></em>);</pre>
+<p>Deletes a key/value relationship previously established by
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-add-data-item" title="nm_setting_vpn_add_data_item ()"><code class="function">nm_setting_vpn_add_data_item()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-remove-data-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the name of the data item to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-remove-data-item.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the data item was found and removed from the internal list,
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-foreach-data-item"></a><h3>nm_setting_vpn_foreach_data_item ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_vpn_foreach_data_item (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                                  <em class="parameter"><code><a class="link" href="NMSettingVpn.html#NMVpnIterFunc" title="NMVpnIterFunc ()"><span class="type">NMVpnIterFunc</span></a> func</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a> user_data</code></em>);</pre>
+<p>Iterates all data items stored in this setting.  It is safe to add, remove,
+and modify data items inside <em class="parameter"><code>func</code></em>
+, though any additions or removals made
+during iteration will not be part of the iteration.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-foreach-data-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>func</p></td>
+<td class="parameter_description"><p>an user provided function. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The callback is valid only during the call to the method."><span class="acronym">scope call</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>user_data</p></td>
+<td class="parameter_description"><p>data to be passed to <em class="parameter"><code>func</code></em>
+</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-data-keys"></a><h3>nm_setting_vpn_get_data_keys ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> **
+nm_setting_vpn_get_data_keys (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *out_length</code></em>);</pre>
+<p>Retrieves every data key inside <em class="parameter"><code>setting</code></em>
+, as an array.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-data-keys.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_length</p></td>
+<td class="parameter_description"><p>the length of the returned array. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-data-keys.returns"></a><h4>Returns</h4>
+<p>a
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated array containing each data key or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if
+there are no data items. </p>
+<p><span class="annotation">[<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=out_length][<acronym title="The caller owns the data container, but not the data inside it."><span class="acronym">transfer container</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-num-secrets"></a><h3>nm_setting_vpn_get_num_secrets ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_vpn_get_num_secrets (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>);</pre>
+<p>Gets number of VPN plugin specific secrets in the setting.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-num-secrets.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-num-secrets.returns"></a><h4>Returns</h4>
+<p> the number of VPN plugin specific secrets</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-add-secret"></a><h3>nm_setting_vpn_add_secret ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_vpn_add_secret (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                           <em class="parameter"><code>const <span class="type">char</span> *key</code></em>,
+                           <em class="parameter"><code>const <span class="type">char</span> *secret</code></em>);</pre>
+<p>Establishes a relationship between <em class="parameter"><code>key</code></em>
+ and <em class="parameter"><code>secret</code></em>
+ internally in the
+setting which may be retrieved later.</p>
+<p>Before 1.24, <em class="parameter"><code>secret</code></em>
+ must not be <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> and not an empty string. Since 1.24,
+<em class="parameter"><code>secret</code></em>
+ can be set to an empty string. It can also be set to <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> to unset
+the key. In that case, the behavior is as if calling <a class="link" href="NMSettingVpn.html#nm-setting-vpn-remove-secret" title="nm_setting_vpn_remove_secret ()"><code class="function">nm_setting_vpn_remove_secret()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-add-secret.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>a name that uniquely identifies the given secret <em class="parameter"><code>secret</code></em>
+</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>secret</p></td>
+<td class="parameter_description"><p>the secret to be referenced by <em class="parameter"><code>key</code></em>
+. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-secret"></a><h3>nm_setting_vpn_get_secret ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_vpn_get_secret (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                           <em class="parameter"><code>const <span class="type">char</span> *key</code></em>);</pre>
+<p>Retrieves the secret of a key/value relationship previously established
+by <a class="link" href="NMSettingVpn.html#nm-setting-vpn-add-secret" title="nm_setting_vpn_add_secret ()"><code class="function">nm_setting_vpn_add_secret()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-secret.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the name of the secret to retrieve</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-secret.returns"></a><h4>Returns</h4>
+<p> the secret, if any</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-remove-secret"></a><h3>nm_setting_vpn_remove_secret ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_vpn_remove_secret (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                              <em class="parameter"><code>const <span class="type">char</span> *key</code></em>);</pre>
+<p>Deletes a key/value relationship previously established by
+<a class="link" href="NMSettingVpn.html#nm-setting-vpn-add-secret" title="nm_setting_vpn_add_secret ()"><code class="function">nm_setting_vpn_add_secret()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-remove-secret.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the name of the secret to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-remove-secret.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the secret was found and removed from the internal list,
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-foreach-secret"></a><h3>nm_setting_vpn_foreach_secret ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_vpn_foreach_secret (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                               <em class="parameter"><code><a class="link" href="NMSettingVpn.html#NMVpnIterFunc" title="NMVpnIterFunc ()"><span class="type">NMVpnIterFunc</span></a> func</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a> user_data</code></em>);</pre>
+<p>Iterates all secrets stored in this setting.  It is safe to add, remove,
+and modify secrets inside <em class="parameter"><code>func</code></em>
+, though any additions or removals made during
+iteration will not be part of the iteration.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-foreach-secret.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>func</p></td>
+<td class="parameter_description"><p>an user provided function. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The callback is valid only during the call to the method."><span class="acronym">scope call</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>user_data</p></td>
+<td class="parameter_description"><p>data to be passed to <em class="parameter"><code>func</code></em>
+</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-secret-keys"></a><h3>nm_setting_vpn_get_secret_keys ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> **
+nm_setting_vpn_get_secret_keys (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *out_length</code></em>);</pre>
+<p>Retrieves every secret key inside <em class="parameter"><code>setting</code></em>
+, as an array.</p>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-secret-keys.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_length</p></td>
+<td class="parameter_description"><p>the length of the returned array. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-secret-keys.returns"></a><h4>Returns</h4>
+<p>a
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated array containing each secret key or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if
+there are no secrets. </p>
+<p><span class="annotation">[<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=out_length][<acronym title="The caller owns the data container, but not the data inside it."><span class="acronym">transfer container</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-vpn-get-timeout"></a><h3>nm_setting_vpn_get_timeout ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_vpn_get_timeout (<em class="parameter"><code><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-timeout.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-vpn-get-timeout.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“timeout”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingVpn.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-VPN-SETTING-NAME:CAPS"></a><h3>NM_SETTING_VPN_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_VPN_SETTING_NAME "vpn"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-VPN-SERVICE-TYPE:CAPS"></a><h3>NM_SETTING_VPN_SERVICE_TYPE</h3>
+<pre class="programlisting">#define NM_SETTING_VPN_SERVICE_TYPE "service-type"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-VPN-USER-NAME:CAPS"></a><h3>NM_SETTING_VPN_USER_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_VPN_USER_NAME    "user-name"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-VPN-PERSISTENT:CAPS"></a><h3>NM_SETTING_VPN_PERSISTENT</h3>
+<pre class="programlisting">#define NM_SETTING_VPN_PERSISTENT   "persistent"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-VPN-DATA:CAPS"></a><h3>NM_SETTING_VPN_DATA</h3>
+<pre class="programlisting">#define NM_SETTING_VPN_DATA         "data"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-VPN-SECRETS:CAPS"></a><h3>NM_SETTING_VPN_SECRETS</h3>
+<pre class="programlisting">#define NM_SETTING_VPN_SECRETS      "secrets"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-VPN-TIMEOUT:CAPS"></a><h3>NM_SETTING_VPN_TIMEOUT</h3>
+<pre class="programlisting">#define NM_SETTING_VPN_TIMEOUT      "timeout"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

@@ -1,0 +1,621 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMVpnServicePlugin: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch06.html" title="VPN Plugin API Reference">
+<link rel="prev" href="ch06.html" title="VPN Plugin API Reference">
+<link rel="next" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMVpnServicePlugin.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMVpnServicePlugin.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_interfaces">  <span class="dim">|</span> 
+                  <a href="#NMVpnServicePlugin.implemented-interfaces" class="shortcut">Implemented Interfaces</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMVpnServicePlugin.properties" class="shortcut">Properties</a></span><span id="nav_signals">  <span class="dim">|</span> 
+                  <a href="#NMVpnServicePlugin.signals" class="shortcut">Signals</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch06.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="ch06.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMVpnPluginInfo.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMVpnServicePlugin"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMVpnServicePlugin.top_of_page"></a>NMVpnServicePlugin</span></h2>
+<p>NMVpnServicePlugin</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/gio/unstable/GDBusConnection.html#GDBusConnection-struct"><span class="returnvalue">GDBusConnection</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-get-connection" title="nm_vpn_service_plugin_get_connection ()">nm_vpn_service_plugin_get_connection</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-secrets-required" title="nm_vpn_service_plugin_secrets_required ()">nm_vpn_service_plugin_secrets_required</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-set-login-banner" title="nm_vpn_service_plugin_set_login_banner ()">nm_vpn_service_plugin_set_login_banner</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-failure" title="nm_vpn_service_plugin_failure ()">nm_vpn_service_plugin_failure</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-set-config" title="nm_vpn_service_plugin_set_config ()">nm_vpn_service_plugin_set_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-set-ip4-config" title="nm_vpn_service_plugin_set_ip4_config ()">nm_vpn_service_plugin_set_ip4_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-set-ip6-config" title="nm_vpn_service_plugin_set_ip6_config ()">nm_vpn_service_plugin_set_ip6_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-disconnect" title="nm_vpn_service_plugin_disconnect ()">nm_vpn_service_plugin_disconnect</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-shutdown" title="nm_vpn_service_plugin_shutdown ()">nm_vpn_service_plugin_shutdown</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-read-vpn-details" title="nm_vpn_service_plugin_read_vpn_details ()">nm_vpn_service_plugin_read_vpn_details</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnServicePlugin.html#nm-vpn-service-plugin-get-secret-flags" title="nm_vpn_service_plugin_get_secret_flags ()">nm_vpn_service_plugin_get_secret_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin--service-name" title="The “service-name” property">service-name</a></td>
+<td class="property_flags">Read / Write / Construct Only</td>
+</tr>
+<tr>
+<td class="property_type"><a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnServiceState" title="enum NMVpnServiceState"><span class="type">NMVpnServiceState</span></a></td>
+<td class="property_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin--state" title="The “state” property">state</a></td>
+<td class="property_flags">Read / Write</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin--watch-peer" title="The “watch-peer” property">watch-peer</a></td>
+<td class="property_flags">Read / Write / Construct Only</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.signals"></a><h2>Signals</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="signal_proto_type">
+<col width="300px" class="signal_proto_name">
+<col width="200px" class="signal_proto_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-config" title="The “config” signal">config</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-failure" title="The “failure” signal">failure</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-ip4-config" title="The “ip4-config” signal">ip4-config</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-ip6-config" title="The “ip6-config” signal">ip6-config</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-login-banner" title="The “login-banner” signal">login-banner</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-quit" title="The “quit” signal">quit</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-secrets-required" title="The “secrets-required” signal">secrets-required</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-state-changed" title="The “state-changed” signal">state-changed</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnServicePlugin.html#NM-VPN-SERVICE-PLUGIN-DBUS-SERVICE-NAME:CAPS" title="NM_VPN_SERVICE_PLUGIN_DBUS_SERVICE_NAME">NM_VPN_SERVICE_PLUGIN_DBUS_SERVICE_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnServicePlugin.html#NM-VPN-SERVICE-PLUGIN-DBUS-WATCH-PEER:CAPS" title="NM_VPN_SERVICE_PLUGIN_DBUS_WATCH_PEER">NM_VPN_SERVICE_PLUGIN_DBUS_WATCH_PEER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnServicePlugin.html#NM-VPN-SERVICE-PLUGIN-STATE:CAPS" title="NM_VPN_SERVICE_PLUGIN_STATE">NM_VPN_SERVICE_PLUGIN_STATE</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMVpnServicePlugin.html#NMVpnServicePlugin-struct" title="NMVpnServicePlugin">NMVpnServicePlugin</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> NMVpnServicePlugin
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.implemented-interfaces"></a><h2>Implemented Interfaces</h2>
+<p>
+NMVpnServicePlugin implements
+ <a href="https://developer.gnome.org/gio/unstable/GInitable.html#GInitable-struct">GInitable</a>.</p>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-get-connection"></a><h3>nm_vpn_service_plugin_get_connection ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/gio/unstable/GDBusConnection.html#GDBusConnection-struct"><span class="returnvalue">GDBusConnection</span></a> *
+nm_vpn_service_plugin_get_connection (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-service-plugin-get-connection.returns"></a><h4>Returns</h4>
+<p>. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-secrets-required"></a><h3>nm_vpn_service_plugin_secrets_required ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_service_plugin_secrets_required
+                               (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *message</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> **hints</code></em>);</pre>
+<p>Called by VPN plugin implementations to signal to NetworkManager that secrets
+are required during the connection process.  This signal may be used to
+request new secrets when the secrets originally provided by NetworkManager
+are insufficient, or the VPN process indicates that it needs additional
+information to complete the request.</p>
+<div class="refsect3">
+<a name="nm-vpn-service-plugin-secrets-required.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>plugin</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>message</p></td>
+<td class="parameter_description"><p>an information message about why secrets are required, if any</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>hints</p></td>
+<td class="parameter_description"><p>VPN specific secret names for required new secrets</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-set-login-banner"></a><h3>nm_vpn_service_plugin_set_login_banner ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_service_plugin_set_login_banner
+                               (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *banner</code></em>);</pre>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-failure"></a><h3>nm_vpn_service_plugin_failure ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_service_plugin_failure (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>,
+                               <em class="parameter"><code><a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnPluginFailure" title="enum NMVpnPluginFailure"><span class="type">NMVpnPluginFailure</span></a> reason</code></em>);</pre>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-set-config"></a><h3>nm_vpn_service_plugin_set_config ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_service_plugin_set_config (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *config</code></em>);</pre>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-set-ip4-config"></a><h3>nm_vpn_service_plugin_set_ip4_config ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_service_plugin_set_ip4_config (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>,
+                                      <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *ip4_config</code></em>);</pre>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-set-ip6-config"></a><h3>nm_vpn_service_plugin_set_ip6_config ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_service_plugin_set_ip6_config (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>,
+                                      <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *ip6_config</code></em>);</pre>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-disconnect"></a><h3>nm_vpn_service_plugin_disconnect ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_service_plugin_disconnect (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **err</code></em>);</pre>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-shutdown"></a><h3>nm_vpn_service_plugin_shutdown ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_service_plugin_shutdown (<em class="parameter"><code><a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *plugin</code></em>);</pre>
+<p>Shutdown the <em class="parameter"><code>plugin</code></em>
+ and disconnect from D-Bus. After this,
+the plugin instance is dead and should no longer be used.
+It ensures to get no more requests from D-Bus. In principle,
+you don't need to shutdown the plugin, disposing the instance
+has the same effect. However, this gives a way to deactivate
+the plugin before giving up the last reference.</p>
+<div class="refsect3">
+<a name="nm-vpn-service-plugin-shutdown.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>plugin</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-read-vpn-details"></a><h3>nm_vpn_service_plugin_read_vpn_details ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_service_plugin_read_vpn_details
+                               (<em class="parameter"><code><span class="type">int</span> fd</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> **out_data</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> **out_secrets</code></em>);</pre>
+<p>Parses key/value pairs from a file descriptor (normally stdin) passed by
+an applet when the applet calls the authentication dialog of the VPN plugin.</p>
+<div class="refsect3">
+<a name="nm-vpn-service-plugin-read-vpn-details.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>fd</p></td>
+<td class="parameter_description"><p>file descriptor to read from, usually stdin (0)</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_data</p></td>
+<td class="parameter_description"><p>on successful return, a hash table
+(mapping char*:char*) containing the key/value pairs of VPN data items. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_secrets</p></td>
+<td class="parameter_description"><p>on successful return, a hash table
+(mapping char*:char*) containing the key/value pairsof VPN secrets. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-service-plugin-read-vpn-details.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if reading values was successful, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if not</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-service-plugin-get-secret-flags"></a><h3>nm_vpn_service_plugin_get_secret_flags ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_service_plugin_get_secret_flags
+                               (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> *data</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *secret_name</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> *out_flags</code></em>);</pre>
+<p>Given a VPN secret key name, attempts to find the corresponding flags data
+item in <em class="parameter"><code>data</code></em>
+.  If found, converts the flags data item to
+<a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> and returns it.</p>
+<div class="refsect3">
+<a name="nm-vpn-service-plugin-get-secret-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>data</p></td>
+<td class="parameter_description"><p>hash table containing VPN key/value pair data items</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>secret_name</p></td>
+<td class="parameter_description"><p>VPN secret key name for which to retrieve flags for</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_flags</p></td>
+<td class="parameter_description"><p>on success, the flags associated with <em class="parameter"><code>secret_name</code></em>
+. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-service-plugin-get-secret-flags.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the flag data item was found and successfully converted
+to flags, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if not</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-VPN-SERVICE-PLUGIN-DBUS-SERVICE-NAME:CAPS"></a><h3>NM_VPN_SERVICE_PLUGIN_DBUS_SERVICE_NAME</h3>
+<pre class="programlisting">#define NM_VPN_SERVICE_PLUGIN_DBUS_SERVICE_NAME "service-name"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VPN-SERVICE-PLUGIN-DBUS-WATCH-PEER:CAPS"></a><h3>NM_VPN_SERVICE_PLUGIN_DBUS_WATCH_PEER</h3>
+<pre class="programlisting">#define NM_VPN_SERVICE_PLUGIN_DBUS_WATCH_PEER   "watch-peer"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VPN-SERVICE-PLUGIN-STATE:CAPS"></a><h3>NM_VPN_SERVICE_PLUGIN_STATE</h3>
+<pre class="programlisting">#define NM_VPN_SERVICE_PLUGIN_STATE             "state"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-struct"></a><h3>NMVpnServicePlugin</h3>
+<pre class="programlisting">typedef struct _NMVpnServicePlugin NMVpnServicePlugin;</pre>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMVpnServicePlugin--service-name"></a><h3>The <code class="literal">“service-name”</code> property</h3>
+<pre class="programlisting">  “service-name”             <span class="type">char</span> *</pre>
+<p>The D-Bus service name of this plugin.</p>
+<p>Owner: NMVpnServicePlugin</p>
+<p>Flags: Read / Write / Construct Only</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin--state"></a><h3>The <code class="literal">“state”</code> property</h3>
+<pre class="programlisting">  “state”                    <a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnServiceState" title="enum NMVpnServiceState"><span class="type">NMVpnServiceState</span></a></pre>
+<p>The state of the plugin.</p>
+<p>Owner: NMVpnServicePlugin</p>
+<p>Flags: Read / Write</p>
+<p>Default value: NM_VPN_SERVICE_STATE_INIT</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin--watch-peer"></a><h3>The <code class="literal">“watch-peer”</code> property</h3>
+<pre class="programlisting">  “watch-peer”               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether to watch for D-Bus peer's changes.</p>
+<p>Owner: NMVpnServicePlugin</p>
+<p>Flags: Read / Write / Construct Only</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMVpnServicePlugin.signal-details"></a><h2>Signal Details</h2>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-config"></a><h3>The <code class="literal">“config”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *nmvpnserviceplugin,
+               <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a>           *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>            user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-failure"></a><h3>The <code class="literal">“failure”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *nmvpnserviceplugin,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a>               arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>            user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-ip4-config"></a><h3>The <code class="literal">“ip4-config”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *nmvpnserviceplugin,
+               <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a>           *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>            user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-ip6-config"></a><h3>The <code class="literal">“ip6-config”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *nmvpnserviceplugin,
+               <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a>           *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>            user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-login-banner"></a><h3>The <code class="literal">“login-banner”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *nmvpnserviceplugin,
+               <span class="type">char</span>               *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>            user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-quit"></a><h3>The <code class="literal">“quit”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *nmvpnserviceplugin,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>            user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-secrets-required"></a><h3>The <code class="literal">“secrets-required”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *nmvpnserviceplugin,
+               <span class="type">char</span>               *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-String-Utility-Functions.html#GStrv"><span class="type">GStrv</span></a>               arg2,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>            user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnServicePlugin-state-changed"></a><h3>The <code class="literal">“state-changed”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin"><span class="type">NMVpnServicePlugin</span></a> *nmvpnserviceplugin,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a>               arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>            user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

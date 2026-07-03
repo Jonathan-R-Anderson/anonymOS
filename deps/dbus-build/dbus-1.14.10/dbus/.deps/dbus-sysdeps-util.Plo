@@ -1,0 +1,51 @@
+dbus-sysdeps-util.lo: dbus-sysdeps-util.c ../config.h dbus-sysdeps.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  ../dbus/dbus-errors.h ../dbus/dbus-macros.h ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  ../dbus/dbus-arch-deps.h ../dbus/dbus-protocol.h ../dbus/dbus-file.h \
+  ../dbus/dbus-string.h ../dbus/dbus-memory.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h \
+  dbus-internals.h ../dbus/dbus-sysdeps.h \
+  ../dbus/dbus-threads-internal.h ../dbus/dbus-threads.h dbus-string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/unistd.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/posix.h
+../config.h:
+dbus-sysdeps.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-protocol.h:
+../dbus/dbus-file.h:
+../dbus/dbus-string.h:
+../dbus/dbus-memory.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h:
+dbus-internals.h:
+../dbus/dbus-sysdeps.h:
+../dbus/dbus-threads-internal.h:
+../dbus/dbus-threads.h:
+dbus-string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/unistd.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/posix.h:

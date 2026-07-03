@@ -1,0 +1,517 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMDeviceTun: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch04.html" title="Device and Runtime Configuration API Reference">
+<link rel="prev" href="NMDeviceTeam.html" title="NMDeviceTeam">
+<link rel="next" href="NMDeviceVeth.html" title="NMDeviceVeth">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMDeviceTun.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMDeviceTun.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMDeviceTun.properties" class="shortcut">Properties</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch04.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMDeviceTeam.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMDeviceVeth.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMDeviceTun"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMDeviceTun.top_of_page"></a>NMDeviceTun</span></h2>
+<p>NMDeviceTun</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMDeviceTun.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceTun.html#nm-device-tun-get-hw-address" title="nm_device_tun_get_hw_address ()">nm_device_tun_get_hw_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceTun.html#nm-device-tun-get-mode" title="nm_device_tun_get_mode ()">nm_device_tun_get_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceTun.html#nm-device-tun-get-owner" title="nm_device_tun_get_owner ()">nm_device_tun_get_owner</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceTun.html#nm-device-tun-get-group" title="nm_device_tun_get_group ()">nm_device_tun_get_group</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceTun.html#nm-device-tun-get-no-pi" title="nm_device_tun_get_no_pi ()">nm_device_tun_get_no_pi</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceTun.html#nm-device-tun-get-vnet-hdr" title="nm_device_tun_get_vnet_hdr ()">nm_device_tun_get_vnet_hdr</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceTun.html#nm-device-tun-get-multi-queue" title="nm_device_tun_get_multi_queue ()">nm_device_tun_get_multi_queue</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceTun.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="type">gint64</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceTun.html#NMDeviceTun--group" title="The “group” property">group</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceTun.html#NMDeviceTun--mode" title="The “mode” property">mode</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceTun.html#NMDeviceTun--multi-queue" title="The “multi-queue” property">multi-queue</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceTun.html#NMDeviceTun--no-pi" title="The “no-pi” property">no-pi</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="type">gint64</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceTun.html#NMDeviceTun--owner" title="The “owner” property">owner</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceTun.html#NMDeviceTun--vnet-hdr" title="The “vnet-hdr” property">vnet-hdr</a></td>
+<td class="property_flags">Read</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceTun.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceTun.html#NM-DEVICE-TUN-HW-ADDRESS:CAPS" title="NM_DEVICE_TUN_HW_ADDRESS">NM_DEVICE_TUN_HW_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceTun.html#NM-DEVICE-TUN-OWNER:CAPS" title="NM_DEVICE_TUN_OWNER">NM_DEVICE_TUN_OWNER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceTun.html#NM-DEVICE-TUN-GROUP:CAPS" title="NM_DEVICE_TUN_GROUP">NM_DEVICE_TUN_GROUP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceTun.html#NM-DEVICE-TUN-MODE:CAPS" title="NM_DEVICE_TUN_MODE">NM_DEVICE_TUN_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceTun.html#NM-DEVICE-TUN-NO-PI:CAPS" title="NM_DEVICE_TUN_NO_PI">NM_DEVICE_TUN_NO_PI</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceTun.html#NM-DEVICE-TUN-VNET-HDR:CAPS" title="NM_DEVICE_TUN_VNET_HDR">NM_DEVICE_TUN_VNET_HDR</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceTun.html#NM-DEVICE-TUN-MULTI-QUEUE:CAPS" title="NM_DEVICE_TUN_MULTI_QUEUE">NM_DEVICE_TUN_MULTI_QUEUE</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMDeviceTun.html#NMDeviceTun-struct" title="NMDeviceTun">NMDeviceTun</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceTun.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> <a class="link" href="NMObject.html" title="NMObject">NMObject</a>
+        <span class="lineart">╰──</span> <a class="link" href="NMDevice.html" title="NMDevice">NMDevice</a>
+            <span class="lineart">╰──</span> NMDeviceTun
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMDeviceTun.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMDeviceTun.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-device-tun-get-hw-address"></a><h3>nm_device_tun_get_hw_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_tun_get_hw_address (<em class="parameter"><code><a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> *device</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_device_tun_get_hw_address</code> has been deprecated since version 1.24 and should not be used in newly-written code.</p>
+<p>Use <a class="link" href="NMDevice.html#nm-device-get-hw-address" title="nm_device_get_hw_address ()"><code class="function">nm_device_get_hw_address()</code></a> instead.</p>
+</div>
+<p>Gets the hardware (MAC) address of the <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a></p>
+<p><span class="annotation">[<acronym title="Exposed in C code, not necessarily available in other languages."><span class="acronym">skip</span></acronym>]</span></p>
+<div class="refsect3">
+<a name="nm-device-tun-get-hw-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-tun-get-hw-address.returns"></a><h4>Returns</h4>
+<p> the hardware address. This is the internal string used by the
+device, and must not be modified.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-tun-get-mode"></a><h3>nm_device_tun_get_mode ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_tun_get_mode (<em class="parameter"><code><a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> *device</code></em>);</pre>
+<p>Returns the TUN/TAP mode for the device.</p>
+<div class="refsect3">
+<a name="nm-device-tun-get-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-tun-get-mode.returns"></a><h4>Returns</h4>
+<p> 'tun' or 'tap'</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-tun-get-owner"></a><h3>nm_device_tun_get_owner ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+nm_device_tun_get_owner (<em class="parameter"><code><a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> *device</code></em>);</pre>
+<p>Gets the tunnel owner.</p>
+<div class="refsect3">
+<a name="nm-device-tun-get-owner.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-tun-get-owner.returns"></a><h4>Returns</h4>
+<p> the uid of the tunnel owner, or -1 if it has no owner.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-tun-get-group"></a><h3>nm_device_tun_get_group ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+nm_device_tun_get_group (<em class="parameter"><code><a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> *device</code></em>);</pre>
+<p>Gets the tunnel group.</p>
+<div class="refsect3">
+<a name="nm-device-tun-get-group.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-tun-get-group.returns"></a><h4>Returns</h4>
+<p> the gid of the tunnel group, or -1 if it has no owner.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-tun-get-no-pi"></a><h3>nm_device_tun_get_no_pi ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_tun_get_no_pi (<em class="parameter"><code><a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> *device</code></em>);</pre>
+<p>Returns whether the <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> has the IFF_NO_PI flag.</p>
+<div class="refsect3">
+<a name="nm-device-tun-get-no-pi.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-tun-get-no-pi.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the device has the flag, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-tun-get-vnet-hdr"></a><h3>nm_device_tun_get_vnet_hdr ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_tun_get_vnet_hdr (<em class="parameter"><code><a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> *device</code></em>);</pre>
+<p>Returns whether the <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> has the IFF_VNET_HDR flag.</p>
+<div class="refsect3">
+<a name="nm-device-tun-get-vnet-hdr.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-tun-get-vnet-hdr.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the device has the flag, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-tun-get-multi-queue"></a><h3>nm_device_tun_get_multi_queue ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_tun_get_multi_queue (<em class="parameter"><code><a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> *device</code></em>);</pre>
+<p>Returns whether the <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a> has the IFF_MULTI_QUEUE flag.</p>
+<div class="refsect3">
+<a name="nm-device-tun-get-multi-queue.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceTun.html" title="NMDeviceTun"><span class="type">NMDeviceTun</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-tun-get-multi-queue.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the device doesn't have the flag, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceTun.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-DEVICE-TUN-HW-ADDRESS:CAPS"></a><h3>NM_DEVICE_TUN_HW_ADDRESS</h3>
+<pre class="programlisting">#define NM_DEVICE_TUN_HW_ADDRESS  "hw-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-TUN-OWNER:CAPS"></a><h3>NM_DEVICE_TUN_OWNER</h3>
+<pre class="programlisting">#define NM_DEVICE_TUN_OWNER       "owner"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-TUN-GROUP:CAPS"></a><h3>NM_DEVICE_TUN_GROUP</h3>
+<pre class="programlisting">#define NM_DEVICE_TUN_GROUP       "group"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-TUN-MODE:CAPS"></a><h3>NM_DEVICE_TUN_MODE</h3>
+<pre class="programlisting">#define NM_DEVICE_TUN_MODE        "mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-TUN-NO-PI:CAPS"></a><h3>NM_DEVICE_TUN_NO_PI</h3>
+<pre class="programlisting">#define NM_DEVICE_TUN_NO_PI       "no-pi"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-TUN-VNET-HDR:CAPS"></a><h3>NM_DEVICE_TUN_VNET_HDR</h3>
+<pre class="programlisting">#define NM_DEVICE_TUN_VNET_HDR    "vnet-hdr"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-TUN-MULTI-QUEUE:CAPS"></a><h3>NM_DEVICE_TUN_MULTI_QUEUE</h3>
+<pre class="programlisting">#define NM_DEVICE_TUN_MULTI_QUEUE "multi-queue"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceTun-struct"></a><h3>NMDeviceTun</h3>
+<pre class="programlisting">typedef struct _NMDeviceTun NMDeviceTun;</pre>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceTun.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMDeviceTun--group"></a><h3>The <code class="literal">“group”</code> property</h3>
+<pre class="programlisting">  “group”                    <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="type">gint64</span></a></pre>
+<p>The gid of the tunnel group, or -1 if it has no owner.</p>
+<p>Owner: NMDeviceTun</p>
+<p>Flags: Read</p>
+<p>Allowed values: [-1,4294967295]</p>
+<p>Default value: -1</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceTun--mode"></a><h3>The <code class="literal">“mode”</code> property</h3>
+<pre class="programlisting">  “mode”                     <span class="type">char</span> *</pre>
+<p>The tunnel mode, either "tun" or "tap".</p>
+<p>Owner: NMDeviceTun</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceTun--multi-queue"></a><h3>The <code class="literal">“multi-queue”</code> property</h3>
+<pre class="programlisting">  “multi-queue”              <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>The tunnel's "TUN_TAP_MQ" flag; true if callers can connect to
+the tap device multiple times, for multiple send/receive
+queues.</p>
+<p>Owner: NMDeviceTun</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceTun--no-pi"></a><h3>The <code class="literal">“no-pi”</code> property</h3>
+<pre class="programlisting">  “no-pi”                    <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>The tunnel's "TUN_NO_PI" flag; true if no protocol info is
+prepended to the tunnel packets.</p>
+<p>Owner: NMDeviceTun</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceTun--owner"></a><h3>The <code class="literal">“owner”</code> property</h3>
+<pre class="programlisting">  “owner”                    <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="type">gint64</span></a></pre>
+<p>The uid of the tunnel owner, or -1 if it has no owner.</p>
+<p>Owner: NMDeviceTun</p>
+<p>Flags: Read</p>
+<p>Allowed values: [-1,4294967295]</p>
+<p>Default value: -1</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceTun--vnet-hdr"></a><h3>The <code class="literal">“vnet-hdr”</code> property</h3>
+<pre class="programlisting">  “vnet-hdr”                 <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>The tunnel's "TUN_VNET_HDR" flag; true if the tunnel packets
+include a virtio network header.</p>
+<p>Owner: NMDeviceTun</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

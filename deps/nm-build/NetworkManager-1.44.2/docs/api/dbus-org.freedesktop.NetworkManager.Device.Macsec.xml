@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Macsec">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Macsec.top_of_page">org.freedesktop.NetworkManager.Device.Macsec</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Macsec.top_of_page"><primary sortas=".Device.Macsec">org.freedesktop.NetworkManager.Device.Macsec</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Macsec</refname>    <refpurpose>MACSec Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Parent">Parent</link>         readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Sci">Sci</link>            readable   t
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.IcvLength">IcvLength</link>      readable   y
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.CipherSuite">CipherSuite</link>    readable   t
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Window">Window</link>         readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.EncodingSa">EncodingSa</link>     readable   y
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Validation">Validation</link>     readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Encrypt">Encrypt</link>        readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Protect">Protect</link>        readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.IncludeSci">IncludeSci</link>     readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Es">Es</link>             readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Scb">Scb</link>            readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.ReplayProtect">ReplayProtect</link>  readable   b
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Macsec">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Macsec">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Parent">
+  <title>The "Parent" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Parent"><primary sortas=".Device.Macsec:Parent">org.freedesktop.NetworkManager.Device.Macsec:Parent</primary></indexterm>
+<programlisting>
+Parent  readable   o
+</programlisting>
+<para>
+The object path of the parent device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Sci">
+  <title>The "Sci" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Sci"><primary sortas=".Device.Macsec:Sci">org.freedesktop.NetworkManager.Device.Macsec:Sci</primary></indexterm>
+<programlisting>
+Sci  readable   t
+</programlisting>
+<para>
+The Secure Channel Identifier in use.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.IcvLength">
+  <title>The "IcvLength" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.IcvLength"><primary sortas=".Device.Macsec:IcvLength">org.freedesktop.NetworkManager.Device.Macsec:IcvLength</primary></indexterm>
+<programlisting>
+IcvLength  readable   y
+</programlisting>
+<para>
+The length of ICV (Integrity Check Value).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.CipherSuite">
+  <title>The "CipherSuite" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.CipherSuite"><primary sortas=".Device.Macsec:CipherSuite">org.freedesktop.NetworkManager.Device.Macsec:CipherSuite</primary></indexterm>
+<programlisting>
+CipherSuite  readable   t
+</programlisting>
+<para>
+The set of cryptographic algorithms in use
+(e.g. 0x0080020001000001 for GCM-AES-128).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Window">
+  <title>The "Window" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Window"><primary sortas=".Device.Macsec:Window">org.freedesktop.NetworkManager.Device.Macsec:Window</primary></indexterm>
+<programlisting>
+Window  readable   u
+</programlisting>
+<para>
+The size of the replay window.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.EncodingSa">
+  <title>The "EncodingSa" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.EncodingSa"><primary sortas=".Device.Macsec:EncodingSa">org.freedesktop.NetworkManager.Device.Macsec:EncodingSa</primary></indexterm>
+<programlisting>
+EncodingSa  readable   y
+</programlisting>
+<para>
+The value of the Association Number (0..3) for the Security
+Association in use.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Validation">
+  <title>The "Validation" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Validation"><primary sortas=".Device.Macsec:Validation">org.freedesktop.NetworkManager.Device.Macsec:Validation</primary></indexterm>
+<programlisting>
+Validation  readable   s
+</programlisting>
+<para>
+The validation mode for incoming packets (strict, check,
+disabled).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Encrypt">
+  <title>The "Encrypt" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Encrypt"><primary sortas=".Device.Macsec:Encrypt">org.freedesktop.NetworkManager.Device.Macsec:Encrypt</primary></indexterm>
+<programlisting>
+Encrypt  readable   b
+</programlisting>
+<para>
+Whether encryption of transmitted frames is enabled.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Protect">
+  <title>The "Protect" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Protect"><primary sortas=".Device.Macsec:Protect">org.freedesktop.NetworkManager.Device.Macsec:Protect</primary></indexterm>
+<programlisting>
+Protect  readable   b
+</programlisting>
+<para>
+Whether protection of transmitted frames is enabled.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.IncludeSci">
+  <title>The "IncludeSci" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.IncludeSci"><primary sortas=".Device.Macsec:IncludeSci">org.freedesktop.NetworkManager.Device.Macsec:IncludeSci</primary></indexterm>
+<programlisting>
+IncludeSci  readable   b
+</programlisting>
+<para>
+Whether the SCI is always included in SecTAG for transmitted
+frames.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Es">
+  <title>The "Es" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Es"><primary sortas=".Device.Macsec:Es">org.freedesktop.NetworkManager.Device.Macsec:Es</primary></indexterm>
+<programlisting>
+Es  readable   b
+</programlisting>
+<para>
+Whether the ES (End station) bit is enabled in SecTAG for
+transmitted frames.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Scb">
+  <title>The "Scb" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.Scb"><primary sortas=".Device.Macsec:Scb">org.freedesktop.NetworkManager.Device.Macsec:Scb</primary></indexterm>
+<programlisting>
+Scb  readable   b
+</programlisting>
+<para>
+Whether the SCB (Single Copy Broadcast) bit is enabled in
+SecTAG for transmitted frames.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.ReplayProtect">
+  <title>The "ReplayProtect" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Macsec.ReplayProtect"><primary sortas=".Device.Macsec:ReplayProtect">org.freedesktop.NetworkManager.Device.Macsec:ReplayProtect</primary></indexterm>
+<programlisting>
+ReplayProtect  readable   b
+</programlisting>
+<para>
+Whether replay protection is enabled.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

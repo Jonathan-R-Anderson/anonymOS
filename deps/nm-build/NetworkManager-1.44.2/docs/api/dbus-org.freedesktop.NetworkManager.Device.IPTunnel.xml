@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.IPTunnel">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-IPTunnel.top_of_page">org.freedesktop.NetworkManager.Device.IPTunnel</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-IPTunnel.top_of_page"><primary sortas=".Device.IPTunnel">org.freedesktop.NetworkManager.Device.IPTunnel</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.IPTunnel</refname>    <refpurpose>IP Tunneling Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Mode">Mode</link>                readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Parent">Parent</link>              readable   o
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Local">Local</link>               readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Remote">Remote</link>              readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Ttl">Ttl</link>                 readable   y
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Tos">Tos</link>                 readable   y
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.PathMtuDiscovery">PathMtuDiscovery</link>    readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.InputKey">InputKey</link>            readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.OutputKey">OutputKey</link>           readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.EncapsulationLimit">EncapsulationLimit</link>  readable   y
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.FlowLabel">FlowLabel</link>           readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.FwMark">FwMark</link>              readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Flags">Flags</link>               readable   u
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-IPTunnel">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.IPTunnel">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Mode">
+  <title>The "Mode" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Mode"><primary sortas=".Device.IPTunnel:Mode">org.freedesktop.NetworkManager.Device.IPTunnel:Mode</primary></indexterm>
+<programlisting>
+Mode  readable   u
+</programlisting>
+<para>
+The tunneling mode.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Parent">
+  <title>The "Parent" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Parent"><primary sortas=".Device.IPTunnel:Parent">org.freedesktop.NetworkManager.Device.IPTunnel:Parent</primary></indexterm>
+<programlisting>
+Parent  readable   o
+</programlisting>
+<para>
+The object path of the parent device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Local">
+  <title>The "Local" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Local"><primary sortas=".Device.IPTunnel:Local">org.freedesktop.NetworkManager.Device.IPTunnel:Local</primary></indexterm>
+<programlisting>
+Local  readable   s
+</programlisting>
+<para>
+The local endpoint of the tunnel.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Remote">
+  <title>The "Remote" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Remote"><primary sortas=".Device.IPTunnel:Remote">org.freedesktop.NetworkManager.Device.IPTunnel:Remote</primary></indexterm>
+<programlisting>
+Remote  readable   s
+</programlisting>
+<para>
+The remote endpoint of the tunnel.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Ttl">
+  <title>The "Ttl" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Ttl"><primary sortas=".Device.IPTunnel:Ttl">org.freedesktop.NetworkManager.Device.IPTunnel:Ttl</primary></indexterm>
+<programlisting>
+Ttl  readable   y
+</programlisting>
+<para>
+The TTL assigned to tunneled packets. 0 is a special value meaning that
+packets inherit the TTL value
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Tos">
+  <title>The "Tos" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Tos"><primary sortas=".Device.IPTunnel:Tos">org.freedesktop.NetworkManager.Device.IPTunnel:Tos</primary></indexterm>
+<programlisting>
+Tos  readable   y
+</programlisting>
+<para>
+The type of service (IPv4) or traffic class (IPv6) assigned to tunneled
+packets.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.PathMtuDiscovery">
+  <title>The "PathMtuDiscovery" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.PathMtuDiscovery"><primary sortas=".Device.IPTunnel:PathMtuDiscovery">org.freedesktop.NetworkManager.Device.IPTunnel:PathMtuDiscovery</primary></indexterm>
+<programlisting>
+PathMtuDiscovery  readable   b
+</programlisting>
+<para>
+Whether path MTU discovery is enabled on this tunnel.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.InputKey">
+  <title>The "InputKey" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.InputKey"><primary sortas=".Device.IPTunnel:InputKey">org.freedesktop.NetworkManager.Device.IPTunnel:InputKey</primary></indexterm>
+<programlisting>
+InputKey  readable   s
+</programlisting>
+<para>
+The key used for incoming packets.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.OutputKey">
+  <title>The "OutputKey" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.OutputKey"><primary sortas=".Device.IPTunnel:OutputKey">org.freedesktop.NetworkManager.Device.IPTunnel:OutputKey</primary></indexterm>
+<programlisting>
+OutputKey  readable   s
+</programlisting>
+<para>
+The key used for outgoing packets.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.EncapsulationLimit">
+  <title>The "EncapsulationLimit" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.EncapsulationLimit"><primary sortas=".Device.IPTunnel:EncapsulationLimit">org.freedesktop.NetworkManager.Device.IPTunnel:EncapsulationLimit</primary></indexterm>
+<programlisting>
+EncapsulationLimit  readable   y
+</programlisting>
+<para>
+How many additional levels of encapsulation are permitted to be prepended
+to packets. This property applies only to IPv6 tunnels.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.FlowLabel">
+  <title>The "FlowLabel" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.FlowLabel"><primary sortas=".Device.IPTunnel:FlowLabel">org.freedesktop.NetworkManager.Device.IPTunnel:FlowLabel</primary></indexterm>
+<programlisting>
+FlowLabel  readable   u
+</programlisting>
+<para>
+The flow label to assign to tunnel packets. This property applies only to
+IPv6 tunnels.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.FwMark">
+  <title>The "FwMark" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.FwMark"><primary sortas=".Device.IPTunnel:FwMark">org.freedesktop.NetworkManager.Device.IPTunnel:FwMark</primary></indexterm>
+<programlisting>
+FwMark  readable   u
+</programlisting>
+<para>
+The fwmark value to assign to tunnel packets. This property applies only to
+VTI tunnels.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Flags">
+  <title>The "Flags" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-IPTunnel.Flags"><primary sortas=".Device.IPTunnel:Flags">org.freedesktop.NetworkManager.Device.IPTunnel:Flags</primary></indexterm>
+<programlisting>
+Flags  readable   u
+</programlisting>
+<para>
+Tunnel flags.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

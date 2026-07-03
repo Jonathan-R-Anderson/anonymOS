@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.AccessPoint">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-AccessPoint.top_of_page">org.freedesktop.NetworkManager.AccessPoint</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-AccessPoint.top_of_page"><primary sortas=".AccessPoint">org.freedesktop.NetworkManager.AccessPoint</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.AccessPoint</refname>    <refpurpose>Wi-Fi Access Point.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Flags">Flags</link>       readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.WpaFlags">WpaFlags</link>    readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.RsnFlags">RsnFlags</link>    readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Ssid">Ssid</link>        readable   ay
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Frequency">Frequency</link>   readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.HwAddress">HwAddress</link>   readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Mode">Mode</link>        readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.MaxBitrate">MaxBitrate</link>  readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Strength">Strength</link>    readable   y
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.LastSeen">LastSeen</link>    readable   i
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-AccessPoint">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.AccessPoint">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Flags">
+  <title>The "Flags" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Flags"><primary sortas=".AccessPoint:Flags">org.freedesktop.NetworkManager.AccessPoint:Flags</primary></indexterm>
+<programlisting>
+Flags  readable   u
+</programlisting>
+<para>
+Flags describing the capabilities of the access point.
+</para><para>
+Returns: <link linkend="NM80211ApFlags">NM80211ApFlags</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.WpaFlags">
+  <title>The "WpaFlags" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.WpaFlags"><primary sortas=".AccessPoint:WpaFlags">org.freedesktop.NetworkManager.AccessPoint:WpaFlags</primary></indexterm>
+<programlisting>
+WpaFlags  readable   u
+</programlisting>
+<para>
+Flags describing the access point's capabilities according to WPA (Wifi
+Protected Access).
+</para><para>
+Returns: <link linkend="NM80211ApSecurityFlags">NM80211ApSecurityFlags</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.RsnFlags">
+  <title>The "RsnFlags" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.RsnFlags"><primary sortas=".AccessPoint:RsnFlags">org.freedesktop.NetworkManager.AccessPoint:RsnFlags</primary></indexterm>
+<programlisting>
+RsnFlags  readable   u
+</programlisting>
+<para>
+Flags describing the access point's capabilities according to the RSN
+(Robust Secure Network) protocol.
+</para><para>
+Returns: <link linkend="NM80211ApSecurityFlags">NM80211ApSecurityFlags</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Ssid">
+  <title>The "Ssid" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Ssid"><primary sortas=".AccessPoint:Ssid">org.freedesktop.NetworkManager.AccessPoint:Ssid</primary></indexterm>
+<programlisting>
+Ssid  readable   ay
+</programlisting>
+<para>
+The Service Set Identifier identifying the access point.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Frequency">
+  <title>The "Frequency" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Frequency"><primary sortas=".AccessPoint:Frequency">org.freedesktop.NetworkManager.AccessPoint:Frequency</primary></indexterm>
+<programlisting>
+Frequency  readable   u
+</programlisting>
+<para>
+The radio channel frequency in use by the access point, in MHz.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.HwAddress"><primary sortas=".AccessPoint:HwAddress">org.freedesktop.NetworkManager.AccessPoint:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+The hardware address (BSSID) of the access point.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Mode">
+  <title>The "Mode" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Mode"><primary sortas=".AccessPoint:Mode">org.freedesktop.NetworkManager.AccessPoint:Mode</primary></indexterm>
+<programlisting>
+Mode  readable   u
+</programlisting>
+<para>
+Describes the operating mode of the access point.
+</para><para>
+Returns: <link linkend="NM80211Mode">NM80211Mode</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.MaxBitrate">
+  <title>The "MaxBitrate" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.MaxBitrate"><primary sortas=".AccessPoint:MaxBitrate">org.freedesktop.NetworkManager.AccessPoint:MaxBitrate</primary></indexterm>
+<programlisting>
+MaxBitrate  readable   u
+</programlisting>
+<para>
+The maximum bitrate this access point is capable of, in kilobits/second
+(Kb/s).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Strength">
+  <title>The "Strength" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.Strength"><primary sortas=".AccessPoint:Strength">org.freedesktop.NetworkManager.AccessPoint:Strength</primary></indexterm>
+<programlisting>
+Strength  readable   y
+</programlisting>
+<para>
+The current signal quality of the access point, in percent.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.LastSeen">
+  <title>The "LastSeen" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-AccessPoint.LastSeen"><primary sortas=".AccessPoint:LastSeen">org.freedesktop.NetworkManager.AccessPoint:LastSeen</primary></indexterm>
+<programlisting>
+LastSeen  readable   i
+</programlisting>
+<para>
+The timestamp (in CLOCK_BOOTTIME seconds) for the last time the access
+point was found in scan results. A value of -1 means the access point has
+never been found in scan results.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

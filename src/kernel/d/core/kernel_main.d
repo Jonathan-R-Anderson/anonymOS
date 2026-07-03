@@ -1247,28 +1247,19 @@ private __gshared bool g_lklTestStarted = false;
 private __gshared int  g_lklTestDelay   = 0;
 private void maybeSpawnLklTest() {
     if (g_lklTestStarted) return;
-    if (g_lklTestDelay++ < 80) return;   // let the system settle first
+    if (g_lklTestDelay++ < 80) return;   // settle: let PCI fully enumerate before touching the
+                                         // device.  (Polling findDeviceByClass from reconcile 1 hung
+                                         // the whole boot on real HW — reverted to this known-good delay.)
     g_lklTestStarted = true;             // one-shot, whether or not we actually launch
-    // WIFI (roadmap W1): the Intel AX210 (network controller, class 0x0280) is the
-    // PRIORITY LKL target on the Framework 13 — driven by the iwlwifi stack now compiled
-    // into liblkl.a.  WiFi is wanted DURING install too (the installer's network page),
-    // so — unlike the GPU/USB/NVMe device demos — we launch LKL for a WiFi card even on
-    // install media.
     uint devBdf = findDeviceByClass(0x0280);
     const bool isWifi = (devBdf != 0xFFFFFFFF);
     if (!isWifi) {
-        // No WiFi: fall back to the L6 device demos, but ONLY on non-install media.
-        if (bootHasInstallPayload()) {
-            klog("[lkl] install media, no WiFi device: skipping LKL device demo\n");
-            return;
-        }
-        // L6.1: display controller (bochs GPU 0x0380) -> USB (xHCI 0x0c03) -> NVMe (0x0108).
         devBdf = findDeviceByClass(0x0380);
         if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0c03);
         if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0108);
     }
     if (devBdf == 0xFFFFFFFF) {
-        klog("[lkl] no LKL device (no 0x0280/0380/0c03/0108) -> not launching lkl-boot\n");
+        klog("[lkl] no LKL device (0x0280/0380/0c03/0108) -> not launching lkl-boot\n");
         return;
     }
     klog(isWifi ? "[lkl] launching lkl-boot for WiFi (Intel AX210 -> iwlwifi)\n".ptr
@@ -1281,6 +1272,88 @@ private void maybeSpawnLklTest() {
         grantDeviceCap(lklTid, devBdf);
         klog("[lkl] L4/L5: granted lkl-boot a device-cap for ONE device (bdf="); klog_hex(devBdf); klog(")\n");
     }
+    // NOTE: hos-netlaunch (-> wpa_supplicant) is NOT spawned here.  Spawning it in this same
+    // iteration overwrote g_current_task_id (spawnWaylandProgram sets it to the last-spawned task),
+    // so wpa ran BEFORE lkl-boot and then spun connect()-ing to a provider socket that didn't exist
+    // yet (lkl-boot hadn't booted embedded Linux) — burning scheduler slices for ~10 min on real HW.
+    // Instead maybeSpawnNetLaunch() (below) launches it ONLY once the provider socket is listening.
+}
+
+// H3: launch the native WiFi client (hos-netlaunch -> unmodified wpa_supplicant under the transparent
+// shim) ONLY after lkl-boot's cap-gated provider socket is actually accepting.  Gating on the live
+// listener means wpa never spins against a dead socket and never steals lkl-boot's first CPU slice.
+private __gshared bool g_netLaunchStarted = false;
+private void maybeSpawnNetLaunch() {
+    if (g_netLaunchStarted) return;
+    if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider not up yet (cheap check)
+    g_netLaunchStarted = true;
+    klog("[lkl] H3: net-provider is live -> launching hos-netlaunch -> wpa_supplicant under the shim\n");
+    spawnWaylandProgram("hos-netlaunch\0".ptr, "[wpa]\0".ptr);
+}
+
+// M2b: launch the REAL NetworkManager daemon once BOTH the system dbus-daemon (M0) and the LKL
+// cap-gated net-provider (so the shim can route NM's rtnetlink/nl80211 to wlan0) are live.  NM owns
+// org.freedesktop.NetworkManager on the system bus; nmcli / the GUI drive it from there.  Replaces the
+// standalone wpa launch above (NM spawns + drives wpa_supplicant itself over D-Bus at M5).
+private __gshared bool g_nmStarted = false;
+private void maybeSpawnNetworkManager() {
+    if (g_nmStarted) return;
+    if (!g_dbusStarted) return;                                        // system bus must be up first
+    if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
+    g_nmStarted = true;
+    klog("[nm] M2b: dbus + net-provider live -> launching hos-nm-launch -> NetworkManager under the shim\n");
+    spawnWaylandProgram("hos-nm-launch\0".ptr, "[nm]\0".ptr);
+}
+// M2b confirmation: once NM has had time to register on the system bus, run nmcli to query it.
+private __gshared bool g_nmcliStarted = false;
+private __gshared int  g_nmcliDelay   = 0;
+private void maybeSpawnNmcli() {
+    if (g_nmcliStarted) return;
+    // UNGATED (not requiring g_nmStarted): the boot-doctor diagnoses the whole chain — dbus, the LKL
+    // provider socket, and NM registration — and writes /run/boot-status.txt.  It must run even when
+    // NM never launched (that is exactly what we are diagnosing).
+    if (g_dbusDelay < 40) return;       // let dbus + LKL get a chance to come up first
+    if (g_nmcliDelay++ < 80) return;
+    g_nmcliStarted = true;
+    klog("[nm] boot-doctor: launching hos-nmcli-test -> writes /run/boot-status.txt\n");
+    spawnWaylandProgram("hos-nmcli-test\0".ptr, "[bootdr]\0".ptr);
+}
+// M0: start the REAL system dbus-daemon once, a little after boot.  D-Bus is pure local AF_UNIX IPC
+// (no LKL, no net-provider), so it is independent of the WiFi path.  hos-dbus-launch also runs a
+// dbus-send GetId self-test that proves EXTERNAL auth (SO_PEERCRED over native AF_UNIX) works here --
+// the prerequisite for every NetworkManager client.  Later this becomes a persistent service for NM.
+private __gshared bool g_dbusStarted = false;
+private __gshared int  g_dbusDelay   = 0;
+private void maybeSpawnDbus() {
+    if (g_dbusStarted) return;
+    if (g_dbusDelay++ < 40) return;   // let the desktop settle first
+    g_dbusStarted = true;
+    klog("[dbus] M0: launching hos-dbus-launch -> dbus-daemon (persistent system bus)\n");
+    spawnWaylandProgram("hos-dbus-launch\0".ptr, "[dbus]\0".ptr);
+}
+// M0 smoke test: run a real dbus-send GetId client once, after the bus is up, to prove EXTERNAL auth
+// (SO_PEERCRED over native AF_UNIX) works.  Separate one-shot so we depend on neither fork nor a long nap.
+private __gshared bool g_dbusTestStarted = false;
+private __gshared int  g_dbusTestDelay   = 0;
+private void maybeSpawnDbusTest() {
+    if (g_dbusTestStarted) return;
+    if (!g_dbusStarted) return;         // launch the daemon first
+    if (g_dbusTestDelay++ < 40) return; // give dbus-daemon time to create its listening socket
+    g_dbusTestStarted = true;
+    klog("[dbus] M0: launching hos-dbus-test -> dbus-send GetId (EXTERNAL-auth round-trip)\n");
+    spawnWaylandProgram("hos-dbus-test\0".ptr, "[dbust]\0".ptr);
+}
+// Diagnostic: isolate the glib GMainContext cross-thread wakeup deadlock that hangs NM's early init.
+// Runs eventfd+poll / eventfd+epoll / pipe+poll cross-thread with bounded timeouts.  Independent of
+// everything, so spawn it early.
+private __gshared bool g_thrTestStarted = false;
+private __gshared int  g_thrTestDelay   = 0;
+private void maybeSpawnThreadTest() {
+    if (g_thrTestStarted) return;
+    if (g_thrTestDelay++ < 30) return;
+    g_thrTestStarted = true;
+    klog("[thr] diag: launching hos-thread-test (eventfd/epoll/pipe cross-thread wakeup)\n");
+    spawnWaylandProgram("hos-thread-test\0".ptr, "[thr]\0".ptr);
 }
 private void maybeSpawnGlTest() {
     if (g_glTestStarted) return;
@@ -3040,7 +3113,13 @@ private void kernelLoop() {
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.
         // maybeSpawnGpuTest();   // R2.3: in-kernel virtio-gpu 3D clear (red pixel readback)
         // maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test — GL_RENDERER=virgl end-to-end
+        //maybeSpawnThreadTest(); // diag (served its purpose): glib cross-thread wakeup — see g_pitMs/x2apic
+        maybeSpawnDbus();      // M0: start the real system dbus-daemon (persistent bus)
+        maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
+        //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)
+        maybeSpawnNetworkManager(); // M2b: launch the real NetworkManager daemon once dbus + provider are up
+        maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

@@ -84,8 +84,9 @@ enum uint DEVCLASS_CAMERA = 1u << 2;   // /dev/video*
 enum uint DEVCLASS_MIC    = 1u << 3;   // /dev/snd/* capture
 enum uint DEVCLASS_AUDIO  = 1u << 4;   // /dev/snd/* playback
 enum uint DEVCLASS_USB    = 1u << 5;   // /dev/bus/usb/*
+enum uint DEVCLASS_NET    = 1u << 6;   // WiFi/network via the cap-gated LKL provider socket
 enum uint DEVCLASS_ALL    = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_CAMERA |
-                            DEVCLASS_MIC | DEVCLASS_AUDIO | DEVCLASS_USB;
+                            DEVCLASS_MIC | DEVCLASS_AUDIO | DEVCLASS_USB | DEVCLASS_NET;
 
 // DM8: true iff the identity may open the given device class.  An unknown identity fails OPEN
 // (returns true) — only a *known* identity with the bit clear denies, so non-identity kernel
@@ -238,9 +239,9 @@ public void identityInitDefaults() {
     enum uint GUI_BANK  = GUI_WORK | cast(uint)GuiPolicy.NoGlobalGrab;
     // DM8 §7 device policy: all get INPUT+GPU (a window needs both); higher trust adds peripherals.
     enum uint DEV_FULL = DEVCLASS_ALL;
-    enum uint DEV_HOME = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_CAMERA | DEVCLASS_MIC | DEVCLASS_USB;
-    enum uint DEV_WORK = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_USB;   // no camera/mic
-    enum uint DEV_LOCK = DEVCLASS_INPUT | DEVCLASS_GPU;                                    // no cam/mic/usb/audio
+    enum uint DEV_HOME = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_CAMERA | DEVCLASS_MIC | DEVCLASS_USB | DEVCLASS_NET;
+    enum uint DEV_WORK = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_USB | DEVCLASS_NET;   // no camera/mic
+    enum uint DEV_LOCK = DEVCLASS_INPUT | DEVCLASS_GPU;                                    // no cam/mic/usb/audio/net
     mkBootIdentity("System\0".ptr,     0xFF808080, TRUST_SYSTEM,     CEIL_FULL, NetPolicy.NAT,        ClipPolicy.AllowDownTrust,    GUI_BASE, false, DEV_FULL);
     mkBootIdentity("Personal\0".ptr,   0xFF2E7D32, TRUST_PERSONAL,   CEIL_USER, NetPolicy.NAT,        ClipPolicy.AskApproval,       GUI_BASE, false, DEV_HOME);
     mkBootIdentity("Work\0".ptr,       0xFF1565C0, TRUST_WORK,       CEIL_USER, NetPolicy.VPN,        ClipPolicy.AllowSameIdentity, GUI_WORK, false, DEV_WORK);

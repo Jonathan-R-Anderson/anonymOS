@@ -34,7 +34,7 @@ import core.domain : domainControlWrite,                     // DM10.3: /config/
                      domainDeviceAllowed, domainSetDevice, domainByName, domainById, DomainId; // DM10.7
 import core.identity : identityDeviceAllowed, identityByName, // DM8: §7 device-class enforcement
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
-                       DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB;
+                       DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB, DEVCLASS_NET;
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userByUid, userByGid,
                    userSetActiveSubject, userDefaultNameContent; // Phase 10 / IR-P3 User objects
@@ -6762,6 +6762,32 @@ public int sys_listen(int sockfd, int backlog) {
     return 0;
 }
 
+// The cap-gated LKL network-provider socket (lkl-boot binds this).  Native WiFi/network
+// clients (wpa_supplicant/NetworkManager) reach the LKL's wlan0 ONLY by connecting here, and
+// ONLY if their domain/identity holds DEVCLASS_NET — deny-by-default, same mechanism as the
+// /dev/input, camera and USB gates (deviceClassGate).  Keeps the hijack inside the cap model.
+private static immutable char[] NET_PROVIDER_PATH = "/run/hos-net.sock\0";
+
+private bool sockPathIsNetProvider(const(sockaddr_un)* un, size_t pathLen) {
+    if (pathLen != NET_PROVIDER_PATH.length - 1) return false;   // exclude the NUL
+    foreach (i; 0 .. pathLen)
+        if (un.sun_path[i] != NET_PROVIDER_PATH[i]) return false;
+    return true;
+}
+
+// DEVCLASS_NET gate for the provider socket, mirroring deviceClassGate() exactly.
+private int netProviderConnectGate() {
+    int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    const uint dom = g_tasks[tid].domainObjId;
+    if (dom != 0)                                 // domain-bound task → the domain's device mask
+        return domainDeviceAllowed(dom, DEVCLASS_NET) ? 0 : negErrno(EACCES);
+    const uint idObj = g_tasks[tid].identityObjId;
+    if (idObj == 0) return 0;                     // no identity → unrestricted (kernel/desktop/lkl-boot)
+    if (!identityDeviceAllowed(idObj, DEVCLASS_NET)) return negErrno(EACCES);
+    return 0;
+}
+
 public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     initFdTable();
     if (sockfd < 0 || sockfd >= 1024) return negErrno(EBADF);
@@ -6777,6 +6803,12 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     auto un = cast(const(sockaddr_un)*)addr;
     const size_t pathLen = unixPathLength(un, addrlen);
     if (pathLen == 0) return negErrno(EINVAL);
+
+    // Cap-gate: connecting to the LKL network provider requires DEVCLASS_NET (deny-by-default).
+    if (sockPathIsNetProvider(un, pathLen)) {
+        const int g = netProviderConnectGate();
+        if (g != 0) return g;
+    }
 
     auto listener = findUnixListener(un, pathLen);
     if (listener is null) return negErrno(ECONNREFUSED);

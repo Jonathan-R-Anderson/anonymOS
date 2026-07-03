@@ -1,0 +1,1856 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingWireGuard: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingWired.html" title="NMSettingWired">
+<link rel="next" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingWireGuard.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingWireGuard.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingWired.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingWirelessSecurity.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingWireGuard"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingWireGuard.top_of_page"></a>NMSettingWireGuard</span></h2>
+<p>NMSettingWireGuard — Describes connection properties for wireguard related options</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingWireGuard.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-new" title="nm_wireguard_peer_new ()">nm_wireguard_peer_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-new-clone" title="nm_wireguard_peer_new_clone ()">nm_wireguard_peer_new_clone</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-ref" title="nm_wireguard_peer_ref ()">nm_wireguard_peer_ref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-unref" title="nm_wireguard_peer_unref ()">nm_wireguard_peer_unref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-seal" title="nm_wireguard_peer_seal ()">nm_wireguard_peer_seal</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-is-sealed" title="nm_wireguard_peer_is_sealed ()">nm_wireguard_peer_is_sealed</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-get-public-key" title="nm_wireguard_peer_get_public_key ()">nm_wireguard_peer_get_public_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-set-public-key" title="nm_wireguard_peer_set_public_key ()">nm_wireguard_peer_set_public_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-get-preshared-key" title="nm_wireguard_peer_get_preshared_key ()">nm_wireguard_peer_get_preshared_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-set-preshared-key" title="nm_wireguard_peer_set_preshared_key ()">nm_wireguard_peer_set_preshared_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="returnvalue">NMSettingSecretFlags</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-get-preshared-key-flags" title="nm_wireguard_peer_get_preshared_key_flags ()">nm_wireguard_peer_get_preshared_key_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-set-preshared-key-flags" title="nm_wireguard_peer_set_preshared_key_flags ()">nm_wireguard_peer_set_preshared_key_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-get-persistent-keepalive" title="nm_wireguard_peer_get_persistent_keepalive ()">nm_wireguard_peer_get_persistent_keepalive</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-set-persistent-keepalive" title="nm_wireguard_peer_set_persistent_keepalive ()">nm_wireguard_peer_set_persistent_keepalive</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-get-endpoint" title="nm_wireguard_peer_get_endpoint ()">nm_wireguard_peer_get_endpoint</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-set-endpoint" title="nm_wireguard_peer_set_endpoint ()">nm_wireguard_peer_set_endpoint</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-get-allowed-ips-len" title="nm_wireguard_peer_get_allowed_ips_len ()">nm_wireguard_peer_get_allowed_ips_len</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-get-allowed-ip" title="nm_wireguard_peer_get_allowed_ip ()">nm_wireguard_peer_get_allowed_ip</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-clear-allowed-ips" title="nm_wireguard_peer_clear_allowed_ips ()">nm_wireguard_peer_clear_allowed_ips</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-append-allowed-ip" title="nm_wireguard_peer_append_allowed_ip ()">nm_wireguard_peer_append_allowed_ip</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-remove-allowed-ip" title="nm_wireguard_peer_remove_allowed_ip ()">nm_wireguard_peer_remove_allowed_ip</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-is-valid" title="nm_wireguard_peer_is_valid ()">nm_wireguard_peer_is_valid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-cmp" title="nm_wireguard_peer_cmp ()">nm_wireguard_peer_cmp</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-new" title="nm_setting_wireguard_new ()">nm_setting_wireguard_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-private-key" title="nm_setting_wireguard_get_private_key ()">nm_setting_wireguard_get_private_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="returnvalue">NMSettingSecretFlags</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-private-key-flags" title="nm_setting_wireguard_get_private_key_flags ()">nm_setting_wireguard_get_private_key_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-listen-port" title="nm_setting_wireguard_get_listen_port ()">nm_setting_wireguard_get_listen_port</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-fwmark" title="nm_setting_wireguard_get_fwmark ()">nm_setting_wireguard_get_fwmark</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-peers-len" title="nm_setting_wireguard_get_peers_len ()">nm_setting_wireguard_get_peers_len</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-peer" title="nm_setting_wireguard_get_peer ()">nm_setting_wireguard_get_peer</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-peer-by-public-key" title="nm_setting_wireguard_get_peer_by_public_key ()">nm_setting_wireguard_get_peer_by_public_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-set-peer" title="nm_setting_wireguard_set_peer ()">nm_setting_wireguard_set_peer</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-append-peer" title="nm_setting_wireguard_append_peer ()">nm_setting_wireguard_append_peer</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-remove-peer" title="nm_setting_wireguard_remove_peer ()">nm_setting_wireguard_remove_peer</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-clear-peers" title="nm_setting_wireguard_clear_peers ()">nm_setting_wireguard_clear_peers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-peer-routes" title="nm_setting_wireguard_get_peer_routes ()">nm_setting_wireguard_get_peer_routes</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-mtu" title="nm_setting_wireguard_get_mtu ()">nm_setting_wireguard_get_mtu</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-ip4-auto-default-route" title="nm_setting_wireguard_get_ip4_auto_default_route ()">nm_setting_wireguard_get_ip4_auto_default_route</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-ip6-auto-default-route" title="nm_setting_wireguard_get_ip6_auto_default_route ()">nm_setting_wireguard_get_ip6_auto_default_route</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<a name="NMWireGuardPeer"></a><div class="refsect1">
+<a name="NMSettingWireGuard.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-WIREGUARD-PUBLIC-KEY-LEN:CAPS" title="NM_WIREGUARD_PUBLIC_KEY_LEN">NM_WIREGUARD_PUBLIC_KEY_LEN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-WIREGUARD-SYMMETRIC-KEY-LEN:CAPS" title="NM_WIREGUARD_SYMMETRIC_KEY_LEN">NM_WIREGUARD_SYMMETRIC_KEY_LEN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-SETTING-NAME:CAPS" title="NM_SETTING_WIREGUARD_SETTING_NAME">NM_SETTING_WIREGUARD_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-FWMARK:CAPS" title="NM_SETTING_WIREGUARD_FWMARK">NM_SETTING_WIREGUARD_FWMARK</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-LISTEN-PORT:CAPS" title="NM_SETTING_WIREGUARD_LISTEN_PORT">NM_SETTING_WIREGUARD_LISTEN_PORT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-PRIVATE-KEY:CAPS" title="NM_SETTING_WIREGUARD_PRIVATE_KEY">NM_SETTING_WIREGUARD_PRIVATE_KEY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-PRIVATE-KEY-FLAGS:CAPS" title="NM_SETTING_WIREGUARD_PRIVATE_KEY_FLAGS">NM_SETTING_WIREGUARD_PRIVATE_KEY_FLAGS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-PEERS:CAPS" title="NM_SETTING_WIREGUARD_PEERS">NM_SETTING_WIREGUARD_PEERS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-MTU:CAPS" title="NM_SETTING_WIREGUARD_MTU">NM_SETTING_WIREGUARD_MTU</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-PEER-ROUTES:CAPS" title="NM_SETTING_WIREGUARD_PEER_ROUTES">NM_SETTING_WIREGUARD_PEER_ROUTES</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-IP4-AUTO-DEFAULT-ROUTE:CAPS" title="NM_SETTING_WIREGUARD_IP4_AUTO_DEFAULT_ROUTE">NM_SETTING_WIREGUARD_IP4_AUTO_DEFAULT_ROUTE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-SETTING-WIREGUARD-IP6-AUTO-DEFAULT-ROUTE:CAPS" title="NM_SETTING_WIREGUARD_IP6_AUTO_DEFAULT_ROUTE">NM_SETTING_WIREGUARD_IP6_AUTO_DEFAULT_ROUTE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-WIREGUARD-PEER-ATTR-ALLOWED-IPS:CAPS" title="NM_WIREGUARD_PEER_ATTR_ALLOWED_IPS">NM_WIREGUARD_PEER_ATTR_ALLOWED_IPS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-WIREGUARD-PEER-ATTR-ENDPOINT:CAPS" title="NM_WIREGUARD_PEER_ATTR_ENDPOINT">NM_WIREGUARD_PEER_ATTR_ENDPOINT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-WIREGUARD-PEER-ATTR-PERSISTENT-KEEPALIVE:CAPS" title="NM_WIREGUARD_PEER_ATTR_PERSISTENT_KEEPALIVE">NM_WIREGUARD_PEER_ATTR_PERSISTENT_KEEPALIVE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-WIREGUARD-PEER-ATTR-PRESHARED-KEY:CAPS" title="NM_WIREGUARD_PEER_ATTR_PRESHARED_KEY">NM_WIREGUARD_PEER_ATTR_PRESHARED_KEY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-WIREGUARD-PEER-ATTR-PRESHARED-KEY-FLAGS:CAPS" title="NM_WIREGUARD_PEER_ATTR_PRESHARED_KEY_FLAGS">NM_WIREGUARD_PEER_ATTR_PRESHARED_KEY_FLAGS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireGuard.html#NM-WIREGUARD-PEER-ATTR-PUBLIC-KEY:CAPS" title="NM_WIREGUARD_PEER_ATTR_PUBLIC_KEY">NM_WIREGUARD_PEER_ATTR_PUBLIC_KEY</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireGuard.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Boxed-Types.html">GBoxed</a>
+    <span class="lineart">╰──</span> NMWireGuardPeer
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireGuard.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that contains settings
+for configuring WireGuard.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireGuard.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-wireguard-peer-new"></a><h3>nm_wireguard_peer_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+nm_wireguard_peer_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-new.returns"></a><h4>Returns</h4>
+<p>a new, default, unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-new-clone"></a><h3>nm_wireguard_peer_new_clone ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+nm_wireguard_peer_new_clone (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                             <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> with_secrets</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-new-clone.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance to copy.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>with_secrets</p></td>
+<td class="parameter_description"><p>if <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, the preshared-key secrets are copied
+as well. Otherwise, they will be removed.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-new-clone.returns"></a><h4>Returns</h4>
+<p>a clone of <em class="parameter"><code>self</code></em>
+. This instance
+is always unsealed. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-ref"></a><h3>nm_wireguard_peer_ref ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+nm_wireguard_peer_ref (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-ref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-ref.returns"></a><h4>Returns</h4>
+<p> returns the input argument <em class="parameter"><code>self</code></em>
+after incrementing
+the reference count.</p>
+<p>Since 1.42, ref-counting of <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> is thread-safe.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-unref"></a><h3>nm_wireguard_peer_unref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_wireguard_peer_unref (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<p>Drop a reference to <em class="parameter"><code>self</code></em>
+. If the last reference is dropped,
+the instance is freed and all associate data released.</p>
+<p>Since 1.42, ref-counting of <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> is thread-safe.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-unref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-seal"></a><h3>nm_wireguard_peer_seal ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_wireguard_peer_seal (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<p>Seal the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance. Afterwards, it is a bug
+to call all functions that modify the instance (except ref/unref).
+A sealed instance cannot be unsealed again, but you can create
+an unsealed copy with <a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-new-clone" title="nm_wireguard_peer_new_clone ()"><code class="function">nm_wireguard_peer_new_clone()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-seal.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-is-sealed"></a><h3>nm_wireguard_peer_is_sealed ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_wireguard_peer_is_sealed (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-is-sealed.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-is-sealed.returns"></a><h4>Returns</h4>
+<p> whether <em class="parameter"><code>self</code></em>
+is sealed or not.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-get-public-key"></a><h3>nm_wireguard_peer_get_public_key ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_wireguard_peer_get_public_key (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-public-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-public-key.returns"></a><h4>Returns</h4>
+<p>the public key or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if unset. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-set-public-key"></a><h3>nm_wireguard_peer_set_public_key ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_wireguard_peer_set_public_key (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                                  <em class="parameter"><code>const <span class="type">char</span> *public_key</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> accept_invalid</code></em>);</pre>
+<p>Reset the public key. Note that if the public key is valid, it
+will be normalized (which may or may not modify the set value).</p>
+<p>It is a bug trying to modify a sealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-set-public-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>public_key</p></td>
+<td class="parameter_description"><p>the new public
+key or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> to clear the public key. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>accept_invalid</p></td>
+<td class="parameter_description"><p>if <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> and <em class="parameter"><code>public_key</code></em>
+is not <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> and
+invalid, then do not modify the instance.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-set-public-key.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the key was valid or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. Returns
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> for invalid keys. Depending on <em class="parameter"><code>accept_invalid</code></em>
+will an invalid key be set or not.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-get-preshared-key"></a><h3>nm_wireguard_peer_get_preshared_key ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_wireguard_peer_get_preshared_key (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-preshared-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-preshared-key.returns"></a><h4>Returns</h4>
+<p>the preshared key or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if unset. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-set-preshared-key"></a><h3>nm_wireguard_peer_set_preshared_key ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_wireguard_peer_set_preshared_key (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                                     <em class="parameter"><code>const <span class="type">char</span> *preshared_key</code></em>,
+                                     <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> accept_invalid</code></em>);</pre>
+<p>Reset the preshared key. Note that if the preshared key is valid, it
+will be normalized (which may or may not modify the set value).</p>
+<p>Note that the preshared-key is a secret and consequently has corresponding
+preshared-key-flags property. This is so that secrets can be optional
+and requested on demand from a secret-agent. Also, an invalid  preshared-key
+may optionally cause <a class="link" href="NMSettingWireGuard.html#nm-wireguard-peer-is-valid" title="nm_wireguard_peer_is_valid ()"><code class="function">nm_wireguard_peer_is_valid()</code></a> to fail or it may
+be accepted.</p>
+<p>It is a bug trying to modify a sealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-set-preshared-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>preshared_key</p></td>
+<td class="parameter_description"><p>the new preshared
+key or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> to clear the preshared key. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>accept_invalid</p></td>
+<td class="parameter_description"><p>whether to allow setting the key to an invalid
+value. If <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>, <em class="parameter"><code>self</code></em>
+is unchanged if the key is invalid
+and if <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> is returned.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-set-preshared-key.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the preshared-key is valid, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>.
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> is considered a valid value.
+If the key is invalid, it depends on <em class="parameter"><code>accept_invalid</code></em>
+whether the
+previous value was reset.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-get-preshared-key-flags"></a><h3>nm_wireguard_peer_get_preshared_key_flags ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="returnvalue">NMSettingSecretFlags</span></a>
+nm_wireguard_peer_get_preshared_key_flags
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-preshared-key-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-preshared-key-flags.returns"></a><h4>Returns</h4>
+<p> get the secret flags for the preshared-key.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-set-preshared-key-flags"></a><h3>nm_wireguard_peer_set_preshared_key_flags ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_wireguard_peer_set_preshared_key_flags
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> preshared_key_flags</code></em>);</pre>
+<p>It is a bug trying to modify a sealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-set-preshared-key-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>preshared_key_flags</p></td>
+<td class="parameter_description"><p>the secret flags to set.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-get-persistent-keepalive"></a><h3>nm_wireguard_peer_get_persistent_keepalive ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+nm_wireguard_peer_get_persistent_keepalive
+                               (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-persistent-keepalive.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-persistent-keepalive.returns"></a><h4>Returns</h4>
+<p> get the persistent-keepalive setting in seconds. Set to zero to disable
+keep-alive.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-set-persistent-keepalive"></a><h3>nm_wireguard_peer_set_persistent_keepalive ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_wireguard_peer_set_persistent_keepalive
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="type">guint16</span></a> persistent_keepalive</code></em>);</pre>
+<p>It is a bug trying to modify a sealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-set-persistent-keepalive.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>persistent_keepalive</p></td>
+<td class="parameter_description"><p>the keep-alive value to set.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-get-endpoint"></a><h3>nm_wireguard_peer_get_endpoint ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_wireguard_peer_get_endpoint (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-endpoint.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-endpoint.returns"></a><h4>Returns</h4>
+<p>the endpoint or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if none was set. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-set-endpoint"></a><h3>nm_wireguard_peer_set_endpoint ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_wireguard_peer_set_endpoint (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *endpoint</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> allow_invalid</code></em>);</pre>
+<p>Sets or clears the endpoint of <em class="parameter"><code>self</code></em>
+.</p>
+<p>It is a bug trying to modify a sealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-set-endpoint.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>endpoint</p></td>
+<td class="parameter_description"><p>the socket address endpoint to set or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>allow_invalid</p></td>
+<td class="parameter_description"><p>if <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, also invalid values are set.
+If <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>, the function does nothing for invalid <em class="parameter"><code>endpoint</code></em>
+arguments.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-set-endpoint.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the endpoint is <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> or valid. For an
+invalid <em class="parameter"><code>endpoint</code></em>
+argument, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> is returned. Depending
+on <em class="parameter"><code>allow_invalid</code></em>
+, the instance will be modified.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-get-allowed-ips-len"></a><h3>nm_wireguard_peer_get_allowed_ips_len ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_wireguard_peer_get_allowed_ips_len (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-allowed-ips-len.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-allowed-ips-len.returns"></a><h4>Returns</h4>
+<p> the number of allowed-ips entries.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-get-allowed-ip"></a><h3>nm_wireguard_peer_get_allowed_ip ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_wireguard_peer_get_allowed_ip (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> *out_is_valid</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-allowed-ip.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>the index from zero to (allowed-ips-len - 1) to
+retrieve.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_is_valid</p></td>
+<td class="parameter_description"><p><a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the returned value is a valid allowed-ip
+setting.
+This parameter is wrongly not marked as (out) argument, it is
+thus not accessible via introspection. This cannot be fixed without
+breaking API for introspection users. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-get-allowed-ip.returns"></a><h4>Returns</h4>
+<p>the allowed-ip setting at index <em class="parameter"><code>idx</code></em>
+.
+If <em class="parameter"><code>idx</code></em>
+is out of range, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> will be returned. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-clear-allowed-ips"></a><h3>nm_wireguard_peer_clear_allowed_ips ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_wireguard_peer_clear_allowed_ips (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>);</pre>
+<p>Removes all allowed-ip entries.</p>
+<p>It is a bug trying to modify a sealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-clear-allowed-ips.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-append-allowed-ip"></a><h3>nm_wireguard_peer_append_allowed_ip ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_wireguard_peer_append_allowed_ip (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                                     <em class="parameter"><code>const <span class="type">char</span> *allowed_ip</code></em>,
+                                     <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> accept_invalid</code></em>);</pre>
+<p>Appends <em class="parameter"><code>allowed_ip</code></em>
+ setting to the list. This does not check
+for duplicates and always appends <em class="parameter"><code>allowed_ip</code></em>
+ to the end of the
+list. If <em class="parameter"><code>allowed_ip</code></em>
+ is valid, it will be normalized and a modified
+for might be appended. If <em class="parameter"><code>allowed_ip</code></em>
+ is invalid, it will still be
+appended, but later verification will fail.</p>
+<p>It is a bug trying to modify a sealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-append-allowed-ip.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>allowed_ip</p></td>
+<td class="parameter_description"><p>the allowed-ip entry to set.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>accept_invalid</p></td>
+<td class="parameter_description"><p>if <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, also invalid <em class="parameter"><code>allowed_ip</code></em>
+value
+will be appended. Otherwise, the function does nothing
+in face of invalid values and returns <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-append-allowed-ip.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the value is a valid allowed-ips value, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise.
+Depending on <em class="parameter"><code>accept_invalid</code></em>
+, also invalid values are added.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-remove-allowed-ip"></a><h3>nm_wireguard_peer_remove_allowed_ip ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_wireguard_peer_remove_allowed_ip (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                                     <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the allowed-ip at the given <em class="parameter"><code>idx</code></em>
+. This shifts all
+following entries one index down.</p>
+<p>It is a bug trying to modify a sealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance.</p>
+<div class="refsect3">
+<a name="nm-wireguard-peer-remove-allowed-ip.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the unsealed <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>the index from zero to (allowed-ips-len - 1) to
+retrieve. If the index is out of range, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> is returned
+and nothing is done.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-remove-allowed-ip.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if <em class="parameter"><code>idx</code></em>
+was valid and the allowed-ip was removed.
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise, and the peer will not be changed.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-is-valid"></a><h3>nm_wireguard_peer_is_valid ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_wireguard_peer_is_valid (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *self</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> check_non_secrets</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> check_secrets</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-is-valid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>check_secrets</p></td>
+<td class="parameter_description"><p>if <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, non-secret properties are validated.
+Otherwise, they are ignored for this purpose.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>check_non_secrets</p></td>
+<td class="parameter_description"><p>if <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>, secret properties are validated.
+Otherwise, they are ignored for this purpose.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>the <a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> location for returning the failure reason.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-is-valid.returns"></a><h4>Returns</h4>
+<p>  <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the peer is valid or fails with an error
+reason.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-wireguard-peer-cmp"></a><h3>nm_wireguard_peer_cmp ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_wireguard_peer_cmp (<em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *a</code></em>,
+                       <em class="parameter"><code>const <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *b</code></em>,
+                       <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags"><span class="type">NMSettingCompareFlags</span></a> compare_flags</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-wireguard-peer-cmp.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>a</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> to compare. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>b</p></td>
+<td class="parameter_description"><p>the other <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> to compare. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>compare_flags</p></td>
+<td class="parameter_description"><p><a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags"><span class="type">NMSettingCompareFlags</span></a> to affect the comparison.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-wireguard-peer-cmp.returns"></a><h4>Returns</h4>
+<p> zero of the two instances are equivalent or
+a non-zero integer otherwise. This defines a total ordering
+over the peers. Whether a peer is sealed or not, does not
+affect the comparison.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-new"></a><h3>nm_setting_wireguard_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_wireguard_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-wireguard-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-private-key"></a><h3>nm_setting_wireguard_get_private_key ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireguard_get_private_key (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-private-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-private-key.returns"></a><h4>Returns</h4>
+<p>the set private-key or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-private-key-flags"></a><h3>nm_setting_wireguard_get_private_key_flags ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="returnvalue">NMSettingSecretFlags</span></a>
+nm_setting_wireguard_get_private_key_flags
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-private-key-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-private-key-flags.returns"></a><h4>Returns</h4>
+<p> the secret-flags for <span class="type">“private-key”</span>.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-listen-port"></a><h3>nm_setting_wireguard_get_listen_port ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint16"><span class="returnvalue">guint16</span></a>
+nm_setting_wireguard_get_listen_port (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-listen-port.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-listen-port.returns"></a><h4>Returns</h4>
+<p> the set UDP listen port.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-fwmark"></a><h3>nm_setting_wireguard_get_fwmark ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireguard_get_fwmark (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-fwmark.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-fwmark.returns"></a><h4>Returns</h4>
+<p> the set firewall mark.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-peers-len"></a><h3>nm_setting_wireguard_get_peers_len ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_wireguard_get_peers_len (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-peers-len.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-peers-len.returns"></a><h4>Returns</h4>
+<p> the number of registered peers.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-peer"></a><h3>nm_setting_wireguard_get_peer ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+nm_setting_wireguard_get_peer (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-peer.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>the index to lookup.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-peer.returns"></a><h4>Returns</h4>
+<p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> entry at
+index <em class="parameter"><code>idx</code></em>
+. If the index is out of range, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> is returned. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-peer-by-public-key"></a><h3>nm_setting_wireguard_get_peer_by_public_key ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="returnvalue">NMWireGuardPeer</span></a> *
+nm_setting_wireguard_get_peer_by_public_key
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *public_key</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *out_idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-peer-by-public-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>public_key</p></td>
+<td class="parameter_description"><p>the public key for looking up the
+peer.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_idx</p></td>
+<td class="parameter_description"><p>optional output argument
+for the index of the found peer. If no index is found,
+this is set to the <a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-get-peers-len" title="nm_setting_wireguard_get_peers_len ()"><code class="function">nm_setting_wireguard_get_peers_len()</code></a>. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-peer-by-public-key.returns"></a><h4>Returns</h4>
+<p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance with a
+matching public key. If no such peer exists, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> is returned. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-set-peer"></a><h3>nm_setting_wireguard_set_peer ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_wireguard_set_peer (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>,
+                               <em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *peer</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>If <em class="parameter"><code>idx</code></em>
+ is one past the last peer, the behavior is the same
+as <a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-append-peer" title="nm_setting_wireguard_append_peer ()"><code class="function">nm_setting_wireguard_append_peer()</code></a>.
+Otherwise, the peer will be at <em class="parameter"><code>idx</code></em>
+ and replace the peer
+instance at that index. Note that if a peer with the same
+public-key exists on another index, then that peer will also
+be replaced. In that case, the number of peers will shrink
+by one (because the one at <em class="parameter"><code>idx</code></em>
+ got replace and then one
+with the same public-key got removed). This also means,
+that the resulting index afterwards may be one less than
+<em class="parameter"><code>idx</code></em>
+ (if another peer with a lower index was dropped).</p>
+<div class="refsect3">
+<a name="nm-setting-wireguard-set-peer.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>peer</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance to set.
+This seals <em class="parameter"><code>peer</code></em>
+and keeps a reference on the
+instance.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>the index, in the range of 0 to the number of
+peers (including). That means, if <em class="parameter"><code>idx</code></em>
+is one past
+the end of the number of peers, this is the same as
+<a class="link" href="NMSettingWireGuard.html#nm-setting-wireguard-append-peer" title="nm_setting_wireguard_append_peer ()"><code class="function">nm_setting_wireguard_append_peer()</code></a>. Otherwise, the
+peer at this index is replaced.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-append-peer"></a><h3>nm_setting_wireguard_append_peer ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_wireguard_append_peer (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>,
+                                  <em class="parameter"><code><a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> *peer</code></em>);</pre>
+<p>If a peer with the same public-key already exists, that
+one is replaced by <em class="parameter"><code>peer</code></em>
+. The new <em class="parameter"><code>peer</code></em>
+ is always appended
+(or moved to) the end, so in case a peer is replaced, the
+indexes are shifted and the number of peers stays unchanged.</p>
+<div class="refsect3">
+<a name="nm-setting-wireguard-append-peer.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>peer</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html#NMWireGuardPeer"><span class="type">NMWireGuardPeer</span></a> instance to append.
+This seals <em class="parameter"><code>peer</code></em>
+and keeps a reference on the
+instance.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-remove-peer"></a><h3>nm_setting_wireguard_remove_peer ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wireguard_remove_peer (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-remove-peer.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>the index to remove.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-remove-peer.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if <em class="parameter"><code>idx</code></em>
+was in range and a peer
+was removed. Otherwise, <em class="parameter"><code>self</code></em>
+is unchanged.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-clear-peers"></a><h3>nm_setting_wireguard_clear_peers ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_wireguard_clear_peers (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-clear-peers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-clear-peers.returns"></a><h4>Returns</h4>
+<p> the number of cleared peers.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-peer-routes"></a><h3>nm_setting_wireguard_get_peer_routes ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wireguard_get_peer_routes (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-peer-routes.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-peer-routes.returns"></a><h4>Returns</h4>
+<p> whether automatically add peer routes.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-mtu"></a><h3>nm_setting_wireguard_get_mtu ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireguard_get_mtu (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-mtu.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-mtu.returns"></a><h4>Returns</h4>
+<p> the MTU of the setting.</p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-ip4-auto-default-route"></a><h3>nm_setting_wireguard_get_ip4_auto_default_route ()</h3>
+<pre class="programlisting"><a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+nm_setting_wireguard_get_ip4_auto_default_route
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-ip4-auto-default-route.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> setting.</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-ip4-auto-default-route.returns"></a><h4>Returns</h4>
+<p> the "ip4-auto-default-route" property of the setting.</p>
+</div>
+<p class="since">Since: 1.20</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireguard-get-ip6-auto-default-route"></a><h3>nm_setting_wireguard_get_ip6_auto_default_route ()</h3>
+<pre class="programlisting"><a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+nm_setting_wireguard_get_ip6_auto_default_route
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-ip6-auto-default-route.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireGuard.html" title="NMSettingWireGuard"><span class="type">NMSettingWireGuard</span></a> setting.</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireguard-get-ip6-auto-default-route.returns"></a><h4>Returns</h4>
+<p> the "ip6-auto-default-route" property of the setting.</p>
+</div>
+<p class="since">Since: 1.20</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireGuard.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-WIREGUARD-PUBLIC-KEY-LEN:CAPS"></a><h3>NM_WIREGUARD_PUBLIC_KEY_LEN</h3>
+<pre class="programlisting">#define NM_WIREGUARD_PUBLIC_KEY_LEN    32
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-WIREGUARD-SYMMETRIC-KEY-LEN:CAPS"></a><h3>NM_WIREGUARD_SYMMETRIC_KEY_LEN</h3>
+<pre class="programlisting">#define NM_WIREGUARD_SYMMETRIC_KEY_LEN 32
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-SETTING-NAME:CAPS"></a><h3>NM_SETTING_WIREGUARD_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_SETTING_NAME "wireguard"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-FWMARK:CAPS"></a><h3>NM_SETTING_WIREGUARD_FWMARK</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_FWMARK            "fwmark"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-LISTEN-PORT:CAPS"></a><h3>NM_SETTING_WIREGUARD_LISTEN_PORT</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_LISTEN_PORT       "listen-port"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-PRIVATE-KEY:CAPS"></a><h3>NM_SETTING_WIREGUARD_PRIVATE_KEY</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_PRIVATE_KEY       "private-key"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-PRIVATE-KEY-FLAGS:CAPS"></a><h3>NM_SETTING_WIREGUARD_PRIVATE_KEY_FLAGS</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_PRIVATE_KEY_FLAGS "private-key-flags"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-PEERS:CAPS"></a><h3>NM_SETTING_WIREGUARD_PEERS</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_PEERS "peers"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-MTU:CAPS"></a><h3>NM_SETTING_WIREGUARD_MTU</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_MTU                    "mtu"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-PEER-ROUTES:CAPS"></a><h3>NM_SETTING_WIREGUARD_PEER_ROUTES</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_PEER_ROUTES            "peer-routes"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-IP4-AUTO-DEFAULT-ROUTE:CAPS"></a><h3>NM_SETTING_WIREGUARD_IP4_AUTO_DEFAULT_ROUTE</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_IP4_AUTO_DEFAULT_ROUTE "ip4-auto-default-route"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIREGUARD-IP6-AUTO-DEFAULT-ROUTE:CAPS"></a><h3>NM_SETTING_WIREGUARD_IP6_AUTO_DEFAULT_ROUTE</h3>
+<pre class="programlisting">#define NM_SETTING_WIREGUARD_IP6_AUTO_DEFAULT_ROUTE "ip6-auto-default-route"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-WIREGUARD-PEER-ATTR-ALLOWED-IPS:CAPS"></a><h3>NM_WIREGUARD_PEER_ATTR_ALLOWED_IPS</h3>
+<pre class="programlisting">#define NM_WIREGUARD_PEER_ATTR_ALLOWED_IPS          "allowed-ips"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-WIREGUARD-PEER-ATTR-ENDPOINT:CAPS"></a><h3>NM_WIREGUARD_PEER_ATTR_ENDPOINT</h3>
+<pre class="programlisting">#define NM_WIREGUARD_PEER_ATTR_ENDPOINT             "endpoint"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-WIREGUARD-PEER-ATTR-PERSISTENT-KEEPALIVE:CAPS"></a><h3>NM_WIREGUARD_PEER_ATTR_PERSISTENT_KEEPALIVE</h3>
+<pre class="programlisting">#define NM_WIREGUARD_PEER_ATTR_PERSISTENT_KEEPALIVE "persistent-keepalive"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-WIREGUARD-PEER-ATTR-PRESHARED-KEY:CAPS"></a><h3>NM_WIREGUARD_PEER_ATTR_PRESHARED_KEY</h3>
+<pre class="programlisting">#define NM_WIREGUARD_PEER_ATTR_PRESHARED_KEY        "preshared-key"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-WIREGUARD-PEER-ATTR-PRESHARED-KEY-FLAGS:CAPS"></a><h3>NM_WIREGUARD_PEER_ATTR_PRESHARED_KEY_FLAGS</h3>
+<pre class="programlisting">#define NM_WIREGUARD_PEER_ATTR_PRESHARED_KEY_FLAGS  "preshared-key-flags"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-WIREGUARD-PEER-ATTR-PUBLIC-KEY:CAPS"></a><h3>NM_WIREGUARD_PEER_ATTR_PUBLIC_KEY</h3>
+<pre class="programlisting">#define NM_WIREGUARD_PEER_ATTR_PUBLIC_KEY           "public-key"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

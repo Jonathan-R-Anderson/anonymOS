@@ -1,0 +1,614 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingOvsPort: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingOvsPatch.html" title="NMSettingOvsPatch">
+<link rel="next" href="NMSettingPpp.html" title="NMSettingPpp">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingOvsPort.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingOvsPatch.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingPpp.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingOvsPort"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingOvsPort.top_of_page"></a>NMSettingOvsPort</span></h2>
+<p>NMSettingOvsPort — Describes connection properties for Open vSwitch ports.</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingOvsPort.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-new" title="nm_setting_ovs_port_new ()">nm_setting_ovs_port_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-get-vlan-mode" title="nm_setting_ovs_port_get_vlan_mode ()">nm_setting_ovs_port_get_vlan_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-get-tag" title="nm_setting_ovs_port_get_tag ()">nm_setting_ovs_port_get_tag</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-get-lacp" title="nm_setting_ovs_port_get_lacp ()">nm_setting_ovs_port_get_lacp</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-get-bond-mode" title="nm_setting_ovs_port_get_bond_mode ()">nm_setting_ovs_port_get_bond_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-get-bond-updelay" title="nm_setting_ovs_port_get_bond_updelay ()">nm_setting_ovs_port_get_bond_updelay</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-get-bond-downdelay" title="nm_setting_ovs_port_get_bond_downdelay ()">nm_setting_ovs_port_get_bond_downdelay</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-add-trunk" title="nm_setting_ovs_port_add_trunk ()">nm_setting_ovs_port_add_trunk</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-get-num-trunks" title="nm_setting_ovs_port_get_num_trunks ()">nm_setting_ovs_port_get_num_trunks</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html#NMRange"><span class="returnvalue">NMRange</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-get-trunk" title="nm_setting_ovs_port_get_trunk ()">nm_setting_ovs_port_get_trunk</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-remove-trunk" title="nm_setting_ovs_port_remove_trunk ()">nm_setting_ovs_port_remove_trunk</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-remove-trunk-by-value" title="nm_setting_ovs_port_remove_trunk_by_value ()">nm_setting_ovs_port_remove_trunk_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingOvsPort.html#nm-setting-ovs-port-clear-trunks" title="nm_setting_ovs_port_clear_trunks ()">nm_setting_ovs_port_clear_trunks</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingOvsPort.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsPort.html#NM-SETTING-OVS-PORT-SETTING-NAME:CAPS" title="NM_SETTING_OVS_PORT_SETTING_NAME">NM_SETTING_OVS_PORT_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsPort.html#NM-SETTING-OVS-PORT-VLAN-MODE:CAPS" title="NM_SETTING_OVS_PORT_VLAN_MODE">NM_SETTING_OVS_PORT_VLAN_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsPort.html#NM-SETTING-OVS-PORT-TAG:CAPS" title="NM_SETTING_OVS_PORT_TAG">NM_SETTING_OVS_PORT_TAG</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsPort.html#NM-SETTING-OVS-PORT-TRUNKS:CAPS" title="NM_SETTING_OVS_PORT_TRUNKS">NM_SETTING_OVS_PORT_TRUNKS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsPort.html#NM-SETTING-OVS-PORT-LACP:CAPS" title="NM_SETTING_OVS_PORT_LACP">NM_SETTING_OVS_PORT_LACP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsPort.html#NM-SETTING-OVS-PORT-BOND-MODE:CAPS" title="NM_SETTING_OVS_PORT_BOND_MODE">NM_SETTING_OVS_PORT_BOND_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsPort.html#NM-SETTING-OVS-PORT-BOND-UPDELAY:CAPS" title="NM_SETTING_OVS_PORT_BOND_UPDELAY">NM_SETTING_OVS_PORT_BOND_UPDELAY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingOvsPort.html#NM-SETTING-OVS-PORT-BOND-DOWNDELAY:CAPS" title="NM_SETTING_OVS_PORT_BOND_DOWNDELAY">NM_SETTING_OVS_PORT_BOND_DOWNDELAY</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingOvsPort.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for Open vSwitch ports.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingOvsPort.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-new"></a><h3>nm_setting_ovs_port_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_ovs_port_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-get-vlan-mode"></a><h3>nm_setting_ovs_port_get_vlan_mode ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_ovs_port_get_vlan_mode (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-vlan-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-vlan-mode.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“vlan-mode”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-get-tag"></a><h3>nm_setting_ovs_port_get_tag ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_ovs_port_get_tag (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-tag.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-tag.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“tag”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-get-lacp"></a><h3>nm_setting_ovs_port_get_lacp ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_ovs_port_get_lacp (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-lacp.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-lacp.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“lacp”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-get-bond-mode"></a><h3>nm_setting_ovs_port_get_bond_mode ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_ovs_port_get_bond_mode (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-bond-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-bond-mode.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“bond-mode”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-get-bond-updelay"></a><h3>nm_setting_ovs_port_get_bond_updelay ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_ovs_port_get_bond_updelay (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-bond-updelay.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-bond-updelay.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“bond-updelay”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-get-bond-downdelay"></a><h3>nm_setting_ovs_port_get_bond_downdelay ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_ovs_port_get_bond_downdelay
+                               (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-bond-downdelay.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-bond-downdelay.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“bond-downdelay”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-add-trunk"></a><h3>nm_setting_ovs_port_add_trunk ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_ovs_port_add_trunk (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *setting</code></em>,
+                               <em class="parameter"><code><a class="link" href="NMSetting.html#NMRange"><span class="type">NMRange</span></a> *trunk</code></em>);</pre>
+<p>Appends a new trunk range to the setting.
+This takes a reference to <em class="parameter"><code>trunk</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-add-trunk.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>trunk</p></td>
+<td class="parameter_description"><p>the trunk to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-get-num-trunks"></a><h3>nm_setting_ovs_port_get_num_trunks ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_ovs_port_get_num_trunks (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-num-trunks.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-num-trunks.returns"></a><h4>Returns</h4>
+<p> the number of trunk ranges</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-get-trunk"></a><h3>nm_setting_ovs_port_get_trunk ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html#NMRange"><span class="returnvalue">NMRange</span></a> *
+nm_setting_ovs_port_get_trunk (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *setting</code></em>,
+                               <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-trunk.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the trunk range to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-get-trunk.returns"></a><h4>Returns</h4>
+<p>the trunk range at index <em class="parameter"><code>idx</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-remove-trunk"></a><h3>nm_setting_ovs_port_remove_trunk ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_ovs_port_remove_trunk (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *setting</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the trunk range at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-remove-trunk.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the trunk range.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-remove-trunk-by-value"></a><h3>nm_setting_ovs_port_remove_trunk_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_ovs_port_remove_trunk_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> start</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> end</code></em>);</pre>
+<p>Remove the trunk range with range <em class="parameter"><code>start</code></em>
+ to <em class="parameter"><code>end</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-remove-trunk-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>start</p></td>
+<td class="parameter_description"><p>the trunk range start index</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>end</p></td>
+<td class="parameter_description"><p>the trunk range end index</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-remove-trunk-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the trunk range was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise</p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-ovs-port-clear-trunks"></a><h3>nm_setting_ovs_port_clear_trunks ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_ovs_port_clear_trunks (<em class="parameter"><code><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> *setting</code></em>);</pre>
+<p>Removes all configured trunk ranges.</p>
+<div class="refsect3">
+<a name="nm-setting-ovs-port-clear-trunks.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingOvsPort.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-PORT-SETTING-NAME:CAPS"></a><h3>NM_SETTING_OVS_PORT_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_PORT_SETTING_NAME "ovs-port"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-PORT-VLAN-MODE:CAPS"></a><h3>NM_SETTING_OVS_PORT_VLAN_MODE</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_PORT_VLAN_MODE      "vlan-mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-PORT-TAG:CAPS"></a><h3>NM_SETTING_OVS_PORT_TAG</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_PORT_TAG            "tag"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-PORT-TRUNKS:CAPS"></a><h3>NM_SETTING_OVS_PORT_TRUNKS</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_PORT_TRUNKS         "trunks"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-PORT-LACP:CAPS"></a><h3>NM_SETTING_OVS_PORT_LACP</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_PORT_LACP           "lacp"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-PORT-BOND-MODE:CAPS"></a><h3>NM_SETTING_OVS_PORT_BOND_MODE</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_PORT_BOND_MODE      "bond-mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-PORT-BOND-UPDELAY:CAPS"></a><h3>NM_SETTING_OVS_PORT_BOND_UPDELAY</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_PORT_BOND_UPDELAY   "bond-updelay"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-OVS-PORT-BOND-DOWNDELAY:CAPS"></a><h3>NM_SETTING_OVS_PORT_BOND_DOWNDELAY</h3>
+<pre class="programlisting">#define NM_SETTING_OVS_PORT_BOND_DOWNDELAY "bond-downdelay"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

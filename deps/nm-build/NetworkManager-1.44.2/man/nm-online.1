@@ -1,0 +1,117 @@
+'\" t
+.\"     Title: nm-online
+.\"    Author: 
+.\" Generator: DocBook XSL Stylesheets vsnapshot <http://docbook.sf.net/>
+.\"      Date: 10/03/2023
+.\"    Manual: General Commands Manual
+.\"    Source: NetworkManager 1.44.2
+.\"  Language: English
+.\"
+.TH "NM\-ONLINE" "1" "" "NetworkManager 1\&.44\&.2" "General Commands Manual"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+nm-online \- ask NetworkManager whether the network is connected
+.SH "SYNOPSIS"
+.HP \w'\fBnm\-online\fR\ 'u
+\fBnm\-online\fR [\fIOPTIONS\fR...]
+.SH "DESCRIPTION"
+.PP
+\fBnm\-online\fR
+is a utility to find out whether we are online\&. It is done by asking NetworkManager about its status\&. When run,
+\fBnm\-online\fR
+waits until NetworkManager reports an active connection, or specified timeout expires\&. On exit, the returned status code should be checked (see the return codes below)\&.
+.PP
+This tool is not very useful to call directly\&. It is however used by
+NetworkManager\-wait\-online\&.service
+with
+\-\-wait\-for\-startup
+argument (see
+\fBNetworkManager-wait-online.service\fR(8))\&.
+.PP
+By default, connections have the
+ipv4\&.may\-fail
+and
+ipv6\&.may\-fail
+properties set to
+yes; this means that NetworkManager waits for one of the two address families to complete configuration before considering the connection activated\&. If you need a specific address family configured before
+network\-online\&.target
+is reached, set the corresponding
+may\-fail
+property to
+no\&.
+.SH "OPTIONS"
+.PP
+\fB\-h\fR | \fB\-\-help\fR
+.RS 4
+Print help information\&.
+.RE
+.PP
+\fB\-q\fR | \fB\-\-quiet\fR
+.RS 4
+Don\*(Aqt print anything\&.
+.RE
+.PP
+\fB\-s\fR | \fB\-\-wait\-for\-startup\fR
+.RS 4
+Wait for NetworkManager startup to complete, rather than waiting for network connectivity specifically\&. Startup is considered complete once NetworkManager has activated (or attempted to activate) every auto\-activate connection which is available given the current network state\&. This corresponds to the moment when NetworkManager logs
+"startup complete"\&. This mode is generally only useful at boot time\&. After startup has completed,
+\fBnm\-online \-s\fR
+will just return immediately, regardless of the current network state\&.
+.sp
+There are various ways to affect when startup complete is reached\&. For details see
+\fBNetworkManager-wait-online.service\fR(8)\&.
+.RE
+.PP
+\fB\-t\fR | \fB\-\-timeout\fR \fIseconds\fR
+.RS 4
+Time to wait for a connection, in seconds\&. If the option is not provided, the environment variable
+NM_ONLINE_TIMEOUT
+is honored\&. The default timeout is 30 seconds\&.
+.RE
+.PP
+\fB\-x\fR | \fB\-\-exit\fR
+.RS 4
+Exit immediately if NetworkManager is not running or connecting\&.
+.RE
+.SH "EXIT STATUS"
+.PP
+\fBnm\-online\fR
+exits with status 0 if it succeeds, a value greater than 0 is returned if an error occurs\&.
+.PP
+\fB0\fR
+.RS 4
+Success \(en already online or connection established within given timeout\&.
+.RE
+.PP
+\fB1\fR
+.RS 4
+Offline or not online within given timeout\&.
+.RE
+.PP
+\fB2\fR
+.RS 4
+Unknown or unspecified error\&.
+.RE
+.SH "SEE ALSO"
+.PP
+\fBnmcli\fR(1),
+\fBNetworkManager\fR(8),
+\fBNetworkManager-wait-online.service\fR(8)\&.

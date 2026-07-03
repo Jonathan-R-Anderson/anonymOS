@@ -1,0 +1,202 @@
+'\" t
+.\"     Title: NetworkManager-wait-online.service
+.\"    Author: 
+.\" Generator: DocBook XSL Stylesheets vsnapshot <http://docbook.sf.net/>
+.\"      Date: 10/03/2023
+.\"    Manual: Network management daemons
+.\"    Source: NetworkManager-wait-online.service 1.44.2
+.\"  Language: English
+.\"
+.TH "NETWORKMANAGER\-WAIT\-ONLINE\&" "8" "" "NetworkManager\-wait\-online\&" "Network management daemons"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+NetworkManager-wait-online.service \- Wait for the network to come online
+.SH "DESCRIPTION"
+.PP
+The
+NetworkManager\-wait\-online
+service is a
+oneshot
+systemd service that delays reaching the
+network\-online
+target until NetworkManager reports that the startup is completed on the D\-Bus\&.
+.PP
+When the system boots, for example, remote mounts defined in
+/etc/fstab, require that the network is up\&. For this, these systemd units contain the
+After=network\-online\&.target
+setting to order themselves after this target\&.
+NetworkManager\-wait\-online
+ensures that the
+network\-online
+target is reached only after the network is available\&.
+.PP
+Optimally, all services on the host react dynamically to network changes and systemd services do not need to be configured to start after reaching the
+network\-online
+target\&. In this case,
+NetworkManager\-wait\-online\&.service
+has no effect and does not delay the boot time\&. On the other hand, if you encounter a long boot time due to the delay of
+NetworkManager\-wait\-online, investigate the services that require network access and fix them\&.
+.PP
+Except for the time out value in the
+NetworkManager\-wait\-online\&.service
+unit, you cannot configure this service\&. Instead, settings in NetworkManager and the connection profiles affect the behavior:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+Startup is not complete as long as NetworkManager profiles are in an activating state\&. During boot, NetworkManager starts profiles with the
+connection\&.autoconnect=yes
+setting\&. If activation fails, NetworkManager retries the activation depending on the value of the
+connection\&.autoconnect\-retries
+setting\&.
+.sp
+NetworkManager reports startup complete when all profiles and devices are either activated or in a disconnect state and no further events are expected\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+When a device reaches the activate state depends on its configuration\&. For example, with a profile that has both IPv4 and IPv6 enabled, by default, NetworkManager considers the device as fully activated already when only one of the address families is ready\&.
+.sp
+The
+ipv4\&.may\-fail
+and
+ipv6\&.may\-fail
+settings control this behavior\&. Additionally, the following settings influence when the two address families complete:
+ipv4\&.required\-timeout,
+ipv6\&.required\-timeout,
+ipv4\&.dhcp\-timeout, and
+ipv6\&.ra\-timeout\&. For details, see
+\fBnm-settings-nmcli\fR(5)\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+NetworkManager cannot set IP addresses on bridge and bond devices that have ports that do not auto\-activate\&. Because of this configuration error,
+NetworkManager\-wait\-online
+blocks until the service reaches its timeout value\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+Dispatcher scripts for the
+pre\-up
+event run at a late stage during activation of a profile\&. These scripts block the activation for when NetworkManager considers the profile fully activated\&. For details, see
+\fBNetworkManager-dispatcher\fR(8)\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+The property
+connection\&.wait\-activation\-delay
+adds an additional delay during activation and delays startup complete\&. This setting works around certain cases where a device is known to not be ready for a certain amount of time\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+The property
+connection\&.wait\-device\-timeout
+in the connection profiles cause a delay until the waiting devices appear\&. This is useful if the driver takes a longer time to detect the networking interfaces\&. This setting is similar to the
+connection\&.gateway\-ping\-timeout
+property\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+With Wi\-Fi devices, NetworkManager needs to wait for the first scan result to know which networks are available\&. That adds a delay\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+With Ethernet devices, NetworkManager waits for the carrier until the value in
+[device*]\&.carrier\-wait\-timeout
+is reached\&. This is because some devices take a long time to detect the carrier\&. Consequently, booting with cable unplugged, unnecessarily delays
+NetworkManager\-wait\-online\&.service\&.
+.RE
+.SH "BUGS"
+.PP
+Please report any bugs in NetworkManager at the
+\m[blue]\fBNetworkManager issue tracker\fR\m[]\&\s-2\u[1]\d\s+2\&.
+.SH "SEE ALSO"
+.PP
+\m[blue]\fBNetworkManager home page\fR\m[]\&\s-2\u[2]\d\s+2,
+\fBNetworkManager\fR(8),
+\fBnm-online\fR(1), the
+network\-online\&.target
+description in
+\fBsystemd.special\fR(7)
+.SH "NOTES"
+.IP " 1." 4
+NetworkManager issue tracker
+.RS 4
+\%https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/issues
+.RE
+.IP " 2." 4
+NetworkManager home page
+.RS 4
+\%https://networkmanager.dev
+.RE

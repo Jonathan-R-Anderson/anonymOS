@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Loopback">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Loopback.top_of_page">org.freedesktop.NetworkManager.Device.Loopback</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Loopback.top_of_page"><primary sortas=".Device.Loopback">org.freedesktop.NetworkManager.Device.Loopback</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Loopback</refname>    <refpurpose>Loopback Device.</refpurpose>  </refnamediv><refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Loopback">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+</refentry>
+

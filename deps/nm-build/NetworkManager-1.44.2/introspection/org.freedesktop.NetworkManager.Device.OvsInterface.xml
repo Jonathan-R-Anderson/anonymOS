@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<node name="/">
+  <!--
+      org.freedesktop.NetworkManager.Device.OvsInterface:
+      @short_description: OvsInterface Device.
+
+  -->
+  <interface name="org.freedesktop.NetworkManager.Device.OvsInterface">
+
+  </interface>
+</node>

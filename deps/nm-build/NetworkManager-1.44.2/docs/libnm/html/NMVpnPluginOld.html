@@ -1,0 +1,589 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMVpnPluginOld: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch06.html" title="VPN Plugin API Reference">
+<link rel="prev" href="NMVpnEditorPlugin.html" title="NMVpnEditorPlugin">
+<link rel="next" href="object-tree.html" title="Object Hierarchy">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMVpnPluginOld.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMVpnPluginOld.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_interfaces">  <span class="dim">|</span> 
+                  <a href="#NMVpnPluginOld.implemented-interfaces" class="shortcut">Implemented Interfaces</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMVpnPluginOld.properties" class="shortcut">Properties</a></span><span id="nav_signals">  <span class="dim">|</span> 
+                  <a href="#NMVpnPluginOld.signals" class="shortcut">Signals</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch06.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMVpnEditorPlugin.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="object-tree.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMVpnPluginOld"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMVpnPluginOld.top_of_page"></a>NMVpnPluginOld</span></h2>
+<p>NMVpnPluginOld</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/gio/unstable/GDBusConnection.html#GDBusConnection-struct"><span class="returnvalue">GDBusConnection</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-get-connection" title="nm_vpn_plugin_old_get_connection ()">nm_vpn_plugin_old_get_connection</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnServiceState" title="enum NMVpnServiceState"><span class="returnvalue">NMVpnServiceState</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-get-state" title="nm_vpn_plugin_old_get_state ()">nm_vpn_plugin_old_get_state</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-set-state" title="nm_vpn_plugin_old_set_state ()">nm_vpn_plugin_old_set_state</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-secrets-required" title="nm_vpn_plugin_old_secrets_required ()">nm_vpn_plugin_old_secrets_required</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-set-login-banner" title="nm_vpn_plugin_old_set_login_banner ()">nm_vpn_plugin_old_set_login_banner</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-failure" title="nm_vpn_plugin_old_failure ()">nm_vpn_plugin_old_failure</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-set-ip4-config" title="nm_vpn_plugin_old_set_ip4_config ()">nm_vpn_plugin_old_set_ip4_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-disconnect" title="nm_vpn_plugin_old_disconnect ()">nm_vpn_plugin_old_disconnect</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-read-vpn-details" title="nm_vpn_plugin_old_read_vpn_details ()">nm_vpn_plugin_old_read_vpn_details</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginOld.html#nm-vpn-plugin-old-get-secret-flags" title="nm_vpn_plugin_old_get_secret_flags ()">nm_vpn_plugin_old_get_secret_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld--service-name" title="The “service-name” property">service-name</a></td>
+<td class="property_flags">Read / Write / Construct Only</td>
+</tr>
+<tr>
+<td class="property_type"><a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnServiceState" title="enum NMVpnServiceState"><span class="type">NMVpnServiceState</span></a></td>
+<td class="property_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld--state" title="The “state” property">state</a></td>
+<td class="property_flags">Read / Write</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.signals"></a><h2>Signals</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="signal_proto_type">
+<col width="300px" class="signal_proto_name">
+<col width="200px" class="signal_proto_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-config" title="The “config” signal">config</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-failure" title="The “failure” signal">failure</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-ip4-config" title="The “ip4-config” signal">ip4-config</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-ip6-config" title="The “ip6-config” signal">ip6-config</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-login-banner" title="The “login-banner” signal">login-banner</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-quit" title="The “quit” signal">quit</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-secrets-required" title="The “secrets-required” signal">secrets-required</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+<tr>
+<td class="signal_type"><span class="returnvalue">void</span></td>
+<td class="signal_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-state-changed" title="The “state-changed” signal">state-changed</a></td>
+<td class="signal_flags"><a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnPluginOld.html#NM-VPN-PLUGIN-OLD-DBUS-SERVICE-NAME:CAPS" title="NM_VPN_PLUGIN_OLD_DBUS_SERVICE_NAME">NM_VPN_PLUGIN_OLD_DBUS_SERVICE_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnPluginOld.html#NM-VPN-PLUGIN-OLD-STATE:CAPS" title="NM_VPN_PLUGIN_OLD_STATE">NM_VPN_PLUGIN_OLD_STATE</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMVpnPluginOld.html#NMVpnPluginOld-struct" title="NMVpnPluginOld">NMVpnPluginOld</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> NMVpnPluginOld
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.implemented-interfaces"></a><h2>Implemented Interfaces</h2>
+<p>
+NMVpnPluginOld implements
+ <a href="https://developer.gnome.org/gio/unstable/GInitable.html#GInitable-struct">GInitable</a>.</p>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-get-connection"></a><h3>nm_vpn_plugin_old_get_connection ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/gio/unstable/GDBusConnection.html#GDBusConnection-struct"><span class="returnvalue">GDBusConnection</span></a> *
+nm_vpn_plugin_old_get_connection (<em class="parameter"><code><a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *plugin</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_get_connection</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-old-get-connection.returns"></a><h4>Returns</h4>
+<p>. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-get-state"></a><h3>nm_vpn_plugin_old_get_state ()</h3>
+<pre class="programlisting"><a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnServiceState" title="enum NMVpnServiceState"><span class="returnvalue">NMVpnServiceState</span></a>
+nm_vpn_plugin_old_get_state (<em class="parameter"><code><a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *plugin</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_get_state</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-set-state"></a><h3>nm_vpn_plugin_old_set_state ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_plugin_old_set_state (<em class="parameter"><code><a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *plugin</code></em>,
+                             <em class="parameter"><code><a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnServiceState" title="enum NMVpnServiceState"><span class="type">NMVpnServiceState</span></a> state</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_set_state</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-secrets-required"></a><h3>nm_vpn_plugin_old_secrets_required ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_plugin_old_secrets_required (<em class="parameter"><code><a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *plugin</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *message</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> **hints</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_secrets_required</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+<p>Called by VPN plugin implementations to signal to NetworkManager that secrets
+are required during the connection process.  This signal may be used to
+request new secrets when the secrets originally provided by NetworkManager
+are insufficient, or the VPN process indicates that it needs additional
+information to complete the request.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-old-secrets-required.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>plugin</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>message</p></td>
+<td class="parameter_description"><p>an information message about why secrets are required, if any</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>hints</p></td>
+<td class="parameter_description"><p>VPN specific secret names for required new secrets</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-set-login-banner"></a><h3>nm_vpn_plugin_old_set_login_banner ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_plugin_old_set_login_banner (<em class="parameter"><code><a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *plugin</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *banner</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_set_login_banner</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-failure"></a><h3>nm_vpn_plugin_old_failure ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_plugin_old_failure (<em class="parameter"><code><a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *plugin</code></em>,
+                           <em class="parameter"><code><a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnPluginFailure" title="enum NMVpnPluginFailure"><span class="type">NMVpnPluginFailure</span></a> reason</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_failure</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-set-ip4-config"></a><h3>nm_vpn_plugin_old_set_ip4_config ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_plugin_old_set_ip4_config (<em class="parameter"><code><a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *plugin</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *ip4_config</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_set_ip4_config</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-disconnect"></a><h3>nm_vpn_plugin_old_disconnect ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_plugin_old_disconnect (<em class="parameter"><code><a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *plugin</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **err</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_disconnect</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-read-vpn-details"></a><h3>nm_vpn_plugin_old_read_vpn_details ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_plugin_old_read_vpn_details (<em class="parameter"><code><span class="type">int</span> fd</code></em>,
+                                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> **out_data</code></em>,
+                                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> **out_secrets</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_read_vpn_details</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+<p>Parses key/value pairs from a file descriptor (normally stdin) passed by
+an applet when the applet calls the authentication dialog of the VPN plugin.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-old-read-vpn-details.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>fd</p></td>
+<td class="parameter_description"><p>file descriptor to read from, usually stdin (0)</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_data</p></td>
+<td class="parameter_description"><p>on successful return, a hash table
+(mapping char*:char*) containing the key/value pairs of VPN data items. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_secrets</p></td>
+<td class="parameter_description"><p>on successful return, a hash table
+(mapping char*:char*) containing the key/value pairsof VPN secrets. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-old-read-vpn-details.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if reading values was successful, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-old-get-secret-flags"></a><h3>nm_vpn_plugin_old_get_secret_flags ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_plugin_old_get_secret_flags (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> *data</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *secret_name</code></em>,
+                                    <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> *out_flags</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_vpn_plugin_old_get_secret_flags</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+<p>Given a VPN secret key name, attempts to find the corresponding flags data
+item in <em class="parameter"><code>data</code></em>
+.  If found, converts the flags data item to
+<a class="link" href="NMSetting.html#NMSettingSecretFlags" title="enum NMSettingSecretFlags"><span class="type">NMSettingSecretFlags</span></a> and returns it.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-old-get-secret-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>data</p></td>
+<td class="parameter_description"><p>hash table containing VPN key/value pair data items</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>secret_name</p></td>
+<td class="parameter_description"><p>VPN secret key name for which to retrieve flags for</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_flags</p></td>
+<td class="parameter_description"><p>on success, the flags associated with <em class="parameter"><code>secret_name</code></em>
+. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-old-get-secret-flags.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the flag data item was found and successfully converted
+to flags, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if not</p>
+</div>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-VPN-PLUGIN-OLD-DBUS-SERVICE-NAME:CAPS"></a><h3>NM_VPN_PLUGIN_OLD_DBUS_SERVICE_NAME</h3>
+<pre class="programlisting">#define NM_VPN_PLUGIN_OLD_DBUS_SERVICE_NAME "service-name"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VPN-PLUGIN-OLD-STATE:CAPS"></a><h3>NM_VPN_PLUGIN_OLD_STATE</h3>
+<pre class="programlisting">#define NM_VPN_PLUGIN_OLD_STATE             "state"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld-struct"></a><h3>NMVpnPluginOld</h3>
+<pre class="programlisting">typedef struct _NMVpnPluginOld NMVpnPluginOld;</pre>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMVpnPluginOld--service-name"></a><h3>The <code class="literal">“service-name”</code> property</h3>
+<pre class="programlisting">  “service-name”             <span class="type">char</span> *</pre>
+<p>The D-Bus service name of this plugin.</p>
+<div class="warning">
+<p><code class="literal">NMVpnPluginOld:service-name</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+<p>Owner: NMVpnPluginOld</p>
+<p>Flags: Read / Write / Construct Only</p>
+<p>Default value: NULL</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld--state"></a><h3>The <code class="literal">“state”</code> property</h3>
+<pre class="programlisting">  “state”                    <a class="link" href="libnm-nm-vpn-dbus-interface.html#NMVpnServiceState" title="enum NMVpnServiceState"><span class="type">NMVpnServiceState</span></a></pre>
+<p>The state of the plugin.</p>
+<div class="warning">
+<p><code class="literal">NMVpnPluginOld:state</code> has been deprecated since version 1.2 and should not be used in newly-written code.</p>
+<p>Replaced by NMVpnServicePlugin.</p>
+</div>
+<p>Owner: NMVpnPluginOld</p>
+<p>Flags: Read / Write</p>
+<p>Default value: NM_VPN_SERVICE_STATE_INIT</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginOld.signal-details"></a><h2>Signal Details</h2>
+<div class="refsect2">
+<a name="NMVpnPluginOld-config"></a><h3>The <code class="literal">“config”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *nmvpnpluginold,
+               <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a>       *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>        user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld-failure"></a><h3>The <code class="literal">“failure”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *nmvpnpluginold,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a>           arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>        user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld-ip4-config"></a><h3>The <code class="literal">“ip4-config”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *nmvpnpluginold,
+               <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a>       *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>        user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld-ip6-config"></a><h3>The <code class="literal">“ip6-config”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *nmvpnpluginold,
+               <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a>       *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>        user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld-login-banner"></a><h3>The <code class="literal">“login-banner”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *nmvpnpluginold,
+               <span class="type">char</span>           *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>        user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld-quit"></a><h3>The <code class="literal">“quit”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *nmvpnpluginold,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>        user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld-secrets-required"></a><h3>The <code class="literal">“secrets-required”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *nmvpnpluginold,
+               <span class="type">char</span>           *arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-String-Utility-Functions.html#GStrv"><span class="type">GStrv</span></a>           arg2,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>        user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMVpnPluginOld-state-changed"></a><h3>The <code class="literal">“state-changed”</code> signal</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+user_function (<a class="link" href="NMVpnPluginOld.html" title="NMVpnPluginOld"><span class="type">NMVpnPluginOld</span></a> *nmvpnpluginold,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a>           arg1,
+               <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a>        user_data)</pre>
+<p>Flags: <a href="https://developer.gnome.org/gobject/unstable/gobject-Signals.html#G-SIGNAL-RUN-FIRST:CAPS">Run First</a></p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

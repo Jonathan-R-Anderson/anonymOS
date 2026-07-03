@@ -1,0 +1,11 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+exec_prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+system_bus_default_address=unix:path=/run/dbus/system_bus_socket
+
+Name: dbus
+Description: Free desktop message bus
+Version: 1.14.10
+Libs: -L${libdir} -ldbus-1
+Cflags: -I${includedir}/dbus-1.0 -I${libdir}/dbus-1.0/include

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.DnsManager">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-DnsManager.top_of_page">org.freedesktop.NetworkManager.DnsManager</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-DnsManager.top_of_page"><primary sortas=".DnsManager">org.freedesktop.NetworkManager.DnsManager</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.DnsManager</refname>    <refpurpose>DNS Configuration State.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-DnsManager.Mode">Mode</link>           readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-DnsManager.RcManager">RcManager</link>      readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-DnsManager.Configuration">Configuration</link>  readable   aa{sv}
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-DnsManager">
+  <title role="desc.title">Description</title>
+  <para>
+The interface contains DNS-related information.
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.DnsManager">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-DnsManager.Mode">
+  <title>The "Mode" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-DnsManager.Mode"><primary sortas=".DnsManager:Mode">org.freedesktop.NetworkManager.DnsManager:Mode</primary></indexterm>
+<programlisting>
+Mode  readable   s
+</programlisting>
+<para>
+The current DNS processing mode.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-DnsManager.RcManager">
+  <title>The "RcManager" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-DnsManager.RcManager"><primary sortas=".DnsManager:RcManager">org.freedesktop.NetworkManager.DnsManager:RcManager</primary></indexterm>
+<programlisting>
+RcManager  readable   s
+</programlisting>
+<para>
+The current resolv.conf management mode.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-DnsManager.Configuration">
+  <title>The "Configuration" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-DnsManager.Configuration"><primary sortas=".DnsManager:Configuration">org.freedesktop.NetworkManager.DnsManager:Configuration</primary></indexterm>
+<programlisting>
+Configuration  readable   aa{sv}
+</programlisting>
+<para>
+The current DNS configuration represented as an array of
+dictionaries.  Each dictionary has the "nameservers",
+"priority" keys and, optionally, "interface" and "vpn".
+"nameservers" is the list of DNS servers, "priority" their
+relative priority, "interface" the interface on which these
+servers are contacted, "vpn" a boolean telling whether the
+configuration was obtained from a VPN connection.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

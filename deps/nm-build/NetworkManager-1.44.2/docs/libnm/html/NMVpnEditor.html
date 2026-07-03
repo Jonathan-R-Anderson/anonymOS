@@ -1,0 +1,178 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMVpnEditor: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch06.html" title="VPN Plugin API Reference">
+<link rel="prev" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo">
+<link rel="next" href="NMVpnEditorPlugin.html" title="NMVpnEditorPlugin">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMVpnEditor.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch06.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMVpnPluginInfo.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMVpnEditorPlugin.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMVpnEditor"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMVpnEditor.top_of_page"></a>NMVpnEditor</span></h2>
+<p>NMVpnEditor</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMVpnEditor.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct"><span class="returnvalue">GObject</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnEditor.html#nm-vpn-editor-get-widget" title="nm_vpn_editor_get_widget ()">nm_vpn_editor_get_widget</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnEditor.html#nm-vpn-editor-update-connection" title="nm_vpn_editor_update_connection ()">nm_vpn_editor_update_connection</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnEditor.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody><tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMVpnEditor.html#NMVpnEditorInterface" title="NMVpnEditorInterface">NMVpnEditorInterface</a></td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnEditor.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMVpnEditor.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-vpn-editor-get-widget"></a><h3>nm_vpn_editor_get_widget ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct"><span class="returnvalue">GObject</span></a> *
+nm_vpn_editor_get_widget (<em class="parameter"><code><a class="link" href="NMVpnEditor.html" title="NMVpnEditor"><span class="type">NMVpnEditor</span></a> *editor</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-editor-get-widget.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>editor</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMVpnEditor.html" title="NMVpnEditor"><span class="type">NMVpnEditor</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-editor-get-widget.returns"></a><h4>Returns</h4>
+<p>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-editor-update-connection"></a><h3>nm_vpn_editor_update_connection ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_editor_update_connection (<em class="parameter"><code><a class="link" href="NMVpnEditor.html" title="NMVpnEditor"><span class="type">NMVpnEditor</span></a> *editor</code></em>,
+                                 <em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                                 <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMVpnEditor.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NMVpnEditorInterface"></a><h3>NMVpnEditorInterface</h3>
+<pre class="programlisting">typedef struct {
+    GTypeInterface g_iface;
+
+    GObject *(*get_widget)(NMVpnEditor *editor);
+
+    void (*placeholder)(void);
+
+    gboolean (*update_connection)(NMVpnEditor *editor, NMConnection *connection, GError **error);
+
+    void (*changed)(NMVpnEditor *editor);
+} NMVpnEditorInterface;
+</pre>
+<p>Interface for editing a specific <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p>
+<div class="refsect3">
+<a name="NMVpnEditorInterface.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="struct_members_name">
+<col class="struct_members_description">
+<col width="200px" class="struct_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="struct_member_name"><p><em class="structfield"><code><a name="NMVpnEditorInterface.get-widget"></a>get_widget</code></em> ()</p></td>
+<td class="struct_member_description"><p>return the <span class="type">GtkWidget</span> for the VPN editor's UI</p></td>
+<td class="struct_member_annotations"> </td>
+</tr>
+<tr>
+<td class="struct_member_name"><p><em class="structfield"><code><a name="NMVpnEditorInterface.placeholder"></a>placeholder</code></em> ()</p></td>
+<td class="struct_member_description"><p>not currently used</p></td>
+<td class="struct_member_annotations"> </td>
+</tr>
+<tr>
+<td class="struct_member_name"><p><em class="structfield"><code><a name="NMVpnEditorInterface.update-connection"></a>update_connection</code></em> ()</p></td>
+<td class="struct_member_description"><p>called to save the user-entered options to the connection
+object.  Should return <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> and set <em class="parameter"><code>error</code></em>
+if the current options are
+invalid.  <em class="parameter"><code>error</code></em>
+should contain enough information for the plugin to
+determine which UI widget is invalid at a later point in time.  For
+example, creating unique error codes for what error occurred and populating
+the message field of <em class="parameter"><code>error</code></em>
+with the name of the invalid property.</p></td>
+<td class="struct_member_annotations"> </td>
+</tr>
+<tr>
+<td class="struct_member_name"><p><em class="structfield"><code><a name="NMVpnEditorInterface.changed"></a>changed</code></em> ()</p></td>
+<td class="struct_member_description"><p>emitted when the value of a UI widget changes.  May trigger a
+validity check via <em class="parameter"><code>update_connection</code></em>
+to write values to the connection.</p></td>
+<td class="struct_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

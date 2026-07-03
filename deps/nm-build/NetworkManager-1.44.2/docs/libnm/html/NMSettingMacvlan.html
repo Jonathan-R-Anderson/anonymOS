@@ -1,0 +1,355 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingMacvlan: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingMacsec.html" title="NMSettingMacsec">
+<link rel="next" href="NMSettingMatch.html" title="NMSettingMatch">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingMacvlan.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingMacvlan.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingMacsec.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingMatch.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingMacvlan"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingMacvlan.top_of_page"></a>NMSettingMacvlan</span></h2>
+<p>NMSettingMacvlan — Describes connection properties for macvlan interfaces</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingMacvlan.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacvlan.html#nm-setting-macvlan-new" title="nm_setting_macvlan_new ()">nm_setting_macvlan_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacvlan.html#nm-setting-macvlan-get-parent" title="nm_setting_macvlan_get_parent ()">nm_setting_macvlan_get_parent</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingMacvlan.html#NMSettingMacvlanMode" title="enum NMSettingMacvlanMode"><span class="returnvalue">NMSettingMacvlanMode</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacvlan.html#nm-setting-macvlan-get-mode" title="nm_setting_macvlan_get_mode ()">nm_setting_macvlan_get_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacvlan.html#nm-setting-macvlan-get-promiscuous" title="nm_setting_macvlan_get_promiscuous ()">nm_setting_macvlan_get_promiscuous</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingMacvlan.html#nm-setting-macvlan-get-tap" title="nm_setting_macvlan_get_tap ()">nm_setting_macvlan_get_tap</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacvlan.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacvlan.html#NM-SETTING-MACVLAN-SETTING-NAME:CAPS" title="NM_SETTING_MACVLAN_SETTING_NAME">NM_SETTING_MACVLAN_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacvlan.html#NM-SETTING-MACVLAN-PARENT:CAPS" title="NM_SETTING_MACVLAN_PARENT">NM_SETTING_MACVLAN_PARENT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacvlan.html#NM-SETTING-MACVLAN-MODE:CAPS" title="NM_SETTING_MACVLAN_MODE">NM_SETTING_MACVLAN_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacvlan.html#NM-SETTING-MACVLAN-PROMISCUOUS:CAPS" title="NM_SETTING_MACVLAN_PROMISCUOUS">NM_SETTING_MACVLAN_PROMISCUOUS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingMacvlan.html#NM-SETTING-MACVLAN-TAP:CAPS" title="NM_SETTING_MACVLAN_TAP">NM_SETTING_MACVLAN_TAP</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingMacvlan.html#NMSettingMacvlanMode" title="enum NMSettingMacvlanMode">NMSettingMacvlanMode</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacvlan.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GEnum</a>
+    <span class="lineart">╰──</span> NMSettingMacvlanMode
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacvlan.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for connection to macvlan interfaces.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacvlan.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-macvlan-new"></a><h3>nm_setting_macvlan_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_macvlan_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-macvlan-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macvlan-get-parent"></a><h3>nm_setting_macvlan_get_parent ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_macvlan_get_parent (<em class="parameter"><code><a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macvlan-get-parent.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macvlan-get-parent.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“parent”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macvlan-get-mode"></a><h3>nm_setting_macvlan_get_mode ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingMacvlan.html#NMSettingMacvlanMode" title="enum NMSettingMacvlanMode"><span class="returnvalue">NMSettingMacvlanMode</span></a>
+nm_setting_macvlan_get_mode (<em class="parameter"><code><a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macvlan-get-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macvlan-get-mode.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mode”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macvlan-get-promiscuous"></a><h3>nm_setting_macvlan_get_promiscuous ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_macvlan_get_promiscuous (<em class="parameter"><code><a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macvlan-get-promiscuous.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macvlan-get-promiscuous.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“promiscuous”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-macvlan-get-tap"></a><h3>nm_setting_macvlan_get_tap ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_macvlan_get_tap (<em class="parameter"><code><a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-macvlan-get-tap.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-macvlan-get-tap.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“tap”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingMacvlan.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-MACVLAN-SETTING-NAME:CAPS"></a><h3>NM_SETTING_MACVLAN_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_MACVLAN_SETTING_NAME "macvlan"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACVLAN-PARENT:CAPS"></a><h3>NM_SETTING_MACVLAN_PARENT</h3>
+<pre class="programlisting">#define NM_SETTING_MACVLAN_PARENT      "parent"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACVLAN-MODE:CAPS"></a><h3>NM_SETTING_MACVLAN_MODE</h3>
+<pre class="programlisting">#define NM_SETTING_MACVLAN_MODE        "mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACVLAN-PROMISCUOUS:CAPS"></a><h3>NM_SETTING_MACVLAN_PROMISCUOUS</h3>
+<pre class="programlisting">#define NM_SETTING_MACVLAN_PROMISCUOUS "promiscuous"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-MACVLAN-TAP:CAPS"></a><h3>NM_SETTING_MACVLAN_TAP</h3>
+<pre class="programlisting">#define NM_SETTING_MACVLAN_TAP         "tap"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingMacvlanMode"></a><h3>enum NMSettingMacvlanMode</h3>
+<div class="refsect3">
+<a name="NMSettingMacvlanMode.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACVLAN-MODE-UNKNOWN:CAPS"></a>NM_SETTING_MACVLAN_MODE_UNKNOWN</p></td>
+<td class="enum_member_description">
+<p>unknown/unset mode</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACVLAN-MODE-VEPA:CAPS"></a>NM_SETTING_MACVLAN_MODE_VEPA</p></td>
+<td class="enum_member_description">
+<p>Virtual Ethernet Port Aggregator mode</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACVLAN-MODE-BRIDGE:CAPS"></a>NM_SETTING_MACVLAN_MODE_BRIDGE</p></td>
+<td class="enum_member_description">
+<p>bridge mode</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACVLAN-MODE-PRIVATE:CAPS"></a>NM_SETTING_MACVLAN_MODE_PRIVATE</p></td>
+<td class="enum_member_description">
+<p>private mode</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACVLAN-MODE-PASSTHRU:CAPS"></a>NM_SETTING_MACVLAN_MODE_PASSTHRU</p></td>
+<td class="enum_member_description">
+<p>passthru mode</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACVLAN-MODE-SOURCE:CAPS"></a>NM_SETTING_MACVLAN_MODE_SOURCE</p></td>
+<td class="enum_member_description">
+<p>source mode</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACVLAN-MODE-NUM:CAPS"></a>_NM_SETTING_MACVLAN_MODE_NUM</p></td>
+<td> </td>
+<td> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-MACVLAN-MODE-LAST:CAPS"></a>NM_SETTING_MACVLAN_MODE_LAST</p></td>
+<td> </td>
+<td> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

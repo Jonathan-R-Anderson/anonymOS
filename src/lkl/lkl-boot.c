@@ -17,7 +17,10 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <errno.h>
+#include "hos-net-proto.h"
 #ifndef MAP_FIXED_NOREPLACE
 #define MAP_FIXED_NOREPLACE 0x100000
 #endif
@@ -466,14 +469,94 @@ static void epin_lkl_print(const char *str, int len)
     /* else: drop the routine kernel printk (it never reaches the screen) */
 }
 
-/* Bring wlan0 up once iwlwifi's async probe has created it (poll up to ~15s). */
-static void epin_wifi_report(void)
-{
-    lkl_sys_mkdir("/proc", 0555);
-    lkl_sys_mount("proc", "/proc", "proc", 0, 0);
+/* --- Wireless-Extensions bits (LKL ships no linux/wireless.h; these are stable uABI) --- */
+#define WX_SIOCSIWSCAN  0x8B18
+#define WX_SIOCGIWSCAN  0x8B19
+#define WX_SIOCGIWAP    0x8B15   /* per-AP marker (BSSID) in scan results */
+#define WX_SIOCGIWESSID 0x8B1B   /* SSID in scan results */
+struct wx_iw_point { void *pointer; unsigned short length; unsigned short flags; };
+struct wx_iwreq {
+    char ifrn_name[16];
+    union { char name[16]; struct wx_iw_point data; unsigned char pad[16]; } u;
+};
 
-    long s = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_DGRAM, 0);
-    if (s < 0) { fprintf(stderr, ">>> wifi: socket failed %ld\n", s); return; }
+/* Core WEXT scan: trigger on `ifname` via LKL socket `s`, format results as text into out[]
+ * ("SSID: ...\n" lines + a "DONE N AP(s), M bytes\n" trailer).  Returns AP count, or -1 on error.
+ * Shared by the H0 boot proof AND the cap-gated network provider (which relays out[] to a native
+ * client).  This is the exact lkl_sys_* socket/ioctl path the provider forwards for wpa/NM. */
+/* A wlan device runs ONE scan at a time; serialize all scans (boot proof + every provider
+ * request) so concurrent SIOCSIWSCAN don't collide with -EBUSY(16). */
+static pthread_mutex_t g_wifi_scan_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int epin_wifi_scan_core(long s, const char *ifname, char *out, int outsz)
+{
+    int n = 0;
+    int rc = -1;
+#define WSC_OUT(...) do { if (n < outsz) { int _w = snprintf(out + n, outsz - n, __VA_ARGS__); \
+                          if (_w > 0) n += _w; } } while (0)
+    pthread_mutex_lock(&g_wifi_scan_lock);
+    struct wx_iwreq wrq;
+    memset(&wrq, 0, sizeof wrq);
+    strncpy(wrq.ifrn_name, ifname, sizeof(wrq.ifrn_name) - 1);
+    long r = lkl_sys_ioctl(s, WX_SIOCSIWSCAN, (long)&wrq);
+    /* A scan already running (our own or the KERNEL's internal cfg80211 scan) rejects the trigger
+     * with -EBUSY(16) or -EINVAL(22); that's not fatal - just poll GIWSCAN for that scan's results. */
+    if (r < 0 && r != -16 && r != -22) { WSC_OUT("ERR scan trigger failed %ld\n", r); goto done; }
+
+    static unsigned char buf[16384];
+    for (int t = 0; t < 60; t++) {                 /* up to ~15s */
+        struct timespec ts = { .tv_sec = 0, .tv_nsec = 250000000L };
+        nanosleep(&ts, NULL);
+        memset(&wrq, 0, sizeof wrq);
+        strncpy(wrq.ifrn_name, ifname, sizeof(wrq.ifrn_name) - 1);
+        wrq.u.data.pointer = buf;
+        wrq.u.data.length  = sizeof buf;
+        r = lkl_sys_ioctl(s, WX_SIOCGIWSCAN, (long)&wrq);
+        if (r < 0) {
+            if (r == -11) continue;                /* -EAGAIN: scan still in progress */
+            WSC_OUT("ERR GIWSCAN failed %ld\n", r);
+            goto done;
+        }
+        unsigned len = wrq.u.data.length;
+        if (len > sizeof buf) len = sizeof buf;
+        int aps = 0; unsigned o = 0;               /* walk the iw_event stream */
+        while (o + 4 <= len) {
+            unsigned short ev_len = *(unsigned short *)(buf + o);
+            unsigned short ev_cmd = *(unsigned short *)(buf + o + 2);
+            if (ev_len < 4 || (unsigned)(o + ev_len) > len) break;
+            if (ev_cmd == WX_SIOCGIWAP) aps++;
+            else if (ev_cmd == WX_SIOCGIWESSID && ev_len > 8) {
+                unsigned sl = ev_len - 8; if (sl > 32) sl = 32;
+                char ssid[33]; memcpy(ssid, buf + o + 8, sl); ssid[sl] = 0;
+                WSC_OUT("SSID: %s\n", ssid[0] ? ssid : "(hidden)");
+            }
+            o += ev_len;
+        }
+        WSC_OUT("DONE %d AP(s), %u bytes\n", aps, len);
+        rc = aps;
+        goto done;
+    }
+    WSC_OUT("ERR scan timed out (RX may be dead)\n");
+done:
+    pthread_mutex_unlock(&g_wifi_scan_lock);
+    return rc;
+#undef WSC_OUT
+}
+
+/* H0 boot proof: scan once and print just the AP count (the SSID list is suppressed now to keep
+ * the boot log compact — the H1b client lines below are what matter). */
+static void epin_wifi_scan(long s, const char *ifname)
+{
+    static char out[4096];
+    int aps = epin_wifi_scan_core(s, ifname, out, sizeof out);
+    fprintf(stderr, ">>> wifi scan: DONE -- %d AP(s) heard on %s\n", aps, ifname);
+}
+
+/* Find wlanN (iwlwifi's async probe creates it) and bring it up.  Returns 1 + copies the ifname
+ * to ifout on success (polls up to ~15s), else 0.  Idempotent — safe to call from both the boot
+ * proof and the provider's scan handler on separate LKL sockets. */
+static int epin_wifi_bringup(long s, char *ifout, int outsz)
+{
     static const char *const names[] = { "wlan0", "wlan1", "wlp0s0", 0 };
     for (int tries = 0; tries < 30; tries++) {
         for (int i = 0; names[i]; i++) {
@@ -487,65 +570,302 @@ static void epin_wifi_report(void)
             lkl_sys_ioctl(s, LKL_SIOCGIFFLAGS, (long)&ifr);
             ifr.lkl_ifr_flags |= LKL_IFF_UP;
             lkl_sys_ioctl(s, LKL_SIOCSIFFLAGS, (long)&ifr);
-            fprintf(stderr, ">>> wifi: %s up\n", names[i]);
-            lkl_sys_close(s);
-            return;
+            if (ifout && outsz > 0) { strncpy(ifout, names[i], outsz - 1); ifout[outsz - 1] = 0; }
+            return 1;
         }
         struct timespec ts = { .tv_sec = 0, .tv_nsec = 500000000L };  /* 500ms */
         nanosleep(&ts, NULL);
     }
-    fprintf(stderr, ">>> wifi: no wlanN (firmware not alive)\n");
+    return 0;
+}
+
+/* Bring wlan0 up + the H0 boot-proof scan (prints on-screen). */
+static void epin_wifi_report(void)
+{
+    lkl_sys_mkdir("/proc", 0555);
+    lkl_sys_mount("proc", "/proc", "proc", 0, 0);
+
+    long s = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_DGRAM, 0);
+    if (s < 0) { fprintf(stderr, ">>> wifi: socket failed %ld\n", s); return; }
+    char ifname[32];
+    if (epin_wifi_bringup(s, ifname, sizeof ifname)) {
+        fprintf(stderr, ">>> wifi: %s up (boot scan skipped so wpa_supplicant owns the radio)\n", ifname);
+        /* epin_wifi_scan(s, ifname);  // H0 boot scan disabled: it contended with wpa's own scan */
+    } else {
+        fprintf(stderr, ">>> wifi: no wlanN (firmware not alive)\n");
+    }
     lkl_sys_close(s);
 }
 
-/* NetworkManager feature, Stage 0: write the embedded hos-init into the LKL's (writable ramfs)
- * rootfs and execve it — proving the LKL can run a REAL userspace process, the foundation for
- * running dbus-daemon + wpa_supplicant + NetworkManager inside the LKL next to wlan0.  Runs on a
- * dedicated thread; execve replaces this task's image with hos-init (it should NOT return). */
-static void *epin_lkl_init_thread(void *arg)
+/* H1: the cap-gated NETWORK PROVIDER.  lkl-boot holds the wlan0 device cap (L4); it exposes a
+ * NATIVE EpinAnonymOS AF_UNIX socket (NSP_PATH) that native clients (hos-wifi; later the
+ * wpa_supplicant/NetworkManager syscall-shim) connect to.  The kernel gates connect() on
+ * DEVCLASS_NET (deny-by-default), so only authorized domains reach wlan0 through here.
+ *
+ * H1b protocol: a general socket-remoting RPC (hos-net-proto.h) - the client issues SOCKET/BIND/
+ * SENDTO/RECVFROM/SETSOCKOPT/CLOSE/POLL/etc and the provider runs each as the matching lkl syscall
+ * against the LKL (so a native process's AF_NETLINK/AF_PACKET traffic reaches the real wlan0).
+ * NOTE: the accept()/read()/write() here are NATIVE EpinAnonymOS syscalls; the lkl calls inside
+ * the dispatch drive the LKL - two separate worlds bridged by this RPC. */
+#define NET_PROVIDER_PATH NSP_PATH
+
+/* read/write exactly n bytes over a stream fd; 1 = ok, 0 = eof/error.  EpinAnonymOS AF_UNIX
+ * read/write are NON-blocking (return -EAGAIN when the rx buffer is empty / tx buffer full and
+ * the peer is still open), so we retry on EAGAIN with a short yield = blocking emulation.  Only
+ * a real 0 (peer closed / EOF) or a non-EAGAIN error ends the loop.  (TODO: poll()-based wait to
+ * avoid the 2ms poll granularity once long-lived wpa/NM connections need it.) */
+static void nsp_yield(void){ struct timespec ts = { 0, 2000000L }; nanosleep(&ts, NULL); }
+static int nsp_read_full(int fd, void *buf, size_t n)
 {
-	(void)arg;
-	const unsigned char *blob = _binary_hos_init_start;
-	unsigned long len = (unsigned long)(_binary_hos_init_end - _binary_hos_init_start);
-	lkl_sys_mkdir("/sbin", 0755);
-	long fd = lkl_sys_openat(LKL_AT_FDCWD, "/sbin/hos-init",
-				 LKL_O_CREAT | LKL_O_WRONLY | LKL_O_TRUNC, 0755);
-	if (fd < 0) { fprintf(stderr, ">>> lkl: create /sbin/hos-init -> %ld\n", fd); return NULL; }
-	unsigned long off = 0;
-	while (off < len) {
-		long n = lkl_sys_write(fd, (char *)blob + off, len - off);
-		if (n <= 0) { fprintf(stderr, ">>> lkl: write init off=%lu -> %ld\n", off, n);
-			      lkl_sys_close(fd); return NULL; }
-		off += (unsigned long)n;
-	}
-	lkl_sys_close(fd);
-	lkl_sys_chmod("/sbin/hos-init", 0755);
-	fprintf(stderr, ">>> lkl: wrote /sbin/hos-init (%lu bytes); launching as LKL userspace PID...\n", len);
-	/* Launch via the kernel's own run_init_process mechanism (a kernel_thread that kernel_execve's),
-	 * NOT a host-pthread execve (which fails: kernel-thread context has no userspace return path). */
-	int pid = lkl_run_userspace("/sbin/hos-init");
-	if (pid <= 0) {
-		fprintf(stderr, ">>> lkl: lkl_run_userspace failed: %d (launch FAILED)\n", pid);
-		return NULL;
-	}
-	fprintf(stderr, ">>> lkl: hos-init launched as PID %d; waiting for its marker...\n", pid);
-	/* CONFIRM it actually ran: poll the marker it drops in the (shared) tmpfs. Filter- and
-	 * stdio-independent proof that a genuine userspace process exec'd + mounted its rootfs. */
-	for (int i = 0; i < 50; i++) {
-		long mfd = lkl_sys_openat(LKL_AT_FDCWD, "/run/hos-init-ok", LKL_O_RDONLY, 0);
-		if (mfd >= 0) {
-			char buf[128];
-			long n = lkl_sys_read(mfd, buf, sizeof(buf) - 1);
-			lkl_sys_close(mfd);
-			if (n > 0) { buf[n] = 0; if (buf[n-1] == '\n') buf[n-1] = 0; }
-			fprintf(stderr, ">>> lkl: USERSPACE CONFIRMED -- %s\n", n > 0 ? buf : "(marker present)");
-			return NULL;
-		}
-		struct timespec ts = { .tv_sec = 0, .tv_nsec = 100 * 1000 * 1000 };
-		nanosleep(&ts, NULL);
-	}
-	fprintf(stderr, ">>> lkl: hos-init PID %d created but marker never appeared (ran? check)\n", pid);
-	return NULL;
+    size_t got = 0;
+    while (got < n) {
+        long r = read(fd, (char *)buf + got, n - got);
+        if (r > 0) { got += (size_t)r; continue; }
+        if (r < 0 && errno == EAGAIN) { nsp_yield(); continue; }
+        return 0;   /* r == 0 (EOF) or a real error */
+    }
+    return 1;
+}
+static int nsp_write_full(int fd, const void *buf, size_t n)
+{
+    size_t put = 0;
+    while (put < n) {
+        long r = write(fd, (const char *)buf + put, n - put);
+        if (r > 0) { put += (size_t)r; continue; }
+        if (r < 0 && errno == EAGAIN) { nsp_yield(); continue; }
+        return 0;
+    }
+    return 1;
+}
+
+/* M4 diagnostics: the shim can't write files on the laptop (a file write from NM's LD_PRELOAD context
+ * faults), so it ships trace lines here via NSP_LOG.  We accumulate them in this in-memory ring and hand
+ * the whole thing back on NSP_GETTRACE, which the boot-doctor (a safe, separate process) writes to a
+ * terminal-readable file.  Guarded by a mutex — many client threads call NSP_LOG concurrently. */
+#define PROVTRACE_CAP 32768
+static char            g_provtrace[PROVTRACE_CAP];
+static unsigned        g_provtracelen;
+static pthread_mutex_t g_provtracelock = PTHREAD_MUTEX_INITIALIZER;
+static void provtrace_append(const char *s, unsigned n)
+{
+    pthread_mutex_lock(&g_provtracelock);
+    if (g_provtracelen + n + 1 >= PROVTRACE_CAP) {         /* full: drop oldest half */
+        unsigned drop = PROVTRACE_CAP / 2;
+        if (drop < g_provtracelen) { memmove(g_provtrace, g_provtrace + drop, g_provtracelen - drop); g_provtracelen -= drop; }
+        else g_provtracelen = 0;
+    }
+    if (n + 1 < PROVTRACE_CAP) {
+        memcpy(g_provtrace + g_provtracelen, s, n); g_provtracelen += n;
+        g_provtrace[g_provtracelen++] = '\n';
+    }
+    pthread_mutex_unlock(&g_provtracelock);
+}
+
+/* Serve one connected client: a loop of framed RPC requests, each executed against the LKL. */
+static void epin_net_serve_conn(int cs)
+{
+    unsigned char *reqbuf  = malloc(NSP_MAXBUF);
+    unsigned char *respbuf = malloc(NSP_MAXBUF);
+    unsigned char reqaddr[256], respaddr[256];
+    if (!reqbuf || !respbuf) { free(reqbuf); free(respbuf); close(cs); return; }
+    for (;;) {
+        nsp_req rq;
+        if (!nsp_read_full(cs, &rq, sizeof rq)) break;
+        if (rq.buflen > NSP_MAXBUF || rq.addrlen > sizeof reqaddr) break;
+        if (rq.buflen  && !nsp_read_full(cs, reqbuf,  rq.buflen))  break;
+        if (rq.addrlen && !nsp_read_full(cs, reqaddr, rq.addrlen)) break;
+
+        nsp_resp rs; memset(&rs, 0, sizeof rs);
+        long p[6] = {0,0,0,0,0,0};
+        switch (rq.op) {
+        case NSP_SOCKET:
+            rs.ret = lkl_sys_socket(rq.a0, rq.a1, rq.a2);
+            break;
+        case NSP_BIND:
+            p[0]=rq.fd; p[1]=(long)reqaddr; p[2]=rq.addrlen;
+            rs.ret = lkl_syscall(__lkl__NR_bind, p);
+            break;
+        case NSP_CONNECT:
+            p[0]=rq.fd; p[1]=(long)reqaddr; p[2]=rq.addrlen;
+            rs.ret = lkl_syscall(__lkl__NR_connect, p);
+            break;
+        case NSP_SENDTO:
+            p[0]=rq.fd; p[1]=(long)reqbuf; p[2]=rq.buflen; p[3]=rq.a2;
+            p[4]=rq.addrlen?(long)reqaddr:0; p[5]=rq.addrlen;
+            rs.ret = lkl_syscall(__lkl__NR_sendto, p);
+            break;
+        case NSP_RECVFROM: {
+            unsigned maxlen = (unsigned)rq.a0; if (maxlen > NSP_MAXBUF) maxlen = NSP_MAXBUF;
+            unsigned alen = sizeof respaddr;
+            /* Wait up to 5s for readability first, so a missing/expected-empty reply can't block
+             * this client's thread forever (e.g. a client that reads past a netlink dump's end). */
+            struct { int fd; short events; short revents; } pfd = { rq.fd, 1 /*POLLIN*/, 0 };
+            struct { long sec, nsec; } tmo = { 1, 0 };   /* 1s: the shim retries for blocking fds */
+            long pp[6] = { (long)&pfd, 1, (long)&tmo, 0, 8, 0 };
+            long pr = lkl_syscall(__lkl__NR_ppoll, pp);
+            if (pr <= 0) { rs.ret = (pr == 0) ? -11 /*EAGAIN: timed out*/ : pr; break; }
+            /* OR in MSG_TRUNC (0x20): on a netlink SOCK_DGRAM, if the datagram is larger than maxlen the
+             * kernel copies maxlen bytes and DISCARDS the tail — but with MSG_TRUNC recvfrom returns the
+             * TRUE datagram length.  libnl needs that (it PEEKs to size its buffer, then re-reads); without
+             * it, the tail is lost, libnl's dump walker desyncs, never sees NLMSG_DONE, and NM hangs. */
+            p[0]=rq.fd; p[1]=(long)respbuf; p[2]=maxlen; p[3]=rq.a2 | 0x20 /*MSG_TRUNC*/;
+            p[4]=(long)respaddr; p[5]=(long)&alen;
+            rs.ret = lkl_syscall(__lkl__NR_recvfrom, p);
+            /* rs.ret is the TRUE datagram length; respbuf holds only min(true,maxlen) bytes, so send just
+             * that many (fixes an OOB where buflen=rs.ret could exceed respbuf/NSP_MAXBUF). */
+            if (rs.ret > 0) rs.buflen = ((uint32_t)rs.ret < maxlen) ? (uint32_t)rs.ret : maxlen;
+            if (alen <= sizeof respaddr) rs.addrlen = alen;
+            break; }
+        case NSP_SETSOCKOPT:
+            p[0]=rq.fd; p[1]=rq.a0; p[2]=rq.a1; p[3]=(long)reqbuf; p[4]=rq.buflen;
+            rs.ret = lkl_syscall(__lkl__NR_setsockopt, p);
+            break;
+        case NSP_GETSOCKOPT: {
+            unsigned optlen = (unsigned)rq.a2; if (optlen > NSP_MAXBUF) optlen = NSP_MAXBUF;
+            p[0]=rq.fd; p[1]=rq.a0; p[2]=rq.a1; p[3]=(long)respbuf; p[4]=(long)&optlen;
+            rs.ret = lkl_syscall(__lkl__NR_getsockopt, p);
+            if (rs.ret == 0) rs.buflen = optlen;
+            break; }
+        case NSP_GETSOCKNAME: {
+            unsigned alen = sizeof respaddr;
+            p[0]=rq.fd; p[1]=(long)respaddr; p[2]=(long)&alen;
+            rs.ret = lkl_syscall(__lkl__NR_getsockname, p);
+            if (rs.ret == 0 && alen <= sizeof respaddr) rs.addrlen = alen;
+            break; }
+        case NSP_CLOSE:
+            rs.ret = lkl_sys_close(rq.fd);
+            break;
+        case NSP_IOCTL:
+            /* arg struct (e.g. struct ifreq) is in reqbuf; the ioctl reads+writes it in place. */
+            rs.ret = lkl_sys_ioctl(rq.fd, rq.a0, (long)reqbuf);
+            if (rs.ret >= 0 && rq.buflen) { memcpy(respbuf, reqbuf, rq.buflen); rs.buflen = rq.buflen; }
+            break;
+        case NSP_POLL: {
+            struct { int fd; short events; short revents; } pfd = { rq.fd, (short)rq.a0, 0 };
+            struct { long sec, nsec; } tmo = { rq.a1/1000, (long)(rq.a1%1000)*1000000L };
+            p[0]=(long)&pfd; p[1]=1; p[2]=(rq.a1<0)?0:(long)&tmo; p[3]=0; p[4]=8;
+            rs.ret = lkl_syscall(__lkl__NR_ppoll, p);
+            if (rs.ret > 0) rs.ret = pfd.revents;
+            break; }
+        case NSP_SCAN: {
+            long ws = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_DGRAM, 0);
+            int aps = -1;
+            if (ws >= 0) {
+                char ifn[32];
+                if (epin_wifi_bringup(ws, ifn, sizeof ifn))
+                    aps = epin_wifi_scan_core(ws, ifn, (char *)respbuf, NSP_MAXBUF);
+                else { const char *m="ERR wlan not up yet\n"; memcpy(respbuf,m,strlen(m)); }
+                lkl_sys_close(ws);
+            } else { const char *m="ERR lkl socket\n"; memcpy(respbuf,m,strlen(m)); }
+            rs.ret = aps;
+            rs.buflen = (uint32_t)strlen((char *)respbuf);
+            fprintf(stderr, ">>> net-provider: served SCAN (%d AP(s)) to a native client\n", aps);
+            break; }
+        case NSP_LOG:
+            if (rq.buflen >= NSP_MAXBUF) rq.buflen = NSP_MAXBUF - 1;
+            reqbuf[rq.buflen] = 0;
+            fprintf(stderr, ">>> net-provider[client]: %s\n", (char *)reqbuf);
+            provtrace_append((char *)reqbuf, rq.buflen);   /* keep for NSP_GETTRACE (boot-doctor -> file) */
+            rs.ret = 0;
+            break;
+        case NSP_GETTRACE: {                               /* return the accumulated shim trace */
+            pthread_mutex_lock(&g_provtracelock);
+            unsigned n = g_provtracelen < NSP_MAXBUF ? g_provtracelen : NSP_MAXBUF;
+            if (n) memcpy(respbuf, g_provtrace, n);
+            pthread_mutex_unlock(&g_provtracelock);
+            rs.ret = n; rs.buflen = n;
+            break; }
+        default:
+            rs.ret = -38; /* -ENOSYS */
+            break;
+        }
+        if (!nsp_write_full(cs, &rs, sizeof rs)) break;
+        if (rs.buflen  && !nsp_write_full(cs, respbuf,  rs.buflen))  break;
+        if (rs.addrlen && !nsp_write_full(cs, respaddr, rs.addrlen)) break;
+    }
+    free(reqbuf); free(respbuf);
+    close(cs);
+}
+
+static void *epin_net_conn_thread(void *arg)
+{
+    epin_net_serve_conn((int)(intptr_t)arg);
+    return NULL;
+}
+
+static void *epin_net_provider_thread(void *arg)
+{
+    (void)arg;
+    int ls = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (ls < 0) { fprintf(stderr, ">>> net-provider: socket failed (errno %d)\n", errno); return NULL; }
+    struct sockaddr_un sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX;
+    strncpy(sa.sun_path, NSP_PATH, sizeof(sa.sun_path) - 1);
+    unlink(NSP_PATH);
+    if (bind(ls, (struct sockaddr *)&sa, sizeof sa) < 0) {
+        fprintf(stderr, ">>> net-provider: bind %s failed (errno %d)\n", NSP_PATH, errno);
+        return NULL;
+    }
+    if (listen(ls, 8) < 0) {
+        fprintf(stderr, ">>> net-provider: listen failed (errno %d)\n", errno);
+        return NULL;
+    }
+    fprintf(stderr, ">>> net-provider: listening on %s (cap-gated: DEVCLASS_NET, RPC)\n", NSP_PATH);
+
+    static int connCount = 0;
+    for (;;) {
+        int cs = accept(ls, NULL, NULL);
+        if (cs < 0) {
+            struct timespec ts = { .tv_sec = 0, .tv_nsec = 100000000L };
+            nanosleep(&ts, NULL);
+            continue;
+        }
+        fprintf(stderr, ">>> net-provider: client #%d connected (fd %d)\n", ++connCount, cs);
+        /* thread-per-connection so a blocking netlink recv on one client can't stall others */
+        pthread_t th;
+        if (pthread_create(&th, NULL, epin_net_conn_thread, (void *)(intptr_t)cs) == 0)
+            pthread_detach(th);
+        else
+            close(cs);
+    }
+    return NULL;
+}
+
+/* Self-test client (output visible via lkl-boot's own stderr): connect to OUR provider socket
+ * and run a SCAN.  Proves the AF_UNIX provider + protocol + serve-via-LKL work in-environment,
+ * independent of the external hos-wifi process (isolates provider bugs from client/spawn bugs). */
+static void *epin_net_selftest_thread(void *arg)
+{
+    (void)arg;
+    int s = -1;
+    for (int i = 0; i < 600; i++) {                 /* retry ~60s (provider + wlan0 come up async) */
+        s = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (s >= 0) {
+            struct sockaddr_un sa;
+            memset(&sa, 0, sizeof sa);
+            sa.sun_family = AF_UNIX;
+            strncpy(sa.sun_path, NET_PROVIDER_PATH, sizeof(sa.sun_path) - 1);
+            if (connect(s, (struct sockaddr *)&sa, sizeof sa) == 0) break;
+            close(s);
+        }
+        s = -1;
+        struct timespec ts = { .tv_sec = 0, .tv_nsec = 100000000L };
+        nanosleep(&ts, NULL);
+    }
+    if (s < 0) { fprintf(stderr, ">>> net-selftest: could not connect to provider\n"); return NULL; }
+    /* speak the H1b binary RPC: one NSP_SCAN request */
+    nsp_req rq; memset(&rq, 0, sizeof rq); rq.op = NSP_SCAN;
+    nsp_resp rs; static char buf[4096];
+    if (!nsp_write_full(s, &rq, sizeof rq) || !nsp_read_full(s, &rs, sizeof rs)) {
+        fprintf(stderr, ">>> net-selftest: RPC framing error\n"); close(s); return NULL;
+    }
+    unsigned n = rs.buflen < sizeof(buf) - 1 ? rs.buflen : sizeof(buf) - 1;
+    if (n && !nsp_read_full(s, buf, n)) n = 0;
+    buf[n] = 0;
+    close(s);
+    fprintf(stderr, ">>> net-selftest: NSP_SCAN round-trip OK (ret=%ld AP(s))\n", (long)rs.ret);
+    return NULL;
 }
 
 int main(int argc, char **argv)
@@ -598,12 +918,21 @@ int main(int argc, char **argv)
     pthread_create(&tkbd, NULL, epin_input_reader, &g_kbdReader);
     pthread_create(&tmse, NULL, epin_input_reader, &g_mseReader);
 
-    /* bring wlan0 up once iwlwifi's async probe creates it */
+    /* H1: start the cap-gated network provider EARLY (before the blocking boot scan) so its socket
+     * exists ASAP — the native hos-wifi client retries against it, and the provider brings wlan0 up
+     * on demand.  A native client reaches wlan0 only through this DEVCLASS_NET-gated AF_UNIX socket. */
+    pthread_t tnet;
+    pthread_create(&tnet, NULL, epin_net_provider_thread, NULL);
+    /* self-test disabled: its NSP_SCAN contended with wpa for the radio/provider on real hw.
+     * pthread_create(&tselftest, NULL, epin_net_selftest_thread, NULL); */
+
+    /* bring wlan0 up once iwlwifi's async probe creates it + prove the scan/RX path (H0) */
     epin_wifi_report();
 
-    /* NetworkManager Stage 0: prove the LKL can exec a real userspace process (hos-init). */
-    pthread_t tinit;
-    pthread_create(&tinit, NULL, epin_lkl_init_thread, NULL);
+    /* NOTE: the old "run hos-init as an LKL userspace process" Stage 0 is REMOVED — proven
+     * impossible: LKL has no cpu user-mode (arch/lkl start_thread() is an empty stub), so it
+     * cannot execute a separate ELF's code.  NetworkManager will run NATIVE on EpinAnonymOS
+     * with its network syscalls routed into this LKL via a cap-gated provider (hijack). */
 
     fprintf(stderr, ">>> LKL resident.\n");
     for (;;) {

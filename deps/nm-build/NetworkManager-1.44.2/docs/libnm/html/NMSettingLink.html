@@ -1,0 +1,287 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingLink: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingIP6Config.html" title="NMSettingIP6Config">
+<link rel="next" href="NMSettingLoopback.html" title="NMSettingLoopback">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingLink.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingIP6Config.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingLoopback.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingLink"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingLink.top_of_page"></a>NMSettingLink</span></h2>
+<p>NMSettingLink — Contains properties related to the link</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingLink.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingLink.html#nm-setting-link-new" title="nm_setting_link_new ()">nm_setting_link_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingLink.html#nm-setting-link-get-tx-queue-length" title="nm_setting_link_get_tx_queue_length ()">nm_setting_link_get_tx_queue_length</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingLink.html#nm-setting-link-get-gso-max-size" title="nm_setting_link_get_gso_max_size ()">nm_setting_link_get_gso_max_size</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingLink.html#nm-setting-link-get-gso-max-segments" title="nm_setting_link_get_gso_max_segments ()">nm_setting_link_get_gso_max_segments</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingLink.html#nm-setting-link-get-gro-max-size" title="nm_setting_link_get_gro_max_size ()">nm_setting_link_get_gro_max_size</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingLink.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingLink.html#NM-SETTING-LINK-SETTING-NAME:CAPS" title="NM_SETTING_LINK_SETTING_NAME">NM_SETTING_LINK_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingLink.html#NM-SETTING-LINK-TX-QUEUE-LENGTH:CAPS" title="NM_SETTING_LINK_TX_QUEUE_LENGTH">NM_SETTING_LINK_TX_QUEUE_LENGTH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingLink.html#NM-SETTING-LINK-GSO-MAX-SIZE:CAPS" title="NM_SETTING_LINK_GSO_MAX_SIZE">NM_SETTING_LINK_GSO_MAX_SIZE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingLink.html#NM-SETTING-LINK-GSO-MAX-SEGMENTS:CAPS" title="NM_SETTING_LINK_GSO_MAX_SEGMENTS">NM_SETTING_LINK_GSO_MAX_SEGMENTS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingLink.html#NM-SETTING-LINK-GRO-MAX-SIZE:CAPS" title="NM_SETTING_LINK_GRO_MAX_SIZE">NM_SETTING_LINK_GRO_MAX_SIZE</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingLink.includes"></a><h2>Includes</h2>
+<pre class="synopsis">#include &lt;nm-setting-link.h&gt;
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingLink.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMSettingLink.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-link-new"></a><h3>nm_setting_link_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_link_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-link-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.44</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-link-get-tx-queue-length"></a><h3>nm_setting_link_get_tx_queue_length ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+nm_setting_link_get_tx_queue_length (<em class="parameter"><code><a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“tx-queue-length”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-link-get-tx-queue-length.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-link-get-tx-queue-length.returns"></a><h4>Returns</h4>
+<p> the 'tx-queue-length' property value</p>
+</div>
+<p class="since">Since: 1.44</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-link-get-gso-max-size"></a><h3>nm_setting_link_get_gso_max_size ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+nm_setting_link_get_gso_max_size (<em class="parameter"><code><a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“gso-max-size”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-link-get-gso-max-size.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-link-get-gso-max-size.returns"></a><h4>Returns</h4>
+<p> the 'gso-max-size' property value</p>
+</div>
+<p class="since">Since: 1.44</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-link-get-gso-max-segments"></a><h3>nm_setting_link_get_gso_max_segments ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+nm_setting_link_get_gso_max_segments (<em class="parameter"><code><a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“gso-max-segments”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-link-get-gso-max-segments.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-link-get-gso-max-segments.returns"></a><h4>Returns</h4>
+<p> the 'gso-max-segments' property value</p>
+</div>
+<p class="since">Since: 1.44</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-link-get-gro-max-size"></a><h3>nm_setting_link_get_gro_max_size ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gint64"><span class="returnvalue">gint64</span></a>
+nm_setting_link_get_gro_max_size (<em class="parameter"><code><a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a> *setting</code></em>);</pre>
+<p>Returns the value contained in the <span class="type">“gro-max-size”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-setting-link-get-gro-max-size.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingLink.html" title="NMSettingLink"><span class="type">NMSettingLink</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-link-get-gro-max-size.returns"></a><h4>Returns</h4>
+<p> the 'gro-max-size' property value</p>
+</div>
+<p class="since">Since: 1.44</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingLink.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-LINK-SETTING-NAME:CAPS"></a><h3>NM_SETTING_LINK_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_LINK_SETTING_NAME "link"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-LINK-TX-QUEUE-LENGTH:CAPS"></a><h3>NM_SETTING_LINK_TX_QUEUE_LENGTH</h3>
+<pre class="programlisting">#define NM_SETTING_LINK_TX_QUEUE_LENGTH  "tx-queue-length"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-LINK-GSO-MAX-SIZE:CAPS"></a><h3>NM_SETTING_LINK_GSO_MAX_SIZE</h3>
+<pre class="programlisting">#define NM_SETTING_LINK_GSO_MAX_SIZE     "gso-max-size"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-LINK-GSO-MAX-SEGMENTS:CAPS"></a><h3>NM_SETTING_LINK_GSO_MAX_SEGMENTS</h3>
+<pre class="programlisting">#define NM_SETTING_LINK_GSO_MAX_SEGMENTS "gso-max-segments"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-LINK-GRO-MAX-SIZE:CAPS"></a><h3>NM_SETTING_LINK_GRO_MAX_SIZE</h3>
+<pre class="programlisting">#define NM_SETTING_LINK_GRO_MAX_SIZE     "gro-max-size"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

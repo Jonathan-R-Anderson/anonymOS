@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Team">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Team.top_of_page">org.freedesktop.NetworkManager.Device.Team</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Team.top_of_page"><primary sortas=".Device.Team">org.freedesktop.NetworkManager.Device.Team</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Team</refname>    <refpurpose>Teaming Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Team.HwAddress">HwAddress</link>  readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Carrier">Carrier</link>    readable   b
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Slaves">Slaves</link>     readable   ao
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Config">Config</link>     readable   s
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Team">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Team">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Team.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Team.HwAddress"><primary sortas=".Device.Team:HwAddress">org.freedesktop.NetworkManager.Device.Team:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+Hardware address of the device.
+n
+DEPRECATED. Use the "HwAddress" property in "org.freedesktop.NetworkManager.Device" instead which exists since version NetworkManager 1.24.0.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Carrier">
+  <title>The "Carrier" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Carrier"><primary sortas=".Device.Team:Carrier">org.freedesktop.NetworkManager.Device.Team:Carrier</primary></indexterm>
+<programlisting>
+Carrier  readable   b
+</programlisting>
+<para>
+Indicates whether the physical carrier is found (e.g. whether a cable is
+plugged in or not).
+</para><para>
+DEPRECATED: check for the "lower-up" flag in the "InterfaceFlags"
+property on the "org.freedesktop.NetworkManager.Device" interface.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Slaves">
+  <title>The "Slaves" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Slaves"><primary sortas=".Device.Team:Slaves">org.freedesktop.NetworkManager.Device.Team:Slaves</primary></indexterm>
+<programlisting>
+Slaves  readable   ao
+</programlisting>
+<para>
+DEPRECATED. Use the "Ports" property in
+"org.freedesktop.NetworkManager.Device" instead which exists since
+version NetworkManager 1.34.0.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Config">
+  <title>The "Config" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Team.Config"><primary sortas=".Device.Team:Config">org.freedesktop.NetworkManager.Device.Team:Config</primary></indexterm>
+<programlisting>
+Config  readable   s
+</programlisting>
+<para>
+The JSON configuration currently applied on the device.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

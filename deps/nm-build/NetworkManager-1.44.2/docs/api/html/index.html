@@ -1,0 +1,478 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NetworkManager Reference Manual: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<meta name="description" content="This manual is the reference documentation for NetworkManager, the standard Linux network management service. It is intended for system administrators and integrators who need to understand the capabilities of NetworkManager, its configuration options, command line tools and the D-Bus API for programmatic control of the service. The end users NetworkManager should instead refer to respective documentation of their desktop environment of choice. The application developers who prefer not to use the D-Bus API directly can use the libnm library shipped with NetworkManager or its bindings to a higher level language such as Python, Ruby or Vala via GObject introspection.">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="next" href="manpages.html" title="Part I. Manual Pages">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<div class="book">
+<div class="titlepage">
+<div>
+<div><table class="navigation" id="top" width="100%" cellpadding="2" cellspacing="0"><tr><th valign="middle"><p class="title">NetworkManager Reference Manual</p></th></tr></table></div>
+<div><p class="releaseinfo">
+      for NetworkManager 1.44.2
+
+      The latest version of this documentation can be found on-line at
+      <a class="ulink" href="https://networkmanager.dev/docs/api/latest/" target="_top">https://networkmanager.dev/docs/api/latest/</a>.
+    </p></div>
+<div><p class="copyright">Copyright © 2012, 2013, 2014, 2015, 2016, 2017, 2018 The NetworkManager Authors</p></div>
+<div><div class="legalnotice">
+<a name="id-1.1.4"></a><p>
+	Permission is granted to copy, distribute and/or modify this
+	document under the terms of the <em class="citetitle">GNU Free
+	Documentation License</em>, Version 1.1 or any later
+	version published by the Free Software Foundation with no
+	Invariant Sections, no Front-Cover Texts, and no Back-Cover
+	Texts. You may obtain a copy of the <em class="citetitle">GNU Free
+	Documentation License</em> from the Free Software
+	Foundation by visiting <a class="ulink" href="http://www.fsf.org" target="_top">their Web site</a> or by writing
+	to:
+
+	</p>
+<div class="address"><p><br>
+	  The Free Software Foundation, Inc.,<br>
+	  <span class="street">51 Franklin Street</span> - Fifth Floor,<br>
+	  <span class="city">Boston</span>, <span class="state">MA</span> <span class="postcode">02110-1301</span>,<br>
+	  <span class="country">USA</span><br>
+	</p></div>
+<p>
+      </p>
+</div></div>
+<div><div class="abstract">
+<p>
+        This manual is the reference documentation for NetworkManager, the standard
+        Linux network management service. It is intended for system administrators and
+        integrators who need to understand the capabilities of NetworkManager, its
+        configuration options, command line tools and the D-Bus API for programmatic
+        control of the service.
+      </p>
+<p>
+        The end users NetworkManager should instead refer to respective documentation
+        of their desktop environment of choice.
+      </p>
+<p>
+        The application developers who prefer not to use the D-Bus API directly can use the
+        <a class="ulink" href="https://developer.gnome.org/libnm/stable/" target="_top">libnm</a> library
+        shipped with NetworkManager or its bindings to a higher level language such as
+        Python, Ruby or Vala via GObject introspection.
+      </p>
+</div></div>
+</div>
+<hr>
+</div>
+<div class="toc"><dl class="toc">
+<dt><span class="part"><a href="manpages.html">I. Manual Pages</a></span></dt>
+<dd><dl>
+<dt>
+<span class="refentrytitle"><a href="NetworkManager.html">NetworkManager</a></span><span class="refpurpose"> — network management daemon</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="NetworkManager.conf.html">NetworkManager.conf</a></span><span class="refpurpose"> — NetworkManager configuration file</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="NetworkManager-dispatcher.html">NetworkManager-dispatcher</a></span><span class="refpurpose"> — Dispatch user scripts for NetworkManager</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="NetworkManager-wait-online.service.html">NetworkManager-wait-online.service</a></span><span class="refpurpose"> — Wait for the network to come online</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nmcli.html">nmcli</a></span><span class="refpurpose"> — command-line tool for controlling NetworkManager</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nmcli-examples.html">nmcli-examples</a></span><span class="refpurpose"> — usage examples of nmcli</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nmtui.html">nmtui</a></span><span class="refpurpose"> — Text User Interface for controlling NetworkManager</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nm-settings-dbus.html">nm-settings-dbus</a></span><span class="refpurpose"> — Description of settings and properties of NetworkManager connection profiles on the D-Bus API</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nm-settings-nmcli.html">nm-settings-nmcli</a></span><span class="refpurpose"> — Description of settings and properties of NetworkManager connection profiles for nmcli</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nm-settings-keyfile.html">nm-settings-keyfile</a></span><span class="refpurpose"> — Description of <span class="emphasis"><em>keyfile</em></span> settings plugin</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nm-settings-ifcfg-rh.html">nm-settings-ifcfg-rh</a></span><span class="refpurpose"> — Description of <span class="emphasis"><em>ifcfg-rh</em></span> settings plugin</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nm-online.html">nm-online</a></span><span class="refpurpose"> — ask NetworkManager whether the network is connected</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nm-initrd-generator.html">nm-initrd-generator</a></span><span class="refpurpose"> — early boot NetworkManager configuration generator</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nm-cloud-setup.html">nm-cloud-setup</a></span><span class="refpurpose"> — Overview of Automatic Network Configuration in Cloud</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="nm-openvswitch.html">nm-openvswitch</a></span><span class="refpurpose"> — overview of NetworkManager Open vSwitch support</span>
+</dt>
+</dl></dd>
+<dt><span class="part"><a href="ref-settings.html">II. Network Configuration Setting Specification</a></span></dt>
+<dd><dl>
+<dt><span class="chapter"><a href="ch01.html">Configuration Settings</a></span></dt>
+<dd><dl>
+<dt>
+<span class="refentrytitle"><a href="settings-connection.html">connection</a></span><span class="refpurpose"> — General Connection Profile Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-6lowpan.html">6lowpan</a></span><span class="refpurpose"> — 6LoWPAN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-1x.html">802-1x</a></span><span class="refpurpose"> — IEEE 802.1x Authentication Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-adsl.html">adsl</a></span><span class="refpurpose"> — ADSL Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bluetooth.html">bluetooth</a></span><span class="refpurpose"> — Bluetooth Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bond.html">bond</a></span><span class="refpurpose"> — Bonding Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bridge.html">bridge</a></span><span class="refpurpose"> — Bridging Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bridge-port.html">bridge-port</a></span><span class="refpurpose"> — Bridge Port Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-cdma.html">cdma</a></span><span class="refpurpose"> — CDMA-based Mobile Broadband Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-dcb.html">dcb</a></span><span class="refpurpose"> — Data Center Bridging Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-dummy.html">dummy</a></span><span class="refpurpose"> — Dummy Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ethtool.html">ethtool</a></span><span class="refpurpose"> — Ethtool Ethernet Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-generic.html">generic</a></span><span class="refpurpose"> — Generic Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-gsm.html">gsm</a></span><span class="refpurpose"> — GSM-based Mobile Broadband Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-infiniband.html">infiniband</a></span><span class="refpurpose"> — Infiniband Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ipv4.html">ipv4</a></span><span class="refpurpose"> — IPv4 Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ipv6.html">ipv6</a></span><span class="refpurpose"> — IPv6 Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ip-tunnel.html">ip-tunnel</a></span><span class="refpurpose"> — IP Tunneling Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-macsec.html">macsec</a></span><span class="refpurpose"> — MACSec Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-macvlan.html">macvlan</a></span><span class="refpurpose"> — MAC VLAN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-match.html">match</a></span><span class="refpurpose"> — Match settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-11-olpc-mesh.html">802-11-olpc-mesh</a></span><span class="refpurpose"> — OLPC Wireless Mesh Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-bridge.html">ovs-bridge</a></span><span class="refpurpose"> — OvsBridge Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-dpdk.html">ovs-dpdk</a></span><span class="refpurpose"> — OvsDpdk Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-interface.html">ovs-interface</a></span><span class="refpurpose"> — Open vSwitch Interface Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-patch.html">ovs-patch</a></span><span class="refpurpose"> — OvsPatch Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-port.html">ovs-port</a></span><span class="refpurpose"> — OvsPort Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ppp.html">ppp</a></span><span class="refpurpose"> — Point-to-Point Protocol Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-pppoe.html">pppoe</a></span><span class="refpurpose"> — PPP-over-Ethernet Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-proxy.html">proxy</a></span><span class="refpurpose"> — WWW Proxy Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-serial.html">serial</a></span><span class="refpurpose"> — Serial Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-sriov.html">sriov</a></span><span class="refpurpose"> — SR-IOV settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-tc.html">tc</a></span><span class="refpurpose"> — Linux Traffic Control Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-team.html">team</a></span><span class="refpurpose"> — Teaming Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-team-port.html">team-port</a></span><span class="refpurpose"> — Team Port Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-tun.html">tun</a></span><span class="refpurpose"> — Tunnel Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-user.html">user</a></span><span class="refpurpose"> — General User Profile Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-vlan.html">vlan</a></span><span class="refpurpose"> — VLAN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-vpn.html">vpn</a></span><span class="refpurpose"> — VPN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-vrf.html">vrf</a></span><span class="refpurpose"> — VRF settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-vxlan.html">vxlan</a></span><span class="refpurpose"> — VXLAN Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-wifi-p2p.html">wifi-p2p</a></span><span class="refpurpose"> — Wi-Fi P2P Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-wimax.html">wimax</a></span><span class="refpurpose"> — WiMax Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-3-ethernet.html">802-3-ethernet</a></span><span class="refpurpose"> — Wired Ethernet Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-wireguard.html">wireguard</a></span><span class="refpurpose"> — WireGuard Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-11-wireless.html">802-11-wireless</a></span><span class="refpurpose"> — Wi-Fi Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-802-11-wireless-security.html">802-11-wireless-security</a></span><span class="refpurpose"> — Wi-Fi Security Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-wpan.html">wpan</a></span><span class="refpurpose"> — IEEE 802.15.4 (WPAN) MAC Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-bond-port.html">bond-port</a></span><span class="refpurpose"> — Bond Port Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-hostname.html">hostname</a></span><span class="refpurpose"> — Hostname settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-link.html">link</a></span><span class="refpurpose"> — Link settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-loopback.html">loopback</a></span><span class="refpurpose"> — Loopback Link Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-external-ids.html">ovs-external-ids</a></span><span class="refpurpose"> — OVS External IDs Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-ovs-other-config.html">ovs-other-config</a></span><span class="refpurpose"> — OVS Other Config Settings</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="settings-veth.html">veth</a></span><span class="refpurpose"> — Veth Settings</span>
+</dt>
+</dl></dd>
+<dt><span class="chapter"><a href="secrets-flags.html">Secret flag types</a></span></dt>
+</dl></dd>
+<dt><span class="part"><a href="spec.html">III. D-Bus API Reference</a></span></dt>
+<dd><dl>
+<dt><span class="chapter"><a href="ref-dbus-manager.html">The <code class="literal">/org/freedesktop/NetworkManager</code> object</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.html">org.freedesktop.NetworkManager</a></span><span class="refpurpose"> — Connection Manager.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-agent-manager.html">The <code class="literal">/org/freedesktop/NetworkManager/AgentManager</code> object</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.AgentManager.html">org.freedesktop.NetworkManager.AgentManager</a></span><span class="refpurpose"> — Secret Agent Manager.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-dns-manager.html">The <code class="literal">/org/freedesktop/NetworkManager/DnsManager</code> object</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.DnsManager.html">org.freedesktop.NetworkManager.DnsManager</a></span><span class="refpurpose"> — DNS Configuration State.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-settings-manager.html">The <code class="literal">/org/freedesktop/NetworkManager/Settings</code> object</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Settings.html">org.freedesktop.NetworkManager.Settings</a></span><span class="refpurpose"> — Connection Settings Profile Manager.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-settings.html">The <code class="literal">/org/freedesktop/NetworkManager/Settings/*</code> objects</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Settings.Connection.html">org.freedesktop.NetworkManager.Settings.Connection</a></span><span class="refpurpose"> — Connection Settings Profile.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-devices.html">The <code class="literal">/org/freedesktop/NetworkManager/Devices/*</code> objects</a></span></dt>
+<dd><dl>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.html">org.freedesktop.NetworkManager.Device</a></span><span class="refpurpose"> — Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Statistics.html">org.freedesktop.NetworkManager.Device.Statistics</a></span><span class="refpurpose"> — Device Statistic Counters.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Adsl.html">org.freedesktop.NetworkManager.Device.Adsl</a></span><span class="refpurpose"> — ADSL Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Bluetooth.html">org.freedesktop.NetworkManager.Device.Bluetooth</a></span><span class="refpurpose"> — Bluetooth Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Bond.html">org.freedesktop.NetworkManager.Device.Bond</a></span><span class="refpurpose"> — Bonding Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Bridge.html">org.freedesktop.NetworkManager.Device.Bridge</a></span><span class="refpurpose"> — Bridging Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Dummy.html">org.freedesktop.NetworkManager.Device.Dummy</a></span><span class="refpurpose"> — Dummy Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Generic.html">org.freedesktop.NetworkManager.Device.Generic</a></span><span class="refpurpose"> — Unrecognized Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.IPTunnel.html">org.freedesktop.NetworkManager.Device.IPTunnel</a></span><span class="refpurpose"> — IP Tunneling Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Infiniband.html">org.freedesktop.NetworkManager.Device.Infiniband</a></span><span class="refpurpose"> — Infiniband Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Loopback.html">org.freedesktop.NetworkManager.Device.Loopback</a></span><span class="refpurpose"> — Loopback Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Lowpan.html">org.freedesktop.NetworkManager.Device.Lowpan</a></span><span class="refpurpose"> — 6LoWPAN Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Macsec.html">org.freedesktop.NetworkManager.Device.Macsec</a></span><span class="refpurpose"> — MACSec Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Macvlan.html">org.freedesktop.NetworkManager.Device.Macvlan</a></span><span class="refpurpose"> — MAC VLAN Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Modem.html">org.freedesktop.NetworkManager.Device.Modem</a></span><span class="refpurpose"> — Modem Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.OlpcMesh.html">org.freedesktop.NetworkManager.Device.OlpcMesh</a></span><span class="refpurpose"> — OLPC Wireless Mesh Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.OvsBridge.html">org.freedesktop.NetworkManager.Device.OvsBridge</a></span><span class="refpurpose"> — OvsBridge Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.OvsInterface.html">org.freedesktop.NetworkManager.Device.OvsInterface</a></span><span class="refpurpose"> — OvsInterface Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.OvsPort.html">org.freedesktop.NetworkManager.Device.OvsPort</a></span><span class="refpurpose"> — OvsPort Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Ppp.html">org.freedesktop.NetworkManager.Device.Ppp</a></span><span class="refpurpose"> — PPP Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Team.html">org.freedesktop.NetworkManager.Device.Team</a></span><span class="refpurpose"> — Teaming Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Tun.html">org.freedesktop.NetworkManager.Device.Tun</a></span><span class="refpurpose"> — Userspace Tunneling Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Veth.html">org.freedesktop.NetworkManager.Device.Veth</a></span><span class="refpurpose"> — Virtual Ethernet Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Vlan.html">org.freedesktop.NetworkManager.Device.Vlan</a></span><span class="refpurpose"> — Virtual LAN Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Vrf.html">org.freedesktop.NetworkManager.Device.Vrf</a></span><span class="refpurpose"> — VRF Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Vxlan.html">org.freedesktop.NetworkManager.Device.Vxlan</a></span><span class="refpurpose"> — VXLAN Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.WifiP2P.html">org.freedesktop.NetworkManager.Device.WifiP2P</a></span><span class="refpurpose"> — Wi-Fi P2P Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.WireGuard.html">org.freedesktop.NetworkManager.Device.WireGuard</a></span><span class="refpurpose"> — WireGuard Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Wired.html">org.freedesktop.NetworkManager.Device.Wired</a></span><span class="refpurpose"> — Wired Ethernet Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Wireless.html">org.freedesktop.NetworkManager.Device.Wireless</a></span><span class="refpurpose"> — Wi-Fi Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Device.Wpan.html">org.freedesktop.NetworkManager.Device.Wpan</a></span><span class="refpurpose"> — IEEE 802.15.4 (WPAN) MAC Layer Device.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.PPP.html">org.freedesktop.NetworkManager.PPP</a></span><span class="refpurpose"> — Helper interface for a PPP plugin.</span>
+</dt>
+</dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-active-connections.html">The <code class="literal">/org/freedesktop/NetworkManager/ActiveConnection/*</code> objects</a></span></dt>
+<dd><dl>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Connection.Active.html">org.freedesktop.NetworkManager.Connection.Active</a></span><span class="refpurpose"> — Active Connection.</span>
+</dt>
+<dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.VPN.Connection.html">org.freedesktop.NetworkManager.VPN.Connection</a></span><span class="refpurpose"> — Active VPN Connection.</span>
+</dt>
+</dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-ip4-configs.html">The <code class="literal">/org/freedesktop/NetworkManager/IP4Config/*</code> objects</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.IP4Config.html">org.freedesktop.NetworkManager.IP4Config</a></span><span class="refpurpose"> — IPv4 Configuration Set.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-ip6-configs.html">The <code class="literal">/org/freedesktop/NetworkManager/IP6Config/*</code> objects</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.IP6Config.html">org.freedesktop.NetworkManager.IP6Config</a></span><span class="refpurpose"> — IPv6 Configuration Set.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-dhcp4-configs.html">The <code class="literal">/org/freedesktop/NetworkManager/DHCP4Config/*</code> objects</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.DHCP4Config.html">org.freedesktop.NetworkManager.DHCP4Config</a></span><span class="refpurpose"> — IPv4 DHCP Client State.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-dhcp6-configs.html">The <code class="literal">/org/freedesktop/NetworkManager/DHCP4Config/*</code> objects</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.DHCP6Config.html">org.freedesktop.NetworkManager.DHCP6Config</a></span><span class="refpurpose"> — IPv6 DHCP Client State.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-access-points.html">The <code class="literal">/org/freedesktop/NetworkManager/AccessPoint/*</code> objects</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.AccessPoint.html">org.freedesktop.NetworkManager.AccessPoint</a></span><span class="refpurpose"> — Wi-Fi Access Point.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-wifi-p2p-peers.html">The <code class="literal">/org.freedesktop.NetworkManager.WifiP2PPeer/*</code> objects</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.WifiP2PPeer.html">org.freedesktop.NetworkManager.WifiP2PPeer</a></span><span class="refpurpose"> — Wi-Fi P2P Peer.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="ref-dbus-checkpoint.html">The <code class="literal">/org/freedesktop/NetworkManager/Checkpoint/*</code> objects</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.Checkpoint.html">org.freedesktop.NetworkManager.Checkpoint</a></span><span class="refpurpose"> — Configuration and State Snapshot.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="dbus-types.html">Types</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="nm-dbus-types.html">NetworkManager D-Bus API Types</a></span><span class="refpurpose"></span>
+</dt></dl></dd>
+</dl></dd>
+<dt><span class="part"><a href="secret-agents.html">IV. Secret Agent D-Bus API Reference</a></span></dt>
+<dd><dl>
+<dt><span class="chapter"><a href="dbus-secret-agent.html">Secret agents</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.SecretAgent.html">org.freedesktop.NetworkManager.SecretAgent</a></span><span class="refpurpose"> — User Secret Agent.</span>
+</dt></dl></dd>
+</dl></dd>
+<dt><span class="part"><a href="vpn-plugins.html">V. VPN Plugin D-Bus API Reference</a></span></dt>
+<dd><dl>
+<dt><span class="chapter"><a href="dbus-vpn-plugin.html">VPN services</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="gdbus-org.freedesktop.NetworkManager.VPN.Plugin.html">org.freedesktop.NetworkManager.VPN.Plugin</a></span><span class="refpurpose"> — VPN Service.</span>
+</dt></dl></dd>
+<dt><span class="chapter"><a href="dbus-vpn-types.html">Types</a></span></dt>
+<dd><dl><dt>
+<span class="refentrytitle"><a href="nm-vpn-dbus-types.html">VPN Plugin D-Bus API Types</a></span><span class="refpurpose"></span>
+</dt></dl></dd>
+</dl></dd>
+<dt><span class="index"><a href="ix01.html">Index</a></span></dt>
+<dt><span class="appendix"><a href="license.html">A. License</a></span></dt>
+</dl></div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

@@ -1,0 +1,54 @@
+libdbus_1_la-dbus-auth.lo: dbus-auth.c ../config.h dbus-auth.h \
+  ../dbus/dbus-macros.h ../dbus/dbus-errors.h ../dbus/dbus-types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  ../dbus/dbus-arch-deps.h ../dbus/dbus-protocol.h ../dbus/dbus-string.h \
+  ../dbus/dbus-memory.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  ../dbus/dbus-sysdeps.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  ../dbus/dbus-file.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h \
+  dbus-string.h dbus-list.h ../dbus/dbus-internals.h \
+  ../dbus/dbus-threads-internal.h ../dbus/dbus-threads.h \
+  dbus-internals.h dbus-keyring.h ../dbus/dbus-credentials.h dbus-sha.h \
+  dbus-protocol.h dbus-credentials.h
+../config.h:
+dbus-auth.h:
+../dbus/dbus-macros.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-protocol.h:
+../dbus/dbus-string.h:
+../dbus/dbus-memory.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+../dbus/dbus-sysdeps.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+../dbus/dbus-file.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h:
+dbus-string.h:
+dbus-list.h:
+../dbus/dbus-internals.h:
+../dbus/dbus-threads-internal.h:
+../dbus/dbus-threads.h:
+dbus-internals.h:
+dbus-keyring.h:
+../dbus/dbus-credentials.h:
+dbus-sha.h:
+dbus-protocol.h:
+dbus-credentials.h:

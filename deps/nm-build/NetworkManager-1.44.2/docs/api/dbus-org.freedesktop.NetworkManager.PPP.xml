@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.PPP">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-PPP.top_of_page">org.freedesktop.NetworkManager.PPP</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-PPP.top_of_page"><primary sortas="PPPManager">org.freedesktop.NetworkManager.PPP</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.PPP</refname>    <refpurpose>Helper interface for a PPP plugin.</refpurpose>  </refnamediv>  <refsynopsisdiv role="synopsis">
+    <title role="synopsis.title">Methods</title>
+    <synopsis>
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-PPP.NeedSecrets">NeedSecrets</link>  (OUT s     username,
+              OUT s     password);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIp4Config">SetIp4Config</link> (IN  a{sv} config);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIp6Config">SetIp6Config</link> (IN  a{sv} config);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-PPP.SetState">SetState</link>     (IN  u     state);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIfindex">SetIfindex</link>   (IN  i     ifindex);
+</synopsis>
+  </refsynopsisdiv>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-PPP">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-methods-org.freedesktop.NetworkManager.PPP">
+  <title role="details.title">Method Details</title>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-PPP.NeedSecrets">
+  <title>The NeedSecrets() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-PPP.NeedSecrets"><primary sortas="PPPManager.NeedSecrets">org.freedesktop.NetworkManager.PPP.NeedSecrets()</primary></indexterm>
+<programlisting>
+NeedSecrets (OUT s username,
+             OUT s password);
+</programlisting>
+<para>
+</para><para>
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>OUT s <parameter>username</parameter></literal>:</term>
+  <listitem><para>
+</para><para>
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>OUT s <parameter>password</parameter></literal>:</term>
+  <listitem><para>
+</para><para>
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIp4Config">
+  <title>The SetIp4Config() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIp4Config"><primary sortas="PPPManager.SetIp4Config">org.freedesktop.NetworkManager.PPP.SetIp4Config()</primary></indexterm>
+<programlisting>
+SetIp4Config (IN  a{sv} config);
+</programlisting>
+<para>
+</para><para>
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>config</parameter></literal>:</term>
+  <listitem><para>
+</para><para>
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIp6Config">
+  <title>The SetIp6Config() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIp6Config"><primary sortas="PPPManager.SetIp6Config">org.freedesktop.NetworkManager.PPP.SetIp6Config()</primary></indexterm>
+<programlisting>
+SetIp6Config (IN  a{sv} config);
+</programlisting>
+<para>
+</para><para>
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>config</parameter></literal>:</term>
+  <listitem><para>
+</para><para>
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-PPP.SetState">
+  <title>The SetState() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-PPP.SetState"><primary sortas="PPPManager.SetState">org.freedesktop.NetworkManager.PPP.SetState()</primary></indexterm>
+<programlisting>
+SetState (IN  u state);
+</programlisting>
+<para>
+</para><para>
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN u <parameter>state</parameter></literal>:</term>
+  <listitem><para>
+</para><para>
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIfindex">
+  <title>The SetIfindex() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-PPP.SetIfindex"><primary sortas="PPPManager.SetIfindex">org.freedesktop.NetworkManager.PPP.SetIfindex()</primary></indexterm>
+<programlisting>
+SetIfindex (IN  i ifindex);
+</programlisting>
+<para>
+</para><para>
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN i <parameter>ifindex</parameter></literal>:</term>
+  <listitem><para>
+</para><para>
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+</refsect1>
+</refentry>
+

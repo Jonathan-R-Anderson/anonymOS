@@ -1,0 +1,180 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>nm-initrd-generator: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="manpages.html" title="Part I. Manual Pages">
+<link rel="prev" href="nm-online.html" title="nm-online">
+<link rel="next" href="nm-cloud-setup.html" title="nm-cloud-setup">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts"></td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="manpages.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="nm-online.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="nm-cloud-setup.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="nm-initrd-generator"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle">nm-initrd-generator</span></h2>
+<p>nm-initrd-generator — early boot NetworkManager configuration generator</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsynopsisdiv">
+<a name="synopsis"></a><h2>Synopsis</h2>
+<div class="cmdsynopsis"><p><code class="command">nm-initrd-generator</code>  [<em class="replaceable"><code>OPTIONS</code></em>...]  --  [<em class="replaceable"><code>CMDLINE</code></em>...]</p></div>
+</div>
+<div class="refsect1">
+<a name="description"></a><h2>Description</h2>
+<p><span class="command"><strong>nm-initrd-generator</strong></span> scans the command line for options
+    relevant to network configuration and creates configuration files for an early
+    instance of NetworkManager run from the initial ramdisk during early boot.</p>
+</div>
+<div class="refsect1">
+<a name="options"></a><h2>Options</h2>
+<div class="variablelist"><table border="0" class="variablelist">
+<colgroup>
+<col align="left" valign="top">
+<col>
+</colgroup>
+<tbody>
+<tr>
+<td><p><span class="term">
+            <code class="option">-c</code>  |   <code class="option">--connections-dir</code>  
+            <em class="replaceable"><code>path</code></em> 
+        </span></p></td>
+<td><p>Output connection directory.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">
+            <code class="option">-p</code>  |   <code class="option">--persistent-connections-dir</code>  
+            <em class="replaceable"><code>path</code></em> 
+        </span></p></td>
+<td><p>Persistent connection directory. If it exists, rd.neednet will not
+          cause a default connection to be generated in absence of other options.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">
+            <code class="option">-i</code>  |   <code class="option">--initrd-data-dir</code>  
+            <em class="replaceable"><code>path</code></em> 
+        </span></p></td>
+<td><p>Output directory for initrd data (e.g. hostname).</p></td>
+</tr>
+<tr>
+<td><p><span class="term">
+            <code class="option">-d</code>  |   <code class="option">--sysfs-dir</code>  
+            <em class="replaceable"><code>path</code></em> 
+        </span></p></td>
+<td><p>The sysfs mount point.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">
+            <code class="option">-r</code>  |   <code class="option">--run-config-dir</code>  
+            <em class="replaceable"><code>path</code></em> 
+        </span></p></td>
+<td><p>Output directory for config files.</p></td>
+</tr>
+<tr>
+<td><p><span class="term">
+            <code class="option">-s</code>  |   <code class="option">--stdout</code>  
+        </span></p></td>
+<td><p>Dump connections to standard output. Useful for debugging.</p></td>
+</tr>
+<tr>
+<td><p><span class="term"><em class="replaceable"><code>CMDLINE</code></em></span></p></td>
+<td>
+<p>The options that appear on the kernel command line. The following options are recognized:</p>
+<table border="0" summary="Simple list" class="simplelist">
+<tr><td><code class="option">ip</code></td></tr>
+<tr><td><code class="option">rd.route</code></td></tr>
+<tr><td><code class="option">bridge</code></td></tr>
+<tr><td><code class="option">bond</code></td></tr>
+<tr><td><code class="option">team</code></td></tr>
+<tr><td><code class="option">vlan</code></td></tr>
+<tr><td><code class="option">ib.pkey</code></td></tr>
+<tr><td><code class="option">bootdev</code></td></tr>
+<tr><td><code class="option">nameserver</code></td></tr>
+<tr><td><code class="option">net.ifnames</code></td></tr>
+<tr><td><code class="option">rd.peerdns</code></td></tr>
+<tr><td><code class="option">rd.iscsi.ibft</code></td></tr>
+<tr><td><code class="option">rd.bootif</code></td></tr>
+<tr><td><code class="option">rd.neednet</code></td></tr>
+<tr><td><code class="option">rd.ethtool</code></td></tr>
+<tr><td><code class="option">rd.net.timeout.dhcp</code></td></tr>
+<tr><td><code class="option">rd.net.dhcp.retry</code></td></tr>
+<tr><td><code class="option">rd.net.dhcp.vendor-class</code></td></tr>
+<tr><td><code class="option">rd.net.timeout.carrier</code></td></tr>
+<tr><td><code class="option">rd.znet</code></td></tr>
+<tr><td><code class="option">rd.znet_ifname</code></td></tr>
+<tr><td><code class="option">BOOTIF</code></td></tr>
+</table>
+<p>Please consult the <span class="citerefentry"><span class="refentrytitle">dracut.cmdline</span>(7)</span>
+          manual for the documentation of the precise format of the values supported.</p>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="differences_from_network_legacy"></a><h2>Differences from the network-legacy dracut module</h2>
+<p><span class="command"><strong>nm-initrd-generator</strong></span> generates a set of
+    connections that are then configured by the NetworkManager
+    instance running in the initrd. There are some differences in
+    behavior compared to the network-legacy dracut module:</p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>When an interface is configured with a static address
+        and a gateway, the network-legacy module waits that the
+        gateway responds to arping requests before proceeding, while
+        NetworkManager doesn't.</p></li>
+<li class="listitem"><p>network-legacy configures interfaces one by one in the
+        order in which they are announced by udev. If multiple
+        interfaces specify a hostname (from command line or from
+        DHCP), the one from the last interface activated wins. With
+        NetworkManager, hostnames from command line have higher
+        precedence over ones from DHCP, and the last that appears in
+        the command line wins.</p></li>
+<li class="listitem"><p>NetworkManager supports the
+        <code class="option">ib.pkey</code>=<em class="replaceable"><code>PARENT</code></em>.<em class="replaceable"><code>PKEY</code></em>
+        argument to set up an Infiniband partition on IPoIB parent
+        device <em class="replaceable"><code>PARENT</code></em> using the specified
+        partition key <em class="replaceable"><code>PKEY</code></em>. The partition
+        key must be in hexadecimal notation without leading "0x", for
+        example "ib.pkey=ib0.8004".
+        </p></li>
+<li class="listitem"><p>NetworkManager supports the 
+        <code class="option">rd.ethtool</code>=<em class="replaceable"><code>INTERFACE</code></em>:<em class="replaceable"><code>AUTONEG</code></em>:<em class="replaceable"><code>SPEED</code></em> 
+        kernel command line option to set up ethtool NIC configuration parameters 
+        <em class="replaceable"><code>AUTONEG</code></em> and <em class="replaceable"><code>SPEED</code></em>. 
+        The <em class="replaceable"><code>INTERFACE</code></em> being configured must be 
+        specified, and the other parameters are optional and can be left blank. 
+        When <em class="replaceable"><code>SPEED</code></em> is set, duplex mode is 
+        automatically set to 'full'. <em class="replaceable"><code>INTERFACE</code></em> 
+        accepts string values, <em class="replaceable"><code>AUTONEG</code></em> accepts 
+        boolean values (true and false / on or off / 0 or 1), and 
+        <em class="replaceable"><code>SPEED</code></em> accepts positive integer values.
+        </p></li>
+</ul></div>
+</div>
+<div class="refsect1">
+<a name="exit_status"></a><h2>Exit Status</h2>
+<p><span class="command"><strong>nm-initrd-generator</strong></span> exits with status 0. It ignores unrecognized
+    options and prints an error message if it encounters a malformed option.</p>
+</div>
+<div class="refsect1">
+<a name="see_also"></a><h2>See Also</h2>
+<p><span class="citerefentry"><span class="refentrytitle">dracut.cmdline</span>(7)</span>,
+    <a class="link" href="NetworkManager.html" title="NetworkManager"><span class="citerefentry"><span class="refentrytitle">NetworkManager</span>(8)</span></a>.</p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

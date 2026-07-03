@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.DHCP6Config">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-DHCP6Config.top_of_page">org.freedesktop.NetworkManager.DHCP6Config</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-DHCP6Config.top_of_page"><primary sortas="Dhcp6Config">org.freedesktop.NetworkManager.DHCP6Config</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.DHCP6Config</refname>    <refpurpose>IPv6 DHCP Client State.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-DHCP6Config.Options">Options</link>  readable   a{sv}
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-DHCP6Config">
+  <title role="desc.title">Description</title>
+  <para>
+Options and configuration returned by the IPv6 DHCP server.
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.DHCP6Config">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-DHCP6Config.Options">
+  <title>The "Options" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-DHCP6Config.Options"><primary sortas="Dhcp6Config:Options">org.freedesktop.NetworkManager.DHCP6Config:Options</primary></indexterm>
+<programlisting>
+Options  readable   a{sv}
+</programlisting>
+<para>
+Configuration options returned by a DHCP server, if any.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

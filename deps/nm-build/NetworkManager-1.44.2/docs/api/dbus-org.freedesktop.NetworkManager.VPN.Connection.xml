@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.VPN.Connection">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-VPN-Connection.top_of_page">org.freedesktop.NetworkManager.VPN.Connection</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-VPN-Connection.top_of_page"><primary sortas="VpnConnection">org.freedesktop.NetworkManager.VPN.Connection</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.VPN.Connection</refname>    <refpurpose>Active VPN Connection.</refpurpose>  </refnamediv>  <refsect1 role="signal_proto">
+    <title role="signal_proto.title">Signals</title>
+    <synopsis>
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-VPN-Connection.VpnStateChanged">VpnStateChanged</link> (u state,
+                 u reason);
+</synopsis>
+  </refsect1>
+  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-VPN-Connection.VpnState">VpnState</link>  readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-VPN-Connection.Banner">Banner</link>    readable   s
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-VPN-Connection">
+  <title role="desc.title">Description</title>
+  <para>
+Represents an active connection to a Virtual Private Network.
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-signals-org.freedesktop.NetworkManager.VPN.Connection">
+  <title role="details.title">Signal Details</title>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-VPN-Connection.VpnStateChanged">
+  <title>The "VpnStateChanged" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-VPN-Connection.VpnStateChanged"><primary sortas="VpnConnection::VpnStateChanged">org.freedesktop.NetworkManager.VPN.Connection::VpnStateChanged</primary></indexterm>
+<programlisting>
+VpnStateChanged (u state,
+                 u reason);
+</programlisting>
+<para>
+Emitted when the state of the VPN connection has changed.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>u <parameter>state</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMVpnConnectionState">NMVpnConnectionState</link>) The new state of the VPN connection.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>u <parameter>reason</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMActiveConnectionStateReason">NMActiveConnectionStateReason</link>) Reason code describing the change to the new state.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.VPN.Connection">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-VPN-Connection.VpnState">
+  <title>The "VpnState" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-VPN-Connection.VpnState"><primary sortas="VpnConnection:VpnState">org.freedesktop.NetworkManager.VPN.Connection:VpnState</primary></indexterm>
+<programlisting>
+VpnState  readable   u
+</programlisting>
+<para>
+The VPN-specific state of the connection.
+</para><para>
+Returns: <link linkend="NMVpnConnectionState">NMVpnConnectionState</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-VPN-Connection.Banner">
+  <title>The "Banner" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-VPN-Connection.Banner"><primary sortas="VpnConnection:Banner">org.freedesktop.NetworkManager.VPN.Connection:Banner</primary></indexterm>
+<programlisting>
+Banner  readable   s
+</programlisting>
+<para>
+The banner string of the VPN connection.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

@@ -1,0 +1,241 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMObject: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch02.html" title="Client Object API Reference">
+<link rel="prev" href="NMSecretAgentOld.html" title="NMSecretAgentOld">
+<link rel="next" href="libnm-nm-errors.html" title="nm-errors">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMObject.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMObject.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMObject.properties" class="shortcut">Properties</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch02.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSecretAgentOld.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="libnm-nm-errors.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMObject"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMObject.top_of_page"></a>NMObject</span></h2>
+<p>NMObject</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMObject.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMObject.html#nm-object-get-path" title="nm_object_get_path ()">nm_object_get_path</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">struct <a class="link" href="NMClient.html" title="NMClient"><span class="returnvalue">_NMClient</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMObject.html#nm-object-get-client" title="nm_object_get_client ()">nm_object_get_client</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMObject.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type">
+<a class="link" href="NMClient.html" title="NMClient"><span class="type">NMClient</span></a> *</td>
+<td class="property_name"><a class="link" href="NMObject.html#NMObject--client" title="The “client” property">client</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMObject.html#NMObject--path" title="The “path” property">path</a></td>
+<td class="property_flags">Read</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMObject.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMObject.html#NM-OBJECT-PATH:CAPS" title="NM_OBJECT_PATH">NM_OBJECT_PATH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMObject.html#NM-OBJECT-CLIENT:CAPS" title="NM_OBJECT_CLIENT">NM_OBJECT_CLIENT</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMObject.html#NMObject-struct" title="NMObject">NMObject</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMObject.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> NMObject
+        <span class="lineart">├──</span> <a class="link" href="NMAccessPoint.html" title="NMAccessPoint">NMAccessPoint</a>
+        <span class="lineart">├──</span> <a class="link" href="NMActiveConnection.html" title="NMActiveConnection">NMActiveConnection</a>
+        <span class="lineart">├──</span> <a class="link" href="NMCheckpoint.html" title="NMCheckpoint">NMCheckpoint</a>
+        <span class="lineart">├──</span> <a class="link" href="NMDevice.html" title="NMDevice">NMDevice</a>
+        <span class="lineart">├──</span> <a class="link" href="NMDhcpConfig.html" title="NMDhcpConfig">NMDhcpConfig</a>
+        <span class="lineart">├──</span> <a class="link" href="NMIPConfig.html" title="NMIPConfig">NMIPConfig</a>
+        <span class="lineart">├──</span> <a class="link" href="NMRemoteConnection.html" title="NMRemoteConnection">NMRemoteConnection</a>
+        <span class="lineart">├──</span> <a class="link" href="NMWifiP2PPeer.html" title="NMWifiP2PPeer">NMWifiP2PPeer</a>
+        <span class="lineart">╰──</span> <a class="link" href="NMWimaxNsp.html" title="NMWimaxNsp">NMWimaxNsp</a>
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMObject.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMObject.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-object-get-path"></a><h3>nm_object_get_path ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_object_get_path (<em class="parameter"><code><a class="link" href="NMObject.html" title="NMObject"><span class="type">NMObject</span></a> *object</code></em>);</pre>
+<p>Gets the DBus path of the <a class="link" href="NMObject.html" title="NMObject"><span class="type">NMObject</span></a>.</p>
+<div class="refsect3">
+<a name="nm-object-get-path.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>object</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMObject.html" title="NMObject"><span class="type">NMObject</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-object-get-path.returns"></a><h4>Returns</h4>
+<p> the object's path. This is the internal string used by the
+object, and must not be modified.</p>
+<p>Note that the D-Bus path of an NMObject never changes, even
+if the instance gets removed from the cache. To find out
+whether the object is still alive/cached, check <a class="link" href="NMObject.html#nm-object-get-client" title="nm_object_get_client ()"><code class="function">nm_object_get_client()</code></a>.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-object-get-client"></a><h3>nm_object_get_client ()</h3>
+<pre class="programlisting">struct <a class="link" href="NMClient.html" title="NMClient"><span class="returnvalue">_NMClient</span></a> *
+nm_object_get_client (<em class="parameter"><code><a class="link" href="NMObject.html" title="NMObject"><span class="type">NMObject</span></a> *object</code></em>);</pre>
+<p>Returns the <a class="link" href="NMClient.html" title="NMClient"><span class="type">NMClient</span></a> instance in which object is cached.
+Also, if the object got removed from the client cached,
+this returns <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. So it can be used to check whether the
+object is still alive.</p>
+<div class="refsect3">
+<a name="nm-object-get-client.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>object</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMObject.html" title="NMObject"><span class="type">NMObject</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-object-get-client.returns"></a><h4>Returns</h4>
+<p>the <a class="link" href="NMClient.html" title="NMClient"><span class="type">NMClient</span></a> cache in which the
+object can be found, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if the object is no longer
+cached. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.24</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMObject.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-OBJECT-PATH:CAPS"></a><h3>NM_OBJECT_PATH</h3>
+<pre class="programlisting">#define NM_OBJECT_PATH   "path"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-OBJECT-CLIENT:CAPS"></a><h3>NM_OBJECT_CLIENT</h3>
+<pre class="programlisting">#define NM_OBJECT_CLIENT "client"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMObject-struct"></a><h3>NMObject</h3>
+<pre class="programlisting">typedef struct _NMObject NMObject;</pre>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMObject.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMObject--client"></a><h3>The <code class="literal">“client”</code> property</h3>
+<pre class="programlisting">  “client”                   <a class="link" href="NMClient.html" title="NMClient"><span class="type">NMClient</span></a> *</pre>
+<p>The NMClient instance as returned by <a class="link" href="NMObject.html#nm-object-get-client" title="nm_object_get_client ()"><code class="function">nm_object_get_client()</code></a>.</p>
+<p>When an NMObject gets removed from the NMClient cache,
+the NMObject:path property stays unchanged, but this client
+instance gets reset to <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. You can use this property to
+track removal of the object from the cache.</p>
+<p>Owner: NMObject</p>
+<p>Flags: Read</p>
+<p class="since">Since: 1.34</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMObject--path"></a><h3>The <code class="literal">“path”</code> property</h3>
+<pre class="programlisting">  “path”                     <span class="type">char</span> *</pre>
+<p>The D-Bus object path.</p>
+<p>The D-Bus path of an object instance never changes, even if the object
+gets removed from the cache. To see whether the object is still in the
+cache, check NMObject:client.</p>
+<p>Owner: NMObject</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

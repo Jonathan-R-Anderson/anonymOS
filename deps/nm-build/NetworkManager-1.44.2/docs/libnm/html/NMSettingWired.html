@@ -1,0 +1,1350 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingWired: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingWimax.html" title="NMSettingWimax">
+<link rel="next" href="NMSettingWireGuard.html" title="NMSettingWireGuard">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingWired.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingWired.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingWimax.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingWireGuard.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingWired"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingWired.top_of_page"></a>NMSettingWired</span></h2>
+<p>NMSettingWired — Describes connection properties for Ethernet-based networks</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingWired.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-new" title="nm_setting_wired_new ()">nm_setting_wired_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-port" title="nm_setting_wired_get_port ()">nm_setting_wired_get_port</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-speed" title="nm_setting_wired_get_speed ()">nm_setting_wired_get_speed</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-duplex" title="nm_setting_wired_get_duplex ()">nm_setting_wired_get_duplex</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-auto-negotiate" title="nm_setting_wired_get_auto_negotiate ()">nm_setting_wired_get_auto_negotiate</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-mac-address" title="nm_setting_wired_get_mac_address ()">nm_setting_wired_get_mac_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-cloned-mac-address" title="nm_setting_wired_get_cloned_mac_address ()">nm_setting_wired_get_cloned_mac_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-accept-all-mac-addresses" title="nm_setting_wired_get_accept_all_mac_addresses ()">nm_setting_wired_get_accept_all_mac_addresses</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-generate-mac-address-mask" title="nm_setting_wired_get_generate_mac_address_mask ()">nm_setting_wired_get_generate_mac_address_mask</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-mac-address-blacklist" title="nm_setting_wired_get_mac_address_blacklist ()">nm_setting_wired_get_mac_address_blacklist</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-num-mac-blacklist-items" title="nm_setting_wired_get_num_mac_blacklist_items ()">nm_setting_wired_get_num_mac_blacklist_items</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-mac-blacklist-item" title="nm_setting_wired_get_mac_blacklist_item ()">nm_setting_wired_get_mac_blacklist_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-add-mac-blacklist-item" title="nm_setting_wired_add_mac_blacklist_item ()">nm_setting_wired_add_mac_blacklist_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-remove-mac-blacklist-item" title="nm_setting_wired_remove_mac_blacklist_item ()">nm_setting_wired_remove_mac_blacklist_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-remove-mac-blacklist-item-by-value" title="nm_setting_wired_remove_mac_blacklist_item_by_value ()">nm_setting_wired_remove_mac_blacklist_item_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-clear-mac-blacklist-items" title="nm_setting_wired_clear_mac_blacklist_items ()">nm_setting_wired_clear_mac_blacklist_items</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-mtu" title="nm_setting_wired_get_mtu ()">nm_setting_wired_get_mtu</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-s390-subchannels" title="nm_setting_wired_get_s390_subchannels ()">nm_setting_wired_get_s390_subchannels</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-s390-nettype" title="nm_setting_wired_get_s390_nettype ()">nm_setting_wired_get_s390_nettype</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-num-s390-options" title="nm_setting_wired_get_num_s390_options ()">nm_setting_wired_get_num_s390_options</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-s390-option" title="nm_setting_wired_get_s390_option ()">nm_setting_wired_get_s390_option</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-s390-option-by-key" title="nm_setting_wired_get_s390_option_by_key ()">nm_setting_wired_get_s390_option_by_key</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-add-s390-option" title="nm_setting_wired_add_s390_option ()">nm_setting_wired_add_s390_option</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-remove-s390-option" title="nm_setting_wired_remove_s390_option ()">nm_setting_wired_remove_s390_option</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> **
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-valid-s390-options" title="nm_setting_wired_get_valid_s390_options ()">nm_setting_wired_get_valid_s390_options</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWired.html#NMSettingWiredWakeOnLan" title="enum NMSettingWiredWakeOnLan"><span class="returnvalue">NMSettingWiredWakeOnLan</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-wake-on-lan" title="nm_setting_wired_get_wake_on_lan ()">nm_setting_wired_get_wake_on_lan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-wake-on-lan-password" title="nm_setting_wired_get_wake_on_lan_password ()">nm_setting_wired_get_wake_on_lan_password</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingWired.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-SETTING-NAME:CAPS" title="NM_SETTING_WIRED_SETTING_NAME">NM_SETTING_WIRED_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NMSettingWiredWakeOnLan" title="enum NMSettingWiredWakeOnLan">NMSettingWiredWakeOnLan</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-PORT:CAPS" title="NM_SETTING_WIRED_PORT">NM_SETTING_WIRED_PORT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-SPEED:CAPS" title="NM_SETTING_WIRED_SPEED">NM_SETTING_WIRED_SPEED</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-DUPLEX:CAPS" title="NM_SETTING_WIRED_DUPLEX">NM_SETTING_WIRED_DUPLEX</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-AUTO-NEGOTIATE:CAPS" title="NM_SETTING_WIRED_AUTO_NEGOTIATE">NM_SETTING_WIRED_AUTO_NEGOTIATE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-MAC-ADDRESS:CAPS" title="NM_SETTING_WIRED_MAC_ADDRESS">NM_SETTING_WIRED_MAC_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-CLONED-MAC-ADDRESS:CAPS" title="NM_SETTING_WIRED_CLONED_MAC_ADDRESS">NM_SETTING_WIRED_CLONED_MAC_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-GENERATE-MAC-ADDRESS-MASK:CAPS" title="NM_SETTING_WIRED_GENERATE_MAC_ADDRESS_MASK">NM_SETTING_WIRED_GENERATE_MAC_ADDRESS_MASK</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-MAC-ADDRESS-BLACKLIST:CAPS" title="NM_SETTING_WIRED_MAC_ADDRESS_BLACKLIST">NM_SETTING_WIRED_MAC_ADDRESS_BLACKLIST</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-MTU:CAPS" title="NM_SETTING_WIRED_MTU">NM_SETTING_WIRED_MTU</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-S390-SUBCHANNELS:CAPS" title="NM_SETTING_WIRED_S390_SUBCHANNELS">NM_SETTING_WIRED_S390_SUBCHANNELS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-S390-NETTYPE:CAPS" title="NM_SETTING_WIRED_S390_NETTYPE">NM_SETTING_WIRED_S390_NETTYPE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-S390-OPTIONS:CAPS" title="NM_SETTING_WIRED_S390_OPTIONS">NM_SETTING_WIRED_S390_OPTIONS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-WAKE-ON-LAN:CAPS" title="NM_SETTING_WIRED_WAKE_ON_LAN">NM_SETTING_WIRED_WAKE_ON_LAN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-WAKE-ON-LAN-PASSWORD:CAPS" title="NM_SETTING_WIRED_WAKE_ON_LAN_PASSWORD">NM_SETTING_WIRED_WAKE_ON_LAN_PASSWORD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-ACCEPT-ALL-MAC-ADDRESSES:CAPS" title="NM_SETTING_WIRED_ACCEPT_ALL_MAC_ADDRESSES">NM_SETTING_WIRED_ACCEPT_ALL_MAC_ADDRESSES</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingWired.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GFlags</a>
+    <span class="lineart">╰──</span> NMSettingWiredWakeOnLan
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingWired.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for connection to Ethernet networks.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingWired.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-wired-new"></a><h3>nm_setting_wired_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_wired_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-port"></a><h3>nm_setting_wired_get_port ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_port (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-port.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-port.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“port”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-speed"></a><h3>nm_setting_wired_get_speed ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wired_get_speed (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-speed.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-speed.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“speed”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-duplex"></a><h3>nm_setting_wired_get_duplex ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_duplex (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-duplex.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-duplex.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“duplex”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-auto-negotiate"></a><h3>nm_setting_wired_get_auto_negotiate ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wired_get_auto_negotiate (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-auto-negotiate.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-auto-negotiate.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“auto-negotiate”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-mac-address"></a><h3>nm_setting_wired_get_mac_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_mac_address (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-mac-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-mac-address.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mac-address”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-cloned-mac-address"></a><h3>nm_setting_wired_get_cloned_mac_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_cloned_mac_address
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-cloned-mac-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-cloned-mac-address.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“cloned-mac-address”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-accept-all-mac-addresses"></a><h3>nm_setting_wired_get_accept_all_mac_addresses ()</h3>
+<pre class="programlisting"><a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+nm_setting_wired_get_accept_all_mac_addresses
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-accept-all-mac-addresses.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-accept-all-mac-addresses.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“accept-all-mac-addresses”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.32</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-generate-mac-address-mask"></a><h3>nm_setting_wired_get_generate_mac_address_mask ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_generate_mac_address_mask
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-generate-mac-address-mask.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-generate-mac-address-mask.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“generate-mac-address-mask”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-mac-address-blacklist"></a><h3>nm_setting_wired_get_mac_address_blacklist ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_wired_get_mac_address_blacklist
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-mac-address-blacklist.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-mac-address-blacklist.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mac-address-blacklist”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-num-mac-blacklist-items"></a><h3>nm_setting_wired_get_num_mac_blacklist_items ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wired_get_num_mac_blacklist_items
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-num-mac-blacklist-items.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-num-mac-blacklist-items.returns"></a><h4>Returns</h4>
+<p> the number of blacklisted MAC addresses</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-mac-blacklist-item"></a><h3>nm_setting_wired_get_mac_blacklist_item ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_mac_blacklist_item
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-mac-blacklist-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>the zero-based index of the MAC address entry</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-mac-blacklist-item.returns"></a><h4>Returns</h4>
+<p> the blacklisted MAC address string (hex-digits-and-colons notation)
+at index <em class="parameter"><code>idx</code></em>
+</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-add-mac-blacklist-item"></a><h3>nm_setting_wired_add_mac_blacklist_item ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wired_add_mac_blacklist_item
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *mac</code></em>);</pre>
+<p>Adds a new MAC address to the <span class="type">“mac-address-blacklist”</span> property.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-add-mac-blacklist-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>mac</p></td>
+<td class="parameter_description"><p>the MAC address string (hex-digits-and-colons notation) to blacklist</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-add-mac-blacklist-item.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the MAC address was added; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if the MAC address
+is invalid or was already present</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-remove-mac-blacklist-item"></a><h3>nm_setting_wired_remove_mac_blacklist_item ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_wired_remove_mac_blacklist_item
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> idx</code></em>);</pre>
+<p>Removes the MAC address at index <em class="parameter"><code>idx</code></em>
+ from the blacklist.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-remove-mac-blacklist-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the MAC address</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-remove-mac-blacklist-item-by-value"></a><h3>nm_setting_wired_remove_mac_blacklist_item_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wired_remove_mac_blacklist_item_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *mac</code></em>);</pre>
+<p>Removes the MAC address <em class="parameter"><code>mac</code></em>
+ from the blacklist.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-remove-mac-blacklist-item-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>mac</p></td>
+<td class="parameter_description"><p>the MAC address string (hex-digits-and-colons notation) to remove from
+the blacklist</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-remove-mac-blacklist-item-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the MAC address was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-clear-mac-blacklist-items"></a><h3>nm_setting_wired_clear_mac_blacklist_items ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_wired_clear_mac_blacklist_items
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<p>Removes all blacklisted MAC addresses.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-clear-mac-blacklist-items.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-mtu"></a><h3>nm_setting_wired_get_mtu ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wired_get_mtu (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wired-get-mtu.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-mtu.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mtu”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-s390-subchannels"></a><h3>nm_setting_wired_get_s390_subchannels ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_wired_get_s390_subchannels (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<p>Return the list of s390 subchannels that identify the device that this
+connection is applicable to.  The connection should only be used in
+conjunction with that device.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-get-s390-subchannels.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-s390-subchannels.returns"></a><h4>Returns</h4>
+<p>array of strings, each specifying
+one subchannel the s390 device uses to communicate to the host. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> utf8]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-s390-nettype"></a><h3>nm_setting_wired_get_s390_nettype ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_s390_nettype (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<p>Returns the s390 device type this connection should apply to.  Will be one
+of 'qeth', 'lcs', or 'ctc'.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-get-s390-nettype.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-s390-nettype.returns"></a><h4>Returns</h4>
+<p> the s390 device type</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-num-s390-options"></a><h3>nm_setting_wired_get_num_s390_options ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wired_get_num_s390_options (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<p>Returns the number of s390-specific options that should be set for this
+device when it is activated.  This can be used to retrieve each s390
+option individually using <a class="link" href="NMSettingWired.html#nm-setting-wired-get-s390-option" title="nm_setting_wired_get_s390_option ()"><code class="function">nm_setting_wired_get_s390_option()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-get-num-s390-options.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-num-s390-options.returns"></a><h4>Returns</h4>
+<p> the number of s390-specific device options</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-s390-option"></a><h3>nm_setting_wired_get_s390_option ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wired_get_s390_option (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> idx</code></em>,
+                                  <em class="parameter"><code>const <span class="type">char</span> **out_key</code></em>,
+                                  <em class="parameter"><code>const <span class="type">char</span> **out_value</code></em>);</pre>
+<p>Given an index, return the value of the s390 option at that index.  indexes
+are *not* guaranteed to be static across modifications to options done by
+<a class="link" href="NMSettingWired.html#nm-setting-wired-add-s390-option" title="nm_setting_wired_add_s390_option ()"><code class="function">nm_setting_wired_add_s390_option()</code></a> and <a class="link" href="NMSettingWired.html#nm-setting-wired-remove-s390-option" title="nm_setting_wired_remove_s390_option ()"><code class="function">nm_setting_wired_remove_s390_option()</code></a>,
+and should not be used to refer to options except for short periods of time
+such as during option iteration.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-get-s390-option.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index of the desired option, from 0 to
+<a class="link" href="NMSettingWired.html#nm-setting-wired-get-num-s390-options" title="nm_setting_wired_get_num_s390_options ()"><code class="function">nm_setting_wired_get_num_s390_options()</code></a> - 1</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_key</p></td>
+<td class="parameter_description"><p>on return, the key
+name of the s390 specific option; this value is owned by the setting and
+should not be modified. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_value</p></td>
+<td class="parameter_description"><p>on return, the value
+of the key of the s390 specific option; this value is owned by the setting
+and should not be modified. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-s390-option.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> on success if the index was valid and an option was found,
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if the index was invalid (ie, greater than the number of options
+currently held by the setting)</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-s390-option-by-key"></a><h3>nm_setting_wired_get_s390_option_by_key ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_s390_option_by_key
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *key</code></em>);</pre>
+<p>Returns the value associated with the s390-specific option specified by
+<em class="parameter"><code>key</code></em>
+, if it exists.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-get-s390-option-by-key.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>the key for which to retrieve the value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-s390-option-by-key.returns"></a><h4>Returns</h4>
+<p> the value, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if the key/value pair was never added to the
+setting; the value is owned by the setting and must not be modified</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-add-s390-option"></a><h3>nm_setting_wired_add_s390_option ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wired_add_s390_option (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>,
+                                  <em class="parameter"><code>const <span class="type">char</span> *key</code></em>,
+                                  <em class="parameter"><code>const <span class="type">char</span> *value</code></em>);</pre>
+<p>Add an option to the table. If the key already exists, the value gets
+replaced.</p>
+<p>Before 1.32, the function would assert that the key is valid. Since then,
+an invalid key gets silently added but renders the profile as invalid.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-add-s390-option.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>key name for the option</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>value</p></td>
+<td class="parameter_description"><p>value for the option</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-add-s390-option.returns"></a><h4>Returns</h4>
+<p> since 1.32 this always returns <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-remove-s390-option"></a><h3>nm_setting_wired_remove_s390_option ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wired_remove_s390_option (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>,
+                                     <em class="parameter"><code>const <span class="type">char</span> *key</code></em>);</pre>
+<p>Remove the s390-specific option referenced by <em class="parameter"><code>key</code></em>
+ from the internal option
+list.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-remove-s390-option.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>key name for the option to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-remove-s390-option.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the option was found and removed from the internal option
+list, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-valid-s390-options"></a><h3>nm_setting_wired_get_valid_s390_options ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> **
+nm_setting_wired_get_valid_s390_options
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<p>Returns a list of valid s390 options.</p>
+<p>The <em class="parameter"><code>setting</code></em>
+ argument is unused and <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> may be passed instead.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-get-valid-s390-options.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a>. This argument is unused
+and you may pass <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-valid-s390-options.returns"></a><h4>Returns</h4>
+<p>a <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated array of strings of valid s390 options. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-wake-on-lan"></a><h3>nm_setting_wired_get_wake_on_lan ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWired.html#NMSettingWiredWakeOnLan" title="enum NMSettingWiredWakeOnLan"><span class="returnvalue">NMSettingWiredWakeOnLan</span></a>
+nm_setting_wired_get_wake_on_lan (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<p>Returns the Wake-on-LAN options enabled for the connection</p>
+<div class="refsect3">
+<a name="nm-setting-wired-get-wake-on-lan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-wake-on-lan.returns"></a><h4>Returns</h4>
+<p> the Wake-on-LAN options</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wired-get-wake-on-lan-password"></a><h3>nm_setting_wired_get_wake_on_lan_password ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wired_get_wake_on_lan_password
+                               (<em class="parameter"><code><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> *setting</code></em>);</pre>
+<p>Returns the Wake-on-LAN password. This only applies to
+<a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-WAKE-ON-LAN-MAGIC:CAPS"><code class="literal">NM_SETTING_WIRED_WAKE_ON_LAN_MAGIC</code></a>.</p>
+<div class="refsect3">
+<a name="nm-setting-wired-get-wake-on-lan-password.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wired-get-wake-on-lan-password.returns"></a><h4>Returns</h4>
+<p> the Wake-on-LAN setting password, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if there is no password.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingWired.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-SETTING-NAME:CAPS"></a><h3>NM_SETTING_WIRED_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_SETTING_NAME "802-3-ethernet"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingWiredWakeOnLan"></a><h3>enum NMSettingWiredWakeOnLan</h3>
+<p>Options for <span class="type">“wake-on-lan”</span>. Note that not all options
+are supported by all devices.</p>
+<div class="refsect3">
+<a name="NMSettingWiredWakeOnLan.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-NONE:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_NONE</p></td>
+<td class="enum_member_description">
+<p>Wake-on-LAN disabled</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-PHY:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_PHY</p></td>
+<td class="enum_member_description">
+<p>Wake on PHY activity</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-UNICAST:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_UNICAST</p></td>
+<td class="enum_member_description">
+<p>Wake on unicast messages</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-MULTICAST:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_MULTICAST</p></td>
+<td class="enum_member_description">
+<p>Wake on multicast messages</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-BROADCAST:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_BROADCAST</p></td>
+<td class="enum_member_description">
+<p>Wake on broadcast messages</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-ARP:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_ARP</p></td>
+<td class="enum_member_description">
+<p>Wake on ARP</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-MAGIC:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_MAGIC</p></td>
+<td class="enum_member_description">
+<p>Wake on magic packet</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-ALL:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_ALL</p></td>
+<td class="enum_member_description">
+<p>Wake on all events. This does not
+include the exclusive flags <em class="parameter"><code>NM_SETTING_WIRED_WAKE_ON_LAN_DEFAULT</code></em>
+ or
+<em class="parameter"><code>NM_SETTING_WIRED_WAKE_ON_LAN_IGNORE</code></em>
+.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-DEFAULT:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>Use the default value</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-IGNORE:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_IGNORE</p></td>
+<td class="enum_member_description">
+<p>Don't change configured settings</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRED-WAKE-ON-LAN-EXCLUSIVE-FLAGS:CAPS"></a>NM_SETTING_WIRED_WAKE_ON_LAN_EXCLUSIVE_FLAGS</p></td>
+<td class="enum_member_description">
+<p>Mask of flags that are
+incompatible with other flags</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-PORT:CAPS"></a><h3>NM_SETTING_WIRED_PORT</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_PORT                      "port"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-SPEED:CAPS"></a><h3>NM_SETTING_WIRED_SPEED</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_SPEED                     "speed"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-DUPLEX:CAPS"></a><h3>NM_SETTING_WIRED_DUPLEX</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_DUPLEX                    "duplex"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-AUTO-NEGOTIATE:CAPS"></a><h3>NM_SETTING_WIRED_AUTO_NEGOTIATE</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_AUTO_NEGOTIATE            "auto-negotiate"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-MAC-ADDRESS:CAPS"></a><h3>NM_SETTING_WIRED_MAC_ADDRESS</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_MAC_ADDRESS               "mac-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-CLONED-MAC-ADDRESS:CAPS"></a><h3>NM_SETTING_WIRED_CLONED_MAC_ADDRESS</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_CLONED_MAC_ADDRESS        "cloned-mac-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-GENERATE-MAC-ADDRESS-MASK:CAPS"></a><h3>NM_SETTING_WIRED_GENERATE_MAC_ADDRESS_MASK</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_GENERATE_MAC_ADDRESS_MASK "generate-mac-address-mask"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-MAC-ADDRESS-BLACKLIST:CAPS"></a><h3>NM_SETTING_WIRED_MAC_ADDRESS_BLACKLIST</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_MAC_ADDRESS_BLACKLIST     "mac-address-blacklist"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-MTU:CAPS"></a><h3>NM_SETTING_WIRED_MTU</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_MTU                       "mtu"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-S390-SUBCHANNELS:CAPS"></a><h3>NM_SETTING_WIRED_S390_SUBCHANNELS</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_S390_SUBCHANNELS          "s390-subchannels"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-S390-NETTYPE:CAPS"></a><h3>NM_SETTING_WIRED_S390_NETTYPE</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_S390_NETTYPE              "s390-nettype"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-S390-OPTIONS:CAPS"></a><h3>NM_SETTING_WIRED_S390_OPTIONS</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_S390_OPTIONS              "s390-options"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-WAKE-ON-LAN:CAPS"></a><h3>NM_SETTING_WIRED_WAKE_ON_LAN</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_WAKE_ON_LAN               "wake-on-lan"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-WAKE-ON-LAN-PASSWORD:CAPS"></a><h3>NM_SETTING_WIRED_WAKE_ON_LAN_PASSWORD</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_WAKE_ON_LAN_PASSWORD      "wake-on-lan-password"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRED-ACCEPT-ALL-MAC-ADDRESSES:CAPS"></a><h3>NM_SETTING_WIRED_ACCEPT_ALL_MAC_ADDRESSES</h3>
+<pre class="programlisting">#define NM_SETTING_WIRED_ACCEPT_ALL_MAC_ADDRESSES  "accept-all-mac-addresses"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

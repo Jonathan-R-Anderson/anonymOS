@@ -1,0 +1,1519 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingWireless: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity">
+<link rel="next" href="NMSettingWpan.html" title="NMSettingWpan">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingWireless.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingWireless.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingWirelessSecurity.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingWpan.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingWireless"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingWireless.top_of_page"></a>NMSettingWireless</span></h2>
+<p>NMSettingWireless — Describes connection properties for 802.11 Wi-Fi networks</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingWireless.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-new" title="nm_setting_wireless_new ()">nm_setting_wireless_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Byte-Arrays.html#GBytes"><span class="returnvalue">GBytes</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-ssid" title="nm_setting_wireless_get_ssid ()">nm_setting_wireless_get_ssid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-mode" title="nm_setting_wireless_get_mode ()">nm_setting_wireless_get_mode</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-band" title="nm_setting_wireless_get_band ()">nm_setting_wireless_get_band</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-channel" title="nm_setting_wireless_get_channel ()">nm_setting_wireless_get_channel</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-bssid" title="nm_setting_wireless_get_bssid ()">nm_setting_wireless_get_bssid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-rate" title="nm_setting_wireless_get_rate ()">nm_setting_wireless_get_rate</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-tx-power" title="nm_setting_wireless_get_tx_power ()">nm_setting_wireless_get_tx_power</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-mac-address" title="nm_setting_wireless_get_mac_address ()">nm_setting_wireless_get_mac_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-cloned-mac-address" title="nm_setting_wireless_get_cloned_mac_address ()">nm_setting_wireless_get_cloned_mac_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-generate-mac-address-mask" title="nm_setting_wireless_get_generate_mac_address_mask ()">nm_setting_wireless_get_generate_mac_address_mask</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-mac-address-blacklist" title="nm_setting_wireless_get_mac_address_blacklist ()">nm_setting_wireless_get_mac_address_blacklist</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-num-mac-blacklist-items" title="nm_setting_wireless_get_num_mac_blacklist_items ()">nm_setting_wireless_get_num_mac_blacklist_items</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-mac-blacklist-item" title="nm_setting_wireless_get_mac_blacklist_item ()">nm_setting_wireless_get_mac_blacklist_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-add-mac-blacklist-item" title="nm_setting_wireless_add_mac_blacklist_item ()">nm_setting_wireless_add_mac_blacklist_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-remove-mac-blacklist-item" title="nm_setting_wireless_remove_mac_blacklist_item ()">nm_setting_wireless_remove_mac_blacklist_item</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-remove-mac-blacklist-item-by-value" title="nm_setting_wireless_remove_mac_blacklist_item_by_value ()">nm_setting_wireless_remove_mac_blacklist_item_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-clear-mac-blacklist-items" title="nm_setting_wireless_clear_mac_blacklist_items ()">nm_setting_wireless_clear_mac_blacklist_items</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-mtu" title="nm_setting_wireless_get_mtu ()">nm_setting_wireless_get_mtu</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-hidden" title="nm_setting_wireless_get_hidden ()">nm_setting_wireless_get_hidden</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-powersave" title="nm_setting_wireless_get_powersave ()">nm_setting_wireless_get_powersave</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html#NMSettingMacRandomization" title="enum NMSettingMacRandomization"><span class="returnvalue">NMSettingMacRandomization</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-mac-address-randomization" title="nm_setting_wireless_get_mac_address_randomization ()">nm_setting_wireless_get_mac_address_randomization</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-add-seen-bssid" title="nm_setting_wireless_add_seen_bssid ()">nm_setting_wireless_add_seen_bssid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-num-seen-bssids" title="nm_setting_wireless_get_num_seen_bssids ()">nm_setting_wireless_get_num_seen_bssids</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-seen-bssid" title="nm_setting_wireless_get_seen_bssid ()">nm_setting_wireless_get_seen_bssid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-ap-security-compatible" title="nm_setting_wireless_ap_security_compatible ()">nm_setting_wireless_ap_security_compatible</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWireless.html#NMSettingWirelessWakeOnWLan" title="enum NMSettingWirelessWakeOnWLan"><span class="returnvalue">NMSettingWirelessWakeOnWLan</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-wake-on-wlan" title="nm_setting_wireless_get_wake_on_wlan ()">nm_setting_wireless_get_wake_on_wlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingWireless.html#nm-setting-wireless-get-ap-isolation" title="nm_setting_wireless_get_ap_isolation ()">nm_setting_wireless_get_ap_isolation</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireless.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-SETTING-NAME:CAPS" title="NM_SETTING_WIRELESS_SETTING_NAME">NM_SETTING_WIRELESS_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NMSettingWirelessWakeOnWLan" title="enum NMSettingWirelessWakeOnWLan">NMSettingWirelessWakeOnWLan</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-SSID:CAPS" title="NM_SETTING_WIRELESS_SSID">NM_SETTING_WIRELESS_SSID</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MODE:CAPS" title="NM_SETTING_WIRELESS_MODE">NM_SETTING_WIRELESS_MODE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-BAND:CAPS" title="NM_SETTING_WIRELESS_BAND">NM_SETTING_WIRELESS_BAND</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-CHANNEL:CAPS" title="NM_SETTING_WIRELESS_CHANNEL">NM_SETTING_WIRELESS_CHANNEL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-BSSID:CAPS" title="NM_SETTING_WIRELESS_BSSID">NM_SETTING_WIRELESS_BSSID</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-RATE:CAPS" title="NM_SETTING_WIRELESS_RATE">NM_SETTING_WIRELESS_RATE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-TX-POWER:CAPS" title="NM_SETTING_WIRELESS_TX_POWER">NM_SETTING_WIRELESS_TX_POWER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MAC-ADDRESS:CAPS" title="NM_SETTING_WIRELESS_MAC_ADDRESS">NM_SETTING_WIRELESS_MAC_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-CLONED-MAC-ADDRESS:CAPS" title="NM_SETTING_WIRELESS_CLONED_MAC_ADDRESS">NM_SETTING_WIRELESS_CLONED_MAC_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-GENERATE-MAC-ADDRESS-MASK:CAPS" title="NM_SETTING_WIRELESS_GENERATE_MAC_ADDRESS_MASK">NM_SETTING_WIRELESS_GENERATE_MAC_ADDRESS_MASK</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MAC-ADDRESS-BLACKLIST:CAPS" title="NM_SETTING_WIRELESS_MAC_ADDRESS_BLACKLIST">NM_SETTING_WIRELESS_MAC_ADDRESS_BLACKLIST</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MTU:CAPS" title="NM_SETTING_WIRELESS_MTU">NM_SETTING_WIRELESS_MTU</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-SEEN-BSSIDS:CAPS" title="NM_SETTING_WIRELESS_SEEN_BSSIDS">NM_SETTING_WIRELESS_SEEN_BSSIDS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-HIDDEN:CAPS" title="NM_SETTING_WIRELESS_HIDDEN">NM_SETTING_WIRELESS_HIDDEN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-POWERSAVE:CAPS" title="NM_SETTING_WIRELESS_POWERSAVE">NM_SETTING_WIRELESS_POWERSAVE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MAC-ADDRESS-RANDOMIZATION:CAPS" title="NM_SETTING_WIRELESS_MAC_ADDRESS_RANDOMIZATION">NM_SETTING_WIRELESS_MAC_ADDRESS_RANDOMIZATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-WAKE-ON-WLAN:CAPS" title="NM_SETTING_WIRELESS_WAKE_ON_WLAN">NM_SETTING_WIRELESS_WAKE_ON_WLAN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-AP-ISOLATION:CAPS" title="NM_SETTING_WIRELESS_AP_ISOLATION">NM_SETTING_WIRELESS_AP_ISOLATION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MODE-ADHOC:CAPS" title="NM_SETTING_WIRELESS_MODE_ADHOC">NM_SETTING_WIRELESS_MODE_ADHOC</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MODE-AP:CAPS" title="NM_SETTING_WIRELESS_MODE_AP">NM_SETTING_WIRELESS_MODE_AP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MODE-INFRA:CAPS" title="NM_SETTING_WIRELESS_MODE_INFRA">NM_SETTING_WIRELESS_MODE_INFRA</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-MODE-MESH:CAPS" title="NM_SETTING_WIRELESS_MODE_MESH">NM_SETTING_WIRELESS_MODE_MESH</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingWireless.html#NMSettingWirelessPowersave" title="enum NMSettingWirelessPowersave">NMSettingWirelessPowersave</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireless.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GEnum</a>
+    <span class="lineart">╰──</span> NMSettingWirelessPowersave
+    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GFlags</a>
+    <span class="lineart">╰──</span> NMSettingWirelessWakeOnWLan
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireless.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for connection to 802.11 Wi-Fi networks.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireless.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-setting-wireless-new"></a><h3>nm_setting_wireless_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_wireless_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-wireless-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-ssid"></a><h3>nm_setting_wireless_get_ssid ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Byte-Arrays.html#GBytes"><span class="returnvalue">GBytes</span></a> *
+nm_setting_wireless_get_ssid (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-ssid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-ssid.returns"></a><h4>Returns</h4>
+<p>the <span class="type">“ssid”</span> property of the setting. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-mode"></a><h3>nm_setting_wireless_get_mode ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireless_get_mode (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mode.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mode.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mode”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-band"></a><h3>nm_setting_wireless_get_band ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireless_get_band (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-band.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-band.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“band”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-channel"></a><h3>nm_setting_wireless_get_channel ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireless_get_channel (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-channel.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-channel.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“channel”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-bssid"></a><h3>nm_setting_wireless_get_bssid ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireless_get_bssid (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-bssid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-bssid.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“bssid”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-rate"></a><h3>nm_setting_wireless_get_rate ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireless_get_rate (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_setting_wireless_get_rate</code> has been deprecated since version 1.44 and should not be used in newly-written code.</p>
+<p>This setting is not implemented and has no effect.</p>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-rate.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-rate.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“rate”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-tx-power"></a><h3>nm_setting_wireless_get_tx_power ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireless_get_tx_power (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_setting_wireless_get_tx_power</code> has been deprecated since version 1.44 and should not be used in newly-written code.</p>
+<p>This setting is not implemented and has no effect.</p>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-tx-power.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-tx-power.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“tx-power”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-mac-address"></a><h3>nm_setting_wireless_get_mac_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireless_get_mac_address (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mac-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mac-address.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mac-address”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-cloned-mac-address"></a><h3>nm_setting_wireless_get_cloned_mac_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireless_get_cloned_mac_address
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-cloned-mac-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-cloned-mac-address.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“cloned-mac-address”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-generate-mac-address-mask"></a><h3>nm_setting_wireless_get_generate_mac_address_mask ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireless_get_generate_mac_address_mask
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-generate-mac-address-mask.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-generate-mac-address-mask.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“generate-mac-address-mask”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-mac-address-blacklist"></a><h3>nm_setting_wireless_get_mac_address_blacklist ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_setting_wireless_get_mac_address_blacklist
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mac-address-blacklist.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mac-address-blacklist.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mac-address-blacklist”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-num-mac-blacklist-items"></a><h3>nm_setting_wireless_get_num_mac_blacklist_items ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireless_get_num_mac_blacklist_items
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-num-mac-blacklist-items.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-num-mac-blacklist-items.returns"></a><h4>Returns</h4>
+<p> the number of blacklisted MAC addresses</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-mac-blacklist-item"></a><h3>nm_setting_wireless_get_mac_blacklist_item ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireless_get_mac_blacklist_item
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mac-blacklist-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>the zero-based index of the MAC address entry</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mac-blacklist-item.returns"></a><h4>Returns</h4>
+<p> the blacklisted MAC address string (hex-digits-and-colons notation)
+at index <em class="parameter"><code>idx</code></em>
+</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-add-mac-blacklist-item"></a><h3>nm_setting_wireless_add_mac_blacklist_item ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wireless_add_mac_blacklist_item
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *mac</code></em>);</pre>
+<p>Adds a new MAC address to the <span class="type">“mac-address-blacklist”</span> property.</p>
+<div class="refsect3">
+<a name="nm-setting-wireless-add-mac-blacklist-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>mac</p></td>
+<td class="parameter_description"><p>the MAC address string (hex-digits-and-colons notation) to blacklist</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-add-mac-blacklist-item.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the MAC address was added; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if the MAC address
+is invalid or was already present</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-remove-mac-blacklist-item"></a><h3>nm_setting_wireless_remove_mac_blacklist_item ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_wireless_remove_mac_blacklist_item
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> idx</code></em>);</pre>
+<p>Removes the MAC address at index <em class="parameter"><code>idx</code></em>
+ from the blacklist.</p>
+<div class="refsect3">
+<a name="nm-setting-wireless-remove-mac-blacklist-item.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the MAC address</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-remove-mac-blacklist-item-by-value"></a><h3>nm_setting_wireless_remove_mac_blacklist_item_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wireless_remove_mac_blacklist_item_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *mac</code></em>);</pre>
+<p>Removes the MAC address <em class="parameter"><code>mac</code></em>
+ from the blacklist.</p>
+<div class="refsect3">
+<a name="nm-setting-wireless-remove-mac-blacklist-item-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>mac</p></td>
+<td class="parameter_description"><p>the MAC address string (hex-digits-and-colons notation) to remove from
+the blacklist</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-remove-mac-blacklist-item-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the MAC address was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-clear-mac-blacklist-items"></a><h3>nm_setting_wireless_clear_mac_blacklist_items ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_wireless_clear_mac_blacklist_items
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<p>Removes all blacklisted MAC addresses.</p>
+<div class="refsect3">
+<a name="nm-setting-wireless-clear-mac-blacklist-items.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-mtu"></a><h3>nm_setting_wireless_get_mtu ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireless_get_mtu (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mtu.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mtu.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mtu”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-hidden"></a><h3>nm_setting_wireless_get_hidden ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wireless_get_hidden (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-hidden.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-hidden.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“hidden”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-powersave"></a><h3>nm_setting_wireless_get_powersave ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireless_get_powersave (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-powersave.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-powersave.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“powersave”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-mac-address-randomization"></a><h3>nm_setting_wireless_get_mac_address_randomization ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html#NMSettingMacRandomization" title="enum NMSettingMacRandomization"><span class="returnvalue">NMSettingMacRandomization</span></a>
+nm_setting_wireless_get_mac_address_randomization
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mac-address-randomization.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-mac-address-randomization.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“mac-address-randomization”</span> property of the
+setting</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-add-seen-bssid"></a><h3>nm_setting_wireless_add_seen_bssid ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wireless_add_seen_bssid (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *bssid</code></em>);</pre>
+<p>Adds a new Wi-Fi AP's BSSID to the previously seen BSSID list of the setting.
+NetworkManager now tracks previously seen BSSIDs internally so this function
+no longer has much use. Actually, changes you make using this function will
+not be preserved.</p>
+<div class="refsect3">
+<a name="nm-setting-wireless-add-seen-bssid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>bssid</p></td>
+<td class="parameter_description"><p>the new BSSID to add to the list</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-add-seen-bssid.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if <em class="parameter"><code>bssid</code></em>
+was already known, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-num-seen-bssids"></a><h3>nm_setting_wireless_get_num_seen_bssids ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_setting_wireless_get_num_seen_bssids
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-num-seen-bssids.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-num-seen-bssids.returns"></a><h4>Returns</h4>
+<p> the number of BSSIDs in the previously seen BSSID list</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-seen-bssid"></a><h3>nm_setting_wireless_get_seen_bssid ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_wireless_get_seen_bssid (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>,
+                                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="type">guint32</span></a> i</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-seen-bssid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>i</p></td>
+<td class="parameter_description"><p>index of a BSSID in the previously seen BSSID list</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-seen-bssid.returns"></a><h4>Returns</h4>
+<p> the BSSID at index <em class="parameter"><code>i</code></em>
+</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-ap-security-compatible"></a><h3>nm_setting_wireless_ap_security_compatible ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_wireless_ap_security_compatible
+                               (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *s_wireless</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity"><span class="type">NMSettingWirelessSecurity</span></a> *s_wireless_sec</code></em>,
+                                <em class="parameter"><code><a class="link" href="libnm-nm-dbus-interface.html#NM80211ApFlags" title="enum NM80211ApFlags"><span class="type">NM80211ApFlags</span></a> ap_flags</code></em>,
+                                <em class="parameter"><code><a class="link" href="libnm-nm-dbus-interface.html#NM80211ApSecurityFlags" title="enum NM80211ApSecurityFlags"><span class="type">NM80211ApSecurityFlags</span></a> ap_wpa</code></em>,
+                                <em class="parameter"><code><a class="link" href="libnm-nm-dbus-interface.html#NM80211ApSecurityFlags" title="enum NM80211ApSecurityFlags"><span class="type">NM80211ApSecurityFlags</span></a> ap_rsn</code></em>,
+                                <em class="parameter"><code><a class="link" href="libnm-nm-dbus-interface.html#NM80211Mode" title="enum NM80211Mode"><span class="type">NM80211Mode</span></a> ap_mode</code></em>);</pre>
+<p>Given a <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> and an optional <a class="link" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity"><span class="type">NMSettingWirelessSecurity</span></a>,
+determine if the configuration given by the settings is compatible with
+the security of an access point using that access point's capability flags
+and mode.  Useful for clients that wish to filter a set of connections
+against a set of access points and determine which connections are
+compatible with which access points.</p>
+<div class="refsect3">
+<a name="nm-setting-wireless-ap-security-compatible.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>s_wireless</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>s_wireless_sec</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity"><span class="type">NMSettingWirelessSecurity</span></a> or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>ap_flags</p></td>
+<td class="parameter_description"><p>the <a class="link" href="libnm-nm-dbus-interface.html#NM80211ApFlags" title="enum NM80211ApFlags"><code class="literal">NM80211ApFlags</code></a> of the given access point</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>ap_wpa</p></td>
+<td class="parameter_description"><p>the <a class="link" href="libnm-nm-dbus-interface.html#NM80211ApSecurityFlags" title="enum NM80211ApSecurityFlags"><code class="literal">NM80211ApSecurityFlags</code></a> of the given access point's WPA
+capabilities</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>ap_rsn</p></td>
+<td class="parameter_description"><p>the <a class="link" href="libnm-nm-dbus-interface.html#NM80211ApSecurityFlags" title="enum NM80211ApSecurityFlags"><code class="literal">NM80211ApSecurityFlags</code></a> of the given access point's WPA2/RSN
+capabilities</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>ap_mode</p></td>
+<td class="parameter_description"><p>the 802.11 mode of the AP, either Ad-Hoc or Infrastructure</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-ap-security-compatible.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the given settings are compatible with the access point's
+security flags and mode, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they are not.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-wake-on-wlan"></a><h3>nm_setting_wireless_get_wake_on_wlan ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWireless.html#NMSettingWirelessWakeOnWLan" title="enum NMSettingWirelessWakeOnWLan"><span class="returnvalue">NMSettingWirelessWakeOnWLan</span></a>
+nm_setting_wireless_get_wake_on_wlan (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<p>Returns the Wake-on-WLAN options enabled for the connection</p>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-wake-on-wlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-wake-on-wlan.returns"></a><h4>Returns</h4>
+<p> the Wake-on-WLAN options</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-wireless-get-ap-isolation"></a><h3>nm_setting_wireless_get_ap_isolation ()</h3>
+<pre class="programlisting"><a class="link" href="libnm-nm-dbus-interface.html#NMTernary" title="enum NMTernary"><span class="returnvalue">NMTernary</span></a>
+nm_setting_wireless_get_ap_isolation (<em class="parameter"><code><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-ap-isolation.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-wireless-get-ap-isolation.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“ap-isolation”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.28</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingWireless.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-SETTING-NAME:CAPS"></a><h3>NM_SETTING_WIRELESS_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_SETTING_NAME "802-11-wireless"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingWirelessWakeOnWLan"></a><h3>enum NMSettingWirelessWakeOnWLan</h3>
+<p>Options for <span class="type">“wake-on-wlan”</span>. Note that not all options
+are supported by all devices.</p>
+<div class="refsect3">
+<a name="NMSettingWirelessWakeOnWLan.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-NONE:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_NONE</p></td>
+<td class="enum_member_description">
+<p>Wake-on-WLAN disabled</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-ANY:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_ANY</p></td>
+<td class="enum_member_description">
+<p>Wake on any activity</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-DISCONNECT:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_DISCONNECT</p></td>
+<td class="enum_member_description">
+<p>Wake on disconnect</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-MAGIC:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_MAGIC</p></td>
+<td class="enum_member_description">
+<p>Wake on magic packet</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-GTK-REKEY-FAILURE:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_GTK_REKEY_FAILURE</p></td>
+<td class="enum_member_description">
+<p>Wake on GTK rekey failure</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-EAP-IDENTITY-REQUEST:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_EAP_IDENTITY_REQUEST</p></td>
+<td class="enum_member_description">
+<p>Wake on EAP identity request</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-4WAY-HANDSHAKE:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_4WAY_HANDSHAKE</p></td>
+<td class="enum_member_description">
+<p>Wake on 4way handshake</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-RFKILL-RELEASE:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_RFKILL_RELEASE</p></td>
+<td class="enum_member_description">
+<p>Wake on rfkill release</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-TCP:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_TCP</p></td>
+<td> </td>
+<td> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-ALL:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_ALL</p></td>
+<td class="enum_member_description">
+<p>Wake on all events. This does not
+include the exclusive flags <em class="parameter"><code>NM_SETTING_WIRELESS_WAKE_ON_WLAN_DEFAULT</code></em>
+ or
+<em class="parameter"><code>NM_SETTING_WIRELESS_WAKE_ON_WLAN_IGNORE</code></em>
+.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-DEFAULT:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>Use the default value</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-IGNORE:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_IGNORE</p></td>
+<td class="enum_member_description">
+<p>Don't change configured settings</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN-EXCLUSIVE-FLAGS:CAPS"></a>NM_SETTING_WIRELESS_WAKE_ON_WLAN_EXCLUSIVE_FLAGS</p></td>
+<td class="enum_member_description">
+<p>Mask of flags that are
+incompatible with other flags</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-SSID:CAPS"></a><h3>NM_SETTING_WIRELESS_SSID</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_SSID                      "ssid"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MODE:CAPS"></a><h3>NM_SETTING_WIRELESS_MODE</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MODE                      "mode"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-BAND:CAPS"></a><h3>NM_SETTING_WIRELESS_BAND</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_BAND                      "band"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-CHANNEL:CAPS"></a><h3>NM_SETTING_WIRELESS_CHANNEL</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_CHANNEL                   "channel"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-BSSID:CAPS"></a><h3>NM_SETTING_WIRELESS_BSSID</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_BSSID                     "bssid"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-RATE:CAPS"></a><h3>NM_SETTING_WIRELESS_RATE</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_RATE                      "rate"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-TX-POWER:CAPS"></a><h3>NM_SETTING_WIRELESS_TX_POWER</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_TX_POWER                  "tx-power"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MAC-ADDRESS:CAPS"></a><h3>NM_SETTING_WIRELESS_MAC_ADDRESS</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MAC_ADDRESS               "mac-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-CLONED-MAC-ADDRESS:CAPS"></a><h3>NM_SETTING_WIRELESS_CLONED_MAC_ADDRESS</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_CLONED_MAC_ADDRESS        "cloned-mac-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-GENERATE-MAC-ADDRESS-MASK:CAPS"></a><h3>NM_SETTING_WIRELESS_GENERATE_MAC_ADDRESS_MASK</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_GENERATE_MAC_ADDRESS_MASK "generate-mac-address-mask"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MAC-ADDRESS-BLACKLIST:CAPS"></a><h3>NM_SETTING_WIRELESS_MAC_ADDRESS_BLACKLIST</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MAC_ADDRESS_BLACKLIST     "mac-address-blacklist"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MTU:CAPS"></a><h3>NM_SETTING_WIRELESS_MTU</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MTU                       "mtu"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-SEEN-BSSIDS:CAPS"></a><h3>NM_SETTING_WIRELESS_SEEN_BSSIDS</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_SEEN_BSSIDS               "seen-bssids"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-HIDDEN:CAPS"></a><h3>NM_SETTING_WIRELESS_HIDDEN</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_HIDDEN                    "hidden"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-POWERSAVE:CAPS"></a><h3>NM_SETTING_WIRELESS_POWERSAVE</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_POWERSAVE                 "powersave"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MAC-ADDRESS-RANDOMIZATION:CAPS"></a><h3>NM_SETTING_WIRELESS_MAC_ADDRESS_RANDOMIZATION</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MAC_ADDRESS_RANDOMIZATION "mac-address-randomization"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-WAKE-ON-WLAN:CAPS"></a><h3>NM_SETTING_WIRELESS_WAKE_ON_WLAN</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_WAKE_ON_WLAN              "wake-on-wlan"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-AP-ISOLATION:CAPS"></a><h3>NM_SETTING_WIRELESS_AP_ISOLATION</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_AP_ISOLATION              "ap-isolation"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MODE-ADHOC:CAPS"></a><h3>NM_SETTING_WIRELESS_MODE_ADHOC</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MODE_ADHOC "adhoc"
+</pre>
+<p>Indicates Ad-Hoc mode where no access point is expected to be present.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MODE-AP:CAPS"></a><h3>NM_SETTING_WIRELESS_MODE_AP</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MODE_AP "ap"
+</pre>
+<p>Indicates AP/master mode where the wireless device is started as an access
+point/hotspot.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MODE-INFRA:CAPS"></a><h3>NM_SETTING_WIRELESS_MODE_INFRA</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MODE_INFRA "infrastructure"
+</pre>
+<p>Indicates infrastructure mode where an access point is expected to be present
+for this connection.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-WIRELESS-MODE-MESH:CAPS"></a><h3>NM_SETTING_WIRELESS_MODE_MESH</h3>
+<pre class="programlisting">#define NM_SETTING_WIRELESS_MODE_MESH "mesh"
+</pre>
+<p>Indicates that the connection should create a mesh point.</p>
+<p class="since">Since: 1.20</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMSettingWirelessPowersave"></a><h3>enum NMSettingWirelessPowersave</h3>
+<p>These flags indicate whether wireless powersave must be enabled.</p>
+<div class="refsect3">
+<a name="NMSettingWirelessPowersave.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-POWERSAVE-DEFAULT:CAPS"></a>NM_SETTING_WIRELESS_POWERSAVE_DEFAULT</p></td>
+<td class="enum_member_description">
+<p>use the default value</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-POWERSAVE-IGNORE:CAPS"></a>NM_SETTING_WIRELESS_POWERSAVE_IGNORE</p></td>
+<td class="enum_member_description">
+<p>don't touch existing setting</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-POWERSAVE-DISABLE:CAPS"></a>NM_SETTING_WIRELESS_POWERSAVE_DISABLE</p></td>
+<td class="enum_member_description">
+<p>disable powersave</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-POWERSAVE-ENABLE:CAPS"></a>NM_SETTING_WIRELESS_POWERSAVE_ENABLE</p></td>
+<td class="enum_member_description">
+<p>enable powersave</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-POWERSAVE-NUM:CAPS"></a>_NM_SETTING_WIRELESS_POWERSAVE_NUM</p></td>
+<td> </td>
+<td> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-SETTING-WIRELESS-POWERSAVE-LAST:CAPS"></a>NM_SETTING_WIRELESS_POWERSAVE_LAST</p></td>
+<td> </td>
+<td> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

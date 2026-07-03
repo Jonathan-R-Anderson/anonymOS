@@ -1,0 +1,1153 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMVpnPluginInfo: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch06.html" title="VPN Plugin API Reference">
+<link rel="prev" href="NMVpnServicePlugin.html" title="NMVpnServicePlugin">
+<link rel="next" href="NMVpnEditor.html" title="NMVpnEditor">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMVpnPluginInfo.description" class="shortcut">Description</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch06.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMVpnServicePlugin.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMVpnEditor.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMVpnPluginInfo"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMVpnPluginInfo.top_of_page"></a>NMVpnPluginInfo</span></h2>
+<p>NMVpnPluginInfo</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMVpnPluginInfo.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-new-from-file" title="nm_vpn_plugin_info_new_from_file ()">nm_vpn_plugin_info_new_from_file</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-new-with-data" title="nm_vpn_plugin_info_new_with_data ()">nm_vpn_plugin_info_new_with_data</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-new-search-file" title="nm_vpn_plugin_info_new_search_file ()">nm_vpn_plugin_info_new_search_file</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-name" title="nm_vpn_plugin_info_get_name ()">nm_vpn_plugin_info_get_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-filename" title="nm_vpn_plugin_info_get_filename ()">nm_vpn_plugin_info_get_filename</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-service" title="nm_vpn_plugin_info_get_service ()">nm_vpn_plugin_info_get_service</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-plugin" title="nm_vpn_plugin_info_get_plugin ()">nm_vpn_plugin_info_get_plugin</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-program" title="nm_vpn_plugin_info_get_program ()">nm_vpn_plugin_info_get_program</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-auth-dialog" title="nm_vpn_plugin_info_get_auth_dialog ()">nm_vpn_plugin_info_get_auth_dialog</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-supports-hints" title="nm_vpn_plugin_info_supports_hints ()">nm_vpn_plugin_info_supports_hints</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-supports-multiple" title="nm_vpn_plugin_info_supports_multiple ()">nm_vpn_plugin_info_supports_multiple</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-aliases" title="nm_vpn_plugin_info_get_aliases ()">nm_vpn_plugin_info_get_aliases</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-lookup-property" title="nm_vpn_plugin_info_lookup_property ()">nm_vpn_plugin_info_lookup_property</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-validate-filename" title="nm_vpn_plugin_info_validate_filename ()">nm_vpn_plugin_info_validate_filename</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="returnvalue">GSList</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-load" title="nm_vpn_plugin_info_list_load ()">nm_vpn_plugin_info_list_load</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-add" title="nm_vpn_plugin_info_list_add ()">nm_vpn_plugin_info_list_add</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-remove" title="nm_vpn_plugin_info_list_remove ()">nm_vpn_plugin_info_list_remove</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-find-by-name" title="nm_vpn_plugin_info_list_find_by_name ()">nm_vpn_plugin_info_list_find_by_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-find-by-filename" title="nm_vpn_plugin_info_list_find_by_filename ()">nm_vpn_plugin_info_list_find_by_filename</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-find-by-service" title="nm_vpn_plugin_info_list_find_by_service ()">nm_vpn_plugin_info_list_find_by_service</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-find-service-type" title="nm_vpn_plugin_info_list_find_service_type ()">nm_vpn_plugin_info_list_find_service_type</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">char</span> **
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-get-service-types" title="nm_vpn_plugin_info_list_get_service_types ()">nm_vpn_plugin_info_list_get_service_types</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMVpnEditorPlugin.html" title="NMVpnEditorPlugin"><span class="returnvalue">NMVpnEditorPlugin</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-editor-plugin" title="nm_vpn_plugin_info_get_editor_plugin ()">nm_vpn_plugin_info_get_editor_plugin</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-set-editor-plugin" title="nm_vpn_plugin_info_set_editor_plugin ()">nm_vpn_plugin_info_set_editor_plugin</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMVpnEditorPlugin.html" title="NMVpnEditorPlugin"><span class="returnvalue">NMVpnEditorPlugin</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-load-editor-plugin" title="nm_vpn_plugin_info_load_editor_plugin ()">nm_vpn_plugin_info_load_editor_plugin</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginInfo.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnPluginInfo.html#NM-VPN-PLUGIN-INFO-NAME:CAPS" title="NM_VPN_PLUGIN_INFO_NAME">NM_VPN_PLUGIN_INFO_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnPluginInfo.html#NM-VPN-PLUGIN-INFO-FILENAME:CAPS" title="NM_VPN_PLUGIN_INFO_FILENAME">NM_VPN_PLUGIN_INFO_FILENAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnPluginInfo.html#NM-VPN-PLUGIN-INFO-KEYFILE:CAPS" title="NM_VPN_PLUGIN_INFO_KEYFILE">NM_VPN_PLUGIN_INFO_KEYFILE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnPluginInfo.html#NM-VPN-PLUGIN-INFO-KF-GROUP-CONNECTION:CAPS" title="NM_VPN_PLUGIN_INFO_KF_GROUP_CONNECTION">NM_VPN_PLUGIN_INFO_KF_GROUP_CONNECTION</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnPluginInfo.html#NM-VPN-PLUGIN-INFO-KF-GROUP-LIBNM:CAPS" title="NM_VPN_PLUGIN_INFO_KF_GROUP_LIBNM">NM_VPN_PLUGIN_INFO_KF_GROUP_LIBNM</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMVpnPluginInfo.html#NM-VPN-PLUGIN-INFO-KF-GROUP-GNOME:CAPS" title="NM_VPN_PLUGIN_INFO_KF_GROUP_GNOME">NM_VPN_PLUGIN_INFO_KF_GROUP_GNOME</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginInfo.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginInfo.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-new-from-file"></a><h3>nm_vpn_plugin_info_new_from_file ()</h3>
+<pre class="programlisting"><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+nm_vpn_plugin_info_new_from_file (<em class="parameter"><code>const <span class="type">char</span> *filename</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Read the plugin info from file <em class="parameter"><code>filename</code></em>
+. Does not do
+any further verification on the file. You might want to check
+file permissions and ownership of the file.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-new-from-file.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>filename</p></td>
+<td class="parameter_description"><p>filename to read.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>on failure, the error reason.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-new-from-file.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if there is any error or a newly created
+<a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> instance.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-new-with-data"></a><h3>nm_vpn_plugin_info_new_with_data ()</h3>
+<pre class="programlisting"><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+nm_vpn_plugin_info_new_with_data (<em class="parameter"><code>const <span class="type">char</span> *filename</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Key-value-file-parser.html#GKeyFile"><span class="type">GKeyFile</span></a> *keyfile</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>This constructor does not read any data from file but
+takes instead a <em class="parameter"><code>keyfile</code></em>
+ argument.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-new-with-data.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>filename</p></td>
+<td class="parameter_description"><p>optional filename.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>keyfile</p></td>
+<td class="parameter_description"><p>inject data for the plugin info instance.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>construction may fail if the keyfile lacks mandatory fields.
+In this case, return the error reason.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-new-with-data.returns"></a><h4>Returns</h4>
+<p> new plugin info instance.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-new-search-file"></a><h3>nm_vpn_plugin_info_new_search_file ()</h3>
+<pre class="programlisting"><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+nm_vpn_plugin_info_new_search_file (<em class="parameter"><code>const <span class="type">char</span> *name</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *service</code></em>);</pre>
+<p>This has the same effect as doing a full <a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-load" title="nm_vpn_plugin_info_list_load ()"><code class="function">nm_vpn_plugin_info_list_load()</code></a>
+followed by a search for the first matching VPN plugin info that has the
+given <em class="parameter"><code>name</code></em>
+ and/or <em class="parameter"><code>service</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-new-search-file.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>the name to search for. Either <em class="parameter"><code>name</code></em>
+or <em class="parameter"><code>service</code></em>
+must be present. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>service</p></td>
+<td class="parameter_description"><p>the service to search for. Either <em class="parameter"><code>name</code></em>
+or
+<em class="parameter"><code>service</code></em>
+must be present. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-new-search-file.returns"></a><h4>Returns</h4>
+<p>a newly created instance of plugin info
+or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if no matching value was found. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-get-name"></a><h3>nm_vpn_plugin_info_get_name ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_vpn_plugin_info_get_name (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-name.returns"></a><h4>Returns</h4>
+<p>the name. Cannot be <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-get-filename"></a><h3>nm_vpn_plugin_info_get_filename ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_vpn_plugin_info_get_filename (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-filename.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-filename.returns"></a><h4>Returns</h4>
+<p>the filename. Can be <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-get-service"></a><h3>nm_vpn_plugin_info_get_service ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_vpn_plugin_info_get_service (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-service.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-service.returns"></a><h4>Returns</h4>
+<p>the service. Cannot be <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-get-plugin"></a><h3>nm_vpn_plugin_info_get_plugin ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_vpn_plugin_info_get_plugin (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-plugin.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-plugin.returns"></a><h4>Returns</h4>
+<p>the plugin. Can be <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-get-program"></a><h3>nm_vpn_plugin_info_get_program ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_vpn_plugin_info_get_program (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-program.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-program.returns"></a><h4>Returns</h4>
+<p>the program. Can be <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-get-auth-dialog"></a><h3>nm_vpn_plugin_info_get_auth_dialog ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_vpn_plugin_info_get_auth_dialog (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-auth-dialog.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-auth-dialog.returns"></a><h4>Returns</h4>
+<p> the absolute path to the auth-dialog helper or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>.</p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-supports-hints"></a><h3>nm_vpn_plugin_info_supports_hints ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_plugin_info_supports_hints (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-supports-hints.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-supports-hints.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the supports hints for secret requests, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a></p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-supports-multiple"></a><h3>nm_vpn_plugin_info_supports_multiple ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_plugin_info_supports_multiple (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-supports-multiple.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-supports-multiple.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the service supports multiple instances with different bus names, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a></p>
+</div>
+<p class="since">Since: 1.42</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-get-aliases"></a><h3>nm_vpn_plugin_info_get_aliases ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_vpn_plugin_info_get_aliases (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-aliases.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-aliases.returns"></a><h4>Returns</h4>
+<p>the aliases from the name-file. </p>
+<p><span class="annotation">[<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> zero-terminated=1][<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> utf8][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-lookup-property"></a><h3>nm_vpn_plugin_info_lookup_property ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_vpn_plugin_info_lookup_property (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *group</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *key</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-lookup-property.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>group</p></td>
+<td class="parameter_description"><p>group name</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>key</p></td>
+<td class="parameter_description"><p>name of the property</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-lookup-property.returns"></a><h4>Returns</h4>
+<p><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> is internally a <a href="https://developer.gnome.org/glib/unstable/glib-Key-value-file-parser.html#GKeyFile"><span class="type">GKeyFile</span></a>. Returns the matching
+property. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-validate-filename"></a><h3>nm_vpn_plugin_info_validate_filename ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_plugin_info_validate_filename (<em class="parameter"><code>const <span class="type">char</span> *filename</code></em>);</pre>
+<p>Regular name files have a certain pattern. That basically means
+they have the file extension "name". Check if <em class="parameter"><code>filename</code></em>
+
+is valid according to that pattern.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-validate-filename.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>filename</p></td>
+<td class="parameter_description"><p>the filename to check</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-list-load"></a><h3>nm_vpn_plugin_info_list_load ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="returnvalue">GSList</span></a> *
+nm_vpn_plugin_info_list_load (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-load.returns"></a><h4>Returns</h4>
+<p>list of plugins
+loaded from the default directories rejecting duplicates. </p>
+<p><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMVpnPluginInfo][<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-list-add"></a><h3>nm_vpn_plugin_info_list_add ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_plugin_info_list_add (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> **list</code></em>,
+                             <em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *plugin_info</code></em>,
+                             <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-add.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>list</p></td>
+<td class="parameter_description"><p>list of plugins. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMVpnPluginInfo]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>plugin_info</p></td>
+<td class="parameter_description"><p>instance to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>failure reason</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-add.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the plugin was added to <em class="parameter"><code>list</code></em>
+. This will fail
+to add duplicate plugins.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-list-remove"></a><h3>nm_vpn_plugin_info_list_remove ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_vpn_plugin_info_list_remove (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> **list</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *plugin_info</code></em>);</pre>
+<p>Remove <em class="parameter"><code>plugin_info</code></em>
+ from <em class="parameter"><code>list</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-remove.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>list</p></td>
+<td class="parameter_description"><p>list of plugins. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMVpnPluginInfo]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>plugin_info</p></td>
+<td class="parameter_description"><p>instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-remove.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if <em class="parameter"><code>plugin_info</code></em>
+was in <em class="parameter"><code>list</code></em>
+and successfully removed.</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-list-find-by-name"></a><h3>nm_vpn_plugin_info_list_find_by_name ()</h3>
+<pre class="programlisting"><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+nm_vpn_plugin_info_list_find_by_name (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> *list</code></em>,
+                                      <em class="parameter"><code>const <span class="type">char</span> *name</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-find-by-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>list</p></td>
+<td class="parameter_description"><p>list of plugins. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMVpnPluginInfo]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>name to search</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-find-by-name.returns"></a><h4>Returns</h4>
+<p>the first plugin with a matching <em class="parameter"><code>name</code></em>
+(or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>). </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-list-find-by-filename"></a><h3>nm_vpn_plugin_info_list_find_by_filename ()</h3>
+<pre class="programlisting"><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+nm_vpn_plugin_info_list_find_by_filename
+                               (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> *list</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *filename</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-find-by-filename.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>list</p></td>
+<td class="parameter_description"><p>list of plugins. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMVpnPluginInfo]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>filename</p></td>
+<td class="parameter_description"><p>filename to search</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-find-by-filename.returns"></a><h4>Returns</h4>
+<p>the first plugin with a matching <em class="parameter"><code>filename</code></em>
+(or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>). </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-list-find-by-service"></a><h3>nm_vpn_plugin_info_list_find_by_service ()</h3>
+<pre class="programlisting"><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="returnvalue">NMVpnPluginInfo</span></a> *
+nm_vpn_plugin_info_list_find_by_service
+                               (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> *list</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *service</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-find-by-service.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>list</p></td>
+<td class="parameter_description"><p>list of plugins. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMVpnPluginInfo]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>service</p></td>
+<td class="parameter_description"><p>service to search. This can be the main service-type
+or one of the provided aliases.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-find-by-service.returns"></a><h4>Returns</h4>
+<p>the first plugin with a matching <em class="parameter"><code>service</code></em>
+(or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>). </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-list-find-service-type"></a><h3>nm_vpn_plugin_info_list_find_service_type ()</h3>
+<pre class="programlisting"><span class="returnvalue">char</span> *
+nm_vpn_plugin_info_list_find_service_type
+                               (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> *list</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *name</code></em>);</pre>
+<p>A VPN plugin provides one or several service-types, like org.freedesktop.NetworkManager.libreswan
+Certain plugins provide more then one service type, via aliases (org.freedesktop.NetworkManager.openswan).
+This function looks up a service-type (or an alias) based on a name.</p>
+<p>Preferably, the name can be a full service-type/alias of an installed
+plugin. Otherwise, it can be the name of a VPN plugin (in which case, the
+primary, non-aliased service-type is returned). Otherwise, it can be
+one of several well known short-names (which is a hard-coded list of
+types in libnm). On success, this returns a full qualified service-type
+(or an alias). It doesn't say, that such an plugin is actually available,
+but it could be retrieved via <a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-find-by-service" title="nm_vpn_plugin_info_list_find_by_service ()"><code class="function">nm_vpn_plugin_info_list_find_by_service()</code></a>.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-find-service-type.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>list</p></td>
+<td class="parameter_description"><p>a possibly empty <a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> of <a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> instances. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMVpnPluginInfo]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>a name to lookup the service-type.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-find-service-type.returns"></a><h4>Returns</h4>
+<p>the resolved service-type or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> on failure. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-list-get-service-types"></a><h3>nm_vpn_plugin_info_list_get_service_types ()</h3>
+<pre class="programlisting"><span class="returnvalue">char</span> **
+nm_vpn_plugin_info_list_get_service_types
+                               (<em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> *list</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> only_existing</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> with_abbreviations</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-get-service-types.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>list</p></td>
+<td class="parameter_description"><p>a possibly empty <a href="https://developer.gnome.org/glib/unstable/glib-Singly-Linked-Lists.html#GSList"><span class="type">GSList</span></a> of <a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a>. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> NMVpnPluginInfo]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>only_existing</p></td>
+<td class="parameter_description"><p>only include results that are actually in <em class="parameter"><code>list</code></em>
+.
+Otherwise, the result is extended with a hard-code list or
+well-known plugins</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>with_abbreviations</p></td>
+<td class="parameter_description"><p>if <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a>, only full service types are returned.
+Otherwise, this also includes abbreviated names that can be used
+with <a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-list-find-service-type" title="nm_vpn_plugin_info_list_find_service_type ()"><code class="function">nm_vpn_plugin_info_list_find_service_type()</code></a>.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-list-get-service-types.returns"></a><h4>Returns</h4>
+<p>a <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> terminated strv list of strings.
+The list itself and the values must be freed with <a href="https://developer.gnome.org/glib/unstable/glib-String-Utility-Functions.html#g-strfreev"><code class="function">g_strfreev()</code></a>. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.4</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-get-editor-plugin"></a><h3>nm_vpn_plugin_info_get_editor_plugin ()</h3>
+<pre class="programlisting"><a class="link" href="NMVpnEditorPlugin.html" title="NMVpnEditorPlugin"><span class="returnvalue">NMVpnEditorPlugin</span></a> *
+nm_vpn_plugin_info_get_editor_plugin (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-editor-plugin.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-get-editor-plugin.returns"></a><h4>Returns</h4>
+<p>the cached <a class="link" href="NMVpnEditorPlugin.html" title="NMVpnEditorPlugin"><span class="type">NMVpnEditorPlugin</span></a> instance. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-set-editor-plugin"></a><h3>nm_vpn_plugin_info_set_editor_plugin ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_vpn_plugin_info_set_editor_plugin (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>,
+                                      <em class="parameter"><code><a class="link" href="NMVpnEditorPlugin.html" title="NMVpnEditorPlugin"><span class="type">NMVpnEditorPlugin</span></a> *plugin</code></em>);</pre>
+<p>Set the internal plugin instance. If <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>, only clear the previous instance.</p>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-set-editor-plugin.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>plugin</p></td>
+<td class="parameter_description"><p>plugin instance. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-vpn-plugin-info-load-editor-plugin"></a><h3>nm_vpn_plugin_info_load_editor_plugin ()</h3>
+<pre class="programlisting"><a class="link" href="NMVpnEditorPlugin.html" title="NMVpnEditorPlugin"><span class="returnvalue">NMVpnEditorPlugin</span></a> *
+nm_vpn_plugin_info_load_editor_plugin (<em class="parameter"><code><a class="link" href="NMVpnPluginInfo.html" title="NMVpnPluginInfo"><span class="type">NMVpnPluginInfo</span></a> *self</code></em>,
+                                       <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-load-editor-plugin.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>self</p></td>
+<td class="parameter_description"><p>plugin info instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>error reason on failure</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-vpn-plugin-info-load-editor-plugin.returns"></a><h4>Returns</h4>
+<p>loads the plugin and returns the newly created
+instance. The plugin is owned by <em class="parameter"><code>self</code></em>
+and can be later retrieved again
+via <a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-get-editor-plugin" title="nm_vpn_plugin_info_get_editor_plugin ()"><code class="function">nm_vpn_plugin_info_get_editor_plugin()</code></a>. You can load the
+plugin only once, unless you reset the state via
+<a class="link" href="NMVpnPluginInfo.html#nm-vpn-plugin-info-set-editor-plugin" title="nm_vpn_plugin_info_set_editor_plugin ()"><code class="function">nm_vpn_plugin_info_set_editor_plugin()</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMVpnPluginInfo.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-VPN-PLUGIN-INFO-NAME:CAPS"></a><h3>NM_VPN_PLUGIN_INFO_NAME</h3>
+<pre class="programlisting">#define NM_VPN_PLUGIN_INFO_NAME     "name"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VPN-PLUGIN-INFO-FILENAME:CAPS"></a><h3>NM_VPN_PLUGIN_INFO_FILENAME</h3>
+<pre class="programlisting">#define NM_VPN_PLUGIN_INFO_FILENAME "filename"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VPN-PLUGIN-INFO-KEYFILE:CAPS"></a><h3>NM_VPN_PLUGIN_INFO_KEYFILE</h3>
+<pre class="programlisting">#define NM_VPN_PLUGIN_INFO_KEYFILE  "keyfile"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VPN-PLUGIN-INFO-KF-GROUP-CONNECTION:CAPS"></a><h3>NM_VPN_PLUGIN_INFO_KF_GROUP_CONNECTION</h3>
+<pre class="programlisting">#define NM_VPN_PLUGIN_INFO_KF_GROUP_CONNECTION "VPN Connection"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VPN-PLUGIN-INFO-KF-GROUP-LIBNM:CAPS"></a><h3>NM_VPN_PLUGIN_INFO_KF_GROUP_LIBNM</h3>
+<pre class="programlisting">#define NM_VPN_PLUGIN_INFO_KF_GROUP_LIBNM      "libnm"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VPN-PLUGIN-INFO-KF-GROUP-GNOME:CAPS"></a><h3>NM_VPN_PLUGIN_INFO_KF_GROUP_GNOME</h3>
+<pre class="programlisting">#define NM_VPN_PLUGIN_INFO_KF_GROUP_GNOME      "GNOME"
+</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

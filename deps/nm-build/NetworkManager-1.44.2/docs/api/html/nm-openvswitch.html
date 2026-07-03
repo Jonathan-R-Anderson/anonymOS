@@ -1,0 +1,177 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>nm-openvswitch: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="manpages.html" title="Part I. Manual Pages">
+<link rel="prev" href="nm-cloud-setup.html" title="nm-cloud-setup">
+<link rel="next" href="ref-settings.html" title="Part II. Network Configuration Setting Specification">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts"></td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="manpages.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="nm-cloud-setup.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="ref-settings.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="nm-openvswitch"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle">nm-openvswitch</span></h2>
+<p>nm-openvswitch — overview of NetworkManager Open vSwitch support</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.2.16.4"></a><h2>Overview</h2>
+<p>NetworkManager includes basic Open vSwitch support, good enough
+    to be capable of setting up simple Open vSwitch configurations. It is not
+    extensive and does not expose all functionality of Open vSwitch provides.
+    For large or complicated deployments users are advised to use native tools
+    shipped with Open vSwitch. This document seeks to provide overview of
+    functionality currently provided by NetworkManager, its capabilities and
+    limitations.</p>
+<p>First and foremost: NetworkManager applies the configuration by
+    modifying the OVSDB directly. Its configuration model follows the OVSDB
+    database model closely and it does not provide the level of abstraction
+    <span class="command"><strong>ovs-vsctl</strong></span> provides.</p>
+<p>In practical terms it means the following:
+      </p>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>NetworkManager only ever talks to a single OVSDB instance via an
+          UNIX domain socket.</p></li>
+<li class="listitem"><p>The configuration is made up of Bridges, Ports and
+          Interfaces. Interfaces are always enslaved to Ports, and Ports are always
+          enslaved to Bridges.</p></li>
+<li class="listitem"><p>NetworkManager only creates Bridges, Ports and Interfaces
+          you ask it to. Unlike <span class="command"><strong>ovs-vsctl</strong></span>, it doesn't create the
+          local interface nor its port automatically.</p></li>
+<li class="listitem"><p>You can't enslave Interface directly to a Bridge. You
+          always need a Port, even if it has just one interface.</p></li>
+<li class="listitem"><p>There are no VLANs. The VLAN tagging is enabled by setting a
+          ovs-port.tag
+          property on a Port.</p></li>
+<li class="listitem"><p>There are no bonds either. The bonding is enabled by
+          enslaving multiple Interfaces to a Port and configured by setting
+          properties on a port.</p></li>
+</ul></div>
+<p>
+    </p>
+<div class="refsect2">
+<a name="id-1.2.16.4.5"></a><h3>Bridges</h3>
+<p>Bridges are represented by connections of ovs-bridge
+      type.
+      Due to the limitations of OVSDB, "empty" Bridges (with no Ports) can't exist.
+      NetworkManager inserts the records for Bridges into OVSDB when a Port is
+      enslaved.
+      </p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="id-1.2.16.4.6"></a><h3>Ports</h3>
+<p>Ports are represented by connections of ovs-port
+      type.
+      Due to the limitations of OVSDB, "empty" Ports (with no Interfaces) can't
+      exist.  Ports can also be configured to do VLAN tagging or Bonding.
+      NetworkManager inserts the records for Ports into OVSDB when an Interface is
+      enslaved. Ports must be enslaved to a Bridge.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="id-1.2.16.4.7"></a><h3>Interfaces</h3>
+<p>Interfaces are represented by a connections enslaved to a Port. The
+      system interfaces (that have a corresponding Linux link) have a respective
+      connection.type
+      of the link (e.g. "wired", "bond", "dummy", etc.). Other interfaces ("internal"
+      or "patch" interfaces) are of ovs-interface type. The OVSDB entries are
+      inserted upon enslavement to a Port.</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="id-1.2.16.5"></a><h2>Examples</h2>
+<div class="example">
+<a name="id-1.2.16.5.2"></a><p class="title"><b>Example 20. Creating a Bridge with a single internal Interface</b></p>
+<div class="example-contents">
+<pre class="screen"><code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ovs-bridge conn.interface bridge0</code></strong>
+Connection 'ovs-bridge-bridge0' (d10fc64d-1d48-4394-a1b8-e1aea72f27d5) successfully added.
+<code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ovs-port conn.interface port0 master bridge0</code></strong>
+Connection 'ovs-port-port0' (5ae22bae-bba4-4815-9ade-7e635633e1f0) successfully added.
+<code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ovs-interface slave-type ovs-port conn.interface iface0 \
+  master port0 ipv4.method manual ipv4.address 192.0.2.1/24</code></strong>
+Connection 'ovs-interface-iface0' (3640d2a1-a2fd-4718-92f1-cffadb5b6cdc) successfully added.
+</pre>
+<p>As said above, you need to create a Port even for a single interface.
+      Also, before you add the Interface, the Bridge and Port devices appear active,
+      but are not configured in OVSDB yet. You can inspect the results with
+      <span class="command"><strong>ovs-vsctl show</strong></span>.</p>
+</div>
+</div>
+<br class="example-break"><div class="example">
+<a name="id-1.2.16.5.3"></a><p class="title"><b>Example 21. Adding a Linux interface to a Bridge</b></p>
+<div class="example-contents">
+<pre class="screen"><code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ovs-port conn.interface port1 master bridge0</code></strong>
+Connection 'ovs-port-port1' (67d041eb-8e7b-4458-afee-a1d07c9c4552) successfully added.
+<code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ethernet conn.interface eth0 master port1</code></strong>
+Connection 'ovs-slave-eth0' (d459c45c-cf78-4c1c-b4b7-505e71379624) successfully added.
+</pre>
+<p>Again, you need a port.</p>
+</div>
+</div>
+<br class="example-break"><div class="example">
+<a name="id-1.2.16.5.4"></a><p class="title"><b>Example 22. Creating a VLAN</b></p>
+<div class="example-contents">
+<pre class="screen"><code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ovs-port conn.interface port2 master bridge0 ovs-port.tag 120</code></strong>
+Connection 'ovs-port-port2' (3994c093-4ef7-4549-a4fd-627b831c3cb8) successfully added.
+<code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ethernet conn.interface eth1 master port2</code></strong>
+Connection 'ovs-slave-eth1' (099be06e-71ad-484d-8d5a-fcadc5f207f5) successfully added.
+</pre>
+<p>It's just a port with a tag.</p>
+</div>
+</div>
+<br class="example-break"><div class="example">
+<a name="id-1.2.16.5.5"></a><p class="title"><b>Example 23. Creating a Bond</b></p>
+<div class="example-contents">
+<pre class="screen"><code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ovs-port conn.interface bond0 master bridge0</code></strong>
+Connection 'ovs-port-bond0' (d154ebf9-e999-4e1b-a084-a3de53d25d8a) successfully added.
+<code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ethernet conn.interface eth2 master bond0</code></strong>
+Connection 'ovs-slave-eth2' (475ac1bf-30b2-4534-a877-27f33f58b082) successfully added.
+<code class="prompt">$ </code><strong class="userinput"><code>nmcli conn add type ethernet conn.interface eth3 master bond0</code></strong>
+Connection 'ovs-slave-eth3' (8dedeecb-ed12-482b-b77a-24a4fb835136) successfully added.
+</pre>
+<p>It's just a Port with multiple interfaces. See nm-settings manual for
+      Bonding options you can use with "nmcli c add" or "nmcli c modify". You could
+      even set a VLAN tag on the same Port to do VLAN tagging and bonding at the same
+      time.</p>
+</div>
+</div>
+<br class="example-break">
+</div>
+<div class="refsect1">
+<a name="id-1.2.16.6"></a><h2>Bugs</h2>
+<div class="itemizedlist"><ul class="itemizedlist" style="list-style-type: disc; ">
+<li class="listitem"><p>Not all Open vSwitch capabilities are supported.</p></li>
+<li class="listitem"><p>Open vSwitch devices don't expose many useful properties on D-Bus.</p></li>
+</ul></div>
+<p>Probably many more.</p>
+</div>
+<div class="refsect1">
+<a name="id-1.2.16.7"></a><h2>See Also</h2>
+<p>
+      <a class="ulink" href="https://www.rfc-editor.org/rfc/rfc7047.txt" target="_top">RFC 7047: The Open vSwitch Database Management Protocol</a>,
+      <span class="citerefentry"><span class="refentrytitle">ovs-vsctl</span>(8)</span>,
+      <span class="citerefentry"><span class="refentrytitle">ovs-vswitchd.conf.db</span>(5)</span>,
+      <span class="citerefentry"><span class="refentrytitle">nm-settings</span>(5)</span>,
+      <a class="link" href="nmcli.html" title="nmcli"><span class="citerefentry"><span class="refentrytitle">nmcli</span>(1)</span></a>
+    </p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

@@ -1,0 +1,388 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMDeviceEthernet: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch04.html" title="Device and Runtime Configuration API Reference">
+<link rel="prev" href="NMDeviceDummy.html" title="NMDeviceDummy">
+<link rel="next" href="NMDeviceGeneric.html" title="NMDeviceGeneric">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMDeviceEthernet.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMDeviceEthernet.object-hierarchy" class="shortcut">Object Hierarchy</a></span><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#NMDeviceEthernet.properties" class="shortcut">Properties</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch04.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMDeviceDummy.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMDeviceGeneric.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMDeviceEthernet"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMDeviceEthernet.top_of_page"></a>NMDeviceEthernet</span></h2>
+<p>NMDeviceEthernet</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMDeviceEthernet.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceEthernet.html#nm-device-ethernet-get-hw-address" title="nm_device_ethernet_get_hw_address ()">nm_device_ethernet_get_hw_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceEthernet.html#nm-device-ethernet-get-permanent-hw-address" title="nm_device_ethernet_get_permanent_hw_address ()">nm_device_ethernet_get_permanent_hw_address</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceEthernet.html#nm-device-ethernet-get-speed" title="nm_device_ethernet_get_speed ()">nm_device_ethernet_get_speed</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceEthernet.html#nm-device-ethernet-get-carrier" title="nm_device_ethernet_get_carrier ()">nm_device_ethernet_get_carrier</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *const *
+</td>
+<td class="function_name">
+<a class="link" href="NMDeviceEthernet.html#nm-device-ethernet-get-s390-subchannels" title="nm_device_ethernet_get_s390_subchannels ()">nm_device_ethernet_get_s390_subchannels</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceEthernet.properties"></a><h2>Properties</h2>
+<div class="informaltable"><table class="informaltable" border="0">
+<colgroup>
+<col width="150px" class="properties_type">
+<col width="300px" class="properties_name">
+<col width="200px" class="properties_flags">
+</colgroup>
+<tbody>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceEthernet.html#NMDeviceEthernet--carrier" title="The “carrier” property">carrier</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type">
+<span class="type">char</span> *</td>
+<td class="property_name"><a class="link" href="NMDeviceEthernet.html#NMDeviceEthernet--perm-hw-address" title="The “perm-hw-address” property">perm-hw-address</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-String-Utility-Functions.html#GStrv"><span class="type">GStrv</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceEthernet.html#NMDeviceEthernet--s390-subchannels" title="The “s390-subchannels” property">s390-subchannels</a></td>
+<td class="property_flags">Read</td>
+</tr>
+<tr>
+<td class="property_type"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></td>
+<td class="property_name"><a class="link" href="NMDeviceEthernet.html#NMDeviceEthernet--speed" title="The “speed” property">speed</a></td>
+<td class="property_flags">Read</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceEthernet.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceEthernet.html#NM-DEVICE-ETHERNET-HW-ADDRESS:CAPS" title="NM_DEVICE_ETHERNET_HW_ADDRESS">NM_DEVICE_ETHERNET_HW_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceEthernet.html#NM-DEVICE-ETHERNET-PERMANENT-HW-ADDRESS:CAPS" title="NM_DEVICE_ETHERNET_PERMANENT_HW_ADDRESS">NM_DEVICE_ETHERNET_PERMANENT_HW_ADDRESS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceEthernet.html#NM-DEVICE-ETHERNET-SPEED:CAPS" title="NM_DEVICE_ETHERNET_SPEED">NM_DEVICE_ETHERNET_SPEED</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceEthernet.html#NM-DEVICE-ETHERNET-CARRIER:CAPS" title="NM_DEVICE_ETHERNET_CARRIER">NM_DEVICE_ETHERNET_CARRIER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMDeviceEthernet.html#NM-DEVICE-ETHERNET-S390-SUBCHANNELS:CAPS" title="NM_DEVICE_ETHERNET_S390_SUBCHANNELS">NM_DEVICE_ETHERNET_S390_SUBCHANNELS</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMDeviceEthernet.html#NMDeviceEthernet-struct" title="NMDeviceEthernet">NMDeviceEthernet</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceEthernet.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="https://developer.gnome.org/gobject/unstable/gobject-The-Base-Object-Type.html#GObject-struct">GObject</a>
+    <span class="lineart">╰──</span> <a class="link" href="NMObject.html" title="NMObject">NMObject</a>
+        <span class="lineart">╰──</span> <a class="link" href="NMDevice.html" title="NMDevice">NMDevice</a>
+            <span class="lineart">╰──</span> NMDeviceEthernet
+                <span class="lineart">╰──</span> <a class="link" href="NMDeviceVeth.html" title="NMDeviceVeth">NMDeviceVeth</a>
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMDeviceEthernet.description"></a><h2>Description</h2>
+</div>
+<div class="refsect1">
+<a name="NMDeviceEthernet.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-device-ethernet-get-hw-address"></a><h3>nm_device_ethernet_get_hw_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_ethernet_get_hw_address (<em class="parameter"><code><a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a> *device</code></em>);</pre>
+<div class="warning">
+<p><code class="literal">nm_device_ethernet_get_hw_address</code> has been deprecated since version 1.24 and should not be used in newly-written code.</p>
+<p>Use <a class="link" href="NMDevice.html#nm-device-get-hw-address" title="nm_device_get_hw_address ()"><code class="function">nm_device_get_hw_address()</code></a> instead.</p>
+</div>
+<p>Gets the active hardware (MAC) address of the <a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a></p>
+<p><span class="annotation">[<acronym title="Exposed in C code, not necessarily available in other languages."><span class="acronym">skip</span></acronym>]</span></p>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-hw-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-hw-address.returns"></a><h4>Returns</h4>
+<p> the active hardware address. This is the internal string used by the
+device, and must not be modified.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ethernet-get-permanent-hw-address"></a><h3>nm_device_ethernet_get_permanent_hw_address ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_device_ethernet_get_permanent_hw_address
+                               (<em class="parameter"><code><a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a> *device</code></em>);</pre>
+<p>Gets the permanent hardware (MAC) address of the <a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a></p>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-permanent-hw-address.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-permanent-hw-address.returns"></a><h4>Returns</h4>
+<p> the permanent hardware address. This is the internal string used by the
+device, and must not be modified.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ethernet-get-speed"></a><h3>nm_device_ethernet_get_speed ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint32"><span class="returnvalue">guint32</span></a>
+nm_device_ethernet_get_speed (<em class="parameter"><code><a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a> *device</code></em>);</pre>
+<p>Gets the speed of the <a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a> in Mbit/s.</p>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-speed.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-speed.returns"></a><h4>Returns</h4>
+<p> the speed of the device in Mbit/s</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ethernet-get-carrier"></a><h3>nm_device_ethernet_get_carrier ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_device_ethernet_get_carrier (<em class="parameter"><code><a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a> *device</code></em>);</pre>
+<p>Whether the device has carrier.</p>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-carrier.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-carrier.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the device has carrier</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-device-ethernet-get-s390-subchannels"></a><h3>nm_device_ethernet_get_s390_subchannels ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *const *
+nm_device_ethernet_get_s390_subchannels
+                               (<em class="parameter"><code><a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a> *device</code></em>);</pre>
+<p>Return the list of s390 subchannels if the device supports them.</p>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-s390-subchannels.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>device</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMDeviceEthernet.html" title="NMDeviceEthernet"><span class="type">NMDeviceEthernet</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-device-ethernet-get-s390-subchannels.returns"></a><h4>Returns</h4>
+<p>array of strings, each specifying
+one subchannel the s390 device uses to communicate to the host. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>][<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> utf8]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceEthernet.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-DEVICE-ETHERNET-HW-ADDRESS:CAPS"></a><h3>NM_DEVICE_ETHERNET_HW_ADDRESS</h3>
+<pre class="programlisting">#define NM_DEVICE_ETHERNET_HW_ADDRESS           "hw-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-ETHERNET-PERMANENT-HW-ADDRESS:CAPS"></a><h3>NM_DEVICE_ETHERNET_PERMANENT_HW_ADDRESS</h3>
+<pre class="programlisting">#define NM_DEVICE_ETHERNET_PERMANENT_HW_ADDRESS "perm-hw-address"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-ETHERNET-SPEED:CAPS"></a><h3>NM_DEVICE_ETHERNET_SPEED</h3>
+<pre class="programlisting">#define NM_DEVICE_ETHERNET_SPEED                "speed"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-ETHERNET-CARRIER:CAPS"></a><h3>NM_DEVICE_ETHERNET_CARRIER</h3>
+<pre class="programlisting">#define NM_DEVICE_ETHERNET_CARRIER              "carrier"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-DEVICE-ETHERNET-S390-SUBCHANNELS:CAPS"></a><h3>NM_DEVICE_ETHERNET_S390_SUBCHANNELS</h3>
+<pre class="programlisting">#define NM_DEVICE_ETHERNET_S390_SUBCHANNELS     "s390-subchannels"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceEthernet-struct"></a><h3>NMDeviceEthernet</h3>
+<pre class="programlisting">typedef struct _NMDeviceEthernet NMDeviceEthernet;</pre>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMDeviceEthernet.property-details"></a><h2>Property Details</h2>
+<div class="refsect2">
+<a name="NMDeviceEthernet--carrier"></a><h3>The <code class="literal">“carrier”</code> property</h3>
+<pre class="programlisting">  “carrier”                  <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a></pre>
+<p>Whether the device has carrier.</p>
+<p>Owner: NMDeviceEthernet</p>
+<p>Flags: Read</p>
+<p>Default value: FALSE</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceEthernet--perm-hw-address"></a><h3>The <code class="literal">“perm-hw-address”</code> property</h3>
+<pre class="programlisting">  “perm-hw-address”          <span class="type">char</span> *</pre>
+<p>The permanent hardware (MAC) address of the device.</p>
+<p>Owner: NMDeviceEthernet</p>
+<p>Flags: Read</p>
+<p>Default value: NULL</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceEthernet--s390-subchannels"></a><h3>The <code class="literal">“s390-subchannels”</code> property</h3>
+<pre class="programlisting">  “s390-subchannels”         <a href="https://developer.gnome.org/glib/unstable/glib-String-Utility-Functions.html#GStrv"><span class="type">GStrv</span></a></pre>
+<p>Identifies subchannels of this network device used for
+communication with z/VM or s390 host.</p>
+<p>Owner: NMDeviceEthernet</p>
+<p>Flags: Read</p>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMDeviceEthernet--speed"></a><h3>The <code class="literal">“speed”</code> property</h3>
+<pre class="programlisting">  “speed”                    <a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a></pre>
+<p>The speed of the device.</p>
+<p>Owner: NMDeviceEthernet</p>
+<p>Flags: Read</p>
+<p>Default value: 0</p>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

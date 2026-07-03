@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.IP4Config">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-IP4Config.top_of_page">org.freedesktop.NetworkManager.IP4Config</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-IP4Config.top_of_page"><primary sortas=".IP4Config">org.freedesktop.NetworkManager.IP4Config</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.IP4Config</refname>    <refpurpose>IPv4 Configuration Set.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Addresses">Addresses</link>       readable   aau
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.AddressData">AddressData</link>     readable   aa{sv}
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Gateway">Gateway</link>         readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Routes">Routes</link>          readable   aau
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.RouteData">RouteData</link>       readable   aa{sv}
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Nameservers">Nameservers</link>     readable   au
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.NameserverData">NameserverData</link>  readable   aa{sv}
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Domains">Domains</link>         readable   as
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Searches">Searches</link>        readable   as
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.DnsOptions">DnsOptions</link>      readable   as
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.DnsPriority">DnsPriority</link>     readable   i
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.WinsServers">WinsServers</link>     readable   au
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-IP4Config.WinsServerData">WinsServerData</link>  readable   as
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-IP4Config">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.IP4Config">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Addresses">
+  <title>The "Addresses" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Addresses"><primary sortas=".IP4Config:Addresses">org.freedesktop.NetworkManager.IP4Config:Addresses</primary></indexterm>
+<programlisting>
+Addresses  readable   aau
+</programlisting>
+<para>
+Array of arrays of IPv4 address/prefix/gateway. All 3 elements of each
+array are in network byte order. Essentially: [(addr, prefix, gateway),
+(addr, prefix, gateway), ...] Deprecated: use AddressData and Gateway
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.AddressData">
+  <title>The "AddressData" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.AddressData"><primary sortas=".IP4Config:AddressData">org.freedesktop.NetworkManager.IP4Config:AddressData</primary></indexterm>
+<programlisting>
+AddressData  readable   aa{sv}
+</programlisting>
+<para>
+Array of IP address data objects. All addresses will include "address" (an
+IP address string), and "prefix" (a uint). Some addresses may include
+additional attributes.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Gateway">
+  <title>The "Gateway" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Gateway"><primary sortas=".IP4Config:Gateway">org.freedesktop.NetworkManager.IP4Config:Gateway</primary></indexterm>
+<programlisting>
+Gateway  readable   s
+</programlisting>
+<para>
+The gateway in use.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Routes">
+  <title>The "Routes" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Routes"><primary sortas=".IP4Config:Routes">org.freedesktop.NetworkManager.IP4Config:Routes</primary></indexterm>
+<programlisting>
+Routes  readable   aau
+</programlisting>
+<para>
+Arrays of IPv4 route/prefix/next-hop/metric. All 4 elements of each tuple
+are in network byte order. 'route' and 'next hop' are IPv4 addresses,
+while prefix and metric are simple unsigned integers. Essentially:
+[(route, prefix, next-hop, metric), (route, prefix, next-hop, metric),
+...] Deprecated: use RouteData
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.RouteData">
+  <title>The "RouteData" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.RouteData"><primary sortas=".IP4Config:RouteData">org.freedesktop.NetworkManager.IP4Config:RouteData</primary></indexterm>
+<programlisting>
+RouteData  readable   aa{sv}
+</programlisting>
+<para>
+Array of IP route data objects. All routes will include "dest" (an IP
+address string) and "prefix" (a uint). Some routes may include "next-hop"
+(an IP address string), "metric" (a uint), and additional attributes.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Nameservers">
+  <title>The "Nameservers" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Nameservers"><primary sortas=".IP4Config:Nameservers">org.freedesktop.NetworkManager.IP4Config:Nameservers</primary></indexterm>
+<programlisting>
+Nameservers  readable   au
+</programlisting>
+<para>
+The nameservers in use. Deprecated: use NameserverData
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.NameserverData">
+  <title>The "NameserverData" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.NameserverData"><primary sortas=".IP4Config:NameserverData">org.freedesktop.NetworkManager.IP4Config:NameserverData</primary></indexterm>
+<programlisting>
+NameserverData  readable   aa{sv}
+</programlisting>
+<para>
+The nameservers in use. Currently, only the value "address"
+is recognized (with an IP address string).
+</para>
+<para role="since">Since 1.14</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Domains">
+  <title>The "Domains" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Domains"><primary sortas=".IP4Config:Domains">org.freedesktop.NetworkManager.IP4Config:Domains</primary></indexterm>
+<programlisting>
+Domains  readable   as
+</programlisting>
+<para>
+A list of domains this address belongs to.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Searches">
+  <title>The "Searches" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.Searches"><primary sortas=".IP4Config:Searches">org.freedesktop.NetworkManager.IP4Config:Searches</primary></indexterm>
+<programlisting>
+Searches  readable   as
+</programlisting>
+<para>
+A list of dns searches.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.DnsOptions">
+  <title>The "DnsOptions" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.DnsOptions"><primary sortas=".IP4Config:DnsOptions">org.freedesktop.NetworkManager.IP4Config:DnsOptions</primary></indexterm>
+<programlisting>
+DnsOptions  readable   as
+</programlisting>
+<para>
+A list of DNS options that modify the behavior of the DNS resolver. See
+resolv.conf(5) manual page for the list of supported options.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.DnsPriority">
+  <title>The "DnsPriority" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.DnsPriority"><primary sortas=".IP4Config:DnsPriority">org.freedesktop.NetworkManager.IP4Config:DnsPriority</primary></indexterm>
+<programlisting>
+DnsPriority  readable   i
+</programlisting>
+<para>
+The relative priority of DNS servers.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.WinsServers">
+  <title>The "WinsServers" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.WinsServers"><primary sortas=".IP4Config:WinsServers">org.freedesktop.NetworkManager.IP4Config:WinsServers</primary></indexterm>
+<programlisting>
+WinsServers  readable   au
+</programlisting>
+<para>
+The Windows Internet Name Service servers associated with the connection.
+Each address is in network byte order. Deprecated: use WinsServerData
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-IP4Config.WinsServerData">
+  <title>The "WinsServerData" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-IP4Config.WinsServerData"><primary sortas=".IP4Config:WinsServerData">org.freedesktop.NetworkManager.IP4Config:WinsServerData</primary></indexterm>
+<programlisting>
+WinsServerData  readable   as
+</programlisting>
+<para>
+The Windows Internet Name Service servers associated with the connection.
+</para>
+<para role="since">Since 1.14</para>
+</refsect2>
+</refsect1>
+</refentry>
+

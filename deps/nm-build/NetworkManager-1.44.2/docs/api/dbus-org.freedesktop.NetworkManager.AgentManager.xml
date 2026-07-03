@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.AgentManager">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-AgentManager.top_of_page">org.freedesktop.NetworkManager.AgentManager</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-AgentManager.top_of_page"><primary sortas=".AgentManager">org.freedesktop.NetworkManager.AgentManager</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.AgentManager</refname>    <refpurpose>Secret Agent Manager.</refpurpose>  </refnamediv>  <refsynopsisdiv role="synopsis">
+    <title role="synopsis.title">Methods</title>
+    <synopsis>
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-AgentManager.Register">Register</link>                 (IN  s identifier);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-AgentManager.RegisterWithCapabilities">RegisterWithCapabilities</link> (IN  s identifier,
+                          IN  u capabilities);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-AgentManager.Unregister">Unregister</link>               ();
+</synopsis>
+  </refsynopsisdiv>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-AgentManager">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-methods-org.freedesktop.NetworkManager.AgentManager">
+  <title role="details.title">Method Details</title>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-AgentManager.Register">
+  <title>The Register() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-AgentManager.Register"><primary sortas=".AgentManager.Register">org.freedesktop.NetworkManager.AgentManager.Register()</primary></indexterm>
+<programlisting>
+Register (IN  s identifier);
+</programlisting>
+<para>
+Called by secret Agents to register their ability to provide and save
+network secrets.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN s <parameter>identifier</parameter></literal>:</term>
+  <listitem><para>
+Identifies this agent; only one agent in each user session may use the same identifier. Identifier formatting follows the same rules as D-Bus bus names with the exception that the ':' character is not allowed. The valid set of characters is "[A-Z][a-z][0-9]_-." and the identifier is limited in length to 255 characters with a minimum of 3 characters. An example valid identifier is 'org.gnome.nm-applet' (without quotes).
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-AgentManager.RegisterWithCapabilities">
+  <title>The RegisterWithCapabilities() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-AgentManager.RegisterWithCapabilities"><primary sortas=".AgentManager.RegisterWithCapabilities">org.freedesktop.NetworkManager.AgentManager.RegisterWithCapabilities()</primary></indexterm>
+<programlisting>
+RegisterWithCapabilities (IN  s identifier,
+                          IN  u capabilities);
+</programlisting>
+<para>
+Like Register() but indicates agent capabilities to NetworkManager.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN s <parameter>identifier</parameter></literal>:</term>
+  <listitem><para>
+See the Register() method's identifier argument.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>IN u <parameter>capabilities</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMSecretAgentCapabilities">NMSecretAgentCapabilities</link>) Indicates various agent capabilities to NetworkManager.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-AgentManager.Unregister">
+  <title>The Unregister() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-AgentManager.Unregister"><primary sortas=".AgentManager.Unregister">org.freedesktop.NetworkManager.AgentManager.Unregister()</primary></indexterm>
+<programlisting>
+Unregister ();
+</programlisting>
+<para>
+Called by secret Agents to notify NetworkManager that they will no longer
+handle requests for network secrets. Agents are automatically unregistered
+when they disconnect from D-Bus.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

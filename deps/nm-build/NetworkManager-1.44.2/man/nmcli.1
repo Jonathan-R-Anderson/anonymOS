@@ -1,0 +1,2159 @@
+'\" t
+.\"     Title: nmcli
+.\"    Author: 
+.\" Generator: DocBook XSL Stylesheets vsnapshot <http://docbook.sf.net/>
+.\"      Date: 10/03/2023
+.\"    Manual: General Commands Manual
+.\"    Source: NetworkManager 1.44.2
+.\"  Language: English
+.\"
+.TH "NMCLI" "1" "" "NetworkManager 1\&.44\&.2" "General Commands Manual"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+nmcli \- command\-line tool for controlling NetworkManager
+.SH "SYNOPSIS"
+.HP \w'\fBnmcli\fR\ 'u
+\fBnmcli\fR [\fIOPTIONS\fR...] {\fBhelp\fR | \fBgeneral\fR | \fBnetworking\fR | \fBradio\fR | \fBconnection\fR | \fBdevice\fR | \fBagent\fR | \fBmonitor\fR} [\fICOMMAND\fR] [\fIARGUMENTS\fR...]
+.SH "DESCRIPTION"
+.PP
+\fBnmcli\fR
+is a command\-line tool for controlling NetworkManager and reporting network status\&. It can be utilized as a replacement for
+\fBnm\-applet\fR
+or other graphical clients\&.
+\fBnmcli\fR
+is used to create, display, edit, delete, activate, and deactivate network connections, as well as control and display network device status\&. See
+\fBnmcli-examples\fR(7)
+for ready to run nmcli examples\&.
+.PP
+Typical uses include:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+Scripts: Utilize NetworkManager via
+\fBnmcli\fR
+instead of managing network connections manually\&.
+\fBnmcli\fR
+supports a terse output format which is better suited for script processing\&. Note that NetworkManager can also execute scripts, called "dispatcher scripts", in response to network events\&. See
+\fBNetworkManager\fR(8)
+for details about these dispatcher scripts\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+Servers, headless machines, and terminals:
+\fBnmcli\fR
+can be used to control NetworkManager without a GUI, including creating, editing, starting and stopping network connections and viewing network status\&.
+.RE
+.SH "OPTIONS"
+.PP
+\fB\-a\fR | \fB\-\-ask\fR
+.RS 4
+When using this option
+\fBnmcli\fR
+will stop and ask for any missing required arguments, so do not use this option for non\-interactive purposes like scripts\&. This option controls, for example, whether you will be prompted for a password if it is required for connecting to a network\&.
+.RE
+.PP
+\fB\-c\fR | \fB\-\-colors\fR {yes | no | auto}
+.RS 4
+This option controls color output (using terminal escape sequences)\&.
+yes
+enables colors,
+no
+disables them,
+auto
+only produces colors when standard output is directed to a terminal\&. The default value is
+auto\&.
+.sp
+The actual colors used are configured as described in
+\fBterminal-colors.d\fR(5)\&. Please refer to the
+COLORS
+section for a list of color names supported by
+\fBnmcli\fR\&.
+.sp
+If the environment variable
+NO_COLOR
+is set (to any non\-empty value), then coloring is disabled with mode "auto"\&. If the environment variable
+CLICOLOR_FORCE
+is set (to any non\-empty value), then coloring is enabled with mode "auto"\&. Explicitly enabling coloring overrides the environment variable\&.
+.RE
+.PP
+\fB\-\-complete\-args\fR
+.RS 4
+Instead of conducting the desired action,
+\fBnmcli\fR
+will list possible completions for the last argument\&. This is useful to implement argument completion in shell\&.
+.sp
+The
+exit status
+will indicate success or return a code 65 to indicate the last argument is a file name\&.
+.sp
+NetworkManager ships with command completion support for GNU Bash\&.
+.RE
+.PP
+\fB\-e\fR | \fB\-\-escape\fR {yes | no}
+.RS 4
+Whether to escape
+:
+and
+\e
+characters in terse tabular mode\&. The escape character is
+\e\&.
+.sp
+If omitted, default is
+yes\&.
+.RE
+.PP
+\fB\-f\fR | \fB\-\-fields\fR {\fIfield1\fR,\fIfield2\fR... | all | common}
+.RS 4
+This option is used to specify what fields (column names) should be printed\&. Valid field names differ for specific commands\&. List available fields by providing an invalid value to the
+\fB\-\-fields\fR
+option\&.
+all
+is used to print all valid field values of the command\&.
+common
+is used to print common field values of the command\&.
+.sp
+If omitted, default is
+common\&.
+.RE
+.PP
+\fB\-g\fR | \fB\-\-get\-values\fR {\fIfield1\fR,\fIfield2\fR... | all | common}
+.RS 4
+This option is used to print values from specific fields\&. It is basically a shortcut for
+\-\-mode tabular \-\-terse \-\-fields
+and is a convenient way to retrieve values for particular fields\&. The values are printed one per line without headers\&.
+.sp
+If a section is specified instead of a field, the section name will be printed followed by colon separated values of the fields belonging to that section, all on the same line\&.
+.RE
+.PP
+\fB\-h\fR | \fB\-\-help\fR
+.RS 4
+Print help information\&.
+.RE
+.PP
+\fB\-m\fR | \fB\-\-mode\fR {tabular | multiline}
+.RS 4
+Switch between tabular and multiline output:
+.PP
+tabular
+.RS 4
+Output is a table where each line describes a single entry\&. Columns define particular properties of the entry\&.
+.RE
+.PP
+multiline
+.RS 4
+Each entry comprises multiple lines, each property on its own line\&. The values are prefixed with the property name\&.
+.RE
+.sp
+If omitted, default is
+tabular
+for most commands\&. For the commands producing more structured information, that cannot be displayed on a single line, default is
+multiline\&. Currently, they are:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+nmcli connection show \fIID\fR
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+nmcli device show
+.RE
+.RE
+.PP
+\fB\-p\fR | \fB\-\-pretty\fR
+.RS 4
+Output is pretty\&. This causes
+\fBnmcli\fR
+to produce easily readable outputs for humans, i\&.e\&. values are aligned, headers are printed, etc\&.
+.RE
+.PP
+\fB\-s\fR | \fB\-\-show\-secrets\fR
+.RS 4
+When using this option
+\fBnmcli\fR
+will display passwords and secrets that might be present in an output of an operation\&. This option also influences echoing passwords typed by user as an input\&.
+.RE
+.PP
+\fB\-t\fR | \fB\-\-terse\fR
+.RS 4
+Output is terse\&. This mode is designed and suitable for computer (script) processing\&.
+.RE
+.PP
+\fB\-\-offline\fR
+.RS 4
+Work without a daemon\&. Makes
+\fBconnection add\fR
+and
+\fBconnection modify\fR
+commands accept and produce connection data via standard input/output\&. Ordinarily, nmcli would communicate with the NetworkManager service\&.
+.sp
+The connection data format (keyfile) is described in
+\fBnm-settings-keyfile\fR(5)
+manual\&.
+.RE
+.PP
+\fB\-v\fR | \fB\-\-version\fR
+.RS 4
+Show
+\fBnmcli\fR
+version\&.
+.RE
+.PP
+\fB\-w\fR | \fB\-\-wait\fR \fIseconds\fR
+.RS 4
+This option sets a timeout period for which
+\fBnmcli\fR
+will wait for NetworkManager to finish operations\&. It is especially useful for commands that may take a longer time to complete, e\&.g\&. connection activation\&.
+.sp
+Specifying a value of
+0
+instructs
+\fBnmcli\fR
+not to wait but to exit immediately with a status of success\&. The default value depends on the executed command\&.
+.RE
+.SH "GENERAL COMMANDS"
+.HP \w'\fBnmcli\ general\fR\ 'u
+\fBnmcli general\fR {\fBstatus\fR | \fBhostname\fR | \fBpermissions\fR | \fBlogging\fR | \fBreload\fR} [\fIARGUMENTS\fR...]
+.PP
+Use this command to show NetworkManager status and permissions\&. You can also get and change system hostname, as well as NetworkManager logging level and domains\&.
+.PP
+\fBstatus\fR
+.RS 4
+Show overall status of NetworkManager\&. This is the default action, when no additional command is provided for
+\fBnmcli general\fR\&.
+.RE
+.PP
+\fBhostname\fR [\fIhostname\fR]
+.RS 4
+Get and change system hostname\&. With no arguments, this prints currently configured hostname\&. When you pass a hostname, it will be handed over to NetworkManager to be set as a new system hostname\&.
+.sp
+Note that the term "system" hostname may also be referred to as "persistent" or "static" by other programs or tools\&. The hostname is stored in
+/etc/hostname
+file in most distributions\&. For example, systemd\-hostnamed service uses the term "static" hostname and it only reads the
+/etc/hostname
+file when it starts\&.
+.RE
+.PP
+\fBpermissions\fR
+.RS 4
+Show the permissions a caller has for various authenticated operations that NetworkManager provides, like enable and disable networking, changing Wi\-Fi and WWAN state, modifying connections, etc\&.
+.RE
+.PP
+\fBlogging\fR [\fBlevel\fR\ \fIlevel\fR] [\fBdomains\fR\ \fIdomains\fR...]
+.RS 4
+Get and change NetworkManager logging level and domains\&. Without any argument current logging level and domains are shown\&. In order to change logging state, provide
+\fBlevel\fR
+and, or,
+\fBdomain\fR
+parameters\&. See
+\fBNetworkManager.conf\fR(5)
+for available level and domain values\&.
+.RE
+.PP
+\fBreload\fR [\fIflags\fR...]
+.RS 4
+Reload NetworkManager\*(Aqs configuration and perform certain updates, like flushing caches or rewriting external state to disk\&. This is similar to sending SIGHUP to NetworkManager but it allows for more fine\-grained control over what to reload through the flags argument\&. It also allows non\-root access via PolicyKit and contrary to signals it is synchronous\&. Available flags are:
+.PP
+\fBconf\fR
+.RS 4
+Reload the NetworkManager\&.conf configuration from disk\&. Note that this does not include connections, which can be reloaded through
+\fBnmcli connection reload\fR
+instead\&.
+.RE
+.PP
+\fBdns\-rc\fR
+.RS 4
+Update DNS configuration, which usually involves writing /etc/resolv\&.conf anew\&. This is equivalent to sending the SIGUSR1 signal to the NetworkManager process\&.
+.RE
+.PP
+\fBdns\-full\fR
+.RS 4
+Restart the DNS plugin\&. This is for example useful when using dnsmasq plugin, which uses additional configuration in
+/etc/NetworkManager/dnsmasq\&.d\&. If you edit those files, you can restart the DNS plugin\&. This action shortly interrupts name resolution\&.
+.RE
+.sp
+With no flags, everything that is supported is reloaded, which is identical to sending a SIGHUP\&. See
+\fBNetworkManager\fR(8)
+for more details about signals\&.
+.RE
+.SH "NETWORKING CONTROL COMMANDS"
+.HP \w'\fBnmcli\ networking\fR\ 'u
+\fBnmcli networking\fR {\fBon\fR | \fBoff\fR | \fBconnectivity\fR} [\fIARGUMENTS\fR...]
+.PP
+Query NetworkManager networking status, enable and disable networking\&.
+.PP
+\fBon\fR, \fBoff\fR
+.RS 4
+Enable or disable networking control by NetworkManager\&. All interfaces managed by NetworkManager are deactivated when networking is disabled\&.
+.RE
+.PP
+\fBconnectivity\fR [check]
+.RS 4
+Get network connectivity state\&. The optional
+\fBcheck\fR
+argument tells NetworkManager to re\-check the connectivity, else the most recent known connectivity state is displayed without re\-checking\&.
+.sp
+Possible states are:
+.PP
+none
+.RS 4
+the host is not connected to any network\&.
+.RE
+.PP
+portal
+.RS 4
+the host is behind a captive portal and cannot reach the full Internet\&.
+.RE
+.PP
+limited
+.RS 4
+the host is connected to a network, but it has no access to the Internet\&.
+.RE
+.PP
+full
+.RS 4
+the host is connected to a network and has full access to the Internet\&.
+.RE
+.PP
+unknown
+.RS 4
+the connectivity status cannot be found out\&.
+.RE
+.RE
+.SH "RADIO TRANSMISSION CONTROL COMMANDS"
+.HP \w'\fBnmcli\ radio\fR\ 'u
+\fBnmcli radio\fR {\fBall\fR | \fBwifi\fR | \fBwwan\fR} [\fIARGUMENTS\fR...]
+.PP
+Show radio switches status, or enable and disable the switches\&.
+.PP
+\fBwifi\fR [on | off]
+.RS 4
+Show or set status of Wi\-Fi in NetworkManager\&. If no arguments are supplied, Wi\-Fi status is printed;
+\fBon\fR
+enables Wi\-Fi;
+\fBoff\fR
+disables Wi\-Fi\&.
+.RE
+.PP
+\fBwwan\fR [on | off]
+.RS 4
+Show or set status of WWAN (mobile broadband) in NetworkManager\&. If no arguments are supplied, mobile broadband status is printed;
+\fBon\fR
+enables mobile broadband,
+\fBoff\fR
+disables it\&.
+.RE
+.PP
+\fBall\fR [on | off]
+.RS 4
+Show or set all previously mentioned radio switches at the same time\&.
+.RE
+.SH "ACTIVITY MONITOR"
+.HP \w'\fBnmcli\ monitor\fR\ 'u
+\fBnmcli monitor\fR
+.PP
+Observe NetworkManager activity\&. Watches for changes in connectivity state, devices or connection profiles\&.
+.PP
+See also
+\fBnmcli connection monitor\fR
+and
+\fBnmcli device monitor\fR
+to watch for changes in certain devices or connections\&.
+.SH "CONNECTION MANAGEMENT COMMANDS"
+.HP \w'\fBnmcli\ connection\fR\ 'u
+\fBnmcli connection\fR {\fBshow\fR | \fBup\fR | \fBdown\fR | \fBmodify\fR | \fBadd\fR | \fBedit\fR | \fBclone\fR | \fBdelete\fR | \fBmonitor\fR | \fBreload\fR | \fBload\fR | \fBimport\fR | \fBexport\fR | \fBmigrate\fR} [\fIARGUMENTS\fR...]
+.PP
+NetworkManager stores all network configuration as "connections", which are collections of data (Layer2 details, IP addressing, etc\&.) that describe how to create or connect to a network\&. A connection is "active" when a device uses that connection\*(Aqs configuration to create or connect to a network\&. There may be multiple connections that apply to a device, but only one of them can be active on that device at any given time\&. The additional connections can be used to allow quick switching between different networks and configurations\&.
+.PP
+Consider a machine which is usually connected to a DHCP\-enabled network, but sometimes connected to a testing network which uses static IP addressing\&. Instead of manually reconfiguring eth0 each time the network is changed, the settings can be saved as two connections which both apply to eth0, one for DHCP (called
+default) and one with the static addressing details (called
+testing)\&. When connected to the DHCP\-enabled network the user would run
+\fBnmcli con up default\fR
+, and when connected to the static network the user would run
+\fBnmcli con up testing\fR\&.
+.PP
+\fBshow\fR [\fB\-\-active\fR] [\fB\-\-order\fR\ [+\-]\fIcategory\fR:...]
+.RS 4
+List in\-memory and on\-disk connection profiles, some of which may also be active if a device is using that connection profile\&. Without a parameter, all profiles are listed\&. When
+\fB\-\-active\fR
+option is specified, only the active profiles are shown\&.
+.sp
+The
+\fB\-\-order\fR
+option can be used to get custom ordering of connections\&. The connections can be ordered by active status (active), name (name), type (type) or D\-Bus path (path)\&. If connections are equal according to a sort order category, an additional category can be specified\&. The default sorting order is equivalent to
+\-\-order active:name:path\&.
++
+or no prefix means sorting in ascending order (alphabetically or in numbers),
+\-
+means reverse (descending) order\&. The category names can be abbreviated (e\&.g\&.
+\-\-order \-a:na)\&.
+.RE
+.PP
+\fBshow\fR [\fB\-\-active\fR] [\fBid\fR | \fBuuid\fR | \fBpath\fR | \fBapath\fR] \fIID\fR...
+.RS 4
+Show details for specified connections\&. By default, both static configuration and active connection data are displayed\&. When
+\fB\-\-active\fR
+option is specified, only the active profiles are taken into account\&. Use global
+\fB\-\-show\-secrets\fR
+option to display secrets associated with the profile\&.
+.sp
+\fBid\fR,
+\fBuuid\fR,
+\fBpath\fR
+and
+\fBapath\fR
+keywords can be used if
+\fIID\fR
+is ambiguous\&. Optional
+\fIID\fR\-specifying keywords are:
+.PP
+\fBid\fR
+.RS 4
+the
+\fIID\fR
+denotes a connection name\&.
+.RE
+.PP
+\fBuuid\fR
+.RS 4
+the
+\fIID\fR
+denotes a connection UUID\&.
+.RE
+.PP
+\fBpath\fR
+.RS 4
+the
+\fIID\fR
+denotes a D\-Bus static connection path in the format of /org/freedesktop/NetworkManager/Settings/\fInum\fR
+or just
+\fInum\fR\&.
+.RE
+.PP
+\fBapath\fR
+.RS 4
+the
+\fIID\fR
+denotes a D\-Bus active connection path in the format of /org/freedesktop/NetworkManager/ActiveConnection/\fInum\fR
+or just
+\fInum\fR\&.
+.RE
+.sp
+It is possible to filter the output using the global
+\fB\-\-fields\fR
+option\&. Use the following values:
+.PP
+\fBprofile\fR
+.RS 4
+only shows static profile configuration\&.
+.RE
+.PP
+\fBactive\fR
+.RS 4
+only shows active connection data (when the profile is active)\&.
+.RE
+.sp
+You can also specify particular fields\&. For static configuration, use setting and property names as described in
+\fBnm-settings-nmcli\fR(5)
+manual page\&. For active data use GENERAL, IP4, DHCP4, IP6, DHCP6, VPN\&.
+.sp
+When no command is given to the
+\fBnmcli connection\fR, the default action is
+\fBnmcli connection show\fR\&.
+.RE
+.PP
+\fBup\fR [\fBid\fR | \fBuuid\fR | \fBpath\fR] \fIID\fR [\fBifname\fR\ \fIifname\fR] [\fBap\fR\ \fIBSSID\fR] [\fBpasswd\-file\fR\ \fIfile\fR]
+.RS 4
+Activate a connection\&. The connection is identified by its name, UUID or D\-Bus path\&. If
+\fIID\fR
+is ambiguous, a keyword
+\fBid\fR,
+\fBuuid\fR
+or
+\fBpath\fR
+can be used\&. When requiring a particular device to activate the connection on, the
+\fBifname\fR
+option with interface name should be given\&. If the
+\fIID\fR
+is not given an
+\fBifname\fR
+is required, and NetworkManager will activate the best available connection for the given
+\fBifname\fR\&. In case of a VPN connection, the
+\fBifname\fR
+option specifies the device of the base connection\&. The
+\fBap\fR
+option specify what particular AP should be used in case of a Wi\-Fi connection\&.
+.sp
+If
+\fB\-\-wait\fR
+option is not specified, the default timeout will be 90 seconds\&.
+.sp
+See
+\fBconnection show\fR
+above for the description of the
+\fIID\fR\-specifying keywords\&.
+.sp
+Available options are:
+.PP
+\fBifname\fR
+.RS 4
+interface that will be used for activation\&.
+.RE
+.PP
+\fBap\fR
+.RS 4
+BSSID of the AP which the command should connect to (for Wi\-Fi connections)\&.
+.RE
+.PP
+\fBpasswd\-file\fR
+.RS 4
+some networks may require credentials during activation\&. You can give these credentials using this option\&. Each line of the file should contain one password in the form:
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+setting_name\&.property_name:the password
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+For example, for WPA Wi\-Fi with PSK, the line would be
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+802\-11\-wireless\-security\&.psk:secret12345
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+For 802\&.1X password, the line would be
+.sp
+.if n \{\
+.RS 4
+.\}
+.nf
+802\-1x\&.password:my 1X password
+.fi
+.if n \{\
+.RE
+.\}
+.sp
+
+\fBnmcli\fR
+also accepts
+wifi\-sec
+and
+wifi
+strings instead of
+802\-11\-wireless\-security\&. When NetworkManager requires a password and it is not given,
+\fBnmcli\fR
+will ask for it when run with
+\fB\-\-ask\fR\&. If
+\fB\-\-ask\fR
+was not passed, NetworkManager can ask another secret agent that may be running (typically a GUI secret agent, such as nm\-applet or gnome\-shell)\&.
+.RE
+.RE
+.PP
+\fBdown\fR [\fBid\fR | \fBuuid\fR | \fBpath\fR | \fBapath\fR] \fIID\fR...
+.RS 4
+Deactivate a connection from a device without preventing the device from further auto\-activation\&. Multiple connections can be passed to the command\&.
+.sp
+Be aware that this command deactivates the specified active connection, but the device on which the connection was active, is still ready to connect and will perform auto\-activation by looking for a suitable connection that has the \*(Aqautoconnect\*(Aq flag set\&. Note that the deactivating connection profile is internally blocked from autoconnecting again\&. Hence it will not autoconnect until reboot or until the user performs an action that unblocks autoconnect, like modifying the profile or explicitly activating it\&.
+.sp
+In most cases you may want to use
+\fBdevice down\fR
+command instead\&.
+.sp
+The connection is identified by its name, UUID or D\-Bus path\&. If
+\fIID\fR
+is ambiguous, a keyword
+\fBid\fR,
+\fBuuid\fR,
+\fBpath\fR
+or
+\fBapath\fR
+can be used\&.
+.sp
+See
+\fBconnection show\fR
+above for the description of the
+\fIID\fR\-specifying keywords\&.
+.sp
+If
+\fB\-\-wait\fR
+option is not specified, the default timeout will be 10 seconds\&.
+.RE
+.PP
+\fBmodify\fR [\fB\-\-temporary\fR] [\fBid\fR | \fBuuid\fR | \fBpath\fR] [\fIID\fR] {\fIoption\fR\ \fIvalue\fR\ |\ [+|\-]\fIsetting\fR\&.\fIproperty\fR\ \fIvalue\fR}...
+.RS 4
+Add, modify or remove properties in the connection profile\&.
+.sp
+To set the property just specify the property name followed by the value\&. An empty value ("") resets the property value to the default\&.
+.sp
+See
+\fBnm-settings-nmcli\fR(5)
+for complete reference of setting and property names, their descriptions and default values\&. The
+\fIsetting\fR
+and
+\fIproperty\fR
+can be abbreviated provided they are unique\&.
+.sp
+If you want to append an item or a flag to the existing value, use
++
+prefix for the property name or alias\&. If you want to remove items from a container\-type or flag property, use
+\-
+prefix\&. For certain properties you can also remove elements by specifying the zero\-based index(es)\&. The
++
+and
+\-
+modifiers only have a real effect for properties that support them\&. These are for example multi\-value (container) properties or flags like
+ipv4\&.dns,
+ip4,
+ipv4\&.addresses,
+bond\&.options,
+802\-1x\&.phase1\-auth\-flags
+etc\&.
+.sp
+The connection is identified by its name, UUID or D\-Bus path\&. If
+\fIID\fR
+is ambiguous, a keyword
+\fBid\fR,
+\fBuuid\fR
+or
+\fBpath\fR
+can be used\&. The
+\fIID\fR
+is not used with the global
+\fB\-\-offline\fR
+option\&.
+.sp
+When the global
+\fB\-\-offline\fR
+is used, the command reads the connection from the standard input and prints the modified connection to standard output instead of making the the NetworkManager daemon act upon specified connection\&.
+.RE
+.PP
+\fBmodify\fR [\fB\-\-temporary\fR] [\fBid\fR | \fBuuid\fR | \fBpath\fR] \fIID\fR \fBremove\fR\ \fIsetting\fR
+.RS 4
+Removes a setting from the connection profile\&.
+.RE
+.PP
+\fBadd\fR [\fBsave\fR\ {yes\ |\ no}] {\fIoption\fR\ \fIvalue\fR\ |\ [+|\-]\fIsetting\fR\&.\fIproperty\fR\ \fIvalue\fR}...
+.RS 4
+Create a new connection using specified properties\&.
+.sp
+You need to describe the newly created connections with the property and value pairs\&. See
+\fBnm-settings-nmcli\fR(5)
+for the complete reference\&. The syntax is the same as of the
+\fBnmcli connection modify\fR
+command\&.
+.sp
+To construct a meaningful connection you at the very least need to set the
+\fBconnection\&.type\fR
+property (or use the
+\fBtype\fR
+alias) to one of known NetworkManager connection types:
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+6lowpan
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+802\-11\-olpc\-mesh
+(alias
+olpc\-mesh)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+802\-11\-wireless
+(alias
+wifi)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+802\-3\-ethernet
+(alias
+ethernet)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+adsl
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+bluetooth
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+bond
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+bond\-slave
+(deprecated for ethernet with master)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+bridge
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+bridge\-slave
+(deprecated for ethernet with master)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+cdma
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+dummy
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+generic
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+gsm
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+infiniband
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+ip\-tunnel
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+macsec
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+macvlan
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+olpc\-mesh
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+ovs\-bridge
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+ovs\-dpdk
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+ovs\-interface
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+ovs\-patch
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+ovs\-port
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+pppoe
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+team
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+team\-slave
+(deprecated for ethernet with master)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+tun
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+veth
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+vlan
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+vpn
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+vrf
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+vxlan
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+wifi\-p2p
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+wimax
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+wireguard
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+wpan
+.RE
+.sp
+The most typical uses are described in the
+EXAMPLES
+section\&.
+.sp
+Aside from the properties and values two special options are accepted:
+.PP
+\fBsave\fR
+.RS 4
+Controls whether the connection should be persistent, i\&.e\&. NetworkManager should store it on disk (default:
+yes)\&.
+.RE
+.PP
+\fB\-\-\fR
+.RS 4
+If a single
+\fB\-\-\fR
+argument is encountered it is ignored\&. This is for compatibility with older versions on
+\fBnmcli\fR\&.
+.RE
+.sp
+When the global
+\fB\-\-offline\fR
+is used, the command prints the resulting connection to standard output instead of actually adding the connection via the NetworkManager daemon\&.
+.RE
+.PP
+\fBedit\fR {[\fBid\fR\ |\ \fBuuid\fR\ |\ \fBpath\fR]\ \fIID\fR | [\fBtype\fR\ \fItype\fR]\ [\fBcon\-name\fR\ \fIname\fR] }
+.RS 4
+Edit an existing connection or add a new one, using an interactive editor\&.
+.sp
+The existing connection is identified by its name, UUID or D\-Bus path\&. If
+\fIID\fR
+is ambiguous, a keyword
+\fBid\fR,
+\fBuuid\fR, or
+\fBpath\fR
+can be used\&. See
+\fBconnection show\fR
+above for the description of the
+\fIID\fR\-specifying keywords\&. Not providing an
+\fIID\fR
+means that a new connection will be added\&.
+.sp
+The interactive editor will guide you through the connection editing and allow you to change connection parameters according to your needs by means of a simple menu\-driven interface\&. The editor indicates what settings and properties can be modified and provides in\-line help\&.
+.sp
+Available options:
+.PP
+\fBtype\fR
+.RS 4
+type of the new connection; valid types are the same as for
+\fBconnection add\fR
+command\&.
+.RE
+.PP
+\fBcon\-name\fR
+.RS 4
+name for the new connection\&. It can be changed later in the editor\&.
+.RE
+.sp
+See also
+\fBnm-settings-nmcli\fR(5)
+for all NetworkManager settings and property names, and their descriptions; and
+\fBnmcli-examples\fR(7)
+for sample editor sessions\&.
+.RE
+.PP
+\fBclone\fR [\fB\-\-temporary\fR] [\fBid\fR | \fBuuid\fR | \fBpath\fR] \fIID\fR \fInew_name\fR
+.RS 4
+Clone a connection\&. The connection to be cloned is identified by its name, UUID or D\-Bus path\&. If
+\fIID\fR
+is ambiguous, a keyword
+\fBid\fR,
+\fBuuid\fR
+or
+\fBpath\fR
+can be used\&. See
+\fBconnection show\fR
+above for the description of the
+\fIID\fR\-specifying keywords\&.
+\fInew_name\fR
+is the name of the new cloned connection\&. The new connection will be the exact copy except the connection\&.id (\fInew_name\fR) and connection\&.uuid (generated) properties\&.
+.sp
+The new connection profile will be saved as persistent unless
+\fB\-\-temporary\fR
+option is specified, in which case the new profile won\*(Aqt exist after NetworkManager restart\&.
+.RE
+.PP
+\fBdelete\fR [\fBid\fR | \fBuuid\fR | \fBpath\fR] \fIID\fR...
+.RS 4
+Delete a configured connection\&. The connection to be deleted is identified by its name, UUID or D\-Bus path\&. If
+\fIID\fR
+is ambiguous, a keyword
+\fBid\fR,
+\fBuuid\fR
+or
+\fBpath\fR
+can be used\&. See
+\fBconnection show\fR
+above for the description of the
+\fIID\fR\-specifying keywords\&.
+.sp
+If
+\fB\-\-wait\fR
+option is not specified, the default timeout will be 10 seconds\&.
+.RE
+.PP
+\fBmonitor\fR [\fBid\fR | \fBuuid\fR | \fBpath\fR] \fIID\fR...
+.RS 4
+Monitor connection profile activity\&. This command prints a line whenever the specified connection changes\&. The connection to be monitored is identified by its name, UUID or D\-Bus path\&. If
+\fIID\fR
+is ambiguous, a keyword
+\fBid\fR,
+\fBuuid\fR
+or
+\fBpath\fR
+can be used\&. See
+\fBconnection show\fR
+above for the description of the
+\fIID\fR\-specifying keywords\&.
+.sp
+Monitors all connection profiles in case none is specified\&. The command terminates when all monitored connections disappear\&. If you want to monitor connection creation consider using the global monitor with
+\fBnmcli monitor\fR
+command\&.
+.RE
+.PP
+\fBreload\fR
+.RS 4
+Reload all connection files from disk\&. NetworkManager does not monitor changes to connection\&. So you need to use this command in order to tell NetworkManager to re\-read the connection profiles from disk when a change was made to them\&.
+.RE
+.PP
+\fBload\fR \fIfilename\fR...
+.RS 4
+Load/reload one or more connection files from disk\&. Use this after manually editing a connection file to ensure that NetworkManager is aware of its latest state\&.
+.RE
+.PP
+\fBimport\fR [\fB\-\-temporary\fR] \fBtype\fR\ \fItype\fR \fBfile\fR\ \fIfile\fR
+.RS 4
+Import an external/foreign configuration as a NetworkManager connection profile\&. The type of the input file is specified by
+\fBtype\fR
+option\&.
+.sp
+Only VPN configurations are supported at the moment\&. The configuration is imported by NetworkManager VPN plugins\&.
+\fBtype\fR
+values are the same as for
+\fBvpn\-type\fR
+option in
+\fBnmcli connection add\fR\&. VPN configurations are imported by VPN plugins\&. Therefore the proper VPN plugin has to be installed so that
+\fBnmcli\fR
+could import the data\&.
+.sp
+The imported connection profile will be saved as persistent unless
+\fB\-\-temporary\fR
+option is specified, in which case the new profile won\*(Aqt exist after NetworkManager restart\&.
+.RE
+.PP
+\fBexport\fR [\fBid\fR | \fBuuid\fR | \fBpath\fR] \fIID\fR [\fIfile\fR]
+.RS 4
+Export a connection\&.
+.sp
+Only VPN connections are supported at the moment\&. A proper VPN plugin has to be installed so that
+\fBnmcli\fR
+could export a connection\&. If no
+\fIfile\fR
+is provided, the VPN configuration data will be printed to standard output\&.
+.RE
+.PP
+\fBmigrate\fR [\fB\-\-plugin\fR\ \fIplugin\fR...] [\fBid\fR | \fBuuid\fR | \fBpath\fR] [\fIID\fR...]
+.RS 4
+Migrate connection profiles to a different settings plugin, such as
+keyfile
+(default) or
+ifcfg\-rh\&.
+.sp
+The connection to be migrated is identified by its name, UUID or D\-Bus path\&. If
+\fIID\fR
+is ambiguous, a keyword
+\fBid\fR,
+\fBuuid\fR
+or
+\fBpath\fR
+can be used\&. See
+\fBconnection show\fR
+above for the description of the
+\fIID\fR\-specifying keywords\&.
+.sp
+If no connections are specified, the command acts on all available connections\&. Therefore, with no arguments, the command migrates all connection profiles to the
+keyfile
+plugin\&.
+.sp
+If
+\fB\-\-wait\fR
+option is not specified, the default timeout will be 10 seconds\&.
+.RE
+.SH "DEVICE MANAGEMENT COMMANDS"
+.HP \w'\fBnmcli\ device\fR\ 'u
+\fBnmcli device\fR {\fBstatus\fR | \fBshow\fR | \fBset\fR | \fBup\fR | \fBconnect\fR | \fBreapply\fR | \fBmodify\fR | \fBdown\fR | \fBdisconnect\fR | \fBdelete\fR | \fBmonitor\fR | \fBwifi\fR | \fBlldp\fR | \fBcheckpoint\fR} [\fIARGUMENTS\fR...]
+.PP
+Show and manage network interfaces\&.
+.PP
+\fBstatus\fR
+.RS 4
+Print status of devices\&.
+.sp
+This is the default action if no command is specified to
+\fBnmcli device\fR\&.
+.RE
+.PP
+\fBshow\fR [\fIifname\fR]
+.RS 4
+Show detailed information about devices\&. Without an argument, all devices are examined\&. To get information for a specific device, the interface name has to be provided\&.
+.RE
+.PP
+\fBset\fR [ifname] \fIifname\fR [\fBautoconnect\fR\ {yes\ |\ no}] [\fBmanaged\fR\ {yes\ |\ no}]
+.RS 4
+Set device properties\&.
+.RE
+.PP
+\fBup\fR \fIifname\fR
+.RS 4
+Connect the device\&. NetworkManager will try to find a suitable connection that will be activated\&. It will also consider connections that are not set to auto connect\&.
+.sp
+If no compatible connection exists, a new profile with default settings will be created and activated\&. This differentiates
+\fBnmcli connection up ifname "$DEVICE"\fR
+from
+\fBnmcli device up "$DEVICE"\fR
+.sp
+If
+\fB\-\-wait\fR
+option is not specified, the default timeout will be 90 seconds\&.
+.RE
+.PP
+\fBconnect\fR \fIifname\fR
+.RS 4
+Alias for command
+\fBup\fR\&. Before version 1\&.34\&.0
+\fBup\fR
+was not supported\&.
+.RE
+.PP
+\fBreapply\fR \fIifname\fR
+.RS 4
+Attempt to update device with changes to the currently active connection made since it was last applied\&.
+.RE
+.PP
+\fBmodify\fR \fIifname\fR {\fIoption\fR\ \fIvalue\fR\ |\ [+|\-]\fIsetting\fR\&.\fIproperty\fR\ \fIvalue\fR}...
+.RS 4
+Modify the settings currently active on the device\&.
+.sp
+This command lets you do temporary changes to a configuration active on a particular device\&. The changes are not preserved in the connection profile\&.
+.sp
+See
+\fBnm-settings-nmcli\fR(5)
+for the list of available properties\&. Please note that some properties can\*(Aqt be changed on an already connected device\&.
+.RE
+.PP
+\fBdown\fR \fIifname\fR...
+.RS 4
+Disconnect a device and prevent the device from automatically activating further connections without user/manual intervention\&. Note that disconnecting software devices may mean that the devices will disappear\&.
+.sp
+If
+\fB\-\-wait\fR
+option is not specified, the default timeout will be 10 seconds\&.
+.RE
+.PP
+\fBdisconnect\fR \fIifname\fR...
+.RS 4
+Alias for command
+\fBdown\fR\&. Before version 1\&.34\&.0
+\fBdown\fR
+was not supported\&.
+.RE
+.PP
+\fBdelete\fR \fIifname\fR...
+.RS 4
+Delete a device\&. The command removes the interface from the system\&. Note that this only works for software devices like bonds, bridges, teams, etc\&. Hardware devices (like Ethernet) cannot be deleted by the command\&.
+.sp
+If
+\fB\-\-wait\fR
+option is not specified, the default timeout will be 10 seconds\&.
+.RE
+.PP
+\fBmonitor\fR [\fIifname\fR...]
+.RS 4
+Monitor device activity\&. This command prints a line whenever the specified devices change state\&.
+.sp
+Monitors all devices in case no interface is specified\&. The monitor terminates when all specified devices disappear\&. If you want to monitor device addition consider using the global monitor with
+\fBnmcli monitor\fR
+command\&.
+.RE
+.PP
+\fBwifi\fR [\fBlist\fR\ [\fB\-\-rescan\fR\ |\ \fBauto\fR\ |\ \fBno\fR\ |\ \fByes\fR]\ [\fBifname\fR\ \fIifname\fR]\ [\fBbssid\fR\ \fIBSSID\fR]]
+.RS 4
+List available Wi\-Fi access points\&. The
+\fBifname\fR
+and
+\fBbssid\fR
+options can be used to list APs for a particular interface or with a specific BSSID, respectively\&.
+.sp
+By default,
+\fBnmcli\fR
+ensures that the access point list is no older than 30 seconds and triggers a network scan if necessary\&. The
+\fB\-\-rescan\fR
+can be used to either force or disable the scan regardless of how fresh the access point list is\&.
+.RE
+.PP
+\fBwifi\fR \fBconnect\fR \fI(B)SSID\fR [\fBpassword\fR\ \fIpassword\fR] [\fBwep\-key\-type\fR\ {key\ |\ phrase}] [\fBifname\fR\ \fIifname\fR] [\fBbssid\fR\ \fIBSSID\fR] [\fBname\fR\ \fIname\fR] [\fBprivate\fR\ {yes\ |\ no}] [\fBhidden\fR\ {yes\ |\ no}]
+.RS 4
+Connect to a Wi\-Fi network specified by SSID or BSSID\&. The command finds a matching connection or creates one and then activates it on a device\&. This is a command\-line counterpart of clicking an SSID in a GUI client\&. If a connection for the network already exists, it is possible to bring up (activate) the existing profile as follows:
+\fBnmcli con up id \fR\fB\fIname\fR\fR\&. Note that only open, WEP and WPA\-PSK networks are supported if no previous connection exists\&. It is also assumed that IP configuration is obtained via DHCP\&.
+.sp
+If
+\fB\-\-wait\fR
+option is not specified, the default timeout will be 90 seconds\&.
+.sp
+Available options are:
+.PP
+\fBpassword\fR
+.RS 4
+password for secured networks (WEP or WPA)\&.
+.RE
+.PP
+\fBwep\-key\-type\fR
+.RS 4
+type of WEP secret, either
+\fBkey\fR
+for ASCII/HEX key or
+\fBphrase\fR
+for passphrase\&.
+.RE
+.PP
+\fBifname\fR
+.RS 4
+interface that will be used for activation\&.
+.RE
+.PP
+\fBbssid\fR
+.RS 4
+if specified, the created connection will be restricted just for the BSSID\&.
+.RE
+.PP
+\fBname\fR
+.RS 4
+if specified, the connection will use the name (else NM creates a name itself)\&.
+.RE
+.PP
+\fBprivate\fR
+.RS 4
+if set to
+yes, the connection will only be visible to the user who created it\&. Otherwise, the connection is system\-wide, which is the default\&.
+.RE
+.PP
+\fBhidden\fR
+.RS 4
+set to
+yes
+when connecting for the first time to an AP not broadcasting its SSID\&. Otherwise, the SSID would not be found and the connection attempt would fail\&.
+.RE
+.RE
+.PP
+\fBwifi\fR \fBhotspot\fR [\fBifname\fR\ \fIifname\fR] [\fBcon\-name\fR\ \fIname\fR] [\fBssid\fR\ \fISSID\fR] [\fBband\fR\ {a\ |\ bg}] [\fBchannel\fR\ \fIchannel\fR] [\fBpassword\fR\ \fIpassword\fR]
+.RS 4
+Create a Wi\-Fi hotspot\&. The command creates a hotspot connection profile according to Wi\-Fi device capabilities and activates it on the device\&. The hotspot is secured with WPA if device/driver supports that, otherwise WEP is used\&. Use
+\fBconnection down\fR
+or
+\fBdevice down\fR
+to stop the hotspot\&.
+.sp
+Parameters of the hotspot can be influenced by the optional parameters:
+.PP
+\fBifname\fR
+.RS 4
+what Wi\-Fi device is used\&.
+.RE
+.PP
+\fBcon\-name\fR
+.RS 4
+name of the created hotspot connection profile\&.
+.RE
+.PP
+\fBssid\fR
+.RS 4
+SSID of the hotspot\&.
+.RE
+.PP
+\fBband\fR
+.RS 4
+Wi\-Fi band to use\&.
+.RE
+.PP
+\fBchannel\fR
+.RS 4
+Wi\-Fi channel to use\&.
+.RE
+.PP
+\fBpassword\fR
+.RS 4
+password to use for the created hotspot\&. If not provided,
+\fBnmcli\fR
+will generate a password\&. The password is either WPA pre\-shared key or WEP key\&.
+.sp
+Note that
+\fB\-\-show\-secrets\fR
+global option can be used to print the hotspot password\&. It is useful especially when the password was generated\&.
+.RE
+.RE
+.PP
+\fBwifi\fR \fBrescan\fR [\fBifname\fR\ \fIifname\fR] [\fBssid\fR\ \fISSID\fR...]
+.RS 4
+Request that NetworkManager immediately re\-scan for available access points\&. NetworkManager scans Wi\-Fi networks periodically, but in some cases it can be useful to start scanning manually (e\&.g\&. after resuming the computer)\&. By using
+\fBssid\fR, it is possible to scan for a specific SSID, which is useful for APs with hidden SSIDs\&. You can provide multiple
+\fBssid\fR
+parameters in order to scan more SSIDs\&.
+.sp
+This command does not show the APs, use
+\fBnmcli device wifi list\fR
+for that\&.
+.RE
+.PP
+\fBwifi\fR \fBshow\-password\fR [\fBifname\fR\ \fIifname\fR]
+.RS 4
+Show the details of the active Wi\-Fi networks, including the secrets\&.
+.RE
+.PP
+\fBlldp\fR [\fBlist\fR\ [\fBifname\fR\ \fIifname\fR]]
+.RS 4
+Display information about neighboring devices learned through the Link Layer Discovery Protocol (LLDP)\&. The
+\fBifname\fR
+option can be used to list neighbors only for a given interface\&. The protocol must be enabled in the connection settings\&.
+.RE
+.PP
+\fBcheckpoint\fR [\fB\-\-timeout\fR\ \fIseconds\fR] [\fIifname\fR...] \fB\-\-\fR \fICOMMAND\fR...
+.RS 4
+Runs the command with a configuration checkpoint taken and asks for a confirmation when finished\&. When the confirmation is not given, the checkpoint is automatically restored after timeout\&.
+.sp
+This allows doing disruptive configuration changes over remote connections with an option of restoring the network configuration to a known good state in case of an error\&.
+.sp
+If the a list of interface names is specified, the checkpoint is taken, the checkpoint is takes only on the specified devices\&. Otherwise a checkpoint is taken for all devices\&.
+.sp
+Currently the timeout defaults to 15 seconds\&. This may change in a future version\&.
+.RE
+.SH "SECRET AGENT"
+.HP \w'\fBnmcli\ agent\fR\ 'u
+\fBnmcli agent\fR {\fBsecret\fR | \fBpolkit\fR | \fBall\fR}
+.PP
+Run
+\fBnmcli\fR
+as a NetworkManager secret agent, or polkit agent\&.
+.PP
+\fBsecret\fR
+.RS 4
+Register
+\fBnmcli\fR
+as a NetworkManager secret agent and listen for secret requests\&. You usually do not need this command, because
+\fBnmcli\fR
+can handle secrets when connecting to networks\&. However, you may find the command useful when you use another tool for activating connections and you do not have a secret agent available (like nm\-applet)\&.
+.RE
+.PP
+\fBpolkit\fR
+.RS 4
+Register
+\fBnmcli\fR
+as a polkit agent for the user session and listen for authorization requests\&. You do not usually need this command, because
+\fBnmcli\fR
+can handle polkit actions related to NetworkManager operations (when run with
+\fB\-\-ask\fR)\&. However, you may find the command useful when you want to run a simple text based polkit agent and you do not have an agent of a desktop environment\&. Note that running this command makes
+\fBnmcli\fR
+handle all polkit requests, not only NetworkManager related ones, because only one polkit agent can run for the session\&.
+.RE
+.PP
+\fBall\fR
+.RS 4
+Runs
+\fBnmcli\fR
+as both NetworkManager secret and a polkit agent\&.
+.RE
+.SH "COLORS"
+.PP
+Implicit coloring can be disabled by an empty file
+/etc/terminal\-colors\&.d/nmcli\&.disable\&.
+.PP
+See
+\fBterminal-colors.d\fR(5)
+for more details about colorization configuration\&. The logical color names supported by
+\fBnmcli\fR
+are:
+.PP
+\fBconnection\-activated\fR
+.RS 4
+A connection that is active\&.
+.RE
+.PP
+\fBconnection\-activating\fR
+.RS 4
+Connection that is being activated\&.
+.RE
+.PP
+\fBconnection\-disconnecting\fR
+.RS 4
+Connection that is being disconnected\&.
+.RE
+.PP
+\fBconnection\-external\fR
+.RS 4
+Connection representing configuration created externally to NetworkManager\&.
+.RE
+.PP
+\fBconnection\-invisible\fR
+.RS 4
+Connection whose details is the user not permitted to see\&.
+.RE
+.PP
+\fBconnection\-deprecated\fR
+.RS 4
+Connection that uses deprecated settings\&. It might not be possible to activate it\&.
+.RE
+.PP
+\fBconnectivity\-full\fR
+.RS 4
+Connectivity state when Internet is reachable\&.
+.RE
+.PP
+\fBconnectivity\-limited\fR
+.RS 4
+Connectivity state when only a local network reachable\&.
+.RE
+.PP
+\fBconnectivity\-none\fR
+.RS 4
+Connectivity state when the network is disconnected\&.
+.RE
+.PP
+\fBconnectivity\-portal\fR
+.RS 4
+Connectivity state when a captive portal hijacked the connection\&.
+.RE
+.PP
+\fBconnectivity\-unknown\fR
+.RS 4
+Connectivity state when a connectivity check didn\*(Aqt run\&.
+.RE
+.PP
+\fBdevice\-activated\fR
+.RS 4
+Device that is connected\&.
+.RE
+.PP
+\fBdevice\-activating\fR
+.RS 4
+Device that is being configured\&.
+.RE
+.PP
+\fBdevice\-disconnected\fR
+.RS 4
+Device that is not connected\&.
+.RE
+.PP
+\fBdevice\-external\fR
+.RS 4
+Device configured externally to NetworkManager\&.
+.RE
+.PP
+\fBdevice\-firmware\-missing\fR
+.RS 4
+Warning of a missing device firmware\&.
+.RE
+.PP
+\fBdevice\-plugin\-missing\fR
+.RS 4
+Warning of a missing device plugin\&.
+.RE
+.PP
+\fBdevice\-unavailable\fR
+.RS 4
+Device that is not available for activation\&.
+.RE
+.PP
+\fBdevice\-disabled\fR
+.RS 4
+Device is disabled by software or hardware kill switch\&.
+.RE
+.PP
+\fBmanager\-running\fR
+.RS 4
+Notice that the NetworkManager daemon is available\&.
+.RE
+.PP
+\fBmanager\-starting\fR
+.RS 4
+Notice that the NetworkManager daemon is being initially connected\&.
+.RE
+.PP
+\fBmanager\-stopped\fR
+.RS 4
+Notice that the NetworkManager daemon is not available\&.
+.RE
+.PP
+\fBpermission\-auth\fR
+.RS 4
+An action that requires user authentication to get permission\&.
+.RE
+.PP
+\fBpermission\-no\fR
+.RS 4
+An action that is not permitted\&.
+.RE
+.PP
+\fBpermission\-yes\fR
+.RS 4
+An action that is permitted\&.
+.RE
+.PP
+\fBprompt\fR
+.RS 4
+Prompt in interactive mode\&.
+.RE
+.PP
+\fBstate\-asleep\fR
+.RS 4
+Indication that NetworkManager in suspended state\&.
+.RE
+.PP
+\fBstate\-connected\-global\fR
+.RS 4
+Indication that NetworkManager in connected to Internet\&.
+.RE
+.PP
+\fBstate\-connected\-local\fR
+.RS 4
+Indication that NetworkManager in local network\&.
+.RE
+.PP
+\fBstate\-connected\-site\fR
+.RS 4
+Indication that NetworkManager in connected to networks other than Internet\&.
+.RE
+.PP
+\fBstate\-connecting\fR
+.RS 4
+Indication that NetworkManager is establishing a network connection\&.
+.RE
+.PP
+\fBstate\-disconnected\fR
+.RS 4
+Indication that NetworkManager is disconnected from a network\&.
+.RE
+.PP
+\fBstate\-disconnecting\fR
+.RS 4
+Indication that NetworkManager is being disconnected from a network\&.
+.RE
+.PP
+\fBwifi\-signal\-excellent\fR
+.RS 4
+Wi\-Fi network with an excellent signal level\&.
+.RE
+.PP
+\fBwifi\-signal\-fair\fR
+.RS 4
+Wi\-Fi network with a fair signal level\&.
+.RE
+.PP
+\fBwifi\-signal\-good\fR
+.RS 4
+Wi\-Fi network with a good signal level\&.
+.RE
+.PP
+\fBwifi\-signal\-poor\fR
+.RS 4
+Wi\-Fi network with a poor signal level\&.
+.RE
+.PP
+\fBwifi\-signal\-unknown\fR
+.RS 4
+Wi\-Fi network that hasn\*(Aqt been actually seen (a hidden AP)\&.
+.RE
+.PP
+\fBwifi\-deprecated\fR
+.RS 4
+Wi\-Fi network that might be impossible to connect to due to use of deprecated functionality\&.
+.RE
+.PP
+\fBdisabled\fR
+.RS 4
+A property that is turned off\&.
+.RE
+.PP
+\fBenabled\fR
+.RS 4
+A property that is turned on\&.
+.RE
+.SH "ENVIRONMENT VARIABLES"
+.PP
+\fBnmcli\fR\*(Aqs behavior is affected by the following environment variables\&.
+.PP
+\fBLC_ALL\fR
+.RS 4
+If set to a non\-empty string value, it overrides the values of all the other internationalization variables\&.
+.RE
+.PP
+\fBLC_MESSAGES\fR
+.RS 4
+Determines the locale to be used for internationalized messages\&.
+.RE
+.PP
+\fBLANG\fR
+.RS 4
+Provides a default value for the internationalization variables that are unset or null\&.
+.RE
+.PP
+\fBNO_COLOR\fR
+.RS 4
+Default to not producing colored and paged output\&. The
+\fB\-\-colors\fR
+option, if used, takes precedence\&.
+.RE
+.PP
+\fBPAGER\fR
+.RS 4
+Filter to pipe the output through if it doesn\*(Aqt fit on a screen\&. Can be a file name of an executable or a shell command\&. Empty string to disable the functionality\&.
+.sp
+Note that the pager command is expected to handle wide characters and ANSI escape sequences for changing colors (unless they\*(Aqre disabled)\&.
+\fBnmcli\fR
+sets up the environment variables
+\fBLESS\fR
+and
+\fBLESSCHARSET\fR
+appropriately for the
+\fBless\fR(1)
+pager, other pagers may or may not need extra configuration\&.
+.sp
+If unspecified,
+\fBpager\fR(1),
+\fBless\fR(1)
+and
+\fBmore\fR(1)
+will be tried (in that order)\&.
+.RE
+.PP
+\fBTERM\fR
+.RS 4
+Terminal type\&. If
+dumb,
+\fBnmcli\fR
+will not use a pager or produce ANSI escape sequences for coloring\&.
+.sp
+Terminal types other than
+dumb
+are assumed to support ASCII escape sequences for setting the output color\&.
+.RE
+.SH "INTERNATIONALIZATION NOTES"
+.PP
+Be aware that
+\fBnmcli\fR
+is localized and that is why the output depends on your environment\&. This is important to realize especially when you parse the output\&.
+.PP
+Call
+\fBnmcli\fR
+as
+\fBLC_ALL=C nmcli\fR
+to be sure the locale is set to
+C
+while executing in a script\&.
+.PP
+\fBLC_ALL\fR,
+\fBLC_MESSAGES\fR,
+\fBLANG\fR
+variables specify the
+\fBLC_MESSAGES\fR
+locale category (in that order), which determines the language that
+\fBnmcli\fR
+uses for messages\&. The
+C
+locale is used if none of these variables are set, and this locale uses English messages\&.
+.SH "EXIT STATUS"
+.PP
+\fBnmcli\fR
+exits with status 0 if it succeeds, a value greater than 0 is returned if an error occurs\&.
+.PP
+\fB0\fR
+.RS 4
+Success \(en indicates the operation succeeded\&.
+.RE
+.PP
+\fB1\fR
+.RS 4
+Unknown or unspecified error\&.
+.RE
+.PP
+\fB2\fR
+.RS 4
+Invalid user input, wrong
+\fBnmcli\fR
+invocation\&.
+.RE
+.PP
+\fB3\fR
+.RS 4
+Timeout expired (see
+\fB\-\-wait\fR
+option)\&.
+.RE
+.PP
+\fB4\fR
+.RS 4
+Connection activation failed\&.
+.RE
+.PP
+\fB5\fR
+.RS 4
+Connection deactivation failed\&.
+.RE
+.PP
+\fB6\fR
+.RS 4
+Disconnecting device failed\&.
+.RE
+.PP
+\fB7\fR
+.RS 4
+Connection deletion failed\&.
+.RE
+.PP
+\fB8\fR
+.RS 4
+NetworkManager is not running\&.
+.RE
+.PP
+\fB10\fR
+.RS 4
+Connection, device, or access point does not exist\&.
+.RE
+.PP
+\fB65\fR
+.RS 4
+When used with
+\fB\-\-complete\-args\fR
+option, a file name is expected to follow\&.
+.RE
+.SH "EXAMPLES"
+.PP
+This section presents various examples of
+\fBnmcli\fR
+usage\&. If you want even more, please refer to
+\fBnmcli-examples\fR(7)
+manual page\&.
+.PP
+\fBnmcli \-t \-f RUNNING general\fR
+.RS 4
+tells you whether NetworkManager is running or not\&.
+.RE
+.PP
+\fBnmcli \-t \-f STATE general\fR
+.RS 4
+shows the overall status of NetworkManager\&.
+.RE
+.PP
+\fBnmcli radio wifi off\fR
+.RS 4
+switches Wi\-Fi off\&.
+.RE
+.PP
+\fBnmcli connection show\fR
+.RS 4
+lists all connections NetworkManager has\&.
+.RE
+.PP
+\fBnmcli \-p \-m multiline \-f all con show\fR
+.RS 4
+shows all configured connections in multi\-line mode\&.
+.RE
+.PP
+\fBnmcli connection show \-\-active\fR
+.RS 4
+lists all currently active connections\&.
+.RE
+.PP
+\fBnmcli \-f name,autoconnect c s\fR
+.RS 4
+shows all connection profile names and their auto\-connect property\&.
+.RE
+.PP
+\fBnmcli \-p connection show "My default em1"\fR
+.RS 4
+shows details for "My default em1" connection profile\&.
+.RE
+.PP
+\fBnmcli \-\-show\-secrets connection show "My Home Wi\-Fi"\fR
+.RS 4
+shows details for "My Home Wi\-Fi" connection profile with all passwords\&. Without
+\fB\-\-show\-secrets\fR
+option, secrets would not be displayed\&.
+.RE
+.PP
+\fBnmcli \-f active connection show "My default em1"\fR
+.RS 4
+shows details for "My default em1" active connection, like IP, DHCP information, etc\&.
+.RE
+.PP
+\fBnmcli \-f profile con s "My wired connection"\fR
+.RS 4
+shows static configuration details of the connection profile with "My wired connection" name\&.
+.RE
+.PP
+\fBnmcli \-p con up "My wired connection" ifname eth0\fR
+.RS 4
+activates the connection profile with name "My wired connection" on interface eth0\&. The \-p option makes
+\fBnmcli\fR
+show progress of the activation\&.
+.RE
+.PP
+\fBnmcli con up 6b028a27\-6dc9\-4411\-9886\-e9ad1dd43761 ap 00:3A:98:7C:42:D3\fR
+.RS 4
+connects the Wi\-Fi connection with UUID 6b028a27\-6dc9\-4411\-9886\-e9ad1dd43761 to the AP with BSSID 00:3A:98:7C:42:D3\&.
+.RE
+.PP
+\fBnmcli device status\fR
+.RS 4
+shows the status for all devices\&.
+.RE
+.PP
+\fBnmcli dev down em2\fR
+.RS 4
+disconnects a connection on interface em2 and marks the device as unavailable for auto\-connecting\&. As a result, no connection will automatically be activated on the device until the device\*(Aqs \*(Aqautoconnect\*(Aq is set to TRUE or the user manually activates a connection\&.
+.RE
+.PP
+\fBnmcli \-f GENERAL,WIFI\-PROPERTIES dev show wlan0\fR
+.RS 4
+shows details for wlan0 interface; only GENERAL and WIFI\-PROPERTIES sections will be shown\&.
+.RE
+.PP
+\fBnmcli \-f CONNECTIONS device show wlp3s0\fR
+.RS 4
+shows all available connection profiles for your Wi\-Fi interface wlp3s0\&.
+.RE
+.PP
+\fBnmcli dev wifi\fR
+.RS 4
+lists available Wi\-Fi access points known to NetworkManager\&.
+.RE
+.PP
+\fBnmcli dev wifi con "Cafe Hotspot 1" password caffeine name "My cafe"\fR
+.RS 4
+creates a new connection named "My cafe" and then connects it to "Cafe Hotspot 1" SSID using password "caffeine"\&. This is mainly useful when connecting to "Cafe Hotspot 1" for the first time\&. Next time, it is better to use
+\fBnmcli con up id "My cafe"\fR
+so that the existing connection profile can be used and no additional is created\&.
+.RE
+.PP
+\fBnmcli \-s dev wifi hotspot con\-name QuickHotspot\fR
+.RS 4
+creates a hotspot profile and connects it\&. Prints the hotspot password the user should use to connect to the hotspot from other devices\&.
+.RE
+.PP
+\fBnmcli dev modify em1 ipv4\&.method shared\fR
+.RS 4
+starts IPv4 connection sharing using em1 device\&. The sharing will be active until the device is disconnected\&.
+.RE
+.PP
+\fBnmcli dev modify em1 ipv6\&.address 2001:db8::a:bad:c0de\fR
+.RS 4
+temporarily adds an IP address to a device\&. The address will be removed when the same connection is activated again\&.
+.RE
+.PP
+\fBnmcli connection add type ethernet autoconnect no ifname eth0\fR
+.RS 4
+non\-interactively adds an Ethernet connection tied to eth0 interface with automatic IP configuration (DHCP), and disables the connection\*(Aqs
+autoconnect
+flag\&.
+.RE
+.PP
+\fBnmcli c a ifname Maxipes\-fik type vlan dev eth0 id 55\fR
+.RS 4
+non\-interactively adds a VLAN connection with ID 55\&. The connection will use eth0 and the VLAN interface will be named Maxipes\-fik\&.
+.RE
+.PP
+\fBnmcli c a ifname eth0 type ethernet ipv4\&.method disabled ipv6\&.method link\-local\fR
+.RS 4
+non\-interactively adds a connection that will use eth0 Ethernet interface and only have an IPv6 link\-local address configured\&.
+.RE
+.PP
+\fBnmcli connection edit ethernet\-em1\-2\fR
+.RS 4
+edits existing "ethernet\-em1\-2" connection in the interactive editor\&.
+.RE
+.PP
+\fBnmcli connection edit type ethernet con\-name "yet another Ethernet connection"\fR
+.RS 4
+adds a new Ethernet connection in the interactive editor\&.
+.RE
+.PP
+\fBnmcli con mod ethernet\-2 connection\&.autoconnect no\fR
+.RS 4
+modifies \*(Aqautoconnect\*(Aq property in the \*(Aqconnection\*(Aq setting of \*(Aqethernet\-2\*(Aq connection\&.
+.RE
+.PP
+\fBnmcli con mod "Home Wi\-Fi" wifi\&.mtu 1350\fR
+.RS 4
+modifies \*(Aqmtu\*(Aq property in the \*(Aqwifi\*(Aq setting of \*(AqHome Wi\-Fi\*(Aq connection\&.
+.RE
+.PP
+\fBnmcli con mod em1\-1 ipv4\&.method manual ipv4\&.addr "192\&.168\&.1\&.23/24 192\&.168\&.1\&.1, 10\&.10\&.1\&.5/8, 10\&.0\&.0\&.11"\fR
+.RS 4
+sets manual addressing and the addresses in em1\-1 profile\&.
+.RE
+.PP
+\fBnmcli con modify ABC +ipv4\&.dns 8\&.8\&.8\&.8\fR
+.RS 4
+appends a Google public DNS server to DNS servers in ABC profile\&.
+.RE
+.PP
+\fBnmcli con modify ABC \-ipv4\&.addresses "192\&.168\&.100\&.25/24 192\&.168\&.1\&.1"\fR
+.RS 4
+removes the specified IP address from (static) profile ABC\&.
+.RE
+.PP
+\fBnmcli con import type openvpn file ~/Downloads/frootvpn\&.ovpn\fR
+.RS 4
+imports an OpenVPN configuration to NetworkManager\&.
+.RE
+.PP
+\fBnmcli con export corp\-vpnc /home/joe/corpvpn\&.conf\fR
+.RS 4
+exports NetworkManager VPN profile corp\-vpnc as standard Cisco (vpnc) configuration\&.
+.RE
+.SH "NOTES"
+.PP
+\fBnmcli\fR
+accepts abbreviations, as long as they are a unique prefix in the set of possible options\&. As new options get added, these abbreviations are not guaranteed to stay unique\&. For scripting and long term compatibility it is therefore strongly advised to spell out the full option names\&.
+.SH "BUGS"
+.PP
+There are probably some bugs\&. If you find a bug, please report it to your distribution or upstream at
+https://gitlab\&.freedesktop\&.org/NetworkManager/NetworkManager\&.
+.SH "SEE ALSO"
+.PP
+\fBnmcli-examples\fR(7),
+\fBnm-settings-nmcli\fR(5),
+\fBnm-online\fR(1),
+\fBNetworkManager\fR(8),
+\fBNetworkManager.conf\fR(5),
+\fBnm-applet\fR(1),
+\fBnm-connection-editor\fR(1),
+\fBterminal-colors.d\fR(5)\&.

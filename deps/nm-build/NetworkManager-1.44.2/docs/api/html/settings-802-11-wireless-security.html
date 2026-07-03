@@ -1,0 +1,191 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>802-11-wireless-security: NetworkManager Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="NetworkManager Reference Manual">
+<link rel="up" href="ch01.html" title="Configuration Settings">
+<link rel="prev" href="settings-802-11-wireless.html" title="802-11-wireless">
+<link rel="next" href="settings-wpan.html" title="wpan">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_properties">  <span class="dim">|</span> 
+                  <a href="#settings-802-11-wireless-security.properties" class="shortcut">
+            Properties
+        </a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch01.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="settings-802-11-wireless.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="settings-wpan.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="settings-802-11-wireless-security"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2>802-11-wireless-security</h2>
+<p>802-11-wireless-security — Wi-Fi Security Settings</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="id-1.3.3.48.2"></a><h2>
+            Properties
+        </h2>
+<div class="table">
+<a name="id-1.3.3.48.2.2.1"></a><p class="title"><b>Table 82. </b></p>
+<div class="table-contents"><table class="table" border="1">
+<colgroup>
+<col>
+<col>
+<col>
+<col>
+</colgroup>
+<thead><tr>
+<th>Key Name</th>
+<th>Value Type</th>
+<th>Default Value</th>
+<th>Value Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><pre class="screen">auth-alg</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>When WEP is used (ie, key-mgmt = "none" or "ieee8021x") indicate the 802.11 authentication algorithm required by the AP here.  One of "open" for Open System, "shared" for Shared Key, or "leap" for Cisco LEAP.  When using Cisco LEAP (ie, key-mgmt = "ieee8021x" and auth-alg = "leap") the "leap-username" and "leap-password" properties must be specified.</td>
+</tr>
+<tr>
+<td><pre class="screen">fils</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Indicates whether Fast Initial Link Setup (802.11ai) must be enabled for the connection.  One of NM_SETTING_WIRELESS_SECURITY_FILS_DEFAULT (0) (use global default value), NM_SETTING_WIRELESS_SECURITY_FILS_DISABLE (1) (disable FILS), NM_SETTING_WIRELESS_SECURITY_FILS_OPTIONAL (2) (enable FILS if the supplicant and the access point support it) or NM_SETTING_WIRELESS_SECURITY_FILS_REQUIRED (3) (enable FILS and fail if not supported).  When set to NM_SETTING_WIRELESS_SECURITY_FILS_DEFAULT (0) and no global default is set, FILS will be optionally enabled.</td>
+</tr>
+<tr>
+<td><pre class="screen">group</pre></td>
+<td><pre class="screen">array of string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>A list of group/broadcast encryption algorithms which prevents connections to Wi-Fi networks that do not utilize one of the algorithms in the list.  For maximum compatibility leave this property empty.  Each list element may be one of "wep40", "wep104", "tkip", or "ccmp".</td>
+</tr>
+<tr>
+<td><pre class="screen">key-mgmt</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Key management used for the connection. One of "none" (WEP or no password protection), "ieee8021x" (Dynamic WEP), "owe" (Opportunistic Wireless Encryption), "wpa-psk" (WPA2 + WPA3 personal), "sae" (WPA3 personal only), "wpa-eap" (WPA2 + WPA3 enterprise) or "wpa-eap-suite-b-192" (WPA3 enterprise only).
+
+This property must be set for any Wi-Fi connection that uses security.</td>
+</tr>
+<tr>
+<td><pre class="screen">leap-password</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The login password for legacy LEAP connections (ie, key-mgmt = "ieee8021x" and auth-alg = "leap").</td>
+</tr>
+<tr>
+<td><pre class="screen">leap-password-flags</pre></td>
+<td><pre class="screen">NMSettingSecretFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Flags indicating how to handle the "leap-password" property.</td>
+</tr>
+<tr>
+<td><pre class="screen">leap-username</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>The login username for legacy LEAP connections (ie, key-mgmt = "ieee8021x" and auth-alg = "leap").</td>
+</tr>
+<tr>
+<td><pre class="screen">pairwise</pre></td>
+<td><pre class="screen">array of string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>A list of pairwise encryption algorithms which prevents connections to Wi-Fi networks that do not utilize one of the algorithms in the list. For maximum compatibility leave this property empty.  Each list element may be one of "tkip" or "ccmp".</td>
+</tr>
+<tr>
+<td><pre class="screen">pmf</pre></td>
+<td><pre class="screen">int32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Indicates whether Protected Management Frames (802.11w) must be enabled for the connection.  One of NM_SETTING_WIRELESS_SECURITY_PMF_DEFAULT (0) (use global default value), NM_SETTING_WIRELESS_SECURITY_PMF_DISABLE (1) (disable PMF), NM_SETTING_WIRELESS_SECURITY_PMF_OPTIONAL (2) (enable PMF if the supplicant and the access point support it) or NM_SETTING_WIRELESS_SECURITY_PMF_REQUIRED (3) (enable PMF and fail if not supported).  When set to NM_SETTING_WIRELESS_SECURITY_PMF_DEFAULT (0) and no global default is set, PMF will be optionally enabled.</td>
+</tr>
+<tr>
+<td><pre class="screen">proto</pre></td>
+<td><pre class="screen">array of string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>List of strings specifying the allowed WPA protocol versions to use. Each element may be one "wpa" (allow WPA) or "rsn" (allow WPA2/RSN).  If not specified, both WPA and RSN connections are allowed.</td>
+</tr>
+<tr>
+<td><pre class="screen">psk</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Pre-Shared-Key for WPA networks. For WPA-PSK, it's either an ASCII passphrase of 8 to 63 characters that is (as specified in the 802.11i standard) hashed to derive the actual key, or the key in form of 64 hexadecimal character. The WPA3-Personal networks use a passphrase of any length for SAE authentication.</td>
+</tr>
+<tr>
+<td><pre class="screen">psk-flags</pre></td>
+<td><pre class="screen">NMSettingSecretFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Flags indicating how to handle the "psk" property.</td>
+</tr>
+<tr>
+<td><pre class="screen">wep-key-flags</pre></td>
+<td><pre class="screen">NMSettingSecretFlags (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Flags indicating how to handle the "wep-key0", "wep-key1", "wep-key2", and "wep-key3" properties.</td>
+</tr>
+<tr>
+<td><pre class="screen">wep-key-type</pre></td>
+<td><pre class="screen">NMWepKeyType (uint32)</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Controls the interpretation of WEP keys.  Allowed values are NM_WEP_KEY_TYPE_KEY (1), in which case the key is either a 10- or 26-character hexadecimal string, or a 5- or 13-character ASCII password; or NM_WEP_KEY_TYPE_PASSPHRASE (2), in which case the passphrase is provided as a string and will be hashed using the de-facto MD5 method to derive the actual WEP key.</td>
+</tr>
+<tr>
+<td><pre class="screen">wep-key0</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Index 0 WEP key.  This is the WEP key used in most networks.  See the "wep-key-type" property for a description of how this key is interpreted.</td>
+</tr>
+<tr>
+<td><pre class="screen">wep-key1</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Index 1 WEP key.  This WEP index is not used by most networks.  See the "wep-key-type" property for a description of how this key is interpreted.</td>
+</tr>
+<tr>
+<td><pre class="screen">wep-key2</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Index 2 WEP key.  This WEP index is not used by most networks.  See the "wep-key-type" property for a description of how this key is interpreted.</td>
+</tr>
+<tr>
+<td><pre class="screen">wep-key3</pre></td>
+<td><pre class="screen">string</pre></td>
+<td><pre class="screen"></pre></td>
+<td>Index 3 WEP key.  This WEP index is not used by most networks.  See the "wep-key-type" property for a description of how this key is interpreted.</td>
+</tr>
+<tr>
+<td><pre class="screen">wep-tx-keyidx</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>When static WEP is used (ie, key-mgmt = "none") and a non-default WEP key index is used by the AP, put that WEP key index here.  Valid values are 0 (default key) through 3.  Note that some consumer access points (like the Linksys WRT54G) number the keys 1 - 4.</td>
+</tr>
+<tr>
+<td><pre class="screen">wps-method</pre></td>
+<td><pre class="screen">uint32</pre></td>
+<td><pre class="screen">0</pre></td>
+<td>Flags indicating which mode of WPS is to be used if any.
+
+There's little point in changing the default setting as NetworkManager will automatically determine whether it's feasible to start WPS enrollment from the Access Point capabilities.
+
+WPS can be disabled by setting this property to a value of 1.</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p><br class="table-break"></p>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

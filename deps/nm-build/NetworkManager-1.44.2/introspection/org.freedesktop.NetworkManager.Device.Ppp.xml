@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<node name="/">
+  <!--
+      org.freedesktop.NetworkManager.Device.Ppp:
+      @short_description: PPP Device.
+
+  -->
+  <interface name="org.freedesktop.NetworkManager.Device.Ppp">
+
+  </interface>
+</node>

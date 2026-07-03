@@ -13,7 +13,7 @@ import core.audit : auditLog, AuditKind; // ORG P8.2: attributable revocations
 extern (C) @nogc nothrow:
 
 enum int CAP_MAX = 2048;
-enum int CAPTAB_COUNT = 64;
+enum int CAPTAB_COUNT = 256;  // must stay >= MAX_TASKS (one cap table per task)
 enum uint CAP_INVALID = uint.max;
 
 enum uint CAP_RIGHT_READ  = 1u << 0;

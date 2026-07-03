@@ -1,0 +1,2212 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMSettingTeam: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="NMSettingTeamPort.html" title="NMSettingTeamPort">
+<link rel="next" href="NMSettingTun.html" title="NMSettingTun">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMSettingTeam.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMSettingTeam.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="NMSettingTeamPort.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSettingTun.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMSettingTeam"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMSettingTeam.top_of_page"></a>NMSettingTeam</span></h2>
+<p>NMSettingTeam — Describes connection properties for teams</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMSettingTeam.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-new-ethtool" title="nm_team_link_watcher_new_ethtool ()">nm_team_link_watcher_new_ethtool</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-new-nsna-ping" title="nm_team_link_watcher_new_nsna_ping ()">nm_team_link_watcher_new_nsna_ping</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-new-arp-ping" title="nm_team_link_watcher_new_arp_ping ()">nm_team_link_watcher_new_arp_ping</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-new-arp-ping2" title="nm_team_link_watcher_new_arp_ping2 ()">nm_team_link_watcher_new_arp_ping2</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-ref" title="nm_team_link_watcher_ref ()">nm_team_link_watcher_ref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-unref" title="nm_team_link_watcher_unref ()">nm_team_link_watcher_unref</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-equal" title="nm_team_link_watcher_equal ()">nm_team_link_watcher_equal</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-dup" title="nm_team_link_watcher_dup ()">nm_team_link_watcher_dup</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-name" title="nm_team_link_watcher_get_name ()">nm_team_link_watcher_get_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-delay-up" title="nm_team_link_watcher_get_delay_up ()">nm_team_link_watcher_get_delay_up</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-delay-down" title="nm_team_link_watcher_get_delay_down ()">nm_team_link_watcher_get_delay_down</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-init-wait" title="nm_team_link_watcher_get_init_wait ()">nm_team_link_watcher_get_init_wait</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-interval" title="nm_team_link_watcher_get_interval ()">nm_team_link_watcher_get_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-missed-max" title="nm_team_link_watcher_get_missed_max ()">nm_team_link_watcher_get_missed_max</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-target-host" title="nm_team_link_watcher_get_target_host ()">nm_team_link_watcher_get_target_host</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-source-host" title="nm_team_link_watcher_get_source_host ()">nm_team_link_watcher_get_source_host</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html#NMTeamLinkWatcherArpPingFlags" title="enum NMTeamLinkWatcherArpPingFlags"><span class="returnvalue">NMTeamLinkWatcherArpPingFlags</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-flags" title="nm_team_link_watcher_get_flags ()">nm_team_link_watcher_get_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-team-link-watcher-get-vlanid" title="nm_team_link_watcher_get_vlanid ()">nm_team_link_watcher_get_vlanid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-new" title="nm_setting_team_new ()">nm_setting_team_new</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-config" title="nm_setting_team_get_config ()">nm_setting_team_get_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-notify-peers-count" title="nm_setting_team_get_notify_peers_count ()">nm_setting_team_get_notify_peers_count</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-notify-peers-interval" title="nm_setting_team_get_notify_peers_interval ()">nm_setting_team_get_notify_peers_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-mcast-rejoin-count" title="nm_setting_team_get_mcast_rejoin_count ()">nm_setting_team_get_mcast_rejoin_count</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-mcast-rejoin-interval" title="nm_setting_team_get_mcast_rejoin_interval ()">nm_setting_team_get_mcast_rejoin_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner" title="nm_setting_team_get_runner ()">nm_setting_team_get_runner</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-hwaddr-policy" title="nm_setting_team_get_runner_hwaddr_policy ()">nm_setting_team_get_runner_hwaddr_policy</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-tx-balancer" title="nm_setting_team_get_runner_tx_balancer ()">nm_setting_team_get_runner_tx_balancer</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-tx-balancer-interval" title="nm_setting_team_get_runner_tx_balancer_interval ()">nm_setting_team_get_runner_tx_balancer_interval</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-active" title="nm_setting_team_get_runner_active ()">nm_setting_team_get_runner_active</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-fast-rate" title="nm_setting_team_get_runner_fast_rate ()">nm_setting_team_get_runner_fast_rate</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-sys-prio" title="nm_setting_team_get_runner_sys_prio ()">nm_setting_team_get_runner_sys_prio</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">int</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-min-ports" title="nm_setting_team_get_runner_min_ports ()">nm_setting_team_get_runner_min_ports</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-agg-select-policy" title="nm_setting_team_get_runner_agg_select_policy ()">nm_setting_team_get_runner_agg_select_policy</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-remove-runner-tx-hash-by-value" title="nm_setting_team_remove_runner_tx_hash_by_value ()">nm_setting_team_remove_runner_tx_hash_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-num-runner-tx-hash" title="nm_setting_team_get_num_runner_tx_hash ()">nm_setting_team_get_num_runner_tx_hash</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-runner-tx-hash" title="nm_setting_team_get_runner_tx_hash ()">nm_setting_team_get_runner_tx_hash</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-remove-runner-tx-hash" title="nm_setting_team_remove_runner_tx_hash ()">nm_setting_team_remove_runner_tx_hash</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-add-runner-tx-hash" title="nm_setting_team_add_runner_tx_hash ()">nm_setting_team_add_runner_tx_hash</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-num-link-watchers" title="nm_setting_team_get_num_link_watchers ()">nm_setting_team_get_num_link_watchers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-get-link-watcher" title="nm_setting_team_get_link_watcher ()">nm_setting_team_get_link_watcher</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-add-link-watcher" title="nm_setting_team_add_link_watcher ()">nm_setting_team_add_link_watcher</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-remove-link-watcher" title="nm_setting_team_remove_link_watcher ()">nm_setting_team_remove_link_watcher</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-remove-link-watcher-by-value" title="nm_setting_team_remove_link_watcher_by_value ()">nm_setting_team_remove_link_watcher_by_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMSettingTeam.html#nm-setting-team-clear-link-watchers" title="nm_setting_team_clear_link_watchers ()">nm_setting_team_clear_link_watchers</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<a name="NMTeamLinkWatcher"></a><div class="refsect1">
+<a name="NMSettingTeam.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcherArpPingFlags" title="enum NMTeamLinkWatcherArpPingFlags">NMTeamLinkWatcherArpPingFlags</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-TEAM-LINK-WATCHER-ETHTOOL:CAPS" title="NM_TEAM_LINK_WATCHER_ETHTOOL">NM_TEAM_LINK_WATCHER_ETHTOOL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-TEAM-LINK-WATCHER-ARP-PING:CAPS" title="NM_TEAM_LINK_WATCHER_ARP_PING">NM_TEAM_LINK_WATCHER_ARP_PING</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-TEAM-LINK-WATCHER-NSNA-PING:CAPS" title="NM_TEAM_LINK_WATCHER_NSNA_PING">NM_TEAM_LINK_WATCHER_NSNA_PING</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-SETTING-NAME:CAPS" title="NM_SETTING_TEAM_SETTING_NAME">NM_SETTING_TEAM_SETTING_NAME</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-CONFIG:CAPS" title="NM_SETTING_TEAM_CONFIG">NM_SETTING_TEAM_CONFIG</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-NOTIFY-PEERS-COUNT:CAPS" title="NM_SETTING_TEAM_NOTIFY_PEERS_COUNT">NM_SETTING_TEAM_NOTIFY_PEERS_COUNT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-NOTIFY-PEERS-INTERVAL:CAPS" title="NM_SETTING_TEAM_NOTIFY_PEERS_INTERVAL">NM_SETTING_TEAM_NOTIFY_PEERS_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-MCAST-REJOIN-COUNT:CAPS" title="NM_SETTING_TEAM_MCAST_REJOIN_COUNT">NM_SETTING_TEAM_MCAST_REJOIN_COUNT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-MCAST-REJOIN-INTERVAL:CAPS" title="NM_SETTING_TEAM_MCAST_REJOIN_INTERVAL">NM_SETTING_TEAM_MCAST_REJOIN_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER:CAPS" title="NM_SETTING_TEAM_RUNNER">NM_SETTING_TEAM_RUNNER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-HWADDR-POLICY:CAPS" title="NM_SETTING_TEAM_RUNNER_HWADDR_POLICY">NM_SETTING_TEAM_RUNNER_HWADDR_POLICY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-TX-HASH:CAPS" title="NM_SETTING_TEAM_RUNNER_TX_HASH">NM_SETTING_TEAM_RUNNER_TX_HASH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-TX-BALANCER:CAPS" title="NM_SETTING_TEAM_RUNNER_TX_BALANCER">NM_SETTING_TEAM_RUNNER_TX_BALANCER</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-TX-BALANCER-INTERVAL:CAPS" title="NM_SETTING_TEAM_RUNNER_TX_BALANCER_INTERVAL">NM_SETTING_TEAM_RUNNER_TX_BALANCER_INTERVAL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-ACTIVE:CAPS" title="NM_SETTING_TEAM_RUNNER_ACTIVE">NM_SETTING_TEAM_RUNNER_ACTIVE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-FAST-RATE:CAPS" title="NM_SETTING_TEAM_RUNNER_FAST_RATE">NM_SETTING_TEAM_RUNNER_FAST_RATE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-SYS-PRIO:CAPS" title="NM_SETTING_TEAM_RUNNER_SYS_PRIO">NM_SETTING_TEAM_RUNNER_SYS_PRIO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-MIN-PORTS:CAPS" title="NM_SETTING_TEAM_RUNNER_MIN_PORTS">NM_SETTING_TEAM_RUNNER_MIN_PORTS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY:CAPS" title="NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY">NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-LINK-WATCHERS:CAPS" title="NM_SETTING_TEAM_LINK_WATCHERS">NM_SETTING_TEAM_LINK_WATCHERS</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-BROADCAST:CAPS" title="NM_SETTING_TEAM_RUNNER_BROADCAST">NM_SETTING_TEAM_RUNNER_BROADCAST</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-ROUNDROBIN:CAPS" title="NM_SETTING_TEAM_RUNNER_ROUNDROBIN">NM_SETTING_TEAM_RUNNER_ROUNDROBIN</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-RANDOM:CAPS" title="NM_SETTING_TEAM_RUNNER_RANDOM">NM_SETTING_TEAM_RUNNER_RANDOM</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-ACTIVEBACKUP:CAPS" title="NM_SETTING_TEAM_RUNNER_ACTIVEBACKUP">NM_SETTING_TEAM_RUNNER_ACTIVEBACKUP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-LOADBALANCE:CAPS" title="NM_SETTING_TEAM_RUNNER_LOADBALANCE">NM_SETTING_TEAM_RUNNER_LOADBALANCE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-LACP:CAPS" title="NM_SETTING_TEAM_RUNNER_LACP">NM_SETTING_TEAM_RUNNER_LACP</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-HWADDR-POLICY-SAME-ALL:CAPS" title="NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_SAME_ALL">NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_SAME_ALL</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-HWADDR-POLICY-BY-ACTIVE:CAPS" title="NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_BY_ACTIVE">NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_BY_ACTIVE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-HWADDR-POLICY-ONLY-ACTIVE:CAPS" title="NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_ONLY_ACTIVE">NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_ONLY_ACTIVE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-LACP-PRIO:CAPS" title="NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_LACP_PRIO">NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_LACP_PRIO</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-LACP-PRIO-STABLE:CAPS" title="NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_LACP_PRIO_STABLE">NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_LACP_PRIO_STABLE</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-BANDWIDTH:CAPS" title="NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_BANDWIDTH">NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_BANDWIDTH</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-COUNT:CAPS" title="NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_COUNT">NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_COUNT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-PORT-CONFIG:CAPS" title="NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_PORT_CONFIG">NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_PORT_CONFIG</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-NOTIFY-PEERS-COUNT-ACTIVEBACKUP-DEFAULT:CAPS" title="NM_SETTING_TEAM_NOTIFY_PEERS_COUNT_ACTIVEBACKUP_DEFAULT">NM_SETTING_TEAM_NOTIFY_PEERS_COUNT_ACTIVEBACKUP_DEFAULT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-NOTIFY-MCAST-COUNT-ACTIVEBACKUP-DEFAULT:CAPS" title="NM_SETTING_TEAM_NOTIFY_MCAST_COUNT_ACTIVEBACKUP_DEFAULT">NM_SETTING_TEAM_NOTIFY_MCAST_COUNT_ACTIVEBACKUP_DEFAULT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-DEFAULT:CAPS" title="NM_SETTING_TEAM_RUNNER_DEFAULT">NM_SETTING_TEAM_RUNNER_DEFAULT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-HWADDR-POLICY-DEFAULT:CAPS" title="NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_DEFAULT">NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_DEFAULT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-TX-BALANCER-INTERVAL-DEFAULT:CAPS" title="NM_SETTING_TEAM_RUNNER_TX_BALANCER_INTERVAL_DEFAULT">NM_SETTING_TEAM_RUNNER_TX_BALANCER_INTERVAL_DEFAULT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-SYS-PRIO-DEFAULT:CAPS" title="NM_SETTING_TEAM_RUNNER_SYS_PRIO_DEFAULT">NM_SETTING_TEAM_RUNNER_SYS_PRIO_DEFAULT</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMSettingTeam.html#NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-DEFAULT:CAPS" title="NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_DEFAULT">NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_DEFAULT</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTeam.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Boxed-Types.html">GBoxed</a>
+    <span class="lineart">╰──</span> NMTeamLinkWatcher
+    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GFlags</a>
+    <span class="lineart">╰──</span> NMTeamLinkWatcherArpPingFlags
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMSettingTeam.description"></a><h2>Description</h2>
+<p>The <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> object is a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> subclass that describes properties
+necessary for team connections.</p>
+</div>
+<div class="refsect1">
+<a name="NMSettingTeam.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-team-link-watcher-new-ethtool"></a><h3>nm_team_link_watcher_new_ethtool ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+nm_team_link_watcher_new_ethtool (<em class="parameter"><code><span class="type">int</span> delay_up</code></em>,
+                                  <em class="parameter"><code><span class="type">int</span> delay_down</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Creates a new ethtool <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> object</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-new-ethtool.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>delay_up</p></td>
+<td class="parameter_description"><p>delay_up value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>delay_down</p></td>
+<td class="parameter_description"><p>delay_down value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>this call never fails, so this var is not used but kept for format
+consistency with the link_watcher constructors of other type</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-team-link-watcher-new-ethtool.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-new-nsna-ping"></a><h3>nm_team_link_watcher_new_nsna_ping ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+nm_team_link_watcher_new_nsna_ping (<em class="parameter"><code><span class="type">int</span> init_wait</code></em>,
+                                    <em class="parameter"><code><span class="type">int</span> interval</code></em>,
+                                    <em class="parameter"><code><span class="type">int</span> missed_max</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *target_host</code></em>,
+                                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Creates a new nsna_ping <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> object</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-new-nsna-ping.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>init_wait</p></td>
+<td class="parameter_description"><p>init_wait value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>interval</p></td>
+<td class="parameter_description"><p>interval value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>missed_max</p></td>
+<td class="parameter_description"><p>missed_max value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>target_host</p></td>
+<td class="parameter_description"><p>the host name or the ipv6 address that will be used as
+target address in the NS packet</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store the error on failure</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-team-link-watcher-new-nsna-ping.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> object, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> on error. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-new-arp-ping"></a><h3>nm_team_link_watcher_new_arp_ping ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+nm_team_link_watcher_new_arp_ping (<em class="parameter"><code><span class="type">int</span> init_wait</code></em>,
+                                   <em class="parameter"><code><span class="type">int</span> interval</code></em>,
+                                   <em class="parameter"><code><span class="type">int</span> missed_max</code></em>,
+                                   <em class="parameter"><code>const <span class="type">char</span> *target_host</code></em>,
+                                   <em class="parameter"><code>const <span class="type">char</span> *source_host</code></em>,
+                                   <em class="parameter"><code><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcherArpPingFlags" title="enum NMTeamLinkWatcherArpPingFlags"><span class="type">NMTeamLinkWatcherArpPingFlags</span></a> flags</code></em>,
+                                   <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Creates a new arp_ping <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> object</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-new-arp-ping.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>init_wait</p></td>
+<td class="parameter_description"><p>init_wait value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>interval</p></td>
+<td class="parameter_description"><p>interval value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>missed_max</p></td>
+<td class="parameter_description"><p>missed_max value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>target_host</p></td>
+<td class="parameter_description"><p>the host name or the ip address that will be used as destination
+address in the arp request</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>source_host</p></td>
+<td class="parameter_description"><p>the host name or the ip address that will be used as source
+address in the arp request</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>the watcher <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcherArpPingFlags" title="enum NMTeamLinkWatcherArpPingFlags"><span class="type">NMTeamLinkWatcherArpPingFlags</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store the error on failure</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-team-link-watcher-new-arp-ping.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> object, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> on error. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-new-arp-ping2"></a><h3>nm_team_link_watcher_new_arp_ping2 ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+nm_team_link_watcher_new_arp_ping2 (<em class="parameter"><code><span class="type">int</span> init_wait</code></em>,
+                                    <em class="parameter"><code><span class="type">int</span> interval</code></em>,
+                                    <em class="parameter"><code><span class="type">int</span> missed_max</code></em>,
+                                    <em class="parameter"><code><span class="type">int</span> vlanid</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *target_host</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *source_host</code></em>,
+                                    <em class="parameter"><code><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcherArpPingFlags" title="enum NMTeamLinkWatcherArpPingFlags"><span class="type">NMTeamLinkWatcherArpPingFlags</span></a> flags</code></em>,
+                                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Creates a new arp_ping <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> object</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-new-arp-ping2.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>init_wait</p></td>
+<td class="parameter_description"><p>init_wait value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>interval</p></td>
+<td class="parameter_description"><p>interval value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>missed_max</p></td>
+<td class="parameter_description"><p>missed_max value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>vlanid</p></td>
+<td class="parameter_description"><p>vlanid value</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>target_host</p></td>
+<td class="parameter_description"><p>the host name or the ip address that will be used as destination
+address in the arp request</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>source_host</p></td>
+<td class="parameter_description"><p>the host name or the ip address that will be used as source
+address in the arp request</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>the watcher <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcherArpPingFlags" title="enum NMTeamLinkWatcherArpPingFlags"><span class="type">NMTeamLinkWatcherArpPingFlags</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store the error on failure</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-team-link-watcher-new-arp-ping2.returns"></a><h4>Returns</h4>
+<p>the new <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> object, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> on error. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-ref"></a><h3>nm_team_link_watcher_ref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_team_link_watcher_ref (<em class="parameter"><code><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Increases the reference count of the object.</p>
+<p>Since 1.20, ref-counting of <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> is thread-safe.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-ref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-unref"></a><h3>nm_team_link_watcher_unref ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_team_link_watcher_unref (<em class="parameter"><code><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Decreases the reference count of the object.  If the reference count
+reaches zero, the object will be destroyed.</p>
+<p>Since 1.20, ref-counting of <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> is thread-safe.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-unref.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-equal"></a><h3>nm_team_link_watcher_equal ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_team_link_watcher_equal (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>,
+                            <em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *other</code></em>);</pre>
+<p>Determines if two <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> objects contain the same values
+in all the properties.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-equal.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>other</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> to compare <em class="parameter"><code>watcher</code></em>
+to.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-team-link-watcher-equal.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the objects contain the same values, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they do not.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-dup"></a><h3>nm_team_link_watcher_dup ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+nm_team_link_watcher_dup (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Creates a copy of <em class="parameter"><code>watcher</code></em>
+</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-dup.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-team-link-watcher-dup.returns"></a><h4>Returns</h4>
+<p>a copy of <em class="parameter"><code>watcher</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-name"></a><h3>nm_team_link_watcher_get_name ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_team_link_watcher_get_name (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the name of the link watcher to be used.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-delay-up"></a><h3>nm_team_link_watcher_get_delay_up ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_team_link_watcher_get_delay_up (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the delay_up interval (in milliseconds) that elapses between the link
+coming up and the runner being notified about it.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-delay-up.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-delay-down"></a><h3>nm_team_link_watcher_get_delay_down ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_team_link_watcher_get_delay_down (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the delay_down interval (in milliseconds) that elapses between the link
+going down and the runner being notified about it.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-delay-down.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-init-wait"></a><h3>nm_team_link_watcher_get_init_wait ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_team_link_watcher_get_init_wait (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the init_wait interval (in milliseconds) that the team slave should
+wait before sending the first packet to the target host.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-init-wait.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-interval"></a><h3>nm_team_link_watcher_get_interval ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_team_link_watcher_get_interval (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the interval (in milliseconds) that the team slave should wait between
+sending two check packets to the target host.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-missed-max"></a><h3>nm_team_link_watcher_get_missed_max ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_team_link_watcher_get_missed_max (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the number of missed replies after which the link is considered down.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-missed-max.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-target-host"></a><h3>nm_team_link_watcher_get_target_host ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_team_link_watcher_get_target_host (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the host name/ip address to be used as destination for the link probing
+packets.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-target-host.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-source-host"></a><h3>nm_team_link_watcher_get_source_host ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_team_link_watcher_get_source_host (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the ip address to be used as source for the link probing packets.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-source-host.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-flags"></a><h3>nm_team_link_watcher_get_flags ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcherArpPingFlags" title="enum NMTeamLinkWatcherArpPingFlags"><span class="returnvalue">NMTeamLinkWatcherArpPingFlags</span></a>
+nm_team_link_watcher_get_flags (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the arp ping watcher flags.</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-team-link-watcher-get-vlanid"></a><h3>nm_team_link_watcher_get_vlanid ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_team_link_watcher_get_vlanid (<em class="parameter"><code>const <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *watcher</code></em>);</pre>
+<p>Gets the VLAN tag ID to be used to outgoing link probes</p>
+<div class="refsect3">
+<a name="nm-team-link-watcher-get-vlanid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>watcher</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.16</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-new"></a><h3>nm_setting_team_new ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_setting_team_new (<em class="parameter"><code><span class="type">void</span></code></em>);</pre>
+<p>Creates a new <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> object with default values.</p>
+<div class="refsect3">
+<a name="nm-setting-team-new.returns"></a><h4>Returns</h4>
+<p>the new empty <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> object. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-config"></a><h3>nm_setting_team_get_config ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_team_get_config (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-config.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-config.returns"></a><h4>Returns</h4>
+<p> the <span class="type">“config”</span> property of the setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-notify-peers-count"></a><h3>nm_setting_team_get_notify_peers_count ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_get_notify_peers_count
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-notify-peers-count.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-notify-peers-count.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“notify-peers-count”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-notify-peers-interval"></a><h3>nm_setting_team_get_notify_peers_interval ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_get_notify_peers_interval
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-notify-peers-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-notify-peers-interval.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“notify-peers-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-mcast-rejoin-count"></a><h3>nm_setting_team_get_mcast_rejoin_count ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_get_mcast_rejoin_count
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-mcast-rejoin-count.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-mcast-rejoin-count.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“mcast-rejoin-count”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-mcast-rejoin-interval"></a><h3>nm_setting_team_get_mcast_rejoin_interval ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_get_mcast_rejoin_interval
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-mcast-rejoin-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-mcast-rejoin-interval.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“mcast-rejoin-interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner"></a><h3>nm_setting_team_get_runner ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_team_get_runner (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-hwaddr-policy"></a><h3>nm_setting_team_get_runner_hwaddr_policy ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_team_get_runner_hwaddr_policy
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-hwaddr-policy.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-hwaddr-policy.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner-hwaddr-policy”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-tx-balancer"></a><h3>nm_setting_team_get_runner_tx_balancer ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_team_get_runner_tx_balancer
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-tx-balancer.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-tx-balancer.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner-tx-balancer”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-tx-balancer-interval"></a><h3>nm_setting_team_get_runner_tx_balancer_interval ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_get_runner_tx_balancer_interval
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-tx-balancer-interval.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-tx-balancer-interval.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner-tx-balancer_interval”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-active"></a><h3>nm_setting_team_get_runner_active ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_get_runner_active (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-active.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-active.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner_active”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-fast-rate"></a><h3>nm_setting_team_get_runner_fast_rate ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_get_runner_fast_rate (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-fast-rate.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-fast-rate.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner-fast-rate”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-sys-prio"></a><h3>nm_setting_team_get_runner_sys_prio ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_get_runner_sys_prio (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-sys-prio.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-sys-prio.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner-sys-prio”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-min-ports"></a><h3>nm_setting_team_get_runner_min_ports ()</h3>
+<pre class="programlisting"><span class="returnvalue">int</span>
+nm_setting_team_get_runner_min_ports (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-min-ports.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-min-ports.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner-min-ports”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-agg-select-policy"></a><h3>nm_setting_team_get_runner_agg_select_policy ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_team_get_runner_agg_select_policy
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-agg-select-policy.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-agg-select-policy.returns"></a><h4>Returns</h4>
+<p> the #<span class="type">“runner-agg-select-policy”</span> property of the setting</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-remove-runner-tx-hash-by-value"></a><h3>nm_setting_team_remove_runner_tx_hash_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_remove_runner_tx_hash_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>,
+                                <em class="parameter"><code>const <span class="type">char</span> *txhash</code></em>);</pre>
+<p>Removes the txhash element <span class="type">txhash</span></p>
+<div class="refsect3">
+<a name="nm-setting-team-remove-runner-tx-hash-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <span class="type">NMSetetingTeam</span></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>txhash</p></td>
+<td class="parameter_description"><p>the txhash element to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-remove-runner-tx-hash-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the txhash element was found and removed; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it was not.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-num-runner-tx-hash"></a><h3>nm_setting_team_get_num_runner_tx_hash ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_team_get_num_runner_tx_hash
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-num-runner-tx-hash.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-num-runner-tx-hash.returns"></a><h4>Returns</h4>
+<p> the number of elements in txhash</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-runner-tx-hash"></a><h3>nm_setting_team_get_runner_tx_hash ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_setting_team_get_runner_tx_hash (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>,
+                                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-tx-hash.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the txhash element to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-runner-tx-hash.returns"></a><h4>Returns</h4>
+<p> the txhash element at index <em class="parameter"><code>idx</code></em>
+</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-remove-runner-tx-hash"></a><h3>nm_setting_team_remove_runner_tx_hash ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_team_remove_runner_tx_hash (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>,
+                                       <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the txhash element at index <em class="parameter"><code>idx</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-setting-team-remove-runner-tx-hash.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the element to remove from txhash</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-add-runner-tx-hash"></a><h3>nm_setting_team_add_runner_tx_hash ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_add_runner_tx_hash (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>,
+                                    <em class="parameter"><code>const <span class="type">char</span> *txhash</code></em>);</pre>
+<p>Adds a new txhash element to the setting.</p>
+<div class="refsect3">
+<a name="nm-setting-team-add-runner-tx-hash.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>txhash</p></td>
+<td class="parameter_description"><p>the element to add to txhash</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-add-runner-tx-hash.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the txhash element was added; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if the element
+was already knnown.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-num-link-watchers"></a><h3>nm_setting_team_get_num_link_watchers ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="returnvalue">guint</span></a>
+nm_setting_team_get_num_link_watchers (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-num-link-watchers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-num-link-watchers.returns"></a><h4>Returns</h4>
+<p> the number of configured link watchers</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-get-link-watcher"></a><h3>nm_setting_team_get_link_watcher ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="returnvalue">NMTeamLinkWatcher</span></a> *
+nm_setting_team_get_link_watcher (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>,
+                                  <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<div class="refsect3">
+<a name="nm-setting-team-get-link-watcher.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the link watcher to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-get-link-watcher.returns"></a><h4>Returns</h4>
+<p>the link watcher at index <em class="parameter"><code>idx</code></em>
+. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-add-link-watcher"></a><h3>nm_setting_team_add_link_watcher ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_add_link_watcher (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>,
+                                  <em class="parameter"><code><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *link_watcher</code></em>);</pre>
+<p>Appends a new link watcher to the setting.</p>
+<div class="refsect3">
+<a name="nm-setting-team-add-link-watcher.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>link_watcher</p></td>
+<td class="parameter_description"><p>the link watcher to add</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-add-link-watcher.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the link watcher is added; <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if an identical link
+watcher was already there.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-remove-link-watcher"></a><h3>nm_setting_team_remove_link_watcher ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_team_remove_link_watcher (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>,
+                                     <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> idx</code></em>);</pre>
+<p>Removes the link watcher at index <span class="type">idx</span>.</p>
+<div class="refsect3">
+<a name="nm-setting-team-remove-link-watcher.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>idx</p></td>
+<td class="parameter_description"><p>index number of the link watcher to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-remove-link-watcher-by-value"></a><h3>nm_setting_team_remove_link_watcher_by_value ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_setting_team_remove_link_watcher_by_value
+                               (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSettingTeam.html#NMTeamLinkWatcher"><span class="type">NMTeamLinkWatcher</span></a> *link_watcher</code></em>);</pre>
+<p>Removes the link watcher entry matching link_watcher.</p>
+<div class="refsect3">
+<a name="nm-setting-team-remove-link-watcher-by-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>link_watcher</p></td>
+<td class="parameter_description"><p>the link watcher to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-setting-team-remove-link-watcher-by-value.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the link watcher was found and removed, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> otherwise.</p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-setting-team-clear-link-watchers"></a><h3>nm_setting_team_clear_link_watchers ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_setting_team_clear_link_watchers (<em class="parameter"><code><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> *setting</code></em>);</pre>
+<p>Removes all configured link watchers.</p>
+<div class="refsect3">
+<a name="nm-setting-team-clear-link-watchers.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMSettingTeam.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NMTeamLinkWatcherArpPingFlags"></a><h3>enum NMTeamLinkWatcherArpPingFlags</h3>
+<div class="refsect3">
+<a name="NMTeamLinkWatcherArpPingFlags.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-TEAM-LINK-WATCHER-ARP-PING-FLAG-NONE:CAPS"></a>NM_TEAM_LINK_WATCHER_ARP_PING_FLAG_NONE</p></td>
+<td class="enum_member_description">
+<p>no one among the arp_ping link watcher
+boolean options ('validate_active', 'validate_inactive', 'send_always') is
+enabled (set to true).</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-TEAM-LINK-WATCHER-ARP-PING-FLAG-VALIDATE-ACTIVE:CAPS"></a>NM_TEAM_LINK_WATCHER_ARP_PING_FLAG_VALIDATE_ACTIVE</p></td>
+<td class="enum_member_description">
+<p>the arp_ping link watcher
+option 'validate_active' is enabled (set to true).</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-TEAM-LINK-WATCHER-ARP-PING-FLAG-VALIDATE-INACTIVE:CAPS"></a>NM_TEAM_LINK_WATCHER_ARP_PING_FLAG_VALIDATE_INACTIVE</p></td>
+<td class="enum_member_description">
+<p>the arp_ping link watcher
+option 'validate_inactive' is enabled (set to true).</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-TEAM-LINK-WATCHER-ARP-PING-FLAG-SEND-ALWAYS:CAPS"></a>NM_TEAM_LINK_WATCHER_ARP_PING_FLAG_SEND_ALWAYS</p></td>
+<td class="enum_member_description">
+<p>the arp_ping link watcher option
+'send_always' is enabled (set to true).</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-TEAM-LINK-WATCHER-ETHTOOL:CAPS"></a><h3>NM_TEAM_LINK_WATCHER_ETHTOOL</h3>
+<pre class="programlisting">#define NM_TEAM_LINK_WATCHER_ETHTOOL   "ethtool"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-TEAM-LINK-WATCHER-ARP-PING:CAPS"></a><h3>NM_TEAM_LINK_WATCHER_ARP_PING</h3>
+<pre class="programlisting">#define NM_TEAM_LINK_WATCHER_ARP_PING  "arp_ping"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-TEAM-LINK-WATCHER-NSNA-PING:CAPS"></a><h3>NM_TEAM_LINK_WATCHER_NSNA_PING</h3>
+<pre class="programlisting">#define NM_TEAM_LINK_WATCHER_NSNA_PING "nsna_ping"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-SETTING-NAME:CAPS"></a><h3>NM_SETTING_TEAM_SETTING_NAME</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_SETTING_NAME "team"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-CONFIG:CAPS"></a><h3>NM_SETTING_TEAM_CONFIG</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_CONFIG                      "config"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-NOTIFY-PEERS-COUNT:CAPS"></a><h3>NM_SETTING_TEAM_NOTIFY_PEERS_COUNT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_NOTIFY_PEERS_COUNT          "notify-peers-count"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-NOTIFY-PEERS-INTERVAL:CAPS"></a><h3>NM_SETTING_TEAM_NOTIFY_PEERS_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_NOTIFY_PEERS_INTERVAL       "notify-peers-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-MCAST-REJOIN-COUNT:CAPS"></a><h3>NM_SETTING_TEAM_MCAST_REJOIN_COUNT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_MCAST_REJOIN_COUNT          "mcast-rejoin-count"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-MCAST-REJOIN-INTERVAL:CAPS"></a><h3>NM_SETTING_TEAM_MCAST_REJOIN_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_MCAST_REJOIN_INTERVAL       "mcast-rejoin-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER                      "runner"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-HWADDR-POLICY:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_HWADDR_POLICY</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_HWADDR_POLICY        "runner-hwaddr-policy"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-TX-HASH:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_TX_HASH</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_TX_HASH              "runner-tx-hash"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-TX-BALANCER:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_TX_BALANCER</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_TX_BALANCER          "runner-tx-balancer"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-TX-BALANCER-INTERVAL:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_TX_BALANCER_INTERVAL</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_TX_BALANCER_INTERVAL "runner-tx-balancer-interval"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-ACTIVE:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_ACTIVE</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_ACTIVE               "runner-active"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-FAST-RATE:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_FAST_RATE</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_FAST_RATE            "runner-fast-rate"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-SYS-PRIO:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_SYS_PRIO</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_SYS_PRIO             "runner-sys-prio"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-MIN-PORTS:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_MIN_PORTS</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_MIN_PORTS            "runner-min-ports"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY    "runner-agg-select-policy"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-LINK-WATCHERS:CAPS"></a><h3>NM_SETTING_TEAM_LINK_WATCHERS</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_LINK_WATCHERS               "link-watchers"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-BROADCAST:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_BROADCAST</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_BROADCAST    "broadcast"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-ROUNDROBIN:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_ROUNDROBIN</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_ROUNDROBIN   "roundrobin"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-RANDOM:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_RANDOM</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_RANDOM       "random"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-ACTIVEBACKUP:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_ACTIVEBACKUP</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_ACTIVEBACKUP "activebackup"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-LOADBALANCE:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_LOADBALANCE</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_LOADBALANCE  "loadbalance"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-LACP:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_LACP</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_LACP         "lacp"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-HWADDR-POLICY-SAME-ALL:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_SAME_ALL</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_SAME_ALL    "same_all"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-HWADDR-POLICY-BY-ACTIVE:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_BY_ACTIVE</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_BY_ACTIVE   "by_active"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-HWADDR-POLICY-ONLY-ACTIVE:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_ONLY_ACTIVE</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_ONLY_ACTIVE "only_active"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-LACP-PRIO:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_LACP_PRIO</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_LACP_PRIO        "lacp_prio"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-LACP-PRIO-STABLE:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_LACP_PRIO_STABLE</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_LACP_PRIO_STABLE "lacp_prio_stable"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-BANDWIDTH:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_BANDWIDTH</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_BANDWIDTH        "bandwidth"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-COUNT:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_COUNT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_COUNT            "count"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-PORT-CONFIG:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_PORT_CONFIG</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_PORT_CONFIG      "port_config"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-NOTIFY-PEERS-COUNT-ACTIVEBACKUP-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_NOTIFY_PEERS_COUNT_ACTIVEBACKUP_DEFAULT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_NOTIFY_PEERS_COUNT_ACTIVEBACKUP_DEFAULT 1
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-NOTIFY-MCAST-COUNT-ACTIVEBACKUP-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_NOTIFY_MCAST_COUNT_ACTIVEBACKUP_DEFAULT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_NOTIFY_MCAST_COUNT_ACTIVEBACKUP_DEFAULT 1
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_DEFAULT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_DEFAULT                          NM_SETTING_TEAM_RUNNER_ROUNDROBIN
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-HWADDR-POLICY-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_DEFAULT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_DEFAULT            NM_SETTING_TEAM_RUNNER_HWADDR_POLICY_SAME_ALL
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-TX-BALANCER-INTERVAL-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_TX_BALANCER_INTERVAL_DEFAULT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_TX_BALANCER_INTERVAL_DEFAULT     50
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-SYS-PRIO-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_SYS_PRIO_DEFAULT</h3>
+<pre class="programlisting">#define NM_SETTING_TEAM_RUNNER_SYS_PRIO_DEFAULT                 65535
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-SETTING-TEAM-RUNNER-AGG-SELECT-POLICY-DEFAULT:CAPS"></a><h3>NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_DEFAULT</h3>
+<pre class="programlisting">#define             NM_SETTING_TEAM_RUNNER_AGG_SELECT_POLICY_DEFAULT</pre>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

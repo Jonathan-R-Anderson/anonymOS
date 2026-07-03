@@ -1,0 +1,2917 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>NMConnection: libnm Reference Manual</title>
+<meta name="generator" content="DocBook XSL Stylesheets Vsnapshot">
+<link rel="home" href="index.html" title="libnm Reference Manual">
+<link rel="up" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="prev" href="ch03.html" title="Connection and Setting API Reference">
+<link rel="next" href="NMSimpleConnection.html" title="NMSimpleConnection">
+<meta name="generator" content="GTK-Doc V1.33.1 (XML mode)">
+<link rel="stylesheet" href="style.css" type="text/css">
+</head>
+<body bgcolor="white" text="black" link="#0000FF" vlink="#840084" alink="#0000FF">
+<table class="navigation" id="top" width="100%" summary="Navigation header" cellpadding="2" cellspacing="5"><tr valign="middle">
+<td width="100%" align="left" class="shortcuts">
+<a href="#" class="shortcut">Top</a><span id="nav_description">  <span class="dim">|</span> 
+                  <a href="#NMConnection.description" class="shortcut">Description</a></span><span id="nav_hierarchy">  <span class="dim">|</span> 
+                  <a href="#NMConnection.object-hierarchy" class="shortcut">Object Hierarchy</a></span>
+</td>
+<td><a accesskey="h" href="index.html"><img src="home.png" width="16" height="16" border="0" alt="Home"></a></td>
+<td><a accesskey="u" href="ch03.html"><img src="up.png" width="16" height="16" border="0" alt="Up"></a></td>
+<td><a accesskey="p" href="ch03.html"><img src="left.png" width="16" height="16" border="0" alt="Prev"></a></td>
+<td><a accesskey="n" href="NMSimpleConnection.html"><img src="right.png" width="16" height="16" border="0" alt="Next"></a></td>
+</tr></table>
+<div class="refentry">
+<a name="NMConnection"></a><div class="titlepage"></div>
+<div class="refnamediv"><table width="100%"><tr>
+<td valign="top">
+<h2><span class="refentrytitle"><a name="NMConnection.top_of_page"></a>NMConnection</span></h2>
+<p>NMConnection — Describes a connection to specific network or provider</p>
+</td>
+<td class="gallery_image" valign="top" align="right"></td>
+</tr></table></div>
+<div class="refsect1">
+<a name="NMConnection.functions"></a><h2>Functions</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="functions_proto_type">
+<col class="functions_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-add-setting" title="nm_connection_add_setting ()">nm_connection_add_setting</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-remove-setting" title="nm_connection_remove_setting ()">nm_connection_remove_setting</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting" title="nm_connection_get_setting ()">nm_connection_get_setting</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-by-name" title="nm_connection_get_setting_by_name ()">nm_connection_get_setting_by_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-to-dbus" title="nm_connection_to_dbus ()">nm_connection_to_dbus</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-replace-settings" title="nm_connection_replace_settings ()">nm_connection_replace_settings</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-replace-settings-from-connection" title="nm_connection_replace_settings_from_connection ()">nm_connection_replace_settings_from_connection</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-clear-settings" title="nm_connection_clear_settings ()">nm_connection_clear_settings</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-compare" title="nm_connection_compare ()">nm_connection_compare</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-diff" title="nm_connection_diff ()">nm_connection_diff</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-verify" title="nm_connection_verify ()">nm_connection_verify</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-verify-secrets" title="nm_connection_verify_secrets ()">nm_connection_verify_secrets</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-normalize" title="nm_connection_normalize ()">nm_connection_normalize</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-need-secrets" title="nm_connection_need_secrets ()">nm_connection_need_secrets</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-clear-secrets" title="nm_connection_clear_secrets ()">nm_connection_clear_secrets</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-clear-secrets-with-flags" title="nm_connection_clear_secrets_with_flags ()">nm_connection_clear_secrets_with_flags</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-update-secrets" title="nm_connection_update_secrets ()">nm_connection_update_secrets</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-set-path" title="nm_connection_set_path ()">nm_connection_set_path</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-path" title="nm_connection_get_path ()">nm_connection_get_path</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-interface-name" title="nm_connection_get_interface_name ()">nm_connection_get_interface_name</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-is-type" title="nm_connection_is_type ()">nm_connection_is_type</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-for-each-setting-value" title="nm_connection_for_each_setting_value ()">nm_connection_for_each_setting_value</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> **
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-settings" title="nm_connection_get_settings ()">nm_connection_get_settings</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">void</span>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-dump" title="nm_connection_dump ()">nm_connection_dump</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-uuid" title="nm_connection_get_uuid ()">nm_connection_get_uuid</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-id" title="nm_connection_get_id ()">nm_connection_get_id</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">const <span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-connection-type" title="nm_connection_get_connection_type ()">nm_connection_get_connection_type</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-is-virtual" title="nm_connection_is_virtual ()">nm_connection_is_virtual</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<span class="returnvalue">char</span> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-virtual-device-description" title="nm_connection_get_virtual_device_description ()">nm_connection_get_virtual_device_description</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSetting8021x.html" title="NMSetting8021x"><span class="returnvalue">NMSetting8021x</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-802-1x" title="nm_connection_get_setting_802_1x ()">nm_connection_get_setting_802_1x</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBluetooth.html" title="NMSettingBluetooth"><span class="returnvalue">NMSettingBluetooth</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-bluetooth" title="nm_connection_get_setting_bluetooth ()">nm_connection_get_setting_bluetooth</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBond.html" title="NMSettingBond"><span class="returnvalue">NMSettingBond</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-bond" title="nm_connection_get_setting_bond ()">nm_connection_get_setting_bond</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="returnvalue">NMSettingTeam</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-team" title="nm_connection_get_setting_team ()">nm_connection_get_setting_team</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="returnvalue">NMSettingTeamPort</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-team-port" title="nm_connection_get_setting_team_port ()">nm_connection_get_setting_team_port</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="returnvalue">NMSettingBridge</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-bridge" title="nm_connection_get_setting_bridge ()">nm_connection_get_setting_bridge</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingBridgePort.html" title="NMSettingBridgePort"><span class="returnvalue">NMSettingBridgePort</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-bridge-port" title="nm_connection_get_setting_bridge_port ()">nm_connection_get_setting_bridge_port</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingCdma.html" title="NMSettingCdma"><span class="returnvalue">NMSettingCdma</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-cdma" title="nm_connection_get_setting_cdma ()">nm_connection_get_setting_cdma</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingConnection.html" title="NMSettingConnection"><span class="returnvalue">NMSettingConnection</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-connection" title="nm_connection_get_setting_connection ()">nm_connection_get_setting_connection</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingDcb.html" title="NMSettingDcb"><span class="returnvalue">NMSettingDcb</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-dcb" title="nm_connection_get_setting_dcb ()">nm_connection_get_setting_dcb</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingDummy.html" title="NMSettingDummy"><span class="returnvalue">NMSettingDummy</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-dummy" title="nm_connection_get_setting_dummy ()">nm_connection_get_setting_dummy</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingGeneric.html" title="NMSettingGeneric"><span class="returnvalue">NMSettingGeneric</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-generic" title="nm_connection_get_setting_generic ()">nm_connection_get_setting_generic</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingGsm.html" title="NMSettingGsm"><span class="returnvalue">NMSettingGsm</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-gsm" title="nm_connection_get_setting_gsm ()">nm_connection_get_setting_gsm</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingInfiniband.html" title="NMSettingInfiniband"><span class="returnvalue">NMSettingInfiniband</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-infiniband" title="nm_connection_get_setting_infiniband ()">nm_connection_get_setting_infiniband</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingIPTunnel.html" title="NMSettingIPTunnel"><span class="returnvalue">NMSettingIPTunnel</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-ip-tunnel" title="nm_connection_get_setting_ip_tunnel ()">nm_connection_get_setting_ip_tunnel</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingIPConfig.html" title="NMSettingIPConfig"><span class="returnvalue">NMSettingIPConfig</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-ip4-config" title="nm_connection_get_setting_ip4_config ()">nm_connection_get_setting_ip4_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingIPConfig.html" title="NMSettingIPConfig"><span class="returnvalue">NMSettingIPConfig</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-ip6-config" title="nm_connection_get_setting_ip6_config ()">nm_connection_get_setting_ip6_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="returnvalue">NMSettingMacsec</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-macsec" title="nm_connection_get_setting_macsec ()">nm_connection_get_setting_macsec</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="returnvalue">NMSettingMacvlan</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-macvlan" title="nm_connection_get_setting_macvlan ()">nm_connection_get_setting_macvlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingOlpcMesh.html" title="NMSettingOlpcMesh"><span class="returnvalue">NMSettingOlpcMesh</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-olpc-mesh" title="nm_connection_get_setting_olpc_mesh ()">nm_connection_get_setting_olpc_mesh</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingOvsBridge.html" title="NMSettingOvsBridge"><span class="returnvalue">NMSettingOvsBridge</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-ovs-bridge" title="nm_connection_get_setting_ovs_bridge ()">nm_connection_get_setting_ovs_bridge</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingOvsInterface.html" title="NMSettingOvsInterface"><span class="returnvalue">NMSettingOvsInterface</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-ovs-interface" title="nm_connection_get_setting_ovs_interface ()">nm_connection_get_setting_ovs_interface</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingOvsPatch.html" title="NMSettingOvsPatch"><span class="returnvalue">NMSettingOvsPatch</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-ovs-patch" title="nm_connection_get_setting_ovs_patch ()">nm_connection_get_setting_ovs_patch</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="returnvalue">NMSettingOvsPort</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-ovs-port" title="nm_connection_get_setting_ovs_port ()">nm_connection_get_setting_ovs_port</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="returnvalue">NMSettingPpp</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-ppp" title="nm_connection_get_setting_ppp ()">nm_connection_get_setting_ppp</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingPppoe.html" title="NMSettingPppoe"><span class="returnvalue">NMSettingPppoe</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-pppoe" title="nm_connection_get_setting_pppoe ()">nm_connection_get_setting_pppoe</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingProxy.html" title="NMSettingProxy"><span class="returnvalue">NMSettingProxy</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-proxy" title="nm_connection_get_setting_proxy ()">nm_connection_get_setting_proxy</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingSerial.html" title="NMSettingSerial"><span class="returnvalue">NMSettingSerial</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-serial" title="nm_connection_get_setting_serial ()">nm_connection_get_setting_serial</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="returnvalue">NMSettingTCConfig</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-tc-config" title="nm_connection_get_setting_tc_config ()">nm_connection_get_setting_tc_config</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="returnvalue">NMSettingTun</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-tun" title="nm_connection_get_setting_tun ()">nm_connection_get_setting_tun</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="returnvalue">NMSettingVpn</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-vpn" title="nm_connection_get_setting_vpn ()">nm_connection_get_setting_vpn</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWimax.html" title="NMSettingWimax"><span class="returnvalue">NMSettingWimax</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-wimax" title="nm_connection_get_setting_wimax ()">nm_connection_get_setting_wimax</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingAdsl.html" title="NMSettingAdsl"><span class="returnvalue">NMSettingAdsl</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-adsl" title="nm_connection_get_setting_adsl ()">nm_connection_get_setting_adsl</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="returnvalue">NMSettingWired</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-wired" title="nm_connection_get_setting_wired ()">nm_connection_get_setting_wired</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="returnvalue">NMSettingWireless</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-wireless" title="nm_connection_get_setting_wireless ()">nm_connection_get_setting_wireless</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity"><span class="returnvalue">NMSettingWirelessSecurity</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-wireless-security" title="nm_connection_get_setting_wireless_security ()">nm_connection_get_setting_wireless_security</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingVlan.html" title="NMSettingVlan"><span class="returnvalue">NMSettingVlan</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-vlan" title="nm_connection_get_setting_vlan ()">nm_connection_get_setting_vlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+<tr>
+<td class="function_type">
+<a class="link" href="NMSettingVxlan.html" title="NMSettingVxlan"><span class="returnvalue">NMSettingVxlan</span></a> *
+</td>
+<td class="function_name">
+<a class="link" href="NMConnection.html#nm-connection-get-setting-vxlan" title="nm_connection_get_setting_vxlan ()">nm_connection_get_setting_vxlan</a> <span class="c_punctuation">()</span>
+</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMConnection.other"></a><h2>Types and Values</h2>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="other_proto_type">
+<col class="other_proto_name">
+</colgroup>
+<tbody>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMConnection.html#NM-CONNECTION-SECRETS-UPDATED:CAPS" title="NM_CONNECTION_SECRETS_UPDATED">NM_CONNECTION_SECRETS_UPDATED</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMConnection.html#NM-CONNECTION-SECRETS-CLEARED:CAPS" title="NM_CONNECTION_SECRETS_CLEARED">NM_CONNECTION_SECRETS_CLEARED</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMConnection.html#NM-CONNECTION-CHANGED:CAPS" title="NM_CONNECTION_CHANGED">NM_CONNECTION_CHANGED</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMConnection.html#NM-CONNECTION-NORMALIZE-PARAM-IP4-CONFIG-METHOD:CAPS" title="NM_CONNECTION_NORMALIZE_PARAM_IP4_CONFIG_METHOD">NM_CONNECTION_NORMALIZE_PARAM_IP4_CONFIG_METHOD</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMConnection.html#NM-CONNECTION-NORMALIZE-PARAM-IP6-CONFIG-METHOD:CAPS" title="NM_CONNECTION_NORMALIZE_PARAM_IP6_CONFIG_METHOD">NM_CONNECTION_NORMALIZE_PARAM_IP6_CONFIG_METHOD</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword"> </td>
+<td class="function_name"><a class="link" href="NMConnection.html#NMConnectionInterface" title="NMConnectionInterface">NMConnectionInterface</a></td>
+</tr>
+<tr>
+<td class="define_keyword">#define</td>
+<td class="function_name"><a class="link" href="NMConnection.html#NM-VARIANT-TYPE-SETTING:CAPS" title="NM_VARIANT_TYPE_SETTING">NM_VARIANT_TYPE_SETTING</a></td>
+</tr>
+<tr>
+<td class="datatype_keyword">enum</td>
+<td class="function_name"><a class="link" href="NMConnection.html#NMConnectionSerializationFlags" title="enum NMConnectionSerializationFlags">NMConnectionSerializationFlags</a></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect1">
+<a name="NMConnection.object-hierarchy"></a><h2>Object Hierarchy</h2>
+<pre class="screen">    <a href="/usr/share/gtk-doc/html/gobject/gobject-Enumeration-and-Flag-Types.html">GFlags</a>
+    <span class="lineart">╰──</span> NMConnectionSerializationFlags
+</pre>
+</div>
+<div class="refsect1">
+<a name="NMConnection.description"></a><h2>Description</h2>
+<p>An <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> describes all the settings and configuration values that
+are necessary to configure network devices for operation on a specific
+network.  Connections are the fundamental operating object for
+NetworkManager; no device is connected without a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>, or
+disconnected without having been connected with a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>.</p>
+<p>Each <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> contains a list of <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> objects usually referenced
+by name (using <a class="link" href="NMConnection.html#nm-connection-get-setting-by-name" title="nm_connection_get_setting_by_name ()"><code class="function">nm_connection_get_setting_by_name()</code></a>) or by type (with
+<a class="link" href="NMConnection.html#nm-connection-get-setting" title="nm_connection_get_setting ()"><code class="function">nm_connection_get_setting()</code></a>).  The settings describe the actual parameters
+with which the network devices are configured, including device-specific
+parameters (MTU, SSID, APN, channel, rate, etc) and IP-level parameters
+(addresses, routes, addressing methods, etc).</p>
+</div>
+<div class="refsect1">
+<a name="NMConnection.functions_details"></a><h2>Functions</h2>
+<div class="refsect2">
+<a name="nm-connection-add-setting"></a><h3>nm_connection_add_setting ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_add_setting (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                           <em class="parameter"><code><a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> *setting</code></em>);</pre>
+<p>Adds a <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> to the connection, replacing any previous <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> of the
+same name which has previously been added to the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>.  The
+connection takes ownership of the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> object and does not increase
+the setting object's reference count.</p>
+<div class="refsect3">
+<a name="nm-connection-add-setting.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>setting</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> to add to the connection object. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-remove-setting"></a><h3>nm_connection_remove_setting ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_remove_setting (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="type">GType</span></a> setting_type</code></em>);</pre>
+<p>Removes the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> with the given <a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="type">GType</span></a> from the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>.  This
+operation dereferences the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> object.</p>
+<div class="refsect3">
+<a name="nm-connection-remove-setting.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>setting_type</p></td>
+<td class="parameter_description"><p>the <a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="type">GType</span></a> of the setting object to remove</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting"></a><h3>nm_connection_get_setting ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_connection_get_setting (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                           <em class="parameter"><code><a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="type">GType</span></a> setting_type</code></em>);</pre>
+<p>Gets the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> with the given <a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="type">GType</span></a>, if one has been previously added
+to the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>setting_type</p></td>
+<td class="parameter_description"><p>the <a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GType"><span class="type">GType</span></a> of the setting object to return</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting.returns"></a><h4>Returns</h4>
+<p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a>, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if no setting of that type was previously
+added to the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-by-name"></a><h3>nm_connection_get_setting_by_name ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> *
+nm_connection_get_setting_by_name (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                                   <em class="parameter"><code>const <span class="type">char</span> *name</code></em>);</pre>
+<p>Gets the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> with the given name, if one has been previously added
+the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-by-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>name</p></td>
+<td class="parameter_description"><p>a setting name</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-by-name.returns"></a><h4>Returns</h4>
+<p>the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a>, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if no setting with that name was previously
+added to the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-to-dbus"></a><h3>nm_connection_to_dbus ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="returnvalue">GVariant</span></a> *
+nm_connection_to_dbus (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                       <em class="parameter"><code><a class="link" href="NMConnection.html#NMConnectionSerializationFlags" title="enum NMConnectionSerializationFlags"><span class="type">NMConnectionSerializationFlags</span></a> flags</code></em>);</pre>
+<p>Converts the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> into a <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> of type
+<code class="literal">NM_VARIANT_TYPE_CONNECTION</code> describing the connection, suitable for
+marshalling over D-Bus or otherwise serializing.</p>
+<div class="refsect3">
+<a name="nm-connection-to-dbus.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>serialization flags, e.g. <a class="link" href="NMConnection.html#NM-CONNECTION-SERIALIZE-ALL:CAPS"><code class="literal">NM_CONNECTION_SERIALIZE_ALL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-to-dbus.returns"></a><h4>Returns</h4>
+<p>a new floating <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> describing the connection,
+its settings, and each setting's properties. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-replace-settings"></a><h3>nm_connection_replace_settings ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_replace_settings (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *new_settings</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Replaces <em class="parameter"><code>connection</code></em>
+'s settings with <em class="parameter"><code>new_settings</code></em>
+ (which must be
+syntactically valid, and describe a known type of connection, but does not
+need to result in a connection that passes <a class="link" href="NMConnection.html#nm-connection-verify" title="nm_connection_verify ()"><code class="function">nm_connection_verify()</code></a>).</p>
+<div class="refsect3">
+<a name="nm-connection-replace-settings.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>new_settings</p></td>
+<td class="parameter_description"><p>a <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> of type <code class="literal">NM_VARIANT_TYPE_CONNECTION</code>, with the new settings</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-replace-settings.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if connection was updated, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if <em class="parameter"><code>new_settings</code></em>
+could not
+be deserialized (in which case <em class="parameter"><code>connection</code></em>
+will be unchanged).</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-replace-settings-from-connection"></a><h3>nm_connection_replace_settings_from_connection ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_replace_settings_from_connection
+                               (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *new_connection</code></em>);</pre>
+<p>Deep-copies the settings of <em class="parameter"><code>new_connection</code></em>
+ and replaces the settings of <em class="parameter"><code>connection</code></em>
+
+with the copied settings.</p>
+<div class="refsect3">
+<a name="nm-connection-replace-settings-from-connection.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>new_connection</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> to replace the settings of <em class="parameter"><code>connection</code></em>
+with</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-clear-settings"></a><h3>nm_connection_clear_settings ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_clear_settings (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>Deletes all of <em class="parameter"><code>connection</code></em>
+'s settings.</p>
+<div class="refsect3">
+<a name="nm-connection-clear-settings.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-compare"></a><h3>nm_connection_compare ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_compare (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *a</code></em>,
+                       <em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *b</code></em>,
+                       <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags"><span class="type">NMSettingCompareFlags</span></a> flags</code></em>);</pre>
+<p>Compares two <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> objects for similarity, with comparison behavior
+modified by a set of flags.  See <a class="link" href="NMSetting.html#nm-setting-compare" title="nm_setting_compare ()"><code class="function">nm_setting_compare()</code></a> for a description of
+each flag's behavior.</p>
+<div class="refsect3">
+<a name="nm-connection-compare.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>a</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>b</p></td>
+<td class="parameter_description"><p>a second <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> to compare with the first</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>compare flags, e.g. <a class="link" href="NMSetting.html#NM-SETTING-COMPARE-FLAG-EXACT:CAPS"><code class="literal">NM_SETTING_COMPARE_FLAG_EXACT</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-compare.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the comparison succeeds, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it does not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-diff"></a><h3>nm_connection_diff ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_diff (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *a</code></em>,
+                    <em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *b</code></em>,
+                    <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingCompareFlags" title="enum NMSettingCompareFlags"><span class="type">NMSettingCompareFlags</span></a> flags</code></em>,
+                    <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> **out_settings</code></em>);</pre>
+<p>Compares two <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> objects for similarity, with comparison behavior
+modified by a set of flags.  See <a class="link" href="NMSetting.html#nm-setting-compare" title="nm_setting_compare ()"><code class="function">nm_setting_compare()</code></a> for a description of
+each flag's behavior.  If the connections differ, settings and keys within
+each setting that differ are added to the returned <em class="parameter"><code>out_settings</code></em>
+ hash table.
+No values are returned, only key names.</p>
+<div class="refsect3">
+<a name="nm-connection-diff.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>a</p></td>
+<td class="parameter_description"><p>a <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>b</p></td>
+<td class="parameter_description"><p>a second <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> to compare with the first</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>flags</p></td>
+<td class="parameter_description"><p>compare flags, e.g. <a class="link" href="NMSetting.html#NM-SETTING-COMPARE-FLAG-EXACT:CAPS"><code class="literal">NM_SETTING_COMPARE_FLAG_EXACT</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_settings</p></td>
+<td class="parameter_description"><p>if the connections differ, on return a hash table
+mapping setting names to second-level GHashTable (utf8 to guint32), which
+contains the key names that differ mapped to one or more of
+<a class="link" href="NMSetting.html#NMSettingDiffResult" title="enum NMSettingDiffResult"><code class="literal">NMSettingDiffResult</code></a> as a bitfield. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> utf8 GLib.HashTable(utf8,uint32)][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-diff.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the connections contain the same values, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they do
+not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-verify"></a><h3>nm_connection_verify ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_verify (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                      <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Validates the connection and all its settings.  Each setting's properties
+have allowed values, and some values are dependent on other values.  For
+example, if a Wi-Fi connection is security enabled, the <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a>
+setting object's 'security' property must contain the setting name of the
+<a class="link" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity"><span class="type">NMSettingWirelessSecurity</span></a> object, which must also be present in the
+connection for the connection to be valid.  As another example, the
+<a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> object's 'mac-address' property must be a validly formatted
+MAC address.  The returned <a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> contains information about which
+setting and which property failed validation, and how it failed validation.</p>
+<div class="refsect3">
+<a name="nm-connection-verify.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> to verify</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-verify.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the connection is valid, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it is not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-verify-secrets"></a><h3>nm_connection_verify_secrets ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_verify_secrets (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Verifies the secrets in the connection.</p>
+<div class="refsect3">
+<a name="nm-connection-verify-secrets.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> to verify in</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-verify-secrets.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the secrets are valid, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if they are not</p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-normalize"></a><h3>nm_connection_normalize ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_normalize (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> *parameters</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="type">gboolean</span></a> *modified</code></em>,
+                         <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Does some basic normalization and fixup of well known inconsistencies
+and deprecated fields. If the connection was modified in any way,
+the output parameter <em class="parameter"><code>modified</code></em>
+ is set <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a>.</p>
+<p>Finally the connection will be verified and <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> returns if the connection
+is valid. As this function only performs some specific normalization steps
+it cannot repair all connections. If the connection has errors that
+cannot be normalized, the connection will not be modified.</p>
+<div class="refsect3">
+<a name="nm-connection-normalize.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> to normalize</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>parameters</p></td>
+<td class="parameter_description"><p>a <a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#GHashTable"><span class="type">GHashTable</span></a> with
+normalization parameters to allow customization of the normalization by providing
+specific arguments. Unknown arguments will be ignored and the default will be
+used. The keys must be strings compared with <a href="https://developer.gnome.org/glib/unstable/glib-Hash-Tables.html#g-str-equal"><code class="function">g_str_equal()</code></a> function.
+The values are opaque and depend on the parameter name. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>][<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> utf8 gpointer]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>modified</p></td>
+<td class="parameter_description"><p>outputs whether any settings were modified. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. Contains the reason,
+why the connection is invalid, if the function returns an error.</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-normalize.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the connection is valid, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if it is not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-need-secrets"></a><h3>nm_connection_need_secrets ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_connection_need_secrets (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#GPtrArray"><span class="type">GPtrArray</span></a> **hints</code></em>);</pre>
+<p>Returns the name of the first setting object in the connection which would
+need secrets to make a successful connection.  The returned hints are only
+intended as a guide to what secrets may be required, because in some
+circumstances, there is no way to conclusively determine exactly which
+secrets are needed.</p>
+<div class="refsect3">
+<a name="nm-connection-need-secrets.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>hints</p></td>
+<td class="parameter_description"><p>the address of a pointer to a <a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#GPtrArray"><span class="type">GPtrArray</span></a>, initialized to <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>, which on
+return points to an allocated <a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#GPtrArray"><span class="type">GPtrArray</span></a> containing the property names of
+secrets of the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> which may be required; the caller owns the array
+and must free the array itself with <a href="https://developer.gnome.org/glib/unstable/glib-Pointer-Arrays.html#g-ptr-array-free"><code class="function">g_ptr_array_free()</code></a>, but not free its
+elements. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="Generics and defining elements of containers and arrays."><span class="acronym">element-type</span></acronym> utf8][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>][<acronym title="The caller owns the data container, but not the data inside it."><span class="acronym">transfer container</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-need-secrets.returns"></a><h4>Returns</h4>
+<p>the setting name of the <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> object which has
+invalid or missing secrets. </p>
+<p><span class="annotation">[<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-clear-secrets"></a><h3>nm_connection_clear_secrets ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_clear_secrets (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>Clears and frees any secrets that may be stored in the connection, to avoid
+keeping secret data in memory when not needed.</p>
+<div class="refsect3">
+<a name="nm-connection-clear-secrets.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-clear-secrets-with-flags"></a><h3>nm_connection_clear_secrets_with_flags ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_clear_secrets_with_flags
+                               (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                                <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingClearSecretsWithFlagsFn" title="NMSettingClearSecretsWithFlagsFn ()"><span class="type">NMSettingClearSecretsWithFlagsFn</span></a> func</code></em>,
+                                <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a> user_data</code></em>);</pre>
+<p>Clears and frees secrets determined by <em class="parameter"><code>func</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-connection-clear-secrets-with-flags.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>func</p></td>
+<td class="parameter_description"><p>function to be called to determine whether a
+specific secret should be cleared or not. If <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>, all secrets are cleared. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The callback is valid only during the call to the method."><span class="acronym">scope call</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>user_data</p></td>
+<td class="parameter_description"><p>caller-supplied data passed to <em class="parameter"><code>func</code></em>
+</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-update-secrets"></a><h3>nm_connection_update_secrets ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_update_secrets (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                              <em class="parameter"><code>const <span class="type">char</span> *setting_name</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> *secrets</code></em>,
+                              <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Error-Reporting.html#GError"><span class="type">GError</span></a> **error</code></em>);</pre>
+<p>Update the specified setting's secrets, given a dictionary of secrets
+intended for that setting (deserialized from D-Bus for example).  Will also
+extract the given setting's secrets hash if given a connection dictionary.
+If <em class="parameter"><code>setting_name</code></em>
+ is <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>, expects a fully serialized <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> as
+returned by <a class="link" href="NMConnection.html#nm-connection-to-dbus" title="nm_connection_to_dbus ()"><code class="function">nm_connection_to_dbus()</code></a> and will update all secrets from all
+settings contained in <em class="parameter"><code>secrets</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-connection-update-secrets.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>setting_name</p></td>
+<td class="parameter_description"><p>the setting object name to which the secrets apply</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>secrets</p></td>
+<td class="parameter_description"><p>a <a href="https://developer.gnome.org/glib/unstable/glib-GVariant.html#GVariant"><span class="type">GVariant</span></a> of secrets, of type <code class="literal">NM_VARIANT_TYPE_CONNECTION</code>
+or <a class="link" href="NMConnection.html#NM-VARIANT-TYPE-SETTING:CAPS" title="NM_VARIANT_TYPE_SETTING"><code class="literal">NM_VARIANT_TYPE_SETTING</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>error</p></td>
+<td class="parameter_description"><p>location to store error, or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-update-secrets.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the secrets were successfully updated, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if the update
+failed (tried to update secrets for a setting that doesn't exist, etc)</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-set-path"></a><h3>nm_connection_set_path ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_set_path (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                        <em class="parameter"><code>const <span class="type">char</span> *path</code></em>);</pre>
+<p>Sets the D-Bus path of the connection.  This property is not serialized, and
+is only for the reference of the caller.  Sets the <span class="type">“path”</span>
+property.</p>
+<div class="refsect3">
+<a name="nm-connection-set-path.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>path</p></td>
+<td class="parameter_description"><p>the D-Bus path of the connection as given by the settings service
+which provides the connection</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-path"></a><h3>nm_connection_get_path ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_connection_get_path (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>Returns the connection's D-Bus path.</p>
+<div class="refsect3">
+<a name="nm-connection-get-path.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-path.returns"></a><h4>Returns</h4>
+<p> the D-Bus path of the connection, previously set by a call to
+<a class="link" href="NMConnection.html#nm-connection-set-path" title="nm_connection_set_path ()"><code class="function">nm_connection_set_path()</code></a>.</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-interface-name"></a><h3>nm_connection_get_interface_name ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_connection_get_interface_name (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>Returns the interface name as stored in NMSettingConnection:interface_name.
+If the connection contains no NMSettingConnection, it will return <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>.</p>
+<p>For hardware devices and software devices created outside of NetworkManager,
+this name is used to match the device. for software devices created by
+NetworkManager, this is the name of the created interface.</p>
+<div class="refsect3">
+<a name="nm-connection-get-interface-name.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>The <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-interface-name.returns"></a><h4>Returns</h4>
+<p> Name of the kernel interface or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-is-type"></a><h3>nm_connection_is_type ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_is_type (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                       <em class="parameter"><code>const <span class="type">char</span> *type</code></em>);</pre>
+<p>A convenience function to check if the given <em class="parameter"><code>connection</code></em>
+ is a particular
+type (ie wired, Wi-Fi, ppp, etc). Checks the <span class="type">“type”</span>
+property of the connection and matches that against <em class="parameter"><code>type</code></em>
+.</p>
+<div class="refsect3">
+<a name="nm-connection-is-type.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>type</p></td>
+<td class="parameter_description"><p>a setting name to check the connection's type against (like
+<a class="link" href="NMSettingWireless.html#NM-SETTING-WIRELESS-SETTING-NAME:CAPS" title="NM_SETTING_WIRELESS_SETTING_NAME"><code class="literal">NM_SETTING_WIRELESS_SETTING_NAME</code></a> or <a class="link" href="NMSettingWired.html#NM-SETTING-WIRED-SETTING-NAME:CAPS" title="NM_SETTING_WIRED_SETTING_NAME"><code class="literal">NM_SETTING_WIRED_SETTING_NAME</code></a>)</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-is-type.returns"></a><h4>Returns</h4>
+<p> <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#TRUE:CAPS"><code class="literal">TRUE</code></a> if the connection is of the given <em class="parameter"><code>type</code></em>
+, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#FALSE:CAPS"><code class="literal">FALSE</code></a> if not</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-for-each-setting-value"></a><h3>nm_connection_for_each_setting_value ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_for_each_setting_value (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                                      <em class="parameter"><code><a class="link" href="NMSetting.html#NMSettingValueIterFn" title="NMSettingValueIterFn ()"><span class="type">NMSettingValueIterFn</span></a> func</code></em>,
+                                      <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gpointer"><span class="type">gpointer</span></a> user_data</code></em>);</pre>
+<p>Iterates over the properties of each <a class="link" href="NMSetting.html" title="NMSetting"><span class="type">NMSetting</span></a> object in the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a>,
+calling the supplied user function for each property.</p>
+<div class="refsect3">
+<a name="nm-connection-for-each-setting-value.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>func</p></td>
+<td class="parameter_description"><p>user-supplied function called for each setting's property. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="The callback is valid only during the call to the method."><span class="acronym">scope call</span></acronym>]</span></td>
+</tr>
+<tr>
+<td class="parameter_name"><p>user_data</p></td>
+<td class="parameter_description"><p>user data passed to <em class="parameter"><code>func</code></em>
+at each invocation</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-settings"></a><h3>nm_connection_get_settings ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting.html" title="NMSetting"><span class="returnvalue">NMSetting</span></a> **
+nm_connection_get_settings (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>,
+                            <em class="parameter"><code><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#guint"><span class="type">guint</span></a> *out_length</code></em>);</pre>
+<p>Retrieves the settings in <em class="parameter"><code>connection</code></em>
+.</p>
+<p>The returned array is <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated.</p>
+<div class="refsect3">
+<a name="nm-connection-get-settings.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> instance</p></td>
+<td class="parameter_annotations"> </td>
+</tr>
+<tr>
+<td class="parameter_name"><p>out_length</p></td>
+<td class="parameter_description"><p>the length of the returned array. </p></td>
+<td class="parameter_annotations"><span class="annotation">[<acronym title="Parameter for returning results. Default is transfer full."><span class="acronym">out</span></acronym>][<acronym title="NULL may be passed instead of a pointer to a location."><span class="acronym">optional</span></acronym>]</span></td>
+</tr>
+</tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-settings.returns"></a><h4>Returns</h4>
+<p>a
+<a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>-terminated array containing every setting of <em class="parameter"><code>connection</code></em>
+.
+If the connection has no settings, <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> is returned. </p>
+<p><span class="annotation">[<acronym title="Parameter points to an array of items."><span class="acronym">array</span></acronym> length=out_length][<acronym title="The caller owns the data container, but not the data inside it."><span class="acronym">transfer container</span></acronym>][<acronym title="NULL may be passed as the value in, out, in-out; or as a return value."><span class="acronym">nullable</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.10</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-dump"></a><h3>nm_connection_dump ()</h3>
+<pre class="programlisting"><span class="returnvalue">void</span>
+nm_connection_dump (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>Print the connection (including secrets!) to stdout. For debugging
+purposes ONLY, should NOT be used for serialization of the setting,
+or machine-parsed in any way. The output format is not guaranteed to
+be stable and may change at any time.</p>
+<div class="refsect3">
+<a name="nm-connection-dump.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-uuid"></a><h3>nm_connection_get_uuid ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_connection_get_uuid (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return the UUID from the connection's <a class="link" href="NMSettingConnection.html" title="NMSettingConnection"><span class="type">NMSettingConnection</span></a>.</p>
+<div class="refsect3">
+<a name="nm-connection-get-uuid.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-uuid.returns"></a><h4>Returns</h4>
+<p> the UUID from the connection's 'connection' setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-id"></a><h3>nm_connection_get_id ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_connection_get_id (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return the ID from the connection's <a class="link" href="NMSettingConnection.html" title="NMSettingConnection"><span class="type">NMSettingConnection</span></a>.</p>
+<div class="refsect3">
+<a name="nm-connection-get-id.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-id.returns"></a><h4>Returns</h4>
+<p> the ID from the connection's 'connection' setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-connection-type"></a><h3>nm_connection_get_connection_type ()</h3>
+<pre class="programlisting">const <span class="returnvalue">char</span> *
+nm_connection_get_connection_type (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return the type from the connection's <a class="link" href="NMSettingConnection.html" title="NMSettingConnection"><span class="type">NMSettingConnection</span></a>.</p>
+<div class="refsect3">
+<a name="nm-connection-get-connection-type.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-connection-type.returns"></a><h4>Returns</h4>
+<p> the type from the connection's 'connection' setting</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-is-virtual"></a><h3>nm_connection_is_virtual ()</h3>
+<pre class="programlisting"><a href="https://developer.gnome.org/glib/unstable/glib-Basic-Types.html#gboolean"><span class="returnvalue">gboolean</span></a>
+nm_connection_is_virtual (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>Checks if <em class="parameter"><code>connection</code></em>
+ refers to a virtual device (and thus can potentially be
+activated even if the device it refers to doesn't exist).</p>
+<div class="refsect3">
+<a name="nm-connection-is-virtual.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>an <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-is-virtual.returns"></a><h4>Returns</h4>
+<p> whether <em class="parameter"><code>connection</code></em>
+refers to a virtual device</p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-virtual-device-description"></a><h3>nm_connection_get_virtual_device_description ()</h3>
+<pre class="programlisting"><span class="returnvalue">char</span> *
+nm_connection_get_virtual_device_description
+                               (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>Returns the name that <a class="link" href="NMDevice.html#nm-device-disambiguate-names" title="nm_device_disambiguate_names ()"><code class="function">nm_device_disambiguate_names()</code></a> would
+return for the virtual device that would be created for <em class="parameter"><code>connection</code></em>
+.
+Eg, "VLAN (eth1.1)".</p>
+<div class="refsect3">
+<a name="nm-connection-get-virtual-device-description.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>an <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> for a virtual device type</p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-virtual-device-description.returns"></a><h4>Returns</h4>
+<p>the name of <em class="parameter"><code>connection</code></em>
+'s device,
+or <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a> if <em class="parameter"><code>connection</code></em>
+is not a virtual connection type. </p>
+<p><span class="annotation">[<acronym title="The caller owns the data, and is responsible for free it."><span class="acronym">transfer full</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-802-1x"></a><h3>nm_connection_get_setting_802_1x ()</h3>
+<pre class="programlisting"><a class="link" href="NMSetting8021x.html" title="NMSetting8021x"><span class="returnvalue">NMSetting8021x</span></a> *
+nm_connection_get_setting_802_1x (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSetting8021x.html" title="NMSetting8021x"><span class="type">NMSetting8021x</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-802-1x.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-802-1x.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSetting8021x.html" title="NMSetting8021x"><span class="type">NMSetting8021x</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-bluetooth"></a><h3>nm_connection_get_setting_bluetooth ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBluetooth.html" title="NMSettingBluetooth"><span class="returnvalue">NMSettingBluetooth</span></a> *
+nm_connection_get_setting_bluetooth (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingBluetooth.html" title="NMSettingBluetooth"><span class="type">NMSettingBluetooth</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-bluetooth.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-bluetooth.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingBluetooth.html" title="NMSettingBluetooth"><span class="type">NMSettingBluetooth</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-bond"></a><h3>nm_connection_get_setting_bond ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBond.html" title="NMSettingBond"><span class="returnvalue">NMSettingBond</span></a> *
+nm_connection_get_setting_bond (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingBond.html" title="NMSettingBond"><span class="type">NMSettingBond</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-bond.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-bond.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingBond.html" title="NMSettingBond"><span class="type">NMSettingBond</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-team"></a><h3>nm_connection_get_setting_team ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="returnvalue">NMSettingTeam</span></a> *
+nm_connection_get_setting_team (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-team.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-team.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingTeam.html" title="NMSettingTeam"><span class="type">NMSettingTeam</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-team-port"></a><h3>nm_connection_get_setting_team_port ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="returnvalue">NMSettingTeamPort</span></a> *
+nm_connection_get_setting_team_port (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-team-port.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-team-port.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingTeamPort.html" title="NMSettingTeamPort"><span class="type">NMSettingTeamPort</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-bridge"></a><h3>nm_connection_get_setting_bridge ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="returnvalue">NMSettingBridge</span></a> *
+nm_connection_get_setting_bridge (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-bridge.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-bridge.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingBridge.html" title="NMSettingBridge"><span class="type">NMSettingBridge</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-bridge-port"></a><h3>nm_connection_get_setting_bridge_port ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingBridgePort.html" title="NMSettingBridgePort"><span class="returnvalue">NMSettingBridgePort</span></a> *
+nm_connection_get_setting_bridge_port (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingBridgePort.html" title="NMSettingBridgePort"><span class="type">NMSettingBridgePort</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-bridge-port.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-bridge-port.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingBridgePort.html" title="NMSettingBridgePort"><span class="type">NMSettingBridgePort</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-cdma"></a><h3>nm_connection_get_setting_cdma ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingCdma.html" title="NMSettingCdma"><span class="returnvalue">NMSettingCdma</span></a> *
+nm_connection_get_setting_cdma (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingCdma.html" title="NMSettingCdma"><span class="type">NMSettingCdma</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-cdma.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-cdma.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingCdma.html" title="NMSettingCdma"><span class="type">NMSettingCdma</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-connection"></a><h3>nm_connection_get_setting_connection ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingConnection.html" title="NMSettingConnection"><span class="returnvalue">NMSettingConnection</span></a> *
+nm_connection_get_setting_connection (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingConnection.html" title="NMSettingConnection"><span class="type">NMSettingConnection</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-connection.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-connection.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingConnection.html" title="NMSettingConnection"><span class="type">NMSettingConnection</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-dcb"></a><h3>nm_connection_get_setting_dcb ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingDcb.html" title="NMSettingDcb"><span class="returnvalue">NMSettingDcb</span></a> *
+nm_connection_get_setting_dcb (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingDcb.html" title="NMSettingDcb"><span class="type">NMSettingDcb</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-dcb.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-dcb.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingDcb.html" title="NMSettingDcb"><span class="type">NMSettingDcb</span></a> if the connection contains one, otherwise NULL. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-dummy"></a><h3>nm_connection_get_setting_dummy ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingDummy.html" title="NMSettingDummy"><span class="returnvalue">NMSettingDummy</span></a> *
+nm_connection_get_setting_dummy (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingDummy.html" title="NMSettingDummy"><span class="type">NMSettingDummy</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-dummy.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-dummy.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingDummy.html" title="NMSettingDummy"><span class="type">NMSettingDummy</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.8</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-generic"></a><h3>nm_connection_get_setting_generic ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingGeneric.html" title="NMSettingGeneric"><span class="returnvalue">NMSettingGeneric</span></a> *
+nm_connection_get_setting_generic (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingGeneric.html" title="NMSettingGeneric"><span class="type">NMSettingGeneric</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-generic.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-generic.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingGeneric.html" title="NMSettingGeneric"><span class="type">NMSettingGeneric</span></a> if the connection contains one, otherwise NULL. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-gsm"></a><h3>nm_connection_get_setting_gsm ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingGsm.html" title="NMSettingGsm"><span class="returnvalue">NMSettingGsm</span></a> *
+nm_connection_get_setting_gsm (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingGsm.html" title="NMSettingGsm"><span class="type">NMSettingGsm</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-gsm.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-gsm.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingGsm.html" title="NMSettingGsm"><span class="type">NMSettingGsm</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-infiniband"></a><h3>nm_connection_get_setting_infiniband ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingInfiniband.html" title="NMSettingInfiniband"><span class="returnvalue">NMSettingInfiniband</span></a> *
+nm_connection_get_setting_infiniband (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingInfiniband.html" title="NMSettingInfiniband"><span class="type">NMSettingInfiniband</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-infiniband.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-infiniband.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingInfiniband.html" title="NMSettingInfiniband"><span class="type">NMSettingInfiniband</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-ip-tunnel"></a><h3>nm_connection_get_setting_ip_tunnel ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingIPTunnel.html" title="NMSettingIPTunnel"><span class="returnvalue">NMSettingIPTunnel</span></a> *
+nm_connection_get_setting_ip_tunnel (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingIPTunnel.html" title="NMSettingIPTunnel"><span class="type">NMSettingIPTunnel</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ip-tunnel.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ip-tunnel.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingIPTunnel.html" title="NMSettingIPTunnel"><span class="type">NMSettingIPTunnel</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-ip4-config"></a><h3>nm_connection_get_setting_ip4_config ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingIPConfig.html" title="NMSettingIPConfig"><span class="returnvalue">NMSettingIPConfig</span></a> *
+nm_connection_get_setting_ip4_config (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingIP4Config.html" title="NMSettingIP4Config"><span class="type">NMSettingIP4Config</span></a> the connection might contain.</p>
+<p>Note that it returns the value as type <a class="link" href="NMSettingIPConfig.html" title="NMSettingIPConfig"><span class="type">NMSettingIPConfig</span></a>, since the vast
+majority of IPv4-setting-related methods are on that type, not
+<a class="link" href="NMSettingIP4Config.html" title="NMSettingIP4Config"><span class="type">NMSettingIP4Config</span></a>.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ip4-config.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ip4-config.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingIP4Config.html" title="NMSettingIP4Config"><span class="type">NMSettingIP4Config</span></a> if the
+connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="Override the parsed C type with given type."><span class="acronym">type</span></acronym> NMSettingIP4Config][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-ip6-config"></a><h3>nm_connection_get_setting_ip6_config ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingIPConfig.html" title="NMSettingIPConfig"><span class="returnvalue">NMSettingIPConfig</span></a> *
+nm_connection_get_setting_ip6_config (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> the connection might contain.</p>
+<p>Note that it returns the value as type <a class="link" href="NMSettingIPConfig.html" title="NMSettingIPConfig"><span class="type">NMSettingIPConfig</span></a>, since the vast
+majority of IPv6-setting-related methods are on that type, not
+<a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a>.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ip6-config.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ip6-config.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingIP6Config.html" title="NMSettingIP6Config"><span class="type">NMSettingIP6Config</span></a> if the
+connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="Override the parsed C type with given type."><span class="acronym">type</span></acronym> NMSettingIP6Config][<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-macsec"></a><h3>nm_connection_get_setting_macsec ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="returnvalue">NMSettingMacsec</span></a> *
+nm_connection_get_setting_macsec (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-macsec.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-macsec.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingMacsec.html" title="NMSettingMacsec"><span class="type">NMSettingMacsec</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-macvlan"></a><h3>nm_connection_get_setting_macvlan ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="returnvalue">NMSettingMacvlan</span></a> *
+nm_connection_get_setting_macvlan (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-macvlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-macvlan.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingMacvlan.html" title="NMSettingMacvlan"><span class="type">NMSettingMacvlan</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-olpc-mesh"></a><h3>nm_connection_get_setting_olpc_mesh ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingOlpcMesh.html" title="NMSettingOlpcMesh"><span class="returnvalue">NMSettingOlpcMesh</span></a> *
+nm_connection_get_setting_olpc_mesh (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingOlpcMesh.html" title="NMSettingOlpcMesh"><span class="type">NMSettingOlpcMesh</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-olpc-mesh.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-olpc-mesh.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingOlpcMesh.html" title="NMSettingOlpcMesh"><span class="type">NMSettingOlpcMesh</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-ovs-bridge"></a><h3>nm_connection_get_setting_ovs_bridge ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingOvsBridge.html" title="NMSettingOvsBridge"><span class="returnvalue">NMSettingOvsBridge</span></a> *
+nm_connection_get_setting_ovs_bridge (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingOvsBridge.html" title="NMSettingOvsBridge"><span class="type">NMSettingOvsBridge</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ovs-bridge.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ovs-bridge.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingOvsBridge.html" title="NMSettingOvsBridge"><span class="type">NMSettingOvsBridge</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-ovs-interface"></a><h3>nm_connection_get_setting_ovs_interface ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingOvsInterface.html" title="NMSettingOvsInterface"><span class="returnvalue">NMSettingOvsInterface</span></a> *
+nm_connection_get_setting_ovs_interface
+                               (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingOvsInterface.html" title="NMSettingOvsInterface"><span class="type">NMSettingOvsInterface</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ovs-interface.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ovs-interface.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingOvsInterface.html" title="NMSettingOvsInterface"><span class="type">NMSettingOvsInterface</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-ovs-patch"></a><h3>nm_connection_get_setting_ovs_patch ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingOvsPatch.html" title="NMSettingOvsPatch"><span class="returnvalue">NMSettingOvsPatch</span></a> *
+nm_connection_get_setting_ovs_patch (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingOvsPatch.html" title="NMSettingOvsPatch"><span class="type">NMSettingOvsPatch</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ovs-patch.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ovs-patch.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingOvsPatch.html" title="NMSettingOvsPatch"><span class="type">NMSettingOvsPatch</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-ovs-port"></a><h3>nm_connection_get_setting_ovs_port ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="returnvalue">NMSettingOvsPort</span></a> *
+nm_connection_get_setting_ovs_port (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ovs-port.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ovs-port.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingOvsPort.html" title="NMSettingOvsPort"><span class="type">NMSettingOvsPort</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-ppp"></a><h3>nm_connection_get_setting_ppp ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="returnvalue">NMSettingPpp</span></a> *
+nm_connection_get_setting_ppp (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ppp.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-ppp.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingPpp.html" title="NMSettingPpp"><span class="type">NMSettingPpp</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-pppoe"></a><h3>nm_connection_get_setting_pppoe ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingPppoe.html" title="NMSettingPppoe"><span class="returnvalue">NMSettingPppoe</span></a> *
+nm_connection_get_setting_pppoe (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingPppoe.html" title="NMSettingPppoe"><span class="type">NMSettingPppoe</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-pppoe.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-pppoe.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingPppoe.html" title="NMSettingPppoe"><span class="type">NMSettingPppoe</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-proxy"></a><h3>nm_connection_get_setting_proxy ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingProxy.html" title="NMSettingProxy"><span class="returnvalue">NMSettingProxy</span></a> *
+nm_connection_get_setting_proxy (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingProxy.html" title="NMSettingProxy"><span class="type">NMSettingProxy</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-proxy.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-proxy.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingProxy.html" title="NMSettingProxy"><span class="type">NMSettingProxy</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.6</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-serial"></a><h3>nm_connection_get_setting_serial ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingSerial.html" title="NMSettingSerial"><span class="returnvalue">NMSettingSerial</span></a> *
+nm_connection_get_setting_serial (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingSerial.html" title="NMSettingSerial"><span class="type">NMSettingSerial</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-serial.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-serial.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingSerial.html" title="NMSettingSerial"><span class="type">NMSettingSerial</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-tc-config"></a><h3>nm_connection_get_setting_tc_config ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="returnvalue">NMSettingTCConfig</span></a> *
+nm_connection_get_setting_tc_config (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-tc-config.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-tc-config.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingTCConfig.html" title="NMSettingTCConfig"><span class="type">NMSettingTCConfig</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.12</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-tun"></a><h3>nm_connection_get_setting_tun ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="returnvalue">NMSettingTun</span></a> *
+nm_connection_get_setting_tun (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-tun.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-tun.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingTun.html" title="NMSettingTun"><span class="type">NMSettingTun</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.14</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-vpn"></a><h3>nm_connection_get_setting_vpn ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="returnvalue">NMSettingVpn</span></a> *
+nm_connection_get_setting_vpn (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-vpn.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-vpn.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingVpn.html" title="NMSettingVpn"><span class="type">NMSettingVpn</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-wimax"></a><h3>nm_connection_get_setting_wimax ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWimax.html" title="NMSettingWimax"><span class="returnvalue">NMSettingWimax</span></a> *
+nm_connection_get_setting_wimax (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingWimax.html" title="NMSettingWimax"><span class="type">NMSettingWimax</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-wimax.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-wimax.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingWimax.html" title="NMSettingWimax"><span class="type">NMSettingWimax</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-adsl"></a><h3>nm_connection_get_setting_adsl ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingAdsl.html" title="NMSettingAdsl"><span class="returnvalue">NMSettingAdsl</span></a> *
+nm_connection_get_setting_adsl (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingAdsl.html" title="NMSettingAdsl"><span class="type">NMSettingAdsl</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-adsl.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-adsl.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingAdsl.html" title="NMSettingAdsl"><span class="type">NMSettingAdsl</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-wired"></a><h3>nm_connection_get_setting_wired ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="returnvalue">NMSettingWired</span></a> *
+nm_connection_get_setting_wired (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-wired.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-wired.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingWired.html" title="NMSettingWired"><span class="type">NMSettingWired</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-wireless"></a><h3>nm_connection_get_setting_wireless ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="returnvalue">NMSettingWireless</span></a> *
+nm_connection_get_setting_wireless (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-wireless.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-wireless.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingWireless.html" title="NMSettingWireless"><span class="type">NMSettingWireless</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-wireless-security"></a><h3>nm_connection_get_setting_wireless_security ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity"><span class="returnvalue">NMSettingWirelessSecurity</span></a> *
+nm_connection_get_setting_wireless_security
+                               (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity"><span class="type">NMSettingWirelessSecurity</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-wireless-security.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-wireless-security.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingWirelessSecurity.html" title="NMSettingWirelessSecurity"><span class="type">NMSettingWirelessSecurity</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-vlan"></a><h3>nm_connection_get_setting_vlan ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingVlan.html" title="NMSettingVlan"><span class="returnvalue">NMSettingVlan</span></a> *
+nm_connection_get_setting_vlan (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingVlan.html" title="NMSettingVlan"><span class="type">NMSettingVlan</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-vlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-vlan.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingVlan.html" title="NMSettingVlan"><span class="type">NMSettingVlan</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="nm-connection-get-setting-vxlan"></a><h3>nm_connection_get_setting_vxlan ()</h3>
+<pre class="programlisting"><a class="link" href="NMSettingVxlan.html" title="NMSettingVxlan"><span class="returnvalue">NMSettingVxlan</span></a> *
+nm_connection_get_setting_vxlan (<em class="parameter"><code><a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a> *connection</code></em>);</pre>
+<p>A shortcut to return any <a class="link" href="NMSettingVxlan.html" title="NMSettingVxlan"><span class="type">NMSettingVxlan</span></a> the connection might contain.</p>
+<div class="refsect3">
+<a name="nm-connection-get-setting-vxlan.parameters"></a><h4>Parameters</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="150px" class="parameters_name">
+<col class="parameters_description">
+<col width="200px" class="parameters_annotations">
+</colgroup>
+<tbody><tr>
+<td class="parameter_name"><p>connection</p></td>
+<td class="parameter_description"><p>the <a class="link" href="NMConnection.html" title="NMConnection"><span class="type">NMConnection</span></a></p></td>
+<td class="parameter_annotations"> </td>
+</tr></tbody>
+</table></div>
+</div>
+<div class="refsect3">
+<a name="nm-connection-get-setting-vxlan.returns"></a><h4>Returns</h4>
+<p>an <a class="link" href="NMSettingVxlan.html" title="NMSettingVxlan"><span class="type">NMSettingVxlan</span></a> if the connection contains one, otherwise <a href="https://developer.gnome.org/glib/unstable/glib-Standard-Macros.html#NULL:CAPS"><code class="literal">NULL</code></a>. </p>
+<p><span class="annotation">[<acronym title="The data is owned by the callee, which is responsible of freeing it."><span class="acronym">transfer none</span></acronym>]</span></p>
+</div>
+<p class="since">Since: 1.2</p>
+</div>
+</div>
+<div class="refsect1">
+<a name="NMConnection.other_details"></a><h2>Types and Values</h2>
+<div class="refsect2">
+<a name="NM-CONNECTION-SECRETS-UPDATED:CAPS"></a><h3>NM_CONNECTION_SECRETS_UPDATED</h3>
+<pre class="programlisting">#define NM_CONNECTION_SECRETS_UPDATED "secrets-updated"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-CONNECTION-SECRETS-CLEARED:CAPS"></a><h3>NM_CONNECTION_SECRETS_CLEARED</h3>
+<pre class="programlisting">#define NM_CONNECTION_SECRETS_CLEARED "secrets-cleared"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-CONNECTION-CHANGED:CAPS"></a><h3>NM_CONNECTION_CHANGED</h3>
+<pre class="programlisting">#define NM_CONNECTION_CHANGED         "changed"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-CONNECTION-NORMALIZE-PARAM-IP4-CONFIG-METHOD:CAPS"></a><h3>NM_CONNECTION_NORMALIZE_PARAM_IP4_CONFIG_METHOD</h3>
+<pre class="programlisting">#define NM_CONNECTION_NORMALIZE_PARAM_IP4_CONFIG_METHOD "ip4-config-method"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-CONNECTION-NORMALIZE-PARAM-IP6-CONFIG-METHOD:CAPS"></a><h3>NM_CONNECTION_NORMALIZE_PARAM_IP6_CONFIG_METHOD</h3>
+<pre class="programlisting">#define NM_CONNECTION_NORMALIZE_PARAM_IP6_CONFIG_METHOD "ip6-config-method"
+</pre>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMConnectionInterface"></a><h3>NMConnectionInterface</h3>
+<pre class="programlisting">typedef struct {
+    GTypeInterface parent;
+
+    /* Signals */
+    void (*secrets_updated)(NMConnection *connection, const char *setting);
+    void (*secrets_cleared)(NMConnection *connection);
+    void (*changed)(NMConnection *connection);
+} NMConnectionInterface;
+</pre>
+<div class="refsect3">
+<a name="NMConnectionInterface.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="struct_members_name">
+<col class="struct_members_description">
+<col width="200px" class="struct_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="struct_member_name"><p><a href="https://developer.gnome.org/gobject/unstable/gobject-Type-Information.html#GTypeInterface"><span class="type">GTypeInterface</span></a> <em class="structfield"><code><a name="NMConnectionInterface.parent"></a>parent</code></em>;</p></td>
+<td class="struct_member_description"><p>the parent interface struct</p></td>
+<td class="struct_member_annotations"> </td>
+</tr>
+<tr>
+<td class="struct_member_name"><p><em class="structfield"><code><a name="NMConnectionInterface.secrets-updated"></a>secrets_updated</code></em> ()</p></td>
+<td class="struct_member_description"><p>emitted when the connection's secrets are updated</p></td>
+<td class="struct_member_annotations"> </td>
+</tr>
+<tr>
+<td class="struct_member_name"><p><em class="structfield"><code><a name="NMConnectionInterface.secrets-cleared"></a>secrets_cleared</code></em> ()</p></td>
+<td class="struct_member_description"><p>emitted when the connection's secrets are cleared</p></td>
+<td class="struct_member_annotations"> </td>
+</tr>
+<tr>
+<td class="struct_member_name"><p><em class="structfield"><code><a name="NMConnectionInterface.changed"></a>changed</code></em> ()</p></td>
+<td class="struct_member_description"><p>emitted when any change to the connection's settings occurs</p></td>
+<td class="struct_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NM-VARIANT-TYPE-SETTING:CAPS"></a><h3>NM_VARIANT_TYPE_SETTING</h3>
+<pre class="programlisting">#define NM_VARIANT_TYPE_SETTING G_VARIANT_TYPE_VARDICT
+</pre>
+<p><a href="https://developer.gnome.org/glib/unstable/glib-GVariantType.html#GVariantType"><span class="type">GVariantType</span></a> for a dictionary mapping from property names to values. This is
+an alias for <a href="https://developer.gnome.org/glib/unstable/glib-GVariantType.html#G-VARIANT-TYPE-VARDICT:CAPS"><code class="literal">G_VARIANT_TYPE_VARDICT</code></a>, and is the type of each element of
+an <code class="literal">NM_VARIANT_TYPE_CONNECTION</code> dictionary.</p>
+</div>
+<hr>
+<div class="refsect2">
+<a name="NMConnectionSerializationFlags"></a><h3>enum NMConnectionSerializationFlags</h3>
+<p>These flags determine which properties are serialized when calling
+<a class="link" href="NMConnection.html#nm-connection-to-dbus" title="nm_connection_to_dbus ()"><code class="function">nm_connection_to_dbus()</code></a>.</p>
+<div class="refsect3">
+<a name="NMConnectionSerializationFlags.members"></a><h4>Members</h4>
+<div class="informaltable"><table class="informaltable" width="100%" border="0">
+<colgroup>
+<col width="300px" class="enum_members_name">
+<col class="enum_members_description">
+<col width="200px" class="enum_members_annotations">
+</colgroup>
+<tbody>
+<tr>
+<td class="enum_member_name"><p><a name="NM-CONNECTION-SERIALIZE-ALL:CAPS"></a>NM_CONNECTION_SERIALIZE_ALL</p></td>
+<td class="enum_member_description">
+<p>serialize all properties (including secrets)</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-CONNECTION-SERIALIZE-WITH-NON-SECRET:CAPS"></a>NM_CONNECTION_SERIALIZE_WITH_NON_SECRET</p></td>
+<td class="enum_member_description">
+<p>serialize properties that are
+not secrets. Since 1.32.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-CONNECTION-SERIALIZE-NO-SECRETS:CAPS"></a>NM_CONNECTION_SERIALIZE_NO_SECRETS</p></td>
+<td class="enum_member_description">
+<p>this is a deprecated alias for
+<em class="parameter"><code>NM_CONNECTION_SERIALIZE_WITH_NON_SECRET</code></em>
+.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-CONNECTION-SERIALIZE-WITH-SECRETS:CAPS"></a>NM_CONNECTION_SERIALIZE_WITH_SECRETS</p></td>
+<td class="enum_member_description">
+<p>serialize all secrets. This flag is
+ignored if any of <em class="parameter"><code>NM_CONNECTION_SERIALIZE_WITH_SECRETS_AGENT_OWNED</code></em>
+,
+<em class="parameter"><code>NM_CONNECTION_SERIALIZE_WITH_SECRETS_SYSTEM_OWNED</code></em>
+ or
+<em class="parameter"><code>NM_CONNECTION_SERIALIZE_WITH_SECRETS_NOT_SAVED</code></em>
+ is set. Since 1.32.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-CONNECTION-SERIALIZE-ONLY-SECRETS:CAPS"></a>NM_CONNECTION_SERIALIZE_ONLY_SECRETS</p></td>
+<td class="enum_member_description">
+<p>a deprecated alias for
+<em class="parameter"><code>NM_CONNECTION_SERIALIZE_WITH_SECRETS</code></em>
+.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-CONNECTION-SERIALIZE-WITH-SECRETS-AGENT-OWNED:CAPS"></a>NM_CONNECTION_SERIALIZE_WITH_SECRETS_AGENT_OWNED</p></td>
+<td class="enum_member_description">
+<p>serialize agent-owned
+secrets. Since: 1.20.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-CONNECTION-SERIALIZE-WITH-SECRETS-SYSTEM-OWNED:CAPS"></a>NM_CONNECTION_SERIALIZE_WITH_SECRETS_SYSTEM_OWNED</p></td>
+<td class="enum_member_description">
+<p>serialize system-owned
+secrets. Since: 1.32.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+<tr>
+<td class="enum_member_name"><p><a name="NM-CONNECTION-SERIALIZE-WITH-SECRETS-NOT-SAVED:CAPS"></a>NM_CONNECTION_SERIALIZE_WITH_SECRETS_NOT_SAVED</p></td>
+<td class="enum_member_description">
+<p>serialize secrets that
+are marked as never saved. Since: 1.32.</p>
+</td>
+<td class="enum_member_annotations"> </td>
+</tr>
+</tbody>
+</table></div>
+</div>
+</div>
+</div>
+</div>
+<div class="footer">
+<hr>Generated by GTK-Doc V1.33.1</div>
+</body>
+</html>

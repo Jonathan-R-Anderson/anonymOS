@@ -1,0 +1,2 @@
+test.lo: test.c ../config.h
+../config.h:

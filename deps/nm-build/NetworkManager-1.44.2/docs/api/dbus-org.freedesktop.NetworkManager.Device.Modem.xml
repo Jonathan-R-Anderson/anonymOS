@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Modem">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Modem.top_of_page">org.freedesktop.NetworkManager.Device.Modem</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Modem.top_of_page"><primary sortas=".Device.Modem">org.freedesktop.NetworkManager.Device.Modem</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Modem</refname>    <refpurpose>Modem Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.ModemCapabilities">ModemCapabilities</link>    readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.CurrentCapabilities">CurrentCapabilities</link>  readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.DeviceId">DeviceId</link>             readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.OperatorCode">OperatorCode</link>         readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.Apn">Apn</link>                  readable   s
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Modem">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Modem">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.ModemCapabilities">
+  <title>The "ModemCapabilities" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.ModemCapabilities"><primary sortas=".Device.Modem:ModemCapabilities">org.freedesktop.NetworkManager.Device.Modem:ModemCapabilities</primary></indexterm>
+<programlisting>
+ModemCapabilities  readable   u
+</programlisting>
+<para>
+The generic family of access technologies the modem supports. Not all
+capabilities are available at the same time however; some modems require a
+firmware reload or other reinitialization to switch between eg CDMA/EVDO
+and GSM/UMTS.
+</para><para>
+Returns: <link linkend="NMDeviceModemCapabilities">NMDeviceModemCapabilities</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.CurrentCapabilities">
+  <title>The "CurrentCapabilities" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.CurrentCapabilities"><primary sortas=".Device.Modem:CurrentCapabilities">org.freedesktop.NetworkManager.Device.Modem:CurrentCapabilities</primary></indexterm>
+<programlisting>
+CurrentCapabilities  readable   u
+</programlisting>
+<para>
+The generic family of access technologies the modem currently supports
+without a firmware reload or reinitialization.
+</para><para>
+Returns: <link linkend="NMDeviceModemCapabilities">NMDeviceModemCapabilities</link>
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.DeviceId">
+  <title>The "DeviceId" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.DeviceId"><primary sortas=".Device.Modem:DeviceId">org.freedesktop.NetworkManager.Device.Modem:DeviceId</primary></indexterm>
+<programlisting>
+DeviceId  readable   s
+</programlisting>
+<para>
+An identifier used by the modem backend (ModemManager) that aims to
+uniquely identify the a device. Can be used to match a connection to a
+particular device.
+</para>
+<para role="since">Since 1.20</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.OperatorCode">
+  <title>The "OperatorCode" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.OperatorCode"><primary sortas=".Device.Modem:OperatorCode">org.freedesktop.NetworkManager.Device.Modem:OperatorCode</primary></indexterm>
+<programlisting>
+OperatorCode  readable   s
+</programlisting>
+<para>
+The MCC and MNC (concatenated) of the network the modem is connected to.
+Blank if disconnected or not a 3GPP modem.
+</para>
+<para role="since">Since 1.20</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.Apn">
+  <title>The "Apn" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Modem.Apn"><primary sortas=".Device.Modem:Apn">org.freedesktop.NetworkManager.Device.Modem:Apn</primary></indexterm>
+<programlisting>
+Apn  readable   s
+</programlisting>
+<para>
+The access point name the modem is connected to. Blank if disconnected.
+</para>
+<para role="since">Since 1.20</para>
+</refsect2>
+</refsect1>
+</refentry>
+

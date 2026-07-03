@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.WifiP2P">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-WifiP2P.top_of_page">org.freedesktop.NetworkManager.Device.WifiP2P</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-WifiP2P.top_of_page"><primary sortas="DeviceWifiP2P">org.freedesktop.NetworkManager.Device.WifiP2P</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.WifiP2P</refname>    <refpurpose>Wi-Fi P2P Device.</refpurpose>  </refnamediv>  <refsynopsisdiv role="synopsis">
+    <title role="synopsis.title">Methods</title>
+    <synopsis>
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device-WifiP2P.StartFind">StartFind</link> (IN  a{sv} options);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-Device-WifiP2P.StopFind">StopFind</link>  ();
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1 role="signal_proto">
+    <title role="signal_proto.title">Signals</title>
+    <synopsis>
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-Device-WifiP2P.PeerAdded">PeerAdded</link>   (o peer);
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-Device-WifiP2P.PeerRemoved">PeerRemoved</link> (o peer);
+</synopsis>
+  </refsect1>
+  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-WifiP2P.HwAddress">HwAddress</link>  readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-WifiP2P.Peers">Peers</link>      readable   ao
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-WifiP2P">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+  <para role="since">Since 1.16</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-methods-org.freedesktop.NetworkManager.Device.WifiP2P">
+  <title role="details.title">Method Details</title>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device-WifiP2P.StartFind">
+  <title>The StartFind() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device-WifiP2P.StartFind"><primary sortas="DeviceWifiP2P.StartFind">org.freedesktop.NetworkManager.Device.WifiP2P.StartFind()</primary></indexterm>
+<programlisting>
+StartFind (IN  a{sv} options);
+</programlisting>
+<para>
+Start a find operation for Wi-Fi P2P peers.
+</para><para>
+The <constant>options</constant> argument accepts the following keys:
+</para><para>
+<variablelist>
+<varlistentry>
+<term><literal>i timeout</literal>:</term>
+<listitem><para>Timeout value in the range of 1-600 seconds.</para>
+<para>The default is 30 seconds.</para></listitem>
+</varlistentry>
+</variablelist>
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>options</parameter></literal>:</term>
+  <listitem><para>
+Options of find.
+</para></listitem>
+</varlistentry>
+</variablelist>
+<para role="since">Since 1.16</para>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-Device-WifiP2P.StopFind">
+  <title>The StopFind() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-Device-WifiP2P.StopFind"><primary sortas="DeviceWifiP2P.StopFind">org.freedesktop.NetworkManager.Device.WifiP2P.StopFind()</primary></indexterm>
+<programlisting>
+StopFind ();
+</programlisting>
+<para>
+Stop an ongoing find operation again.
+</para>
+<para role="since">Since 1.16</para>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-signals-org.freedesktop.NetworkManager.Device.WifiP2P">
+  <title role="details.title">Signal Details</title>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-Device-WifiP2P.PeerAdded">
+  <title>The "PeerAdded" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-Device-WifiP2P.PeerAdded"><primary sortas="DeviceWifiP2P::PeerAdded">org.freedesktop.NetworkManager.Device.WifiP2P::PeerAdded</primary></indexterm>
+<programlisting>
+PeerAdded (o peer);
+</programlisting>
+<para>
+Emitted when a new Wi-Fi P2P peer is found by the device.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>o <parameter>peer</parameter></literal>:</term>
+  <listitem><para>
+The object path of the newly found access point.
+</para></listitem>
+</varlistentry>
+</variablelist>
+<para role="since">Since 1.16</para>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-Device-WifiP2P.PeerRemoved">
+  <title>The "PeerRemoved" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-Device-WifiP2P.PeerRemoved"><primary sortas="DeviceWifiP2P::PeerRemoved">org.freedesktop.NetworkManager.Device.WifiP2P::PeerRemoved</primary></indexterm>
+<programlisting>
+PeerRemoved (o peer);
+</programlisting>
+<para>
+Emitted when a Wi-Fi P2P peer disappears from view of the device.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>o <parameter>peer</parameter></literal>:</term>
+  <listitem><para>
+The object path of the Wi-Fi P2P peer that has disappeared.
+</para></listitem>
+</varlistentry>
+</variablelist>
+<para role="since">Since 1.16</para>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.WifiP2P">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-WifiP2P.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-WifiP2P.HwAddress"><primary sortas="DeviceWifiP2P:HwAddress">org.freedesktop.NetworkManager.Device.WifiP2P:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+The active hardware address of the device.
+</para><para>
+DEPRECATED. Use the "HwAddress" property in "org.freedesktop.NetworkManager.Device" instead which exists since version NetworkManager 1.24.0.
+</para>
+<para role="since">Since 1.16</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-WifiP2P.Peers">
+  <title>The "Peers" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-WifiP2P.Peers"><primary sortas="DeviceWifiP2P:Peers">org.freedesktop.NetworkManager.Device.WifiP2P:Peers</primary></indexterm>
+<programlisting>
+Peers  readable   ao
+</programlisting>
+<para>
+List of object paths of peers visible to this Wi-Fi P2P device.
+</para>
+<para role="since">Since 1.16</para>
+</refsect2>
+</refsect1>
+</refentry>
+

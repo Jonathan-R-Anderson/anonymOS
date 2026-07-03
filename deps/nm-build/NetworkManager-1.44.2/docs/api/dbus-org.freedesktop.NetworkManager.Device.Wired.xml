@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.Device.Wired">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Wired.top_of_page">org.freedesktop.NetworkManager.Device.Wired</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-Device-Wired.top_of_page"><primary sortas="DeviceEthernet">org.freedesktop.NetworkManager.Device.Wired</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.Device.Wired</refname>    <refpurpose>Wired Ethernet Device.</refpurpose>  </refnamediv>  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.HwAddress">HwAddress</link>        readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.PermHwAddress">PermHwAddress</link>    readable   s
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.Speed">Speed</link>            readable   u
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.S390Subchannels">S390Subchannels</link>  readable   as
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.Carrier">Carrier</link>          readable   b
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-Device-Wired">
+  <title role="desc.title">Description</title>
+  <para>
+</para><para>
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.Device.Wired">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.HwAddress">
+  <title>The "HwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.HwAddress"><primary sortas="DeviceEthernet:HwAddress">org.freedesktop.NetworkManager.Device.Wired:HwAddress</primary></indexterm>
+<programlisting>
+HwAddress  readable   s
+</programlisting>
+<para>
+Active hardware address of the device.
+</para><para>
+DEPRECATED. Use the "HwAddress" property in "org.freedesktop.NetworkManager.Device" instead which exists since version NetworkManager 1.24.0.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.PermHwAddress">
+  <title>The "PermHwAddress" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.PermHwAddress"><primary sortas="DeviceEthernet:PermHwAddress">org.freedesktop.NetworkManager.Device.Wired:PermHwAddress</primary></indexterm>
+<programlisting>
+PermHwAddress  readable   s
+</programlisting>
+<para>
+Permanent hardware address of the device.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.Speed">
+  <title>The "Speed" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.Speed"><primary sortas="DeviceEthernet:Speed">org.freedesktop.NetworkManager.Device.Wired:Speed</primary></indexterm>
+<programlisting>
+Speed  readable   u
+</programlisting>
+<para>
+Design speed of the device, in megabits/second (Mb/s).
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.S390Subchannels">
+  <title>The "S390Subchannels" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.S390Subchannels"><primary sortas="DeviceEthernet:S390Subchannels">org.freedesktop.NetworkManager.Device.Wired:S390Subchannels</primary></indexterm>
+<programlisting>
+S390Subchannels  readable   as
+</programlisting>
+<para>
+Array of S/390 subchannels for S/390 or z/Architecture devices.
+</para>
+</refsect2>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.Carrier">
+  <title>The "Carrier" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-Device-Wired.Carrier"><primary sortas="DeviceEthernet:Carrier">org.freedesktop.NetworkManager.Device.Wired:Carrier</primary></indexterm>
+<programlisting>
+Carrier  readable   b
+</programlisting>
+<para>
+Indicates whether the physical carrier is found (e.g. whether a cable is
+plugged in or not).
+</para><para>
+DEPRECATED: check for the "carrier" flag in the "InterfaceFlags"
+property on the "org.freedesktop.NetworkManager.Device" interface.
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

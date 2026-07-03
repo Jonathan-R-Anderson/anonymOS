@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd" [
+]>
+<refentry id="gdbus-org.freedesktop.NetworkManager.VPN.Plugin">
+  <refmeta>    <refentrytitle role="top_of_page" id="gdbus-interface-org-freedesktop-NetworkManager-VPN-Plugin.top_of_page">org.freedesktop.NetworkManager.VPN.Plugin</refentrytitle>
+  <indexterm zone="gdbus-interface-org-freedesktop-NetworkManager-VPN-Plugin.top_of_page"><primary sortas="VpnPlugin">org.freedesktop.NetworkManager.VPN.Plugin</primary></indexterm>
+  </refmeta>  <refnamediv>    <refname>org.freedesktop.NetworkManager.VPN.Plugin</refname>    <refpurpose>VPN Service.</refpurpose>  </refnamediv>  <refsynopsisdiv role="synopsis">
+    <title role="synopsis.title">Methods</title>
+    <synopsis>
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.Connect">Connect</link>            (IN  a{sa{sv}} connection);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.ConnectInteractive">ConnectInteractive</link> (IN  a{sa{sv}} connection,
+                    IN  a{sv}     details);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.NeedSecrets">NeedSecrets</link>        (IN  a{sa{sv}} settings,
+                    OUT s         setting_name);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.Disconnect">Disconnect</link>         ();
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetConfig">SetConfig</link>          (IN  a{sv}     config);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetIp4Config">SetIp4Config</link>       (IN  a{sv}     config);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetIp6Config">SetIp6Config</link>       (IN  a{sv}     config);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetFailure">SetFailure</link>         (IN  s         reason);
+<link linkend="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.NewSecrets">NewSecrets</link>         (IN  a{sa{sv}} connection);
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1 role="signal_proto">
+    <title role="signal_proto.title">Signals</title>
+    <synopsis>
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.StateChanged">StateChanged</link>    (u     state);
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.SecretsRequired">SecretsRequired</link> (s     message,
+                 as    secrets);
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Config">Config</link>          (a{sv} config);
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Ip4Config">Ip4Config</link>       (a{sv} ip4config);
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Ip6Config">Ip6Config</link>       (a{sv} ip6config);
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.LoginBanner">LoginBanner</link>     (s     banner);
+<link linkend="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Failure">Failure</link>         (u     reason);
+</synopsis>
+  </refsect1>
+  <refsect1 role="properties">
+    <title role="properties.title">Properties</title>
+    <synopsis>
+<link linkend="gdbus-property-org-freedesktop-NetworkManager-VPN-Plugin.State">State</link>  readable   u
+</synopsis>
+  </refsect1>
+<refsect1 role="desc" id="gdbus-interface-org-freedesktop-NetworkManager-VPN-Plugin">
+  <title role="desc.title">Description</title>
+  <para>
+This interface is provided by plugins providing VPN services to the
+NetworkManager daemon.
+</para>
+</refsect1>
+<refsect1 role="details" id="gdbus-methods-org.freedesktop.NetworkManager.VPN.Plugin">
+  <title role="details.title">Method Details</title>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.Connect">
+  <title>The Connect() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.Connect"><primary sortas="VpnPlugin.Connect">org.freedesktop.NetworkManager.VPN.Plugin.Connect()</primary></indexterm>
+<programlisting>
+Connect (IN  a{sa{sv}} connection);
+</programlisting>
+<para>
+Tells the plugin to connect. Interactive secrets requests (eg, emitting
+the SecretsRequired signal) are not allowed.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sa{sv}} <parameter>connection</parameter></literal>:</term>
+  <listitem><para>
+Describes the connection to be established.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.ConnectInteractive">
+  <title>The ConnectInteractive() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.ConnectInteractive"><primary sortas="VpnPlugin.ConnectInteractive">org.freedesktop.NetworkManager.VPN.Plugin.ConnectInteractive()</primary></indexterm>
+<programlisting>
+ConnectInteractive (IN  a{sa{sv}} connection,
+                    IN  a{sv}     details);
+</programlisting>
+<para>
+Tells the plugin to connect, allowing interactive secrets requests (eg the
+plugin is allowed to emit the SecretsRequired signal if the VPN service
+indicates that it needs additional secrets during the connect process).
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sa{sv}} <parameter>connection</parameter></literal>:</term>
+  <listitem><para>
+Describes the connection to be established.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>details</parameter></literal>:</term>
+  <listitem><para>
+Additional details about the Connect process.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.NeedSecrets">
+  <title>The NeedSecrets() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.NeedSecrets"><primary sortas="VpnPlugin.NeedSecrets">org.freedesktop.NetworkManager.VPN.Plugin.NeedSecrets()</primary></indexterm>
+<programlisting>
+NeedSecrets (IN  a{sa{sv}} settings,
+             OUT s         setting_name);
+</programlisting>
+<para>
+Asks the plugin whether the provided connection will require secrets to
+connect successfully.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sa{sv}} <parameter>settings</parameter></literal>:</term>
+  <listitem><para>
+Describes the connection that may need secrets.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>OUT s <parameter>setting_name</parameter></literal>:</term>
+  <listitem><para>
+The setting name within the provided connection that requires secrets, if any.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.Disconnect">
+  <title>The Disconnect() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.Disconnect"><primary sortas="VpnPlugin.Disconnect">org.freedesktop.NetworkManager.VPN.Plugin.Disconnect()</primary></indexterm>
+<programlisting>
+Disconnect ();
+</programlisting>
+<para>
+Disconnect the plugin.
+</para>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetConfig">
+  <title>The SetConfig() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetConfig"><primary sortas="VpnPlugin.SetConfig">org.freedesktop.NetworkManager.VPN.Plugin.SetConfig()</primary></indexterm>
+<programlisting>
+SetConfig (IN  a{sv} config);
+</programlisting>
+<para>
+Set generic connection details on the connection.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>config</parameter></literal>:</term>
+  <listitem><para>
+Generic configuration details for the connection.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetIp4Config">
+  <title>The SetIp4Config() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetIp4Config"><primary sortas="VpnPlugin.SetIp4Config">org.freedesktop.NetworkManager.VPN.Plugin.SetIp4Config()</primary></indexterm>
+<programlisting>
+SetIp4Config (IN  a{sv} config);
+</programlisting>
+<para>
+Set IPv4 details on the connection.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>config</parameter></literal>:</term>
+  <listitem><para>
+Ip4Config details for the connection. You must call SetConfig() before calling this.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetIp6Config">
+  <title>The SetIp6Config() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetIp6Config"><primary sortas="VpnPlugin.SetIp6Config">org.freedesktop.NetworkManager.VPN.Plugin.SetIp6Config()</primary></indexterm>
+<programlisting>
+SetIp6Config (IN  a{sv} config);
+</programlisting>
+<para>
+Set IPv6 details on the connection.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sv} <parameter>config</parameter></literal>:</term>
+  <listitem><para>
+Ip6Config details for the connection. You must call SetConfig() before calling this.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetFailure">
+  <title>The SetFailure() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.SetFailure"><primary sortas="VpnPlugin.SetFailure">org.freedesktop.NetworkManager.VPN.Plugin.SetFailure()</primary></indexterm>
+<programlisting>
+SetFailure (IN  s reason);
+</programlisting>
+<para>
+Indicate a failure to the plugin.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN s <parameter>reason</parameter></literal>:</term>
+  <listitem><para>
+The reason for the failure.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="method" id="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.NewSecrets">
+  <title>The NewSecrets() method</title>
+  <indexterm zone="gdbus-method-org-freedesktop-NetworkManager-VPN-Plugin.NewSecrets"><primary sortas="VpnPlugin.NewSecrets">org.freedesktop.NetworkManager.VPN.Plugin.NewSecrets()</primary></indexterm>
+<programlisting>
+NewSecrets (IN  a{sa{sv}} connection);
+</programlisting>
+<para>
+Called in response to a SecretsRequired signal to deliver updated secrets
+or other information to the plugin.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>IN a{sa{sv}} <parameter>connection</parameter></literal>:</term>
+  <listitem><para>
+Describes the connection including the new secrets.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-signals-org.freedesktop.NetworkManager.VPN.Plugin">
+  <title role="details.title">Signal Details</title>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.StateChanged">
+  <title>The "StateChanged" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.StateChanged"><primary sortas="VpnPlugin::StateChanged">org.freedesktop.NetworkManager.VPN.Plugin::StateChanged</primary></indexterm>
+<programlisting>
+StateChanged (u state);
+</programlisting>
+<para>
+Emitted when the plugin state changes.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>u <parameter>state</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMVpnServiceState">NMVpnServiceState</link>) The new state of the plugin.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.SecretsRequired">
+  <title>The "SecretsRequired" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.SecretsRequired"><primary sortas="VpnPlugin::SecretsRequired">org.freedesktop.NetworkManager.VPN.Plugin::SecretsRequired</primary></indexterm>
+<programlisting>
+SecretsRequired (s  message,
+                 as secrets);
+</programlisting>
+<para>
+Emitted during an ongoing ConnectInteractive() request when the plugin has
+determined that new secrets are required. NetworkManager will then call
+the NewSecrets() method with a connection hash including the new secrets.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>s <parameter>message</parameter></literal>:</term>
+  <listitem><para>
+Informational message, if any, about the request. For example, if a second PIN is required, could indicate to the user to wait for the token code to change until entering the next PIN.
+</para></listitem>
+</varlistentry>
+<varlistentry>
+  <term><literal>as <parameter>secrets</parameter></literal>:</term>
+  <listitem><para>
+Array of strings of VPN secret names which the plugin thinks secrets may be required for, or other VPN-specific data to be processed by the VPN's front-end.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Config">
+  <title>The "Config" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Config"><primary sortas="VpnPlugin::Config">org.freedesktop.NetworkManager.VPN.Plugin::Config</primary></indexterm>
+<programlisting>
+Config (a{sv} config);
+</programlisting>
+<para>
+The plugin obtained generic configuration information.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>a{sv} <parameter>config</parameter></literal>:</term>
+  <listitem><para>
+The configuration information.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Ip4Config">
+  <title>The "Ip4Config" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Ip4Config"><primary sortas="VpnPlugin::Ip4Config">org.freedesktop.NetworkManager.VPN.Plugin::Ip4Config</primary></indexterm>
+<programlisting>
+Ip4Config (a{sv} ip4config);
+</programlisting>
+<para>
+The plugin obtained an IPv4 configuration.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>a{sv} <parameter>ip4config</parameter></literal>:</term>
+  <listitem><para>
+The IPv4 configuration.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Ip6Config">
+  <title>The "Ip6Config" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Ip6Config"><primary sortas="VpnPlugin::Ip6Config">org.freedesktop.NetworkManager.VPN.Plugin::Ip6Config</primary></indexterm>
+<programlisting>
+Ip6Config (a{sv} ip6config);
+</programlisting>
+<para>
+The plugin obtained an IPv6 configuration.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>a{sv} <parameter>ip6config</parameter></literal>:</term>
+  <listitem><para>
+The IPv6 configuration.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.LoginBanner">
+  <title>The "LoginBanner" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.LoginBanner"><primary sortas="VpnPlugin::LoginBanner">org.freedesktop.NetworkManager.VPN.Plugin::LoginBanner</primary></indexterm>
+<programlisting>
+LoginBanner (s banner);
+</programlisting>
+<para>
+Emitted when the plugin receives a login banner from the VPN service.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>s <parameter>banner</parameter></literal>:</term>
+  <listitem><para>
+The login banner string.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+<refsect2 role="signal" id="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Failure">
+  <title>The "Failure" signal</title>
+  <indexterm zone="gdbus-signal-org-freedesktop-NetworkManager-VPN-Plugin.Failure"><primary sortas="VpnPlugin::Failure">org.freedesktop.NetworkManager.VPN.Plugin::Failure</primary></indexterm>
+<programlisting>
+Failure (u reason);
+</programlisting>
+<para>
+Emitted when a failure in the VPN plugin occurs.
+</para>
+<variablelist role="params">
+<varlistentry>
+  <term><literal>u <parameter>reason</parameter></literal>:</term>
+  <listitem><para>
+(<link linkend="NMVpnPluginFailure">NMVpnPluginFailure</link>) Reason code for the failure.
+</para></listitem>
+</varlistentry>
+</variablelist>
+</refsect2>
+</refsect1>
+<refsect1 role="details" id="gdbus-properties-org.freedesktop.NetworkManager.VPN.Plugin">
+  <title role="details.title">Property Details</title>
+<refsect2 role="property" id="gdbus-property-org-freedesktop-NetworkManager-VPN-Plugin.State">
+  <title>The "State" property</title>
+  <indexterm zone="gdbus-property-org-freedesktop-NetworkManager-VPN-Plugin.State"><primary sortas="VpnPlugin:State">org.freedesktop.NetworkManager.VPN.Plugin:State</primary></indexterm>
+<programlisting>
+State  readable   u
+</programlisting>
+<para>
+The state of the plugin.
+</para><para>
+Returns: <link linkend="NMVpnServiceState">NMVpnServiceState</link>
+</para>
+</refsect2>
+</refsect1>
+</refentry>
+

@@ -1,0 +1,137 @@
+libdbus_1_la-dbus-sysdeps-unix.lo: dbus-sysdeps-unix.c ../config.h \
+  dbus-internals.h ../dbus/dbus-memory.h ../dbus/dbus-macros.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  ../dbus/dbus-types.h ../dbus/dbus-arch-deps.h ../dbus/dbus-errors.h \
+  ../dbus/dbus-protocol.h ../dbus/dbus-sysdeps.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  ../dbus/dbus-file.h ../dbus/dbus-string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h \
+  ../dbus/dbus-threads-internal.h ../dbus/dbus-threads.h dbus-sysdeps.h \
+  dbus-sysdeps-unix.h dbus-threads.h dbus-protocol.h dbus-file.h \
+  dbus-transport.h ../dbus/dbus-internals.h ../dbus/dbus-connection.h \
+  ../dbus/dbus-message.h ../dbus/dbus-shared.h \
+  ../dbus/dbus-credentials.h ../dbus/dbus-address.h dbus-string.h \
+  dbus-userdb.h ../dbus/dbus-sysdeps-unix.h dbus-list.h \
+  dbus-credentials.h dbus-nonce.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/endian.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/select.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/signal.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/signal.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/unistd.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/posix.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdio.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/fcntl.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/fcntl.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/socket.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/socket.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/dirent.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/dirent.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/un.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/pwd.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/time.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/locale.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/time.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/stat.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stat.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/wait.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/resource.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/resource.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/netinet/in.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/netinet/tcp.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/netdb.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/grp.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/arpa/inet.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/errno.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/errno.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/syslog.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/uio.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/random.h
+../config.h:
+dbus-internals.h:
+../dbus/dbus-memory.h:
+../dbus/dbus-macros.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+../dbus/dbus-types.h:
+../dbus/dbus-arch-deps.h:
+../dbus/dbus-errors.h:
+../dbus/dbus-protocol.h:
+../dbus/dbus-sysdeps.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+../dbus/dbus-file.h:
+../dbus/dbus-string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h:
+../dbus/dbus-threads-internal.h:
+../dbus/dbus-threads.h:
+dbus-sysdeps.h:
+dbus-sysdeps-unix.h:
+dbus-threads.h:
+dbus-protocol.h:
+dbus-file.h:
+dbus-transport.h:
+../dbus/dbus-internals.h:
+../dbus/dbus-connection.h:
+../dbus/dbus-message.h:
+../dbus/dbus-shared.h:
+../dbus/dbus-credentials.h:
+../dbus/dbus-address.h:
+dbus-string.h:
+dbus-userdb.h:
+../dbus/dbus-sysdeps-unix.h:
+dbus-list.h:
+dbus-credentials.h:
+dbus-nonce.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/types.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/endian.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/select.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/signal.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/signal.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/unistd.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/posix.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdio.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/fcntl.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/fcntl.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/socket.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/socket.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/dirent.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/dirent.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/un.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/pwd.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/time.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/locale.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/time.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/stat.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stat.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/wait.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/resource.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/resource.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/netinet/in.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/netinet/tcp.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/netdb.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/grp.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/arpa/inet.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/errno.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/errno.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/syslog.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/uio.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/random.h:

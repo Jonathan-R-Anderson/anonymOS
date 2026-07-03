@@ -1,0 +1,1023 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/*
+ * Copyright (C) 2005 - 2018 Red Hat, Inc.
+ * Copyright (C) 2006 - 2008 Novell, Inc.
+ * Copyright (C) 2011 Intel Corporation. All rights reserved.
+ */
+
+#include "libnm-glib-aux/nm-default-glib-i18n-lib.h"
+
+#include "nm-wifi-utils-nl80211.h"
+
+#include "libnm-std-aux/nm-linux-compat.h"
+
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <linux/nl80211.h>
+#include <linux/if.h>
+
+#include "libnm-log-core/nm-logging.h"
+#include "libnm-platform/nm-netlink.h"
+#include "nm-wifi-utils-private.h"
+#include "libnm-platform/nm-platform-utils.h"
+
+#define _NMLOG_PREFIX_NAME "wifi-nl80211"
+#define _NMLOG_DOMAIN      LOGD_PLATFORM | LOGD_WIFI
+#define _NMLOG(level, ...)                                                             \
+    G_STMT_START                                                                       \
+    {                                                                                  \
+        char        _ifname_buf[IFNAMSIZ];                                             \
+        const char *_ifname =                                                          \
+            self ? nmp_utils_if_indextoname(self->parent.ifindex, _ifname_buf) : NULL; \
+                                                                                       \
+        nm_log((level),                                                                \
+               _NMLOG_DOMAIN,                                                          \
+               _ifname ?: NULL,                                                        \
+               NULL,                                                                   \
+               "%s%s%s%s: " _NM_UTILS_MACRO_FIRST(__VA_ARGS__),                        \
+               _NMLOG_PREFIX_NAME,                                                     \
+               NM_PRINT_FMT_QUOTED(_ifname, " (", _ifname, ")", "")                    \
+                   _NM_UTILS_MACRO_REST(__VA_ARGS__));                                 \
+    }                                                                                  \
+    G_STMT_END
+
+typedef struct {
+    guint32 freq;
+    bool    disabled : 1;
+    bool    no_ir : 1;
+} Nl80211Freq;
+
+typedef struct {
+    NMWifiUtils     parent;
+    struct nl_sock *nl_sock;
+    Nl80211Freq    *freqs;
+    int             num_freqs;
+    int             phy;
+    guint16         genl_family_id;
+    bool            can_wowlan : 1;
+} NMWifiUtilsNl80211;
+
+typedef struct {
+    NMWifiUtilsClass parent;
+} NMWifiUtilsNl80211Class;
+
+G_DEFINE_TYPE(NMWifiUtilsNl80211, nm_wifi_utils_nl80211, NM_TYPE_WIFI_UTILS)
+
+static int
+ack_handler(const struct nl_msg *msg, void *arg)
+{
+    int *done = arg;
+    *done     = 1;
+    return NL_STOP;
+}
+
+static int
+finish_handler(const struct nl_msg *msg, void *arg)
+{
+    int *done = arg;
+    *done     = 1;
+    return NL_SKIP;
+}
+
+static int
+error_handler(const struct sockaddr_nl *nla, const struct nlmsgerr *err, void *arg)
+{
+    int *done = arg;
+    *done     = err->error;
+    return NL_SKIP;
+}
+
+static struct nl_msg *
+_nl80211_alloc_msg(guint16 genl_family_id, int ifindex, int phy, uint8_t cmd, uint16_t flags)
+{
+    nm_auto_nlmsg struct nl_msg *msg = NULL;
+
+    msg = nlmsg_alloc(0);
+    genlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, genl_family_id, 0, flags, cmd, 0);
+    NLA_PUT_U32(msg, NL80211_ATTR_IFINDEX, ifindex);
+    if (phy != -1)
+        NLA_PUT_U32(msg, NL80211_ATTR_WIPHY, phy);
+    return g_steal_pointer(&msg);
+
+nla_put_failure:
+    g_return_val_if_reached(NULL);
+}
+
+static struct nl_msg *
+nl80211_alloc_msg(NMWifiUtilsNl80211 *self, uint8_t cmd, uint16_t flags)
+{
+    return _nl80211_alloc_msg(self->genl_family_id, self->parent.ifindex, self->phy, cmd, flags);
+}
+
+static int
+nl80211_send_and_recv(NMWifiUtilsNl80211 *self,
+                      struct nl_msg      *msg,
+                      int (*valid_handler)(const struct nl_msg *, void *),
+                      void *valid_data)
+{
+    int                err;
+    int                done = 0;
+    const struct nl_cb cb   = {
+          .err_cb     = error_handler,
+          .err_arg    = &done,
+          .finish_cb  = finish_handler,
+          .finish_arg = &done,
+          .ack_cb     = ack_handler,
+          .ack_arg    = &done,
+          .valid_cb   = valid_handler,
+          .valid_arg  = valid_data,
+    };
+
+    g_return_val_if_fail(msg != NULL, -ENOMEM);
+
+    err = nl_send_auto(self->nl_sock, msg);
+    if (err < 0)
+        return err;
+
+    /* Loop until one of our NL callbacks says we're done; on success
+     * done will be 1, on error it will be < 0.
+     */
+    while (!done) {
+        err = nl_recvmsgs(self->nl_sock, &cb);
+        if (err < 0 && err != -EAGAIN) {
+            /* Kernel scan list can change while we are dumping it, as new scan
+             * results from H/W can arrive. BSS info is assured to be consistent
+             * and we don't need consistent view of whole scan list. Hence do
+             * not warn on DUMP_INTR error for get scan command.
+             */
+            if (err == -NME_NL_DUMP_INTR
+                && genlmsg_hdr(nlmsg_hdr(msg))->cmd == NL80211_CMD_GET_SCAN)
+                break;
+
+            _LOGW("nl_recvmsgs() error: (%d) %s", err, nm_strerror(err));
+            break;
+        }
+    }
+
+    if (err >= 0 && done < 0)
+        err = done;
+    return err;
+}
+
+static void
+dispose(GObject *object)
+{
+    NMWifiUtilsNl80211 *self = NM_WIFI_UTILS_NL80211(object);
+
+    nm_clear_g_free(&self->freqs);
+}
+
+struct nl80211_iface_info {
+    _NM80211Mode mode;
+    uint32_t     freq;
+};
+
+static int
+nl80211_iface_info_handler(const struct nl_msg *msg, void *arg)
+{
+    struct nl80211_iface_info *info = arg;
+    struct genlmsghdr         *gnlh = nlmsg_data(nlmsg_hdr(msg));
+    struct nlattr             *tb[NL80211_ATTR_MAX + 1];
+
+    if (nla_parse_arr(tb, genlmsg_attrdata(gnlh, 0), genlmsg_attrlen(gnlh, 0), NULL) < 0)
+        return NL_SKIP;
+
+    if (!tb[NL80211_ATTR_IFTYPE])
+        return NL_SKIP;
+
+    switch (nla_get_u32(tb[NL80211_ATTR_IFTYPE])) {
+    case NL80211_IFTYPE_ADHOC:
+        info->mode = _NM_802_11_MODE_ADHOC;
+        break;
+    case NL80211_IFTYPE_AP:
+        info->mode = _NM_802_11_MODE_AP;
+        break;
+    case NL80211_IFTYPE_STATION:
+        info->mode = _NM_802_11_MODE_INFRA;
+        break;
+    case NL80211_IFTYPE_MESH_POINT:
+        info->mode = _NM_802_11_MODE_MESH;
+        break;
+    }
+
+    if (tb[NL80211_ATTR_WIPHY_FREQ] != NULL)
+        info->freq = nla_get_u32(tb[NL80211_ATTR_WIPHY_FREQ]);
+
+    return NL_SKIP;
+}
+
+static _NM80211Mode
+wifi_nl80211_get_mode(NMWifiUtils *data)
+{
+    NMWifiUtilsNl80211       *self       = (NMWifiUtilsNl80211 *) data;
+    struct nl80211_iface_info iface_info = {
+        .mode = _NM_802_11_MODE_UNKNOWN,
+    };
+    nm_auto_nlmsg struct nl_msg *msg = NULL;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_GET_INTERFACE, 0);
+
+    if (nl80211_send_and_recv(self, msg, nl80211_iface_info_handler, &iface_info) < 0)
+        return _NM_802_11_MODE_UNKNOWN;
+
+    return iface_info.mode;
+}
+
+static gboolean
+wifi_nl80211_set_mode(NMWifiUtils *data, const _NM80211Mode mode)
+{
+    NMWifiUtilsNl80211          *self = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg  = NULL;
+    int                          err;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_SET_INTERFACE, 0);
+
+    switch (mode) {
+    case _NM_802_11_MODE_INFRA:
+        NLA_PUT_U32(msg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_STATION);
+        break;
+    case _NM_802_11_MODE_ADHOC:
+        NLA_PUT_U32(msg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_ADHOC);
+        break;
+    case _NM_802_11_MODE_AP:
+        NLA_PUT_U32(msg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_AP);
+        break;
+    case _NM_802_11_MODE_MESH:
+        NLA_PUT_U32(msg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_MESH_POINT);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+
+    err = nl80211_send_and_recv(self, msg, NULL, NULL);
+    return err >= 0;
+
+nla_put_failure:
+    g_return_val_if_reached(FALSE);
+}
+
+static gboolean
+wifi_nl80211_set_powersave(NMWifiUtils *data, guint32 powersave)
+{
+    NMWifiUtilsNl80211          *self = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg  = NULL;
+    int                          err;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_SET_POWER_SAVE, 0);
+    NLA_PUT_U32(msg,
+                NL80211_ATTR_PS_STATE,
+                powersave == 1 ? NL80211_PS_ENABLED : NL80211_PS_DISABLED);
+    err = nl80211_send_and_recv(self, msg, NULL, NULL);
+    return err >= 0;
+
+nla_put_failure:
+    g_return_val_if_reached(FALSE);
+}
+
+static int
+nl80211_get_wake_on_wlan_handler(const struct nl_msg *msg, void *arg)
+{
+    _NMSettingWirelessWakeOnWLan *wowl = arg;
+    struct nlattr                *attrs[NL80211_ATTR_MAX + 1];
+    struct nlattr                *trig[NUM_NL80211_WOWLAN_TRIG];
+    struct genlmsghdr            *gnlh = nlmsg_data(nlmsg_hdr(msg));
+
+    nla_parse_arr(attrs, genlmsg_attrdata(gnlh, 0), genlmsg_attrlen(gnlh, 0), NULL);
+
+    if (!attrs[NL80211_ATTR_WOWLAN_TRIGGERS])
+        return NL_SKIP;
+
+    nla_parse_arr(trig,
+                  nla_data(attrs[NL80211_ATTR_WOWLAN_TRIGGERS]),
+                  nla_len(attrs[NL80211_ATTR_WOWLAN_TRIGGERS]),
+                  NULL);
+
+    *wowl = _NM_SETTING_WIRELESS_WAKE_ON_WLAN_NONE;
+    if (trig[NL80211_WOWLAN_TRIG_ANY])
+        *wowl |= _NM_SETTING_WIRELESS_WAKE_ON_WLAN_ANY;
+    if (trig[NL80211_WOWLAN_TRIG_DISCONNECT])
+        *wowl |= _NM_SETTING_WIRELESS_WAKE_ON_WLAN_DISCONNECT;
+    if (trig[NL80211_WOWLAN_TRIG_MAGIC_PKT])
+        *wowl |= _NM_SETTING_WIRELESS_WAKE_ON_WLAN_MAGIC;
+    if (trig[NL80211_WOWLAN_TRIG_GTK_REKEY_FAILURE])
+        *wowl |= _NM_SETTING_WIRELESS_WAKE_ON_WLAN_GTK_REKEY_FAILURE;
+    if (trig[NL80211_WOWLAN_TRIG_EAP_IDENT_REQUEST])
+        *wowl |= _NM_SETTING_WIRELESS_WAKE_ON_WLAN_EAP_IDENTITY_REQUEST;
+    if (trig[NL80211_WOWLAN_TRIG_4WAY_HANDSHAKE])
+        *wowl |= _NM_SETTING_WIRELESS_WAKE_ON_WLAN_4WAY_HANDSHAKE;
+    if (trig[NL80211_WOWLAN_TRIG_RFKILL_RELEASE])
+        *wowl |= _NM_SETTING_WIRELESS_WAKE_ON_WLAN_RFKILL_RELEASE;
+    if (trig[NL80211_WOWLAN_TRIG_TCP_CONNECTION])
+        *wowl |= _NM_SETTING_WIRELESS_WAKE_ON_WLAN_TCP;
+
+    return NL_SKIP;
+}
+
+static _NMSettingWirelessWakeOnWLan
+wifi_nl80211_get_wake_on_wlan(NMWifiUtils *data)
+{
+    NMWifiUtilsNl80211          *self = (NMWifiUtilsNl80211 *) data;
+    _NMSettingWirelessWakeOnWLan wowl = _NM_SETTING_WIRELESS_WAKE_ON_WLAN_IGNORE;
+    nm_auto_nlmsg struct nl_msg *msg  = NULL;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_GET_WOWLAN, 0);
+
+    nl80211_send_and_recv(self, msg, nl80211_get_wake_on_wlan_handler, &wowl);
+
+    return wowl;
+}
+
+static gboolean
+wifi_nl80211_set_wake_on_wlan(NMWifiUtils *data, _NMSettingWirelessWakeOnWLan wowl)
+{
+    NMWifiUtilsNl80211          *self = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg  = NULL;
+    struct nlattr               *triggers;
+    int                          err;
+
+    if (wowl == _NM_SETTING_WIRELESS_WAKE_ON_WLAN_IGNORE)
+        return TRUE;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_SET_WOWLAN, 0);
+
+    triggers = nla_nest_start(msg, NL80211_ATTR_WOWLAN_TRIGGERS);
+    if (!triggers)
+        goto nla_put_failure;
+
+    if (NM_FLAGS_HAS(wowl, _NM_SETTING_WIRELESS_WAKE_ON_WLAN_ANY))
+        NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_ANY);
+    if (NM_FLAGS_HAS(wowl, _NM_SETTING_WIRELESS_WAKE_ON_WLAN_DISCONNECT))
+        NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_DISCONNECT);
+    if (NM_FLAGS_HAS(wowl, _NM_SETTING_WIRELESS_WAKE_ON_WLAN_MAGIC))
+        NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_MAGIC_PKT);
+    if (NM_FLAGS_HAS(wowl, _NM_SETTING_WIRELESS_WAKE_ON_WLAN_GTK_REKEY_FAILURE))
+        NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_GTK_REKEY_FAILURE);
+    if (NM_FLAGS_HAS(wowl, _NM_SETTING_WIRELESS_WAKE_ON_WLAN_EAP_IDENTITY_REQUEST))
+        NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_EAP_IDENT_REQUEST);
+    if (NM_FLAGS_HAS(wowl, _NM_SETTING_WIRELESS_WAKE_ON_WLAN_4WAY_HANDSHAKE))
+        NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_4WAY_HANDSHAKE);
+    if (NM_FLAGS_HAS(wowl, _NM_SETTING_WIRELESS_WAKE_ON_WLAN_RFKILL_RELEASE))
+        NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_RFKILL_RELEASE);
+
+    nla_nest_end(msg, triggers);
+
+    err = nl80211_send_and_recv(self, msg, NULL, NULL);
+
+    return err >= 0;
+
+nla_put_failure:
+    g_return_val_if_reached(FALSE);
+}
+
+static guint32
+wifi_nl80211_get_freq(NMWifiUtils *data)
+{
+    NMWifiUtilsNl80211          *self       = (NMWifiUtilsNl80211 *) data;
+    struct nl80211_iface_info    iface_info = {};
+    nm_auto_nlmsg struct nl_msg *msg        = NULL;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_GET_INTERFACE, 0);
+
+    if (nl80211_send_and_recv(self, msg, nl80211_iface_info_handler, &iface_info) < 0)
+        return 0;
+
+    return iface_info.freq;
+}
+
+static guint32
+wifi_nl80211_find_freq(NMWifiUtils *data, const guint32 *freqs, gboolean ap)
+{
+    NMWifiUtilsNl80211 *self = (NMWifiUtilsNl80211 *) data;
+    int                 i;
+    int                 j;
+
+    /* It's important to check the values in the order of @freqs, because
+     * that array might be sorted to contain preferred frequencies first. */
+    for (j = 0; freqs[j] != 0; j++) {
+        for (i = 0; i < self->num_freqs; i++) {
+            if (self->freqs[i].disabled)
+                continue;
+            if (ap && self->freqs[i].no_ir)
+                continue;
+            if (self->freqs[i].freq == freqs[j])
+                return freqs[j];
+        }
+    }
+    return 0;
+}
+
+/* @divisor: pass what value @xbm should be divided by to get dBm */
+static guint32
+nl80211_xbm_to_percent(gint32 xbm, guint32 divisor)
+{
+#define NOISE_FLOOR_DBM -90
+#define SIGNAL_MAX_DBM  -20
+
+    xbm /= divisor;
+    xbm = CLAMP(xbm, NOISE_FLOOR_DBM, SIGNAL_MAX_DBM);
+
+    return 100
+           - 70
+                 * (((float) SIGNAL_MAX_DBM - (float) xbm)
+                    / ((float) SIGNAL_MAX_DBM - (float) NOISE_FLOOR_DBM));
+}
+
+struct nl80211_station_info {
+    gboolean valid;
+    guint8   bssid[ETH_ALEN];
+    guint32  txrate;
+    gboolean txrate_valid;
+    guint8   signal;
+    gboolean signal_valid;
+};
+
+static int
+nl80211_station_dump_handler(const struct nl_msg *msg, void *arg)
+{
+    static const struct nla_policy stats_policy[] = {
+        [NL80211_STA_INFO_INACTIVE_TIME]     = {.type = NLA_U32},
+        [NL80211_STA_INFO_RX_BYTES]          = {.type = NLA_U32},
+        [NL80211_STA_INFO_TX_BYTES]          = {.type = NLA_U32},
+        [NL80211_STA_INFO_RX_PACKETS]        = {.type = NLA_U32},
+        [NL80211_STA_INFO_TX_PACKETS]        = {.type = NLA_U32},
+        [NL80211_STA_INFO_SIGNAL]            = {.type = NLA_U8},
+        [NL80211_STA_INFO_TX_BITRATE]        = {.type = NLA_NESTED},
+        [NL80211_STA_INFO_LLID]              = {.type = NLA_U16},
+        [NL80211_STA_INFO_PLID]              = {.type = NLA_U16},
+        [NL80211_STA_INFO_PLINK_STATE]       = {.type = NLA_U8},
+        [NL80211_STA_INFO_STA_FLAGS]         = {.minlen = sizeof(struct nl80211_sta_flag_update)},
+        [NL80211_STA_INFO_BEACON_SIGNAL_AVG] = {.type = NLA_U8},
+    };
+    static const struct nla_policy rate_policy[] = {
+        [NL80211_RATE_INFO_BITRATE]      = {.type = NLA_U16},
+        [NL80211_RATE_INFO_MCS]          = {.type = NLA_U8},
+        [NL80211_RATE_INFO_40_MHZ_WIDTH] = {.type = NLA_FLAG},
+        [NL80211_RATE_INFO_SHORT_GI]     = {.type = NLA_FLAG},
+    };
+    struct nlattr               *rinfo[G_N_ELEMENTS(rate_policy)];
+    struct nlattr               *sinfo[G_N_ELEMENTS(stats_policy)];
+    struct nl80211_station_info *info = arg;
+    struct nlattr               *tb[NL80211_ATTR_MAX + 1];
+    struct genlmsghdr           *gnlh = nlmsg_data(nlmsg_hdr(msg));
+
+    if (nla_parse_arr(tb, genlmsg_attrdata(gnlh, 0), genlmsg_attrlen(gnlh, 0), NULL) < 0)
+        return NL_SKIP;
+
+    if (tb[NL80211_ATTR_MAC] == NULL)
+        return NL_SKIP;
+
+    if (tb[NL80211_ATTR_STA_INFO] == NULL)
+        return NL_SKIP;
+
+    if (nla_parse_nested_arr(sinfo, tb[NL80211_ATTR_STA_INFO], stats_policy))
+        return NL_SKIP;
+
+    if (sinfo[NL80211_STA_INFO_STA_FLAGS] != NULL) {
+        const struct nl80211_sta_flag_update *flags = nla_data(sinfo[NL80211_STA_INFO_STA_FLAGS]);
+
+        if (flags->mask & ~flags->set & (1 << NL80211_STA_FLAG_ASSOCIATED))
+            return NL_SKIP;
+    }
+
+    memcpy(info->bssid, nla_data(tb[NL80211_ATTR_MAC]), ETH_ALEN);
+    info->valid = TRUE;
+
+    if (sinfo[NL80211_STA_INFO_TX_BITRATE] != NULL
+        && !nla_parse_nested_arr(rinfo, sinfo[NL80211_STA_INFO_TX_BITRATE], rate_policy)
+        && rinfo[NL80211_RATE_INFO_BITRATE] != NULL) {
+        /* convert from nl80211's units of 100kbps to NM's kbps */
+        info->txrate       = nla_get_u16(rinfo[NL80211_RATE_INFO_BITRATE]) * 100;
+        info->txrate_valid = TRUE;
+    }
+
+    if (sinfo[NL80211_STA_INFO_SIGNAL] != NULL) {
+        info->signal =
+            nl80211_xbm_to_percent((gint8) nla_get_u8(sinfo[NL80211_STA_INFO_SIGNAL]), 1);
+        info->signal_valid = TRUE;
+    } else if (sinfo[NL80211_STA_INFO_BEACON_SIGNAL_AVG] != NULL) {
+        /* Fall back to beacon signal strength */
+        info->signal =
+            nl80211_xbm_to_percent((gint8) nla_get_u8(sinfo[NL80211_STA_INFO_BEACON_SIGNAL_AVG]),
+                                   1);
+        info->signal_valid = TRUE;
+    }
+
+    return NL_SKIP;
+}
+
+static gboolean
+wifi_nl80211_get_station(NMWifiUtils *data,
+                         NMEtherAddr *out_bssid,
+                         int         *out_quality,
+                         guint32     *out_rate)
+{
+    NMWifiUtilsNl80211          *self     = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg      = NULL;
+    struct nl80211_station_info  sta_info = {};
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_GET_STATION, NLM_F_DUMP);
+
+    nl80211_send_and_recv(self, msg, nl80211_station_dump_handler, &sta_info);
+
+    if (!sta_info.valid || (out_quality && !sta_info.signal_valid)
+        || (out_rate && !sta_info.txrate_valid))
+        return FALSE;
+
+    if (out_bssid)
+        memcpy(out_bssid, sta_info.bssid, ETH_ALEN);
+
+    if (out_quality)
+        *out_quality = sta_info.signal;
+
+    if (out_rate)
+        *out_rate = sta_info.txrate;
+
+    return TRUE;
+}
+
+static gboolean
+wifi_nl80211_indicate_addressing_running(NMWifiUtils *data, gboolean running)
+{
+    NMWifiUtilsNl80211          *self = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg  = NULL;
+    int                          err;
+
+    msg = nl80211_alloc_msg(self,
+                            running ? 98 /* NL80211_CMD_CRIT_PROTOCOL_START */
+                                    : 99 /* NL80211_CMD_CRIT_PROTOCOL_STOP */,
+                            0);
+    /* Despite the DHCP name, we're using this for any type of IP addressing,
+     * DHCPv4, DHCPv6, and IPv6 SLAAC.
+     */
+    NLA_PUT_U16(msg, 179 /* NL80211_ATTR_CRIT_PROT_ID */, 1 /* NL80211_CRIT_PROTO_DHCP */);
+    if (running) {
+        /* Give DHCP 5 seconds to complete */
+        NLA_PUT_U16(msg, 180 /* NL80211_ATTR_MAX_CRIT_PROT_DURATION */, 5000);
+    }
+
+    err = nl80211_send_and_recv(self, msg, NULL, NULL);
+    return err >= 0;
+
+nla_put_failure:
+    g_return_val_if_reached(FALSE);
+}
+
+struct nl80211_device_info {
+    NMWifiUtilsNl80211 *self;
+    int                 phy;
+    Nl80211Freq        *freqs;
+    int                 num_freqs;
+    guint32             freq;
+    guint32             caps;
+    gboolean            can_scan;
+    gboolean            can_scan_ssid;
+    gboolean            supported;
+    gboolean            success;
+    gboolean            can_wowlan;
+};
+
+#define WLAN_CIPHER_SUITE_USE_GROUP 0x000FAC00
+#define WLAN_CIPHER_SUITE_WEP40     0x000FAC01
+#define WLAN_CIPHER_SUITE_TKIP      0x000FAC02
+#define WLAN_CIPHER_SUITE_CCMP      0x000FAC04
+#define WLAN_CIPHER_SUITE_WEP104    0x000FAC05
+#define WLAN_CIPHER_SUITE_AES_CMAC  0x000FAC06
+#define WLAN_CIPHER_SUITE_GCMP      0x000FAC08
+#define WLAN_CIPHER_SUITE_SMS4      0x00147201
+
+static int
+nl80211_wiphy_info_handler(const struct nl_msg *msg, void *arg)
+{
+    static const struct nla_policy freq_policy[] = {
+        [NL80211_FREQUENCY_ATTR_FREQ]     = {.type = NLA_U32},
+        [NL80211_FREQUENCY_ATTR_DISABLED] = {.type = NLA_FLAG},
+#ifdef NL80211_FREQUENCY_ATTR_NO_IR
+        [NL80211_FREQUENCY_ATTR_NO_IR] = {.type = NLA_FLAG},
+#else
+        [NL80211_FREQUENCY_ATTR_PASSIVE_SCAN] = {.type = NLA_FLAG},
+        [NL80211_FREQUENCY_ATTR_NO_IBSS]      = {.type = NLA_FLAG},
+#endif
+        [NL80211_FREQUENCY_ATTR_RADAR]        = {.type = NLA_FLAG},
+        [NL80211_FREQUENCY_ATTR_MAX_TX_POWER] = {.type = NLA_U32},
+    };
+    struct nlattr              *tb[NL80211_ATTR_MAX + 1];
+    struct genlmsghdr          *gnlh = nlmsg_data(nlmsg_hdr(msg));
+    struct nl80211_device_info *info = arg;
+    NMWifiUtilsNl80211         *self = info->self;
+    struct nlattr              *tb_band[NL80211_BAND_ATTR_MAX + 1];
+    struct nlattr              *tb_freq[G_N_ELEMENTS(freq_policy)];
+    struct nlattr              *nl_band;
+    struct nlattr              *nl_freq;
+    int                         rem_freq;
+    int                         rem_band;
+    guint                       num_alloc;
+
+#ifdef NL80211_FREQUENCY_ATTR_NO_IR
+    G_STATIC_ASSERT_EXPR(NL80211_FREQUENCY_ATTR_PASSIVE_SCAN == NL80211_FREQUENCY_ATTR_NO_IR
+                         && NL80211_FREQUENCY_ATTR_NO_IBSS == NL80211_FREQUENCY_ATTR_NO_IR);
+#else
+    G_STATIC_ASSERT_EXPR(NL80211_FREQUENCY_ATTR_PASSIVE_SCAN != NL80211_FREQUENCY_ATTR_NO_IBSS);
+#endif
+
+    if (nla_parse_arr(tb, genlmsg_attrdata(gnlh, 0), genlmsg_attrlen(gnlh, 0), NULL) < 0)
+        return NL_SKIP;
+
+    if (tb[NL80211_ATTR_WIPHY] == NULL || tb[NL80211_ATTR_WIPHY_BANDS] == NULL)
+        return NL_SKIP;
+
+    info->phy = nla_get_u32(tb[NL80211_ATTR_WIPHY]);
+
+    if (tb[NL80211_ATTR_WIPHY_FREQ])
+        info->freq = nla_get_u32(tb[NL80211_ATTR_WIPHY_FREQ]);
+    else
+        info->freq = 0;
+
+    if (tb[NL80211_ATTR_MAX_NUM_SCAN_SSIDS]) {
+        info->can_scan_ssid = nla_get_u8(tb[NL80211_ATTR_MAX_NUM_SCAN_SSIDS]) > 0;
+    } else {
+        /* old kernel that only had mac80211, so assume it can */
+        info->can_scan_ssid = TRUE;
+    }
+
+    if (tb[NL80211_ATTR_SUPPORTED_COMMANDS]) {
+        struct nlattr *nl_cmd;
+        int            i;
+
+        nla_for_each_nested (nl_cmd, tb[NL80211_ATTR_SUPPORTED_COMMANDS], i) {
+            switch (nla_get_u32(nl_cmd)) {
+            case NL80211_CMD_TRIGGER_SCAN:
+                info->can_scan = TRUE;
+                break;
+            case NL80211_CMD_CONNECT:
+            case NL80211_CMD_AUTHENTICATE:
+                /* Only devices that support CONNECT or AUTH actually support
+                 * 802.11, unlike say ipw2x00 (up to at least kernel 3.4) which
+                 * has minimal info support, but no actual command support.
+                 * This check mirrors what wpa_supplicant does to determine
+                 * whether or not to use the nl80211 driver.
+                 */
+                info->supported = TRUE;
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    /* Read supported frequencies */
+    num_alloc       = 32;
+    info->num_freqs = 0;
+    info->freqs     = g_new(Nl80211Freq, num_alloc);
+
+    nla_for_each_nested (nl_band, tb[NL80211_ATTR_WIPHY_BANDS], rem_band) {
+        if (nla_parse_nested_arr(tb_band, nl_band, NULL) < 0)
+            return NL_SKIP;
+
+        nla_for_each_nested (nl_freq, tb_band[NL80211_BAND_ATTR_FREQS], rem_freq) {
+            Nl80211Freq *f;
+
+            if (nla_parse_nested_arr(tb_freq, nl_freq, freq_policy) < 0)
+                continue;
+
+            if (!tb_freq[NL80211_FREQUENCY_ATTR_FREQ])
+                continue;
+
+            if (info->num_freqs >= num_alloc) {
+                num_alloc *= 2;
+                info->freqs = g_renew(Nl80211Freq, info->freqs, num_alloc);
+            }
+
+            f  = &info->freqs[info->num_freqs];
+            *f = (Nl80211Freq){
+                .freq     = nla_get_u32(tb_freq[NL80211_FREQUENCY_ATTR_FREQ]),
+                .disabled = !!tb_freq[NL80211_FREQUENCY_ATTR_DISABLED],
+                .no_ir    = !!tb_freq[NL80211_FREQUENCY_ATTR_NO_IR],
+            };
+
+            info->caps |= _NM_WIFI_DEVICE_CAP_FREQ_VALID;
+
+            if (f->freq > 2400 && f->freq < 2500)
+                info->caps |= _NM_WIFI_DEVICE_CAP_FREQ_2GHZ;
+            if (f->freq > 4900 && f->freq < 6000)
+                info->caps |= _NM_WIFI_DEVICE_CAP_FREQ_5GHZ;
+
+            info->num_freqs++;
+        }
+    }
+
+    info->freqs = g_renew(Nl80211Freq, info->freqs, info->num_freqs);
+
+    /* Read security/encryption support */
+    if (tb[NL80211_ATTR_CIPHER_SUITES]) {
+        guint32 *ciphers = nla_data(tb[NL80211_ATTR_CIPHER_SUITES]);
+        guint    i, num;
+
+        num = nla_len(tb[NL80211_ATTR_CIPHER_SUITES]) / sizeof(guint32);
+        for (i = 0; i < num; i++) {
+            switch (ciphers[i]) {
+            case WLAN_CIPHER_SUITE_WEP40:
+                info->caps |= _NM_WIFI_DEVICE_CAP_CIPHER_WEP40;
+                break;
+            case WLAN_CIPHER_SUITE_WEP104:
+                info->caps |= _NM_WIFI_DEVICE_CAP_CIPHER_WEP104;
+                break;
+            case WLAN_CIPHER_SUITE_TKIP:
+                info->caps |= (_NM_WIFI_DEVICE_CAP_CIPHER_TKIP | _NM_WIFI_DEVICE_CAP_WPA);
+                break;
+            case WLAN_CIPHER_SUITE_CCMP:
+                info->caps |= (_NM_WIFI_DEVICE_CAP_CIPHER_CCMP | _NM_WIFI_DEVICE_CAP_RSN);
+                break;
+            case WLAN_CIPHER_SUITE_AES_CMAC:
+            case WLAN_CIPHER_SUITE_GCMP:
+            case WLAN_CIPHER_SUITE_SMS4:
+                break;
+            default:
+                _LOGD("don't know the meaning of NL80211_ATTR_CIPHER_SUITE %#8.8x.", ciphers[i]);
+                break;
+            }
+        }
+    }
+
+    if (tb[NL80211_ATTR_SUPPORTED_IFTYPES]) {
+        struct nlattr *nl_mode;
+        int            i;
+
+        nla_for_each_nested (nl_mode, tb[NL80211_ATTR_SUPPORTED_IFTYPES], i) {
+            switch (nla_type(nl_mode)) {
+            case NL80211_IFTYPE_AP:
+                info->caps |= _NM_WIFI_DEVICE_CAP_AP;
+                break;
+            case NL80211_IFTYPE_ADHOC:
+                info->caps |= _NM_WIFI_DEVICE_CAP_ADHOC;
+                break;
+            case NL80211_IFTYPE_MESH_POINT:
+                info->caps |= _NM_WIFI_DEVICE_CAP_MESH;
+                break;
+            }
+        }
+    }
+
+    if (tb[NL80211_ATTR_WOWLAN_TRIGGERS_SUPPORTED])
+        info->can_wowlan = TRUE;
+
+    if (tb[NL80211_ATTR_SUPPORT_IBSS_RSN])
+        info->caps |= _NM_WIFI_DEVICE_CAP_IBSS_RSN;
+
+    info->success = TRUE;
+
+    return NL_SKIP;
+}
+
+static guint32
+wifi_nl80211_get_mesh_channel(NMWifiUtils *data)
+{
+    NMWifiUtilsNl80211          *self        = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg         = NULL;
+    struct nl80211_device_info   device_info = {.self = self};
+    int                          i;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_GET_WIPHY, 0);
+
+    if (nl80211_send_and_recv(self, msg, nl80211_wiphy_info_handler, &device_info) < 0) {
+        _LOGW("NL80211_CMD_GET_WIPHY request failed");
+        return 0;
+    }
+
+    for (i = 0; i < self->num_freqs; i++) {
+        if (device_info.freq == self->freqs[i].freq)
+            return i + 1;
+    }
+    return 0;
+}
+
+static gboolean
+wifi_nl80211_set_mesh_channel(NMWifiUtils *data, guint32 channel)
+{
+    NMWifiUtilsNl80211          *self = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg  = NULL;
+    int                          err;
+
+    if (channel > self->num_freqs)
+        return FALSE;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_SET_WIPHY, 0);
+    NLA_PUT_U32(msg, NL80211_ATTR_WIPHY_FREQ, self->freqs[channel - 1].freq);
+    err = nl80211_send_and_recv(self, msg, NULL, NULL);
+    return err >= 0;
+
+nla_put_failure:
+    g_return_val_if_reached(FALSE);
+}
+
+static gboolean
+wifi_nl80211_set_mesh_ssid(NMWifiUtils *data, const guint8 *ssid, gsize len)
+{
+    NMWifiUtilsNl80211          *self = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg  = NULL;
+    int                          err;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_SET_INTERFACE, 0);
+    NLA_PUT(msg, NL80211_ATTR_MESH_ID, len, ssid);
+    err = nl80211_send_and_recv(self, msg, NULL, NULL);
+    return err >= 0;
+
+nla_put_failure:
+    g_return_val_if_reached(FALSE);
+}
+
+struct nl80211_csme_conn_info {
+    NMWifiUtilsNl80211     *self;
+    NMPlatformCsmeConnInfo *conn_info;
+};
+
+static int
+nl80211_csme_conn_event_handler(const struct nl_msg *msg, void *arg)
+{
+    struct nl80211_csme_conn_info *info          = arg;
+    NMPlatformCsmeConnInfo        *out_conn_info = info->conn_info;
+    NMWifiUtilsNl80211            *self          = info->self;
+    struct genlmsghdr             *gnlh          = (void *) nlmsg_data(nlmsg_hdr(msg));
+    struct nlattr                 *tb[NL80211_ATTR_MAX + 1];
+    struct nlattr                 *data;
+    struct nlattr                 *attrs[NUM_IWL_MVM_VENDOR_ATTR];
+    int                            err;
+
+    static const struct nla_policy iwl_vendor_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
+        [IWL_MVM_VENDOR_ATTR_AUTH_MODE]   = {.type = NLA_U32},
+        [IWL_MVM_VENDOR_ATTR_SSID]        = {.type = NLA_UNSPEC, .maxlen = NM_IW_ESSID_MAX_SIZE},
+        [IWL_MVM_VENDOR_ATTR_STA_CIPHER]  = {.type = NLA_U32},
+        [IWL_MVM_VENDOR_ATTR_CHANNEL_NUM] = {.type = NLA_U8},
+        [IWL_MVM_VENDOR_ATTR_ADDR] = {.type = NLA_UNSPEC, .minlen = ETH_ALEN, .maxlen = ETH_ALEN},
+    };
+
+    nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0), genlmsg_attrlen(gnlh, 0), NULL);
+    data = tb[NL80211_ATTR_VENDOR_DATA];
+
+    *out_conn_info = (NMPlatformCsmeConnInfo){};
+
+    err = nla_parse_nested(attrs, MAX_IWL_MVM_VENDOR_ATTR, data, iwl_vendor_policy);
+    if (err) {
+        _LOGD("IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO Failed to parse CSME connection info: %s",
+              nm_strerror(err));
+        return -EINVAL;
+    }
+
+    if (attrs[IWL_MVM_VENDOR_ATTR_AUTH_MODE])
+        out_conn_info->auth_mode = nla_get_u8(attrs[IWL_MVM_VENDOR_ATTR_AUTH_MODE]);
+
+    if (attrs[IWL_MVM_VENDOR_ATTR_SSID])
+        memcpy(out_conn_info->ssid,
+               nla_data(attrs[IWL_MVM_VENDOR_ATTR_SSID]),
+               nla_len(attrs[IWL_MVM_VENDOR_ATTR_SSID]));
+
+    if (attrs[IWL_MVM_VENDOR_ATTR_STA_CIPHER])
+        out_conn_info->sta_cipher = nla_get_u8(attrs[IWL_MVM_VENDOR_ATTR_STA_CIPHER]);
+
+    if (attrs[IWL_MVM_VENDOR_ATTR_CHANNEL_NUM])
+        out_conn_info->channel = nla_get_u8(attrs[IWL_MVM_VENDOR_ATTR_CHANNEL_NUM]);
+
+    if (attrs[IWL_MVM_VENDOR_ATTR_ADDR])
+        memcpy(&out_conn_info->addr,
+               nla_data(attrs[IWL_MVM_VENDOR_ATTR_ADDR]),
+               sizeof(out_conn_info->addr));
+
+    return NL_SKIP;
+}
+
+static gboolean
+wifi_nl80211_intel_vnd_get_csme_conn_info(NMWifiUtils *data, NMPlatformCsmeConnInfo *out_conn_info)
+{
+    NMWifiUtilsNl80211           *self = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg  *msg  = NULL;
+    int                           err;
+    struct nl80211_csme_conn_info conn_info = {
+        .self      = self,
+        .conn_info = out_conn_info,
+    };
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_VENDOR, 0);
+    NLA_PUT_U32(msg, NL80211_ATTR_VENDOR_ID, INTEL_OUI);
+    NLA_PUT_U32(msg, NL80211_ATTR_VENDOR_SUBCMD, IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO);
+
+    err = nl80211_send_and_recv(self, msg, nl80211_csme_conn_event_handler, &conn_info);
+    if (err < 0)
+        _LOGD("IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO request failed: %s", nm_strerror(err));
+
+    return err >= 0;
+
+nla_put_failure:
+    g_return_val_if_reached(FALSE);
+}
+
+static gboolean
+wifi_nl80211_intel_vnd_get_device_from_csme(NMWifiUtils *data)
+{
+    NMWifiUtilsNl80211          *self = (NMWifiUtilsNl80211 *) data;
+    nm_auto_nlmsg struct nl_msg *msg  = NULL;
+    int                          err;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_VENDOR, 0);
+    NLA_PUT_U32(msg, NL80211_ATTR_VENDOR_ID, INTEL_OUI);
+    NLA_PUT_U32(msg, NL80211_ATTR_VENDOR_SUBCMD, IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP);
+
+    err = nl80211_send_and_recv(self, msg, NULL, NULL);
+    if (err < 0)
+        _LOGD("IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP request failed: %s", nm_strerror(err));
+
+    return err >= 0;
+
+nla_put_failure:
+    g_return_val_if_reached(FALSE);
+}
+
+static void
+nm_wifi_utils_nl80211_init(NMWifiUtilsNl80211 *self)
+{}
+
+static void
+nm_wifi_utils_nl80211_class_init(NMWifiUtilsNl80211Class *klass)
+{
+    GObjectClass     *object_class     = G_OBJECT_CLASS(klass);
+    NMWifiUtilsClass *wifi_utils_class = NM_WIFI_UTILS_CLASS(klass);
+
+    object_class->dispose = dispose;
+
+    wifi_utils_class->get_mode                    = wifi_nl80211_get_mode;
+    wifi_utils_class->set_mode                    = wifi_nl80211_set_mode;
+    wifi_utils_class->set_powersave               = wifi_nl80211_set_powersave;
+    wifi_utils_class->get_wake_on_wlan            = wifi_nl80211_get_wake_on_wlan,
+    wifi_utils_class->set_wake_on_wlan            = wifi_nl80211_set_wake_on_wlan,
+    wifi_utils_class->get_freq                    = wifi_nl80211_get_freq;
+    wifi_utils_class->find_freq                   = wifi_nl80211_find_freq;
+    wifi_utils_class->get_station                 = wifi_nl80211_get_station;
+    wifi_utils_class->indicate_addressing_running = wifi_nl80211_indicate_addressing_running;
+    wifi_utils_class->get_mesh_channel            = wifi_nl80211_get_mesh_channel;
+    wifi_utils_class->set_mesh_channel            = wifi_nl80211_set_mesh_channel;
+    wifi_utils_class->set_mesh_ssid               = wifi_nl80211_set_mesh_ssid;
+    wifi_utils_class->get_csme_conn_info          = wifi_nl80211_intel_vnd_get_csme_conn_info;
+    wifi_utils_class->get_device_from_csme        = wifi_nl80211_intel_vnd_get_device_from_csme;
+}
+
+NMWifiUtils *
+nm_wifi_utils_nl80211_new(struct nl_sock *genl, guint16 genl_family_id, int ifindex)
+{
+    gs_unref_object NMWifiUtilsNl80211 *self        = NULL;
+    nm_auto_nlmsg struct nl_msg        *msg         = NULL;
+    struct nl80211_device_info          device_info = {};
+
+    if (!genl)
+        return NULL;
+
+    if (genl_family_id == 0)
+        return NULL;
+
+    self = g_object_new(NM_TYPE_WIFI_UTILS_NL80211, NULL);
+
+    self->parent.ifindex = ifindex;
+    self->nl_sock        = genl;
+    self->genl_family_id = genl_family_id;
+
+    self->phy = -1;
+
+    msg = nl80211_alloc_msg(self, NL80211_CMD_GET_WIPHY, 0);
+
+    device_info.self = self;
+    if (nl80211_send_and_recv(self, msg, nl80211_wiphy_info_handler, &device_info) < 0) {
+        _LOGD("NL80211_CMD_GET_WIPHY request failed");
+        return NULL;
+    }
+
+    if (!device_info.success) {
+        _LOGD("NL80211_CMD_GET_WIPHY request indicated failure");
+        return NULL;
+    }
+
+    if (!device_info.supported) {
+        _LOGD("driver does not fully support nl80211, falling back to WEXT");
+        return NULL;
+    }
+
+    if (!device_info.can_scan_ssid) {
+        _LOGE("driver does not support SSID scans");
+        return NULL;
+    }
+
+    if (device_info.num_freqs == 0 || device_info.freqs == NULL) {
+        _LOGE("driver reports no supported frequencies");
+        return NULL;
+    }
+
+    if (device_info.caps == 0) {
+        _LOGE("driver doesn't report support of any encryption");
+        return NULL;
+    }
+
+    self->phy         = device_info.phy;
+    self->freqs       = device_info.freqs;
+    self->num_freqs   = device_info.num_freqs;
+    self->parent.caps = device_info.caps;
+    self->can_wowlan  = device_info.can_wowlan;
+
+    _LOGD("using nl80211 for Wi-Fi device control");
+    return (NMWifiUtils *) g_steal_pointer(&self);
+}

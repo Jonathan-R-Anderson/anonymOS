@@ -1,0 +1,22 @@
+disable-crash-handling.lo: disable-crash-handling.c ../config.h \
+  disable-crash-handling.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/prctl.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/resource.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/time.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/select.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/resource.h
+../config.h:
+disable-crash-handling.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/prctl.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/resource.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/time.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/select.h:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/resource.h:

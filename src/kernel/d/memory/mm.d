@@ -18,11 +18,17 @@ __gshared limine_memmap_response* mmap_resp;
 // them to hand out overlapping physical pages, corrupting page tables.
 __gshared ulong g_next_phys_alloc = 0x100000;
 
-// Physical page free list — lets munmap and task teardown actually reclaim
-// single 4K pages (the bump pointer never rewinds, so without this every page
-// ever mapped leaks and a long-running compositor OOMs).  Sized to cover all of
-// a 512 MB guest (131072 pages); frees beyond that are dropped (a harmless leak).
-enum size_t FREE_LIST_CAP = 1 << 17;          // 131072 entries * 8B = 1 MB
+// Physical page free list + the CoW-refcount / audit tables below are indexed by
+// PFN (phys >> 12), so their SIZE is the highest physical page they can track.
+// ★ CRITICAL: this MUST cover all of guest RAM.  When it only covered 512 MB, any
+// page handed out above 512 MB (i.e. as soon as the guest has >512 MB and the heap
+// grows past it) was UNTRACKED — so fork()'s copy-on-write refcount (physPageRefInc/
+// Dec) silently skipped it, and a CoW-shared high page would be freed by one side
+// while the other still used it → use-after-free → musl malloc-metadata corruption
+// (alloc_slot deref of a NULL meta).  This crashed Hyprland (which forks dbus helpers)
+// at -m 2048 but not -m 512.  Sized for a 2 GiB guest (524288 pages); pages beyond
+// are still handled correctly, just left unattributed (harmless leak, no CoW share).
+enum size_t FREE_LIST_CAP = 1 << 19;          // 524288 entries — covers 2 GiB of RAM
 __gshared ulong[FREE_LIST_CAP] g_free_pages;
 __gshared size_t g_free_count = 0;
 __gshared ulong  g_free_calls = 0;            // diag counters

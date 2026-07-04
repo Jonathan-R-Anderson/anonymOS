@@ -97,6 +97,7 @@ struct surface {
 };
 
 struct output;
+struct panel_button;   /* EpinAnonymOS GNOME panel: Activities button + indicator cluster */
 
 struct panel {
 	struct surface base;
@@ -107,6 +108,8 @@ struct panel {
 	struct widget *widget;
 	struct wl_list launcher_list;
 	struct panel_clock *clock;
+	struct panel_button *activities;   /* left: "Activities" -> /wl-overview */
+	struct panel_button *indicators;   /* right: wifi/volume/battery -> /wl-quicksettings */
 	int painted;
 	enum weston_desktop_shell_panel_position panel_position;
 	enum clock_format clock_format;
@@ -234,6 +237,318 @@ panel_launcher_activate(struct panel_launcher *widget)
 			strerror(errno));
 		exit(1);
 	}
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * EpinAnonymOS GNOME-style panel widgets.  The 28px bar is deliberately dumb:
+ * it draws an "Activities" text button (left), the centered clock, and a
+ * right-aligned system-indicator cluster (Wi-Fi / volume / battery) as plain
+ * cairo glyphs.  Clicking a widget spawns an on-demand wl_shm popover client
+ * (overview / calendar / quick-settings) — this Weston build has no
+ * layer-shell / xdg-popup parenting, so those live as separate compositor-
+ * placed windows rather than tethered dropdowns.  All stateful UI lives in the
+ * spawned clients so the always-on-top panel stays cheap.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+extern char **environ;
+
+struct panel_button {
+	struct widget *widget;
+	struct panel *panel;
+	const char *label;      /* text label (Activities); NULL => indicator glyphs */
+	const char *exec;       /* absolute client path spawned on click */
+	int focused;
+	int is_indicator;
+	struct toytimer timer;  /* indicator only: periodic Wi-Fi-glyph refresh */
+	int has_timer;
+};
+
+/* fork/setsid/execve an absolute client path (no shell, inherit environ). */
+static void
+epin_spawn(const char *path)
+{
+	pid_t pid;
+
+	fprintf(stderr, "epin_spawn: panel launching %s\n", path);
+	pid = fork();
+
+	if (pid < 0) {
+		fprintf(stderr, "epin_spawn: fork failed: %s\n", strerror(errno));
+		return;
+	}
+	if (pid)
+		return;
+	if (setsid() == -1)
+		exit(EXIT_FAILURE);
+	/* This panel connected to Weston via WAYLAND_SOCKET (an inherited fd); the spawned
+	 * client must NOT reuse that same fd — unset it so libwayland makes its own fresh
+	 * connection via the named WAYLAND_DISPLAY socket.  Also close inherited fds > 2 so
+	 * the child doesn't hold the panel's Wayland connection open. */
+	unsetenv("WAYLAND_SOCKET");
+	for (int fd = 3; fd < 64; fd++)
+		close(fd);
+	{
+		char *argv[] = { (char *)path, NULL };
+		execve(path, argv, environ);
+	}
+	fprintf(stderr, "epin_spawn: exec '%s' failed: %s\n", path, strerror(errno));
+	exit(1);
+}
+
+/* Wi-Fi signal 0..4, or -1 when there is no adapter / not connected.  Parses
+ * /run/wifi/networks (written by hos-wifi-agent): a '#dev\t...\t<state>' header
+ * then 'SSID\tSTRENGTH\tSECURITY\tACTIVE\tPATH' rows; the ACTIVE row is live. */
+static int
+epin_wifi_bars(void)
+{
+	FILE *f = fopen("/run/wifi/networks", "r");
+	char line[512];
+	int bars = -1, have_dev = 0;
+
+	if (!f)
+		return -1;
+	while (fgets(line, sizeof line, f)) {
+		char *save = NULL, *strength, *active;
+
+		if (line[0] == '#') { have_dev = 1; continue; }
+		strtok_r(line, "\t", &save);                  /* SSID */
+		strength = strtok_r(NULL, "\t", &save);
+		strtok_r(NULL, "\t", &save);                  /* SECURITY */
+		active = strtok_r(NULL, "\t", &save);
+		if (active && (active[0] == '1' || active[0] == 'y' ||
+			       active[0] == 'Y' || active[0] == '*')) {
+			int s = strength ? atoi(strength) : 0;
+			bars = s >= 80 ? 4 : s >= 55 ? 3 : s >= 30 ? 2 : s >= 5 ? 1 : 0;
+		}
+	}
+	fclose(f);
+	if (bars < 0 && have_dev)
+		return 0;   /* adapter up but disconnected -> empty glyph */
+	return bars;
+}
+
+static void
+epin_rounded_rect(cairo_t *cr, double x, double y, double w, double h, double r)
+{
+	cairo_new_sub_path(cr);
+	cairo_arc(cr, x + w - r, y + r,     r, -M_PI / 2, 0);
+	cairo_arc(cr, x + w - r, y + h - r, r, 0,          M_PI / 2);
+	cairo_arc(cr, x + r,     y + h - r, r, M_PI / 2,   M_PI);
+	cairo_arc(cr, x + r,     y + r,     r, M_PI,       3 * M_PI / 2);
+	cairo_close_path(cr);
+}
+
+static void
+epin_draw_wifi(cairo_t *cr, double cx, double cy, int bars)
+{
+	int i;
+
+	cairo_set_line_width(cr, 1.6);
+	for (i = 0; i < 3; i++) {
+		double r = 3.0 + i * 3.2;
+		double a = (bars < 0) ? 0.25 : (bars >= i + 2 ? 0.9 : 0.28);
+
+		cairo_set_source_rgba(cr, 1, 1, 1, a);
+		cairo_new_sub_path(cr);
+		cairo_arc(cr, cx, cy, r, -M_PI * 0.75, -M_PI * 0.25);
+		cairo_stroke(cr);
+	}
+	cairo_set_source_rgba(cr, 1, 1, 1, bars < 0 ? 0.35 : 0.9);
+	cairo_arc(cr, cx, cy, 1.3, 0, 2 * M_PI);
+	cairo_fill(cr);
+	if (bars < 0) {   /* diagonal slash = no connection */
+		cairo_set_source_rgba(cr, 1, 1, 1, 0.75);
+		cairo_set_line_width(cr, 1.4);
+		cairo_move_to(cr, cx - 6, cy - 11);
+		cairo_line_to(cr, cx + 6, cy + 1);
+		cairo_stroke(cr);
+	}
+}
+
+static void
+epin_draw_volume(cairo_t *cr, double x, double cy)
+{
+	cairo_set_source_rgba(cr, 1, 1, 1, 0.9);
+	cairo_set_line_width(cr, 1.4);
+	cairo_move_to(cr, x,     cy - 2);
+	cairo_line_to(cr, x + 3, cy - 2);
+	cairo_line_to(cr, x + 7, cy - 6);
+	cairo_line_to(cr, x + 7, cy + 6);
+	cairo_line_to(cr, x + 3, cy + 2);
+	cairo_line_to(cr, x,     cy + 2);
+	cairo_close_path(cr);
+	cairo_fill(cr);
+	cairo_new_sub_path(cr);
+	cairo_arc(cr, x + 7, cy, 6, -M_PI / 3, M_PI / 3);
+	cairo_stroke(cr);
+}
+
+static void
+epin_draw_battery(cairo_t *cr, double x, double cy)
+{
+	double w = 16, h = 9, lvl = 0.7;
+
+	cairo_set_source_rgba(cr, 1, 1, 1, 0.9);
+	cairo_set_line_width(cr, 1.3);
+	cairo_rectangle(cr, x, cy - h / 2, w, h);
+	cairo_stroke(cr);
+	cairo_rectangle(cr, x + w, cy - 2, 1.7, 4);
+	cairo_fill(cr);
+	cairo_rectangle(cr, x + 1.5, cy - h / 2 + 1.5, (w - 3) * lvl, h - 3);
+	cairo_fill(cr);
+}
+
+static void
+panel_button_hover_pill(cairo_t *cr, struct rectangle *a, int focused)
+{
+	if (!focused)
+		return;
+	cairo_set_source_rgba(cr, 1, 1, 1, 0.10);
+	epin_rounded_rect(cr, a->x + 2, a->y + 3, a->width - 4, a->height - 6, 6);
+	cairo_fill(cr);
+}
+
+static void
+panel_activities_redraw_handler(struct widget *widget, void *data)
+{
+	struct panel_button *b = data;
+	struct rectangle a;
+	cairo_text_extents_t ext;
+	cairo_t *cr;
+
+	widget_get_allocation(widget, &a);
+	if (a.width == 0)
+		return;
+	cr = widget_cairo_create(b->panel->widget);
+	panel_button_hover_pill(cr, &a, b->focused);
+	cairo_select_font_face(cr, "sans", CAIRO_FONT_SLANT_NORMAL,
+			       CAIRO_FONT_WEIGHT_BOLD);
+	cairo_set_font_size(cr, 14);
+	cairo_text_extents(cr, b->label, &ext);
+	cairo_move_to(cr, a.x + 12, a.y + a.height / 2 - 1 + ext.height / 2);
+	cairo_set_source_rgba(cr, 1, 1, 1, 0.92);
+	cairo_show_text(cr, b->label);
+	cairo_destroy(cr);
+}
+
+static void
+panel_indicator_redraw_handler(struct widget *widget, void *data)
+{
+	struct panel_button *b = data;
+	struct rectangle a;
+	cairo_t *cr;
+	double cy, x;
+
+	widget_get_allocation(widget, &a);
+	if (a.width == 0)
+		return;
+	cr = widget_cairo_create(b->panel->widget);
+	panel_button_hover_pill(cr, &a, b->focused);
+	cy = a.y + a.height / 2.0;
+	x = a.x + 12;
+	epin_draw_wifi(cr, x + 7, cy + 5, epin_wifi_bars());
+	x += 26;
+	epin_draw_volume(cr, x, cy);
+	x += 22;
+	epin_draw_battery(cr, x, cy);
+	cairo_destroy(cr);
+}
+
+static int
+panel_button_enter_handler(struct widget *widget, struct input *input,
+			   float x, float y, void *data)
+{
+	struct panel_button *b = data;
+
+	b->focused = 1;
+	widget_schedule_redraw(widget);
+	return CURSOR_LEFT_PTR;
+}
+
+static void
+panel_button_leave_handler(struct widget *widget, struct input *input, void *data)
+{
+	struct panel_button *b = data;
+
+	b->focused = 0;
+	widget_schedule_redraw(widget);
+}
+
+static void
+panel_button_button_handler(struct widget *widget, struct input *input,
+			    uint32_t time, uint32_t button,
+			    enum wl_pointer_button_state state, void *data)
+{
+	struct panel_button *b = data;
+
+	widget_schedule_redraw(widget);
+	if (state == WL_POINTER_BUTTON_STATE_RELEASED && b->exec)
+		epin_spawn(b->exec);
+}
+
+static void
+panel_clock_button_handler(struct widget *widget, struct input *input,
+			   uint32_t time, uint32_t button,
+			   enum wl_pointer_button_state state, void *data)
+{
+	if (state == WL_POINTER_BUTTON_STATE_RELEASED)
+		epin_spawn("/wl-calendar");
+}
+
+static void
+indicator_timer_func(struct toytimer *tt)
+{
+	struct panel_button *b = container_of(tt, struct panel_button, timer);
+	struct itimerspec its;
+
+	widget_schedule_redraw(b->widget);
+	memset(&its, 0, sizeof its);
+	its.it_value.tv_sec = 3;
+	toytimer_arm(&b->timer, &its);
+}
+
+static struct panel_button *
+panel_add_button_common(struct panel *panel, const char *label,
+			const char *exec, int is_indicator)
+{
+	struct panel_button *b = xzalloc(sizeof *b);
+
+	b->panel = panel;
+	b->label = label;
+	b->exec = exec;
+	b->is_indicator = is_indicator;
+	b->widget = widget_add_widget(panel->widget, b);
+	widget_set_enter_handler(b->widget, panel_button_enter_handler);
+	widget_set_leave_handler(b->widget, panel_button_leave_handler);
+	widget_set_button_handler(b->widget, panel_button_button_handler);
+	return b;
+}
+
+static struct panel_button *
+panel_add_activities(struct panel *panel)
+{
+	struct panel_button *b =
+		panel_add_button_common(panel, "Activities", "/wl-overview", 0);
+
+	widget_set_redraw_handler(b->widget, panel_activities_redraw_handler);
+	return b;
+}
+
+static struct panel_button *
+panel_add_indicators(struct panel *panel)
+{
+	struct panel_button *b =
+		panel_add_button_common(panel, NULL, "/wl-quicksettings", 1);
+	struct itimerspec its;
+
+	widget_set_redraw_handler(b->widget, panel_indicator_redraw_handler);
+	toytimer_init(&b->timer, CLOCK_MONOTONIC,
+		      window_get_display(panel->window), indicator_timer_func);
+	b->has_timer = 1;
+	memset(&its, 0, sizeof its);
+	its.it_value.tv_sec = 3;
+	toytimer_arm(&b->timer, &its);
+	return b;
 }
 
 static void
@@ -459,12 +774,9 @@ panel_clock_redraw_handler(struct widget *widget, void *data)
 	cr = widget_cairo_create(clock->panel->widget);
 	cairo_set_font_size(cr, 14);
 	cairo_text_extents(cr, string, &extents);
-	if (allocation.x > 0)
-		allocation.x +=
-			allocation.width - DEFAULT_SPACING * 1.5 - extents.width;
-	else
-		allocation.x +=
-			allocation.width / 2 - extents.width / 2;
+	/* GNOME: clock is centered in the panel; center the text in its (centered)
+	 * allocation unconditionally (the upstream right-align branch mis-placed it). */
+	allocation.x += allocation.width / 2 - extents.width / 2;
 	allocation.y += allocation.height / 2 - 1 + extents.height / 2;
 	cairo_move_to(cr, allocation.x + 1, allocation.y + 1);
 	cairo_set_source_rgba(cr, 0, 0, 0, 0.85);
@@ -539,7 +851,15 @@ panel_add_clock(struct panel *panel)
 
 	clock->widget = widget_add_widget(panel->widget, clock);
 	widget_set_redraw_handler(clock->widget, panel_clock_redraw_handler);
+	/* GNOME: clicking the clock opens the calendar popover */
+	widget_set_button_handler(clock->widget, panel_clock_button_handler);
 }
+
+/* GNOME layout: [Activities]  ...launchers...        [ centered clock ]        [wifi vol batt]
+ * Activities is pinned far-left, the clock is centered, the indicator cluster
+ * is flush-right; any icon launchers (normally none) sit just after Activities. */
+#define EPIN_ACT_W 96
+#define EPIN_IND_W 96
 
 static void
 panel_resize_handler(struct widget *widget,
@@ -547,14 +867,24 @@ panel_resize_handler(struct widget *widget,
 {
 	struct panel_launcher *launcher;
 	struct panel *panel = data;
+	int horizontal = panel->panel_position == WESTON_DESKTOP_SHELL_PANEL_POSITION_TOP || panel->panel_position == WESTON_DESKTOP_SHELL_PANEL_POSITION_BOTTOM;
+	int cw = (panel->clock_format == CLOCK_FORMAT_SECONDS) ? 170 : 150;
 	int x = 0;
 	int y = 0;
 	int w = height > width ? width : height;
 	int h = w;
-	int horizontal = panel->panel_position == WESTON_DESKTOP_SHELL_PANEL_POSITION_TOP || panel->panel_position == WESTON_DESKTOP_SHELL_PANEL_POSITION_BOTTOM;
 	int first_pad_h = horizontal ? 0 : DEFAULT_SPACING / 2;
 	int first_pad_w = horizontal ? DEFAULT_SPACING / 2 : 0;
 
+	/* Activities button: far-left (horizontal panel only) */
+	if (horizontal && panel->activities) {
+		widget_set_allocation(panel->activities->widget, 0, 0, EPIN_ACT_W, height);
+		x = EPIN_ACT_W;
+	} else if (panel->activities) {
+		widget_set_allocation(panel->activities->widget, 0, 0, 0, 0);
+	}
+
+	/* Icon launchers (normally none in the GNOME layout), after Activities */
 	wl_list_for_each(launcher, &panel->launcher_list, link) {
 		widget_set_allocation(launcher->widget, x, y,
 				      w + first_pad_w + 1, h + first_pad_h + 1);
@@ -565,19 +895,24 @@ panel_resize_handler(struct widget *widget,
 		first_pad_h = first_pad_w = 0;
 	}
 
-	if (panel->clock_format == CLOCK_FORMAT_SECONDS)
-		w = 170;
-	else /* CLOCK_FORMAT_MINUTES and 24H versions */
-		w = 150;
-
-	if (horizontal)
-		x = width - w;
-	else
+	/* Clock: centered (horizontal) or bottom (vertical) */
+	if (horizontal) {
+		x = width / 2 - cw / 2;
+		y = 0;
+		h = height;
+	} else {
+		x = 0;
 		y = height - (h = DEFAULT_SPACING * 3);
-
+	}
 	if (panel->clock)
-		widget_set_allocation(panel->clock->widget,
-				      x, y, w + 1, h + 1);
+		widget_set_allocation(panel->clock->widget, x, y, cw + 1, h + 1);
+
+	/* Indicator cluster: flush-right (horizontal panel only) */
+	if (horizontal && panel->indicators)
+		widget_set_allocation(panel->indicators->widget,
+				      width - EPIN_IND_W, 0, EPIN_IND_W, height);
+	else if (panel->indicators)
+		widget_set_allocation(panel->indicators->widget, 0, 0, 0, 0);
 }
 
 static void
@@ -605,7 +940,7 @@ panel_configure(void *data,
 	switch (desktop->panel_position) {
 	case WESTON_DESKTOP_SHELL_PANEL_POSITION_TOP:
 	case WESTON_DESKTOP_SHELL_PANEL_POSITION_BOTTOM:
-		height = 32;
+		height = 28;   /* GNOME-Shell top bar height */
 		break;
 	case WESTON_DESKTOP_SHELL_PANEL_POSITION_LEFT:
 	case WESTON_DESKTOP_SHELL_PANEL_POSITION_RIGHT:
@@ -652,12 +987,18 @@ panel_destroy(struct panel *panel)
 	if (panel->clock)
 		panel_destroy_clock(panel->clock);
 
+	/* GNOME widgets: stop the indicator refresh timer before tearing down */
+	if (panel->indicators && panel->indicators->has_timer)
+		toytimer_fini(&panel->indicators->timer);
+
 	wl_list_for_each_safe(launcher, tmp, &panel->launcher_list, link)
 		panel_destroy_launcher(launcher);
 
 	widget_destroy(panel->widget);
 	window_destroy(panel->window);
 
+	free(panel->activities);
+	free(panel->indicators);
 	free(panel);
 }
 
@@ -685,6 +1026,10 @@ panel_create(struct desktop *desktop, struct output *output)
 	panel->clock_format = desktop->clock_format;
 	if (panel->clock_format != CLOCK_FORMAT_NONE)
 		panel_add_clock(panel);
+
+	/* GNOME top bar: Activities (left) + system-indicator cluster (right) */
+	panel->activities = panel_add_activities(panel);
+	panel->indicators = panel_add_indicators(panel);
 
 	s = weston_config_get_section(desktop->config, "shell", NULL, NULL);
 	weston_config_section_get_color(s, "panel-color",
@@ -1498,16 +1843,10 @@ panel_add_launchers(struct panel *panel, struct desktop *desktop)
 		free(displayname);
 	}
 
-	if (count == 0) {
-		char *name = file_name_with_datadir("terminal.png");
-
-		/* add default launcher */
-		panel_add_launcher(panel,
-				   name,
-				   BINDIR "/weston-terminal",
-				   "Terminal");
-		free(name);
-	}
+	/* EpinAnonymOS GNOME layout: NO default terminal launcher — the left region
+	 * is the Activities button (added in panel_create), and apps are launched
+	 * from the /wl-overview app grid.  (Upstream added a weston-terminal here.) */
+	(void)count;
 }
 
 static void

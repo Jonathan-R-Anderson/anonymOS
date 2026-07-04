@@ -104,6 +104,17 @@ WLFILES_BIN := build/wl-files
 WLDOMAINMGR_BIN := build/wl-domain-manager
 WLWIFIMENU_BIN := build/wl-wifi-menu
 WLLOGVIEW_BIN := build/wl-logview
+# GNOME-style toolbar popovers + utility programs (native wl_shm clients)
+WLOVERVIEW_BIN := build/wl-overview
+WLCALENDAR_BIN := build/wl-calendar
+WLQUICKSET_BIN := build/wl-quicksettings
+WLCALC_BIN := build/wl-calc
+WLCLOCKS_BIN := build/wl-clocks
+WLIMGVIEW_BIN := build/wl-imgview
+WLCHARS_BIN := build/wl-chars
+WLSYSMON_BIN := build/wl-sysmon
+WLEDITOR_BIN := build/wl-editor
+WLSCREENSHOT_BIN := build/wl-screenshot
 IDLE_BIN := build/idle
 HOS_SH_BIN := build/hos-sh
 HOS_WIFI_BIN := build/hos-wifi
@@ -539,7 +550,22 @@ $(WLLOGVIEW_BIN): src/util/wl-logview.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 		-lm \
 		-pthread
 
-stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLOGVIEW_BIN) $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+# GNOME toolbar popovers + utility programs — all share the wl-wifi-menu link line
+# (freetype + png/bz2/z + wayland-client).  Static pattern rule scoped to exactly
+# these targets, so it never shadows the explicit wl-* rules above.
+$(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN): build/wl-%: src/util/wl-%.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-$* (GNOME utility) ===="
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild \
+		-o $@ $< $(XDG_SHELL_CODE) \
+		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libbz2.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		$$WL_LIBS \
+		-lm \
+		-pthread
+
+stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -835,8 +861,18 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLOGVIEW_BIN) $(BUSYBOX_BIN) $(T
 		cp $(WLDOMAINMGR_BIN)                                   cd/wl-domain-manager; \
 		cp $(WLWIFIMENU_BIN)                                    cd/wl-wifi-menu; \
 		cp $(WLLOGVIEW_BIN)                                     cd/wl-logview; \
+		cp $(WLOVERVIEW_BIN)                                    cd/wl-overview; \
+		cp $(WLCALENDAR_BIN)                                    cd/wl-calendar; \
+		cp $(WLQUICKSET_BIN)                                    cd/wl-quicksettings; \
+		cp $(WLCALC_BIN)                                        cd/wl-calc; \
+		cp $(WLCLOCKS_BIN)                                      cd/wl-clocks; \
+		cp $(WLIMGVIEW_BIN)                                     cd/wl-imgview; \
+		cp $(WLCHARS_BIN)                                       cd/wl-chars; \
+		cp $(WLSYSMON_BIN)                                      cd/wl-sysmon; \
+		cp $(WLEDITOR_BIN)                                      cd/wl-editor; \
+		cp $(WLSCREENSHOT_BIN)                                  cd/wl-screenshot; \
 		cp src/desktop.conf                                     cd/desktop.conf; \
-		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n    module_path: boot():/wl-domain-manager\n    module_path: boot():/wl-wifi-menu\n    module_path: boot():/wl-logview\n    module_path: boot():/desktop.conf\n' >> cd/boot/limine/limine.conf; \
+		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n    module_path: boot():/wl-domain-manager\n    module_path: boot():/wl-wifi-menu\n    module_path: boot():/wl-logview\n    module_path: boot():/wl-overview\n    module_path: boot():/wl-calendar\n    module_path: boot():/wl-quicksettings\n    module_path: boot():/wl-calc\n    module_path: boot():/wl-clocks\n    module_path: boot():/wl-imgview\n    module_path: boot():/wl-chars\n    module_path: boot():/wl-sysmon\n    module_path: boot():/wl-editor\n    module_path: boot():/wl-screenshot\n    module_path: boot():/desktop.conf\n' >> cd/boot/limine/limine.conf; \
 		if [ -f cd/gl-renderer.so ]; then \
 			printf '    module_path: boot():/gl-renderer.so\n' >> cd/boot/limine/limine.conf; \
 		fi; \

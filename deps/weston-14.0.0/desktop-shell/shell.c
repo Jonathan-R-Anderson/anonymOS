@@ -4224,13 +4224,14 @@ launch_desktop_shell_process(void *data)
 	wl_client_add_destroy_listener(shell->child.client,
 				       &shell->child.client_destroy_listener);
 
-	/* EpinAnonymOS: launch the apps listed in /desktop.conf (autostart = ...).
-	 * Defaults to the Qubes-style Domain Manager when the config names none, so
-	 * the user always sees the security domains the moment the desktop comes up.
-	 * These clients' lifetimes are independent of the shell (not in shell->child). */
+	/* EpinAnonymOS GNOME desktop: launch the apps listed in /desktop.conf
+	 * (autostart = ...).  When the config names NONE, boot to a clean GNOME-style
+	 * desktop — just the top bar + wallpaper — and let the user launch apps from the
+	 * Activities app grid (SUPER+A) / the top-bar widgets.  (Previously this defaulted
+	 * to launching /wl-domain-manager.)  These clients' lifetimes are independent of
+	 * the shell (not in shell->child). */
 	if (epin_autostart_n == 0) {
-		if (wet_client_start(shell->compositor, "/wl-domain-manager"))
-			weston_log("epin: autostart default /wl-domain-manager\n");
+		weston_log("epin: no autostart configured — clean GNOME desktop (apps via Activities)\n");
 	} else {
 		for (int i = 0; i < epin_autostart_n; i++) {
 			if (wet_client_start(shell->compositor, epin_autostart[i]))

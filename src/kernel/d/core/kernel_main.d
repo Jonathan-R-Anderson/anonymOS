@@ -3418,6 +3418,19 @@ private void kernelLoop() {
                     if (rsp >= 0x1000 && userPageMapped(tid, rsp)) {
                         klog(" ret0="); klog_hex(*cast(ulong*)(rsp));
                         if (userPageMapped(tid, rsp + 8)) { klog(" ret1="); klog_hex(*cast(ulong*)(rsp + 8)); }
+                        // Backtrace: dump up to 40 stack words so the offending call site (e.g. the
+                        // caller of strdup that passed NULL) can be mapped to a Hyprland/-no-pie symbol.
+                        klog("\n[kernel] stackwalk:");
+                        for (ulong i = 0; i < 40; i++) {
+                            ulong a = rsp + i * 8;
+                            if (!userPageMapped(tid, a)) break;
+                            ulong v = *cast(ulong*)a;
+                            // only print plausible code addresses (main .text ~0x40xxxxx, libs 0x74xxxx.., interp 0x5axxx..)
+                            if ((v >= 0x400000 && v < 0x5000000) || (v >= 0x740000000000 && v < 0x750000000000) ||
+                                (v >= 0x5a0000000000 && v < 0x5b0000000000)) {
+                                klog(" "); klog_hex(v);
+                            }
+                        }
                     }
                 }
                 klog(" err="); klog_hex(x64TrapErrorCode); klog("\n");

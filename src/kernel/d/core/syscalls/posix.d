@@ -109,6 +109,7 @@ enum FileType {
     FD_DOMAIN_CTL,       // DM10.3: /config/domain.action — writes are domain control commands
     FD_INSTALL_CTL,      // INSTALLER §D: /config/install.action — writes drive the in-OS installer
     FD_INSTALL_PROGRESS, // INSTALLER §D: /config/install.progress — reads return 0..1000 permille
+    FD_FB,               // /dev/fb0 — read the composited framebuffer (screenshot); FBIOGET_VSCREENINFO
 }
 
 struct File {
@@ -1677,6 +1678,33 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)_count;
     }
 
+    // /dev/fb0 — stream the composited framebuffer as width*height*4 XRGB8888 bytes, row by row
+    // (skipping any scanline padding so the logical stride is exactly width*4).  Used by the
+    // Screenshot app: it reads the whole thing and PNG-encodes it.
+    if (f.type == FileType.FD_FB) {
+        import display.framebuffer : g_fb;
+        if (_buf is null || g_fb.addr is null) return 0;
+        const ulong rowLog = cast(ulong)g_fb.width * 4;               // logical bytes per row (no padding)
+        const ulong total  = rowLog * g_fb.height;
+        if (f.offset >= total) return 0;                              // EOF
+        ulong want = _count;
+        if (f.offset + want > total) want = total - f.offset;
+        auto dst = cast(ubyte*)_buf;
+        ulong done = 0;
+        while (done < want) {
+            const ulong pos  = f.offset + done;
+            const ulong row  = pos / rowLog;
+            const ulong col  = pos % rowLog;                          // byte within the row
+            ulong chunk = rowLog - col;                               // rest of this row
+            if (chunk > want - done) chunk = want - done;
+            auto src = g_fb.addr + row * g_fb.pitch + col;            // pitch = real (padded) stride
+            foreach (i; 0 .. chunk) dst[done + i] = src[i];
+            done += chunk;
+        }
+        f.offset += done;
+        return cast(ssize_t)done;
+    }
+
     // INSTALLER §D: /config/install.progress — return the install progress as a 0..1000 permille
     // decimal string (then EOF), so the installer GUI can poll it and draw a progress bar.
     if (f.type == FileType.FD_INSTALL_PROGRESS) {
@@ -2623,6 +2651,20 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
+        return publishActiveFdReturn(fd);
+    }
+
+    // /dev/fb0 — read-only view of the composited framebuffer (for the Screenshot app).
+    // read() streams the pixels row-by-row as width*height*4 XRGB8888 bytes (padding stripped);
+    // FBIOGET_VSCREENINFO returns the geometry.  See fileObjRead FD_FB + linux_sys_ioctl.
+    if (cstrEq(path, "/dev/fb0")) {
+        import display.framebuffer : g_fb;
+        g_fdTable[fd].type = FileType.FD_FB;
+        g_fdTable[fd].flags = flags;
+        g_fdTable[fd].offset = 0;
+        g_fdTable[fd].backend = null;
+        g_fdTable[fd].fileSize = cast(ulong)g_fb.width * g_fb.height * 4;
         deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
@@ -5400,14 +5442,13 @@ private immutable VFEntry[] g_vfs = [
       "client=/weston-desktop-shell\n" ~
       "background-color=0xff1e1e2e\n" ~
       "panel-position=top\n" ~
+      "panel-color=0xff000000\n" ~   // GNOME-Shell opaque black top bar (default 0xaa is translucent)
       "locking=false\n" ~
       "animation=none\n" ~
       "startup-animation=none\n" ~
       "\n" ~
-      "[launcher]\n" ~
-      "icon=/usr/share/icons/Epin/apps/64/utilities-terminal.png\n" ~
-      "path=/weston-terminal\n" ~
-      "\n" ~
+      // GNOME top bar: NO icon launchers on the left (Activities widget only, drawn by the shell client).
+      // The desktop-shell client's default-terminal-launcher fallback is removed too so this stays empty.
       "[keyboard]\n" ~
       "keymap_layout=us\n"
     },
@@ -6281,12 +6322,14 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
         return handleDrmIoctl(fdIndexForFile(f), cmd, arg);
     }
 
-    // DRM ioctl: magic byte = 'd' (0x64)
-    if (f.type == FileType.FD_DRM) {
-        if (((cmd >> 8) & 0xFF) == 0x64)
-            return handleDrmIoctl(fdIndexForFile(f), cmd, arg);
-        return 0; // other ioctls on DRM fd → success
-    }
+    // A DRM ioctl (magic byte 'd' = 0x64) on a NON-DRM fd MUST return an error, not a
+    // success stub: libdrm's drmGetVersion() treats ioctl()==0 as "device answered", then
+    // strdup()s version->name — but a stub leaves name_len=0 so name stays NULL → strdup(NULL)
+    // → strlen(NULL) → NULL fault.  This crashed Hyprland's IHyprRenderer ctor, which probes
+    // drmGetVersion() on every session-device fd.  ENOTTY makes drmGetVersion() return NULL and
+    // the caller skip the device (correct: it isn't a DRM node).
+    if (((cmd >> 8) & 0xFF) == 0x64)
+        return negErrno(25); // ENOTTY — not a DRM device
 
     // Input event ioctls (EVIOCGVERSION, EVIOCGNAME, EVIOCGBIT, ...). libinput
     // classifies a device from its evdev capabilities, so these MUST report real
@@ -6295,6 +6338,24 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     // libinput see capability-less devices and ignore them ("no input devices").
     if (f.type == FileType.FD_INPUT_EVENT) {
         return handleInputEvioc(cast(int)cast(size_t)f.backend, cmd, arg);
+    }
+
+    // /dev/fb0 — report the framebuffer geometry so the Screenshot app knows how many
+    // pixels to read.  Fill the leading fields of struct fb_var_screeninfo (160 bytes).
+    if (f.type == FileType.FD_FB) {
+        if (cmd == 0x4600 /*FBIOGET_VSCREENINFO*/) {
+            import display.framebuffer : g_fb;
+            if (arg == 0) return cast(long)negErrno(14); // EFAULT
+            auto v = cast(uint*)arg;
+            foreach (i; 0 .. 40) v[i] = 0;   // zero the struct
+            v[0] = g_fb.width;               // xres
+            v[1] = g_fb.height;              // yres
+            v[2] = g_fb.width;               // xres_virtual
+            v[3] = g_fb.height;              // yres_virtual
+            v[6] = 32;                       // bits_per_pixel (byte offset 24)
+            return 0;
+        }
+        return cast(long)negErrno(25); // ENOTTY for other fb ioctls
     }
 
     if (f.type != FileType.FD_CONSOLE) {
@@ -10083,6 +10144,10 @@ __gshared bool g_dispLogRes;
 __gshared bool g_dispLogConn;
 __gshared bool g_dispLogDumb;
 __gshared bool g_dispLogPresent;
+// When true, re-stamp the WiFi/LKL real-hardware debug HUDs over the compositor every present
+// (survey line + MSI/CSR rows + LKL console).  Default OFF for a clean GNOME desktop; flip to true
+// to bring the on-screen AX210 bring-up trace back during real-hardware WiFi debugging.
+__gshared bool g_wifiDebugHud = false;
 // IMPORTANT: write display-claim markers DIRECTLY to the framebuffer, NOT via klog.
 // On a serial-less laptop the kernel disables the gated fb console early ("framebuffer
 // log off for fast boot", kernel_main.d) so klog goes to serial only = invisible on the
@@ -10337,10 +10402,16 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     g_desktopClaimedFb = true;   // the compositor now presents — no more kernel fb drawing
     // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
     cursorRepaintAfterPresent();
-    { import drivers.pci : wifiSurveyRepaint; wifiSurveyRepaint(); }  // persist the WiFi survey on-screen
-    msiHudRepaint();   // persist the MSI diagnostic (addr/data/fire-count) on row 2
-    wifiCsrHudRepaint();  // persist the polled CSR_INT / ALIVE state on row 3
-    lklLogRepaint();   // persist the LKL/iwlwifi console at the bottom of the desktop
+    // WiFi/LKL real-hardware debug HUDs (survey line, MSI/CSR rows, LKL console) are re-stamped
+    // ON TOP of the compositor every present.  They clutter the clean GNOME desktop, so gate them
+    // behind g_wifiDebugHud (default OFF).  Set it true to bring the on-screen WiFi bring-up trace
+    // back when debugging the AX210 on real hardware.
+    if (g_wifiDebugHud) {
+        { import drivers.pci : wifiSurveyRepaint; wifiSurveyRepaint(); }  // persist the WiFi survey on-screen
+        msiHudRepaint();   // persist the MSI diagnostic (addr/data/fire-count) on row 2
+        wifiCsrHudRepaint();  // persist the polled CSR_INT / ALIVE state on row 3
+        lklLogRepaint();   // persist the LKL/iwlwifi console at the bottom of the desktop
+    }
     presentAccount(_t0, rdtsc(), cast(ulong)copyW * copyH, true);
     if (g_pendingInputMs != 0) {   // R2: full input→screen latency (one line per burst)
         klog("[lat] input->present_ms="); klog_dec(pitMs() - g_pendingInputMs); klog("\n");
@@ -10529,14 +10600,27 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             foreach (i; 0 .. n) (*name_ptr)[i] = drvnm[i];
         }
         *name_len = 10;
+        // date + desc MUST be non-empty: libdrm's drmGetVersion → drmCopyVersion does
+        // strdup(version->date)/strdup(version->desc), and when *_len==0 libdrm never
+        // allocates them (they stay NULL) → strdup(NULL) → strlen(NULL) → NULL fault
+        // (crashes Hyprland's CHyprOpenGL/IHyprRenderer ctor via drmGetVersion).  Return
+        // real short strings, filling the caller's buffer on the second (buffered) ioctl.
         ulong* date_len = cast(ulong*)(p + 32);
         char** date_ptr = cast(char**)(p + 40);
-        if (*date_len > 0 && *date_ptr) (*date_ptr)[0] = 0;
-        *date_len = 0;
+        immutable char[9] drvdt = "20240101\0";
+        if (*date_len > 0 && *date_ptr) {
+            size_t n = (*date_len < 8) ? cast(size_t)*date_len : 8;
+            foreach (i; 0 .. n) (*date_ptr)[i] = drvdt[i];
+        }
+        *date_len = 8;
         ulong* desc_len = cast(ulong*)(p + 48);
         char** desc_ptr = cast(char**)(p + 56);
-        if (*desc_len > 0 && *desc_ptr) (*desc_ptr)[0] = 0;
-        *desc_len = 0;
+        immutable char[7] drvds = "swrast\0";
+        if (*desc_len > 0 && *desc_ptr) {
+            size_t n = (*desc_len < 6) ? cast(size_t)*desc_len : 6;
+            foreach (i; 0 .. n) (*desc_ptr)[i] = drvds[i];
+        }
+        *desc_len = 6;
         return 0;
     }
 

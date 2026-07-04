@@ -489,6 +489,17 @@ main(int argc, char *argv[])
 
     nm_dbus_manager_start(nm_dbus_manager_get(), nm_manager_dbus_set_property_handle, manager);
 
+    /* EpinAnonymOS: acquire the well-known bus name "org.freedesktop.NetworkManager" HERE — before the
+     * (very slow on the LKL/shim netlink backend) device+platform enumeration in nm_manager_start()
+     * below.  Upstream does it last (after nm_manager_start), which on this platform means NM doesn't own
+     * its name for ~50s (measured, hwsim) and, when the AX210's larger wiphy dump pushes startup past
+     * D-Bus's 25s RequestName timeout, the synchronous acquire fails fatally ("fatal failure to acquire
+     * ... Timeout") and NM exits — so the top-right Wi-Fi menu / hos-wifi-agent can never reach it.
+     * The D-Bus objects are already registered by nm_dbus_manager_start() above, and clients (the agent)
+     * retry, so owning the name early just means devices appear incrementally via InterfacesAdded. */
+    if (!nm_dbus_manager_request_name_sync(nm_dbus_manager_get()))
+        goto done;
+
     g_signal_connect(manager,
                      NM_MANAGER_CONFIGURE_QUIT,
                      G_CALLBACK(manager_configure_quit),
@@ -514,8 +525,7 @@ main(int argc, char *argv[])
     nm_log_dbg(LOGD_CORE, "setting up local loopback");
     nm_platform_link_change_flags(NM_PLATFORM_GET, 1, IFF_UP, TRUE);
 
-    if (!nm_dbus_manager_request_name_sync(nm_dbus_manager_get()))
-        goto done;
+    /* (bus name already acquired above, before nm_manager_start — see the EpinAnonymOS note there) */
 
     success = TRUE;
 

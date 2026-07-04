@@ -5180,7 +5180,15 @@ private immutable VFEntry[] g_vfs = [
       "misc {\n" ~
       "    disable_hyprland_logo = true\n" ~
       "    disable_splash_rendering = true\n" ~
-      "}\n"
+      "}\n" ~
+      "\n" ~
+      "# GNOME-style top bar (wlr-layer-shell): Activities | clock | wifi/volume/battery.\n" ~
+      "# Click the wifi glyph to pick a network + enter its password (/wl-wifi-menu).\n" ~
+      "exec-once = /wl-layer-bar\n" ~
+      "\n" ~
+      "# SUPER+B toggles the bar.  It (and the Settings config panel) hide/show the bar by\n" ~
+      "# creating/removing /run/hos-bar.hidden, which the bar polls once a second.\n" ~
+      "bind = SUPER, B, exec, sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\"\n"
     },
     { "/etc/NetworkManager/NetworkManager.conf",
       "[main]\n" ~

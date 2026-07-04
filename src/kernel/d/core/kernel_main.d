@@ -360,7 +360,14 @@ private void scheduleNext() {
     // Nothing runnable: check for waiting tasks that might now be unblocked
     for (uint i = 0; i < MAX_TASKS; i++) {
         auto t = &g_tasks[i];
-        if (t.active && !t.exited && t.waiting) {
+        // CRITICAL: skip poll/read/select-parked tasks (g_pollBlocked).  `t.waiting` is shared between
+        // a wait4() block and a poll/read/select park, and `t.waitingForPid` is NOT reset when a task
+        // later read-parks — so a shell that once did wait4(-1) and now blocks on a terminal read still
+        // has waitingForPid=-1 + a stale childExited[] bit.  Without this guard, this block "un-blocks
+        // its waitpid" ~55k×/s (the task re-runs read→EAGAIN→park→here→un-wait…), pinning the core at
+        // ~75% and starving the compositor.  A genuine wait4 waiter has g_pollBlocked==false and is still
+        // woken by the child-exit path (src=5) / wakePollers; this fallback only handles the pre-parked race.
+        if (t.active && !t.exited && t.waiting && !g_pollBlocked[i]) {
             // poll whether the waited-for child has exited
             bool found = false;
             if (t.waitingForPid == -1) {
@@ -1295,6 +1302,18 @@ private void maybeSpawnNetLaunch() {
 // cap-gated net-provider (so the shim can route NM's rtnetlink/nl80211 to wlan0) are live.  NM owns
 // org.freedesktop.NetworkManager on the system bus; nmcli / the GUI drive it from there.  Replaces the
 // standalone wpa launch above (NM spawns + drives wpa_supplicant itself over D-Bus at M5).
+// M5: launch wpa_supplicant in D-Bus mode (fi.w1.wpa_supplicant1) BEFORE NM, so the name is owned on
+// the system bus when NM's wifi.backend=wpa_supplicant looks for it.  NM watches for the name owner, so
+// exact ordering is not critical, but starting wpa first avoids the initial "not running" retry.
+private __gshared bool g_wpaStarted = false;
+private void maybeSpawnWpa() {
+    if (g_wpaStarted) return;
+    if (!g_dbusStarted) return;                                        // system bus must be up first
+    if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
+    g_wpaStarted = true;
+    klog("[wpa] M5: dbus + net-provider live -> launching hos-wpa-launch -> wpa_supplicant -u under the shim\n");
+    spawnWaylandProgram("hos-wpa-launch\0".ptr, "[wpa]\0".ptr);
+}
 private __gshared bool g_nmStarted = false;
 private void maybeSpawnNetworkManager() {
     if (g_nmStarted) return;
@@ -1305,6 +1324,20 @@ private void maybeSpawnNetworkManager() {
     spawnWaylandProgram("hos-nm-launch\0".ptr, "[nm]\0".ptr);
 }
 // M2b confirmation: once NM has had time to register on the system bus, run nmcli to query it.
+// M6: the Wi-Fi menu's D-Bus engine.  Once NM is up, hos-wifi-agent (libdbus) polls NM for the Wi-Fi
+// device + access points and bridges them to /run/wifi/networks (+ processes /run/wifi/connect), so the
+// Wayland menu stays a pure file renderer.  It only speaks D-Bus (native AF_UNIX to our dbus-daemon) so
+// it needs neither LD_PRELOAD nor the net-provider; it retries the bus for ~90s so early spawn is fine.
+private __gshared bool g_wifiAgentStarted = false;
+private __gshared int  g_wifiAgentDelay   = 0;
+private void maybeSpawnWifiAgent() {
+    if (g_wifiAgentStarted) return;
+    if (!g_nmStarted) return;              // NM must be launching (agent retries until it registers)
+    if (g_wifiAgentDelay++ < 60) return;   // small head start so NM can own the bus name
+    g_wifiAgentStarted = true;
+    klog("[wifi] M6: launching hos-wifi-agent -> /run/wifi/networks (NM<->menu D-Bus bridge)\n");
+    spawnWaylandProgram("hos-wifi-agent\0".ptr, "[wifiag]\0".ptr);
+}
 private __gshared bool g_nmcliStarted = false;
 private __gshared int  g_nmcliDelay   = 0;
 private void maybeSpawnNmcli() {
@@ -2070,7 +2103,7 @@ private void schedProfStats() {
         if (permil < 5) continue;                 // hide <0.5%
         klog(" t"); klog_dec(cast(ulong)i);
         klog("="); klog_dec(permil);
-        klog("/proc"); klog_hex(g_tasks[i].processObjId);
+        klog("("); if (g_taskExecName[i] !is null) klog(g_taskExecName[i]); else klog("?"); klog(")");
     }
     klog("\n");
     foreach (i; 0 .. MAX_TASKS) { g_schedCyc[i] = 0; g_schedN[i] = 0; }
@@ -2117,7 +2150,16 @@ private void dispatchSyscall(int tid) {
     // per frame, so it fired roughly once per frame and pinned the desktop at ~5
     // fps.  These are non-functional proofs/audits; amortize them over 64k syscalls
     // so they remain runtime evidence without throttling interactive work.
-    if (((++g_objReconcileCtr) & 0xFFFFF) == 0) {
+    // WiFi/real-HW COMPOSITOR-FREEZE FIX: this whole block (object-graph reconcile + ~40 one-shot
+    // self-test proofs + graph fuzz/scale suites + ~40 stats klog dumps) costs hundreds of millions of
+    // cycles per firing and renders dozens of text lines to the framebuffer.  Gated per-SYSCALL, it
+    // fired every ~1M syscalls — fine for QEMU (NM idles, low syscall rate) but on real hardware NM
+    // actively drives the AX210, so the syscall rate + object graph climb until this block fires often
+    // enough (and costs enough each time) to STARVE the compositor -> the desktop freezes ~1-3 min in
+    // (kernel still alive: cursor overlay keeps moving) while weston never gets scheduled.  These are
+    // non-functional audits/proofs, so gate them to essentially-never (~1e9 syscalls) — removes the
+    // starvation without affecting the OS.  (Was 0xFFFFF.)
+    if (((++g_objReconcileCtr) & 0x3FFFFFFF) == 0) {
         objReconcileTasks();
         objReconcileFds();
         objReconcileRegions();
@@ -2623,6 +2665,8 @@ private void dispatchSyscall(int tid) {
             break;
     }
 
+    // diagnostic: for read(), snapshot the fd's type/O_NONBLOCK AND the return value in the CALLER's
+    // context (the fd table is still the caller's here) so the [sched] hog readout is trustworthy.
     // Cooperative blocking for console reads: when a task read()s the console
     // but no keyboard input is pending, posix.d returns EAGAIN.  Rather than
     // spin in-kernel (which starves every other task under this cooperative
@@ -2632,6 +2676,11 @@ private void dispatchSyscall(int tid) {
     // Z4a.6: a native device_read (HOS_SYS_QUERY, op=rdi=HOSQ_DEV_READ, fd=rsi) over the PTY
     // is a blocking terminal read too — give it the same treatment as a Linux read(rdi) so
     // native zsh's terminal input blocks correctly and ^C still interrupts it.
+    // A blocking read that returned data/EOF/error (anything but EAGAIN) is no longer read-parked: clear
+    // g_pollBlocked so a later wait4() on this task isn't misread as a poll/read park (see the scheduler
+    // guard above).  The EAGAIN case re-sets it in the park block just below.
+    if (rax == 0 && ret != -11 && tid >= 0 && tid < MAX_TASKS) g_pollBlocked[tid] = false;
+
     const bool blkRead =
         (rax == 0 && (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi))) ||
         (rax == HOS_SYS_QUERY && rdi == HOSQ_DEV_READ &&
@@ -2649,6 +2698,16 @@ private void dispatchSyscall(int tid) {
             task.regs[REG_RAX] = cast(ulong)(-4);   // the read returns -EINTR after the handler
             if (deliverUserSignal(tid, psig)) return;
         }
+        // PARK (not a busy-yield): a blocking read on an fd with no data yet must consume ZERO cpu until
+        // data arrives.  The old bare `RIP-=2; scheduleNext()` left the task RUNNABLE, so zsh's ZLE
+        // read-loop re-ran read()->EAGAIN every scheduler turn (~73% cpu), starving the compositor + the
+        // LKL's USB-input thread -> the desktop (and the kernel-drawn cursor) froze the moment a terminal
+        // opened.  Mirror the poll-park: block until the fd is readable (deadline 0 = no timeout);
+        // wakePollers() (every PIT tick) un-waits us to re-run read() -> data or re-park.  ^C/EINTR is
+        // handled above; a real EOF makes the re-run read() return 0 (not EAGAIN) so we don't re-park.
+        g_pollBlocked[tid]  = true;
+        g_pollDeadline[tid] = 0;
+        task.waiting        = true;
         task.regs[REG_RIP] -= 2;
         bootProgressEventHex("park", rax, g_parkScreenTrace);
         scheduleNext();
@@ -2713,6 +2772,43 @@ private void dispatchSyscall(int tid) {
         }
         // got events (or an error): the wait is satisfied.
         if ((isPoll || isEpoll) && ret != 0) g_pollBlocked[tid] = false;
+    }
+
+    // select(23) / pselect6(270): linux_sys_select now SCANS fd readiness (returns 0 when none ready), so
+    // PARK the caller like poll instead of returning 0 immediately — else zsh's ZLE select()-on-tty loop
+    // spins in USERSPACE (~73% cpu) and freezes the desktop.  Timeout is a userspace POINTER (r8):
+    // select=timeval{sec,usec}, pselect6=timespec{sec,nsec}; NULL=block forever, {0,0}=non-blocking.
+    {
+        const bool isSelect = (rax == 23 || rax == 270);
+        if (ret == 0 && isSelect) {
+            long tmo;                               // ms; <0 = infinite, 0 = non-blocking
+            if (r8 == 0) tmo = -1;                  // NULL timeout → block until an fd is ready
+            else {
+                const long sec   = *cast(long*)r8;
+                const long sub   = *cast(long*)(r8 + 8);                 // usec (select) or nsec (pselect6)
+                const long subMs = (rax == 23) ? (sub / 1000) : (sub / 1000000);
+                tmo = sec * 1000 + subMs;
+            }
+            if (tmo != 0) {
+                if (g_pollBlocked[tid]) {
+                    const ulong dl = g_pollDeadline[tid];
+                    if (dl != 0 && pitMs() >= dl) {
+                        g_pollBlocked[tid] = false;
+                        task.regs[REG_RAX] = 0;     // timed out → 0 fds ready (sets already cleared by scan)
+                        return;
+                    }
+                } else {
+                    g_pollBlocked[tid]  = true;
+                    g_pollDeadline[tid] = (tmo < 0) ? 0 : (pitMs() + cast(ulong)tmo);
+                }
+                task.waiting = true;
+                task.regs[REG_RIP] -= 2;
+                bootProgressEventHex("park", rax, g_parkScreenTrace);
+                scheduleNext();
+                return;
+            }
+        }
+        if (isSelect && ret != 0) g_pollBlocked[tid] = false;
     }
 
     // L5 kernel-side INTx wake (op6 of the 0x4100 LKL PCI bridge): PARK the LKL's IRQ thread until its
@@ -3118,7 +3214,9 @@ private void kernelLoop() {
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)
+        maybeSpawnWpa();            // M5: launch wpa_supplicant (D-Bus) just before NM
         maybeSpawnNetworkManager(); // M2b: launch the real NetworkManager daemon once dbus + provider are up
+        maybeSpawnWifiAgent();      // M6: launch the Wi-Fi menu's D-Bus bridge once NM is up
         maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 

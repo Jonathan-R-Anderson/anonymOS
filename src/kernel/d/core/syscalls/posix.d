@@ -142,10 +142,21 @@ __gshared File[1024][FDTAB_COUNT] g_fdTabs;
 // compile-time constant, so it can't be used as a static initializer.
 __gshared File* g_fdTable;
 
+// openat() dirfd support: record the (absolute) path each fd was opened with, so openat(dirfd, relpath)
+// can reconstruct dirpath + "/" + relpath.  Previously openat ignored dirfd entirely, which broke any
+// program using directory-relative openat (e.g. NM's nmp_utils_sysctl_open_netdir -> openat(netdir,
+// "ifindex"/"uevent") to classify wlan0 as wifi).  Parallel to g_fdTabs (not in File, to avoid bloating
+// the fork-copied struct); best-effort (cleared/overwritten per open; not fork-propagated).
+__gshared int g_activeFdTabId = 0;
+enum int FDPATH_MAX = 160;
+__gshared char[FDPATH_MAX][1024][FDTAB_COUNT] g_fdPath;
+__gshared char[256] g_pendingOpenPath;   // set at open() entry, stored into g_fdPath on success
+
 // Point g_fdTable at process `fdTabId`'s table.  Called from the syscall
 // dispatcher with the current task's fdTabId before each syscall is serviced.
 public void fdtabSetActive(int fdTabId) {
     if (fdTabId < 0 || fdTabId >= FDTAB_COUNT) fdTabId = 0;
+    g_activeFdTabId = fdTabId;
     g_fdTable = &g_fdTabs[fdTabId][0];
 }
 
@@ -828,6 +839,13 @@ private bool publishActiveFd(int fd) {
 
 private int publishActiveFdReturn(int fd) {
     publishActiveFd(fd);
+    // openat() support: remember the path this fd was opened with (see g_fdPath).
+    if (fd >= 0 && fd < 1024 && g_activeFdTabId >= 0 && g_activeFdTabId < FDTAB_COUNT) {
+        char* dst = g_fdPath[g_activeFdTabId][fd].ptr;
+        int i = 0;
+        while (i < FDPATH_MAX - 1 && g_pendingOpenPath[i] != 0) { dst[i] = g_pendingOpenPath[i]; ++i; }
+        dst[i] = 0;
+    }
     return fd;
 }
 
@@ -2513,6 +2531,12 @@ public int sys_open(const(char)* path, int flags) {
     if (path is null) {
         return negErrno(EFAULT);
     }
+    // openat() support: remember this open's path so publishActiveFdReturn can stash it per-fd (for a
+    // later openat(thisfd, relpath)).  Absolute paths (incl. openat-reconstructed ones) are captured
+    // correctly; relative cwd-based opens store as-is (best-effort, those fds are rarely used as dirfds).
+    {
+        int i = 0; while (i < 255 && path[i] != 0) { g_pendingOpenPath[i] = path[i]; ++i; } g_pendingOpenPath[i] = 0;
+    }
 
     // A4: resolve a relative path against the current working directory (busybox top
     // chdir's into /proc/<pid> then opens "stat").  The cwd is global (single shim),
@@ -2542,6 +2566,13 @@ public int sys_open(const(char)* path, int flags) {
             path = _objp.ptr;
         }
     }
+
+    // M3: NM opens its wifi device plugin at NMPLUGINDIR/libnm-device-plugin-wifi.so, but the plugin
+    // ships as the boot module /libnm-device-plugin-wifi.so.  Rewrite to the boot module so we DON'T copy
+    // it into the synthetic /usr/lib/... dir (a copy creates a shadowing rtfs node that breaks the
+    // SYNTHDIR_NMPLUGIN getdents listing).  Also used by the stat path (nm_utils_validate_plugin).
+    if (cstrEq(path, "/usr/lib/NetworkManager/1.44.2/libnm-device-plugin-wifi.so"))
+        path = "/libnm-device-plugin-wifi.so".ptr;
 
     // Track A A2: resolve a leading RT-overlay symlink chain so open() follows
     // symlinks (e.g. /bin/ls -> /busybox).  No-op unless the path ends at an RT_LNK.
@@ -2704,6 +2735,9 @@ public int sys_open(const(char)* path, int flags) {
             g_fdTable[fd].offset   = 0;
             g_fdTable[fd].backend  = cast(void*)cast(size_t)ri;
             g_fdTable[fd].fileSize = 0;
+            // M3: an rtfs RT_DIR shadows NMPLUGINDIR (something creates the dir) — tag it so getdents
+            // still lists the wifi plugin (the SYNTHDIR_NMPLUGIN case runs before the empty rt-children loop).
+            if (cstrEq(path, "/usr/lib/NetworkManager/1.44.2")) g_fdTable[fd].fileSize = SYNTHDIR_NMPLUGIN;
             return publishActiveFdReturn(fd);
         }
     }
@@ -2894,6 +2928,11 @@ public int sys_open(const(char)* path, int flags) {
         if (cstrEq(path, "/dev/dri")) g_fdTable[fd].fileSize = SYNTHDIR_DEVDRI;
         // Tag /proc so getdents64 enumerates the live process pids (ps/top).
         if (cstrEq(path, "/proc")) g_fdTable[fd].fileSize = SYNTHDIR_PROC;
+        // M3: tag /sys/class/net so getdents64 lists lo + wlan0 -> NM discovers the wifi device.
+        if (cstrEq(path, "/sys/class/net")) g_fdTable[fd].fileSize = SYNTHDIR_NETCLASS;
+        // M3: tag NMPLUGINDIR (dead now — wifi is an internal factory, load_factories_from_dir disabled —
+        // but harmless; NM never reads this dir).
+        if (cstrEq(path, "/usr/lib/NetworkManager/1.44.2")) g_fdTable[fd].fileSize = SYNTHDIR_NMPLUGIN;
         // F1: tag /objects/<kind> so getdents64 enumerates its live objects.
         // F5: tag /objects/<kind>/<obj> so getdents64 lists its field files.
         {
@@ -4208,6 +4247,13 @@ private void rtInit() {
     rtMkdirPath("/usr/sbin\0".ptr,      M0755, 0, 0);
     rtMkdirPath("/usr/local\0".ptr,     M0755, 0, 0);
     rtMkdirPath("/usr/local/bin\0".ptr, M0755, 0, 0);
+    // M3: NM dlopens device plugins by readdir'ing NMPLUGINDIR=/usr/lib/NetworkManager/1.44.2.  Seed it
+    // as a real rtfs (writable+LISTABLE) dir so hos-nm-launch can drop the wifi plugin there AND NM's
+    // opendir/getdents finds it — /usr/lib was not previously in the rtfs skeleton, so opendir failed
+    // and NM loaded no wifi factory.
+    rtMkdirPath("/usr/lib\0".ptr,                       M0755, 0, 0);
+    rtMkdirPath("/usr/lib/NetworkManager\0".ptr,        M0755, 0, 0);
+    rtMkdirPath("/usr/lib/NetworkManager/1.44.2\0".ptr, M0755, 0, 0);
     rtMkdirPath("/lib\0".ptr,           M0755, 0, 0);
     rtMkdirPath("/lib64\0".ptr,         M0755, 0, 0);
     rtMkdirPath("/opt\0".ptr,           M0755, 0, 0);
@@ -5659,6 +5705,21 @@ private immutable VFEntry[] g_vfs = [
     { "/sys/class/net/eth0/mtu",               "1500\n"       },
     { "/sys/class/net/eth0/ifindex",           "2\n"          },
     { "/sys/class/net/eth0/type",              "1\n"          },
+    // M3: synthesize the (hwsim/AX210) wlan0 device so NM's nm-linux-platform discovers + classifies it
+    // as WIFI.  The phy80211/ subdir + uevent DEVTYPE=wlan are the wifi signals NM/udev key off; the MAC
+    // matches mac80211_hwsim radio 0 (42:00:00:00:00:00) so it correlates with the rtnetlink link.
+    { "/sys/class/net/wlan0/uevent",           "DEVTYPE=wlan\nINTERFACE=wlan0\nIFINDEX=2\n" },
+    { "/sys/class/net/wlan0/address",          "42:00:00:00:00:00\n" },
+    { "/sys/class/net/wlan0/addr_len",         "6\n"          },
+    { "/sys/class/net/wlan0/type",             "1\n"          },
+    { "/sys/class/net/wlan0/ifindex",          "2\n"          },
+    { "/sys/class/net/wlan0/flags",            "0x1003\n"     },
+    { "/sys/class/net/wlan0/operstate",        "down\n"       },
+    { "/sys/class/net/wlan0/carrier",          "0\n"          },
+    { "/sys/class/net/wlan0/mtu",              "1500\n"       },
+    { "/sys/class/net/wlan0/tx_queue_len",     "1000\n"       },
+    { "/sys/class/net/wlan0/phy80211/index",   "0\n"          },
+    { "/sys/class/net/wlan0/phy80211/name",    "phy0\n"       },
     { "/sys/class/net/eth0/speed",             "1000\n"       },
 
     // ── Input event devices (libinput / udev enumeration) ─────────────────
@@ -5849,6 +5910,8 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
            cstrEq(path, "/lib") ||
            cstrEq(path, "/lib64") ||
            cstrEq(path, "/usr/lib") ||
+           cstrEq(path, "/usr/lib/NetworkManager") ||          // M3: NM plugin dir ancestors
+           cstrEq(path, "/usr/lib/NetworkManager/1.44.2") ||   // M3: NMPLUGINDIR (SYNTHDIR_NMPLUGIN)
            cstrEq(path, "/usr/lib64") ||
            cstrEq(path, "/dev") ||
            cstrEq(path, "/dev/pts") ||
@@ -5927,6 +5990,10 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
            cstrEq(path, "/sys/class/net") ||
            cstrEq(path, "/sys/class/net/lo") ||
            cstrEq(path, "/sys/class/net/eth0") ||
+           cstrEq(path, "/sys/class/net/wlan0") ||           // M3: the (hwsim/AX210) wifi device dir
+           cstrEq(path, "/sys/class/net/wlan0/phy80211") ||  // M3: the wifi marker subdir
+           cstrEq(path, "/sys/class/net/wlan1") ||
+           cstrEq(path, "/usr/lib/NetworkManager/1.44.2") ||   // M3: NMPLUGINDIR (wifi plugin dir)
            cstrEq(path, "/sys/class/tty") ||
            cstrEq(path, "/sys/devices") ||
            cstrEq(path, "/sys/devices/virtual") ||
@@ -6463,14 +6530,23 @@ public long linux_sys_readlink(ulong _path, ulong _buf, ulong _bufsiz) {
 
 public long linux_sys_openat(ulong _dirfd, ulong path, ulong flags, ulong mode) {
     auto p = cast(const(char)*)path;
-
-    klog("[openat] ");
-    if (p !is null)
-        klog(p);
-    else
-        klog("(null)");
-    klog("\n");
-
+    // openat(dirfd, "rel") -> open(dirpath + "/" + "rel").  dirfd was previously IGNORED, which broke any
+    // directory-relative openat — e.g. NM's nmp_utils_sysctl_open_netdir opens /sys/class/net/wlan0 then
+    // openat(fd,"ifindex"/"uevent") to classify the wifi device.  Absolute paths + AT_FDCWD fall through.
+    enum int AT_FDCWD = -100;
+    int dfd = cast(int)_dirfd;
+    if (p !is null && p[0] != '/' && p[0] != 0 && dfd != AT_FDCWD &&
+        dfd >= 0 && dfd < 1024 && g_activeFdTabId >= 0 && g_activeFdTabId < FDTAB_COUNT &&
+        g_fdPath[g_activeFdTabId][dfd][0] == '/') {
+        char[512] full = void;
+        const(char)* base = g_fdPath[g_activeFdTabId][dfd].ptr;
+        int n = 0;
+        while (n < 400 && base[n] != 0) { full[n] = base[n]; ++n; }
+        if (n > 0 && full[n-1] != '/') full[n++] = '/';
+        int j = 0; while (n < 510 && p[j] != 0) { full[n++] = p[j++]; }
+        full[n] = 0;
+        return linux_sys_open(cast(ulong)full.ptr, flags, mode);
+    }
     return linux_sys_open(path, flags, mode);
 }
 
@@ -6487,6 +6563,11 @@ public long linux_sys_newfstatat(ulong _dirfd, ulong path, ulong statbuf, ulong 
     }
 
     auto pathPtr = cast(const(char)*)path;
+    // M3: same wifi-plugin rewrite as sys_open — NM's nm_utils_validate_plugin stat()s the plugin path.
+    if (cstrEq(pathPtr, "/usr/lib/NetworkManager/1.44.2/libnm-device-plugin-wifi.so")) {
+        pathPtr = "/libnm-device-plugin-wifi.so".ptr;
+        path = cast(ulong)pathPtr;
+    }
     if (pathPtr[0] == 0) {
         if ((_flags & AT_EMPTY_PATH) != 0) {
             return linux_sys_fstat(_dirfd, statbuf);
@@ -6547,6 +6628,10 @@ public long linux_sys_newfstatat(ulong _dirfd, ulong path, ulong statbuf, ulong 
 
     const long statRes = linux_sys_fstat(cast(ulong)fd, statbuf);
     sys_close(cast(int)fd);
+    // M3: NM's nm_utils_validate_plugin requires the wifi plugin be owned by root (st_uid==0).  The plugin
+    // is the /libnm-device-plugin-wifi.so boot module (a trusted system file) — force st_uid=0 (offset 28).
+    if (statRes == 0 && cstrEq(pathPtr, "/libnm-device-plugin-wifi.so"))
+        *cast(uint*)(cast(ubyte*)statbuf + 28) = 0;
     return statRes;
 }
 
@@ -7797,6 +7882,16 @@ private enum ulong SYNTHDIR_DEVCHAR = 0x0DE7C400;
 // The char-device entries we expose under /sys/dev/char (name + d_ino).
 private static immutable string[4] g_devCharEntries = ["226:0", "226:128", "13:64", "13:65"];
 
+// M3: tag /sys/class/net so getdents64 lists the interfaces NM's nm-linux-platform enumerates.
+// Without this the dir readdir is empty -> NM sees NO device even though the LKL has wlan0.
+private enum ulong SYNTHDIR_NETCLASS = 0x0E7C1A55;
+private static immutable string[2] g_netClassEntries = ["lo", "wlan0"];
+// M3: NM loads device plugins by readdir'ing NMPLUGINDIR=/usr/lib/NetworkManager/1.44.2.  That dir is a
+// synthetic prefix whose getdents is empty, so NM finds no wifi plugin.  Synthesize the listing (the .so
+// file itself is a real openable rtfs file copied there by hos-nm-launch).
+private enum ulong SYNTHDIR_NMPLUGIN = 0x0E7C1B60;
+private static immutable string[1] g_nmPluginEntries = ["libnm-device-plugin-wifi.so"];
+
 public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
     initFdTable();
     int ifd = cast(int)fd;
@@ -7981,6 +8076,38 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
             if (f.offset <= logical) {
                 if (!writeDirent64(buf, count, &written, logical + 3, cast(long)logical + 1,
                                    DT_DIR, e.ptr, e.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+
+    // M3: /sys/class/net enumeration — one entry per interface so NM's nm-linux-platform (which readdirs
+    // this dir) discovers wlan0 and classifies it as wifi (via wlan0/phy80211 + uevent DEVTYPE=wlan).
+    if (f.fileSize == SYNTHDIR_NETCLASS) {
+        ulong logical = 2;
+        foreach (e; g_netClassEntries) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, logical + 5, cast(long)logical + 1,
+                                   DT_DIR, e.ptr, e.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+
+    // M3: NMPLUGINDIR enumeration — list the wifi plugin .so so NM's read_plugin_paths finds it (the file
+    // is a real openable rtfs file; only the directory listing was missing).
+    if (f.fileSize == SYNTHDIR_NMPLUGIN) {
+        ulong logical = 2;
+        foreach (e; g_nmPluginEntries) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, logical + 7, cast(long)logical + 1,
+                                   DT_REG, e.ptr, e.length))
                     return cast(long)written;
                 f.offset = logical + 1;
             }
@@ -8550,8 +8677,36 @@ public long linux_sys_poll(ulong fds, ulong nfds, ulong timeout) {
 public long linux_sys_ppoll(ulong fds, ulong nfds, ulong tmo, ulong sig, ulong sz) {
     return pollScanFds(fds, nfds);
 }
-public long linux_sys_select(ulong n, ulong i, ulong o, ulong e, ulong tv) { return 0; }
-public long linux_sys_pselect6(ulong n, ulong i, ulong o, ulong e, ulong tv, ulong sig) { return 0; }
+// Scan select() fd_set bitmasks for readiness and rewrite each set IN PLACE to only the ready fds,
+// returning the total ready count.  Previously select/pselect6 just `return 0` immediately (no scan,
+// no park), so a caller like zsh's ZLE that select()s on its tty spun in USERSPACE (~73% cpu) re-running
+// select->0 forever.  Now select is real (scan like poll) + the dispatcher parks it (kernel_main.d).
+private long selectScanFds(ulong n, ulong inp, ulong outp, ulong exp) {
+    long nfds = cast(long)n; if (nfds < 0) nfds = 0; if (nfds > 1024) nfds = 1024;
+    int ready = 0;
+    int words = cast(int)((nfds + 63) / 64);
+    ulong* rd = cast(ulong*)inp, wr = cast(ulong*)outp, ex = cast(ulong*)exp;
+    for (int w = 0; w < words; w++) {
+        ulong rin = rd ? rd[w] : 0;
+        ulong win = wr ? wr[w] : 0;
+        ulong rout = 0, wout = 0;
+        if (rin | win) {
+            for (int b = 0; b < 64; b++) {
+                long fd = cast(long)w * 64 + b;
+                if (fd >= nfds) break;
+                ulong bit = 1UL << b;
+                if ((rin & bit) && fd >= 0 && fd < 1024 && fdReadable(cast(int)fd)) { rout |= bit; ready++; }
+                if ((win & bit) && fd >= 0 && fd < 1024 && fdWritable(cast(int)fd)) { wout |= bit; ready++; }
+            }
+        }
+        if (rd) rd[w] = rout;
+        if (wr) wr[w] = wout;
+        if (ex) ex[w] = 0;   // no exception conditions are ever ready here
+    }
+    return cast(long)ready;
+}
+public long linux_sys_select(ulong n, ulong i, ulong o, ulong e, ulong tv) { return selectScanFds(n, i, o, e); }
+public long linux_sys_pselect6(ulong n, ulong i, ulong o, ulong e, ulong tv, ulong sig) { return selectScanFds(n, i, o, e); }
 
 // --- getrusage / times / sysinfo ---
 public long linux_sys_getrusage(ulong who, ulong usage) {

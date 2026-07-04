@@ -102,6 +102,8 @@ WLCAIRO_DEMO_BIN := build/wl-cairo-demo
 INSTALLER_BIN := build/wl-installer
 WLFILES_BIN := build/wl-files
 WLDOMAINMGR_BIN := build/wl-domain-manager
+WLWIFIMENU_BIN := build/wl-wifi-menu
+WLLOGVIEW_BIN := build/wl-logview
 IDLE_BIN := build/idle
 HOS_SH_BIN := build/hos-sh
 HOS_WIFI_BIN := build/hos-wifi
@@ -112,6 +114,8 @@ DBUSLAUNCH_BIN := build/hos-dbus-launch
 DBUSTEST_BIN := build/hos-dbus-test
 NMLAUNCH_BIN := build/hos-nm-launch
 NMCLITEST_BIN := build/hos-nmcli-test
+WPALAUNCH_BIN := build/hos-wpa-launch
+WIFIAGENT_BIN := build/hos-wifi-agent
 WIFITERM_BIN := build/hos-wifiterm
 THREADTEST_BIN := build/hos-thread-test
 STORE_APP_BIN := build/store-app
@@ -455,6 +459,16 @@ $(NMLAUNCH_BIN): src/util/hos-nm-launch.c
 	@echo "==== Building hos-nm-launch (M2b static launcher for the real NetworkManager daemon) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-nm-launch.c
 
+$(WPALAUNCH_BIN): src/util/hos-wpa-launch.c
+	@echo "==== Building hos-wpa-launch (M5 static launcher for wpa_supplicant -u D-Bus mode) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/hos-wpa-launch.c
+
+$(WIFIAGENT_BIN): src/util/hos-wifi-agent.c
+	@echo "==== Building hos-wifi-agent (M6 libdbus NM<->file bridge for the Wi-Fi menu) ===="
+	$(MUSL_CC) -O2 -Wall -o $@ src/util/hos-wifi-agent.c \
+		-I$(WAYLAND_SYSROOT)/include/dbus-1.0 -I$(WAYLAND_SYSROOT)/lib/dbus-1.0/include \
+		$(WAYLAND_SYSROOT)/lib/libdbus-1.so -Wl,-rpath,/
+
 $(NMCLITEST_BIN): src/util/hos-nmcli-test.c src/lkl/hos-net-proto.h
 	@echo "==== Building hos-nmcli-test (M2b nmcli D-Bus probe) ===="
 	$(MUSL_CC) -static -O2 -Isrc/lkl -o $@ src/util/hos-nmcli-test.c
@@ -501,7 +515,31 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+$(WLWIFIMENU_BIN): src/util/wl-wifi-menu.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-wifi-menu (M6 top-right Wi-Fi menu) ===="
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild \
+		-o $@ src/util/wl-wifi-menu.c $(XDG_SHELL_CODE) \
+		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libbz2.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		$$WL_LIBS \
+		-lm \
+		-pthread
+
+$(WLLOGVIEW_BIN): src/util/wl-logview.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-logview (scrollable diagnostic log viewer) ===="
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild \
+		-o $@ src/util/wl-logview.c $(XDG_SHELL_CODE) \
+		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libbz2.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		$$WL_LIBS \
+		-lm \
+		-pthread
+
+stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLOGVIEW_BIN) $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -604,13 +642,14 @@ stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(
 	fi
 	@# M2b: stage the REAL NetworkManager daemon + nmcli + libnm.so.0 + libndp.so.0 + launcher
 	@if [ -f deps/nm-build/NetworkManager-1.44.2/build-epin/src/core/NetworkManager ]; then \
-		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/core/NetworkManager cd/NetworkManager; \
+		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/core/NetworkManager-all-sym cd/NetworkManager; \
 		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/nmcli/nmcli cd/nmcli; \
 		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/libnm-client-impl/libnm.so.0.1.0 cd/libnm.so.0; \
 		cp deps/gtk-stack/sysroot/lib/libndp.so.0.2.0 cd/libndp.so.0; \
 		cp $(NMLAUNCH_BIN) cd/hos-nm-launch; \
 		cp $(NMCLITEST_BIN) cd/hos-nmcli-test; \
-		printf '    module_path: boot():/NetworkManager\n    module_path: boot():/nmcli\n    module_path: boot():/libnm.so.0\n    module_path: boot():/libndp.so.0\n    module_path: boot():/hos-nm-launch\n    module_path: boot():/hos-nmcli-test\n' >> cd/boot/limine/limine.conf; \
+		cp $(WIFIAGENT_BIN) cd/hos-wifi-agent; \
+		printf '    module_path: boot():/NetworkManager\n    module_path: boot():/nmcli\n    module_path: boot():/libnm.so.0\n    module_path: boot():/libndp.so.0\n    module_path: boot():/hos-nm-launch\n    module_path: boot():/hos-nmcli-test\n    module_path: boot():/hos-wifi-agent\n' >> cd/boot/limine/limine.conf; \
 		echo "Included M2b real NetworkManager daemon + nmcli + libnm.so.0 + libndp.so.0 + hos-nm-launch + hos-nmcli-test"; \
 	fi
 	cp $(THREADTEST_BIN) cd/hos-thread-test
@@ -624,8 +663,9 @@ stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(
 		cp deps/wpa-build/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant cd/wpa_supplicant; \
 		cp deps/wpa-build/wpa_supplicant-2.10/wpa_supplicant/wpa_cli cd/wpa_cli; \
 		cp deps/wpa-build/libnl-tiny/libnl-tiny.so cd/libnl-tiny.so; \
-		printf '    module_path: boot():/wpa_supplicant\n    module_path: boot():/wpa_cli\n    module_path: boot():/libnl-tiny.so\n' >> cd/boot/limine/limine.conf; \
-		echo "Included wpa_supplicant (H3: real wpa, dynamic musl, under the shim) + libnl-tiny.so"; \
+		cp $(WPALAUNCH_BIN) cd/hos-wpa-launch; \
+		printf '    module_path: boot():/wpa_supplicant\n    module_path: boot():/wpa_cli\n    module_path: boot():/libnl-tiny.so\n    module_path: boot():/hos-wpa-launch\n' >> cd/boot/limine/limine.conf; \
+		echo "Included wpa_supplicant (M5: D-Bus mode for NM, under the shim) + libnl-tiny.so + hos-wpa-launch"; \
 	fi
 	@if ! grep -q 'boot():/ld-musl-x86_64.so.1' cd/boot/limine/limine.conf; then \
 		cp deps/musl/install/lib/libc.so cd/ld-musl-x86_64.so.1; \
@@ -793,8 +833,10 @@ stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(
 		cp $(WESTON_BUILD)/clients/weston-desktop-shell         cd/weston-desktop-shell; \
 		cp $(WESTON_BUILD)/clients/weston-keyboard              cd/weston-keyboard; \
 		cp $(WLDOMAINMGR_BIN)                                   cd/wl-domain-manager; \
+		cp $(WLWIFIMENU_BIN)                                    cd/wl-wifi-menu; \
+		cp $(WLLOGVIEW_BIN)                                     cd/wl-logview; \
 		cp src/desktop.conf                                     cd/desktop.conf; \
-		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n    module_path: boot():/wl-domain-manager\n    module_path: boot():/desktop.conf\n' >> cd/boot/limine/limine.conf; \
+		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n    module_path: boot():/wl-domain-manager\n    module_path: boot():/wl-wifi-menu\n    module_path: boot():/wl-logview\n    module_path: boot():/desktop.conf\n' >> cd/boot/limine/limine.conf; \
 		if [ -f cd/gl-renderer.so ]; then \
 			printf '    module_path: boot():/gl-renderer.so\n' >> cd/boot/limine/limine.conf; \
 		fi; \

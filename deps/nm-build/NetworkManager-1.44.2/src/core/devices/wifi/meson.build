@@ -29,6 +29,19 @@ libnm_device_plugin_wifi_static_dep = declare_dependency(
   link_with: libnm_device_plugin_wifi_static,
 )
 
+# EpinAnonymOS: the wifi factory as a static lib so it can be linked INTO the daemon as an
+# internal factory (_ADD_INTERNAL).  Our custom ELF loader mis-links GObject type inheritance
+# across the dlopen/BIND_LOCAL plugin boundary (NMDeviceWifi loses NMDevice's "interface"
+# property), so the external-plugin path is unusable — link wifi in statically instead.
+libnm_device_factory_wifi_internal = static_library(
+  'nm-device-factory-wifi-internal',
+  sources: files('nm-wifi-factory.c'),
+  dependencies: [
+    core_plugin_dep,
+    libnm_device_plugin_wifi_static_dep,
+  ],
+)
+
 libnm_device_plugin_wifi = shared_module(
   'nm-device-plugin-wifi',
   sources: files(

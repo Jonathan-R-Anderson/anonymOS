@@ -24,8 +24,16 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <net/if.h>
 #include <poll.h>
 #include "hos-net-proto.h"
+
+#ifndef SIOCGIFNAME
+#define SIOCGIFNAME 0x8910
+#endif
+#ifndef SIOCGIFINDEX
+#define SIOCGIFINDEX 0x8933
+#endif
 
 #define MAXFD 4096   /* hoisted here: used by the trace state below, before the routed-fd table */
 static int wrf(int fd, const void *b, unsigned n);   /* forward decl (defined below with rdf) */
@@ -241,14 +249,13 @@ ssize_t sendto(int fd, const void *buf, size_t len, int flags,
 {
     resolve();
     if (!routed(fd)) return r_sendto(fd, buf, len, flags, addr, alen);
-    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && len >= 20) {   /* M3 trace */
+    /* record the last netlink request on this fd so the STUCK diagnostic (recvfrom) can name the op a
+     * genuine no-reply hang is blocked on. */
+    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && len >= 20) {
         const unsigned char *b = buf;
-        unsigned short type = *(const unsigned short*)(b+4);   /* nlmsghdr.nlmsg_type */
-        unsigned short flg  = *(const unsigned short*)(b+6);   /* nlmsghdr.nlmsg_flags */
-        unsigned char  gcmd = b[16];                            /* genlmsghdr.cmd (nl80211) */
-        g_last_tx[fd] = type; g_last_cmd[fd] = gcmd; g_last_txlen[fd] = (unsigned)len;
-        char m[96]; snprintf(m,sizeof m,"TX fd=%d nlmsg_type=%u flags=0x%x genl_cmd=%u len=%u", fd, type, flg, gcmd, (unsigned)len);
-        flog(m);
+        g_last_tx[fd]  = *(const unsigned short*)(b+4);   /* nlmsghdr.nlmsg_type */
+        g_last_cmd[fd] = b[16];                            /* genlmsghdr.cmd (nl80211) */
+        g_last_txlen[fd] = (unsigned)len;
     }
     long r = nsp(NSP_SENDTO, g_remote[fd], 0,0,flags, buf,(uint32_t)len, addr,(uint32_t)alen, 0,0,0,0,0,0);
     return r>=0 ? (ssize_t)r : (ssize_t)fail(r);
@@ -274,27 +281,17 @@ ssize_t recvfrom(int fd, void *buf, size_t len, int flags,
              * Log which request (the last TX on this netlink fd) it is blocked on. */
             if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && (tries == 1 || tries == 5 || tries == 30)) {
                 char m[160]; snprintf(m,sizeof m,"nm-trace: STUCK fd=%d %d-EAGAIN waiting reply nlmsg_type=%u genl_cmd=%u len_last=%u prev_rx_true_len=%ld cap=%u%s",
-                                      fd, tries, g_last_tx[fd], g_last_cmd[fd], g_last_txlen[fd], g_last_truelen[fd], (unsigned)NSP_MAXBUF,
-                                      (g_last_truelen[fd] > (long)NSP_MAXBUF) ? " *** PREV RX OVER-CAP: H3 CONFIRMED ***" : "");
+                                      fd, tries, g_last_tx[fd], g_last_cmd[fd], g_last_txlen[fd], g_last_truelen[fd], (unsigned)NSP_HARDCAP,
+                                      (g_last_truelen[fd] > (long)NSP_HARDCAP) ? " *** PREV RX EXCEEDED HARDCAP ***" : "");
                 flog(m);
-                shim_log(m);   /* -> provider (accumulated for NSP_GETTRACE + klog) */
+                shim_log(m);   /* genuine no-reply hang: surface it (bounded: only tries 1/5/30) */
             }
             continue;   /* ~20min cap; data normally <5s */
         }
         break;
     }
-    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK) {   /* M4 trace: what came back + H3 discriminator */
-        if (r >= 0) g_last_truelen[fd] = r;
-        char m[160];
-        if (r < 0) snprintf(m,sizeof m,"nm-trace: RX fd=%d ret=%ld (reply nlmsg_type=%u)", fd, r, g_last_tx[fd]);
-        else       snprintf(m,sizeof m,"nm-trace: RX fd=%d got=%u true_len=%ld cap=%u%s (reply nlmsg_type=%u genl_cmd=%u)",
-                            fd, got, r, (unsigned)NSP_MAXBUF,
-                            (r > (long)NSP_MAXBUF) ? " *** OVER-CAP: H3 CONFIRMED ***" : "", g_last_tx[fd], g_last_cmd[fd]);
-        flog(m);
-        /* Send the OVER-CAP line to the provider immediately (it is the smoking gun); the provider
-         * accumulates it for the boot-doctor to retrieve.  Only over-cap -> bounded, no per-op churn. */
-        if (r > (long)NSP_MAXBUF) shim_log(m);
-    }
+    /* record the true datagram length for the STUCK diagnostic (above) to report on a genuine hang. */
+    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && r >= 0) g_last_truelen[fd] = r;
     if (r < 0) return (ssize_t)fail(r);
     if (addr && alen) *alen = ga;
     if (g_log && got && g_dom[fd]==AF_NETLINK) {           /* count nl80211 scan-result BSSes */
@@ -310,25 +307,40 @@ ssize_t send(int fd, const void *buf, size_t len, int flags){ return sendto(fd,b
 ssize_t recv(int fd, void *buf, size_t len, int flags){ return recvfrom(fd,buf,len,flags,0,0); }
 
 /* netlink/packet clients use sendmsg/recvmsg; flatten a single-iov msghdr to sendto/recvfrom. */
-/* HEAP-allocated per-thread scratch (NOT static __thread): at NSP_MAXBUF=128KB a static __thread
- * array x2 x every NM thread overruns musl's static-TLS budget and corrupts/faults on real hardware.
- * A thread-local POINTER (8 bytes TLS) + a lazily malloc'd buffer keeps the big buffer off the TLS. */
-static char *nsh_scratch(void)
+/* HEAP-allocated per-thread scratch that GROWS on demand (NOT static __thread array): at 128KB a static
+ * __thread array x2 x every NM thread overran musl's static-TLS budget and faulted on real hardware.  A
+ * thread-local POINTER + size (16 bytes TLS) + a lazily (re)alloc'd buffer keeps the big buffer off TLS.
+ * `need` = the caller's real request (libnl's iovtotal); we grow to it so a large AX210 datagram is
+ * received WHOLE instead of truncated.  Floor NSP_MAXBUF (avoid churn on the common small reads), ceil
+ * NSP_HARDCAP (bound the alloc).  On realloc failure keep the old buffer; the caller null-checks. */
+static char *nsh_scratch(size_t need)
 {
-    static __thread char *tmp = 0;
-    if (!tmp) tmp = malloc(NSP_MAXBUF);
-    return tmp;
+    static __thread char  *tmp = 0;
+    static __thread size_t cap = 0;
+    if (need < NSP_MAXBUF)  need = NSP_MAXBUF;
+    if (need > NSP_HARDCAP) need = NSP_HARDCAP;
+    if (cap < need) {
+        char *nb = realloc(tmp, need);
+        if (!nb) return 0;         /* keep old block (realloc left it intact), but signal ENOMEM: the
+                                    * caller MUST NOT read `need` bytes into a buffer smaller than need. */
+        tmp = nb; cap = need;
+    }
+    return tmp;                    /* guaranteed: cap >= need, so the returned buffer holds `need` bytes */
 }
 
 ssize_t sendmsg(int fd, const struct msghdr *msg, int flags)
 {
     resolve();
     if (!routed(fd)) return r_sendmsg(fd, msg, flags);
-    char *tmp = nsh_scratch();
+    size_t want=0; for (int i=0;i<msg->msg_iovlen;i++) want += msg->msg_iov[i].iov_len;
+    /* netlink TX requests are tiny; keep TX bounded to the provider's fixed NSP_MAXBUF reqbuf so an
+     * oversize send fails cleanly here (EMSGSIZE) instead of tripping the provider's guard and killing
+     * the shared connection.  Only the RX path grows (large AX210 GET_WIPHY replies). */
+    if (want > NSP_MAXBUF) { errno=EMSGSIZE; return -1; }
+    char *tmp = nsh_scratch(want);
     if (!tmp) { errno = ENOMEM; return -1; }
     size_t total=0;
     for (int i=0;i<msg->msg_iovlen;i++){ size_t l=msg->msg_iov[i].iov_len;
-        if (total+l > NSP_MAXBUF) { errno=EMSGSIZE; return -1; }
         memcpy(tmp+total, msg->msg_iov[i].iov_base, l); total+=l; }
     return sendto(fd, tmp, total, flags, (struct sockaddr*)msg->msg_name, msg->msg_namelen);
 }
@@ -337,16 +349,38 @@ ssize_t recvmsg(int fd, struct msghdr *msg, int flags)
 {
     resolve();
     if (!routed(fd)) return r_recvmsg(fd, msg, flags);
-    char *tmp = nsh_scratch();
+    /* Read up to the caller's REAL buffer size (libnl sized it via a prior MSG_PEEK|MSG_TRUNC), not a
+     * fixed 128KB — otherwise a large AX210 datagram is truncated here and libnl desyncs.  Grow the
+     * scratch to match (capped at NSP_HARDCAP). */
+    size_t iovtotal = 0; for (int i=0;i<msg->msg_iovlen;i++) iovtotal += msg->msg_iov[i].iov_len;
+    size_t want = iovtotal ? iovtotal : NSP_MAXBUF;
+    if (want > NSP_HARDCAP) want = NSP_HARDCAP;
+    char *tmp = nsh_scratch(want);
     if (!tmp) { errno = ENOMEM; return -1; }
     socklen_t al = msg->msg_namelen;
-    ssize_t n = recvfrom(fd, tmp, NSP_MAXBUF, flags, (struct sockaddr*)msg->msg_name, &al);
+    ssize_t n = recvfrom(fd, tmp, want, flags, (struct sockaddr*)msg->msg_name, &al);
     if (n < 0) return -1;
-    msg->msg_namelen = al; msg->msg_controllen = 0;
-    /* n is the TRUE datagram length (may exceed our buffer via MSG_TRUNC); only min(n,NSP_MAXBUF) bytes
-     * are actually present in tmp. */
-    size_t valid = ((size_t)n < NSP_MAXBUF) ? (size_t)n : (size_t)NSP_MAXBUF;
-    size_t iovtotal = 0; for (int i=0;i<msg->msg_iovlen;i++) iovtotal += msg->msg_iov[i].iov_len;
+    msg->msg_namelen = al;
+    /* NM/libnl set SO_PASSCRED on the netlink socket and DROP any datagram whose recvmsg lacks an
+     * SCM_CREDENTIALS cmsg with creds.pid==0 (kernel) — nm-linux-platform.c _netlink_recv_handle
+     * `goto stop` on `!creds_has || creds.pid`.  The provider relays only the payload, so synthesise
+     * the kernel credential here: every message the LKL delivers on a netlink socket originates in the
+     * (LKL) kernel, so pid=0/uid=0/gid=0 is exactly correct.  Without this, NM ingests ZERO links. */
+    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && msg->msg_control &&
+        msg->msg_controllen >= CMSG_SPACE(sizeof(struct ucred))) {
+        struct cmsghdr *cm = CMSG_FIRSTHDR(msg);
+        cm->cmsg_level = SOL_SOCKET;
+        cm->cmsg_type  = SCM_CREDENTIALS;
+        cm->cmsg_len   = CMSG_LEN(sizeof(struct ucred));
+        struct ucred uc = { 0, 0, 0 };   /* pid=0 => kernel-originated */
+        memcpy(CMSG_DATA(cm), &uc, sizeof uc);
+        msg->msg_controllen = CMSG_SPACE(sizeof(struct ucred));
+    } else {
+        msg->msg_controllen = 0;
+    }
+    /* n is the TRUE datagram length (may exceed our buffer via MSG_TRUNC); only min(n,want) bytes are
+     * actually present in tmp. */
+    size_t valid = ((size_t)n < want) ? (size_t)n : want;
     size_t off=0;
     for (int i=0;i<msg->msg_iovlen && off<valid;i++){ size_t l=msg->msg_iov[i].iov_len; if (l>valid-off) l=valid-off;
         memcpy(msg->msg_iov[i].iov_base, tmp+off, l); off+=l; }
@@ -361,6 +395,15 @@ int setsockopt(int fd, int level, int optname, const void *val, socklen_t len)
 {
     resolve();
     if (!routed(fd)) return r_setsockopt(fd, level, optname, val, len);
+    /* SO_ATTACH_FILTER(26)/SO_ATTACH_BPF(50): optval is a `struct sock_fprog { u16 len; sock_filter
+     * *filter; }` whose `filter` member is a pointer into THIS (client) process.  The provider forwards
+     * the 16-byte sock_fprog verbatim and the LKL's copy_from_user(fprog->filter, len*8) then derefs
+     * that CLIENT pointer inside the PROVIDER's address space -> fatal "no region" fault (crashes the
+     * provider's per-connection thread mid wpa interface-init).  The BPF filter is a RX optimisation and
+     * is redundant with the AF_PACKET socket's bind protocol (ETH_P_PAE) / userspace demux, so no-op it
+     * (return success) rather than crash the provider.  (A full fix would marshal the filter array into
+     * the RPC and reconstruct fprog in the provider.) */
+    if (level == 1 /*SOL_SOCKET*/ && (optname == 26 || optname == 50)) return 0;
     long r = nsp(NSP_SETSOCKOPT, g_remote[fd], level, optname, 0, val,(uint32_t)len, 0,0, 0,0,0,0,0,0);
     return r==0 ? 0 : (int)fail(r);
 }
@@ -421,6 +464,40 @@ int ioctl(int fd, unsigned long req, ...)
     if (r < 0) return (int)fail(r);
     if (got) memcpy(arg, io, got < sizeof io ? got : sizeof io);
     return (int)r;
+}
+
+/* musl's if_indextoname()/if_nametoindex() do the SIOCGIF{NAME,INDEX} ioctl on an AF_UNIX socket, which
+ * the shim does NOT route -> the ioctl never reaches the LKL that owns wlan0 -> NM's supplicant setup
+ * fails with "Cannot find interface N" (nm-supplicant-manager.c _create_iface_dbus_start).  Override both
+ * to use a ROUTED AF_INET socket so the ioctl is carried to the LKL via NSP_IOCTL.  (socket/ioctl/close
+ * below resolve to the shim's own routed overrides.) */
+char *if_indextoname(unsigned int index, char *name)
+{
+    resolve();
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) return 0;
+    struct ifreq ifr; memset(&ifr, 0, sizeof ifr);
+    ifr.ifr_ifindex = (int)index;
+    int r = ioctl(fd, SIOCGIFNAME, &ifr);
+    int e = errno;
+    close(fd);
+    if (r < 0) { errno = e ? e : 19 /*ENODEV*/; return 0; }
+    strncpy(name, ifr.ifr_name, IF_NAMESIZE - 1);
+    name[IF_NAMESIZE - 1] = 0;
+    return name;
+}
+
+unsigned int if_nametoindex(const char *name)
+{
+    resolve();
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) return 0;
+    struct ifreq ifr; memset(&ifr, 0, sizeof ifr);
+    strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
+    int r = ioctl(fd, SIOCGIFINDEX, &ifr);
+    close(fd);
+    if (r < 0) return 0;
+    return (unsigned int)ifr.ifr_ifindex;
 }
 
 /* poll(): route each routed fd through NSP_POLL, real-poll the rest, loop until ready/timeout. */

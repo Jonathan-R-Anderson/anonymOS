@@ -298,6 +298,12 @@ main(int argc, char *argv[])
 
     _nm_utils_is_manager_process = TRUE;
 
+    /* EpinAnonymOS: hos-nm-launch redirects our stderr to the FILE /run/nm.log, so glibc/musl
+     * block-buffers it — if NM stalls early (e.g. processing the real AX210's nl80211) before the
+     * buffer fills, /run/nm.log stays EMPTY and there's no way to see WHERE it stalled.  Make stderr
+     * unbuffered so every --debug line hits the file immediately. */
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     /* Known to cause a possible deadlock upon GDBus initialization:
      * https://bugzilla.gnome.org/show_bug.cgi?id=674885 */
     g_type_ensure(G_TYPE_SOCKET);

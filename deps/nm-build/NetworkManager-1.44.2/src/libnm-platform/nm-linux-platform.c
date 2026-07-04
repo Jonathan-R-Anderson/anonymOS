@@ -11302,8 +11302,14 @@ nm_linux_platform_new(NMDedupMultiIndex *multi_idx,
 {
     gboolean use_udev = FALSE;
 
-    if (nmp_netns_is_initial() && path_is_read_only_fs("/sys") == FALSE)
-        use_udev = TRUE;
+    /* EpinAnonymOS: there is no udevd here (libudev is a no-op enumerator).  NM would otherwise set
+     * use_udev=TRUE because our synthetic /sys is not reported read-only, then wait forever for a
+     * udev "device initialized" event that never comes → every link stays UNMANAGED on the
+     * NM_UNMANAGED_PLATFORM_INIT flag.  Forcing use_udev=FALSE makes NM mark links initialized
+     * immediately from netlink (nmp-object.c _nmp_object_fixup_link_udev_fields), so wlan0 becomes
+     * managed.  Link-type/wifi classification comes from nl80211+sysfs, not udev, so nothing is lost. */
+    (void) nmp_netns_is_initial;
+    (void) path_is_read_only_fs;
 
     return g_object_new(NM_TYPE_LINUX_PLATFORM,
                         NM_PLATFORM_MULTI_IDX,

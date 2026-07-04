@@ -458,8 +458,20 @@ static int epin_str_contains(const char *hay, int haylen, const char *needle)
         if (memcmp(hay + i, needle, (size_t)nl) == 0) return 1;
     return 0;
 }
+static void provtrace_append(const char *s, unsigned n);   /* fwd decl (defined below) */
 static void epin_lkl_print(const char *str, int len)
 {
+    /* WiFi AX210 debug: the driver's own printk shows WHERE the device fails (firmware load / ALIVE /
+     * PCI / DMA).  It's normally dropped (below), so capture the wifi/firmware lines into the provtrace
+     * ring — the boot-doctor pulls that (NSP_GETTRACE) into /run/boot-status.txt so it's readable even
+     * with no terminal + no serial.  32K ring, drop-oldest, so the LAST (failure) lines survive. */
+    static const char *const wifi[] = {
+        "iwlwifi", "iwl_", "firmware", "ucode", "pnvm", "ALIVE", "alive", "cfg80211", "mac80211",
+        "0xFFFFFFFF", "not respond", "timeout", "Timeout", "Failed", "failed", "error", "Error", "IRQ", 0
+    };
+    for (int i = 0; wifi[i]; i++)
+        if (epin_str_contains(str, len, wifi[i])) { provtrace_append(str, (unsigned)len); break; }
+
     static const char *const keep[] = {
         "panic", "Panic", "Oops", "oops", "BUG", "Call Trace", "RIP:", "Kernel panic",
         "segfault", "unable to handle", "deadlock", 0
@@ -648,7 +660,12 @@ static unsigned        g_provtracelen;
 static pthread_mutex_t g_provtracelock = PTHREAD_MUTEX_INITIALIZER;
 static void provtrace_append(const char *s, unsigned n)
 {
-    pthread_mutex_lock(&g_provtracelock);
+    /* NON-BLOCKING: this is called from epin_lkl_print() = the LKL console/printk callback, which runs on
+     * the LKL CPU thread in emulated-atomic context.  Under a real-AX210 firmware error-storm the printk
+     * rate can be high; a blocking lock here could serialize/stall the LKL's printk-heavy thread and stop
+     * it pumping USB-HID input -> the kernel-drawn cursor freezes.  trylock-and-drop: if the ring is busy
+     * (e.g. the NSP_GETTRACE consumer holds it), just drop this diagnostic line — never block the LKL. */
+    if (pthread_mutex_trylock(&g_provtracelock) != 0) return;
     if (g_provtracelen + n + 1 >= PROVTRACE_CAP) {         /* full: drop oldest half */
         unsigned drop = PROVTRACE_CAP / 2;
         if (drop < g_provtracelen) { memmove(g_provtrace, g_provtrace + drop, g_provtracelen - drop); g_provtracelen -= drop; }
@@ -664,8 +681,13 @@ static void provtrace_append(const char *s, unsigned n)
 /* Serve one connected client: a loop of framed RPC requests, each executed against the LKL. */
 static void epin_net_serve_conn(int cs)
 {
+    /* respbuf GROWS on demand (up to NSP_HARDCAP) so a large AX210 RX datagram is carried whole instead
+     * of truncated.  reqbuf stays FIXED at NSP_MAXBUF: netlink TX requests are tiny, and keeping reqbuf
+     * bounded by NSP_MAXBUF keeps every respbuf-sized copy (esp. NSP_IOCTL's memcpy(respbuf,reqbuf,buflen))
+     * within respcap (>= NSP_MAXBUF always).  Small reads (the common case, all of QEMU) never realloc. */
+    size_t respcap = NSP_MAXBUF;
     unsigned char *reqbuf  = malloc(NSP_MAXBUF);
-    unsigned char *respbuf = malloc(NSP_MAXBUF);
+    unsigned char *respbuf = malloc(respcap);
     unsigned char reqaddr[256], respaddr[256];
     if (!reqbuf || !respbuf) { free(reqbuf); free(respbuf); close(cs); return; }
     for (;;) {
@@ -695,7 +717,15 @@ static void epin_net_serve_conn(int cs)
             rs.ret = lkl_syscall(__lkl__NR_sendto, p);
             break;
         case NSP_RECVFROM: {
-            unsigned maxlen = (unsigned)rq.a0; if (maxlen > NSP_MAXBUF) maxlen = NSP_MAXBUF;
+            /* maxlen = the client's requested capacity; floor a bad/zero/negative a0 to NSP_MAXBUF and
+             * ceil to NSP_HARDCAP so a garbage value can neither under-read nor trigger a huge alloc. */
+            unsigned maxlen = ((int)rq.a0 <= 0) ? NSP_MAXBUF : (unsigned)rq.a0;
+            if (maxlen > NSP_HARDCAP) maxlen = NSP_HARDCAP;
+            if (maxlen > respcap) {   /* grow respbuf to hold the requested (large) datagram whole */
+                unsigned char *nb = realloc(respbuf, maxlen);
+                if (!nb) { rs.ret = -12 /*ENOMEM*/; break; }
+                respbuf = nb; respcap = maxlen;
+            }
             unsigned alen = sizeof respaddr;
             /* Wait up to 5s for readability first, so a missing/expected-empty reply can't block
              * this client's thread forever (e.g. a client that reads past a netlink dump's end). */

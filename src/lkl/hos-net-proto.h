@@ -20,6 +20,13 @@
  * libnl's dump walker desyncs and never sees NLMSG_DONE -> NM hangs.  (QEMU never hits this: no wiphy,
  * tiny rtnetlink dumps.) */
 #define NSP_MAXBUF 131072
+/* NSP_MAXBUF is now only the INITIAL/floor buffer size, NOT a hard truncation point.  A single netlink
+ * SOCK_DGRAM recvfrom drains one whole datagram; the real AX210's nl80211 GET_WIPHY (+ the big
+ * CTRL_GETFAMILY NEWFAMILY) can exceed 128KB, and the tail is DISCARDED if the buffer is too small (a 2nd
+ * recv can't recover it) -> libnl desyncs, never sees NLMSG_DONE, NM hangs.  So both ends GROW their
+ * receive buffer to whatever the client actually requested (libnl sizes it via MSG_PEEK|MSG_TRUNC), up to
+ * this shared sanity cap.  2MB dwarfs any realistic nl80211 datagram while bounding every allocation. */
+#define NSP_HARDCAP (2u * 1024u * 1024u)
 
 enum {
     NSP_SOCKET      = 1,  /* a0=domain a1=type a2=protocol            -> ret = lkl fd            */

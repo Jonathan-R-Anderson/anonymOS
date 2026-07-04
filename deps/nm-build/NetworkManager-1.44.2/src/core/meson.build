@@ -255,6 +255,10 @@ NetworkManager_all_sym = executable(
   link_whole: [
     libNetworkManager,
     libNetworkManagerBase,
+    # EpinAnonymOS: wifi factory linked in statically as an internal factory (dlopen plugin path
+    # breaks GObject type inheritance through our custom loader).  See devices/wifi/meson.build.
+    libnm_device_factory_wifi_internal,
+    libnm_device_plugin_wifi_static,
     libnm_core_aux_intern,
     libnm_core_impl,
     libnm_crypto,
@@ -296,6 +300,9 @@ NetworkManager = executable(
   link_with: [
     libNetworkManager,
     libNetworkManagerBase,
+    # EpinAnonymOS: wifi factory linked statically (see devices/wifi/meson.build).
+    libnm_device_factory_wifi_internal,
+    libnm_device_plugin_wifi_static,
     libnm_core_aux_intern,
     libnm_core_impl,
     libnm_crypto,

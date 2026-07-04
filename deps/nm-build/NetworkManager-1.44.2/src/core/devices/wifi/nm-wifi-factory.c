@@ -40,7 +40,9 @@ typedef struct {
     NMDeviceFactoryClass parent;
 } NMWifiFactoryClass;
 
-static GType nm_wifi_factory_get_type(void);
+/* EpinAnonymOS: non-static so it can be registered as an INTERNAL factory (_ADD_INTERNAL) when the
+ * wifi factory is linked into the daemon instead of loaded as an external plugin. */
+GType nm_wifi_factory_get_type(void);
 
 G_DEFINE_TYPE(NMWifiFactory, nm_wifi_factory, NM_TYPE_DEVICE_FACTORY)
 

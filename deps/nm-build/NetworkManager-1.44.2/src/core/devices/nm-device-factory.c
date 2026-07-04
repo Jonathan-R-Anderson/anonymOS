@@ -409,6 +409,13 @@ nm_device_factory_manager_load_factories(NMDeviceFactoryManagerFactoryFunc callb
     _ADD_INTERNAL(nm_vxlan_device_factory_get_type);
     _ADD_INTERNAL(nm_wireguard_device_factory_get_type);
     _ADD_INTERNAL(nm_wpan_device_factory_get_type);
+    /* EpinAnonymOS: wifi is linked in statically as an internal factory (our custom ELF loader
+     * mis-links GObject type inheritance across the dlopen/BIND_LOCAL plugin boundary, so the
+     * external libnm-device-plugin-wifi.so is unusable).  Registered like the others above. */
+    _ADD_INTERNAL(nm_wifi_factory_get_type);
 
-    load_factories_from_dir(NMPLUGINDIR, callback, user_data);
+    /* EpinAnonymOS: external device plugins disabled — wifi (our only one) is now internal, and a
+     * later external factory would overwrite the internal one in factories_by_link. */
+    /* load_factories_from_dir(NMPLUGINDIR, callback, user_data); */
+    (void) load_factories_from_dir;
 }

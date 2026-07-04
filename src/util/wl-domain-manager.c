@@ -342,8 +342,8 @@ static void ctl_cycle(struct dconf *c, int i, int dir)
 }
 
 // ── DM10.7 tabbed-layout labels + geometry (shared by the draw + click passes) ──────────────
-#define N_TOOL 4
-static const char *TOOL_LABEL[N_TOOL] = { "+ New", "Clone", "Import", "Marketplace" };
+#define N_TOOL 5
+static const char *TOOL_LABEL[N_TOOL] = { "+ New", "Clone", "Import", "Marketplace", "Logs/Shell" };
 static const char *TAB_LABEL[N_TABS]  = { "Overview","Filesystem","Packages","Network","Permissions","Startup","Appearance" };
 enum { TAB_W = (DEFAULT_WIDTH - LIST_W) / N_TABS };   // fixed tab column width
 
@@ -361,7 +361,7 @@ static const char *FSBTN_LABEL[N_FSBTN] = { "+ Allow ro", "+ Allow rw", "+ Deny"
 static const int   FSBTN_MODE [N_FSBTN] = { 1, 2, 3, 2 };   // edit_mode for the path dialog (Mount == rw)
 
 static void toolbar_btn_rect(int idx, int *x, int *y, int *w, int *h) {
-    static const int wd[N_TOOL] = { 74, 70, 74, 110 };
+    static const int wd[N_TOOL] = { 74, 70, 74, 110, 96 };
     *y = HEADER_H + 6; *h = TOOLBAR_H - 12;
     int cx = PAD;
     for (int i = 0; i < idx; i++) cx += wd[i] + 8;
@@ -1167,6 +1167,8 @@ static void handle_click(struct app *app)
                 } else if (i == 2) {                 // Import → instantiate from the selected template
                     snprintf(app->editbuf, sizeof(app->editbuf), "%.16s-instance", app->doms[app->sel].name);
                     app->editlen = (int)strlen(app->editbuf); app->edit_mode = 5; app->editing = 1;
+                } else if (i == 4) {                 // Logs/Shell → scrollable diagnostic log viewer
+                    launch_app(app, "/wl-logview");  // read /run/nm.log etc. (no terminal on the desktop)
                 }
                 redraw_commit(app, "toolbar");
                 return;                              // Marketplace: out of scope (P2P needs a network stack)

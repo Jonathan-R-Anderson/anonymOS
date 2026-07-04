@@ -30,6 +30,12 @@ private enum ulong PTE_PS = 1UL << 7;
 // if it is the last reference, just restores write permission in place).
 private enum ulong PTE_COW = 1UL << 9;
 
+// DIAGNOSTIC (Hyprland heap-corruption hunt): counts how often fork's !privatePage
+// branch shares an ALREADY-CoW pool frame — the rank-1 suspect's precondition, where
+// a new holder is added with no matching physPageRefInc.  If this stays 0 across a
+// Hyprland boot, candidate 1 cannot be the corruptor.
+__gshared ulong g_cowShareNoRefN = 0;
+
 // Walk the 4-level table rooted at pml4Phys (through the HHDM) and return a
 // pointer to the leaf PTE backing `va`, or null if `va` is not mapped by a 4K
 // page (absent at any level, or a 2 MiB/1 GiB large page).
@@ -149,6 +155,16 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
 
                     if (!privatePage) {
                         dpt[d] = spt[d];
+                        // DIAGNOSTIC: an already-CoW pool frame reaching the !private
+                        // branch gains the child as a holder WITHOUT a physPageRefInc
+                        // → undercount → premature free (rank-1 suspect).  Log if it fires.
+                        if (poolPage && (spt[d] & PTE_COW) && g_cowShareNoRefN < 32) {
+                            ++g_cowShareNoRefN;
+                            klog("[fork] COW pool frame shared w/o refInc srcPage=");
+                            klog_hex(srcPage); klog(" va="); klog_hex(va);
+                            klog(" owned="); klog_hex(region ? (region.owned ? 1 : 0) : 9);
+                            klog("\n");
+                        }
                         continue;
                     }
 

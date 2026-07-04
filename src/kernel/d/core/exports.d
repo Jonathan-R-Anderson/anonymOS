@@ -1037,6 +1037,11 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // Hyprland: take the real GL scene-render path (GLRenderer.cpp gates it on HOS_SCENE_RENDER),
+    // NOT the clear-only path that calls hosComposeShmWindows — the latter is currently crashing
+    // in its per-frame cairo allocation.  (Weston ignores this var, so it's harmless there.)
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_SCENE_RENDER=1\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     }
     // NB: AQ_TRACE=1 and EGL_LOG_LEVEL=debug were bring-up debug aids. They make
     // aquamarine log a per-frame scheduleFrame trace and Mesa log every EGL call

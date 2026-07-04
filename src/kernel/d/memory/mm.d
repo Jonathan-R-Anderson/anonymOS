@@ -34,6 +34,37 @@ __gshared size_t g_free_count = 0;
 __gshared ulong  g_free_calls = 0;            // diag counters
 __gshared ulong  g_reuse_hits = 0;
 
+// Double-free guard: one "currently in the free list" bit per tracked page (PFN-indexed).
+// Without it, a page freed twice with no intervening alloc lands in g_free_pages TWICE and is
+// then handed to two owners → use-after-free → musl heap-metadata corruption (alloc_slot NULL-meta).
+__gshared ubyte[FREE_LIST_CAP / 8] g_physPageFreeBit;
+__gshared ulong g_doubleFreeCount = 0;
+
+// DIAGNOSTIC (Hyprland heap-corruption hunt): poison-on-free / verify-on-reuse.
+// When enabled, a page is stamped with a per-word poison the instant it enters the
+// free list; when it is popped for reuse the poison is checked BEFORE the existing
+// zero-loop wipes it.  A mismatch means something wrote to the frame while it was
+// free — i.e. a still-live mapping (use-after-free / double-hand-out), the exact
+// class that corrupts musl's mallocng metadata (alloc_slot NULL-meta).  Self-cleaning
+// (the zero-loop still runs, so userspace never sees poison); the only cost is two
+// 512-word loops, so gate it OFF for the shipping desktop.  MUST be false to ship.
+__gshared bool  g_mmUafProbe = false;   // set true to re-hunt a physical-page UAF (proved CLEAN 2026-07-04)
+__gshared ulong g_uafHits = 0;
+enum ulong UAF_POISON = 0xF00DDEAD00000000UL;
+private bool physFreeBitTestSet(ulong addr) {   // true iff it was ALREADY marked free
+    size_t idx = pageAuditIndex(addr);
+    if (idx >= FREE_LIST_CAP) return false;      // untracked (page above table range) — no guard
+    size_t b = idx >> 3; ubyte m = cast(ubyte)(1 << (idx & 7));
+    if (g_physPageFreeBit[b] & m) return true;
+    g_physPageFreeBit[b] |= m;
+    return false;
+}
+private void physFreeBitClear(ulong addr) {      // called when a page is handed back out
+    size_t idx = pageAuditIndex(addr);
+    if (idx >= FREE_LIST_CAP) return;
+    g_physPageFreeBit[idx >> 3] &= cast(ubyte)~(1 << (idx & 7));
+}
+
 // Phase 3 object-memory audit: physical pages can be attributed to the
 // MemRegion currently mapping them and/or to a shared VMO backing object.
 // Direct-indexed for the 512 MiB guest size this kernel targets today; pages
@@ -180,10 +211,20 @@ private void free_phys_page_impl(ulong addr) {
         if (idx < PAGE_AUDIT_CAP) g_physPageRef[idx] = 0;
     }
     if (g_free_count >= FREE_LIST_CAP) return; // list full — drop (leak)
+    if (physFreeBitTestSet(addr)) {            // already in the free list → DOUBLE FREE: skip the re-add
+        ++g_doubleFreeCount;
+        if (g_doubleFreeCount <= 24) { klog("[mm] double-free prevented addr="); klog_hex(addr); klog("\n"); }
+        return;
+    }
     physPageReleaseUntyped(addr);
     physPageClearOwner(addr);
     g_free_pages[g_free_count++] = addr;
     ++g_free_calls;
+    // Stamp poison so a stray write by a still-live mapping is detectable on reuse.
+    if (g_mmUafProbe && hhdm_offset != 0) {
+        ulong* p = cast(ulong*)(addr + hhdm_offset);
+        for (size_t k = 0; k < 512; k++) p[k] = UAF_POISON | k;
+    }
 }
 
 void free_phys_pages(ulong addr, size_t n) {
@@ -294,6 +335,23 @@ private ulong alloc_phys_page_impl() {
     if (g_free_count > 0) {
         ulong ret = g_free_pages[--g_free_count];
         ++g_reuse_hits;
+        // Verify the poison survived intact.  Any altered word = a live mapping wrote
+        // to this frame while it was free → the use-after-free we are hunting.  Logs
+        // the phys frame BEFORE the eventual mallocng crash so it can be cross-referenced.
+        if (g_mmUafProbe && hhdm_offset != 0) {
+            ulong* pv = cast(ulong*)(ret + hhdm_offset);
+            for (size_t k = 0; k < 512; k++)
+                if (pv[k] != (UAF_POISON | k)) {
+                    ++g_uafHits;
+                    if (g_uafHits <= 32) {
+                        klog("[mm] USE-AFTER-FREE: reused frame written while free phys=");
+                        klog_hex(ret); klog(" word="); klog_hex(k);
+                        klog(" val="); klog_hex(pv[k]); klog("\n");
+                    }
+                    break;
+                }
+        }
+        physFreeBitClear(ret);   // no longer in the free list
         { size_t ri = pageAuditIndex(ret); if (ri < PAGE_AUDIT_CAP) g_physPageRef[ri] = 0; }
         physPageClearOwner(ret);
         physPageSetUntypedOwner(ret, chargedObj);

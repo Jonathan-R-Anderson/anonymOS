@@ -38,7 +38,7 @@ extern char **environ;
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 320, WIN_H = 420 };
+enum { WIN_W = 320, WIN_H = 472 };
 
 /* --- layout geometry (shared by the renderer and the hit-tester) --- */
 enum {
@@ -49,16 +49,17 @@ enum {
     WIFI_Y   = 48,  WIFI_H = 60,
     VOL_Y    = 120, VOL_H  = 64,
     BAT_Y    = 196, BAT_H  = 52,
+    TOPBAR_Y = 256, TOPBAR_H = 44,   /* Hyprland top-bar hide/show toggle */
 
-    ACT_Y    = 260, ACT_H  = 64,   /* four square buttons */
-    LOGOUT_Y = 336, LOGOUT_H = 48,
+    ACT_Y    = 312, ACT_H  = 64,   /* four square buttons */
+    LOGOUT_Y = 388, LOGOUT_H = 48,
 
     TRACK_X  = 96, TRACK_W = 180, TRACK_Y = 160, TRACK_H = 6,
     KNOB_W   = 14, KNOB_H = 22,
 };
 
 /* clickable regions returned by hit_region() */
-enum { R_NONE=0, R_CLOSE, R_WIFI, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT };
+enum { R_NONE=0, R_CLOSE, R_WIFI, R_TOPBAR, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT };
 
 struct app {
     struct wl_display *display;
@@ -198,6 +199,15 @@ static void session_action(const char *cmd){
     else if (!strcmp(cmd, "reboot"))   reboot(RB_AUTOBOOT);    /* LINUX_REBOOT_CMD_RESTART   */
 }
 
+/* --- Hyprland top-bar hide/show: /wl-layer-bar polls /run/hos-bar.hidden once a
+ * second, so we toggle the bar by creating/removing that flag file.  On the Weston
+ * desktop (server-managed panel) the flag is simply inert — harmless. --- */
+static int topbar_hidden(void){ struct stat st; return stat("/run/hos-bar.hidden", &st) == 0; }
+static void topbar_toggle(void){
+    if (topbar_hidden()) unlink("/run/hos-bar.hidden");
+    else { mkdir("/run", 0755); int fd = open("/run/hos-bar.hidden", O_CREAT|O_WRONLY, 0644); if (fd >= 0) close(fd); }
+}
+
 /* --- hit-testing: which region is under (px,py)? --- */
 static void act_btn_rect(int i, int *x, int *y, int *w, int *h){
     int bw = (CARD_W - 3*8) / 4;            /* four buttons, three 8px gaps */
@@ -210,6 +220,7 @@ static int hit_region(struct app *app, double px, double py){
     (void)app;
     if (in_rect(px,py,CLOSE_X,CLOSE_Y,CLOSE_W,CLOSE_H)) return R_CLOSE;
     if (in_rect(px,py,CARD_X,WIFI_Y,CARD_W,WIFI_H))     return R_WIFI;
+    if (in_rect(px,py,CARD_X,TOPBAR_Y,CARD_W,TOPBAR_H)) return R_TOPBAR;
     static const int reg[4] = { R_SETTINGS, R_LOCK, R_RESTART, R_POWER };
     for (int i=0;i<4;i++){ int bx,by,bw,bh; act_btn_rect(i,&bx,&by,&bw,&bh);
         if (in_rect(px,py,bx,by,bw,bh)) return reg[i]; }
@@ -287,6 +298,18 @@ static void draw_menu(struct app *app){
     draw_text(app, "Battery", CARD_X+52, BAT_Y+9, 160, 15, TXT);
     draw_text(app, "AC", CARD_X+52, BAT_Y+31, 120, 12, DIM);
 
+    /* --- Top bar row: hide/show the Hyprland top bar (a GNOME-style pill switch) --- */
+    {
+        int tbHidden = topbar_hidden();
+        fill_rect(app, CARD_X, TOPBAR_Y, CARD_W, TOPBAR_H, (app->hover==R_TOPBAR)?ROWH:ROW);
+        draw_text(app, "Top bar", CARD_X+16, TOPBAR_Y+7, 160, 15, TXT);
+        draw_text(app, tbHidden ? "Hidden" : "Shown", CARD_X+16, TOPBAR_Y+25, 120, 12, tbHidden?DIM:OK);
+        int swW=46, swH=24, swX=CARD_X+CARD_W-swW-14, swY=TOPBAR_Y+(TOPBAR_H-swH)/2;
+        fill_rect(app, swX, swY, swW, swH, tbHidden?TRK:OK);              /* pill: shown=green, hidden=track */
+        int knobX = tbHidden ? swX+3 : swX+swW-(swH-6)-3;                 /* knob slides left/right */
+        fill_rect(app, knobX, swY+3, swH-6, swH-6, TXT);
+    }
+
     /* --- action buttons (Settings / Lock / Restart / Power) --- */
     static const char *labels[4] = { "Settings", "Lock", "Restart", "Power" };
     static const int   reg[4]    = { R_SETTINGS, R_LOCK, R_RESTART, R_POWER };
@@ -362,6 +385,7 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t 
     switch (hit_region(a, a->pointer_x, a->pointer_y)){
         case R_CLOSE:    exit(0);
         case R_WIFI:     launch("/wl-wifi-menu"); break;
+        case R_TOPBAR:   topbar_toggle(); redraw_commit(a); break;
         case R_SETTINGS: launch("/wl-domain-manager"); break;
         case R_LOCK:     session_action("lock"); break;
         case R_RESTART:  session_action("reboot"); break;

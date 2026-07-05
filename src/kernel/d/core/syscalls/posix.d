@@ -5728,6 +5728,12 @@ private immutable VFEntry[] g_vfs = [
     { "/sys/dev/char/226:0/device/subsystem_vendor", "0x1af4\n" },
     { "/sys/dev/char/226:0/device/subsystem_device", "0x1100\n" },
     { "/sys/dev/char/226:0/device/revision",         "0x01\n"   },
+    // card0's OWN char-node uevent (mirrors renderD128's at 226:128): aquamarine /
+    // libudev-zero opens this directly during DRM enumeration; without it the read
+    // returns NULL and libudev-zero strlen()s it → NULL-deref crash right after
+    // "Found 1 GPUs".  (Weston never hit this — it's handed the device directly.)
+    { "/sys/dev/char/226:0/uevent",
+      "MAJOR=226\nMINOR=0\nDEVNAME=dri/card0\nDEVTYPE=drm_minor\n" },
     { "/sys/dev/char/226:128/device/uevent",
       "DRIVER=virtio_gpu\nPCI_CLASS=30000\nPCI_ID=1AF4:1050\n" ~
       "PCI_SUBSYS_ID=1AF4:1100\nPCI_SLOT_NAME=0000:00:04.0\n" ~
@@ -5738,9 +5744,9 @@ private immutable VFEntry[] g_vfs = [
     { "/sys/dev/char/226:128/device/subsystem_device", "0x1100\n" },
     { "/sys/dev/char/226:128/device/revision",         "0x01\n"   },
     { "/sys/dev/char/226:128/uevent",
-      "MAJOR=226\nMINOR=128\nDEVNAME=dri/renderD128\nDEVTYPE=drm_render_minor\n" },
+      "MAJOR=226\nMINOR=128\nDEVNAME=dri/renderD128\nDEVTYPE=drm_minor\n" },   // aquamarine matches render nodes by devnode(renderD*)+DEVTYPE=drm_minor, not a separate drm_render_minor type
     { "/sys/class/drm/renderD128/uevent",
-      "MAJOR=226\nMINOR=128\nDEVNAME=dri/renderD128\nDEVTYPE=drm_render_minor\n" },
+      "MAJOR=226\nMINOR=128\nDEVNAME=dri/renderD128\nDEVTYPE=drm_minor\n" },   // aquamarine matches render nodes by devnode(renderD*)+DEVTYPE=drm_minor, not a separate drm_render_minor type
     { "/sys/class/drm/card0-HDMI-A-1/status",  "connected\n"  },
     { "/sys/class/drm/card0-HDMI-A-1/enabled", "enabled\n"    },
     { "/sys/class/net/lo/address",             "00:00:00:00:00:00\n" },
@@ -6166,6 +6172,22 @@ private bool getSyntheticReadlinkTarget(const(char)* path, out string target) {
     if (cstrEq(path, "/sys/class/input/event0/subsystem") ||
         cstrEq(path, "/sys/class/input/event1/subsystem")) {
         target = "/sys/class/input";
+        return true;
+    }
+    // Aquamarine (Hyprland's backend) ENUMERATES DRM via libudev-zero: it readdir's
+    // /sys/dev/char, readlinks each <maj:min> to its canonical class device to derive
+    // the sysname (card0/renderD128), then reads that dir's uevent + follows its
+    // subsystem symlink.  Weston never needed these (it's handed --drm-device=card0
+    // directly), so only the input nodes were wired — leaving aquamarine's scanGPUs
+    // EMPTY ("No gpus in scanGPUs" → software-readback fallback → the Mesa swrast
+    // heap overflow that crashes Hyprland).  Mirror the input pattern so card0 is
+    // discoverable → the real DRM/KMS backend (which the kernel already drives for
+    // Weston) starts → no readback path at all.
+    if (cstrEq(path, "/sys/dev/char/226:0"))   { target = "/sys/class/drm/card0";      return true; }
+    if (cstrEq(path, "/sys/dev/char/226:128")) { target = "/sys/class/drm/renderD128"; return true; }
+    if (cstrEq(path, "/sys/class/drm/card0/subsystem") ||
+        cstrEq(path, "/sys/class/drm/renderD128/subsystem")) {
+        target = "/sys/class/drm";
         return true;
     }
     // R3: the virtio-gpu DRM nodes' .../device/subsystem must resolve to a path
@@ -10107,6 +10129,7 @@ private enum ulong DRM_CAP_PRIME                = 0x5;   // R3: dma-buf import/e
 private enum ulong DRM_CAP_TIMESTAMP_MONOTONIC  = 0x6;
 private enum ulong DRM_CAP_CURSOR_WIDTH         = 0x8;
 private enum ulong DRM_CAP_CURSOR_HEIGHT        = 0x9;
+private enum ulong DRM_CAP_CRTC_IN_VBLANK_EVENT = 0x12;  // aquamarine (Hyprland) checkFeatures needs this = 1, else "DRM Backend failed"
 
 // DRM client capabilities (DRM_IOCTL_SET_CLIENT_CAP).
 private enum ulong DRM_CLIENT_CAP_STEREO_3D        = 1;
@@ -11372,6 +11395,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         case DRM_CAP_TIMESTAMP_MONOTONIC:  val = 1;  break;
         case DRM_CAP_CURSOR_WIDTH:         val = 64; break;
         case DRM_CAP_CURSOR_HEIGHT:        val = 64; break;
+        case DRM_CAP_CRTC_IN_VBLANK_EVENT: val = 1;  break;  // aquamarine checkFeatures: fatal if 0
         default: break;
         }
 
@@ -11728,7 +11752,12 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     // report zero properties (fine for the legacy, non-atomic path).
     case DRM_NR_MODE_OBJ_GETPROPERTIES: {
         uint objType = userRead!uint(arg + 24);
-        if (objType == DRM_MODE_OBJECT_PLANE) {
+        uint objId   = userRead!uint(arg + 20);
+        // aquamarine's getDRMProp queries with DRM_MODE_OBJECT_ANY (0) + the plane id
+        // (not OBJECT_PLANE like Weston), so match on the object ID too — otherwise it
+        // reads 0 props, can't resolve the "type" value, and aqPlane->init fails →
+        // "Failed initializing resources" → DRM Backend failed.
+        if (objType == DRM_MODE_OBJECT_PLANE || objId == DRM_PLANE_ID) {
             ulong propsPtr  = userRead!ulong(arg + 0);
             ulong valuesPtr = userRead!ulong(arg + 8);
             uint  inCount   = userRead!uint(arg + 16);

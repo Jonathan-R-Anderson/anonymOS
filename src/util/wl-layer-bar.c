@@ -362,6 +362,7 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 /* --- layer surface --- */
 static void layer_configure(void *d, struct zwlr_layer_surface_v1 *s, uint32_t serial, uint32_t w, uint32_t h){
     struct app *a = d;
+    { char b[64]; snprintf(b,sizeof b,"BAR: configure %ux%u -> render", w, h); log_line(b); }
     zwlr_layer_surface_v1_ack_configure(s, serial);
     int nw = (int)w, nh = (int)h ? (int)h : BAR_H;
     if (nw <= 0) nw = 1;
@@ -434,6 +435,7 @@ int main(void){
     zwlr_layer_surface_v1_set_keyboard_interactivity(app.layer_surface, 0);/* never steal focus */
     wl_surface_commit(app.surface);                                        /* triggers the first configure */
     wl_display_flush(app.display);
+    log_line("BAR: layer surface committed, awaiting configure");
 
     int wlfd = wl_display_get_fd(app.display);
     while (app.running){

@@ -161,6 +161,32 @@ public void fdtabSetActive(int fdTabId) {
     g_fdTable = &g_fdTabs[fdTabId][0];
 }
 
+// Bump the backing-INSTANCE refcount for fd types whose kernel instance is shared
+// across fd-table copies (fork) and dups: epoll instances, eventfds, memfd records.
+// Without this, ANY copy closing (e.g. a short-lived forked child exiting and
+// taskCloseAllFds'ing its copied table) destroyed the instance out from under the
+// parent — a forked child of the compositor killed the compositor's wayland-event-loop
+// EPOLL (clients were accepted but never dispatched: no configure, dead registry) and
+// reclaimed its aliased scanout MEMFDs.  Sockets/pipes already had refcounts; this
+// closes the gap for the instance-table-backed types.  (Timerfds have no close-time
+// destroy at all, so they are not affected.)
+public void fdInstanceRef(File* f) @nogc nothrow {
+    if (f is null) return;
+    if (f.type == FileType.FD_EPOLL) {
+        int eid = cast(int)cast(size_t)f.backend;
+        if (eid >= 0 && eid < EPOLL_MAX_INSTANCES && g_epollTable[eid].inUse) ++g_epollTable[eid].refs;
+    } else if (f.type == FileType.FD_EVENTFD) {
+        int eid = cast(int)cast(size_t)f.backend;
+        if (eid >= 0 && eid < EVENTFD_MAX && g_eventfd_inUse[eid]) ++g_eventfd_refs[eid];
+    } else if (f.type == FileType.FD_MEMFD) {
+        int mid = cast(int)cast(size_t)f.backend;
+        if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse) ++g_memfds[mid].refs;
+    } else if (f.type == FileType.FD_TIMERFD) {
+        int tid = cast(int)cast(size_t)f.backend;
+        if (tid >= 0 && tid < TIMERFD_MAX && g_timerfds[tid].inUse) ++g_timerfds[tid].refs;
+    }
+}
+
 // fork(): copy the parent process's fd table to the child's, bumping the
 // refcounts of shared kernel objects (sockets/pipes) so the child holds its own
 // reference and the parent closing its copy doesn't destroy them.
@@ -181,6 +207,8 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
         } else if (f.type == FileType.FD_PIPE_WRITE) {
             auto p = getPipe(cast(size_t)pipeIdFromFd(f));
             if (p !is null) ++p.writers;
+        } else {
+            fdInstanceRef(f);   // epoll/eventfd/memfd instance refs (see helper)
         }
         if (f.type != FileType.FD_NONE)
             publishFdInTable(dstTabId, cast(int)i, f, srcTabId, cast(int)i);
@@ -232,7 +260,7 @@ align(1):                 // pack: `data` at offset 4 (right after the 4-byte
 }
 static assert(EpollEvent.sizeof == 12);
 private struct EpollWatch { bool active; int watchFd; uint events; ulong data; }
-private struct EpollInst  { bool inUse; ubyte nestDepth; EpollWatch[EPOLL_MAX_WATCHES] watches; }
+private struct EpollInst  { bool inUse; ubyte nestDepth; uint refs; EpollWatch[EPOLL_MAX_WATCHES] watches; }
 
 __gshared EpollInst[EPOLL_MAX_INSTANCES] g_epollTable;
 
@@ -243,6 +271,7 @@ private enum int EFD_NONBLOCK  = 0x800;
 private enum int EFD_CLOEXEC   = 0x80000;
 
 __gshared ulong[EVENTFD_MAX] g_eventfd_counters;
+__gshared uint[EVENTFD_MAX]  g_eventfd_refs;    // fd-copy refcount (fork/dup); destroy at 0
 __gshared int[EVENTFD_MAX]   g_eventfd_flags;
 __gshared bool[EVENTFD_MAX]  g_eventfd_inUse;
 
@@ -3162,22 +3191,44 @@ private long fileObjClose(ObjHeader* oh) {
     if (f.type == FileType.FD_SOCKET) {
         closeLocalSocket(f);
     } else if (f.type == FileType.FD_EPOLL) {
+        // Instance is shared across fork-copied tables and dups (see fdInstanceRef);
+        // destroy only when the LAST reference closes — a forked child exiting must
+        // not kill the parent's live event loop.
         int eid = cast(int)cast(size_t)f.backend;
-        if (eid >= 0 && eid < EPOLL_MAX_INSTANCES) g_epollTable[eid].inUse = false;
+        if (eid >= 0 && eid < EPOLL_MAX_INSTANCES && g_epollTable[eid].inUse) {
+            if (g_epollTable[eid].refs > 1) --g_epollTable[eid].refs;
+            else g_epollTable[eid].inUse = false;
+        }
     } else if (f.type == FileType.FD_EVENTFD) {
         int eid = cast(int)cast(size_t)f.backend;
-        if (eid >= 0 && eid < EVENTFD_MAX) g_eventfd_inUse[eid] = false;
+        if (eid >= 0 && eid < EVENTFD_MAX && g_eventfd_inUse[eid]) {
+            if (g_eventfd_refs[eid] > 1) --g_eventfd_refs[eid];
+            else g_eventfd_inUse[eid] = false;
+        }
+    } else if (f.type == FileType.FD_TIMERFD) {
+        // Free the timer slot when the last fd copy closes (timerfds previously never
+        // freed → 16-slot exhaustion during boot churn → the compositor's idle timerfd
+        // create failed and the frame engine died after its first frame).
+        int ttid = cast(int)cast(size_t)f.backend;
+        if (ttid >= 0 && ttid < TIMERFD_MAX && g_timerfds[ttid].inUse) {
+            if (g_timerfds[ttid].refs > 1) --g_timerfds[ttid].refs;
+            else g_timerfds[ttid] = TimerFdRec.init;
+        }
     } else if (f.type == FileType.FD_MEMFD) {
         // Reclaim PRIME-aliased records (borrowed GEM pages) so the swapchain's
         // buffer cycle doesn't exhaust the memfd table.  Owner memfds are left
         // as-is (their pages are bump-allocated and never freed anyway).
+        // Refcounted like epoll above: only the last fd copy reclaims.
         int mid = cast(int)cast(size_t)f.backend;
-        if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].aliased) {
+        if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].refs > 1) {
+            --g_memfds[mid].refs;
+        } else if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].aliased) {
             if (g_memfds[mid].vmoObjId != 0 && objGet(g_memfds[mid].vmoObjId) !is null)
                 objRelease(g_memfds[mid].vmoObjId);
             if (g_memfds[mid].vgemHandle != 0)   // release the export ref this alias held
                 drmGemFreeHandle(g_memfds[mid].vgemHandle);
             g_memfds[mid].inUse      = false;
+            g_memfds[mid].refs       = 0;
             g_memfds[mid].physBase   = 0;
             g_memfds[mid].size       = 0;
             g_memfds[mid].vmoObjId   = 0;
@@ -5209,9 +5260,17 @@ private immutable VFEntry[] g_vfs = [
       "    disable_splash_rendering = true\n" ~
       "}\n" ~
       "\n" ~
+      "# HOS: our kernel DRM present is synchronous and aquamarine is event-paced; the render engine\n" ~
+      "# quiesces once the initial damage burst is spent and later client damage (the top bar) doesn't\n" ~
+      "# reliably restart it.  Force a free-running full render every frame (0 = no damage tracking) so\n" ~
+      "# the self-completing flip loop keeps presenting and composites late clients.\n" ~
+      "debug {\n" ~
+      "    damage_tracking = 0\n" ~
+      "}\n" ~
+      "\n" ~
       "# GNOME-style top bar (wlr-layer-shell): Activities | clock | wifi/volume/battery.\n" ~
-      "# Click the wifi glyph to pick a network + enter its password (/wl-wifi-menu).\n" ~
-      "exec-once = /wl-layer-bar\n" ~
+      "# (Spawned by the kernel autostart alongside the other boot clients — no exec-once\n" ~
+      "# here, or the bar starts twice now that exec-once works.)\n" ~
       "\n" ~
       "# SUPER+B toggles the bar.  It (and the Settings config panel) hide/show the bar by\n" ~
       "# creating/removing /run/hos-bar.hidden, which the bar polls once a second.\n" ~
@@ -7818,6 +7877,8 @@ private void incPipeRef(int fd) {
         // libseat's embedded seatd dups its connection fd and closes the original.
         auto s = fileSocket(f);
         if (s !is null) ++s.refCount;
+    } else {
+        fdInstanceRef(f);   // epoll/eventfd/memfd: dup shares the same instance
     }
 }
 
@@ -9049,6 +9110,7 @@ private struct MemFdRec {
     uint  vgemHandle; // R3: 0, or the originating virgl GEM handle (>=0x10000) when this
                       // memfd is a PRIME alias of a virtgpu resource — so PRIME_FD_TO_HANDLE
                       // can hand the importer back a g_drmGems handle (not a dumb one).
+    uint  refs;       // fd-copy refcount (fork/dup); reclaim the record only at 0
 }
 __gshared MemFdRec[MEMFD_MAX] g_memfds;
 
@@ -9542,6 +9604,35 @@ private const(char)* fdTypeName(uint t) @nogc nothrow {
     }
 }
 
+// DIAG: dump every live epoll instance's watch list (fd numbers + IN/OUT), plus every
+// listening unix socket's pending-accept count.  Called from the periodic task census to
+// answer "is the compositor's wayland listener actually watched by any epoll?".
+public void epollDumpAll() @nogc nothrow {
+    foreach (eid; 0 .. EPOLL_MAX_INSTANCES) {
+        if (!g_epollTable[eid].inUse) continue;
+        klog("  ep#"); klog_dec(cast(ulong)eid);
+        klog("");
+        klog(":");
+        foreach (i; 0 .. EPOLL_MAX_WATCHES) {
+            if (!g_epollTable[eid].watches[i].active) continue;
+            klog(" "); klog_dec(cast(ulong)g_epollTable[eid].watches[i].watchFd);
+            if (g_epollTable[eid].watches[i].events & EPOLLIN_F)  klog("i");
+            if (g_epollTable[eid].watches[i].events & EPOLLOUT_F) klog("o");
+        }
+        klog("\n");
+    }
+    foreach (fd; 0 .. 1024) {
+        auto f = &g_fdTable[fd];
+        if (f.type != FileType.FD_SOCKET) continue;
+        auto sock = fileSocket(f);
+        if (sock is null || sock.state != LocalSocketState.listener) continue;
+        size_t pend = (sock.pendingTail + localSocketPendingCapacity - sock.pendingHead) % localSocketPendingCapacity;
+        if (pend == 0) continue;
+        klog("  listener fd="); klog_dec(cast(ulong)fd);
+        klog(" pendingAccepts="); klog_dec(pend); klog("\n");
+    }
+}
+
 // PERF: dump fdReadable()==true counts by type (the busy-spin source) and reset.
 public void fdReadableStats() @nogc nothrow {
     klog("[fdrd]");
@@ -9584,6 +9675,7 @@ public long linux_sys_epoll_create1(ulong flags) {
     if (fd < 0) return negErrno(EMFILE);
     g_epollTable[eid] = EpollInst.init;
     g_epollTable[eid].inUse = true;
+    g_epollTable[eid].refs  = 1;
     g_epollTable[eid].nestDepth = 1; // ORG 3.3: a fresh epoll is a depth-1 leaf
     g_fdTable[fd].type    = FileType.FD_EPOLL;
     g_fdTable[fd].flags   = cast(int)flags;
@@ -9671,6 +9763,7 @@ public long linux_sys_epoll_pwait(ulong epfd, ulong evs, ulong maxev, ulong time
     return nfound; // 0 = timeout (no events ready)
 }
 
+
 // --- eventfd ---
 public long linux_sys_eventfd2(ulong initval, ulong flags) {
     initFdTable();
@@ -9681,6 +9774,7 @@ public long linux_sys_eventfd2(ulong initval, ulong flags) {
     int fd = allocFd();
     if (fd < 0) return negErrno(EMFILE);
     g_eventfd_inUse[eid]    = true;
+    g_eventfd_refs[eid]     = 1;
     g_eventfd_counters[eid] = initval;
     g_eventfd_flags[eid]    = cast(int)flags;
     g_fdTable[fd].type    = FileType.FD_EVENTFD;
@@ -9696,6 +9790,11 @@ public long linux_sys_eventfd2(ulong initval, ulong flags) {
 private enum int TIMERFD_MAX = 16;
 private struct TimerFdRec {
     bool  inUse;
+    uint  refs;           // fd-copy refcount (fork/dup); free the slot at 0.  Timerfds
+                          // previously had NO close-path free at all, so every short-lived
+                          // process leaked its instances and the 16-slot table exhausted
+                          // during boot churn — after which the compositor's idle timerfd
+                          // creation failed and the frame engine died after one frame.
     ulong intervalTicks;  // 0 => one-shot
     ulong nextExpiry;     // absolute tick of next expiry; 0 => disarmed
     ulong pending;        // expirations accumulated but not yet read
@@ -9727,6 +9826,7 @@ public long linux_sys_timerfd_create(ulong clockid, ulong flags) {
     if (fd < 0) return negErrno(EMFILE);
     g_timerfds[tid] = TimerFdRec.init;
     g_timerfds[tid].inUse = true;
+    g_timerfds[tid].refs  = 1;
     g_fdTable[fd].type    = FileType.FD_TIMERFD;
     g_fdTable[fd].backend = cast(void*)cast(size_t)tid;
     return publishActiveFdReturn(fd);
@@ -9860,6 +9960,7 @@ public long linux_sys_memfd_create(ulong name, ulong flags) {
     int fd = allocFd();
     if (fd < 0) return negErrno(EMFILE);
     g_memfds[mid].inUse    = true;
+    g_memfds[mid].refs     = 1;
     g_memfds[mid].physBase = 0;
     g_memfds[mid].size     = 0;
     g_memfds[mid].seals    = (flags & MFD_ALLOW_SEALING) != 0 ? 0 : F_SEAL_SEAL;
@@ -10447,6 +10548,8 @@ private void presentAccount(ulong t0, ulong t1, ulong blitPx, bool full) @nogc n
 // Present a bound framebuffer: blit its pixels to the hardware framebuffer.
 // Source and destination are both kernel HHDM mappings, so no SMAP gate is
 // needed (unlike drmPresentToFramebuffer, which reads a userspace pointer).
+__gshared ulong g_primeDbgN = 0;
+
 private long drmPresentFb(uint fbId) @nogc nothrow {
     const ulong _t0 = rdtsc();
     if (!g_fb || g_fb.address is null || g_fb.pitch == 0 || g_fb.bpp != 32)
@@ -10465,6 +10568,7 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     const uint copyH = fb.height < g_fb.height ? fb.height : cast(uint)g_fb.height;
     const size_t rowBytes = cast(size_t)copyW * 4;
     if (rowBytes > g_fb.pitch || rowBytes > fb.pitch) return negErrno(EINVAL);
+
 
     auto src = cast(const(ubyte)*)(fb.physAddr + hhdm_offset);
     auto dst = cast(ubyte*)g_fb.address;
@@ -11528,6 +11632,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             if (vnfd < 0) return negErrno(EMFILE);
 
             g_memfds[vslot].inUse      = true;
+            g_memfds[vslot].refs       = 1;
             g_memfds[vslot].physBase   = g.phys;
             g_memfds[vslot].size       = g.size;
             g_memfds[vslot].seals      = 0;
@@ -11559,6 +11664,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         if (nfd < 0) return negErrno(EMFILE);
 
         g_memfds[slot].inUse      = true;
+        g_memfds[slot].refs       = 1;
         g_memfds[slot].physBase   = gem.physAddr;
         g_memfds[slot].size       = gem.size;
         g_memfds[slot].seals      = 0;
@@ -11590,9 +11696,15 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         int infd = userRead!int(arg + 8);
         if (infd < 0 || infd >= 1024) return negErrno(EINVAL);
         File* pf = &g_fdTable[infd];
-        if (pf.type != FileType.FD_MEMFD) return negErrno(EINVAL);
+        if (pf.type != FileType.FD_MEMFD) {
+            if (g_primeDbgN < 16) { ++g_primeDbgN; klog("[prime] fd="); klog_hex(infd); klog(" FAIL not-memfd type="); klog_hex(cast(uint)pf.type); klog("\n"); }
+            return negErrno(EINVAL);
+        }
         int mid = cast(int)cast(size_t)pf.backend;
-        if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return negErrno(EINVAL);
+        if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) {
+            if (g_primeDbgN < 16) { ++g_primeDbgN; klog("[prime] fd="); klog_hex(infd); klog(" FAIL memfd-not-inuse mid="); klog_hex(cast(uint)mid); klog("\n"); }
+            return negErrno(EINVAL);
+        }
 
         // R3: a virgl PRIME alias — hand back the originating g_drmGems handle so the
         // importer's RESOURCE_INFO resolves to the same device-global virgl resource
@@ -11612,7 +11724,51 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         foreach (ref gb; g_gemBufs) {
             if (gb.inUse && gb.physAddr == phys) { handle = gb.handle; break; }
         }
-        if (handle == 0) return negErrno(EINVAL);
+        // Reverse-map fallback: the memfd may alias a virgl resource whose vgemHandle
+        // field was never stamped at export (aquamarine PRIME-exports a GBM scanout bo
+        // by phys). Scan g_drmGems by phys and hand back a fresh reference so the
+        // importer's ADDFB2 resolves — same buffer, +1 ref so a later GEM_CLOSE of the
+        // exporter's handle doesn't free it out from under this node's scanout.
+        if (handle == 0) {
+            foreach (i; 0 .. g_drmGems.length) {
+                if (g_drmGems[i].used && g_drmGems[i].phys == phys) {
+                    ++g_drmGems[i].refs;
+                    handle = DRM_VGEM_BASE + cast(uint)i;
+                    break;
+                }
+            }
+        }
+        // CPU-scanout alias: a plain (memfd_create-backed) buffer used as a KMS scanout
+        // target — the DATAPTR / CPU-readback present path where Hyprland glReadPixels
+        // its rendered frame straight into the memfd's guest pages, then commits the memfd
+        // for scanout. It is not a GEM in either table, so register a dumb GEM ALIAS over
+        // the memfd's contiguous backing: drmAddFb then resolves it with resId=0, so
+        // drmPresentFb blits the guest pages directly (no host transfer — the pixels are
+        // already CPU-side). The alias does NOT own the pages (the memfd frees them);
+        // GEM_CLOSE only clears the slot, so there is no double free.
+        if (handle == 0 && phys != 0) {
+            int gslot = -1;
+            foreach (i, ref gb; g_gemBufs)
+                if (!gb.inUse) { gslot = cast(int)i; break; }
+            if (gslot >= 0) {
+                uint nh = g_nextGemHandle++;
+                g_gemBufs[gslot].inUse    = true;
+                g_gemBufs[gslot].handle   = nh;
+                g_gemBufs[gslot].physAddr = phys;
+                g_gemBufs[gslot].width    = 0;
+                g_gemBufs[gslot].height   = 0;
+                g_gemBufs[gslot].pitch    = 0;
+                g_gemBufs[gslot].bpp      = 32;
+                g_gemBufs[gslot].size     = g_memfds[mid].size;
+                g_gemBufs[gslot].vmoObjId = 0;
+                handle = nh;
+                if (g_primeDbgN < 16) { ++g_primeDbgN; klog("[prime] fd="); klog_hex(infd); klog(" CPU-alias handle="); klog_hex(nh); klog(" phys="); klog_hex(phys); klog("\n"); }
+            }
+        }
+        if (handle == 0) {
+            if (g_primeDbgN < 16) { ++g_primeDbgN; klog("[prime] fd="); klog_hex(infd); klog(" FAIL no-revmap phys="); klog_hex(phys); klog("\n"); }
+            return negErrno(EINVAL);
+        }
         userWrite!uint(arg + 0, handle);
         return 0;
     }

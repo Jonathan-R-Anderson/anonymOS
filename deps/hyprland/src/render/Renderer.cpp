@@ -2033,6 +2033,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
             pMonitor->m_activeWorkspace->m_space->recalculate(Layout::RECALCULATE_REASON_RENDER_MOINTOR);
     }
 
+    { static int rmN=0; if ((++rmN % 60)==1) Log::logger->log(Log::ERR, std::format("HOSDBG renderMonitor #{} name={} needsFrame={} forceFull={} damageChanged={}", rmN, pMonitor->m_name, pMonitor->m_output->needsFrame, pMonitor->m_forceFullFrames, pMonitor->m_damage.hasChanged())); }
     if (!pMonitor->m_output->needsFrame && pMonitor->m_forceFullFrames == 0)
         return;
 

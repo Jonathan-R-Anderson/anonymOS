@@ -228,16 +228,51 @@ __gshared int g_idleTid = -1;
 // Wake parked pollers so they re-check their fds.  Called from the PIT tick and
 // input IRQs.  Clearing `waiting` lets the scheduler pick them; they re-run their
 // poll/epoll and either return (fd ready / timed out) or re-park.
+// DIAG: dump the CURRENT task's user RIP + text-looking return addresses from its stack.
+// Runs inside the task's own syscall (its CR3 is live), so user memory is directly
+// readable.  Text filters: the non-PIE Hyprland image (0x400000+) and the musl/lib
+// region (0x5a00_0000_0000+); addresses resolve offline with addr2line.
+public void dumpCurrentTaskUserStack() @nogc nothrow {
+    int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    auto task = &g_tasks[tid];
+    ulong rsp = task.regs[REG_RSP];
+    klog("[ustack] t="); klog_hex(cast(ulong)tid);
+    klog(" rip="); klog_hex(task.regs[REG_RIP]);
+    klog(" rsp="); klog_hex(rsp);
+    klog("\n[ustack]");
+    if (rsp >= 0x1000) {
+        int logged = 0;
+        for (ulong i = 0; i < 400 && logged < 24; i++) {
+            ulong a = rsp + i * 8;
+            if (!userPageMapped(tid, a)) break;
+            ulong v = *cast(ulong*)a;
+            if ((v >= 0x400000 && v < 0x10000000) || (v >= 0x5a0000000000 && v < 0x5b0000000000)) {
+                klog(" "); klog_hex(v); ++logged;
+            }
+        }
+    }
+    klog("\n");
+}
+
 private void wakePollers() @nogc nothrow {
     foreach (i; 0 .. MAX_TASKS) {
-        if (g_pollBlocked[i] && g_tasks[i].active && !g_tasks[i].exited)
+        // Never bare-unpark a futex-parked task: only clearFutexWait may wake one (it sets
+        // RAX; a bare waiting=false returns garbage to the middle of a FUTEX_WAIT and musl
+        // spin-retries).  A stale g_pollBlocked can coexist with a futex park (see the
+        // g_pollBlocked clear at the futex park site for the main leak fix).
+        if (g_pollBlocked[i] && !g_futexWaitActive[i] && g_tasks[i].active && !g_tasks[i].exited)
             g_tasks[i].waiting = false;
     }
 }
 __gshared int[MAX_TASKS]   g_futexWaitVal;
 __gshared uint[MAX_TASKS]  g_futexWaitBitset;
+__gshared ulong[MAX_TASKS] g_futexWaitDeadline; // pitMs deadline for a timed FUTEX_WAIT; 0 = wait forever
 __gshared ulong g_futexLogCount = 0;
 __gshared ulong g_futexWakeLogCount = 0;
+__gshared ulong g_futexRegionMiss = 0;
+// BISECT FLAG: true disables futex timeout arming (waits park forever, pre-timeout behavior).
+__gshared bool g_futexTimeoutsOff = false;
 __gshared bool g_guiClientAutostartEnabled = false;
 __gshared bool g_guiClientStarted = false;
 __gshared bool g_guiClientListenerSeen = false;
@@ -259,6 +294,7 @@ private void clearFutexWait(int tid, long ret) {
     g_futexWaitUaddr[tid] = 0;
     g_futexWaitVal[tid] = 0;
     g_futexWaitBitset[tid] = 0;
+    g_futexWaitDeadline[tid] = 0;
 
     auto t = &g_tasks[tid];
     if (t.active && !t.exited) {
@@ -285,9 +321,26 @@ private bool refreshFutexWaiter(int tid) {
     }
 
     ulong uaddr = g_futexWaitUaddr[tid];
-    if (t.pml4Phys == 0 || findRegion(*t, uaddr) is null) {
+    // Validate uaddr by walking the REAL page tables (shared by all CLONE_VM threads), NOT
+    // the per-task region list.  A thread's region bookkeeping misses regions mmap'd by a
+    // SIBLING thread after the clone (regions are recorded per-task; threads share only the
+    // page tables) — so findRegion(*t, uaddr) failed for a futex word living in a
+    // sibling-mmap'd region, and this function then cleared the park with EINTR on the very
+    // scheduleNext() call inside the park itself.  musl retries on EINTR → the thread
+    // re-parked and was re-cleared ~80,000×/s, monopolizing the core and starving the
+    // compositor (Hyprland froze after its initial render burst).  The page-table walk is
+    // the ground truth; the word was just read by userspace so it is faulted in.
+    if (t.pml4Phys == 0 || !userPageMapped(tid, uaddr)) {
         clearFutexWait(tid, -4);
         return false;
+    }
+    if (findRegion(*t, uaddr) is null) {
+        // Mechanism confirmation (capped): region bookkeeping missed a mapped page.
+        if (g_futexRegionMiss < 12) {
+            ++g_futexRegionMiss;
+            klog("[futex-region-miss] t="); klog_hex(cast(ulong)tid);
+            klog(" u="); klog_hex(uaddr); klog(" (page mapped, region list missed it)\n");
+        }
     }
 
     ulong savedCr3 = x64ReadCR3();
@@ -304,15 +357,36 @@ private bool refreshFutexWaiter(int tid) {
         clearFutexWait(tid, 0);
         return true;
     }
+    // Timed FUTEX_WAIT: expire with ETIMEDOUT once the pitMs deadline passes.  This runs
+    // every scheduleNext() pass, so expiry latency is one pass.  clearFutexWait un-parks
+    // AND sets RAX, so musl's __timedwait / pthread_cond_timedwait sees a clean -ETIMEDOUT.
+    // (Checked AFTER the value-change unblock so a same-pass genuine wake wins.)
+    if (g_futexWaitDeadline[tid] != 0 && pitMs() >= g_futexWaitDeadline[tid]) {
+        clearFutexWait(tid, -110); // ETIMEDOUT
+        return true;
+    }
     return false;
 }
 
 private uint futexWakeAddress(ulong uaddr, uint maxWake, uint wakeBits, int wakerTid) {
     if (uaddr == 0 || maxWake == 0 || wakeBits == 0) return 0;
 
+    // A userspace futex address is only meaningful WITHIN its own address space, and we match
+    // waiters by raw uaddr.  Without confining the wake to the waker's address space, a private-futex
+    // FUTEX_WAKE in one process wakes — and, worse, spends its maxWake budget on — a DIFFERENT
+    // process's waiter that merely sits at the same virtual address.  musl loads libc at a fixed base,
+    // so e.g. EVERY process's malloc lock lives at the same uaddr; a cross-process match steals the
+    // wake from the waker's OWN thread and permanently strands it (this wedged Hyprland's multi-thread
+    // event loop once other wayland clients — bar/demo/dbus — were also blocked on their same-uaddr
+    // locks).  Threads of one process share pml4Phys, so require the waiter to be in the waker's
+    // address space.  (Cross-process SHARED futexes would need physical-page matching, which this
+    // uaddr-keyed table never supported anyway.)
+    ulong wakerPml4 = (wakerTid >= 0 && wakerTid < MAX_TASKS) ? g_tasks[wakerTid].pml4Phys : 0;
+
     uint woke = 0;
     for (int i = 0; i < MAX_TASKS && woke < maxWake; i++) {
         if (!futexWaitMatches(i, uaddr, wakeBits)) continue;
+        if (wakerPml4 != 0 && g_tasks[i].pml4Phys != wakerPml4) continue;
         clearFutexWait(i, 0);
         woke++;
         klog("[futex-wake-one] waker="); klog_hex(cast(ulong)wakerTid);
@@ -360,14 +434,17 @@ private void scheduleNext() {
     // Nothing runnable: check for waiting tasks that might now be unblocked
     for (uint i = 0; i < MAX_TASKS; i++) {
         auto t = &g_tasks[i];
-        // CRITICAL: skip poll/read/select-parked tasks (g_pollBlocked).  `t.waiting` is shared between
-        // a wait4() block and a poll/read/select park, and `t.waitingForPid` is NOT reset when a task
-        // later read-parks — so a shell that once did wait4(-1) and now blocks on a terminal read still
-        // has waitingForPid=-1 + a stale childExited[] bit.  Without this guard, this block "un-blocks
-        // its waitpid" ~55k×/s (the task re-runs read→EAGAIN→park→here→un-wait…), pinning the core at
-        // ~75% and starving the compositor.  A genuine wait4 waiter has g_pollBlocked==false and is still
-        // woken by the child-exit path (src=5) / wakePollers; this fallback only handles the pre-parked race.
-        if (t.active && !t.exited && t.waiting && !g_pollBlocked[i]) {
+        // CRITICAL: skip poll/read/select-parked tasks (g_pollBlocked) AND futex-parked tasks
+        // (g_futexWaitActive).  `t.waiting` is shared between a wait4() block, a poll/read/select park,
+        // and a FUTEX_WAIT park, and `t.waitingForPid` is NOT reset when a task later parks a different
+        // way — so a thread that once did wait4(-1) and now blocks in FUTEX_WAIT still has
+        // waitingForPid=-1 + a stale childExited[] bit.  Without this guard, this block "un-blocks its
+        // waitpid" tens of thousands of times/sec (the task re-runs futex→*u==val→park→here→un-wait→
+        // re-issue FUTEX_WAIT…), pinning the core and starving the compositor — the exact spin observed
+        // as task 0x19 hammering FUTEX_WAIT(val=0,*u=0) while aquamarine could not get scheduled.  A
+        // genuine wait4 waiter has both flags false and is still woken by the child-exit path (src=5) /
+        // wakePollers; this fallback only handles the pre-parked race.
+        if (t.active && !t.exited && t.waiting && !g_pollBlocked[i] && !g_futexWaitActive[i]) {
             // poll whether the waited-for child has exited
             bool found = false;
             if (t.waitingForPid == -1) {
@@ -401,9 +478,12 @@ private void scheduleNext() {
         return;
     }
     // No idle task yet — fall back to waking one parked poller to keep IRQs alive.
+    // (!g_futexWaitActive: never bare-unpark a futex waiter — and note next==cur at
+    // i==MAX_TASKS, so without the guard a just-futex-parked current task with a stale
+    // g_pollBlocked could wake ITSELF inside its own park's scheduleNext -> syscall-rate spin.)
     for (uint i = 1; i <= MAX_TASKS; i++) {
         uint next = cast(uint)((cur + i) % MAX_TASKS);
-        if (g_pollBlocked[next] && g_tasks[next].active && !g_tasks[next].exited
+        if (g_pollBlocked[next] && !g_futexWaitActive[next] && g_tasks[next].active && !g_tasks[next].exited
             && g_tasks[next].waiting) {
             g_tasks[next].waiting = false;
             g_current_task_id = next;
@@ -498,7 +578,11 @@ private void exitTask(int tid, int code) {
             // The child's Linux pid snapshotted at entry (processLeaderTid is reset by the
             // cleanup above), so wait4 returns the same pid fork() gave the parent.
             g_childExitLinuxPid[tid] = exitLinuxPid;
-            if (p.waiting) {
+            if (p.waiting && !g_futexWaitActive[parent] && !g_pollBlocked[parent]) {
+                // Only a genuine wait4() waiter may be bare-unparked here.  A parent that
+                // is futex-parked (or poll-parked) has a stale waitingForPid; unparking it
+                // returns garbage RAX into the middle of its FUTEX_WAIT/poll.  Its
+                // childExited[] flag (set above) still satisfies the eventual wait4().
                 bool unblock = false;
                 if (p.waitingForPid == -1) unblock = true;
                 else if (p.waitingForPid == tid) unblock = true;
@@ -1203,8 +1287,13 @@ private void spawnWaylandClients() {
     }
     if (mode == 1 || mode == 3)
         spawnWaylandProgram("wl-term\0".ptr, "[g4]\0".ptr);
-    if (mode == 2 || mode == 3)
+    if (mode == 2 || mode == 3) {
+        // GNOME-style top bar (wlr-layer-shell).  Hyprland's own exec-once=/wl-layer-bar in the
+        // synthesized config never actually spawns, so launch it here via the proven kernel autostart.
+        // Safe on Weston too: wl-layer-bar exits cleanly (returns 1) when no zwlr_layer_shell is offered.
+        spawnWaylandProgram("wl-layer-bar\0".ptr, "[bar]\0".ptr);
         spawnWaylandProgram("wl-cairo-demo\0".ptr, "[g11]\0".ptr);
+    }
     if (mode == 4)
         spawnWaylandProgram("wl-files\0".ptr, "[g17]\0".ptr);
 }
@@ -1305,8 +1394,13 @@ private void maybeSpawnNetLaunch() {
 // M5: launch wpa_supplicant in D-Bus mode (fi.w1.wpa_supplicant1) BEFORE NM, so the name is owned on
 // the system bus when NM's wifi.backend=wpa_supplicant looks for it.  NM watches for the name owner, so
 // exact ordering is not critical, but starting wpa first avoids the initial "not running" retry.
+// TEMP TEST FLAG: skip the whole NM/wpa/wifi-agent/boot-doctor chain to isolate the
+// Hyprland render loop from the (currently-broken, WIP) NetworkManager path. Set true only
+// to debug the desktop without WiFi bring-up; false = normal boot.
+private __gshared bool g_skipNetForTest = false;
 private __gshared bool g_wpaStarted = false;
 private void maybeSpawnWpa() {
+    if (g_skipNetForTest) return;
     if (g_wpaStarted) return;
     if (!g_dbusStarted) return;                                        // system bus must be up first
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
@@ -1316,6 +1410,7 @@ private void maybeSpawnWpa() {
 }
 private __gshared bool g_nmStarted = false;
 private void maybeSpawnNetworkManager() {
+    if (g_skipNetForTest) return;
     if (g_nmStarted) return;
     if (!g_dbusStarted) return;                                        // system bus must be up first
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
@@ -1331,6 +1426,7 @@ private void maybeSpawnNetworkManager() {
 private __gshared bool g_wifiAgentStarted = false;
 private __gshared int  g_wifiAgentDelay   = 0;
 private void maybeSpawnWifiAgent() {
+    if (g_skipNetForTest) return;
     if (g_wifiAgentStarted) return;
     if (!g_nmStarted) return;              // NM must be launching (agent retries until it registers)
     if (g_wifiAgentDelay++ < 60) return;   // small head start so NM can own the bus name
@@ -1341,6 +1437,7 @@ private void maybeSpawnWifiAgent() {
 private __gshared bool g_nmcliStarted = false;
 private __gshared int  g_nmcliDelay   = 0;
 private void maybeSpawnNmcli() {
+    if (g_skipNetForTest) return;
     if (g_nmcliStarted) return;
     // UNGATED (not requiring g_nmStarted): the boot-doctor diagnoses the whole chain — dbus, the LKL
     // provider socket, and NM registration — and writes /run/boot-status.txt.  It must run even when
@@ -1585,6 +1682,23 @@ private long sigsuspendTask(int tid) {
 private long brkTask(int tid, ulong newBrk) {
     auto task = &g_tasks[tid];
 
+    // brk is a per-ADDRESS-SPACE resource, but CLONE_VM threads each keep their OWN copy of
+    // brkStart/brkCurrent (cloneThread) while sharing one PML4.  Route EVERY thread's brk() to
+    // the process leader's single monotonic break.  Otherwise a sibling whose brkCurrent is stale
+    // (lower than the true shared break) re-maps FRESH ZERO pages over the leader's already-populated
+    // heap on its next grow — and musl mallocng keeps its `struct meta` areas inside the brk region,
+    // so the clobbered meta gets prev/next=0 and the next allocation faults writing NULL->next
+    // (cr2=0x8) in alloc_slot.  (Bug hit by Hyprland/Mesa worker threads; single-thread apps + apps
+    // that only grow brk from the leader before spawning threads were unaffected.)
+    int leadTid = tid;
+    {
+        int lead = task.processLeaderTid;
+        if (lead >= 0 && lead < MAX_TASKS) {
+            auto L = &g_tasks[lead];
+            if (L.active && !L.exited && L.pml4Phys == task.pml4Phys) { task = L; leadTid = lead; }
+        }
+    }
+
     if (newBrk == 0)
         return cast(long)task.brkCurrent;
 
@@ -1599,6 +1713,13 @@ private long brkTask(int tid, ulong newBrk) {
                                     RegionType.Mapped, RegionPerms.ReadWrite,
                                     0, true);
         if (heapRegion is null) return cast(long)task.brkCurrent;
+        // Defense-in-depth: NEVER re-map a page that is already live.  With leader routing
+        // oldAligned is the true shared break so nothing in [oldAligned,newAligned) is mapped;
+        // if that invariant is ever violated, refuse to clobber live heap/meta pages rather than
+        // zero them (which is exactly the corruption this fix eliminates).
+        for (ulong chk = oldAligned; chk < newAligned; chk += 4096) {
+            if (userPageMapped(leadTid, chk)) { removeRegion(*task, oldAligned, newAligned); return cast(long)task.brkCurrent; }
+        }
         // Allocate pages from oldAligned to newAligned
         ulong mappedBytes = 0;
         for (ulong pg = oldAligned; pg < newAligned; pg += 4096) {
@@ -2589,6 +2710,29 @@ private void dispatchSyscall(int tid) {
                     g_futexWaitUaddr[tid] = rdi;
                     g_futexWaitVal[tid] = cast(int)rdx;
                     g_futexWaitBitset[tid] = waitBits;
+                    // Timeout (r10 = userspace timespec*).  FUTEX_WAIT takes a RELATIVE
+                    // timeout; FUTEX_WAIT_BITSET an ABSOLUTE deadline.  sys_clock_gettime
+                    // returns pitMs() for every clock id, so an absolute userspace deadline
+                    // is already in the g_pitMs ms domain (same reasoning as timerfd
+                    // TFD_TIMER_ABSTIME) — and FUTEX_CLOCK_REALTIME needs no conversion.
+                    ulong fwDeadline = 0;                       // 0 = wait forever
+                    if (r10 != 0 && !g_futexTimeoutsOff) {
+                        const long tSec  = *cast(long*)(r10 + 0);
+                        const long tNsec = *cast(long*)(r10 + 8);
+                        if (tSec < 0 || tNsec < 0 || tNsec >= 1_000_000_000) {
+                            clearFutexWait(tid, 0);
+                            task.regs[REG_RAX] = cast(ulong)(-22); // EINVAL
+                            return;
+                        }
+                        const ulong ms = cast(ulong)tSec * 1000 + cast(ulong)tNsec / 1_000_000;
+                        fwDeadline = (op == FUTEX_WAIT_BITSET) ? ms : pitMs() + ms;
+                        if (fwDeadline == 0) fwDeadline = 1;    // keep 0 = "no timeout"
+                    }
+                    g_futexWaitDeadline[tid] = fwDeadline;
+                    // A task issuing FUTEX_WAIT is by definition not poll-parked; clear any
+                    // stale g_pollBlocked so wakePollers / the no-idle poller fallback can't
+                    // spuriously unpark this futex waiter (bare waiting=false, garbage RAX).
+                    g_pollBlocked[tid] = false;
                     task.waiting = true;
                     bootProgressEventHex("park", rax, g_parkScreenTrace);
                     scheduleNext();

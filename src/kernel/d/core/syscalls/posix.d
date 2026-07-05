@@ -3139,8 +3139,19 @@ public int sys_open(const(char)* path, int flags) {
         return publishActiveFdReturn(fd);
     }
 
+    // DIAGNOSTIC (Hyprland reopenDRMNode hunt): log DRM-related sysfs paths that
+    // aren't found, so we can see exactly what libdrm's drmGetDeviceNameFromFd2 /
+    // drmGetDevice2 needs but the synthetic sysfs is missing.
+    if (g_drmSysfsProbe && g_drmSysfsFailN < 48 &&
+        (cstrEqPrefix(path, "/sys/dev/char/226") || cstrEqPrefix(path, "/sys/class/drm") ||
+         cstrEqPrefix(path, "/sys/bus/pci") || cstrEqPrefix(path, "/sys/devices"))) {
+        ++g_drmSysfsFailN;
+        klog("[sysfail] "); klog(path); klog("\n");
+    }
     return negErrno(ENOENT);
 }
+__gshared bool  g_drmSysfsProbe = false;   // Hyprland DRM sysfs diagnostic (flip true to re-hunt)
+__gshared ulong g_drmSysfsFailN = 0;
 
 private long fileObjClose(ObjHeader* oh) {
     File* f = fileFromObj(oh);
@@ -3164,6 +3175,8 @@ private long fileObjClose(ObjHeader* oh) {
         if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].aliased) {
             if (g_memfds[mid].vmoObjId != 0 && objGet(g_memfds[mid].vmoObjId) !is null)
                 objRelease(g_memfds[mid].vmoObjId);
+            if (g_memfds[mid].vgemHandle != 0)   // release the export ref this alias held
+                drmGemFreeHandle(g_memfds[mid].vgemHandle);
             g_memfds[mid].inUse      = false;
             g_memfds[mid].physBase   = 0;
             g_memfds[mid].size       = 0;
@@ -5043,6 +5056,20 @@ private const(char)[] pxHostnameVirtualFile(const(char)* path) {
     return null;
 }
 
+// Raw PCI config space (first 64 bytes) for the virtio-gpu, served as
+// /sys/class/drm/<node>/device/config.  libdrm's drmParsePciDeviceInfo (called by
+// drmGetDevices2 → aquamarine's CDRMRenderer) open()s this and read()s 64 bytes for
+// the PCI IDs; without it the dir-shim serves the path as a directory → read() gives
+// EISDIR → the node is dropped → "drmGetDevice failed / no matching devices" → no
+// renderer.  Layout: vendor@0=1af4, device@2=1050, revision@8=01, class@9..11,
+// subvendor@0x2c=1af4, subdevice@0x2e=1100 (little-endian).
+private enum string VIRTIO_GPU_PCI_CONFIG =
+    "\xf4\x1a\x50\x10\x07\x00\x10\x00\x01\x00\x00\x03" ~   // 0x00: vendor=1af4, device=1050, cmd, status, rev=01, class
+    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ~ // 0x0c
+    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ~ // 0x1c
+    "\xf4\x1a\x00\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ~ // 0x2c: subvendor=1af4@0x2c, subdevice=1100@0x2e
+    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";  // 0x3c
+
 private immutable VFEntry[] g_vfs = [
     // /proc
     { "/proc/version",           "Linux version 6.0.0 (HanonymOS) #1 SMP x86_64 GNU/Linux\n"         },
@@ -5747,6 +5774,33 @@ private immutable VFEntry[] g_vfs = [
       "MAJOR=226\nMINOR=128\nDEVNAME=dri/renderD128\nDEVTYPE=drm_minor\n" },   // aquamarine matches render nodes by devnode(renderD*)+DEVTYPE=drm_minor, not a separate drm_render_minor type
     { "/sys/class/drm/renderD128/uevent",
       "MAJOR=226\nMINOR=128\nDEVNAME=dri/renderD128\nDEVTYPE=drm_minor\n" },   // aquamarine matches render nodes by devnode(renderD*)+DEVTYPE=drm_minor, not a separate drm_render_minor type
+    // PCI info under the /sys/class/drm/<node>/device/ path.  libdrm's drmGetDevices2
+    // (aquamarine's CDRMRenderer uses it) resolves /sys/dev/char/226:N (our readlink →
+    // /sys/class/drm/<node>) then reads <node>/device/{uevent,vendor,...}; without these
+    // an empty-dir shim returns blank content → drmGetDevice failed → "no renderer".
+    { "/sys/class/drm/card0/device/uevent",
+      "DRIVER=virtio_gpu\nPCI_CLASS=30000\nPCI_ID=1AF4:1050\n" ~
+      "PCI_SUBSYS_ID=1AF4:1100\nPCI_SLOT_NAME=0000:00:04.0\n" ~
+      "MODALIAS=pci:v00001AF4d00001050sv00001AF4sd00001100bc03sc00i00\n" },
+    { "/sys/class/drm/card0/device/vendor",           "0x1af4\n" },
+    { "/sys/class/drm/card0/device/device",           "0x1050\n" },
+    { "/sys/class/drm/card0/device/subsystem_vendor", "0x1af4\n" },
+    { "/sys/class/drm/card0/device/subsystem_device", "0x1100\n" },
+    { "/sys/class/drm/card0/device/revision",         "0x01\n"   },
+    { "/sys/class/drm/renderD128/device/uevent",
+      "DRIVER=virtio_gpu\nPCI_CLASS=30000\nPCI_ID=1AF4:1050\n" ~
+      "PCI_SUBSYS_ID=1AF4:1100\nPCI_SLOT_NAME=0000:00:04.0\n" ~
+      "MODALIAS=pci:v00001AF4d00001050sv00001AF4sd00001100bc03sc00i00\n" },
+    { "/sys/class/drm/renderD128/device/vendor",           "0x1af4\n" },
+    { "/sys/class/drm/renderD128/device/device",           "0x1050\n" },
+    { "/sys/class/drm/renderD128/device/subsystem_vendor", "0x1af4\n" },
+    { "/sys/class/drm/renderD128/device/subsystem_device", "0x1100\n" },
+    { "/sys/class/drm/renderD128/device/revision",         "0x01\n"   },
+    // raw PCI config space — libdrm's drmParsePciDeviceInfo read()s 64B for the PCI IDs
+    { "/sys/class/drm/card0/device/config",      VIRTIO_GPU_PCI_CONFIG },
+    { "/sys/class/drm/renderD128/device/config", VIRTIO_GPU_PCI_CONFIG },
+    { "/sys/dev/char/226:0/device/config",       VIRTIO_GPU_PCI_CONFIG },
+    { "/sys/dev/char/226:128/device/config",     VIRTIO_GPU_PCI_CONFIG },
     { "/sys/class/drm/card0-HDMI-A-1/status",  "connected\n"  },
     { "/sys/class/drm/card0-HDMI-A-1/enabled", "enabled\n"    },
     { "/sys/class/net/lo/address",             "00:00:00:00:00:00\n" },
@@ -6195,7 +6249,9 @@ private bool getSyntheticReadlinkTarget(const(char)* path, out string target) {
     // the (simpler) drmProcessPciDevice path. Without it drmGetDevice2() fails and
     // Mesa can't expose an EGL render device (→ no dmabuf, GPU clients go softpipe).
     if (cstrEq(path, "/sys/dev/char/226:0/device/subsystem") ||
-        cstrEq(path, "/sys/dev/char/226:128/device/subsystem")) {
+        cstrEq(path, "/sys/dev/char/226:128/device/subsystem") ||
+        cstrEq(path, "/sys/class/drm/card0/device/subsystem") ||
+        cstrEq(path, "/sys/class/drm/renderD128/device/subsystem")) {
         target = "/sys/bus/pci";
         return true;
     }
@@ -11138,7 +11194,7 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
 // the backing's physical address (FD_DRM mmap maps offset==phys into user VA).
 // Backed by the modern virgl transport primitives in drivers/graphics/virtio_gpu.d
 // (the same path the R2.3b self-test proved).  Single GPU consumer for now.
-private struct DrmGem { bool used; uint resId; ulong phys; uint size; uint stride; uint blobMem; ulong shmemOffset; }  // +B6: blobMem(0=classic,2=HOST3D), shmemOffset into the host-visible window
+private struct DrmGem { bool used; uint resId; ulong phys; uint size; uint stride; uint blobMem; ulong shmemOffset; uint refs; }  // +B6: blobMem(0=classic,2=HOST3D), shmemOffset into the host-visible window; refs: PRIME alias/import refcount so GEM_CLOSE of one handle doesn't free a buffer another node still scans out
 private __gshared DrmGem[64] g_drmGems;
 // virtgpu GEM handles are based at 0x10000 so they never collide with the small KMS dumb-buffer
 // handles that share the DRM_IOCTL_GEM_CLOSE namespace.
@@ -11148,6 +11204,7 @@ private uint drmGemAlloc(uint resId, ulong phys, uint size, uint stride) @nogc n
     foreach (i; 0 .. g_drmGems.length) {
         if (!g_drmGems[i].used) {
             g_drmGems[i] = DrmGem(true, resId, phys, size, stride);
+            g_drmGems[i].refs = 1;
             return DRM_VGEM_BASE + cast(uint)i;
         }
     }
@@ -11163,6 +11220,9 @@ private DrmGem* drmGemGet(uint handle) @nogc nothrow {
 private void drmGemFreeHandle(uint handle) @nogc nothrow {
     auto g = drmGemGet(handle);
     if (g is null) return;
+    // Refcount: a PRIME export (memfd alias) or cross-node import holds extra refs. Closing one
+    // handle must not free a buffer that another DRM node (e.g. card0 scanout) still references.
+    if (g.refs > 1) { --g.refs; return; }
     if (g.blobMem != 0) {
         // B8: a host-visible blob — its phys is the BAR window (NOT allocator RAM), so unmap it from
         // the window and unref; do NOT free_phys_pages (would corrupt the physical allocator).
@@ -11432,6 +11492,16 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     case DRM_NR_DROP_MASTER:
         return 0;
 
+    // DRM_IOCTL_MODE_CREATE_LEASE (0xc6): we don't implement leases.  The default
+    // case below would STUB-succeed (return 0) WITHOUT setting the output lease fd,
+    // so aquamarine's reopenDRMNode() takes that garbage fd and CGBMAllocator::create
+    // then fails drmGetCap(badfd, DRM_CAP_PRIME) → "PRIME export is not supported by
+    // the gpu" → no GBM allocator → software readback → crash.  Returning EOPNOTSUPP
+    // makes reopenDRMNode fall through to drmGetDeviceNameFromFd2 + open() the real
+    // node (whose GET_CAP correctly reports PRIME import|export = 0x3).
+    case 0xC6:
+        return negErrno(EOPNOTSUPP);
+
     // struct drm_prime_handle { u32 handle; u32 flags; s32 fd; }
     // Export a dumb GEM buffer as a dma-buf fd.  Aquamarine's headless allocator
     // requires this to succeed (else attrs.success stays false and the swapchain
@@ -11464,6 +11534,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             g_memfds[vslot].vmoObjId   = 0;       // virgl GEMs carry no VMO identity
             g_memfds[vslot].aliased    = true;    // borrowed pages → reclaim on close
             g_memfds[vslot].vgemHandle = handle;  // mark as a virgl PRIME alias
+            ++g.refs;                             // the memfd alias holds a reference to the resource
 
             g_fdTable[vnfd].type     = FileType.FD_MEMFD;
             g_fdTable[vnfd].flags    = 0;
@@ -11527,6 +11598,11 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         // importer's RESOURCE_INFO resolves to the same device-global virgl resource
         // (the dumb-buffer physBase reverse-map below is only for KMS dumb buffers).
         if (g_memfds[mid].vgemHandle != 0) {
+            // Cross-node import: the returned handle is a fresh reference on the same
+            // device-global resource. Bump refs so a later GEM_CLOSE of the exporter's
+            // handle doesn't free the buffer while this node still scans it out.
+            DrmGem* ig = drmGemGet(g_memfds[mid].vgemHandle);
+            if (ig !is null) ++ig.refs;
             userWrite!uint(arg + 0, g_memfds[mid].vgemHandle);
             return 0;
         }

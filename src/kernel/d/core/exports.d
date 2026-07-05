@@ -1001,22 +1001,45 @@ ulong linux_seed_initial_stack(
     // force software Mesa on it. Every OTHER program still gets the software
     // gallium driver (the desktop's SHM clients render on the CPU). Match weston
     // by exact basename (its children re-run this seeder under their own names).
-    bool isWestonGpu = false;
+    bool isWestonC = false;
+    bool isHyprlandC = false;
     if (execName !is null) {
         const(char)* wbg = execName;
         for (const(char)* q = execName; *q != 0; ++q) if (*q == '/') wbg = q + 1;
-        isWestonGpu = wbg[0]=='w' && wbg[1]=='e' && wbg[2]=='s' && wbg[3]=='t' &&
-                      wbg[4]=='o' && wbg[5]=='n' && wbg[6]==0;
+        isWestonC = wbg[0]=='w' && wbg[1]=='e' && wbg[2]=='s' && wbg[3]=='t' &&
+                    wbg[4]=='o' && wbg[5]=='n' && wbg[6]==0;
+        isHyprlandC = wbg[0]=='H' && wbg[1]=='y' && wbg[2]=='p' && wbg[3]=='r' &&
+                      wbg[4]=='l' && wbg[5]=='a' && wbg[6]=='n' && wbg[7]=='d' && wbg[8]==0;
     }
+    bool isCompositorGpu = false;
     {
-        // Only let weston pick virgl when a virgl GPU is actually present. On the
-        // default (no-GPU) device set g_gpuVirgl is false → weston still gets the
-        // software vars below and its GL renderer runs on softpipe (no virgl, no
-        // missing-driver hang). [[gpu-virgl-r2]]
+        // The COMPOSITOR (weston OR Hyprland) drives the virgl GPU directly; every
+        // other program (the desktop's SHM clients) still renders on the CPU.  Only
+        // when a virgl GPU is actually present (g_gpuVirgl) — on the default no-GPU
+        // device this is false so the compositor falls back to softpipe.  ★ Hyprland,
+        // like weston, MUST skip the software-forcing Mesa vars on the GPU path: with
+        // LIBGL_ALWAYS_SOFTWARE=1 set, aquamarine's CDRMRenderer picks card0's
+        // kms_swrast EGL device and eglCreateContext fails EGL_BAD_ATTRIBUTE → no
+        // renderer → CPU-readback crash.  Dropping them lets Mesa use the render node
+        // + virtio_gpu (virgl) so eglCreateContext succeeds. [[gpu-virgl-r2]]
         import drivers.graphics.virtio_gpu : g_gpuVirgl;
-        isWestonGpu = isWestonGpu && g_gpuVirgl;
+        isCompositorGpu = (isWestonC || isHyprlandC) && g_gpuVirgl;
     }
-    if (!isWestonGpu) {
+    // Hyprland always wants the real GL scene-render path (GLRenderer.cpp gates on
+    // HOS_SCENE_RENDER), whether it ends up on virgl or softpipe.  Weston ignores it.
+    if (isHyprlandC) {
+        envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_SCENE_RENDER=1\0".ptr);
+        if (envVirt != 0) envVirts[envc++] = envVirt;
+        // Our kernel DRM handler rejects atomic commits (DRM_NR_MODE_ATOMIC -> EINVAL) because the
+        // present path is the legacy SET_CRTC/PAGE_FLIP -> drmPresentFb blit.  Weston falls back to
+        // legacy on its own, but aquamarine picks the atomic impl the moment SET_CLIENT_CAP(ATOMIC)
+        // succeeds and then every commit fails ("Couldn't commit output ... page-flip is awaiting")
+        // so nothing ever reaches the screen.  AQ_NO_ATOMIC=1 is aquamarine's supported escape hatch:
+        // it selects CDRMLegacyImpl (drmModeSetCrtc + drmModePageFlip) which the kernel presents.
+        envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "AQ_NO_ATOMIC=1\0".ptr);
+        if (envVirt != 0) envVirts[envc++] = envVirt;
+    }
+    if (!isCompositorGpu) {
     // Software rendering: no GPU, force Mesa's software gallium driver. Our
     // kms_swrast_dri.so was built -Dllvm=disabled, so the ONLY gallium sw driver
     // it contains is softpipe (NOT llvmpipe) — selecting llvmpipe makes screen
@@ -1037,11 +1060,8 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    // Hyprland: take the real GL scene-render path (GLRenderer.cpp gates it on HOS_SCENE_RENDER),
-    // NOT the clear-only path that calls hosComposeShmWindows — the latter is currently crashing
-    // in its per-frame cairo allocation.  (Weston ignores this var, so it's harmless there.)
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_SCENE_RENDER=1\0".ptr);
-    if (envVirt != 0) envVirts[envc++] = envVirt;
+    // (HOS_SCENE_RENDER=1 is now set unconditionally for Hyprland above, so it applies
+    // on both the virgl and softpipe paths.)
     }
     // NB: AQ_TRACE=1 and EGL_LOG_LEVEL=debug were bring-up debug aids. They make
     // aquamarine log a per-frame scheduleFrame trace and Mesa log every EGL call

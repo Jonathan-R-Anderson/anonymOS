@@ -1,8 +1,10 @@
 # anonymOS
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/bDRHfBCcBN)
+[![IRC](https://img.shields.io/badge/IRC-%23%23anonymOS%20on%20Libera.Chat-brightgreen?logo=liberadotchat&logoColor=white)](https://web.libera.chat/###anonymOS)
 
 💬 **Join the community on Discord:** [discord.gg/bDRHfBCcBN](https://discord.gg/bDRHfBCcBN)
+🗨️ **Or on IRC:** `##anonymOS` on [irc.libera.chat](https://web.libera.chat/###anonymOS) (`/server irc.libera.chat` → `/join ##anonymOS`)
 
 **A capability-secured, object-graph operating system** — a from-scratch x86_64
 kernel that boots a real Linux desktop while, underneath, reducing everything

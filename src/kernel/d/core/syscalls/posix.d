@@ -110,6 +110,7 @@ enum FileType {
     FD_INSTALL_CTL,      // INSTALLER §D: /config/install.action — writes drive the in-OS installer
     FD_INSTALL_PROGRESS, // INSTALLER §D: /config/install.progress — reads return 0..1000 permille
     FD_FB,               // /dev/fb0 — read the composited framebuffer (screenshot); FBIOGET_VSCREENINFO
+    FD_KLOG,             // /run/klog — live read-only view of the kernel log RAM ring (core.io g_klogRing)
 }
 
 struct File {
@@ -1751,6 +1752,26 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)w;
     }
 
+    // /run/klog — the kernel log RAM ring (klog + all FD_CONSOLE stdout/stderr + *.log mirrors),
+    // streamed live so the desktop Logs viewer shows the full boot + iwlwifi bring-up.  f.offset is
+    // a MONOTONIC stream coordinate; we serve [offset, head) and skip any bytes already overwritten
+    // by the drop-oldest ring (a lagging reader loses the oldest data, it never blocks).
+    if (f.type == FileType.FD_KLOG) {
+        import core.io : g_klogRing, g_klogHead, KLOG_RING_SIZE;
+        if (_buf is null) return negErrno(EFAULT);
+        const ulong head   = g_klogHead;                                   // live end (snapshot)
+        const ulong oldest = (head > KLOG_RING_SIZE) ? head - KLOG_RING_SIZE : 0;
+        if (f.offset < oldest) f.offset = oldest;                          // reader lagged → skip lost bytes
+        if (f.offset >= head) return 0;                                    // caught up → EOF-for-now (viewer re-polls)
+        const ulong avail = head - f.offset;
+        const ulong want  = (_count < avail) ? _count : avail;
+        auto dst = cast(ubyte*)_buf;
+        foreach (i; 0 .. want)
+            dst[i] = g_klogRing[cast(size_t)((f.offset + i) & (KLOG_RING_SIZE - 1))];
+        f.offset += want;
+        return cast(ssize_t)want;
+    }
+
     if (f.type == FileType.FD_SOCKET) {
         return localSocketRead(f, _buf, _count);
     }
@@ -2935,6 +2956,22 @@ public int sys_open(const(char)* path, int flags) {
         return publishActiveFdReturn(fd);
     }
 
+    // /run/klog (also /dev/klog) — read-only live view of the kernel log RAM ring (see fileObjRead
+    // FD_KLOG).  The desktop "Logs" viewer opens this to show the FULL boot + driver log (kernel klog,
+    // lkl-boot/iwlwifi, dbus/NM/wpa) without needing serial capture or a boot photo.  Not an rtfs node,
+    // so this synthetic intercept (like install.progress above) is what serves it.
+    if (cstrEq(path, "/run/klog") || cstrEq(path, "/dev/klog")) {
+        if ((flags & 3) != O_RDONLY) return negErrno(EACCES);   // read-only
+        import core.io : g_klogHead, KLOG_RING_SIZE;
+        const ulong head = g_klogHead;
+        g_fdTable[fd].type     = FileType.FD_KLOG;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = (head > KLOG_RING_SIZE) ? head - KLOG_RING_SIZE : 0;  // oldest retained byte
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = head;                                                 // live size (refreshed in lseek/fstat)
+        return publishActiveFdReturn(fd);
+    }
+
     // F2: /config/<name>.json — render the live tables as declarative JSON.
     {
         const int cfgId = configfsParse(path);
@@ -3384,6 +3421,9 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             const uint ftype = (idx >= 0 && idx < RT_MAX_NODES && g_rt[idx].kind == RT_LNK)
                                ? 0xA000 : 0x8000;          // S_IFLNK : S_IFREG
             writeLinuxStatOwned(_statBuf, ftype | fmode, sz, uid, gid);
+        } else if (f.type == FileType.FD_KLOG) {
+            import core.io : g_klogHead;
+            writeLinuxStat(_statBuf, 0x8000 | 0x0124, g_klogHead); // S_IFREG | 0444 (live-growing size)
         } else {
             writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
         }
@@ -4908,6 +4948,107 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
         cur = rtMkdirChild(cur, rel + cstart, clen);
         if (cur < 0) return;
         ++i;                          // skip '/'
+    }
+}
+
+// ─── Host WiFi bridge over COM2 ──────────────────────────────────────────────
+// QEMU has no scannable WiFi device, so real signals can't come from inside the
+// guest.  When launched with WIFI=1, qemu-run.sh attaches a second serial port
+// (COM2, 0x2F8) wired to a host process (src/util/wifi-host-bridge.py) that runs
+// real `nmcli` on the host's WiFi card.  This kernel bridge:
+//   • drains COM2 RX, and on each form-feed-terminated frame writes the received
+//     bytes verbatim to /run/wifi/networks (the exact file the desktop Wi-Fi menu
+//     already renders — real SSIDs + real signal strengths + the active row);
+//   • forwards a pending /run/wifi/connect ("SSID\nPSK\n", written by the menu) to
+//     the host as "CONNECT\tSSID\tPSK\n", which runs a real `nmcli … connect`.
+// It is presence-gated on a 16550 scratch-register probe: no second serial port →
+// no bridge → the userspace demo agent runs instead (see maybeSpawnWifiAgent).
+private enum ushort WIFI_COM2 = 0x2F8;
+__gshared bool  g_wifiBridgePresent = false;
+__gshared bool  g_wifiBridgeChecked = false;
+__gshared ubyte[16384] g_wifiRxBuf;
+__gshared uint  g_wifiRxLen = 0;
+
+public bool wifiBridgeDetect() @nogc nothrow {
+    if (g_wifiBridgeChecked) return g_wifiBridgePresent;
+    g_wifiBridgeChecked = true;
+    // 16550 scratch register (base+7) round-trips only when a device is present;
+    // an absent COM2 reads back 0xFF and ignores writes.
+    outb(WIFI_COM2 + 7, 0x5A); const bool a = (inb(WIFI_COM2 + 7) == 0x5A);
+    outb(WIFI_COM2 + 7, 0xA5); const bool b = (inb(WIFI_COM2 + 7) == 0xA5);
+    g_wifiBridgePresent = a && b;
+    if (g_wifiBridgePresent) {
+        outb(WIFI_COM2 + 1, 0x00);   // no interrupts (we poll)
+        outb(WIFI_COM2 + 3, 0x80);   // DLAB
+        outb(WIFI_COM2 + 0, 0x01);   // divisor 1 → 115200
+        outb(WIFI_COM2 + 1, 0x00);
+        outb(WIFI_COM2 + 3, 0x03);   // 8N1
+        outb(WIFI_COM2 + 2, 0xC7);   // FIFO enable + clear
+        outb(WIFI_COM2 + 4, 0x0B);   // DTR/RTS/OUT2
+    }
+    return g_wifiBridgePresent;
+}
+
+private void wifiCom2Tx(ubyte c) @nogc nothrow {
+    uint spins = 0;
+    // Short bound: if the host isn't draining COM2 (bridge slow/dead) we DROP the byte
+    // rather than stall the kernel loop (which holds the BKL — a long spin freezes the
+    // whole desktop).  Normal draining sets THRE within a handful of reads.
+    while ((inb(WIFI_COM2 + 5) & 0x20) == 0) { if (++spins > 2000) return; }
+    outb(WIFI_COM2, c);
+}
+private void wifiCom2TxStr(const(char)* s) @nogc nothrow { while (*s) wifiCom2Tx(cast(ubyte)*s++); }
+
+// Delete an overlay file by absolute path (used to consume /run/wifi/connect).
+private void wifiRtDelete(const(char)* absPath) @nogc nothrow {
+    int par; const(char)* lf; size_t lfl;
+    const int idx = rtResolve(absPath, par, lf, lfl);
+    if (idx > 0 && idx < RT_MAX_NODES && g_rt[idx].kind == RT_REG) {
+        rtFreeData(g_rt[idx]);
+        g_rt[idx].kind = RT_FREE;
+        g_rt[idx].parent = -1;
+    }
+}
+
+// Called every kernel-loop iteration when the bridge is present, but THROTTLED to
+// ~10 Hz: the work below (a form-feed-framed RX drain + an rtResolve of
+// /run/wifi/connect, which is a full ~12k-node overlay scan when the file is absent)
+// is far too heavy to run on every scheduler pass — doing so starved the guest so
+// badly that client poll(timeout) calls returned instantly and a client spun open()ing
+// /run/wifi/networks, freezing the desktop.  10 Hz is ample for a WiFi menu (the host
+// sends a scan frame every 3 s; connect latency ≤100 ms).
+__gshared ulong g_wifiPollLastMs = 0;
+public void wifiBridgePoll() @nogc nothrow {
+    if (!g_wifiBridgePresent) return;
+    const ulong nowMs = pitMs();
+    if (nowMs - g_wifiPollLastMs < 100) return;   // ~10 Hz
+    g_wifiPollLastMs = nowMs;
+
+    // 1) drain COM2 RX; commit a frame on form-feed (0x0C).
+    uint budget = 8192;
+    while (budget-- > 0 && (inb(WIFI_COM2 + 5) & 0x01)) {
+        const ubyte ch = inb(WIFI_COM2);
+        if (ch == 0x0C) {                                    // frame complete
+            rtAddFile("run/wifi/networks\0".ptr, 17, g_wifiRxBuf.ptr, g_wifiRxLen);
+            g_wifiRxLen = 0;
+        } else if (g_wifiRxLen < g_wifiRxBuf.length) {
+            g_wifiRxBuf[g_wifiRxLen++] = ch;
+        } else {
+            g_wifiRxLen = 0;                                 // overflow → drop frame
+        }
+    }
+
+    // 2) forward a pending connect request, then delete it.
+    int cpar; const(char)* clf; size_t clfl;
+    const int ci = rtResolve("/run/wifi/connect\0".ptr, cpar, clf, clfl);
+    if (ci > 0 && ci < RT_MAX_NODES && g_rt[ci].kind == RT_REG && g_rt[ci].size > 0) {
+        wifiCom2TxStr("CONNECT\t".ptr);
+        foreach (k; 0 .. g_rt[ci].size) {
+            const ubyte c = g_rt[ci].data[k];
+            wifiCom2Tx(c == '\n' ? cast(ubyte)'\t' : c);     // SSID\nPSK → SSID\tPSK
+        }
+        wifiCom2Tx('\n');
+        wifiRtDelete("/run/wifi/connect\0".ptr);
     }
 }
 
@@ -7584,6 +7725,10 @@ public long linux_sys_lseek(ulong fd, long offset, ulong whence) {
     if (ifd < 0 || ifd >= 1024) return negErrno(9); // EBADF
     File* f = &g_fdTable[ifd];
     if (f.type == FileType.FD_NONE) return negErrno(9);
+
+    // /run/klog grows continuously; refresh its size so SEEK_END lands on the live tail
+    // (lets the viewer read just the last N bytes instead of the whole retained ring).
+    if (f.type == FileType.FD_KLOG) { import core.io : g_klogHead; f.fileSize = g_klogHead; }
 
     ulong newOff;
     if (whence == 0) { // SEEK_SET

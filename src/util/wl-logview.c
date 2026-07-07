@@ -2,11 +2,16 @@
  * wl-logview.c -- a safe, scrollable log/file viewer (Wayland + FreeType).
  *
  * There is no terminal on the desktop (an interactive shell busy-loops the PTY and starves the
- * compositor), so this read-only viewer lets you READ the diagnostic files:
- *   Tab / Left / Right : cycle files (/run/nm.log, /run/wpa.log, /run/boot-status.txt, /run/wifi/networks)
- *   Up / Down          : scroll one line;  PageUp / PageDown : scroll a page;  Home / End : top / bottom
- *   r                  : reload the current file
- * It reuses wl-wifi-menu's proven scaffolding (registry/seat/xdg/double-buffered wl_shm/FreeType, and
+ * compositor), so this read-only viewer lets you READ the diagnostic logs — including the FULL boot
+ * and driver log, which on real hardware has no serial capture and can't be photographed as it scrolls.
+ *   /run/klog          : the kernel log RAM ring — kernel klog + ALL program stdout/stderr merged live
+ *                        (lkl-boot/iwlwifi, dbus, NetworkManager, wpa, boot-doctor).  This is tab 0.
+ *   Tab / Left / Right : cycle sources (/run/klog, nm.log, wpa.log, boot-status.txt, wifi/networks, dbus.log)
+ *   Up / Down          : scroll one line;  PageUp / PageDown : scroll a page;  Home : top;  End : bottom+follow
+ *   f                  : toggle tail-follow (auto-scroll to the newest lines as the log grows)
+ *   r                  : reload the current source
+ * It TAIL-reads the last 2 MiB of each source and auto-reloads ~1 s, so a live-growing kernel log streams
+ * in.  Reuses wl-wifi-menu's proven scaffolding (registry/seat/xdg/double-buffered wl_shm/FreeType, and
  * crucially the COMPLETE wl_pointer_listener so real pointer input doesn't crash the client).
  */
 #include <errno.h>
@@ -31,10 +36,13 @@
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 760, WIN_H = 620, HEADER_H = 40, PX = 13, LINEH = 17, MAXLINES = 4000 };
+enum { WIN_W = 1000, WIN_H = 700, HEADER_H = 40, PX = 13, LINEH = 17,
+       MAXLINES = 40000, READCAP = 2*1024*1024 };   /* tail-read the last READCAP bytes; index up to MAXLINES lines */
 
+/* /run/klog is the kernel log RAM ring: kernel klog + ALL program stdout/stderr (lkl-boot/iwlwifi,
+ * dbus, NetworkManager, wpa, boot-doctor) merged live — the one place to read the whole boot. */
 static const char *FILES[] = {
-    "/run/nm.log", "/run/wpa.log", "/run/boot-status.txt", "/run/wifi/networks", "/run/dbus.log",
+    "/run/klog", "/run/nm.log", "/run/wpa.log", "/run/boot-status.txt", "/run/wifi/networks", "/run/dbus.log",
 };
 enum { NFILES = (int)(sizeof(FILES)/sizeof(FILES[0])) };
 
@@ -55,6 +63,7 @@ struct app {
     int  cur;                      // current file index
     int  scroll;                   // top visible line
     int  rows;                     // visible rows
+    int  follow;                   // tail-follow: snap to bottom as the log grows (off once you scroll up)
 };
 
 static void log_line(const char *s){ fputs(s,stdout); fputc('\n',stdout); fflush(stdout); }
@@ -94,28 +103,50 @@ static void draw_text_n(struct app *a, const char *t, int len, int x, int y, int
 static void fill(struct app *a,int x,int y,int w,int h,uint32_t c){ for(int j=y;j<y+h;j++){if(j<0||j>=a->height)continue;
     for(int i=x;i<x+w;i++){if(i<0||i>=a->width)continue;a->pixels[j*a->width+i]=c;}} }
 
-/* load FILES[cur] into text + index line offsets */
+static int bottom_scroll(struct app *a){ int b=a->nlines-a->rows; return b<0?0:b; }
+
+/* load FILES[cur] into text + index line offsets.  TAIL-read the last READCAP bytes (a boot log grows
+ * to many MB and the NEWEST lines are the ones that matter), keeping the last MAXLINES lines addressable.
+ * When following, snap the view to the bottom so new lines appear as they arrive. */
 static void load_current(struct app *a){
+    if (a->rows<=0) a->rows=(a->height-HEADER_H-6)/LINEH;
     free(a->text); a->text=0; a->textlen=0; a->nlines=0;
     int fd=open(FILES[a->cur],O_RDONLY);
     if (fd<0){ a->text=strdup("(file not present)"); a->textlen=strlen(a->text); }
-    else { off_t sz=lseek(fd,0,SEEK_END); lseek(fd,0,SEEK_SET);
-        if (sz>2*1024*1024) sz=2*1024*1024;      /* cap 2MB */
-        a->text=malloc(sz+1); int n=(int)read(fd,a->text,sz); close(fd); if(n<0)n=0; a->text[n]=0; a->textlen=n;
+    else { off_t sz=lseek(fd,0,SEEK_END);
+        off_t start=(sz>READCAP)?(sz-READCAP):0;        /* read only the tail window */
+        int cap=(int)(sz-start);
+        lseek(fd,start,SEEK_SET);
+        a->text=malloc((size_t)cap+1);
+        int n=0; while(n<cap){ int r=(int)read(fd,a->text+n,(size_t)(cap-n)); if(r<=0)break; n+=r; }
+        close(fd); if(n<0)n=0; a->text[n]=0; a->textlen=n;
+        if (start>0){ /* dropped a partial first line — skip to the first whole line */
+            int i=0; while(i<n && a->text[i]!='\n') i++;
+            if (i<n){ i++; memmove(a->text,a->text+i,(size_t)(n-i+1)); n-=i; a->textlen=n; } }
         if (n==0){ free(a->text); a->text=strdup("(empty)"); a->textlen=strlen(a->text); } }
     if (!a->lineoff) a->lineoff=malloc(sizeof(int)*MAXLINES);
     a->nlines=0; a->lineoff[a->nlines++]=0;
-    for (int i=0;i<a->textlen && a->nlines<MAXLINES-1;i++) if (a->text[i]=='\n') a->lineoff[a->nlines++]=i+1;
+    for (int i=0;i<a->textlen;i++) if (a->text[i]=='\n'){
+        if (a->nlines>=MAXLINES){                        /* overflow: drop oldest quarter, keep NEWEST lines */
+            int drop=MAXLINES/4;
+            memmove(a->lineoff,a->lineoff+drop,(size_t)(a->nlines-drop)*sizeof(int));
+            a->nlines-=drop;
+        }
+        a->lineoff[a->nlines++]=i+1;
+    }
+    if (a->follow) a->scroll=bottom_scroll(a);
 }
 
 static void draw(struct app *a){
     const uint32_t BG=0xff11141bu,HDR=0xff1b2230u,TXT=0xffd8dee9u,ACC=0xff4da3ffu,DIM=0xff8b94a3u;
     fill(a,0,0,a->width,a->height,BG);
     fill(a,0,0,a->width,HEADER_H,HDR);
-    char hdr[160]; snprintf(hdr,sizeof hdr,"%s   [%d lines]   line %d/%d",
-                           FILES[a->cur], a->nlines, a->scroll+1, a->nlines);
-    draw_text_n(a,hdr,(int)strlen(hdr),12,11,a->width-260,15,ACC);
-    draw_text_n(a,"Tab=file   up/down/pgup/pgdn=scroll  End=bottom  r=reload",(int)56,a->width-560,13,a->width-12,10,DIM);
+    char hdr[192]; snprintf(hdr,sizeof hdr,"%s   [%d lines]   line %d/%d%s",
+                           FILES[a->cur], a->nlines, a->scroll+1, a->nlines,
+                           a->follow?"   FOLLOW":"");
+    draw_text_n(a,hdr,(int)strlen(hdr),12,11,a->width-380,15,ACC);
+    const char *hint="Tab=source  wheel/PgUp/PgDn=scroll  End=follow  r=reload";
+    draw_text_n(a,hint,(int)strlen(hint),a->width-372,13,a->width-12,10,DIM);
     a->rows=(a->height-HEADER_H-6)/LINEH;
     for (int r=0;r<a->rows;r++){ int ln=a->scroll+r; if(ln>=a->nlines)break;
         int off=a->lineoff[ln]; int end=(ln+1<a->nlines)?a->lineoff[ln+1]-1:a->textlen;
@@ -151,7 +182,9 @@ static void p_leave(void*d,struct wl_pointer*p,uint32_t s,struct wl_surface*sf){
 static void p_motion(void*d,struct wl_pointer*p,uint32_t t,wl_fixed_t x,wl_fixed_t y){(void)p;(void)t;(void)x;struct app*a=d;a->ptr_y=wl_fixed_to_double(y);}
 static void p_button(void*d,struct wl_pointer*p,uint32_t se,uint32_t t,uint32_t b,uint32_t st){(void)d;(void)p;(void)se;(void)t;(void)b;(void)st;}
 static void p_axis(void*d,struct wl_pointer*p,uint32_t t,uint32_t ax,wl_fixed_t v){ (void)p;(void)t; struct app*a=d;
-    if (ax==0){ a->scroll += (v>0)?3:-3; clampscroll(a); commit(a); } }   /* vertical wheel scroll */
+    if (ax==0){ a->scroll += (v>0)?3:-3; a->follow=0; clampscroll(a);       /* manual scroll drops follow */
+                if (a->scroll>=bottom_scroll(a)) a->follow=1;               /* ...unless you land at bottom */
+                commit(a); } }   /* vertical wheel scroll */
 static void p_frame(void*d,struct wl_pointer*p){(void)d;(void)p;}
 static void p_asrc(void*d,struct wl_pointer*p,uint32_t s){(void)d;(void)p;(void)s;}
 static void p_astop(void*d,struct wl_pointer*p,uint32_t t,uint32_t a2){(void)d;(void)p;(void)t;(void)a2;}
@@ -165,19 +198,22 @@ static void k_leave(void*d,struct wl_keyboard*k,uint32_t s,struct wl_surface*sf)
 static void k_key(void*d,struct wl_keyboard*k,uint32_t se,uint32_t t,uint32_t key,uint32_t st){(void)k;(void)se;(void)t;struct app*a=d;
     if(st!=1)return;
     switch(key){
-        case 103: a->scroll--; break;                 /* Up */
-        case 108: a->scroll++; break;                 /* Down */
-        case 104: a->scroll-=a->rows-1; break;        /* PageUp */
-        case 109: a->scroll+=a->rows-1; break;        /* PageDown */
-        case 102: a->scroll=0; break;                 /* Home */
-        case 107: a->scroll=a->nlines-1; break;       /* End */
-        case 15: case 105: a->cur=(a->cur+1)%NFILES; a->scroll=0; load_current(a); break; /* Tab / Left->next */
-        case 106: a->cur=(a->cur+NFILES-1)%NFILES; a->scroll=0; load_current(a); break;   /* Right->prev */
+        case 103: a->scroll--; a->follow=0; break;                 /* Up */
+        case 108: a->scroll++; break;                              /* Down */
+        case 104: a->scroll-=a->rows-1; a->follow=0; break;        /* PageUp */
+        case 109: a->scroll+=a->rows-1; break;                     /* PageDown */
+        case 102: a->scroll=0; a->follow=0; break;                 /* Home */
+        case 107: a->scroll=bottom_scroll(a); a->follow=1; break;  /* End = jump to bottom + follow */
+        case 15: case 105: a->cur=(a->cur+1)%NFILES; a->scroll=0; a->follow=1; load_current(a); break; /* Tab / Left->next */
+        case 106: a->cur=(a->cur+NFILES-1)%NFILES; a->scroll=0; a->follow=1; load_current(a); break;   /* Right->prev */
+        case 33: a->follow=!a->follow; if(a->follow)a->scroll=bottom_scroll(a); break;  /* f = toggle follow */
         case 19: load_current(a); break;              /* r = reload */
         case 1: a->running=0; break;                  /* Esc = quit */
         default: return;
     }
-    clampscroll(a); commit(a);
+    clampscroll(a);
+    if (a->scroll>=bottom_scroll(a)) a->follow=1;   /* scrolling down to the bottom re-enables follow */
+    commit(a);
 }
 static void k_mods(void*d,struct wl_keyboard*k,uint32_t se,uint32_t a2,uint32_t b,uint32_t c,uint32_t e){(void)d;(void)k;(void)se;(void)a2;(void)b;(void)c;(void)e;}
 static void k_rep(void*d,struct wl_keyboard*k,int32_t r,int32_t dl){(void)d;(void)k;(void)r;(void)dl;}
@@ -208,6 +244,7 @@ static const struct wl_registry_listener registry_listener={.global=reg_global,.
 int main(void){
     static struct app app; memset(&app,0,sizeof app);
     app.running=1; app.width=WIN_W; app.height=WIN_H; app.stride=WIN_W*4; app.buffer_size=(size_t)app.stride*WIN_H;
+    app.rows=(WIN_H-HEADER_H-6)/LINEH; app.follow=1;   /* open on the newest lines, tail-following */
     signal(SIGCHLD,SIG_IGN);
     init_freetype(&app);
     load_current(&app);
@@ -233,7 +270,7 @@ int main(void){
         int pr=poll(&pfd,1,1000);
         if(pr>0&&(pfd.revents&POLLIN)){wl_display_read_events(app.display);wl_display_dispatch_pending(app.display);}
         else { wl_display_cancel_read(app.display); if(pr<0){if(errno==EINTR)continue;break;}
-               if(pr==0 && (++tick%3)==0){ load_current(&app); clampscroll(&app); commit(&app); } }  /* auto-reload ~3s */
+               if(pr==0){ (void)tick; load_current(&app); clampscroll(&app); commit(&app); } }  /* auto-reload every ~1s (tail-follows a live log) */
     }
     return 0;
 }

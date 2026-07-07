@@ -15,10 +15,29 @@ ubyte inb(ushort port) {
 }
 
 void kchar(char c) {
+    klogRingPut(c);
     // Serial port 0x3F8
     // Wait for transmit empty
     while ((inb(0x3F8 + 5) & 0x20) == 0) {}
     outb(0x3F8, c);
+}
+
+// ── Kernel log RAM ring ───────────────────────────────────────────────────────
+// EVERY byte that reaches the serial port passes through kchar(): kernel klog()
+// (via console_putchar), userspace stdout/stderr on FD_CONSOLE (lkl-boot/iwlwifi,
+// dbus-daemon, NetworkManager, wpa_supplicant, the boot-doctor), and the *.log
+// rtfile serial mirror.  Tee that single choke-point into a 4 MiB drop-oldest ring
+// so the on-desktop "Logs" viewer can read the FULL boot + driver log through the
+// synthetic file /run/klog — real hardware has NO serial capture, and photographing
+// scrolling boot text is impossible.  g_klogHead is a MONOTONIC byte counter (2^64
+// range — never wraps in practice); the ring index is head & (SIZE-1).  No
+// allocation, no framebuffer access, no cli/sti: safe in syscall/exception context.
+enum ulong KLOG_RING_SIZE = 4UL << 20;   // 4 MiB, power of two → mask instead of modulo
+__gshared ubyte[KLOG_RING_SIZE] g_klogRing;
+__gshared ulong g_klogHead = 0;
+void klogRingPut(char c) {
+    g_klogRing[cast(size_t)(g_klogHead & (KLOG_RING_SIZE - 1))] = cast(ubyte)c;
+    ++g_klogHead;
 }
 
 // Boot/install diagnostics: mirror klog to the framebuffer too, not just serial.

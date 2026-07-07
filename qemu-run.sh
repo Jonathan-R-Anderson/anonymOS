@@ -96,10 +96,47 @@ elif [ "${NET:-0}" = "virtio" ]; then
   echo "[qemu-run] NET=virtio: virtio-net + user-net; frames dumped to net.pcap"
 fi
 
+# A stale server socket makes QEMU fail to bind (and it exits without an obvious error);
+# clear them so a relaunch always starts cleanly.
+rm -f "$PWD/qmp.sock"
+
+# Forward the HOST's real WiFi (nmcli scan + connect) into the guest over a dedicated COM2
+# serial port.  QEMU exposes COM2 as a listening UNIX socket; the host bridge
+# (src/util/wifi-host-bridge.py) connects to it and runs real nmcli, while the guest kernel
+# maps COM2 <-> /run/wifi/{networks,connect} so the desktop Wi-Fi menu shows REAL nearby
+# networks and picking one really connects the host card.  (COM1 stays serial.log/klog;
+# COM2 is the second -serial → 0x2F8 in the guest.)
+#
+# DEFAULT ON when the host actually has a WiFi device (else the guest would gate its own
+# fallback off and show an empty menu).  Force with WIFI=1, disable with WIFI=0.
+WIFI_DEFAULT=0
+if command -v nmcli >/dev/null 2>&1 && nmcli -t -f TYPE dev 2>/dev/null | grep -qx 'wifi'; then
+  WIFI_DEFAULT=1
+fi
+WIFISERIAL=()
+if [ "${WIFI:-$WIFI_DEFAULT}" != "0" ]; then
+  WIFIBR_SOCK="$PWD/wifibr.sock"
+  rm -f "$WIFIBR_SOCK"
+  WIFISERIAL=( -chardev "socket,id=wifibr,path=$WIFIBR_SOCK,server=on,wait=off"
+               -serial chardev:wifibr )
+  # Kill any prior bridge, then launch a fresh one in its OWN session (setsid + stdin from
+  # /dev/null) so it is fully independent of this script's exec of QEMU below — a plain
+  # background subshell here left QEMU tied to the job and it exited when the launcher
+  # detached.  The bridge retries until QEMU creates the socket.
+  pkill -f 'wifi-host-bridge.py' 2>/dev/null || true
+  setsid python3 "$PWD/src/util/wifi-host-bridge.py" "$WIFIBR_SOCK" \
+      > "$PWD/wifi-host-bridge.log" 2>&1 < /dev/null &
+  disown 2>/dev/null || true
+  echo "[qemu-run] host-WiFi bridge ON via COM2 ($WIFIBR_SOCK); bridge log wifi-host-bridge.log (WIFI=0 to disable)"
+else
+  echo "[qemu-run] host-WiFi bridge OFF (no host WiFi device, or WIFI=0)"
+fi
+
 exec "$QEMU_BIN" \
   -boot d \
   -cdrom hos.iso \
   -serial file:serial.log \
+  "${WIFISERIAL[@]}" \
   -m "$MEM" \
   -smp "${SMP:-1}" \
   -no-reboot \

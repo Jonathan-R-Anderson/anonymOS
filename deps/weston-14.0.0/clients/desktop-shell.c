@@ -174,14 +174,21 @@ struct unlock_dialog {
 static void
 panel_add_launchers(struct panel *panel, struct desktop *desktop);
 
+/* forward decl: popover pid registry lives next to epin_spawn below */
+static void epin_popover_reaped(pid_t pid);
+
 static void
 sigchild_handler(int s)
 {
 	int status;
 	pid_t pid;
 
-	while (pid = waitpid(-1, &status, WNOHANG), pid > 0)
+	while (pid = waitpid(-1, &status, WNOHANG), pid > 0) {
 		fprintf(stderr, "child %d exited\n", pid);
+		/* clear the popover toggle slot so the next click re-opens
+		 * instead of trying to collapse a dead window */
+		epin_popover_reaped(pid);
+	}
 }
 
 static int
@@ -264,7 +271,7 @@ struct panel_button {
 };
 
 /* fork/setsid/execve an absolute client path (no shell, inherit environ). */
-static void
+static pid_t
 epin_spawn(const char *path)
 {
 	pid_t pid;
@@ -274,10 +281,10 @@ epin_spawn(const char *path)
 
 	if (pid < 0) {
 		fprintf(stderr, "epin_spawn: fork failed: %s\n", strerror(errno));
-		return;
+		return -1;
 	}
 	if (pid)
-		return;
+		return pid;
 	if (setsid() == -1)
 		exit(EXIT_FAILURE);
 	/* This panel connected to Weston via WAYLAND_SOCKET (an inherited fd); the spawned
@@ -293,6 +300,54 @@ epin_spawn(const char *path)
 	}
 	fprintf(stderr, "epin_spawn: exec '%s' failed: %s\n", path, strerror(errno));
 	exit(1);
+}
+
+/* GNOME-style popover semantics: each panel popover is a single instance that
+ * TOGGLES — first click expands it, the next click collapses it.  We track one
+ * child pid per popover path; a second click SIGTERMs the live child instead of
+ * stacking another window.  sigchild_handler() clears the slot when the child
+ * exits on its own (user pressed its close button / Esc), so the next click
+ * re-opens instead of dead-toggling. */
+static struct {
+	const char       *path;
+	volatile pid_t    pid;
+} epin_popovers[] = {
+	{ "/wl-quicksettings", 0 },
+	{ "/wl-wifi-menu",     0 },
+	{ "/wl-calendar",      0 },
+	{ "/wl-overview",      0 },
+};
+
+static void
+epin_popover_reaped(pid_t pid)
+{
+	unsigned i;
+
+	for (i = 0; i < sizeof(epin_popovers) / sizeof(epin_popovers[0]); i++)
+		if (epin_popovers[i].pid == pid)
+			epin_popovers[i].pid = 0;
+}
+
+static void
+epin_popover_toggle(const char *path)
+{
+	unsigned i;
+
+	for (i = 0; i < sizeof(epin_popovers) / sizeof(epin_popovers[0]); i++) {
+		if (strcmp(epin_popovers[i].path, path) != 0)
+			continue;
+		if (epin_popovers[i].pid > 0 &&
+		    kill(epin_popovers[i].pid, 0) == 0) {
+			/* live popover: this click collapses it */
+			kill(epin_popovers[i].pid, SIGTERM);
+			epin_popovers[i].pid = 0;
+			return;
+		}
+		epin_popovers[i].pid = epin_spawn(path);
+		return;
+	}
+	/* unknown path: plain spawn (no toggle) */
+	epin_spawn(path);
 }
 
 /* Wi-Fi signal 0..4, or -1 when there is no adapter / not connected.  Parses
@@ -482,8 +537,28 @@ panel_button_button_handler(struct widget *widget, struct input *input,
 	struct panel_button *b = data;
 
 	widget_schedule_redraw(widget);
-	if (state == WL_POINTER_BUTTON_STATE_RELEASED && b->exec)
-		epin_spawn(b->exec);
+	if (button != BTN_LEFT)
+		return;
+	if (state != WL_POINTER_BUTTON_STATE_RELEASED || !b->exec)
+		return;
+
+	/* The indicator cluster is one widget drawing three glyphs: Wi-Fi,
+	 * volume, battery.  A click on the Wi-Fi glyph (the left third) opens
+	 * the Wi-Fi network drop-down directly — pick a network right there —
+	 * while the rest of the cluster opens quick settings.  Both toggle:
+	 * click to expand, click again to collapse. */
+	if (b->is_indicator) {
+		struct rectangle alloc;
+		int32_t px, py;
+
+		widget_get_allocation(widget, &alloc);
+		input_get_position(input, &px, &py);
+		if (px < alloc.x + alloc.width / 3) {
+			epin_popover_toggle("/wl-wifi-menu");
+			return;
+		}
+	}
+	epin_popover_toggle(b->exec);
 }
 
 static void
@@ -491,8 +566,10 @@ panel_clock_button_handler(struct widget *widget, struct input *input,
 			   uint32_t time, uint32_t button,
 			   enum wl_pointer_button_state state, void *data)
 {
+	if (button != BTN_LEFT)
+		return;
 	if (state == WL_POINTER_BUTTON_STATE_RELEASED)
-		epin_spawn("/wl-calendar");
+		epin_popover_toggle("/wl-calendar");
 }
 
 static void

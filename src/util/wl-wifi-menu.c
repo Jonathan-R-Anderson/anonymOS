@@ -155,8 +155,12 @@ static void load_networks(struct app *app){
         if (p[0] == '#'){
             /* #dev\tdevpath\tiface\tstate */
             char *t1 = strchr(p, '\t'); char *t2 = t1?strchr(t1+1,'\t'):0; char *t3 = t2?strchr(t2+1,'\t'):0;
+            /* Terminate the iface field at t3 BEFORE copying it: without this the copy
+             * dragged "\t<state>" along, and in the NM-down header-only case ("#dev\t\t\t0")
+             * iface became "\t0" (non-empty) which suppressed the diagnostics panel
+             * exactly when the user needed it. */
+            if (t3){ *t3 = 0; app->dev_state = (unsigned)atoi(t3+1); }
             if (t2){ *t2=0; strncpy(app->iface, t2+1, sizeof(app->iface)-1); }
-            if (t3){ app->dev_state = (unsigned)atoi(t3+1); }
         } else if (p[0] && app->n_nets < MAX_NETS){
             /* ssid\tstrength\tsec\tactive\tpath */
             struct net *n = &app->nets[app->n_nets];
@@ -414,11 +418,44 @@ static void live_refresh(struct app *app){
     }
 }
 
+/* Single-instance drop-down semantics: the menu records its pid in /run/wifi/menu.pid.
+ * If a second instance starts (the panel wifi glyph was clicked again — from ANY
+ * launcher: Weston desktop-shell, wl-quicksettings, or the Hyprland layer bar), it
+ * SIGTERMs the running one and exits — so the same click that would have stacked a
+ * duplicate window instead COLLAPSES the open menu.  Expand / collapse, one window. */
+#define MENU_PIDFILE "/run/wifi/menu.pid"
+static int single_instance_toggle(void){
+    FILE *f = fopen(MENU_PIDFILE, "r");
+    if (f){
+        long oldpid = 0;
+        if (fscanf(f, "%ld", &oldpid) == 1 && oldpid > 0){
+            fclose(f);
+            if (kill((pid_t)oldpid, SIGTERM) == 0){
+                /* a live menu existed: this click collapses it; we're done */
+                unlink(MENU_PIDFILE);
+                return 1;
+            }
+            /* stale pidfile (menu died without cleanup) — fall through and take over */
+        } else {
+            fclose(f);
+        }
+    }
+    f = fopen(MENU_PIDFILE, "w");
+    if (f){ fprintf(f, "%ld\n", (long)getpid()); fclose(f); }
+    return 0;
+}
+
 int main(void){
     static struct app app; memset(&app, 0, sizeof app);
     app.running = 1; app.hover = -1;
     app.width = WIN_W; app.height = WIN_H; app.stride = WIN_W*4; app.buffer_size = (size_t)app.stride*WIN_H;
     signal(SIGCHLD, SIG_IGN);
+    if (single_instance_toggle()) return 0;   /* second click = collapse the open menu */
+    /* SIGTERM/SIGINT keep their DEFAULT disposition on purpose: the kernel's default
+     * action terminates us even while parked in poll() (a handler would only be
+     * delivered at a blocking read on this kernel), the fd cleanup on exit makes the
+     * compositor drop the window immediately, and a stale pidfile is handled by the
+     * next instance's takeover path. */
     init_freetype(&app);
     load_networks(&app);
     load_diag(&app);
@@ -452,5 +489,13 @@ int main(void){
         else { wl_display_cancel_read(app.display); if (pr < 0){ if (errno==EINTR) continue; break; }
                if (pr == 0) live_refresh(&app); }
     }
+    /* Collapse cleanly: drop the pidfile claim and destroy the window so the
+     * compositor removes it immediately (a plain exit also works — the kernel
+     * closes our fds and the compositor sees peerClosed — but be explicit). */
+    unlink(MENU_PIDFILE);
+    if (app.toplevel)    xdg_toplevel_destroy(app.toplevel);
+    if (app.xdg_surface) xdg_surface_destroy(app.xdg_surface);
+    if (app.surface)     wl_surface_destroy(app.surface);
+    wl_display_flush(app.display);
     return 0;
 }

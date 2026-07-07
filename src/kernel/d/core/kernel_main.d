@@ -1428,7 +1428,12 @@ private __gshared int  g_wifiAgentDelay   = 0;
 private void maybeSpawnWifiAgent() {
     if (g_skipNetForTest) return;
     if (g_wifiAgentStarted) return;
-    if (!g_nmStarted) return;              // NM must be launching (agent retries until it registers)
+    if (g_wifiBridgePresent) return;   // the COM2 host-WiFi bridge owns /run/wifi/* — no demo agent
+    // Gate on dbus only (NOT g_nmStarted): the agent retries the bus for 90s, falls back
+    // to a demo network list when NM / the wifi device is absent, and picks up real NM
+    // data the moment it appears — so the Wi-Fi drop-down stays populated and selectable
+    // even on boots where the NM launch chain (provider socket) wedges and NM never runs.
+    if (!g_dbusStarted) return;
     if (g_wifiAgentDelay++ < 60) return;   // small head start so NM can own the bus name
     g_wifiAgentStarted = true;
     klog("[wifi] M6: launching hos-wifi-agent -> /run/wifi/networks (NM<->menu D-Bus bridge)\n");
@@ -2635,9 +2640,30 @@ private void dispatchSyscall(int tid) {
             if (ret == -4) { task.regs[REG_RIP] -= 2; scheduleNext(); return; }
             break;
 
-        // kill
+        // kill — liveness/ESRCH semantics from linux_sys_kill, then ACTUAL delivery:
+        // mark the signal pending and wake the target so the run loop applies it
+        // (default disposition → exitTask; installed handler → EINTR delivery at the
+        // task's next blocking syscall — same machinery as the ^C line discipline).
+        // Without this, kill() was a no-op and the desktop popover toggles (panel
+        // SIGTERMs the open Wi-Fi drop-down to collapse it) silently did nothing.
         case 62:
             ret = linux_sys_kill(rdi, rsi);
+            if (ret == 0 && rsi > 0 && rsi < 64) {
+                int sigTarget = taskIdFromLinuxPid(cast(int)cast(long)rdi);
+                if (sigTarget > 0 && sigTarget < MAX_TASKS &&
+                    g_tasks[sigTarget].active && !g_tasks[sigTarget].exited) {
+                    // custom disposition with no handler = SIG_IGN → drop
+                    if (!((g_taskSigCustom[sigTarget] & (1UL << cast(int)rsi)) &&
+                          g_sigHandler[sigTarget][cast(int)rsi] == 0)) {
+                        g_taskPendingSig[sigTarget] = cast(int)rsi;
+                        // Wake through the proper channel: a futex waiter must be
+                        // released via clearFutexWait (sets RAX=-EINTR); poll/read
+                        // parks are RIP-rewound so a bare un-wait re-runs them.
+                        if (g_futexWaitActive[sigTarget]) clearFutexWait(sigTarget, -4);
+                        else g_tasks[sigTarget].waiting = false;
+                    }
+                }
+            }
             break;
 
         // waitpid (via wait4 with NULL rusage)
@@ -3107,6 +3133,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 79:  return linux_sys_getcwd(a, b);
         case 80:  return linux_sys_chdir(a);
         case 81:  return linux_sys_fchdir(a);
+        case 82:  return linux_sys_rename(a, b);
         case 83:  return linux_sys_mkdir(a, b);
         case 84:  return linux_sys_rmdir(a);
         case 87:  return linux_sys_unlink(a);
@@ -3360,7 +3387,9 @@ private void kernelLoop() {
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)
         maybeSpawnWpa();            // M5: launch wpa_supplicant (D-Bus) just before NM
         maybeSpawnNetworkManager(); // M2b: launch the real NetworkManager daemon once dbus + provider are up
-        maybeSpawnWifiAgent();      // M6: launch the Wi-Fi menu's D-Bus bridge once NM is up
+        wifiBridgeDetect();         // WIFI=1: probe COM2 for the host WiFi bridge (one-shot)
+        wifiBridgePoll();           // …and pump it: real host nmcli scan/connect <-> /run/wifi/*
+        maybeSpawnWifiAgent();      // M6: Wi-Fi menu's D-Bus bridge (skips itself when the COM2 bridge is live)
         maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 

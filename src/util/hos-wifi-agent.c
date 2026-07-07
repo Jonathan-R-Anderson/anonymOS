@@ -174,10 +174,54 @@ static const char *sec_label(dbus_uint32_t flags, dbus_uint32_t wpa, dbus_uint32
     return "open";
 }
 
+/* --- demo fallback ---------------------------------------------------------
+ * When NetworkManager is unreachable / has no wifi device for ~3 poll cycles
+ * (e.g. QEMU with no wireless hardware, or NM still booting), publish a small
+ * canned network list so the Wi-Fi drop-down is populated and the whole
+ * select -> password -> connect -> checkmark UX stays exercisable.  A demo
+ * "connect" simply marks that SSID active.  The moment a REAL wifi device
+ * appears, the miss counter resets and the next poll overwrites the file with
+ * real data — the demo can never mask real networks. */
+static int  g_nm_misses = 0;
+static char g_demo_active[128] = "";
+/* The canned demo list is OFF by default (it once looked like real networks and
+ * confused the user).  Real WiFi comes from either NetworkManager or, in QEMU, the
+ * host WiFi bridge (WIFI=1 makes the kernel COM2 bridge own the /run/wifi files and
+ * this agent is not even spawned).  Set HOS_WIFI_DEMO=1 to re-enable the demo. */
+static int  g_demo_enabled = 0;
+
+static void write_demo_networks(void){
+    char tmp[1024];
+    static int announced = 0;
+    if (!announced){ announced = 1; fprintf(stderr, "[wifi-agent] NM absent; publishing demo network list\n"); }
+    int fd = open("/run/wifi/networks.tmp", O_CREAT|O_WRONLY|O_TRUNC, 0644);
+    if (fd < 0){ fprintf(stderr, "[wifi-agent] demo: open networks.tmp failed\n"); return; }
+    int connected = g_demo_active[0] != 0;
+    int n = snprintf(tmp, sizeof tmp,
+        "#dev\t/demo\twlan0\t%d\n"
+        "EpinAnonymOS-Demo\t82\twpa2\t%d\t/demo/ap0\n"
+        "CoffeeShop-Guest\t61\topen\t%d\t/demo/ap1\n"
+        "Neighbor-5G\t34\twpa2\t%d\t/demo/ap2\n",
+        connected ? 100 : 30,
+        strcmp(g_demo_active, "EpinAnonymOS-Demo") == 0,
+        strcmp(g_demo_active, "CoffeeShop-Guest") == 0,
+        strcmp(g_demo_active, "Neighbor-5G") == 0);
+    (void)!write(fd, tmp, n);
+    close(fd);
+    rename("/run/wifi/networks.tmp", "/run/wifi/networks");
+    fprintf(stderr, "[wifi-agent] demo list written\n");
+}
+
 /* --- write the networks file --- */
 static void write_networks(DBusConnection *c){
     char devpath[256]="", ifname[64]="", tmp[8192]; dbus_uint32_t state=0;
     int have = find_wifi_device(c, devpath, sizeof devpath, ifname, sizeof ifname, &state);
+    if (!have){
+        if (++g_nm_misses >= 3 && g_demo_enabled){ write_demo_networks(); return; }
+    } else {
+        g_nm_misses = 0;
+        g_demo_active[0] = 0;
+    }
     int fd = open("/run/wifi/networks.tmp", O_CREAT|O_WRONLY|O_TRUNC, 0644);
     if (fd < 0) return;
     int n = snprintf(tmp, sizeof tmp, "#dev\t%s\t%s\t%u\n", have?devpath:"", ifname, (unsigned)state);
@@ -247,7 +291,16 @@ static void close_setting(DBusMessageIter *conn, DBusMessageIter *entry, DBusMes
 
 static void do_connect(DBusConnection *c, const char *ssid, const char *psk){
     char devpath[256]="", ifname[64]=""; dbus_uint32_t state=0;
-    if (!find_wifi_device(c, devpath, sizeof devpath, ifname, sizeof ifname, &state)) return;
+    if (!find_wifi_device(c, devpath, sizeof devpath, ifname, sizeof ifname, &state)){
+        /* demo mode (no real wifi device): "connect" = mark the SSID active so the
+         * menu's checkmark + the bar's signal glyph respond; refresh immediately. */
+        if (g_nm_misses >= 3 && g_demo_enabled){
+            snprintf(g_demo_active, sizeof g_demo_active, "%s", ssid);
+            fprintf(stderr, "[wifi-agent] demo connect '%s'\n", ssid);
+            write_demo_networks();
+        }
+        return;
+    }
 
     DBusMessage *m = dbus_message_new_method_call(NM_DEST, NM_PATH, NM_IFACE, "AddAndActivateConnection");
     if (!m) return;
@@ -309,6 +362,7 @@ static int check_connect(DBusConnection *c){
 int main(void){
     mkdir("/run", 0755);
     mkdir("/run/wifi", 0755);
+    g_demo_enabled = (getenv("HOS_WIFI_DEMO") != NULL);   /* off by default */
     /* Point libdbus at OUR dbus-daemon (a kernel-spawned process gets a fixed minimal env, so
      * DBUS_SYSTEM_BUS_ADDRESS isn't inherited), then use the STANDARD shared-connection path
      * dbus_bus_get(DBUS_BUS_SYSTEM) — the same one dbus-send uses successfully.  (An earlier
@@ -321,7 +375,31 @@ int main(void){
         c = dbus_bus_get(DBUS_BUS_SYSTEM, &e);
         if (!c){ dbus_error_free(&e); dbus_error_init(&e); napms(1000); }
     }
-    if (!c){ fprintf(stderr, "[wifi-agent] cannot connect to system bus\n"); return 1; }
+    if (!c){
+        if (!g_demo_enabled){
+            fprintf(stderr, "[wifi-agent] no system bus; exiting (set HOS_WIFI_DEMO=1 for the test list)\n");
+            return 1;
+        }
+        /* HOS_WIFI_DEMO: no system bus — run the demo loop so the Wi-Fi drop-down
+         * still lists (fake) networks and select/connect works end-to-end for UI tests. */
+        fprintf(stderr, "[wifi-agent] no system bus; entering demo mode\n");
+        g_nm_misses = 3;
+        for (;;){
+            int fd = open("/run/wifi/connect", O_RDONLY);
+            if (fd >= 0){
+                char buf[512]; int n = (int)read(fd, buf, sizeof buf - 1); close(fd);
+                unlink("/run/wifi/connect");
+                if (n > 0){
+                    buf[n] = 0;
+                    char *nl = strchr(buf, '\n'); if (nl) *nl = 0;
+                    snprintf(g_demo_active, sizeof g_demo_active, "%s", buf);
+                    fprintf(stderr, "[wifi-agent] demo connect '%s'\n", buf);
+                }
+            }
+            write_demo_networks();
+            napms(1000);
+        }
+    }
     dbus_connection_set_exit_on_disconnect(c, FALSE);
     fprintf(stderr, "[wifi-agent] connected to NM system bus; polling APs\n");
 

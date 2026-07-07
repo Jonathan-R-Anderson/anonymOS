@@ -472,13 +472,13 @@ static void epin_lkl_print(const char *str, int len)
     for (int i = 0; wifi[i]; i++)
         if (epin_str_contains(str, len, wifi[i])) { provtrace_append(str, (unsigned)len); break; }
 
-    static const char *const keep[] = {
-        "panic", "Panic", "Oops", "oops", "BUG", "Call Trace", "RIP:", "Kernel panic",
-        "segfault", "unable to handle", "deadlock", 0
-    };
-    for (int i = 0; keep[i]; i++)
-        if (epin_str_contains(str, len, keep[i])) { (void)!write(2, str, len); return; }
-    /* else: drop the routine kernel printk (it never reaches the screen) */
+    /* Forward the FULL LKL kernel printk to fd 2 (stderr).  On the desktop this flows
+     * FD_CONSOLE -> kchar -> the kernel klog RAM ring -> /run/klog -> the "Logs" viewer, so the
+     * ENTIRE iwlwifi/cfg80211/mac80211 bring-up (firmware load, ALIVE handshake, PCI/DMA, MSI-X)
+     * is readable on-screen with no serial and no boot photo.  loglevel=7 (in lkl_start_kernel
+     * below) is what lets INFO/WARNING messages reach this callback at all — at loglevel=4 the
+     * kernel dropped them before printk ever called us, so the useful probe trace was invisible. */
+    (void)!write(2, str, len);
 }
 
 /* --- Wireless-Extensions bits (LKL ships no linux/wireless.h; these are stable uABI) --- */
@@ -926,11 +926,12 @@ int main(int argc, char **argv)
      * firmware) needs FAR more than the old minimal 32M — 32M OOM-panics in early init
      * ("System is deadlocked on memory").  256M (memfd-backed; EpinAnonymOS's ftruncate
      * allocates it eagerly + CONTIGUOUS, so don't over-ask — 256M is ample for the stack). */
-    /* loglevel=4 (console_loglevel: only KERN_ERR(3) and above print): silence the LKL kernel's
-     * verbose driver/subsystem printk (all the iwlwifi/cfg80211/NET info+warning registrations)
-     * that floods the on-screen log.  Real errors still show; our own status lines come from
-     * lkl-boot's stderr, which is a separate write path unaffected by the kernel log level. */
-    ret = lkl_start_kernel("mem=256M loglevel=4 quiet lkl_pci=epin");
+    /* loglevel=7 (console_loglevel: print everything up to KERN_DEBUG): the AX210/iwlwifi bring-up
+     * trace we need to debug (firmware load, ALIVE, PCI/DMA, MSI-X registrations) is mostly KERN_INFO,
+     * which loglevel=4 silently dropped before printk reached epin_lkl_print.  The flood is now cheap
+     * and desirable: epin_lkl_print forwards it to fd 2 -> the kernel klog ring -> /run/klog -> the
+     * on-desktop Logs viewer (not the slow framebuffer console).  Dropped `quiet` for the same reason. */
+    ret = lkl_start_kernel("mem=256M loglevel=7 lkl_pci=epin");
     if (ret < 0) {
         fprintf(stderr, "lkl_start_kernel failed: %ld\n", ret);
         return 1;

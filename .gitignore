@@ -25,6 +25,7 @@ target/
 *.img
 *.iso
 *.symbols
+*.ppm
 
 # Logs/temp
 nohup.out

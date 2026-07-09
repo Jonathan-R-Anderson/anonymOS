@@ -29,6 +29,22 @@ static void nap_ms(long ms)
     nanosleep(&ts, 0);
 }
 
+/* Dedicated scp-event transcript for the desktop Logs app (SUPER+L, Tab to /run/scp.log):
+ * every uploader status line AND the scp/ssh client's own stderr land here, so a failed
+ * transfer is diagnosable on-machine without grepping the merged /run/klog.  One fd,
+ * sequential writes (no O_APPEND dependency on the ramfs). */
+#define SCPLOG_PATH "/run/scp.log"
+static int g_scplog_fd = -1;
+
+static void scplog_line(const char *s, int n)
+{
+    if (g_scplog_fd < 0)
+        g_scplog_fd = open(SCPLOG_PATH, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (g_scplog_fd < 0) return;
+    (void)!write(g_scplog_fd, s, (size_t)n);
+    (void)!write(g_scplog_fd, "\n", 1);
+}
+
 static void logf_stderr(const char *fmt, ...)
 {
     char buf[512];
@@ -41,6 +57,7 @@ static void logf_stderr(const char *fmt, ...)
     (void)!write(2, "[log-upload] ", 13);
     (void)!write(2, buf, (size_t)n);
     (void)!write(2, "\n", 1);
+    scplog_line(buf, n);
 }
 
 static char *trim(char *s)
@@ -186,6 +203,8 @@ static int wifi_activated(void)
     return atoi(last + 1) >= 100;
 }
 
+static char g_scp_lasterr[160];   /* last line the scp/ssh client printed (the failure reason) */
+
 static int run_scp(const char *target_user, const char *target_ip, const char *target_path, const char *key_path)
 {
     char remote[512];
@@ -222,23 +241,42 @@ static int run_scp(const char *target_user, const char *target_ip, const char *t
         0
     };
 
+    /* Capture the scp/ssh client's stdout+stderr through a pipe: every line goes to
+     * /run/scp.log ("scp: ..."), and the LAST line is remembered so the caller can put
+     * the actual failure reason ("Connection timed out", "no auth methods", ...) on the
+     * on-screen LOG UPLOAD row instead of a bare rc.  The pipe is drained AFTER the child
+     * exits (its close drops the writer count, so read() hits EOF) — error output is far
+     * below the 64 KiB pipe capacity, so the child never blocks on a full pipe. */
+    int pfd[2] = { -1, -1 };
+    if (pipe(pfd) != 0) { pfd[0] = pfd[1] = -1; }
+
     pid_t pid = fork();
     if (pid < 0) {
         logf_stderr("fork failed: errno=%d", errno);
+        if (pfd[0] >= 0) { close(pfd[0]); close(pfd[1]); }
         return 3;
     }
     if (pid == 0) {
+        if (pfd[1] >= 0) {
+            dup2(pfd[1], 1);
+            dup2(pfd[1], 2);
+            close(pfd[0]);
+            close(pfd[1]);
+        }
         execve("/scp", argv, envp);
         _exit(127);
     }
+    if (pfd[1] >= 0) { close(pfd[1]); }
     int st = 0;
+    int rc = -1;
     time_t start = time(0);
     for (;;) {
         pid_t w = waitpid(pid, &st, WNOHANG);
         if (w == pid) break;
         if (w < 0) {
             logf_stderr("waitpid failed: errno=%d", errno);
-            return 4;
+            rc = 4;
+            break;
         }
         if (time(0) - start >= 60) {
             logf_stderr("scp timed out; terminating child");
@@ -246,12 +284,50 @@ static int run_scp(const char *target_user, const char *target_ip, const char *t
             nap_ms(1000);
             if (waitpid(pid, &st, WNOHANG) == 0) kill(pid, SIGKILL);
             (void)waitpid(pid, &st, 0);
-            return 124;
+            rc = 124;
+            break;
         }
         nap_ms(250);
     }
-    if (WIFEXITED(st)) return WEXITSTATUS(st);
-    return 5;
+    if (rc < 0) rc = WIFEXITED(st) ? WEXITSTATUS(st) : 5;
+
+    /* rc==4: waitpid itself failed, the child may still hold the pipe open — a drain
+     * read would block forever on the empty pipe.  Skip it (nothing was reaped anyway). */
+    if (pfd[0] >= 0 && rc == 4) { close(pfd[0]); pfd[0] = -1; }
+    if (pfd[0] >= 0) {
+        g_scp_lasterr[0] = 0;
+        char obuf[2048], line[160];
+        int ln = 0;
+        long n;
+        while ((n = read(pfd[0], obuf, sizeof obuf)) > 0) {
+            for (long i = 0; i < n; i++) {
+                char c = obuf[i];
+                if (c == '\n' || ln >= (int)sizeof line - 1) {
+                    line[ln] = 0;
+                    if (ln > 0) {
+                        char pl[192];
+                        int pn = snprintf(pl, sizeof pl, "scp: %s", line);
+                        if (pn > 0) scplog_line(pl, pn < (int)sizeof pl ? pn : (int)sizeof pl - 1);
+                        strncpy(g_scp_lasterr, line, sizeof g_scp_lasterr - 1);
+                        g_scp_lasterr[sizeof g_scp_lasterr - 1] = 0;
+                    }
+                    ln = 0;
+                } else if (c >= 32 && c < 127) {
+                    line[ln++] = c;
+                }
+            }
+        }
+        if (ln > 0) {
+            line[ln] = 0;
+            char pl[192];
+            int pn = snprintf(pl, sizeof pl, "scp: %s", line);
+            if (pn > 0) scplog_line(pl, pn < (int)sizeof pl ? pn : (int)sizeof pl - 1);
+            strncpy(g_scp_lasterr, line, sizeof g_scp_lasterr - 1);
+            g_scp_lasterr[sizeof g_scp_lasterr - 1] = 0;
+        }
+        close(pfd[0]);
+    }
+    return rc;
 }
 
 int main(void)
@@ -300,7 +376,10 @@ int main(void)
                         target_user, target_ip, target_path, kb);
             return 0;
         }
-        logf_stderr("scp exited rc=%d", rc);
+        if (g_scp_lasterr[0])
+            logf_stderr("scp exited rc=%d: %s", rc, g_scp_lasterr);
+        else
+            logf_stderr("scp exited rc=%d", rc);
         nap_ms(30000);
     }
     logf_stderr("giving up after repeated scp failures");

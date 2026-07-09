@@ -96,8 +96,23 @@ static void install_debug_wifi_profile(void){
         logline("[nm-launch] debug wifi profile skipped: config too long");
         return;
     }
+    /* IMPORTANT: /etc on EpinAnonymOS is a SYNTHETIC filesystem — NM can read a file there by path,
+     * but its keyfile plugin's opendir()/getdents() enumerates nothing, so a profile dropped in
+     * /etc/NetworkManager/system-connections is never LOADED (the device just scans forever and never
+     * autoconnects).  /var/run is a writable+LISTABLE rtfs overlay, and NM's keyfile plugin ALSO reads
+     * NM_KEYFILE_PATH_NAME_RUN (= NMRUNDIR "/system-connections" = /var/run/NetworkManager/
+     * system-connections) at startup — so write the autoconnect profile THERE, where NM enumerates it.
+     * NM then auto-activates it with its INTERNAL (root) subject, which sidesteps the D-Bus caller-UID
+     * authorization ("Unable to determine UID of the request") that blocks an external
+     * AddAndActivateConnection from the wifi-agent here. */
+    mkdir("/var", 0755);
+    mkdir("/var/run", 0755);
+    mkdir("/var/run/NetworkManager", 0755);
+    mkdir("/var/run/NetworkManager/system-connections", 0700);
+    writefile_mode("/var/run/NetworkManager/system-connections/debug-wifi.nmconnection", profile, 0600);
+    /* Also drop it in /etc — harmless, and it loads too if /etc ever becomes enumerable. */
     writefile_mode("/etc/NetworkManager/system-connections/debug-wifi.nmconnection", profile, 0600);
-    logline("[nm-launch] installed debug Wi-Fi autoconnect profile from /epin-debug-net.conf");
+    logline("[nm-launch] installed debug Wi-Fi autoconnect profile (/var/run + /etc) from /epin-debug-net.conf");
 }
 /* Copy src -> dst (for placing the wifi device plugin at NMPLUGINDIR). */
 static int copyfile(const char *src, const char *dst){
@@ -150,8 +165,10 @@ int main(void)
      * stderr does not reach the console here). */
     /* --debug sets debug_stderr (nm-logging.c:1015) so NM ALSO writes its log to STDERR — which we
      * redirect to /run/nm.log below.  Without it NM logs only to syslog (/dev/log, absent) = discarded. */
+    /* Include SETTINGS+AGENTS so nm.log shows keyfile profile loading (did debug-wifi.nmconnection
+     * get read?) and the autoconnect/secrets decision — the CORE list alone hides all of that. */
     char *argv[] = { "/NetworkManager", "--no-daemon", "--debug", "--log-level=DEBUG",
-                     "--log-domains=CORE,PLATFORM,DEVICE,WIFI,SUPPLICANT", 0 };
+                     "--log-domains=CORE,PLATFORM,DEVICE,WIFI,WIFI_SCAN,SUPPLICANT,SETTINGS,AGENTS", 0 };
     { int lf = open("/run/nm.log", O_CREAT|O_WRONLY|O_TRUNC, 0644);
       if (lf >= 0) { dup2(lf,1); dup2(lf,2); if (lf > 2) close(lf); } }
     /* NM's gio GDBus connects to its compiled-in default system-bus path (often /var/run/dbus/...);

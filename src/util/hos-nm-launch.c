@@ -22,6 +22,83 @@ static void writefile(const char *path, const char *data){
     int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
     if (fd >= 0) { (void)!write(fd, data, strlen(data)); close(fd); }
 }
+static void writefile_mode(const char *path, const char *data, mode_t mode){
+    int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, mode);
+    if (fd >= 0) { (void)!write(fd, data, strlen(data)); close(fd); chmod(path, mode); }
+}
+static char *trim(char *s){
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
+    char *e = s + strlen(s);
+    while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n')) *--e = 0;
+    return s;
+}
+static int config_value(const char *key, char *out, size_t outsz){
+    out[0] = 0;
+    int fd = open("/epin-debug-net.conf", O_RDONLY);
+    if (fd < 0) return 0;
+    char buf[4096];
+    long n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n <= 0) return 0;
+    buf[n] = 0;
+    for (char *line = buf; line && *line; ) {
+        char *next = strchr(line, '\n');
+        if (next) *next++ = 0;
+        char *p = trim(line);
+        if (*p && *p != '#') {
+            char *eq = strchr(p, '=');
+            if (eq) {
+                *eq = 0;
+                char *k = trim(p);
+                char *v = trim(eq + 1);
+                if (strcmp(k, key) == 0) {
+                    strncpy(out, v, outsz - 1);
+                    out[outsz - 1] = 0;
+                    return out[0] != 0;
+                }
+            }
+        }
+        line = next;
+    }
+    return 0;
+}
+static void install_debug_wifi_profile(void){
+    char ssid[128], psk[128];
+    if (!config_value("wifi_ssid", ssid, sizeof ssid)) return;
+    if (!config_value("wifi_psk", psk, sizeof psk)) return;
+
+    char profile[1024];
+    int n = snprintf(profile, sizeof profile,
+        "[connection]\n"
+        "id=%s\n"
+        "uuid=7ef2cf3d-0f22-4db8-9c6a-2e18a30f5c40\n"
+        "type=wifi\n"
+        "autoconnect=true\n"
+        "autoconnect-retries=0\n"
+        "\n"
+        "[wifi]\n"
+        "mode=infrastructure\n"
+        "ssid=%s\n"
+        "\n"
+        "[wifi-security]\n"
+        "key-mgmt=wpa-psk\n"
+        "psk=%s\n"
+        "\n"
+        "[ipv4]\n"
+        "method=auto\n"
+        "\n"
+        "[ipv6]\n"
+        "method=ignore\n"
+        "\n"
+        "[proxy]\n",
+        ssid, ssid, psk);
+    if (n <= 0 || n >= (int)sizeof profile) {
+        logline("[nm-launch] debug wifi profile skipped: config too long");
+        return;
+    }
+    writefile_mode("/etc/NetworkManager/system-connections/debug-wifi.nmconnection", profile, 0600);
+    logline("[nm-launch] installed debug Wi-Fi autoconnect profile from /epin-debug-net.conf");
+}
 /* Copy src -> dst (for placing the wifi device plugin at NMPLUGINDIR). */
 static int copyfile(const char *src, const char *dst){
     int in = open(src, O_RDONLY); if (in < 0) return -1;
@@ -39,6 +116,7 @@ int main(void)
     mkdir("/var", 0755);           mkdir("/var/lib", 0755);
     mkdir("/var/lib/NetworkManager", 0755);
     mkdir("/run", 0755);           mkdir("/run/NetworkManager", 0755);
+    install_debug_wifi_profile();
 
     /* NM dlopens its device plugins (incl. wifi!) from NMPLUGINDIR=/usr/lib/NetworkManager/1.44.2.
      * We do NOT copy the plugin there (copying creates a shadowing rtfs node): the KERNEL synthesizes

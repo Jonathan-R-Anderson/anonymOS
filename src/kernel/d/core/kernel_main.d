@@ -219,6 +219,7 @@ __gshared ulong[MAX_TASKS] g_schedN;
 // It is re-checked when woken: every PIT tick (≤1 ms latency) and on input IRQs.
 __gshared bool[MAX_TASKS]  g_pollBlocked;
 __gshared ulong[MAX_TASKS] g_pollDeadline;   // pitMs deadline; 0 = infinite (fd-only)
+__gshared uint g_lklIrqBurst = 0;            // op6 storm protection: back-to-back wakes before a forced yield
 
 // The idle task: a userspace PAUSE-spinner the scheduler runs ONLY when every real
 // task is parked, so the kernel isn't re-running parked pollers' epoll scans at full
@@ -253,6 +254,42 @@ public void dumpCurrentTaskUserStack() @nogc nothrow {
         }
     }
     klog("\n");
+}
+
+// ── Lost-wakeup watchdog ──────────────────────────────────────────────────────
+// The FW13 "desktop frozen, cursor moves" hard-freeze root cause (freeze-probe verified):
+// the CPU sits IDLE (cur=2:idle, syscalls flowing, HOG even) while Weston stays PARKED
+// forever — a lost wakeup (its poll/epoll/futex wake got dropped in a burst, e.g. when the
+// WiFi scan floods events).  Recovery: when the desktop has stopped presenting for >2 s,
+// re-wake all poll-parked tasks (safe: their RIP is rewound, poll re-evaluates its fds and
+// either returns real events or re-parks).  If the stall persists past 5 s, also spurious-
+// wake infinitely-parked futex waiters (futex(2) explicitly allows spurious wakeups; the
+// waiter re-checks the futex word and re-waits).  No-op while the desktop presents normally.
+__gshared ulong g_fwdLastMs = 0;
+__gshared uint  g_fwdWakes = 0;
+private void freezeWatchdog() {
+    if (g_lastPresentMs == 0) return;                    // desktop not up yet
+    const ulong now = pitMs();
+    if (now < g_lastPresentMs) return;
+    const ulong stall = now - g_lastPresentMs;
+    if (stall < 2000) { g_fwdWakes = 0; return; }        // presenting fine (or brief hiccup)
+    if (now - g_fwdLastMs < 1000) return;                // retry at most 1/s while stalled
+    g_fwdLastMs = now;
+    ++g_fwdWakes;
+    wakePollers();                                        // tier 1: poll/epoll/read-parked tasks
+    klog("[freeze] watchdog: re-woke parked pollers (stall ");
+    klog_dec(stall / 1000); klog("s, attempt "); klog_dec(g_fwdWakes); klog(")\n");
+    if (stall >= 5000) {                                  // tier 2: infinite futex waiters
+        uint n = 0;
+        for (int i = 0; i < MAX_TASKS; i++) {
+            if (g_futexWaitActive[i] && g_futexWaitDeadline[i] == 0 &&
+                g_tasks[i].active && !g_tasks[i].exited) {
+                clearFutexWait(i, 0);                     // spurious wake: waiter re-checks + re-waits
+                ++n;
+            }
+        }
+        klog("[freeze] watchdog: spurious-woke "); klog_dec(n); klog(" futex waiters\n");
+    }
 }
 
 private void wakePollers() @nogc nothrow {
@@ -428,6 +465,7 @@ private void scheduleNext() {
         auto t = &g_tasks[next];
         if (t.active && !t.exited && !t.waiting) {
             g_current_task_id = next;
+            freezeSchedSample(cast(int)next);   // freeze probe: who is the core spending time on?
             return;
         }
     }
@@ -508,6 +546,27 @@ private void exitTask(int tid, int code) {
     const int exitLinuxPid = linuxPidForTask(tid);
     t.exited   = true;
     t.exitCode = code;
+    // Freeze probe: if the COMPOSITOR (the presenting task) dies, the desktop hard-freezes with a
+    // moving cursor — record the cause so the on-screen overlay can show it (the klog ring does not
+    // survive the hard reset the user then has to do).
+    if (tid == g_presenterTid) {
+        g_cmpExitCode = code;
+        g_cmpExitMs   = pitMs();
+        g_cmpExitRip  = t.regs[REG_RIP];   // for a code-11 crash this is the faulting user RIP
+        klog("[freeze] COMPOSITOR DIED t="); klog_dec(cast(ulong)tid);
+        klog(" code="); klog_dec(cast(ulong)(cast(uint)code & 0xffff));
+        klog(" rip="); klog_hex(t.regs[REG_RIP]);
+        klog(" (11 = segfault/exception; 128+sig = killed by signal)\n");
+    } else if (code != 0) {
+        // A CLIENT crashed (the panel is the prime suspect).  Record its site for the overlay.
+        g_lastCrashTid = tid; g_lastCrashCode = code; g_lastCrashRip = t.regs[REG_RIP]; g_lastCrashMs = pitMs();
+        auto cn = g_taskExecName[tid];
+        int k = 0; if (cn !is null) { while (cn[k] && k < 23) { g_lastCrashName[k] = cn[k]; ++k; } }
+        g_lastCrashName[k] = 0;
+        klog("[freeze] CLIENT CRASH t="); klog_dec(cast(ulong)tid);
+        klog(" code="); klog_dec(cast(ulong)(cast(uint)code & 0xffff));
+        klog(" rip="); klog_hex(t.regs[REG_RIP]); klog("\n");
+    }
     // direct-fb (real-HW): a process died — name + code. If init=weston shows up here
     // with a nonzero code, the compositor crashed before claiming the display.
     if (g_procFbLogN < 64) {
@@ -1347,26 +1406,52 @@ private void maybeSpawnLklTest() {
                                          // device.  (Polling findDeviceByClass from reconcile 1 hung
                                          // the whole boot on real HW — reverted to this known-good delay.)
     g_lklTestStarted = true;             // one-shot, whether or not we actually launch
-    uint devBdf = findDeviceByClass(0x0280);
-    const bool isWifi = (devBdf != 0xFFFFFFFF);
-    if (!isWifi) {
-        devBdf = findDeviceByClass(0x0380);
-        if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0c03);
-        if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0108);
+    // SINGLE-LKL MULTI-DEVICE: the LKL kernel now drives SEVERAL PCI devices in ONE instance (each on its
+    // own PCI bus — see arch/lkl/drivers/pci.c), so we spawn ONE lkl-boot and grant it EVERY driveable
+    // device.  This replaces the earlier "one LKL per device" scheme, which ran two full embedded-Linux
+    // instances on the single core and saturated it (black desktop, frozen cursor on the FW13).  One
+    // kernel/scheduler/memory footprint drives the AX210 WiFi + the xHCI USB together.  Deny-by-default
+    // is preserved: an allowlist of classes, never "all devices" — WiFi (0x0280) + xHCI USB (0x0c03),
+    // skipping EpinOS's own virtio (0x1AF4).  WiFi is collected FIRST so the AX210 is bus 0 (unchanged
+    // MSI path) and its net-provider comes up before hos-netlaunch waits on it.
+    import drivers.pci : scanPCIDevices;
+    auto devs = scanPCIDevices();
+    uint[MAX_TASK_DEVS] grantBdf; int ngrant = 0;
+    // STABILITY RETREAT (FW13): pass 1 (grant the xHCI so usb-storage can capture the log to a USB stick)
+    // is DISABLED — driving usb-storage on the FW13's real xHCI hard-freezes the machine (dead cursor).
+    // A tighter serial-spin fix did NOT cure it, which points at usb-storage's bulk/scatter-gather DMA
+    // through the no-IOMMU path corrupting kernel memory.  The USB keyboard path (usbhid, tiny DMA) was
+    // fine, but bulk mass-storage is not.  So grant ONLY the AX210 (WiFi, bus 0) — the known-good config.
+    // The FW13's built-in keyboard/trackpad use the NATIVE PS/2 path, so no input is lost.  The log-USB
+    // capture is abandoned on this hardware; the scan-load freeze will be captured another way instead.
+    enum int NPASS_STABLE = 1;                          // 1 = WiFi only.  (was 2: +xHCI for USB-log capture)
+    for (int pass = 0; pass < NPASS_STABLE && ngrant < MAX_TASK_DEVS; pass++) {
+        const uint wantCls = (pass == 0) ? 0x0280 : 0x0c03; // pass 0 = WiFi (bus 0), pass 1 = xHCI(s)
+        foreach (ref d; devs) {
+            if (ngrant >= MAX_TASK_DEVS) break;
+            if (d.vendorId == 0x1AF4) continue;             // never hand EpinOS's own virtio devices to the LKL
+            if (((cast(uint)d.classCode << 8) | d.subClass) != wantCls) continue;
+            grantBdf[ngrant++] = (cast(uint)d.bus << 16) | (cast(uint)d.slot << 8) | d.func;
+        }
     }
-    if (devBdf == 0xFFFFFFFF) {
-        klog("[lkl] no LKL device (0x0280/0380/0c03/0108) -> not launching lkl-boot\n");
-        return;
+    if (ngrant == 0) {
+        // Fallback demo (no WiFi + no xHCI): a GPU/NVMe if present (opt-in LKL_GPU=1 / LKL_NVME=1 in QEMU).
+        uint fb = findDeviceByClass(0x0380);
+        if (fb == 0xFFFFFFFF) fb = findDeviceByClass(0x0108);
+        if (fb == 0xFFFFFFFF) {
+            klog("[lkl] no driveable PCI device (WiFi/xHCI/GPU/NVMe) -> not launching lkl-boot\n");
+            return;
+        }
+        grantBdf[ngrant++] = fb;
     }
-    klog(isWifi ? "[lkl] launching lkl-boot for WiFi (Intel AX210 -> iwlwifi)\n".ptr
-                : "[lkl] launching lkl-boot (Linux-as-a-library device demo)\n".ptr);
-    spawnWaylandProgram("lkl-boot\0".ptr, "[lkl]\0".ptr);
-    // L4 isolation: grant the just-spawned lkl-boot a capability for ONLY this one device.  The 0x4100
-    // bridge is default-deny, so it is denied (-EPERM) any scan/config/MMIO of every other device.
-    const int lklTid = cast(int)g_current_task_id;     // spawnWaylandProgram set this to the new task
+    if (!spawnWaylandProgram("lkl-boot\0".ptr, "[lkl]\0".ptr)) return;
+    const int lklTid = cast(int)g_current_task_id;          // spawnWaylandProgram set this to the new task
     if (lklTid > 0) {
-        grantDeviceCap(lklTid, devBdf);
-        klog("[lkl] L4/L5: granted lkl-boot a device-cap for ONE device (bdf="); klog_hex(devBdf); klog(")\n");
+        for (int i = 0; i < ngrant; i++) {                  // multi-cap: grant EVERY device to the one LKL
+            grantDeviceCap(lklTid, grantBdf[i]);
+            klog("[lkl] granted device-cap bdf="); klog_hex(grantBdf[i]); klog("\n");
+        }
+        klog("[lkl] single LKL granted "); klog_hex(cast(ulong)ngrant); klog(" device(s) (WiFi bus0 + xHCI)\n");
     }
     // NOTE: hos-netlaunch (-> wpa_supplicant) is NOT spawned here.  Spawning it in this same
     // iteration overwrote g_current_task_id (spawnWaylandProgram sets it to the last-spawned task),
@@ -1452,6 +1537,19 @@ private void maybeSpawnNmcli() {
     g_nmcliStarted = true;
     klog("[nm] boot-doctor: launching hos-nmcli-test -> writes /run/boot-status.txt\n");
     spawnWaylandProgram("hos-nmcli-test\0".ptr, "[bootdr]\0".ptr);
+}
+// Debug log egress: after NM starts, launch a small uploader that snapshots
+// /run/klog plus NM/wpa diagnostics and invokes /scp if an SSH client is staged.
+private __gshared bool g_logUploadStarted = false;
+private __gshared int  g_logUploadDelay   = 0;
+private void maybeSpawnLogUpload() {
+    if (g_skipNetForTest) return;
+    if (g_logUploadStarted) return;
+    if (!g_nmStarted) return;
+    if (g_logUploadDelay++ < 180) return;
+    g_logUploadStarted = true;
+    klog("[log-upload] launching hos-log-upload -> /tmp/epin-debug-logs.txt + scp\n");
+    spawnWaylandProgram("hos-log-upload\0".ptr, "[logup]\0".ptr);
 }
 // M0: start the REAL system dbus-daemon once, a little after boot.  D-Bus is pure local AF_UNIX IPC
 // (no LKL, no net-provider), so it is independent of the WiFi path.  hos-dbus-launch also runs a
@@ -2244,6 +2342,11 @@ private void dispatchSyscall(int tid) {
     ulong r8  = x64LastSyscallR8;
     ulong r9  = x64LastSyscallR9;
 
+    // Freeze probe: snapshot every syscall ENTRY.  During a hard freeze the kernel loop is stuck
+    // inside ONE handler — entries stop, so the last snapshot names the stuck syscall + task, and
+    // the cursor-IRQ overlay shows it with its in-flight time.
+    g_freezeSysNr = rax; g_freezeSysTid = tid; g_freezeSysStartMs = pitMs();
+
     ++g_syscallScreenTrace;
     const bool screenTraceThis =
         g_syscallScreenTrace <= 96 ||
@@ -2655,6 +2758,8 @@ private void dispatchSyscall(int tid) {
                     // custom disposition with no handler = SIG_IGN → drop
                     if (!((g_taskSigCustom[sigTarget] & (1UL << cast(int)rsi)) &&
                           g_sigHandler[sigTarget][cast(int)rsi] == 0)) {
+                        // Freeze probe: remember the last kill() so the overlay can name a stray-killer.
+                        g_lastSigSig = cast(int)rsi; g_lastSigFrom = tid; g_lastSigTo = sigTarget; g_lastSigMs = pitMs();
                         g_taskPendingSig[sigTarget] = cast(int)rsi;
                         // Wake through the proper channel: a futex waiter must be
                         // released via clearFutexWait (sets RAX=-EINTR); poll/read
@@ -2986,7 +3091,7 @@ private void dispatchSyscall(int tid) {
     // (and raced) the LKL's enumeration thread.  wakePollers() re-runs this every PIT tick (<=1ms) to
     // re-check; we return 0 on INTx or a 50ms safety timeout, then the LKL fires lkl_trigger_irq + re-blocks.
     if (rax == 0x4100 && rdi == 6) {
-        const uint gbdf = taskGrantedBdf(tid);
+        const uint gbdf = taskGrantedBdf(tid);     // first granted device (for the CSR diagnostic below)
         if (gbdf == 0xFFFFFFFFu) {                 // no device cap → -EPERM (LKL always holds its grant)
             g_pollBlocked[tid] = false;
             task.regs[REG_RAX] = cast(ulong)(-1);
@@ -3000,11 +3105,35 @@ private void dispatchSyscall(int tid) {
         // (MSI-X, undelivered); now that the real MSI works it only COMPETES with it and its
         // continuous (level-sensitive) firing starved the LKL's timer thread → frozen clock at
         // firmware-load (~0.6s).  wifiCsrPending()/the CSR HUD stay for diagnostics only.
-        bool wake = deviceIntxAsserted(gbdf) || lklMsiPending(gbdf);
+        wifiIrqDiagKlog();                         // W1 diagnostic → /run/klog (throttled 1 Hz): FIRES/CSR_INT/MASK/ALIVE
+        // MULTI-DEVICE: one LKL may hold several devices (AX210 + xHCI).  MSI is global (any device's MSI
+        // bumps g_msiIrqCount), so lklMsiPending already covers all of them; for INTx, wake if ANY granted
+        // device is asserting.  On wake the LKL fires lkl_trigger_irq for ALL its registered irqs and each
+        // driver's ISR checks whether its own device actually raised — the standard shared-vector pattern.
+        bool wake = lklMsiPending(gbdf);
+        if (!wake)
+            for (int di = 0; di < 8; di++) {       // taskGrantedDevByIndex returns -1 past the last device
+                const long b = taskGrantedDevByIndex(tid, di);
+                if (b < 0) break;
+                if (deviceIntxAsserted(cast(uint)b)) { wake = true; break; }
+            }
         if (wake) {
-            g_pollBlocked[tid] = false;
-            task.regs[REG_RAX] = 1;                // 1 = woken by a real interrupt (vs 0 = safety timeout)
-            return;
+            // STORM PROTECTION: a device that asserts an un-acked cause continuously (observed after the
+            // gen2 plain-reset path — the AX210 interrupt-storms) would make op6 return 1 forever, so the
+            // LKL irq thread spins in userspace (lkl_trigger_irq → op6 → …) and NEVER yields → the
+            // compositor is starved ("desktop frozen, cursor still moves").  Allow a short burst of
+            // back-to-back wakes (low interrupt latency during firmware load), then FORCE one park to
+            // yield the CPU to Weston.  During a real storm this caps the irq thread at ~a burst per PIT
+            // tick, leaving ~all of each ms for the desktop; normal edge interrupts never hit the cap.
+            if (g_lklIrqBurst < 32) {
+                ++g_lklIrqBurst;
+                g_pollBlocked[tid] = false;
+                task.regs[REG_RAX] = 1;            // 1 = woken by a real interrupt (vs 0 = safety timeout)
+                return;
+            }
+            g_lklIrqBurst = 0;                     // burst spent → fall through to a one-tick park (yield)
+        } else {
+            g_lklIrqBurst = 0;                     // nothing pending → reset the burst
         }
         if (g_pollBlocked[tid]) {
             if (g_pollDeadline[tid] != 0 && pitMs() >= g_pollDeadline[tid]) {
@@ -3375,6 +3504,8 @@ private void kernelLoop() {
         // so the AP can hold it (and dispatch its own task's syscalls) while the BSP is in ring 3.
         // EVERY exit path from here to the userspace run, and the end of the body, must release it.
         bklAcquire(&g_bkl);
+        freezeProbeKlog();     // freeze diagnostic → /run/klog (filter "freeze"): who hogs the core during a stall
+        freezeWatchdog();      // LOST-WAKEUP RECOVERY: un-park stalled sleepers so the compositor resumes
         maybeSpawnWaylandClient();
         // R2.5: GPU-test launchers OFF during Weston-GL bring-up — they contend with
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.
@@ -3391,6 +3522,7 @@ private void kernelLoop() {
         wifiBridgePoll();           // …and pump it: real host nmcli scan/connect <-> /run/wifi/*
         maybeSpawnWifiAgent();      // M6: Wi-Fi menu's D-Bus bridge (skips itself when the COM2 bridge is live)
         maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
+        maybeSpawnLogUpload(); // debug: snapshot logs and scp them when a client is staged
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

@@ -42,6 +42,14 @@ jhc-0.8.2/
 hello
 kernel.elf
 kernel.symbols
+local/debug-net.conf
+local/epin-debug-ssh-key
+local/epin-debug-ssh-key.pub
+local/scp
+local/ssh
+deps/dropbear/dropbear-*/
+deps/dropbear/*.tar.bz2
+deps/dropbear/install/
 # A5/F4 persistent object-store disk image (per-machine, not tracked)
 hos-disk.img
 

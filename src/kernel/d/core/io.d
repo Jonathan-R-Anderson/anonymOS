@@ -14,11 +14,28 @@ ubyte inb(ushort port) {
     return __asm!ubyte("inb $1, $0", "={al},{dx}", port);
 }
 
+// Serial output self-disables once the UART proves unreadable.  On the real FW13 there is no serial
+// reader; if its 16550 THR-empty bit ever stops setting, the spin below caps EVERY char, and because
+// kchar inherits the caller's IF (it does NOT cli/sti), a flood of chars in an IF=0 syscall context
+// (e.g. usb-storage's device-list fprintf dump) pins the CPU with interrupts masked → the 4 kHz timer
+// stops → PS/2 mouse dies → HARD FREEZE (black screen, dead cursor).  Diagnosed by a 3-agent workflow
+// as the concrete IF=0 stall mechanism.  Fix: cap the spin TIGHT, and after a streak of caps latch the
+// port dead so no char ever spins again.  QEMU's UART drains instantly (bit always set) so it never
+// caps, never latches — serial.log keeps working for testing.  The byte is always in the klog ring
+// above (→ /run/klog → the Logs app + the USB stick), so a dropped serial copy loses nothing.
+__gshared bool g_serialDead      = false;
+__gshared uint g_serialCapStreak = 0;
 void kchar(char c) {
     klogRingPut(c);
-    // Serial port 0x3F8
-    // Wait for transmit empty
-    while ((inb(0x3F8 + 5) & 0x20) == 0) {}
+    if (g_serialDead) return;                        // UART proven stuck/unread → never spin here again
+    uint spin = 0;
+    while ((inb(0x3F8 + 5) & 0x20) == 0) {
+        if (++spin > 4096) {                         // THR never emptied → this char is lost to serial
+            if (++g_serialCapStreak >= 8) g_serialDead = true;   // 8 caps in a row → stop using serial
+            return;
+        }
+    }
+    g_serialCapStreak = 0;                           // a real send → UART is alive; reset the streak
     outb(0x3F8, c);
 }
 

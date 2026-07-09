@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean iso zsh progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets build-zksync-wallet boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi hos-install.iso
+.PHONY: all clean iso zsh scp-client progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets build-zksync-wallet boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi hos-install.iso
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -129,6 +129,7 @@ NMLAUNCH_BIN := build/hos-nm-launch
 NMCLITEST_BIN := build/hos-nmcli-test
 WPALAUNCH_BIN := build/hos-wpa-launch
 WIFIAGENT_BIN := build/hos-wifi-agent
+LOGUPLOAD_BIN := build/hos-log-upload
 WIFITERM_BIN := build/hos-wifiterm
 THREADTEST_BIN := build/hos-thread-test
 STORE_APP_BIN := build/store-app
@@ -218,6 +219,21 @@ ANONYMOS_CONFIG_BIN := anonymos-config/build/anonymos-config
 WAYLAND_SYSROOT := deps/gtk-stack/sysroot
 WAYLAND_SCANNER ?= wayland-scanner
 MUSL_CC := deps/musl/install/bin/musl-clang
+OPENSSH_SCP_BIN ?=
+OPENSSH_SSH_BIN ?=
+DROPBEAR_SCP_BIN := deps/dropbear/install/bin/scp
+DROPBEAR_SSH_BIN := deps/dropbear/install/bin/dbclient
+SCP_CLIENT ?= 1
+ifeq ($(SCP_CLIENT),1)
+SCP_CLIENT_STAGE_DEPS := $(DROPBEAR_SCP_BIN) $(DROPBEAR_SSH_BIN)
+else
+SCP_CLIENT_STAGE_DEPS :=
+endif
+
+scp-client: $(DROPBEAR_SCP_BIN) $(DROPBEAR_SSH_BIN)
+
+$(DROPBEAR_SCP_BIN) $(DROPBEAR_SSH_BIN): deps/dropbear/Makefile
+	+$(MAKE) -C deps/dropbear all
 
 # R0 — Rust->musl toolchain (the analogue of musl-clang for the Wayland clients; install via rustup
 # + `rustup target add x86_64-unknown-linux-musl`).  Builds NON-PIE static-musl AnonymOS binaries.
@@ -501,6 +517,10 @@ $(NMCLITEST_BIN): src/util/hos-nmcli-test.c src/lkl/hos-net-proto.h
 	@echo "==== Building hos-nmcli-test (M2b nmcli D-Bus probe) ===="
 	$(MUSL_CC) -static -O2 -Isrc/lkl -o $@ src/util/hos-nmcli-test.c
 
+$(LOGUPLOAD_BIN): src/util/hos-log-upload.c
+	@echo "==== Building hos-log-upload (debug log snapshot + scp launcher) ===="
+	$(MUSL_CC) -static -O2 -Wall -Wextra -o $@ src/util/hos-log-upload.c
+
 $(WIFITERM_BIN): src/util/hos-wifiterm.c
 	@echo "==== Building hos-wifiterm (TEMP lightweight terminal launcher) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-wifiterm.c
@@ -596,7 +616,7 @@ $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_B
 		-lm \
 		-pthread
 
-stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -723,6 +743,37 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 		cp $(WPALAUNCH_BIN) cd/hos-wpa-launch; \
 		printf '    module_path: boot():/wpa_supplicant\n    module_path: boot():/wpa_cli\n    module_path: boot():/libnl-tiny.so\n    module_path: boot():/hos-wpa-launch\n' >> cd/boot/limine/limine.conf; \
 		echo "Included wpa_supplicant (M5: D-Bus mode for NM, under the shim) + libnl-tiny.so + hos-wpa-launch"; \
+	fi
+	cp $(LOGUPLOAD_BIN) cd/hos-log-upload
+	printf '    module_path: boot():/hos-log-upload\n' >> cd/boot/limine/limine.conf
+	@echo "Included hos-log-upload (debug log snapshot + scp launcher)"
+	@if [ -f local/debug-net.conf ]; then \
+		cp local/debug-net.conf cd/epin-debug-net.conf; \
+		printf '    module_path: boot():/epin-debug-net.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included local debug network config (/epin-debug-net.conf)"; \
+	fi
+	@if [ -f local/epin-debug-ssh-key ]; then \
+		cp local/epin-debug-ssh-key cd/epin-debug-ssh-key; \
+		printf '    module_path: boot():/epin-debug-ssh-key\n' >> cd/boot/limine/limine.conf; \
+		echo "Included local debug SSH key (/epin-debug-ssh-key)"; \
+	fi
+	@if [ -n "$(OPENSSH_SCP_BIN)" ] && [ -n "$(OPENSSH_SSH_BIN)" ]; then \
+		cp "$(OPENSSH_SCP_BIN)" cd/scp; \
+		cp "$(OPENSSH_SSH_BIN)" cd/ssh; \
+		printf '    module_path: boot():/scp\n    module_path: boot():/ssh\n' >> cd/boot/limine/limine.conf; \
+		echo "Included scp/ssh from OPENSSH_SCP_BIN and OPENSSH_SSH_BIN"; \
+	elif [ -f "$(DROPBEAR_SCP_BIN)" ] && [ -f "$(DROPBEAR_SSH_BIN)" ]; then \
+		cp "$(DROPBEAR_SCP_BIN)" cd/scp; \
+		cp "$(DROPBEAR_SSH_BIN)" cd/ssh; \
+		printf '    module_path: boot():/scp\n    module_path: boot():/ssh\n' >> cd/boot/limine/limine.conf; \
+		echo "Included Dropbear scp/dbclient debug client"; \
+	elif [ -f local/scp ] && [ -f local/ssh ]; then \
+		cp local/scp cd/scp; \
+		cp local/ssh cd/ssh; \
+		printf '    module_path: boot():/scp\n    module_path: boot():/ssh\n' >> cd/boot/limine/limine.conf; \
+		echo "Included local scp/ssh debug clients"; \
+	else \
+		echo "No scp/ssh client staged; hos-log-upload will report that at boot"; \
 	fi
 	@if ! grep -q 'boot():/ld-musl-x86_64.so.1' cd/boot/limine/limine.conf; then \
 		cp deps/musl/install/lib/libc.so cd/ld-musl-x86_64.so.1; \

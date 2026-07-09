@@ -654,6 +654,11 @@ void framebufferMoveCursor(int x, int y)
 {
     if (!g_fbInitialized) return;
 
+    // Freeze probe: the cursor still moves when Weston is starved, so this is the one
+    // path that keeps running during a lock-up — draw the "who's hogging the core"
+    // overlay here.  No-op unless the desktop has stopped presenting (>1.5 s).
+    { import core.syscalls.posix : freezeProbeRepaint; freezeProbeRepaint(); }
+
     int oldX = g_cursorX;
     int oldY = g_cursorY;
     

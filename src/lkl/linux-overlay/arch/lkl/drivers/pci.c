@@ -211,23 +211,39 @@ static int lkl_pci_probe(struct platform_device *pdev)
 {
 	struct lkl_pci_dev *dev;
 	struct pci_bus *bus;
+	struct pci_bus *first_bus = NULL;
+	int busnr;
 
 	if (!lkl_ops->pci_ops || !pcidev_name)
 		return -1;
 
-	dev = lkl_ops->pci_ops->add(pcidev_name, (void *)memory_start,
-				    memory_end - memory_start);
-	if (!dev)
-		return -1;
-
-	bus = pci_scan_bus(0, &lkl_pci_root_ops, (void *)dev);
-	if (!bus) {
-		lkl_ops->pci_ops->remove(dev);
-		return -1;
+	/*
+	 * MULTI-DEVICE: the host returns one granted device per ->add() call and NULL when
+	 * exhausted.  Put EACH device on its OWN PCI bus, so the existing devfn==0 config
+	 * routing (lkl_pci_generic_read/write use bus->sysdata) works per-device unchanged.
+	 * This lets ONE LKL drive several PCI devices at once (e.g. the AX210 WiFi on bus 0
+	 * and the xHCI USB controller on bus 1) — one kernel, one scheduler, one memory pool.
+	 * Bus 0 stays the first-granted device (the AX210), so its MSI path is untouched.
+	 */
+	for (busnr = 0; ; busnr++) {
+		dev = lkl_ops->pci_ops->add(pcidev_name, (void *)memory_start,
+					    memory_end - memory_start);
+		if (!dev)
+			break;
+		bus = pci_scan_bus(busnr, &lkl_pci_root_ops, (void *)dev);
+		if (!bus) {
+			lkl_ops->pci_ops->remove(dev);
+			continue;
+		}
+		pci_walk_bus(bus, lkl_pci_override_resource, NULL);
+		pci_bus_add_devices(bus);
+		if (!first_bus)
+			first_bus = bus;
 	}
-	pci_walk_bus(bus, lkl_pci_override_resource, NULL);
-	pci_bus_add_devices(bus);
-	dev_set_drvdata(&pdev->dev, bus);
+
+	if (!first_bus)
+		return -1;
+	dev_set_drvdata(&pdev->dev, first_bus);   /* best-effort: shutdown walks the first bus */
 
 	return 0;
 }

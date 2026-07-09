@@ -96,6 +96,22 @@ elif [ "${NET:-0}" = "virtio" ]; then
   echo "[qemu-run] NET=virtio: virtio-net + user-net; frames dumped to net.pcap"
 fi
 
+# USB log capture: a 2nd FAT USB stick that lkl-boot mounts (via the LKL's usb-storage) and dumps
+# /run/klog to (hoslog.txt), so the log survives a hard reset — for debugging the desktop freeze.
+# Opt-in via LOGUSB=1; auto-creates + FAT-formats a 64 MiB image.  On real HW: plug in a FAT32 stick.
+LOGUSBDEV=()
+if [ "${LOGUSB:-0}" = "1" ]; then
+  LOGUSB_IMG="$PWD/logusb.img"
+  if [ ! -f "$LOGUSB_IMG" ]; then
+    dd if=/dev/zero of="$LOGUSB_IMG" bs=1M count=64 status=none
+    mkfs.vfat "$LOGUSB_IMG" >/dev/null 2>&1 && echo "[qemu-run] created + FAT-formatted $LOGUSB_IMG"
+  fi
+  LOGUSBDEV=( -device qemu-xhci,id=logxhci
+              -drive if=none,id=logusb,format=raw,file="$LOGUSB_IMG"
+              -device usb-storage,drive=logusb,bus=logxhci.0 )
+  echo "[qemu-run] LOGUSB=1: FAT USB stick for /run/klog capture -> hoslog.txt on $LOGUSB_IMG"
+fi
+
 # A stale server socket makes QEMU fail to bind (and it exits without an obvious error);
 # clear them so a relaunch always starts cleanly.
 rm -f "$PWD/qmp.sock"
@@ -149,6 +165,7 @@ exec "$QEMU_BIN" \
   -device ide-hd,drive=hosdisk,bus=ahci0.0 \
   "${NVME[@]}" \
   "${USBDEV[@]}" \
+  "${LOGUSBDEV[@]}" \
   "${GPUDEV[@]}" \
   "${NETDEV[@]}" \
   "${GFX[@]}"

@@ -7,12 +7,14 @@
  *   /run/klog          : the kernel log RAM ring — kernel klog + ALL program stdout/stderr merged live
  *                        (lkl-boot/iwlwifi, dbus, NetworkManager, wpa, boot-doctor).  This is tab 0.
  *   Tab / Left / Right : cycle sources (/run/klog, nm.log, wpa.log, boot-status.txt, wifi/networks, dbus.log)
- *   Up / Down          : scroll one line;  PageUp / PageDown : scroll a page;  Home : top;  End : bottom+follow
- *   f                  : toggle tail-follow (auto-scroll to the newest lines as the log grows)
- *   r                  : reload the current source
- * It TAIL-reads the last 2 MiB of each source and auto-reloads ~1 s, so a live-growing kernel log streams
- * in.  Reuses wl-wifi-menu's proven scaffolding (registry/seat/xdg/double-buffered wl_shm/FreeType, and
- * crucially the COMPLETE wl_pointer_listener so real pointer input doesn't crash the client).
+ *   /                  : FILTER — type a substring (e.g. "iwl") to show ONLY matching lines; Enter=apply,
+ *                        Esc=clear, Backspace=delete.  The one fast way to find something in a 5000-line log.
+ *   Up / Down / PageUp / PageDown / Home : scroll;  End : jump to bottom and tail-follow
+ *   f                  : toggle tail-follow (auto-scroll to newest);  r : reload
+ * Opens at the TOP and does NOT auto-scroll by default (so it holds still while you read early boot).
+ * TAIL-reads the last 2 MiB of each source and auto-reloads ~1 s.  Reuses wl-wifi-menu's proven scaffolding
+ * (registry/seat/xdg/double-buffered wl_shm/FreeType, and the COMPLETE wl_pointer_listener so real pointer
+ * input doesn't crash the client).
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -59,11 +61,14 @@ struct app {
     double ptr_y;
 
     char *text; int textlen;       // current file content
-    int  *lineoff; int nlines;     // line start offsets
+    int  *lineoff; int nlines;     // ALL line start offsets
+    int  *fidx;   int nfilt;       // filtered view: indices into lineoff of lines that match filter[] (all lines if no filter)
+    char filter[80]; int flen;     // case-insensitive substring filter ('/' to edit)
+    int  filtering;                // 1 = editing the filter string (keys go to text input, not nav)
     int  cur;                      // current file index
-    int  scroll;                   // top visible line
+    int  scroll;                   // top visible line (index into fidx)
     int  rows;                     // visible rows
-    int  follow;                   // tail-follow: snap to bottom as the log grows (off once you scroll up)
+    int  follow;                   // tail-follow: snap to bottom as the log grows (off by default; End turns on)
 };
 
 static void log_line(const char *s){ fputs(s,stdout); fputc('\n',stdout); fflush(stdout); }
@@ -103,11 +108,32 @@ static void draw_text_n(struct app *a, const char *t, int len, int x, int y, int
 static void fill(struct app *a,int x,int y,int w,int h,uint32_t c){ for(int j=y;j<y+h;j++){if(j<0||j>=a->height)continue;
     for(int i=x;i<x+w;i++){if(i<0||i>=a->width)continue;a->pixels[j*a->width+i]=c;}} }
 
-static int bottom_scroll(struct app *a){ int b=a->nlines-a->rows; return b<0?0:b; }
+static int bottom_scroll(struct app *a){ int b=a->nfilt-a->rows; return b<0?0:b; }
+
+/* case-insensitive substring search of the line [off,end) for filter[] */
+static int line_matches(struct app *a,int off,int end){
+    if (a->flen==0) return 1;
+    for (int i=off;i+a->flen<=end;i++){
+        int j=0; for(;j<a->flen;j++){ char c=a->text[i+j],f=a->filter[j];
+            if(c>='A'&&c<='Z')c+=32; if(f>='A'&&f<='Z')f+=32; if(c!=f)break; }
+        if (j==a->flen) return 1;
+    }
+    return 0;
+}
+/* build fidx[] = indices into lineoff of lines matching filter[] (or all lines when filter empty) */
+static void rebuild_view(struct app *a){
+    if (!a->fidx) a->fidx=malloc(sizeof(int)*MAXLINES);
+    a->nfilt=0;
+    for (int ln=0;ln<a->nlines;ln++){
+        int off=a->lineoff[ln]; int end=(ln+1<a->nlines)?a->lineoff[ln+1]-1:a->textlen;
+        if (line_matches(a,off,end)) a->fidx[a->nfilt++]=ln;
+    }
+    if (a->nfilt==0) a->fidx[a->nfilt++]=-1;   // sentinel: show a "(no matches)" placeholder row
+}
 
 /* load FILES[cur] into text + index line offsets.  TAIL-read the last READCAP bytes (a boot log grows
  * to many MB and the NEWEST lines are the ones that matter), keeping the last MAXLINES lines addressable.
- * When following, snap the view to the bottom so new lines appear as they arrive. */
+ * Then rebuild the filtered view.  Only snaps to the bottom when follow is on (off by default). */
 static void load_current(struct app *a){
     if (a->rows<=0) a->rows=(a->height-HEADER_H-6)/LINEH;
     free(a->text); a->text=0; a->textlen=0; a->nlines=0;
@@ -134,21 +160,29 @@ static void load_current(struct app *a){
         }
         a->lineoff[a->nlines++]=i+1;
     }
+    rebuild_view(a);
     if (a->follow) a->scroll=bottom_scroll(a);
 }
 
 static void draw(struct app *a){
-    const uint32_t BG=0xff11141bu,HDR=0xff1b2230u,TXT=0xffd8dee9u,ACC=0xff4da3ffu,DIM=0xff8b94a3u;
+    const uint32_t BG=0xff11141bu,HDR=0xff1b2230u,TXT=0xffd8dee9u,ACC=0xff4da3ffu,DIM=0xff8b94a3u,FIL=0xffffd479u;
     fill(a,0,0,a->width,a->height,BG);
     fill(a,0,0,a->width,HEADER_H,HDR);
-    char hdr[192]; snprintf(hdr,sizeof hdr,"%s   [%d lines]   line %d/%d%s",
-                           FILES[a->cur], a->nlines, a->scroll+1, a->nlines,
-                           a->follow?"   FOLLOW":"");
-    draw_text_n(a,hdr,(int)strlen(hdr),12,11,a->width-380,15,ACC);
-    const char *hint="Tab=source  wheel/PgUp/PgDn=scroll  End=follow  r=reload";
+    char hdr[224];
+    if (a->filtering || a->flen>0)
+        snprintf(hdr,sizeof hdr,"%s   filter: %s%s   [%d/%d]%s",
+                 FILES[a->cur], a->filter, a->filtering?"_":"", a->nfilt, a->nlines, a->follow?"  FOLLOW":"");
+    else
+        snprintf(hdr,sizeof hdr,"%s   [%d lines]   line %d/%d%s",
+                 FILES[a->cur], a->nlines, a->scroll+1, a->nlines, a->follow?"   FOLLOW":"");
+    draw_text_n(a,hdr,(int)strlen(hdr),12,11,a->width-372,15,(a->filtering||a->flen>0)?FIL:ACC);
+    const char *hint = a->filtering ? "type to filter   Enter=apply   Esc=clear   Bksp=delete"
+                                    : "Tab=source  /=filter  wheel/PgUp/PgDn=scroll  Home/End  r=reload";
     draw_text_n(a,hint,(int)strlen(hint),a->width-372,13,a->width-12,10,DIM);
     a->rows=(a->height-HEADER_H-6)/LINEH;
-    for (int r=0;r<a->rows;r++){ int ln=a->scroll+r; if(ln>=a->nlines)break;
+    for (int r=0;r<a->rows;r++){ int vi=a->scroll+r; if(vi>=a->nfilt)break;
+        int ln=a->fidx[vi];
+        if (ln<0){ draw_text_n(a,"(no lines match filter)",23,10,HEADER_H+4+r*LINEH,a->width-6,PX,DIM); break; }
         int off=a->lineoff[ln]; int end=(ln+1<a->nlines)?a->lineoff[ln+1]-1:a->textlen;
         int len=end-off; if(len<0)len=0; if(len>400)len=400;
         draw_text_n(a,a->text+off,len,10,HEADER_H+4+r*LINEH,a->width-6,PX,TXT); }
@@ -174,7 +208,21 @@ static void commit(struct app *a){ if(!a->configured)return; int i=a->bufs[0].bu
     wl_surface_attach(a->surface,a->bufs[i].wl,0,0); wl_surface_damage_buffer(a->surface,0,0,a->width,a->height);
     wl_surface_commit(a->surface); wl_display_flush(a->display); }
 
-static void clampscroll(struct app *a){ int max=a->nlines-1; if(max<0)max=0; if(a->scroll>max)a->scroll=max; if(a->scroll<0)a->scroll=0; }
+static void clampscroll(struct app *a){ int max=a->nfilt-1; if(max<0)max=0; if(a->scroll>max)a->scroll=max; if(a->scroll<0)a->scroll=0; }
+
+/* evdev keycode -> ASCII for filter text entry (letters/digits + a few symbols); 0 = not printable */
+static char keycode_ascii(uint32_t k){
+    static const char row1[]="1234567890-=";      /* keycodes 2..13 */
+    static const char row2[]="qwertyuiop[]";      /* keycodes 16..27 */
+    static const char row3[]="asdfghjkl;'";       /* keycodes 30..40 */
+    static const char row4[]="zxcvbnm,./";        /* keycodes 44..53 */
+    if (k>=2 && k<=13)  return row1[k-2];
+    if (k>=16 && k<=27) return row2[k-16];
+    if (k>=30 && k<=40) return row3[k-30];
+    if (k>=44 && k<=53) return row4[k-44];
+    if (k==57) return ' ';
+    return 0;
+}
 
 /* --- input --- */
 static void p_enter(void*d,struct wl_pointer*p,uint32_t s,struct wl_surface*sf,wl_fixed_t x,wl_fixed_t y){(void)d;(void)p;(void)s;(void)sf;(void)x;(void)y;}
@@ -197,6 +245,14 @@ static void k_enter(void*d,struct wl_keyboard*k,uint32_t s,struct wl_surface*sf,
 static void k_leave(void*d,struct wl_keyboard*k,uint32_t s,struct wl_surface*sf){(void)d;(void)k;(void)s;(void)sf;}
 static void k_key(void*d,struct wl_keyboard*k,uint32_t se,uint32_t t,uint32_t key,uint32_t st){(void)k;(void)se;(void)t;struct app*a=d;
     if(st!=1)return;
+    /* --- filter-edit mode: ALL keys go to text input (so typing 'r'/'f'/Tab filters, not navigates) --- */
+    if (a->filtering){
+        if (key==28){ a->filtering=0; }                                  /* Enter = apply, keep filter */
+        else if (key==1){ a->filtering=0; a->flen=0; a->filter[0]=0; rebuild_view(a); a->scroll=0; } /* Esc = clear filter */
+        else if (key==14){ if(a->flen>0){ a->filter[--a->flen]=0; rebuild_view(a); a->scroll=0; } }  /* Backspace */
+        else { char c=keycode_ascii(key); if(c && a->flen<(int)sizeof(a->filter)-1){ a->filter[a->flen++]=c; a->filter[a->flen]=0; rebuild_view(a); a->scroll=0; } }
+        clampscroll(a); commit(a); return;
+    }
     switch(key){
         case 103: a->scroll--; a->follow=0; break;                 /* Up */
         case 108: a->scroll++; break;                              /* Down */
@@ -204,8 +260,9 @@ static void k_key(void*d,struct wl_keyboard*k,uint32_t se,uint32_t t,uint32_t ke
         case 109: a->scroll+=a->rows-1; break;                     /* PageDown */
         case 102: a->scroll=0; a->follow=0; break;                 /* Home */
         case 107: a->scroll=bottom_scroll(a); a->follow=1; break;  /* End = jump to bottom + follow */
-        case 15: case 105: a->cur=(a->cur+1)%NFILES; a->scroll=0; a->follow=1; load_current(a); break; /* Tab / Left->next */
-        case 106: a->cur=(a->cur+NFILES-1)%NFILES; a->scroll=0; a->follow=1; load_current(a); break;   /* Right->prev */
+        case 53: a->filtering=1; break;                            /* '/' = edit filter (incremental) */
+        case 15: case 105: a->cur=(a->cur+1)%NFILES; a->scroll=0; a->follow=0; load_current(a); break; /* Tab / Left->next (open at top) */
+        case 106: a->cur=(a->cur+NFILES-1)%NFILES; a->scroll=0; a->follow=0; load_current(a); break;   /* Right->prev (open at top) */
         case 33: a->follow=!a->follow; if(a->follow)a->scroll=bottom_scroll(a); break;  /* f = toggle follow */
         case 19: load_current(a); break;              /* r = reload */
         case 1: a->running=0; break;                  /* Esc = quit */
@@ -244,7 +301,7 @@ static const struct wl_registry_listener registry_listener={.global=reg_global,.
 int main(void){
     static struct app app; memset(&app,0,sizeof app);
     app.running=1; app.width=WIN_W; app.height=WIN_H; app.stride=WIN_W*4; app.buffer_size=(size_t)app.stride*WIN_H;
-    app.rows=(WIN_H-HEADER_H-6)/LINEH; app.follow=1;   /* open on the newest lines, tail-following */
+    app.rows=(WIN_H-HEADER_H-6)/LINEH; app.follow=0; app.scroll=0;   /* open at the TOP, no auto-scroll (End turns on follow) */
     signal(SIGCHLD,SIG_IGN);
     init_freetype(&app);
     load_current(&app);

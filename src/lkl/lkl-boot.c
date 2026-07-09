@@ -109,6 +109,154 @@ static void ht_timer_free(void *_t)
     free(t);
 }
 
+/* ---- USB log persistence -------------------------------------------------------
+ * The FW13 desktop-freeze debugging needs the full /run/klog OFF the machine, but a hard reset
+ * wipes the RAM ring.  The LKL drives USB mass storage (usb-storage -> /dev/sda), so mount a 2nd
+ * FAT-formatted USB stick and continuously append the growing kernel log ring to hoslog.txt.
+ * We READ /run/klog via plain libc (EpinAnonymOS's synthetic klog file) and WRITE via lkl_sys_*
+ * (the LKL's mounted USB) — lkl-boot bridges both.  Survives the compositor freeze (lkl-boot stays
+ * alive), so the log around the freeze is captured. */
+#include <lkl/linux/kdev_t.h>
+/* fwd decl: epin_pci_call is defined further down, but epin_usblog_thread reports status through it (op11). */
+static inline long epin_pci_call(long op, long bdf, long off, long size, long val);
+static void *epin_usblog_thread(void *arg)
+{
+    (void)arg;
+    char mnt[80] = {0};
+    /* SAFETY + VISIBILITY (real-HW): a mount is a BLOCKING LKL call sharing the single LKL "cpu" with
+     * USB input, so we start LATE (12 s, after enumeration) and YIELD between attempts.  We DRIVE the
+     * mount off /proc/partitions (what the LKL ACTUALLY enumerated) and LOG the whole device list + every
+     * mount result.  Every fprintf(stderr) here lands in /run/klog -> the desktop "Logs" app (filter
+     * "usblog"), so even a FAILED capture is diagnosable ON the machine.  We prefer the LARGEST device
+     * (the 123 GB log stick dwarfs the boot ESP) and try every filesystem we built. */
+    { struct timespec s = { 12, 0 }; nanosleep(&s, NULL); }
+    /* Ensure /proc is mounted (we read /proc/partitions).  Idempotent: a 2nd mount just returns -EBUSY. */
+    lkl_sys_mkdir("/proc", 0555);
+    lkl_sys_mount("proc", "/proc", "proc", 0, 0);
+    fprintf(stderr, ">>> usblog: probing for a log USB stick (via /proc/partitions)...\n");
+    epin_pci_call(11, 0, 0, 0, 0);                     /* on-screen status: searching (op11: state=0) */
+    static const char *const FSS[] = { "vfat", "exfat", "ntfs3", "ext4", 0 };
+    struct blkcand { int maj, min; unsigned long kb; char name[32]; };
+    char lastparts[3072] = {0};
+    char path[128];
+    int out = -1;                                      /* the open hoslog.txt fd == "we're capturing" */
+    unsigned long mountedKB = 0; int mountedSd = 0;    /* the mounted device, for the on-screen status */
+    for (int round = 0; round < 40 && out < 0; round++) {
+        char parts[3072];
+        int plen = 0;
+        int pf = lkl_sys_open("/proc/partitions", 0 /*O_RDONLY*/, 0);
+        if (pf >= 0) {
+            long n = lkl_sys_read(pf, parts, sizeof parts - 1);
+            plen = (n > 0) ? (int)n : 0;
+            lkl_sys_close(pf);
+        } else if (round == 0) {
+            fprintf(stderr, ">>> usblog: cannot open /proc/partitions (%d) — /proc not mounted?\n", pf);
+        }
+        parts[plen] = 0;
+        if (plen == (int)sizeof parts - 1) {           /* buffer full: drop the truncated trailing line */
+            char *lastnl = strrchr(parts, '\n');
+            if (lastnl) lastnl[1] = 0;
+        }
+        /* Log the device list only when it CHANGES (avoid per-round spam), but ALWAYS re-attempt mounts
+         * below — a device present since boot whose first mount failed transiently must still be retried. */
+        const int changed = (strcmp(parts, lastparts) != 0);
+        if (changed) {
+            /* Prefix EVERY line with "usblog:" so the whole list survives the desktop Logs "usblog"
+             * filter (the raw /proc/partitions rows don't contain the word, so a %s blob would vanish). */
+            fprintf(stderr, ">>> usblog: LKL block devices (/proc/partitions):\n");
+            if (!plen) {
+                fprintf(stderr, ">>> usblog:   (none enumerated yet)\n");
+            } else {
+                for (char *ln = parts; ln && *ln; ) {
+                    char *nl = strchr(ln, '\n');
+                    int len = nl ? (int)(nl - ln) : (int)strlen(ln);
+                    if (len > 0) fprintf(stderr, ">>> usblog:   %.*s\n", len, ln);
+                    ln = nl ? nl + 1 : 0;
+                }
+            }
+            fprintf(stderr, ">>> usblog: ---\n");
+            strncpy(lastparts, parts, sizeof lastparts - 1); lastparts[sizeof lastparts - 1] = 0;
+        }
+        /* Collect sd* candidates (skip the blank line after the header), sort by size DESC. */
+        struct blkcand cand[24]; int nc = 0;
+        for (char *line = parts; line && *line; ) {
+            char *nl = strchr(line, '\n');
+            if (*line != '\n' && *line != '\r') {          /* skip blank/header-gap lines */
+                int maj = 0, min = 0; unsigned long kb = 0; char name[32] = {0};
+                if (sscanf(line, "%d %d %lu %31s", &maj, &min, &kb, name) == 4 &&
+                    name[0] == 's' && name[1] == 'd' && kb >= 2048 /*skip <2MB*/ && nc < 24) {
+                    cand[nc].maj = maj; cand[nc].min = min; cand[nc].kb = kb;
+                    strncpy(cand[nc].name, name, sizeof cand[nc].name - 1);
+                    cand[nc].name[sizeof cand[nc].name - 1] = 0; nc++;
+                }
+            }
+            line = nl ? nl + 1 : 0;
+        }
+        for (int i = 0; i < nc; i++)
+            for (int j = i + 1; j < nc; j++)
+                if (cand[j].kb > cand[i].kb) { struct blkcand t = cand[i]; cand[i] = cand[j]; cand[j] = t; }
+        if (changed && nc == 0)
+            fprintf(stderr, ">>> usblog: no sd* mass-storage device yet (usb-storage/uas not bound?)\n");
+        /* on-screen status: found a candidate (state 1) or still searching (state 0) */
+        if (nc > 0) epin_pci_call(11, 1, 0, (long)cand[0].kb, cand[0].name[2] - 'a');
+        else        epin_pci_call(11, 0, 0, 0, 0);
+        /* Mount + open the log file per candidate.  A read-only mount (write-protected FAT / dirty NTFS)
+         * mounts OK but O_WRONLY fails -> umount and fall through to the next FS/device rather than dead-end. */
+        for (int c = 0; c < nc && out < 0; c++) {
+            for (int f = 0; FSS[f] && out < 0; f++) {
+                long r = lkl_mount_blkdev(LKL_MKDEV(cand[c].maj, cand[c].min), FSS[f], 0, NULL, mnt, sizeof mnt);
+                if (r < 0) {
+                    if (r != -22 /*EINVAL: wrong FS, expected while probing*/) {
+                        fprintf(stderr, ">>> usblog: /dev/%s as %s -> err %ld\n", cand[c].name, FSS[f], r);
+                        struct timespec y = { 0, 200000000 }; nanosleep(&y, NULL);   /* yield only on real I/O err */
+                    }
+                    continue;
+                }
+                snprintf(path, sizeof path, "%s/hoslog.txt", mnt);
+                out = lkl_sys_open(path, LKL_O_WRONLY | LKL_O_CREAT | LKL_O_TRUNC, 0644);
+                if (out >= 0) {
+                    mountedKB = cand[c].kb; mountedSd = cand[c].name[2] - 'a';
+                    fprintf(stderr, ">>> usblog: MOUNTED /dev/%s (%lu KB) as %s at %s; capturing /run/klog -> %s\n",
+                            cand[c].name, cand[c].kb, FSS[f], mnt, path);
+                    epin_pci_call(11, 2, 0, (long)mountedKB, mountedSd);   /* on-screen: WRITING (0 bytes yet) */
+                } else {
+                    fprintf(stderr, ">>> usblog: /dev/%s mounted %s but %s unwritable (%d, read-only?) — next\n",
+                            cand[c].name, FSS[f], path, out);
+                    lkl_umount_timeout(mnt, 0, 2000);
+                }
+            }
+        }
+        if (out < 0) { struct timespec ts = { 2, 0 }; nanosleep(&ts, NULL); }
+    }
+    if (out < 0) {
+        epin_pci_call(11, 3, 0, 0, 0);                 /* on-screen status: NO writable drive found */
+        fprintf(stderr, ">>> usblog: gave up — no writable USB block device (see the block-device list "
+                        "above; filter 'usblog' in the Logs app). Attach a writable FAT32/exFAT stick.\n");
+        return NULL;
+    }
+    long long off = 0;
+    static char buf[16384];
+    for (;;) {
+        int kf = open("/run/klog", 0 /*O_RDONLY*/);   /* EpinAnonymOS synthetic klog RAM ring */
+        if (kf >= 0) {
+            lseek(kf, (off_t)off, 0 /*SEEK_SET*/);     /* stream coordinate; kernel clamps if we lagged */
+            int n;
+            while ((n = (int)read(kf, buf, sizeof buf)) > 0) {
+                long w = lkl_sys_write(out, buf, n);
+                if (w <= 0) break;                     /* write error (e.g. ENOSPC) -> retry this region next pass */
+                off += w;                              /* advance only by bytes actually written (short-write safe) */
+                if (w < n) break;
+            }
+            close(kf);
+            lkl_sys_fsync(out);                        /* flush to the stick so a hard reset keeps it */
+        }
+        epin_pci_call(11, 2, (long)off, (long)mountedKB, mountedSd);  /* on-screen: WRITING, bytes so far */
+        struct timespec ts = { 3, 0 };                 /* ~3 s cadence (lighter USB contention) */
+        nanosleep(&ts, NULL);
+    }
+    return NULL;
+}
+
 /* ---- L6.0: LKL MMU memory host-op (memfd, not shm_open) ------------------------
  * LKL's MMU backs "physical" memory with a host shm object that it mmaps at kernel
  * virtual addresses (so the kernel-virtual DMA buffers are real host pages -> the
@@ -151,29 +299,42 @@ static inline long epin_pci_call(long op, long bdf, long off, long size, long va
 }
 
 struct epin_pci_dev { long bdf; };
-static struct epin_pci_dev g_epin_pci;
+/* The kernel may grant this ONE LKL SEVERAL devices (AX210 WiFi + xHCI USB).  The LKL calls .add()
+ * once per PCI bus it creates; we hand back the next granted device each call (NULL when exhausted),
+ * so each lands on its own bus.  op10(i) enumerates our granted bdfs. */
+static struct epin_pci_dev g_epin_devs[8];
+static int g_epin_ndev   = -1;   /* -1 until enumerated */
+static int g_epin_addIdx = 0;    /* which device the next .add() hands out */
 
 static struct lkl_pci_dev *epin_pci_add(const char *name, void *kernel_ram, unsigned long ram_size)
 {
     (void)name; (void)kernel_ram; (void)ram_size;
-    long bdf = epin_pci_call(2, 0, 0x0280, 0, 0); /* W1: prefer the WiFi card (network ctrl, class 0x0280 = Intel AX210) */
-    if (bdf < 0)
-        bdf = epin_pci_call(2, 0, 0x0380, 0, 0); /* L6.1: else a display controller (bochs GPU, 0x0380) */
-    if (bdf < 0)
-        bdf = epin_pci_call(2, 0, 0x0c03, 0, 0); /* else a USB controller (xHCI, class 0x0c03) — L5 */
-    if (bdf < 0)
-        bdf = epin_pci_call(2, 0, 0x0108, 0, 0); /* else NVMe (class 0x0108) — the L3/L4 vehicle */
-    if (bdf < 0)
-        bdf = epin_pci_call(2, 0, 0, 0, 0);      /* else first non-bridge device */
-    if (bdf < 0) {
-        fprintf(stderr, ">>> epin_pci: no PCI device found\n");
-        return NULL;
+    if (g_epin_ndev < 0) {                            /* first call: enumerate ALL our granted devices */
+        g_epin_ndev = 0;
+        for (int i = 0; i < 8; i++) {
+            long bdf = epin_pci_call(10, 0, i, 0, 0); /* op10: our i-th granted device (-1 past the last) */
+            if (bdf < 0) break;
+            g_epin_devs[g_epin_ndev++].bdf = bdf;
+            fprintf(stderr, ">>> epin_pci: granted device #%d bdf=%02lx:%02lx.%lx vendor/device=0x%08lx\n",
+                    g_epin_ndev - 1, (bdf >> 16) & 0xff, (bdf >> 8) & 0xff, bdf & 0xff,
+                    epin_pci_call(0, bdf, 0, 4, 0));
+        }
+        if (g_epin_ndev == 0) {                       /* fallback: class-scan (single device / older kernel) */
+            long bdf = epin_pci_call(2, 0, 0x0280, 0, 0);
+            if (bdf < 0) bdf = epin_pci_call(2, 0, 0x0380, 0, 0);
+            if (bdf < 0) bdf = epin_pci_call(2, 0, 0x0c03, 0, 0);
+            if (bdf < 0) bdf = epin_pci_call(2, 0, 0x0108, 0, 0);
+            if (bdf < 0) bdf = epin_pci_call(2, 0, 0, 0, 0);
+            if (bdf >= 0) {
+                g_epin_devs[g_epin_ndev++].bdf = bdf;
+                fprintf(stderr, ">>> epin_pci: (class-scan) device bdf=0x%lx vendor/device=0x%08lx\n",
+                        bdf, epin_pci_call(0, bdf, 0, 4, 0));
+            }
+        }
+        if (g_epin_ndev == 0) { fprintf(stderr, ">>> epin_pci: no granted PCI device\n"); return NULL; }
     }
-    g_epin_pci.bdf = bdf;
-    fprintf(stderr, ">>> epin_pci: device %02lx:%02lx.%lx, vendor/device=0x%08lx\n",
-            (bdf >> 16) & 0xff, (bdf >> 8) & 0xff, bdf & 0xff,
-            epin_pci_call(0, bdf, 0, 4, 0));
-    return (struct lkl_pci_dev *)&g_epin_pci;
+    if (g_epin_addIdx >= g_epin_ndev) return NULL;    /* exhausted -> the LKL stops creating buses */
+    return (struct lkl_pci_dev *)&g_epin_devs[g_epin_addIdx++];
 }
 static void epin_pci_remove(struct lkl_pci_dev *dev) { (void)dev; }
 static int epin_pci_read(struct lkl_pci_dev *dev, int where, int size, void *val)
@@ -472,13 +633,30 @@ static void epin_lkl_print(const char *str, int len)
     for (int i = 0; wifi[i]; i++)
         if (epin_str_contains(str, len, wifi[i])) { provtrace_append(str, (unsigned)len); break; }
 
-    /* Forward the FULL LKL kernel printk to fd 2 (stderr).  On the desktop this flows
-     * FD_CONSOLE -> kchar -> the kernel klog RAM ring -> /run/klog -> the "Logs" viewer, so the
-     * ENTIRE iwlwifi/cfg80211/mac80211 bring-up (firmware load, ALIVE handshake, PCI/DMA, MSI-X)
-     * is readable on-screen with no serial and no boot photo.  loglevel=7 (in lkl_start_kernel
-     * below) is what lets INFO/WARNING messages reach this callback at all — at loglevel=4 the
-     * kernel dropped them before printk ever called us, so the useful probe trace was invisible. */
-    (void)!write(2, str, len);
+    /* Forward the LKL kernel printk to fd 2 (stderr) -> FD_CONSOLE -> kchar -> the kernel klog RAM
+     * ring -> /run/klog -> the "Logs" viewer, so the iwlwifi/cfg80211/mac80211 bring-up is readable
+     * on-screen with no serial.  loglevel=7 (in lkl_start_kernel below) lets INFO/WARNING messages
+     * reach this callback at all.
+     *
+     * FLOOD CONTROL: when the AX210 fails to come alive, iwlmvm auto-restarts the firmware in a tight
+     * loop and re-logs the whole bring-up each time (~hundreds of lines/sec).  Unthrottled that (a)
+     * starves the compositor and (b) evicts the FIRST (real) failure from the 4 MB drop-oldest ring
+     * before it can be read.  So forward the first PRINT_FREE lines verbatim (the initial bring-up +
+     * first failure — the part I actually need), then heavily sample (1-in-PRINT_SAMPLE) with a
+     * periodic "[throttled]" marker, so the loop can't run away but the trace still trickles. */
+    enum { PRINT_FREE = 3000, PRINT_SAMPLE = 32 };
+    static unsigned long g_printN = 0, g_printDrop = 0;
+    unsigned long n = g_printN++;
+    if (n < PRINT_FREE || (n % PRINT_SAMPLE) == 0) {
+        if (g_printDrop) {
+            char m[64]; int ml = snprintf(m, sizeof m, "[lkl printk throttled: dropped %lu]\n", g_printDrop);
+            if (ml > 0) (void)!write(2, m, ml);
+            g_printDrop = 0;
+        }
+        (void)!write(2, str, len);
+    } else {
+        g_printDrop++;
+    }
 }
 
 /* --- Wireless-Extensions bits (LKL ships no linux/wireless.h; these are stable uABI) --- */
@@ -931,7 +1109,19 @@ int main(int argc, char **argv)
      * which loglevel=4 silently dropped before printk reached epin_lkl_print.  The flood is now cheap
      * and desirable: epin_lkl_print forwards it to fd 2 -> the kernel klog ring -> /run/klog -> the
      * on-desktop Logs viewer (not the slow framebuffer console).  Dropped `quiet` for the same reason. */
-    ret = lkl_start_kernel("mem=256M loglevel=7 lkl_pci=epin");
+    /* mac80211_hwsim.radios=0: the wifi-lkl.config builds in mac80211_hwsim (a SIMULATED wifi radio,
+     * handy for testing the stack with no hardware).  On the real FW13 it auto-creates 2 PHANTOM
+     * radios (wlan0/wlan1, MACs 02:00:00:00:0x:00) that NetworkManager latches onto INSTEAD of the
+     * real AX210 (wlan2, C4:FF:99:...) — NM constructs its NMDeviceWifi for the fake wlan0 and stalls
+     * there, never managing the real card.  radios=0 creates ZERO fake radios so the AX210 is the sole
+     * (and first-enumerated) Wi-Fi device NM manages. */
+    /* loglevel=5 (KERN_WARNING and above): the AX210 bring-up trace is captured/understood, so drop the
+     * verbose INFO printk flood — every char of it runs through kchar → the klog ring, which is sustained
+     * single-core load that worsens the desktop contention.  Raise back to 7 only when debugging the driver. */
+    /* ONE LKL now drives ALL our granted devices (AX210 WiFi + xHCI USB, each on its own PCI bus), so we
+     * run every service in this single instance (WiFi + USB), sized for the WiFi stack (the big consumer;
+     * usb-storage is light on top). */
+    ret = lkl_start_kernel("mem=256M loglevel=5 lkl_pci=epin mac80211_hwsim.radios=0");
     if (ret < 0) {
         fprintf(stderr, "lkl_start_kernel failed: %ld\n", ret);
         return 1;
@@ -942,21 +1132,18 @@ int main(int argc, char **argv)
      * before usbhid bound + /dev/input/event* appeared — THAT was the "stall".  Keep the LKL
      * resident so the keyboard/mouse fully enumerate; the input bridge (read /dev/input/event*
      * -> EpinAnonymOS input rings) lands here next. */
-    /* L5 input bridge: read the LKL's USB keyboard + mouse evdev nodes -> EpinAnonymOS input rings. */
+    /* ONE LKL, ALL services (it owns every granted device).  USB (input bridge + /run/klog capture) AND
+     * WiFi (net provider + wlan0 bring-up) run together.  Each self-guards: the input readers/usblog just
+     * wait if there's no USB device; wifi_report fails softly if there's no wlan0. */
     lkl_sys_mkdir("/dev", 0755);
     lkl_sys_mkdir("/dev/input", 0755);
-    pthread_t tkbd, tmse;
-    pthread_create(&tkbd, NULL, epin_input_reader, &g_kbdReader);
+    pthread_t tkbd, tmse, tusb, tnet;
+    pthread_create(&tkbd, NULL, epin_input_reader, &g_kbdReader);   /* USB kbd/mouse -> input rings */
     pthread_create(&tmse, NULL, epin_input_reader, &g_mseReader);
-
-    /* H1: start the cap-gated network provider EARLY (before the blocking boot scan) so its socket
-     * exists ASAP — the native hos-wifi client retries against it, and the provider brings wlan0 up
-     * on demand.  A native client reaches wlan0 only through this DEVCLASS_NET-gated AF_UNIX socket. */
-    pthread_t tnet;
+    pthread_create(&tusb, NULL, epin_usblog_thread, NULL);          /* /run/klog -> USB stick */
+    /* H1: start the WiFi provider EARLY (before the blocking boot scan) so its socket exists ASAP — a
+     * native client reaches wlan0 only through this DEVCLASS_NET-gated AF_UNIX socket. */
     pthread_create(&tnet, NULL, epin_net_provider_thread, NULL);
-    /* self-test disabled: its NSP_SCAN contended with wpa for the radio/provider on real hw.
-     * pthread_create(&tselftest, NULL, epin_net_selftest_thread, NULL); */
-
     /* bring wlan0 up once iwlwifi's async probe creates it + prove the scan/RX path (H0) */
     epin_wifi_report();
 

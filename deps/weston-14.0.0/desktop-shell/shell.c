@@ -4111,20 +4111,19 @@ check_desktop_shell_crash_too_early(struct desktop_shell *shell)
 		return false;
 
 	/*
-	 * If the shell helper client dies before the session has been
-	 * up for roughly 30 seconds, better just make Weston shut down,
-	 * because the user likely has no way to interact with the desktop
-	 * anyway.
+	 * Upstream: if the shell helper client dies before the session has been
+	 * up for ~30 seconds, quit Weston entirely.  EpinAnonymOS: NEVER do that —
+	 * on the FW13 the panel crashed at ~13 s (parsing the first real WiFi-scan
+	 * data) and this rule turned one client bug into a dead desktop ("frozen
+	 * screen, cursor moves", hard-reset required, freeze-probe DIED code=0).
+	 * A wedged panel must not take the compositor down: log it, respawn it,
+	 * and keep the desktop (and the /run/klog crash evidence) alive.
 	 */
-	if (now.tv_sec - shell->startup_time.tv_sec < 30) {
-		weston_log("Error: %s apparently cannot run at all.\n",
-			   shell->client);
-		weston_log_continue(STAMP_SPACE "Quitting...");
-		weston_compositor_exit_with_code(shell->compositor,
-						 EXIT_FAILURE);
-
-		return true;
-	}
+	(void)now;
+	weston_log("%s died %lld s after startup — respawning anyway "
+		   "(EpinAnonymOS: never quit the compositor for a shell crash)\n",
+		   shell->client,
+		   (long long)(now.tv_sec - shell->startup_time.tv_sec));
 
 	return false;
 }
@@ -4136,7 +4135,11 @@ respawn_desktop_shell_process(struct desktop_shell *shell)
 {
 	struct timespec time;
 
-	/* if desktop-shell dies more than 5 times in 30 seconds, give up */
+	/* Upstream: if desktop-shell dies more than 5 times in 30 seconds, give up
+	 * PERMANENTLY (panel gone until reboot).  EpinAnonymOS: skip this round but
+	 * keep the counter window rolling so a later window retries — the panel
+	 * always comes back eventually, and each crash leaves its stackwalk in
+	 * /run/klog for the real fix. */
 	weston_compositor_get_time(&time);
 	if (timespec_sub_to_msec(&time, &shell->child.deathstamp) > 30000) {
 		shell->child.deathstamp = time;
@@ -4145,7 +4148,8 @@ respawn_desktop_shell_process(struct desktop_shell *shell)
 
 	shell->child.deathcount++;
 	if (shell->child.deathcount > 5) {
-		weston_log("%s disconnected, giving up.\n", shell->client);
+		weston_log("%s crashing rapidly (%d in 30 s) — pausing respawn until the next window\n",
+			   shell->client, shell->child.deathcount);
 		return;
 	}
 

@@ -2019,7 +2019,9 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
 
     if (f.type == FileType.FD_CONSOLE) {
         const(char)* chars = cast(const(char)*)buf;
+        const bool isCmp = (g_presenterTid >= 0 && cast(int)g_current_task_id == g_presenterTid);
         foreach (i; 0 .. count) {
+            if (isCmp) cmpLogTap(chars[i]);   // capture the compositor's stderr → its exit reason
             console_serial_putchar(chars[i]);
         }
         return cast(ssize_t)count;
@@ -2139,6 +2141,28 @@ public void lklLogRepaint() @nogc nothrow {
     uint baseY = (h > LKLLOG_ROWS * 16 + 24) ? (h - LKLLOG_ROWS * 16 - 8) : 32;
     for (int r = 0; r < LKLLOG_ROWS; r++)
         fb_draw_hud_row(baseY + cast(uint)(r * 16), g_lklLines[r].ptr);
+}
+
+// USB-LOG on-screen status — reported by lkl-boot's epin_usblog_thread via the 0x4100 bridge (op11) so
+// the user can SEE whether the /run/klog dump is reaching the USB stick, without a serial cable.
+__gshared int   g_usblogState = -1;   // -1=nothing yet, 0=searching, 1=found/mounting, 2=WRITING, 3=gave up
+__gshared ulong g_usblogBytes = 0;    // bytes written to hoslog.txt so far (state 2)
+__gshared ulong g_usblogKB    = 0;    // size of the target device in KB
+__gshared int   g_usblogSd    = 0;    // sd letter index (0='a', 1='b', ...)
+public void usblogStatusRepaint() @nogc nothrow {
+    import arch.x86_64.bootstrap : fb_draw_hud_row, g_fb;
+    if (g_usblogState < 0 || g_fb is null) return;      // nothing reported yet
+    char[100] b; int n = 0;
+    void put(string s) @nogc nothrow { foreach (ch; s) if (n < 99) b[n++] = ch; }
+    void dec(ulong v) @nogc nothrow { char[20] t; int m=0; if(v==0)t[m++]='0'; while(v&&m<20){t[m++]=cast(char)('0'+v%10);v/=10;} while(m&&n<99)b[n++]=t[--m]; }
+    void sd() @nogc nothrow { put("/dev/sd"); if (n<99) b[n++] = cast(char)('a' + (g_usblogSd & 0x1F)); }
+    put("USB LOG: ");
+    if      (g_usblogState == 0) put("searching for a drive...");
+    else if (g_usblogState == 1) { put("found "); sd(); put(" ("); dec(g_usblogKB/1024); put(" MB) - mounting..."); }
+    else if (g_usblogState == 2) { put("WRITING "); sd(); put(" -> hoslog.txt  "); dec(g_usblogBytes/1024); put(" KB written"); }
+    else                         put("NO writable drive found - attach a FAT32/exFAT stick");
+    b[n]=0;
+    fb_draw_hud_row(112, b.ptr);   // below the freeze-probe rows (0-96), below the top bar
 }
 
 public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
@@ -6014,14 +6038,17 @@ private immutable VFEntry[] g_vfs = [
     { "/sys/class/net/eth0/mtu",               "1500\n"       },
     { "/sys/class/net/eth0/ifindex",           "2\n"          },
     { "/sys/class/net/eth0/type",              "1\n"          },
-    // M3: synthesize the (hwsim/AX210) wlan0 device so NM's nm-linux-platform discovers + classifies it
-    // as WIFI.  The phy80211/ subdir + uevent DEVTYPE=wlan are the wifi signals NM/udev key off; the MAC
-    // matches mac80211_hwsim radio 0 (42:00:00:00:00:00) so it correlates with the rtnetlink link.
-    { "/sys/class/net/wlan0/uevent",           "DEVTYPE=wlan\nINTERFACE=wlan0\nIFINDEX=2\n" },
-    { "/sys/class/net/wlan0/address",          "42:00:00:00:00:00\n" },
+    // M3: synthesize the AX210 wlan0 device so NM's nm-linux-platform discovers + classifies it as WIFI.
+    // The phy80211/ subdir + uevent DEVTYPE=wlan are the wifi signals NM/udev key off.  ★ NM cross-checks
+    // /sys/class/net/wlan0/{ifindex,address} against the values it got from rtnetlink (via the shim→LKL);
+    // if they DON'T match it treats the sysfs as stale and ignores the phy80211 marker → NMDeviceEthernet.
+    // With mac80211_hwsim disabled the real AX210 is the sole wlan0: ifindex 4, MAC c4:ff:99:d1:66:6d
+    // (the FW13's card — see the rtnetlink link in /run/klog).  These MUST equal the live LKL values.
+    { "/sys/class/net/wlan0/uevent",           "DEVTYPE=wlan\nINTERFACE=wlan0\nIFINDEX=4\n" },
+    { "/sys/class/net/wlan0/address",          "c4:ff:99:d1:66:6d\n" },
     { "/sys/class/net/wlan0/addr_len",         "6\n"          },
     { "/sys/class/net/wlan0/type",             "1\n"          },
-    { "/sys/class/net/wlan0/ifindex",          "2\n"          },
+    { "/sys/class/net/wlan0/ifindex",          "4\n"          },
     { "/sys/class/net/wlan0/flags",            "0x1003\n"     },
     { "/sys/class/net/wlan0/operstate",        "down\n"       },
     { "/sys/class/net/wlan0/carrier",          "0\n"          },
@@ -8619,7 +8646,11 @@ struct DeviceCap {
     ulong[6] barBase;        // BAR physical base (0 = unused)
     ulong[6] barEnd;         // base + size - 1
 }
-__gshared DeviceCap[MAX_TASKS] g_taskDevCap;
+// A process may be granted SEVERAL devices (a single LKL driving e.g. the AX210 WiFi + the xHCI USB
+// controller, each on its own PCI bus).  The grant is still per-process-leader + deny-by-default: only
+// the explicitly-granted bdfs are visible/usable through the 0x4100 bridge.
+enum int MAX_TASK_DEVS = 4;
+__gshared DeviceCap[MAX_TASK_DEVS][MAX_TASKS] g_taskDevCap;
 __gshared ulong g_lklInjLog = 0;   // L5 input bridge: log the first few injected events (verification)
 
 private int devCapLeader(int tid) {
@@ -8638,8 +8669,11 @@ private void dcLockRel() { dcUnlock(&g_devCapLock); }
 
 public bool taskHasDevCap(int tid, uint bdf) {
     dcLockAcq();
+    bool r = false;
     const int p = devCapLeader(tid);
-    const bool r = p >= 0 && g_taskDevCap[p].valid && g_taskDevCap[p].bdf == bdf;
+    if (p >= 0)
+        foreach (j; 0 .. MAX_TASK_DEVS)
+            if (g_taskDevCap[p][j].valid && g_taskDevCap[p][j].bdf == bdf) { r = true; break; }
     dcLockRel();
     return r;
 }
@@ -8647,11 +8681,24 @@ public bool taskHasMmioCap(int tid, ulong phys) {
     dcLockAcq();
     bool r = false;
     const int p = devCapLeader(tid);
-    if (p >= 0 && g_taskDevCap[p].valid) {
-        auto c = &g_taskDevCap[p];
-        foreach (i; 0 .. 6)
-            if (c.barBase[i] != 0 && phys >= c.barBase[i] && phys <= c.barEnd[i]) { r = true; break; }
-    }
+    if (p >= 0)
+        outer: foreach (j; 0 .. MAX_TASK_DEVS) {
+            auto c = &g_taskDevCap[p][j];
+            if (!c.valid) continue;
+            foreach (i; 0 .. 6)
+                if (c.barBase[i] != 0 && phys >= c.barBase[i] && phys <= c.barEnd[i]) { r = true; break outer; }
+        }
+    dcLockRel();
+    return r;
+}
+// Enumerate a process's granted devices by index (for the LKL host to create one PCI bus per device).
+// Returns the idx-th granted bdf, or -1 when there are no more.  Grants are packed from slot 0.
+public long taskGrantedDevByIndex(int tid, int idx) {
+    dcLockAcq();
+    long r = -1;
+    const int p = devCapLeader(tid);
+    if (p >= 0 && idx >= 0 && idx < MAX_TASK_DEVS && g_taskDevCap[p][idx].valid)
+        r = cast(long)g_taskDevCap[p][idx].bdf;
     dcLockRel();
     return r;
 }
@@ -8662,7 +8709,15 @@ private void grantDeviceCap_impl(int tid, uint bdf) {
     import drivers.pci : pciConfigRead32, pciConfigWrite32;
     const int p = devCapLeader(tid);
     if (p < 0) return;
-    auto c = &g_taskDevCap[p];
+    // APPEND to the process's device list: reuse a slot already holding this bdf, else the first free
+    // slot.  (Was a single overwrite; now a process can hold several devices — e.g. AX210 + xHCI.)
+    int di = -1;
+    foreach (j; 0 .. MAX_TASK_DEVS) {
+        if (g_taskDevCap[p][j].valid && g_taskDevCap[p][j].bdf == bdf) { di = j; break; }
+        if (di < 0 && !g_taskDevCap[p][j].valid) di = j;
+    }
+    if (di < 0) return;                 // device-cap table full for this process
+    auto c = &g_taskDevCap[p][di];
     *c = DeviceCap.init;
     c.valid = true;
     c.bdf   = bdf;
@@ -8721,7 +8776,7 @@ public uint findDeviceByClass(uint cls) {
 public uint taskGrantedBdf(int tid) {
     dcLockAcq();
     const int p = devCapLeader(tid);
-    const uint r = (p >= 0 && g_taskDevCap[p].valid) ? g_taskDevCap[p].bdf : 0xFFFFFFFFu;
+    const uint r = (p >= 0 && g_taskDevCap[p][0].valid) ? g_taskDevCap[p][0].bdf : 0xFFFFFFFFu;  // first device
     dcLockRel();
     return r;
 }
@@ -8844,6 +8899,31 @@ public void wifiCsrHudRepaint() @nogc nothrow {
     put(" ALIVE="); b[n++] = (g_wifiCsrInt & 1) ? '1' : '0';
     b[n] = 0;
     fb_draw_hud_row(48, b.ptr);
+}
+
+// WiFi W1 diagnostic → /run/klog.  The AX210's interrupt path is the open blocker: firmware loads but
+// the fw-reset/ALIVE interrupt may never reach the driver (MSI dropped by VT-d, or a cause-register/mode
+// issue).  Emit the DECISIVE numbers to the kernel log ring at ~1 Hz so they're readable in the desktop
+// Logs viewer (filter "wifi-irq") on real hardware with no serial:
+//   FIRES   = g_msiIrqCount — how many times the device's MSI actually reached vector 0x30 on the BSP.
+//             0 => the MSI write never lands (VT-d remap / masking) — the CSR poll fallback is needed.
+//   CSR_INT = the device's live interrupt-status register.  bit0=ALIVE.  Non-zero => firmware IS raising
+//             causes (so re-enabling the mask-gated CSR poll would deliver them); 0 => nothing pending.
+//   MASK    = CSR_INT_MASK (host interrupt enable).  INTx = legacy PCI interrupt-status bit.
+__gshared ulong g_wifiIrqDiagLastMs = 0;
+public void wifiIrqDiagKlog() @nogc nothrow {
+    if (g_msiDeviceBdf == 0xFFFFFFFF || !g_msiSetupDone) return;
+    const ulong nowMs = pitMs();
+    if (nowMs - g_wifiIrqDiagLastMs < 1000) return;         // ~1 Hz (cheap: a few MMIO reads)
+    g_wifiIrqDiagLastMs = nowMs;
+    wifiCsrRefresh();                                        // refresh CSR_INT / MASK / FH (pure reads, no ACK)
+    klog("[wifi-irq] FIRES="); klog_dec(g_msiIrqCount);
+    klog(" INTx="); klog_dec(deviceIntxAsserted(g_msiDeviceBdf) ? 1 : 0);
+    klog(" CSR_INT=0x"); klog_hex(g_wifiCsrInt);
+    klog(" MASK=0x"); klog_hex(g_wifiCsrMask);
+    klog(" FH=0x"); klog_hex(g_wifiCsrFh);
+    klog(" ALIVE="); klog_dec((g_wifiCsrInt & 1) ? 1 : 0);
+    klog(" bdf=0x"); klog_hex(g_msiDeviceBdf); klog("\n");
 }
 
 // L5 kernel-side INTx wake: is the device's PCI Status "Interrupt Status" bit set (a level-triggered
@@ -8981,6 +9061,17 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             if (off == 2) return cast(long)MSI_VECTOR; // data: vector 0x30, fixed delivery, edge
             return negErrno(EINVAL);
         }
+        case 10:                                     // enumerate MY granted devices: off = index; returns the
+            return taskGrantedDevByIndex(tid, cast(int)off);   // idx-th granted bdf, or -1 past the last.
+        case 11:                                     // report USB-log status -> on-screen indicator (op11):
+            if (taskGrantedBdf(tid) == 0xFFFFFFFFu) return negErrno(EPERM);   // only an LKL (holds a dev cap)
+            // NOTE: no klog here — it would busy-spin on COM1 (bounded ~50000/char) with NO serial reader
+            // on the FW13.  The on-screen indicator IS the status; a serial write only wastes cycles.
+            g_usblogState = cast(int)bdf;            // bdf=state(0..3), off=bytesWritten, size=devKB, val=sd idx
+            g_usblogBytes = off;
+            g_usblogKB    = size;
+            g_usblogSd    = cast(int)val;
+            return 0;
         default: return negErrno(EINVAL);
     }
 }
@@ -10639,6 +10730,10 @@ public void cursorSetPos(int x, int y) @nogc nothrow {
     cursorErase();
     g_curX = x; g_curY = y;
     cursorPaint();
+    // Freeze probe: this mouse-IRQ path is the ONE code path proven alive during a hard freeze
+    // (the cursor still moves).  Draw the who/what overlay here — pure fb writes, no serial, no
+    // cli/sti; self-gated to only appear when the desktop has stopped presenting (>1.5 s).
+    freezeProbeRepaint();
 }
 
 // Re-stamp the cursor after Weston overwrote the framebuffer with a fresh frame.
@@ -10668,10 +10763,190 @@ __gshared ulong g_presCalibPit0;
 __gshared ulong g_presBlitPx;       // sum of blitted pixels this interval (damage size)
 __gshared ulong g_presFullN;        // # presents that fell back to a full-frame blit
 
+// ── Freeze probe (on-screen, survives a compositor freeze) ────────────────────
+// When Weston is starved the desktop stops presenting, so the normal HUDs (drawn from
+// drmPresentFb) also stop — useless for diagnosing WHAT starved it.  This probe is
+// driven from framebufferMoveCursor instead (the cursor still moves during a freeze),
+// so it keeps updating: it detects a present-stall (>1.5 s since the last frame) and
+// draws WHICH task is hogging the core (recent scheduler histogram) onto the frozen
+// frame.  Nothing is drawn while the desktop presents normally (~60 fps).
+__gshared ulong g_lastPresentMs = 0;                 // pitMs of the last present (set in presentAccount)
+public __gshared int g_presenterTid = -1;            // the task that last PRESENTED = the compositor (name-agnostic: weston/Hyprland/…)
+// Compositor death record (freeze-probe verified the FW13 scan-freeze = the compositor EXITED).
+// The klog ring dies with a hard reset, so the cause of death must live in globals the on-screen
+// overlay can show: exit code (128+sig = killed by signal; small = own exit; else fault) + when,
+// plus the last signal ANY task sent (sender/target/signo) to catch a stray-kill culprit.
+public __gshared int   g_cmpExitCode = -1;           // exit code of the dead presenter (-1 = alive)
+public __gshared ulong g_cmpExitMs   = 0;            // pitMs when it died
+public __gshared ulong g_cmpExitRip  = 0;            // its last user RIP (the crash site for code 11)
+// Last CLIENT crash (a non-presenter task that exited nonzero) — this is the panel
+// (weston-desktop-shell) segfaulting.  Recorded in exitTask; shown on the overlay so its crash
+// site can be symbolized without /run/klog (lost on the hard reset).
+public __gshared int   g_lastCrashTid  = -1;
+public __gshared int   g_lastCrashCode = 0;
+public __gshared ulong g_lastCrashRip  = 0;
+public __gshared ulong g_lastCrashMs   = 0;
+public __gshared char[24] g_lastCrashName;
+// Compositor's last COMPLETE stderr line — Weston prints WHY it exits right before quitting.
+// Low-overhead: one 160-byte copy per newline (not per char), only for the presenter's writes.
+__gshared char[160] g_cmpLast; __gshared char[160] g_cmpCur; __gshared int g_cmpCurN = 0;
+void cmpLogTap(char c) @nogc nothrow {
+    if (c == '\n' || g_cmpCurN >= 159) {
+        if (g_cmpCurN > 0) { g_cmpCur[g_cmpCurN] = 0; for (int i = 0; i <= g_cmpCurN; i++) g_cmpLast[i] = g_cmpCur[i]; }
+        g_cmpCurN = 0;
+    } else if (c >= 32 && c < 127) {
+        g_cmpCur[g_cmpCurN++] = c;
+    }
+}
+public __gshared int   g_lastSigSig  = 0;            // last signal delivered: signo…
+public __gshared int   g_lastSigFrom = -1;           // …sender tid…
+public __gshared int   g_lastSigTo   = -1;           // …target tid…
+public __gshared ulong g_lastSigMs   = 0;            // …at pitMs
+__gshared uint[MAX_TASKS] g_freezeSchedHist;         // per-task times-scheduled, recent-weighted
+__gshared ulong g_freezeSchedSamples = 0;
+// Last syscall ENTERED (recorded in dispatchSyscall).  During a hard freeze the kernel loop is
+// typically stuck INSIDE one syscall handler: entries stop, so this snapshot names the culprit —
+// the overlay shows the syscall nr + which task issued it + how long ago it entered.
+public __gshared ulong g_freezeSysNr = 0;
+public __gshared int   g_freezeSysTid = -1;
+public __gshared ulong g_freezeSysStartMs = 0;
+public void freezeSchedSample(int tid) @nogc nothrow {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    ++g_freezeSchedHist[tid];
+    if ((++g_freezeSchedSamples & 0x3FFF) == 0)      // decay every 16384 → recent-weighted
+        for (int i = 0; i < MAX_TASKS; i++) g_freezeSchedHist[i] >>= 1;
+}
+public void freezeProbeRepaint() @nogc nothrow {
+    import core.console : g_desktopClaimedFb;
+    import arch.x86_64.bootstrap : fb_draw_hud_row, g_fb;
+    if (!g_desktopClaimedFb || g_fb is null || g_lastPresentMs == 0) return;
+    const ulong now = pitMs();
+    if (now < g_lastPresentMs || (now - g_lastPresentMs) < 1500) return;   // presenting fine → don't draw
+    int[3] top; top[0] = -1; top[1] = -1; top[2] = -1;
+    for (int i = 0; i < MAX_TASKS; i++) {
+        const uint c = g_freezeSchedHist[i];
+        if (c == 0) continue;
+        if (top[0] < 0 || c > g_freezeSchedHist[top[0]]) { top[2]=top[1]; top[1]=top[0]; top[0]=i; }
+        else if (top[1] < 0 || c > g_freezeSchedHist[top[1]]) { top[2]=top[1]; top[1]=i; }
+        else if (top[2] < 0 || c > g_freezeSchedHist[top[2]]) { top[2]=i; }
+    }
+    char[96] b; int n = 0;
+    void put(string s) @nogc nothrow { foreach (ch; s) if (n < 95) b[n++] = ch; }
+    void dec(ulong v) @nogc nothrow { char[20] t; int m=0; if(v==0)t[m++]='0'; while(v&&m<20){t[m++]=cast(char)('0'+v%10);v/=10;} while(m&&n<95)b[n++]=t[--m]; }
+    void nm(int tid) @nogc nothrow {
+        const(char)* p = (tid>=0 && tid<MAX_TASKS) ? g_taskExecName[tid] : null;
+        if (p is null) { put("?"); return; }
+        int k=0; while (p[k] && k<15 && n<95) b[n++]=p[k++];
+    }
+    void hx(ulong v) @nogc nothrow { static immutable char[16] hd="0123456789abcdef"; bool s=false;
+        for (int i=15;i>=0;--i){ const ubyte d=cast(ubyte)((v>>(i*4))&0xF); if(d||s||i==0){ if(n<95)b[n++]=hd[d]; s=true; } } }
+    put("FREEZE "); dec((now-g_lastPresentMs)/1000); put("s  cur="); dec(g_current_task_id); put(":"); nm(cast(int)g_current_task_id);
+    b[n]=0; fb_draw_hud_row(0, b.ptr);
+    // The smoking gun during a hard freeze: the syscall the kernel entered last and never left.
+    n=0; put("SYS 0x"); hx(g_freezeSysNr); put(" tid="); dec(cast(ulong)(g_freezeSysTid<0?0:g_freezeSysTid)); put(":"); nm(g_freezeSysTid);
+    put(" in-flight "); dec((now>=g_freezeSysStartMs)?(now-g_freezeSysStartMs)/1000:0); put("s");
+    b[n]=0; fb_draw_hud_row(16, b.ptr);
+    n=0; put("HOG:");
+    for (int r=0;r<3;r++){ if(top[r]<0)break; put(" "); dec(top[r]); put(":"); nm(top[r]); put("="); dec(g_freezeSchedHist[top[r]]); }
+    b[n]=0; fb_draw_hud_row(32, b.ptr);
+    // THE COMPOSITOR's state — identified as the task that last PRESENTED a frame (g_presenterTid),
+    // so this works for ANY compositor (Hyprland, Weston, …) with no name-matching.  The freeze is
+    // that task not presenting, and these flags show exactly why:
+    //   x1 = it EXITED/crashed;  w1 p1 = poll-parked (dl=deadline ms, 0=forever);  w1 f1 = futex-parked;
+    //   w0 = runnable but never scheduled (scheduler bug).  now= is current pitMs to compare deadlines.
+    {
+        import core.kernel_main : g_pollBlocked, g_pollDeadline, g_futexWaitActive, g_futexWaitDeadline;
+        import core.task : g_tasks;
+        n=0; put("CMP:");
+        const int c = g_presenterTid;
+        if (c < 0 || c >= MAX_TASKS) put(" (no present recorded yet)");
+        else {
+            auto t = &g_tasks[c];
+            put(" "); dec(c); put(":"); nm(c);
+            put(" a"); b[n++] = t.active ? '1':'0';
+            put("x");  b[n++] = t.exited ? '1':'0';
+            put("w");  b[n++] = t.waiting ? '1':'0';
+            put("p");  b[n++] = g_pollBlocked[c] ? '1':'0';
+            if (g_pollBlocked[c]) { put("(dl="); dec(g_pollDeadline[c]); put(")"); }
+            put("f");  b[n++] = g_futexWaitActive[c] ? '1':'0';
+            if (g_futexWaitActive[c]) { put("(dl="); dec(g_futexWaitDeadline[c]); put(")"); }
+            put(" now="); dec(now);
+        }
+        b[n]=0; fb_draw_hud_row(48, b.ptr);
+        // If the compositor died: WHY.  code 128+N = killed by signal N; small = its own exit(code);
+        // 0xff00-style / large = fault path.  lastsig names the most recent kill() sender→target.
+        if (g_cmpExitCode >= 0) {
+            n=0; put("DIED: code="); dec(cast(ulong)g_cmpExitCode);
+            put(" rip=0x"); hx(g_cmpExitRip);
+            put(" at="); dec(g_cmpExitMs); put("ms");
+            if (g_lastSigSig != 0) {
+                put("  lastsig="); dec(cast(ulong)g_lastSigSig);
+                put(" "); dec(cast(ulong)(g_lastSigFrom<0?0:g_lastSigFrom)); put(":"); nm(g_lastSigFrom);
+                put("->"); dec(cast(ulong)(g_lastSigTo<0?0:g_lastSigTo));
+                put(" at="); dec(g_lastSigMs); put("ms");
+            }
+            b[n]=0; fb_draw_hud_row(64, b.ptr);
+            // Weston's last stderr line — its literal exit reason.
+            n=0; put("WHY: ");
+            { const(char)* q = g_cmpLast.ptr; int k=0; while (q[k] && k<110 && n<119) b[n++]=q[k++]; }
+            b[n]=0; fb_draw_hud_row(80, b.ptr);
+        }
+    }
+    // Last CLIENT crash (the panel/weston-desktop-shell segfaulting is the real bug — the compositor
+    // then either quits or sits idle on a blank screen).  code 11 = SIGSEGV/CPU-exception; rip = the
+    // crash site to symbolize against weston-desktop-shell.  Shown even when the compositor is alive.
+    if (g_lastCrashTid >= 0) {
+        n=0; put("CRASH: "); dec(cast(ulong)g_lastCrashTid); put(":");
+        { const(char)* q = g_lastCrashName.ptr; int k=0; while (q[k] && k<20 && n<119) b[n++]=q[k++]; }
+        put(" code="); dec(cast(ulong)g_lastCrashCode);
+        put(" rip=0x"); hx(g_lastCrashRip);
+        put(" at="); dec(g_lastCrashMs); put("ms");
+        b[n]=0; fb_draw_hud_row(96, b.ptr);
+    }
+}
+
+// Freeze probe → /run/klog.  Called from kernelLoop (which keeps running during a compositor
+// freeze).  When the desktop has stopped presenting (>1.5 s) it logs, ~1 Hz, WHICH task is hogging
+// the core (recent scheduler histogram) + when the stall clears — so after the desktop recovers you
+// filter /run/klog for "freeze" and see the culprit, without needing the (dead) keyboard mid-freeze.
+__gshared ulong g_freezeKlogLastMs = 0;
+__gshared bool  g_freezeWasStalled = false;
+public void freezeProbeKlog() @nogc nothrow {
+    import core.console : g_desktopClaimedFb;
+    if (!g_desktopClaimedFb || g_lastPresentMs == 0) return;
+    const ulong now = pitMs();
+    const bool stalled = (now >= g_lastPresentMs) && (now - g_lastPresentMs >= 1500);
+    if (!stalled) {
+        if (g_freezeWasStalled) {
+            g_freezeWasStalled = false;
+            klog("[freeze] CLEARED — desktop presenting again\n");
+            for (int i = 0; i < MAX_TASKS; i++) g_freezeSchedHist[i] = 0;  // fresh histogram for the next episode
+        }
+        return;
+    }
+    if (g_freezeKlogLastMs != 0 && now - g_freezeKlogLastMs < 1000) return;   // ~1 Hz while stalled
+    g_freezeKlogLastMs = now;
+    g_freezeWasStalled = true;
+    int[3] top; top[0]=-1; top[1]=-1; top[2]=-1;
+    for (int i=0;i<MAX_TASKS;i++){ const uint c=g_freezeSchedHist[i]; if(c==0)continue;
+        if(top[0]<0||c>g_freezeSchedHist[top[0]]){top[2]=top[1];top[1]=top[0];top[0]=i;}
+        else if(top[1]<0||c>g_freezeSchedHist[top[1]]){top[2]=top[1];top[1]=i;}
+        else if(top[2]<0||c>g_freezeSchedHist[top[2]]){top[2]=i;} }
+    klog("[freeze] stalled "); klog_dec((now-g_lastPresentMs)/1000);
+    klog("s cur="); klog_dec(g_current_task_id); klog(":");
+    { const(char)* p=g_taskExecName[cast(int)g_current_task_id]; klog(p !is null ? p : "?".ptr); }
+    klog(" HOG:");
+    for(int r=0;r<3;r++){ if(top[r]<0)break; klog(" "); klog_dec(top[r]); klog(":");
+        const(char)* p=g_taskExecName[top[r]]; klog(p !is null ? p : "?".ptr); klog("="); klog_dec(g_freezeSchedHist[top[r]]); }
+    klog("\n");
+}
+
 // Shared accounting for both present paths (drmPresentFb = KMS PAGE_FLIP,
 // drmPresentToFramebuffer = HOS_PRESENT).  t0/t1 bracket the present; blitPx is the
 // pixels copied; full marks a full-frame blit.
 private void presentAccount(ulong t0, ulong t1, ulong blitPx, bool full) @nogc nothrow {
+    g_lastPresentMs = pitMs();                       // freeze probe: mark the desktop alive
+    g_presenterTid  = cast(int)g_current_task_id;    // freeze probe: remember WHO presents (the compositor)
     if (g_presLastTsc != 0) {
         const ulong gap = t0 - g_presLastTsc;
         g_presGapCyc += gap;
@@ -10738,6 +11013,9 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     g_desktopClaimedFb = true;   // the compositor now presents — no more kernel fb drawing
     // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
     cursorRepaintAfterPresent();
+    // USB-log capture status — ALWAYS on (ungated): the user needs to SEE whether the /run/klog dump
+    // is reaching the USB stick.  Re-stamped every present so it persists over the desktop.
+    usblogStatusRepaint();
     // WiFi/LKL real-hardware debug HUDs (survey line, MSI/CSR rows, LKL console) are re-stamped
     // ON TOP of the compositor every present.  They clutter the clean GNOME desktop, so gate them
     // behind g_wifiDebugHud (default OFF).  Set it true to bring the on-screen WiFi bring-up trace

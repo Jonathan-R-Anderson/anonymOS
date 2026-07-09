@@ -51,6 +51,28 @@ $(BUSYBOX_ELF): $(BB_SRC)/busybox
 	cp $< $@
 	@echo "[busybox] Static binary ready: $(BUSYBOX_ELF)"
 
+# ── Dynamic-musl variant (busybox-dyn) ────────────────────────────────────────
+# udhcpc must be LD_PRELOAD-interposed (libnshim.so) to reach the LKL-owned AX210 — a STATIC busybox
+# cannot be, so EpinAnonymOS ships a second, DYNAMIC busybox for agent-driven DHCP.  Built from the
+# same source: turn off CONFIG_STATIC *and* the CONFIG_EXTRA_LDFLAGS="--static" that busybox.config
+# forces (that flag, not CONFIG_STATIC, is what actually links static), relink, then restore .config.
+BUSYBOX_DYN := $(BB_OUT)/busybox-dyn
+.PHONY: busybox-dyn
+busybox-dyn: $(BUSYBOX_DYN)
+$(BUSYBOX_DYN): $(BB_SRC)/busybox
+	@echo "[busybox] Building dynamic-musl variant (busybox-dyn)..."
+	cd $(BB_SRC) && cp -f .config .config.dynbak && \
+	  sed -i 's/^CONFIG_STATIC=y/# CONFIG_STATIC is not set/' .config && \
+	  sed -i 's/^CONFIG_EXTRA_LDFLAGS=.*/CONFIG_EXTRA_LDFLAGS=""/' .config && \
+	  yes '' | $(MAKE) oldconfig CC=$(MUSL_CC) HOSTCC=gcc >/dev/null 2>&1 && \
+	  rm -f busybox busybox_unstripped && \
+	  $(MAKE) CC=$(MUSL_CC) HOSTCC=gcc busybox >/dev/null 2>&1 && \
+	  cp -f busybox "$(BUSYBOX_DYN)" && \
+	  mv -f .config.dynbak .config && \
+	  yes '' | $(MAKE) oldconfig CC=$(MUSL_CC) HOSTCC=gcc >/dev/null 2>&1 && \
+	  rm -f busybox busybox_unstripped
+	@echo "[busybox] busybox-dyn ready: $(BUSYBOX_DYN)"
+
 clean:
 	[ -d $(BB_SRC) ] && $(MAKE) -C $(BB_SRC) clean || true
 	rm -f $(BUSYBOX_ELF)

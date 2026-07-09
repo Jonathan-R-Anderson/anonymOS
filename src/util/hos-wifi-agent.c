@@ -222,6 +222,10 @@ static void write_networks(DBusConnection *c){
         g_nm_misses = 0;
         g_demo_active[0] = 0;
     }
+    /* External udhcpc obtained a lease (its script touched /run/wifi/dhcp-ok) -> present the device as
+     * ACTIVATED(100) so hos-log-upload (wifi_activated: #dev state>=100) proceeds and the menu shows
+     * "connected", even though NM itself sits in ip-config forever waiting on its own stalled client. */
+    if (have && state < 100 && access("/run/wifi/dhcp-ok", F_OK) == 0) state = 100;
     int fd = open("/run/wifi/networks.tmp", O_CREAT|O_WRONLY|O_TRUNC, 0644);
     if (fd < 0) return;
     int n = snprintf(tmp, sizeof tmp, "#dev\t%s\t%s\t%u\n", have?devpath:"", ifname, (unsigned)state);
@@ -434,6 +438,29 @@ static void auto_connect_tick(DBusConnection *c, int have, dbus_uint32_t st, int
     do_connect(c, g_auto_ssid, g_auto_psk);
 }
 
+/* --- external DHCP client ---------------------------------------------------
+ * NM's in-process n-dhcp4 stalls before it ever sends a DISCOVER (its nested epoll+timerfd never
+ * fires on this OS), so once wpa has associated + finished the 4-way handshake (device state reaches
+ * IP_CONFIG), we run a STANDALONE udhcpc from the DYNAMIC busybox under LD_PRELOAD=/libnshim.so.  As a
+ * separate process with its own event loop it has no such stall, and — being dynamic — its
+ * AF_PACKET/rtnetlink are interposed by the shim and routed to the LKL-owned AX210, exactly like wpa.
+ * /udhcpc.script applies the lease (IP + default route) via the same busybox and touches
+ * /run/wifi/dhcp-ok, which write_networks() turns into a state=100 so the uploader + menu see it up. */
+static int g_udhcpc_spawned = 0;
+static void spawn_udhcpc(const char *ifname){
+    const char *ifn = (ifname && ifname[0]) ? ifname : "wlan0";
+    pid_t p = fork();
+    if (p < 0){ fprintf(stderr, "[wifi-agent] udhcpc fork failed\n"); return; }
+    if (p == 0){
+        char *argv[] = { "/busybox-dyn", "udhcpc", "-i", (char*)ifn, "-f", "-s", "/udhcpc-script", 0 };
+        char *envp[] = { "LD_PRELOAD=/libnshim.so", "PATH=/", "HOME=/", "LD_LIBRARY_PATH=/", 0 };
+        execve("/busybox-dyn", argv, envp);
+        fprintf(stderr, "[wifi-agent] execve(/busybox-dyn udhcpc) FAILED\n");
+        _exit(1);
+    }
+    fprintf(stderr, "[wifi-agent] spawned external udhcpc on %s (pid %d) — LKL-routed DHCP\n", ifn, (int)p);
+}
+
 int main(void){
     mkdir("/run", 0755);
     mkdir("/run/wifi", 0755);
@@ -489,6 +516,13 @@ int main(void){
         /* automatic connection: start the association ourselves from the boot creds
          * when the radio is idle (NM's own autoconnect never fires here). */
         auto_connect_tick(c, have, st, cycle);
+        /* Once wpa has associated + finished the 4-way handshake (device reaches IP_CONFIG=70 or
+         * beyond), launch the external udhcpc — NM's in-process DHCP client stalls and never sends a
+         * DISCOVER, so this gets the real lease through the LKL.  Spawned once. */
+        if (have && st >= 70 /*NM_DEVICE_STATE_IP_CONFIG*/ && !g_udhcpc_spawned) {
+            spawn_udhcpc(ifname);
+            g_udhcpc_spawned = 1;
+        }
         write_networks(c);
         for (int k=0;k<25;k++){ if (check_connect(c)) write_networks(c); napms(200); }  /* ~5s, responsive to connect */
         cycle++;

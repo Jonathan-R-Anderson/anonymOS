@@ -24,7 +24,13 @@ static void writefile(const char *path, const char *data){
 }
 static void writefile_mode(const char *path, const char *data, mode_t mode){
     int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, mode);
-    if (fd >= 0) { (void)!write(fd, data, strlen(data)); close(fd); chmod(path, mode); }
+    if (fd >= 0) { (void)!write(fd, data, strlen(data)); close(fd);
+        /* The rtfs overlay ignores the open() creation mode (creates 0666), and musl's chmod()
+         * uses syscall SYS_chmod(90) which this kernel does NOT dispatch (silent ENOSYS no-op) —
+         * so the file would stay world-writable and NM refuses to load a connection file with
+         * insecure permissions.  fchmodat() uses SYS_fchmodat(268), which IS wired to rtChmodPath,
+         * so the mode actually sticks.  Needed so debug-wifi.nmconnection loads as 0600. */
+        fchmodat(AT_FDCWD, path, mode, 0); }
 }
 static char *trim(char *s){
     while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
@@ -86,6 +92,12 @@ static void install_debug_wifi_profile(void){
         "\n"
         "[ipv4]\n"
         "method=auto\n"
+        /* NM's in-process n-dhcp4 stalls before sending a DISCOVER (its nested epoll+timerfd never
+         * fires here), so an external /busybox-dyn udhcpc (spawned by the wifi-agent, LD_PRELOAD'd →
+         * routed to the LKL/AX210) does the real lease.  A huge dhcp-timeout stops NM from FAILING the
+         * connection at the default 45s and tearing down the (working) L2 association out from under
+         * udhcpc — NM just sits in ip-config while udhcpc + the agent supply the IP and flip state=100. */
+        "dhcp-timeout=2147483647\n"
         "\n"
         "[ipv6]\n"
         "method=ignore\n"
@@ -147,6 +159,12 @@ int main(void)
 
     /* keyfile settings plugin (persist connections under system-connections), internal DHCP,
      * wpa_supplicant Wi-Fi backend.  no-auto-default keeps NM from auto-connecting wired at boot. */
+    /* NOTE: dhcp=systemd and dhcp=internal both resolve IPv4 to the SAME n-dhcp4/nettools client
+     * (nm-dhcp-systemd.c:495 & :504 get_type_4 = nm_dhcp_nettools_get_type) — there is no sd-dhcp4 for
+     * IPv4 in this build.  n-dhcp4's probe stalls before ever creating its packet socket (its start-delay
+     * timer, driven by an epoll+timerfd nested into NM's GMainLoop, never fires here), so it sends no
+     * DISCOVER.  An EXTERNAL DHCP client (separate process, own event loop) sidesteps this — see the
+     * agent-driven udhcpc path.  Keep dhcp=internal (clearer name; identical behavior). */
     const char *conf =
         "[main]\n"
         "plugins=keyfile\n"
@@ -165,10 +183,11 @@ int main(void)
      * stderr does not reach the console here). */
     /* --debug sets debug_stderr (nm-logging.c:1015) so NM ALSO writes its log to STDERR — which we
      * redirect to /run/nm.log below.  Without it NM logs only to syslog (/dev/log, absent) = discarded. */
-    /* Include SETTINGS+AGENTS so nm.log shows keyfile profile loading (did debug-wifi.nmconnection
-     * get read?) and the autoconnect/secrets decision — the CORE list alone hides all of that. */
+    /* SETTINGS+AGENTS: keyfile profile loading + autoconnect/secrets decision.
+     * DHCP4+IP4+IP6: the DHCP exchange + IP config (did DISCOVER go out? did an OFFER come back?) —
+     * needed to diagnose the `ip-config -> failed (ip-config-unavailable)` after a successful assoc. */
     char *argv[] = { "/NetworkManager", "--no-daemon", "--debug", "--log-level=DEBUG",
-                     "--log-domains=CORE,PLATFORM,DEVICE,WIFI,WIFI_SCAN,SUPPLICANT,SETTINGS,AGENTS", 0 };
+                     "--log-domains=CORE,PLATFORM,DEVICE,WIFI,WIFI_SCAN,SUPPLICANT,SETTINGS,AGENTS,DHCP4,DHCP6,IP4,IP6", 0 };
     { int lf = open("/run/nm.log", O_CREAT|O_WRONLY|O_TRUNC, 0644);
       if (lf >= 0) { dup2(lf,1); dup2(lf,2); if (lf > 2) close(lf); } }
     /* NM's gio GDBus connects to its compiled-in default system-bus path (often /var/run/dbus/...);

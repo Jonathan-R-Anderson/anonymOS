@@ -93,6 +93,12 @@ static void flog(const char *msg)
     r_write(2, msg, n); r_write(2, "\n", 1);
 }
 
+/* DHCP data-path diagnostic: count AF_PACKET frames TX'd/RX'd on this process's routed sockets.
+ * NM's internal DHCP client sends DISCOVER + receives OFFER over an AF_PACKET socket; if TX fires
+ * but RX never does, the OFFER isn't coming back through LKL (data-path RX / router).  Capped so it
+ * can't spam.  (wpa's EAPOL also uses AF_PACKET, so in /run/wpa.log this confirms the trace works.) */
+static int g_pktTx = 0, g_pktRx = 0, g_pktSetup = 0;
+
 /* --- routed-fd table: app fd -> provider remote LKL fd --- */
 static int  g_remote[MAXFD];
 static char g_routed[MAXFD];
@@ -219,14 +225,33 @@ static long fail(long r){ if (r < 0 && r > -1000) errno = (int)(-r); else if (r 
 int socket(int domain, int type, int protocol)
 {
     resolve();
-    if (!should_route(domain)) return r_socket(domain, type, protocol);
+    /* UNGATED (AF_PACKET socket() is rare) — definitively answers 'did the DHCP client ever call
+     * socket(AF_PACKET)?': if this never logs during the NM DHCP phase, n-dhcp4 stalls BEFORE creating
+     * its packet socket (its start-delay timer never fires) → an external DHCP client is the fix. */
+    if (domain == AF_PACKET) {
+        char m[96]; snprintf(m, sizeof m, "shim: >> socket(AF_PACKET) type=0x%x proto=0x%x ENTERED (dhcp-diag)", type, protocol); flog(m);
+    }
+    if (!should_route(domain)) {
+        if (domain == AF_PACKET && g_pktSetup < 128) {
+            char m[96]; snprintf(m, sizeof m, "shim: AF_PACKET socket() NOT routed (should_route=0) type=0x%x proto=0x%x (dhcp-diag)", type, protocol); flog(m); g_pktSetup++;
+        }
+        return r_socket(domain, type, protocol);
+    }
     long R = nsp(NSP_SOCKET, -1, domain, type, protocol, 0,0,0,0, 0,0,0,0,0,0);
-    if (R < 0) return (int)fail(R);
+    if (R < 0) {
+        if (domain == AF_PACKET && g_pktSetup < 128) {
+            char m[96]; snprintf(m, sizeof m, "shim: AF_PACKET socket(type=0x%x,proto=0x%x) NSP_SOCKET FAILED R=%ld (dhcp-diag)", type, protocol, R); flog(m); g_pktSetup++;
+        }
+        return (int)fail(R);
+    }
     int ph = r_socket(AF_UNIX, SOCK_STREAM, 0);      /* placeholder fd number */
     if (ph < 0 || ph >= MAXFD) { nsp(NSP_CLOSE,(int)R,0,0,0,0,0,0,0,0,0,0,0,0,0); errno=EMFILE; return -1; }
     g_routed[ph] = 1; g_remote[ph] = (int)R; g_dom[ph] = domain;
     g_nonblock[ph] = (type & 04000 /*SOCK_NONBLOCK*/) ? 1 : 0;
     if (g_log) { char m[80]; snprintf(m,sizeof m,"shim: wpa opened routed socket (family %d) -> LKL fd %ld", domain, R); shim_log(m); }
+    if (domain == AF_PACKET && g_pktSetup < 128) {
+        char m[96]; snprintf(m, sizeof m, "shim: AF_PACKET socket(type=0x%x,proto=0x%x) -> LKL fd %ld (dhcp-diag)", type, protocol, R); flog(m); g_pktSetup++;
+    }
     return ph;
 }
 
@@ -235,6 +260,9 @@ int bind(int fd, const struct sockaddr *addr, socklen_t len)
     resolve();
     if (!routed(fd)) return r_bind(fd, addr, len);
     long r = nsp(NSP_BIND, g_remote[fd], 0,0,0, 0,0, addr, len, 0,0,0,0,0,0);
+    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_PACKET && g_pktSetup < 128) {
+        char m[64]; snprintf(m, sizeof m, "shim: AF_PACKET bind -> %ld (dhcp-diag)", r); flog(m); g_pktSetup++;
+    }
     return r==0 ? 0 : (int)fail(r);
 }
 
@@ -258,6 +286,9 @@ ssize_t sendto(int fd, const void *buf, size_t len, int flags,
         g_last_tx[fd]  = *(const unsigned short*)(b+4);   /* nlmsghdr.nlmsg_type */
         g_last_cmd[fd] = b[16];                            /* genlmsghdr.cmd (nl80211) */
         g_last_txlen[fd] = (unsigned)len;
+    }
+    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_PACKET && g_pktTx < 128) {
+        char m[80]; snprintf(m, sizeof m, "shim: AF_PACKET TX len=%zu (dhcp-diag)", len); flog(m); g_pktTx++;
     }
     long r = nsp(NSP_SENDTO, g_remote[fd], 0,0,flags, buf,(uint32_t)len, addr,(uint32_t)alen, 0,0,0,0,0,0);
     return r>=0 ? (ssize_t)r : (ssize_t)fail(r);
@@ -294,6 +325,9 @@ ssize_t recvfrom(int fd, void *buf, size_t len, int flags,
     }
     /* record the true datagram length for the STUCK diagnostic (above) to report on a genuine hang. */
     if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && r >= 0) g_last_truelen[fd] = r;
+    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_PACKET && r >= 0 && g_pktRx < 128) {
+        char m[80]; snprintf(m, sizeof m, "shim: AF_PACKET RX len=%ld (dhcp-diag)", (long)r); flog(m); g_pktRx++;
+    }
     if (r < 0) return (ssize_t)fail(r);
     if (addr && alen) *alen = ga;
     if (g_log && got && g_dom[fd]==AF_NETLINK) {           /* count nl80211 scan-result BSSes */
@@ -405,8 +439,16 @@ int setsockopt(int fd, int level, int optname, const void *val, socklen_t len)
      * is redundant with the AF_PACKET socket's bind protocol (ETH_P_PAE) / userspace demux, so no-op it
      * (return success) rather than crash the provider.  (A full fix would marshal the filter array into
      * the RPC and reconstruct fprog in the provider.) */
-    if (level == 1 /*SOL_SOCKET*/ && (optname == 26 || optname == 50)) return 0;
+    if (level == 1 /*SOL_SOCKET*/ && (optname == 26 || optname == 50)) {
+        if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_PACKET && g_pktSetup < 128) {
+            char m[80]; snprintf(m, sizeof m, "shim: AF_PACKET setsockopt lvl=%d opt=%d (BPF no-op) (dhcp-diag)", level, optname); flog(m); g_pktSetup++;
+        }
+        return 0;
+    }
     long r = nsp(NSP_SETSOCKOPT, g_remote[fd], level, optname, 0, val,(uint32_t)len, 0,0, 0,0,0,0,0,0);
+    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_PACKET && g_pktSetup < 128) {
+        char m[80]; snprintf(m, sizeof m, "shim: AF_PACKET setsockopt lvl=%d opt=%d -> %ld (dhcp-diag)", level, optname, r); flog(m); g_pktSetup++;
+    }
     return r==0 ? 0 : (int)fail(r);
 }
 

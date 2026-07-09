@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.36.1
-# Thu Jul  9 04:00:45 2026
+# Tue Jun  9 00:16:27 2026
 #
 CONFIG_HAVE_DOT_CONFIG=y
 
@@ -40,7 +40,7 @@ CONFIG_FEATURE_SYSLOG=y
 #
 # Build Options
 #
-# CONFIG_STATIC is not set
+CONFIG_STATIC=y
 # CONFIG_PIE is not set
 # CONFIG_NOMMU is not set
 # CONFIG_BUILD_LIBBUSYBOX is not set
@@ -50,7 +50,7 @@ CONFIG_FEATURE_SYSLOG=y
 CONFIG_CROSS_COMPILER_PREFIX=""
 CONFIG_SYSROOT=""
 CONFIG_EXTRA_CFLAGS="-O2 -pipe"
-CONFIG_EXTRA_LDFLAGS=""
+CONFIG_EXTRA_LDFLAGS="--static"
 CONFIG_EXTRA_LDLIBS=""
 # CONFIG_USE_PORTABLE_CODE is not set
 CONFIG_STACK_OPTIMIZATION_386=y

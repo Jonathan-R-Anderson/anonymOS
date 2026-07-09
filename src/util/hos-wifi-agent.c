@@ -359,10 +359,86 @@ static int check_connect(DBusConnection *c){
     return 1;
 }
 
+/* --- boot auto-connect -----------------------------------------------------
+ * The Wi-Fi connection is meant to be AUTOMATIC: NM's launcher installs an
+ * autoconnect keyfile profile from /epin-debug-net.conf (wifi_ssid/wifi_psk).
+ * In practice NM's own autoconnect never fires here — the device sits in
+ * DISCONNECTED(30) scanning forever and never associates (so the box never
+ * gets an IP and the debug-log scp fails "Network unreachable").
+ *
+ * So we drive the association ourselves: read the SAME creds and, whenever the
+ * radio is idle, call do_connect() -> NM.AddAndActivateConnection.  That passes
+ * the whole connection INLINE over D-Bus, so it starts the association even if
+ * NM never loaded the keyfile profile (i.e. it's robust to the keyfile-plugin
+ * discovery being the root cause).  /etc is a fresh ramfs each boot, so at most
+ * a couple of duplicate profiles can appear within one session. */
+static char g_auto_ssid[128] = "";
+static char g_auto_psk[128]  = "";
+static int  g_auto_attempts   = 0;
+static int  g_auto_last_cycle = 0;
+
+static char *trim_ws(char *s){
+    while (*s==' '||*s=='\t'||*s=='\r'||*s=='\n') s++;
+    char *e = s + strlen(s);
+    while (e>s && (e[-1]==' '||e[-1]=='\t'||e[-1]=='\r'||e[-1]=='\n')) *--e = 0;
+    return s;
+}
+/* read a key=value line from /epin-debug-net.conf (same file/format NM's launcher uses) */
+static int conf_value(const char *key, char *out, int outlen){
+    out[0]=0;
+    int fd = open("/epin-debug-net.conf", O_RDONLY);
+    if (fd < 0) return 0;
+    char buf[4096]; int n = (int)read(fd, buf, sizeof buf - 1); close(fd);
+    if (n <= 0) return 0;
+    buf[n]=0;
+    for (char *line = buf; line && *line; ){
+        char *next = strchr(line, '\n');
+        if (next) *next++ = 0;
+        char *p = trim_ws(line);
+        if (*p && *p != '#'){
+            char *eq = strchr(p, '=');
+            if (eq){ *eq = 0;
+                if (strcmp(trim_ws(p), key) == 0){
+                    char *v = trim_ws(eq+1);
+                    strncpy(out, v, outlen-1); out[outlen-1]=0;
+                    return out[0] != 0;
+                }
+            }
+        }
+        line = next;
+    }
+    return 0;
+}
+static void load_auto_creds(void){
+    if (!conf_value("wifi_ssid", g_auto_ssid, sizeof g_auto_ssid)) g_auto_ssid[0]=0;
+    if (!conf_value("wifi_psk",  g_auto_psk,  sizeof g_auto_psk))  g_auto_psk[0]=0;
+    if (g_auto_ssid[0])
+        fprintf(stderr, "[wifi-agent] boot auto-connect target from /epin-debug-net.conf: '%s'\n", g_auto_ssid);
+    else
+        fprintf(stderr, "[wifi-agent] no wifi_ssid in /epin-debug-net.conf; boot auto-connect disabled\n");
+}
+
+/* Kick off the association from the boot creds when the radio is idle.  Throttled
+ * (~15s between tries) and bounded so a persistently-failing PSK can't pile up
+ * profiles; re-arms once the device actually connects. */
+static void auto_connect_tick(DBusConnection *c, int have, dbus_uint32_t st, int cycle){
+    if (!have || !g_auto_ssid[0]) return;
+    if (st == 100 /*NM_DEVICE_STATE_ACTIVATED*/){ g_auto_attempts = 0; return; }
+    if (st != 30 /*DISCONNECTED*/ && st != 120 /*FAILED*/) return;  /* busy connecting */
+    if (g_auto_attempts >= 8) return;
+    if (g_auto_attempts != 0 && (cycle - g_auto_last_cycle) < 3) return;
+    g_auto_attempts++;
+    g_auto_last_cycle = cycle;
+    fprintf(stderr, "[wifi-agent] boot auto-connect attempt %d -> '%s' (dev state %u)\n",
+            g_auto_attempts, g_auto_ssid, (unsigned)st);
+    do_connect(c, g_auto_ssid, g_auto_psk);
+}
+
 int main(void){
     mkdir("/run", 0755);
     mkdir("/run/wifi", 0755);
     g_demo_enabled = (getenv("HOS_WIFI_DEMO") != NULL);   /* off by default */
+    load_auto_creds();                                    /* boot auto-connect target (/epin-debug-net.conf) */
     /* Point libdbus at OUR dbus-daemon (a kernel-spawned process gets a fixed minimal env, so
      * DBUS_SYSTEM_BUS_ADDRESS isn't inherited), then use the STANDARD shared-connection path
      * dbus_bus_get(DBUS_BUS_SYSTEM) — the same one dbus-send uses successfully.  (An earlier
@@ -406,10 +482,13 @@ int main(void){
     char devpath[256]="", ifname[64]=""; dbus_uint32_t st=0;
     int cycle = 0;
     for (;;){
-        /* handle a pending connect request promptly (check twice per cycle) */
+        /* handle a pending (menu) connect request promptly */
         if (check_connect(c)) { write_networks(c); }
-        if ((cycle % 1) == 0 && find_wifi_device(c, devpath, sizeof devpath, ifname, sizeof ifname, &st))
-            request_scan(c, devpath);
+        int have = find_wifi_device(c, devpath, sizeof devpath, ifname, sizeof ifname, &st);
+        if (have) request_scan(c, devpath);
+        /* automatic connection: start the association ourselves from the boot creds
+         * when the radio is idle (NM's own autoconnect never fires here). */
+        auto_connect_tick(c, have, st, cycle);
         write_networks(c);
         for (int k=0;k<25;k++){ if (check_connect(c)) write_networks(c); napms(200); }  /* ~5s, responsive to connect */
         cycle++;

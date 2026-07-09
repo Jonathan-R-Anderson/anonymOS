@@ -26,6 +26,7 @@
 #include <sys/un.h>
 #include <net/if.h>
 #include <poll.h>
+#include <sys/select.h>
 #include "hos-net-proto.h"
 
 #ifndef SIOCGIFNAME
@@ -63,6 +64,7 @@ static ssize_t (*r_read)(int,void*,size_t);
 static ssize_t (*r_write)(int,const void*,size_t);
 static int (*r_fcntl)(int,int,...);
 static int (*r_open)(const char*,int,...);
+static int (*r_select)(int,fd_set*,fd_set*,fd_set*,struct timeval*);
 
 static void resolve(void)
 {
@@ -70,7 +72,7 @@ static void resolve(void)
 #define R(f) r_##f = dlsym(RTLD_NEXT, #f)
     R(socket); R(bind); R(connect); R(sendto); R(recvfrom); R(sendmsg); R(recvmsg);
     R(setsockopt); R(getsockopt); R(getsockname); R(close); R(ioctl); R(poll); R(read); R(write); R(fcntl);
-    R(open);
+    R(open); R(select);
 #undef R
 }
 
@@ -535,3 +537,53 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 /* wpa mostly uses recvmsg/sendmsg, but guard read/write on routed fds too. */
 ssize_t read(int fd, void *buf, size_t n){ resolve(); if(routed(fd)) return recvfrom(fd,buf,n,0,0,0); return r_read(fd,buf,n); }
 ssize_t write(int fd, const void *buf, size_t n){ resolve(); if(routed(fd)) return sendto(fd,buf,n,0,0,0); return r_write(fd,buf,n); }
+
+/* select(): dropbear's dbclient (the scp transport) is select-driven — without this, a routed
+ * TCP socket's placeholder fd is select()ed against the LOCAL kernel (never ready) and the SSH
+ * session hangs forever after connect.  Translate the fd_sets onto this shim's own poll()
+ * (which already splits routed fds -> NSP_POLL and local fds -> real poll), then rebuild the
+ * sets from revents.  Returns the select-style count of ready BITS across all three sets.
+ * (The residual-timeout writeback into *tv is not emulated; dropbear recomputes each loop.) */
+int select(int nfds, fd_set *rf, fd_set *wf, fd_set *ef, struct timeval *tv)
+{
+    resolve();
+    if (nfds > FD_SETSIZE) nfds = FD_SETSIZE;
+    int any_routed = 0;
+    for (int fd = 0; fd < nfds && !any_routed; fd++) {
+        if (!routed(fd)) continue;
+        if ((rf && FD_ISSET(fd, rf)) || (wf && FD_ISSET(fd, wf)) || (ef && FD_ISSET(fd, ef)))
+            any_routed = 1;
+    }
+    if (!any_routed) return r_select(nfds, rf, wf, ef, tv);
+
+    struct pollfd pf[128];
+    int n = 0;
+    for (int fd = 0; fd < nfds && n < 128; fd++) {
+        short ev = 0;
+        if (rf && FD_ISSET(fd, rf)) ev |= POLLIN;
+        if (wf && FD_ISSET(fd, wf)) ev |= POLLOUT;
+        if (ef && FD_ISSET(fd, ef)) ev |= POLLPRI;
+        if (!ev) continue;
+        pf[n].fd = fd; pf[n].events = ev; pf[n].revents = 0; n++;
+    }
+    int timeout = -1;
+    if (tv) {
+        long ms = tv->tv_sec * 1000L + (tv->tv_usec + 999) / 1000;
+        timeout = (ms < 0) ? 0 : (ms > 0x7fffffffL ? -1 : (int)ms);
+    }
+    int rc = poll(pf, (nfds_t)n, timeout);   /* this .so's poll: routed+local hybrid */
+    if (rf) FD_ZERO(rf);
+    if (wf) FD_ZERO(wf);
+    if (ef) FD_ZERO(ef);
+    if (rc <= 0) return rc;
+    int bits = 0;
+    for (int i = 0; i < n; i++) {
+        if (!pf[i].revents) continue;
+        /* report a condition only where the caller asked for it on THAT fd; ERR/HUP surface
+         * as readable+writable per select semantics so callers notice the failure. */
+        if ((pf[i].events & POLLIN)  && rf && (pf[i].revents & (POLLIN|POLLERR|POLLHUP)))  { FD_SET(pf[i].fd, rf); bits++; }
+        if ((pf[i].events & POLLOUT) && wf && (pf[i].revents & (POLLOUT|POLLERR|POLLHUP))) { FD_SET(pf[i].fd, wf); bits++; }
+        if ((pf[i].events & POLLPRI) && ef && (pf[i].revents & POLLPRI))                    { FD_SET(pf[i].fd, ef); bits++; }
+    }
+    return bits;
+}

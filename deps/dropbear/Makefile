@@ -27,12 +27,17 @@ $(DROPBEAR_SRC)/configure: $(DROPBEAR_TARBALL)
 	tar xf $(DROPBEAR_TARBALL)
 	touch $@
 
+# DYNAMIC on purpose: the guest routes AF_INET through LD_PRELOAD=/libnshim.so (the LKL
+# net-provider shim, same as NM/wpa/nmcli).  A static dbclient/scp ignores LD_PRELOAD
+# entirely, its socket(AF_INET) hits the EpinAnonymOS kernel (AF_UNIX-only -> EAFNOSUPPORT)
+# and every transfer dies as dropbear's "Connect failed: unexpected failure".  The kernel
+# maps any PT_INTERP to the staged ld-musl boot module (findInterpModule), so the host
+# build-path interpreter in the ELF is fine.
 $(DROPBEAR_SRC)/config.status: $(DROPBEAR_SRC)/configure $(MUSL_CC) Makefile
-	@echo "[dropbear] Configuring static musl client build..."
+	@echo "[dropbear] Configuring dynamic musl client build (LD_PRELOAD shim must load)..."
 	cd $(DROPBEAR_SRC) && ./configure \
 		--host=x86_64-linux-musl \
 		--prefix=/ \
-		--enable-static \
 		--enable-bundled-libtom \
 		--disable-zlib \
 		--disable-pam \
@@ -47,8 +52,7 @@ $(DROPBEAR_SRC)/config.status: $(DROPBEAR_SRC)/configure $(MUSL_CC) Makefile
 		--disable-pututline \
 		--disable-pututxline \
 		CC=$(MUSL_CC) \
-		CFLAGS="-Os -Wno-undef" \
-		LDFLAGS="-static"
+		CFLAGS="-Os -Wno-undef"
 
 $(DROPBEAR_SRC)/dbclient $(DROPBEAR_SRC)/scp $(DROPBEAR_SRC)/dropbearkey: $(DROPBEAR_SRC)/config.status
 	@echo "[dropbear] Building dbclient + scp + dropbearkey..."

@@ -1434,6 +1434,18 @@ private void maybeSpawnLklTest() {
             grantBdf[ngrant++] = (cast(uint)d.bus << 16) | (cast(uint)d.slot << 8) | d.func;
         }
     }
+    // QEMU log-egress path: grant a VIRTIO-NET NIC (class 0x0200, vendor 0x1AF4) to the LKL so
+    // its TCP stack has a real route for the scp uploader.  virtio-net is exempt from the
+    // virtio skip above because EpinOS never drives one natively (its own stack uses e1000,
+    // NET=1 only; its virtio devices are GPU-class).  No-op on the FW13 (no virtio devices)
+    // and on default QEMU boots (-nic none): the device only exists when explicitly attached.
+    foreach (ref d; devs) {
+        if (ngrant >= MAX_TASK_DEVS) break;
+        if (d.vendorId != 0x1AF4) continue;
+        if (((cast(uint)d.classCode << 8) | d.subClass) != 0x0200) continue;
+        grantBdf[ngrant++] = (cast(uint)d.bus << 16) | (cast(uint)d.slot << 8) | d.func;
+        klog("[lkl] virtio-net granted for scp egress\n");
+    }
     if (ngrant == 0) {
         // Fallback demo (no WiFi + no xHCI): a GPU/NVMe if present (opt-in LKL_GPU=1 / LKL_NVME=1 in QEMU).
         uint fb = findDeviceByClass(0x0380);

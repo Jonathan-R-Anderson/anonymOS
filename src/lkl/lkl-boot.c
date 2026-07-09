@@ -19,6 +19,7 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <arpa/inet.h>
 #include <errno.h>
 #include "hos-net-proto.h"
 #ifndef MAP_FIXED_NOREPLACE
@@ -769,6 +770,58 @@ static int epin_wifi_bringup(long s, char *ifout, int outsz)
     return 0;
 }
 
+/* QEMU log-egress: if a wired ethN appears (a virtio-net-pci granted to the LKL solely for the
+ * scp-upload test), bring it up with the QEMU user-net (slirp) statics 10.0.2.15/24 gw 10.0.2.2
+ * so the LKL TCP stack has a route to the host.  Silently exits when no ethN shows up within
+ * ~15 s (FW13 / wifi-only boots have none). */
+static void *epin_eth_thread(void *arg)
+{
+    (void)arg;
+    long s = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_DGRAM, 0);
+    if (s < 0) return NULL;
+    static const char *const names[] = { "eth0", "eth1", 0 };
+    for (int tries = 0; tries < 60; tries++) {
+        for (int i = 0; names[i]; i++) {
+            struct lkl_ifreq ifr;
+            memset(&ifr, 0, sizeof ifr);
+            strncpy(ifr.lkl_ifr_name, names[i], sizeof(ifr.lkl_ifr_name) - 1);
+            if (lkl_sys_ioctl(s, LKL_SIOCGIFINDEX, (long)&ifr) != 0)
+                continue;
+            int ifindex = ifr.lkl_ifr_ifindex;
+            /* NOTE: do NOT lkl_if_set_mac() here — that goes through virtio-net's control
+             * virtqueue, whose completion IRQ misbehaves on the bridge ("irq: nobody cared"
+             * → LKL host-thread crash).  The garbled config-space MAC (which made IFF_UP
+             * fail -EADDRNOTAVAIL) is instead randomized at probe time by the virtio_net
+             * patch in the LKL tree (is_valid_ether_addr check in virtnet_probe). */
+            /* Bring the link UP the same way epin_wifi_bringup does (SIOCSIFFLAGS ioctl —
+             * lkl_if_up's rtnetlink path returned -99 here), then retry the default route
+             * until the kernel accepts it: right after IFF_UP the gateway add still returns
+             * -ENETUNREACH until the address/link settle. */
+            memset(&ifr, 0, sizeof ifr);
+            strncpy(ifr.lkl_ifr_name, names[i], sizeof(ifr.lkl_ifr_name) - 1);
+            lkl_sys_ioctl(s, LKL_SIOCGIFFLAGS, (long)&ifr);
+            ifr.lkl_ifr_flags |= LKL_IFF_UP;
+            long fu = lkl_sys_ioctl(s, LKL_SIOCSIFFLAGS, (long)&ifr);
+            int r1 = lkl_if_set_ipv4(ifindex, inet_addr("10.0.2.15"), 24);
+            int r2 = -1;
+            for (int g = 0; g < 20; g++) {
+                r2 = lkl_set_ipv4_gateway(inet_addr("10.0.2.2"));
+                if (r2 == 0 || r2 == -LKL_EEXIST) { r2 = 0; break; }
+                struct timespec gs = { .tv_sec = 0, .tv_nsec = 500000000L };
+                nanosleep(&gs, NULL);
+            }
+            fprintf(stderr, ">>> eth: %s flags=%ld ip=%d gw=%d (slirp statics -> host route for scp egress)\n",
+                    names[i], fu, r1, r2);
+            lkl_sys_close(s);
+            return NULL;
+        }
+        struct timespec ts = { .tv_sec = 0, .tv_nsec = 500000000L };
+        nanosleep(&ts, NULL);
+    }
+    lkl_sys_close(s);
+    return NULL;
+}
+
 /* Bring wlan0 up + the H0 boot-proof scan (prints on-screen). */
 static void epin_wifi_report(void)
 {
@@ -1155,6 +1208,12 @@ int main(int argc, char **argv)
     /* H1: start the WiFi provider EARLY (before the blocking boot scan) so its socket exists ASAP — a
      * native client reaches wlan0 only through this DEVCLASS_NET-gated AF_UNIX socket. */
     pthread_create(&tnet, NULL, epin_net_provider_thread, NULL);
+    /* QEMU scp-egress: configure a granted virtio-net ethN with slirp statics (no-op if absent). */
+    {
+        pthread_t teth;
+        if (pthread_create(&teth, NULL, epin_eth_thread, NULL) == 0)
+            pthread_detach(teth);
+    }
     /* bring wlan0 up once iwlwifi's async probe creates it + prove the scan/RX path (H0) */
     epin_wifi_report();
 

@@ -207,30 +207,36 @@ static char g_scp_lasterr[160];   /* last line the scp/ssh client printed (the f
 
 static int run_scp(const char *target_user, const char *target_ip, const char *target_path, const char *key_path)
 {
-    char remote[512];
-    int rn = snprintf(remote, sizeof remote, "%s@%s:%s", target_user, target_ip, target_path);
-    if (rn <= 0 || rn >= (int)sizeof remote) {
-        logf_stderr("remote target too long");
+    if (strchr(target_path, '\'') || strchr(target_user, '\'') || strchr(target_ip, '\'')) {
+        logf_stderr("quote character in target config; refusing");
         return 2;
     }
 
-    char *argv[32];
+    /* Drive dbclient (/ssh) DIRECTLY with the snapshot on stdin and a remote `cat > file`,
+     * instead of the scp protocol: dbclient is not OpenSSH — it ignores -o BatchMode/
+     * StrictHostKeyChecking and would PROMPT for the unknown host key (hanging a headless
+     * run).  Its real flags: -y -y = skip host-key checking entirely.  The remote path is
+     * single-quoted (quotes in the config path are rejected by the caller). */
+    char rcmd[256];
+    int cn = snprintf(rcmd, sizeof rcmd, "cat > '%s'", target_path);
+    if (cn <= 0 || cn >= (int)sizeof rcmd) {
+        logf_stderr("remote path too long");
+        return 2;
+    }
+    char userhost[192];
+    snprintf(userhost, sizeof userhost, "%s@%s", target_user, target_ip);
+
+    char *argv[16];
     int a = 0;
-    argv[a++] = "/scp";
-    argv[a++] = "-S";
     argv[a++] = "/ssh";
-    argv[a++] = "-o";
-    argv[a++] = "BatchMode=yes";
-    argv[a++] = "-o";
-    argv[a++] = "StrictHostKeyChecking=no";
-    argv[a++] = "-o";
-    argv[a++] = "PasswordAuthentication=no";
+    argv[a++] = "-y";
+    argv[a++] = "-y";
     if (key_path && key_path[0]) {
         argv[a++] = "-i";
         argv[a++] = (char *)key_path;
     }
-    argv[a++] = SNAPSHOT_PATH;
-    argv[a++] = remote;
+    argv[a++] = userhost;
+    argv[a++] = rcmd;
     argv[a++] = 0;
 
     char *envp[] = {
@@ -257,13 +263,15 @@ static int run_scp(const char *target_user, const char *target_ip, const char *t
         return 3;
     }
     if (pid == 0) {
+        int in = open(SNAPSHOT_PATH, O_RDONLY);
+        if (in >= 0) { dup2(in, 0); close(in); }
         if (pfd[1] >= 0) {
             dup2(pfd[1], 1);
             dup2(pfd[1], 2);
             close(pfd[0]);
             close(pfd[1]);
         }
-        execve("/scp", argv, envp);
+        execve("/ssh", argv, envp);
         _exit(127);
     }
     if (pfd[1] >= 0) { close(pfd[1]); }

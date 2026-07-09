@@ -48,7 +48,10 @@ int main(int argc, char **argv)
         size_t i = 0;
         for (; router[i] && router[i] != ' ' && i < sizeof first - 1; i++) first[i] = router[i];
         first[i] = 0;
-        { char *a[] = { "/busybox-dyn", "route", "add", "default", "gw", first, "dev", ifn, 0 }; run(a); }
+        /* NB: NO "dev <ifn>" — busybox route puts the device NAME in rtentry.rt_dev as a POINTER, which
+         * doesn't survive the shim's ioctl RPC (the LKL derefs a client-side pointer → SIOCADDRT ENODEV
+         * "No such device").  Without it, the LKL picks the interface from the gateway's subnet. */
+        { char *a[] = { "/busybox-dyn", "route", "add", "default", "gw", first, 0 }; run(a); }
     }
 
     int f = open("/run/wifi/dhcp-ok", O_CREAT | O_WRONLY | O_TRUNC, 0644);

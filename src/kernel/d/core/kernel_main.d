@@ -1536,6 +1536,23 @@ private void maybeSpawnWifiAgent() {
     klog("[wifi] M6: launching hos-wifi-agent -> /run/wifi/networks (NM<->menu D-Bus bridge)\n");
     spawnWaylandProgram("hos-wifi-agent\0".ptr, "[wifiag]\0".ptr);
 }
+// External DHCP: NM's in-process n-dhcp4 stalls before ever sending a DISCOVER (its nested epoll+timerfd
+// never fires here), so a standalone busybox udhcpc gets the lease instead (proven: full
+// DISCOVER→OFFER→REQUEST→ACK through the LKL/AX210).  Kernel-spawned (the wifi-agent's fork()+execve of
+// it was unreliable); the launcher execve()s /busybox-dyn udhcpc under LD_PRELOAD=/libnshim.so.
+private __gshared bool g_udhcpcStarted = false;
+private __gshared int  g_udhcpcDelay   = 0;
+private void maybeSpawnUdhcpc() {
+    if (g_skipNetForTest) return;
+    if (g_udhcpcStarted) return;
+    if (g_wifiBridgePresent) return;                                  // COM2 host-bridge owns wifi
+    if (!g_dbusStarted) return;
+    if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;  // LKL net-provider (owns wlan0) up
+    if (g_udhcpcDelay++ < 90) return;                                 // after NM/wpa so wlan0 exists (+launcher's own settle)
+    g_udhcpcStarted = true;
+    klog("[udhcpc] launching hos-udhcpc-launch -> /busybox-dyn udhcpc (external LKL DHCP; NM n-dhcp4 stalls)\n");
+    spawnWaylandProgram("hos-udhcpc-launch\0".ptr, "[udhcpc]\0".ptr);
+}
 private __gshared bool g_nmcliStarted = false;
 private __gshared int  g_nmcliDelay   = 0;
 private void maybeSpawnNmcli() {
@@ -3535,6 +3552,7 @@ private void kernelLoop() {
         wifiBridgeDetect();         // WIFI=1: probe COM2 for the host WiFi bridge (one-shot)
         wifiBridgePoll();           // …and pump it: real host nmcli scan/connect <-> /run/wifi/*
         maybeSpawnWifiAgent();      // M6: Wi-Fi menu's D-Bus bridge (skips itself when the COM2 bridge is live)
+        maybeSpawnUdhcpc();         // external DHCP: busybox udhcpc gets the lease (NM's n-dhcp4 stalls)
         maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
         maybeSpawnLogUpload(); // debug: snapshot logs and scp them when a client is staged
         maybeSpawnIdle();   // ensure the scheduler's idle task exists

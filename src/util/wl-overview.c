@@ -46,7 +46,10 @@ enum { WIN_W = 920, WIN_H = 620,
 struct appentry { const char *label; const char *exec; };
 static const struct appentry APPS[] = {
     { "Files",          "/wl-files" },
-    { "Terminal",       "/gl-term" },
+    /* /hos-wifiterm = wl-term with EPIN_SHELL=light (zsh -f -i), software (wl_shm) rendered — works on
+     * the FW13 Pixman desktop.  /gl-term is GLES2/EGL and FAILS without a GPU; a full login-zsh wl-term
+     * fork-storms.  (GL terminal is still on SUPER+Y for the virgl/GPU desktop.) */
+    { "Terminal",       "/hos-wifiterm" },
     { "Settings",       "/wl-domain-manager" },
     { "Logs",           "/wl-logview" },
     { "Wi-Fi",          "/wl-wifi-menu" },

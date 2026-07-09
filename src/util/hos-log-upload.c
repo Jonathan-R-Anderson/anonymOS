@@ -292,7 +292,12 @@ int main(void)
         logf_stderr("scp attempt %d -> %s@%s:%s", attempt, target_user, target_ip, target_path);
         int rc = run_scp(target_user, target_ip, target_path, key_for_scp);
         if (rc == 0) {
-            logf_stderr("scp upload complete");
+            /* The kernel mirrors this line to the on-screen LOG UPLOAD row and freezes on
+             * "upload complete" — keep that phrase, and say exactly where the file landed. */
+            struct stat st;
+            long kb = (stat(SNAPSHOT_PATH, &st) == 0) ? (long)(st.st_size / 1024) : 0;
+            logf_stderr("upload complete -> %s@%s:%s (%ld KB)",
+                        target_user, target_ip, target_path, kb);
             return 0;
         }
         logf_stderr("scp exited rc=%d", rc);

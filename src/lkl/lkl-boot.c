@@ -1140,7 +1140,18 @@ int main(int argc, char **argv)
     pthread_t tkbd, tmse, tusb, tnet;
     pthread_create(&tkbd, NULL, epin_input_reader, &g_kbdReader);   /* USB kbd/mouse -> input rings */
     pthread_create(&tmse, NULL, epin_input_reader, &g_mseReader);
-    pthread_create(&tusb, NULL, epin_usblog_thread, NULL);          /* /run/klog -> USB stick */
+    /* Log egress: when the scp uploader is configured (/epin-debug-net.conf boot module present),
+     * hos-log-upload owns log delivery (with its own on-screen LOG UPLOAD status row) — do NOT hunt
+     * for a USB stick.  The USB capture remains the fallback for boots with no debug-net config. */
+    {
+        int cfd = open("/epin-debug-net.conf", 0 /*O_RDONLY*/);
+        if (cfd >= 0) {
+            close(cfd);
+            fprintf(stderr, ">>> usblog: /epin-debug-net.conf present -> scp upload owns log egress; USB capture disabled\n");
+        } else {
+            pthread_create(&tusb, NULL, epin_usblog_thread, NULL);  /* /run/klog -> USB stick */
+        }
+    }
     /* H1: start the WiFi provider EARLY (before the blocking boot scan) so its socket exists ASAP — a
      * native client reaches wlan0 only through this DEVCLASS_NET-gated AF_UNIX socket. */
     pthread_create(&tnet, NULL, epin_net_provider_thread, NULL);

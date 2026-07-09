@@ -2192,16 +2192,61 @@ public void usblogStatusRepaint() @nogc nothrow {
     else if (g_usblogState == 2) { put("WRITING "); sd(); put(" -> hoslog.txt  "); dec(g_usblogBytes/1024); put(" KB written"); }
     else                         put("NO writable drive found - attach a FAT32/exFAT stick");
     b[n]=0;
+    fb_draw_hud_row(128, b.ptr);   // below the LOG UPLOAD row (112); freeze-probe rows are 0-96
+}
+
+// LOG-UPLOAD on-screen status — the kernel taps hos-log-upload's fd1/fd2 writes in sys_write (by
+// exec name, same idiom as the lkl-boot console tap above) and re-stamps its LAST stderr line over
+// the desktop every present.  This is the "did my debug log reach the host?" answer without opening
+// the Logs app: Wi-Fi wait -> "scp attempt N -> user@ip:path" -> "upload complete ... (N KB)".
+// Once the completion line is seen the row FREEZES on it (the uploader exits right after anyway).
+// '\0'-init both buffers: D's char.init is 0xFF, which would leave g_logupLast without a
+// terminator — the repaint's empty-check would pass garbage and its copy loop would walk
+// past the array (boot-killing bounds assert; same trap as g_fdPath above).
+__gshared char[144] g_logupLast = '\0'; __gshared char[144] g_logupCur = '\0';
+__gshared int g_logupCurN = 0;
+__gshared bool g_logupComplete = false;
+void logupTap(char c) {
+    if (c == '\n' || g_logupCurN >= 143) {
+        if (g_logupCurN > 0 && !g_logupComplete) {
+            g_logupCur[g_logupCurN] = 0;
+            // strip the uniform "[log-upload] " stderr prefix for the on-screen row
+            int s = 0;
+            if (cstrEqPrefix(g_logupCur.ptr, "[log-upload] ")) s = 13;
+            int k = 0;
+            while (s + k < 143 && g_logupCur[s + k]) { g_logupLast[k] = g_logupCur[s + k]; ++k; }
+            g_logupLast[k] = 0;
+            for (int i = 0; i < 143 && g_logupLast[i]; ++i)
+                if (cstrEqPrefix(&g_logupLast[i], "upload complete")) { g_logupComplete = true; break; }
+        }
+        g_logupCurN = 0;
+    } else if (c >= 32 && c < 127) {
+        g_logupCur[g_logupCurN++] = c;
+    }
+}
+public void logupStatusRepaint() @nogc nothrow {
+    import arch.x86_64.bootstrap : fb_draw_hud_row, g_fb;
+    if (g_fb is null || g_logupLast[0] == 0) return;   // uploader hasn't said anything yet
+    char[160] b; int n = 0;
+    void put(string s) @nogc nothrow { foreach (ch; s) if (n < 159) b[n++] = ch; }
+    put(g_logupComplete ? "LOG UPLOAD OK: " : "LOG UPLOAD: ");
+    { int k = 0; while (k < 143 && g_logupLast[k] && n < 159) b[n++] = g_logupLast[k++]; }
+    b[n] = 0;
     fb_draw_hud_row(112, b.ptr);   // below the freeze-probe rows (0-96), below the top bar
 }
 
 public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
-    // Real-HW: mirror lkl-boot's stdout/stderr to the on-screen LKL console.
+    // Real-HW: mirror lkl-boot's stdout/stderr to the on-screen LKL console, and
+    // hos-log-upload's status lines to the LOG UPLOAD desktop row (logupStatusRepaint).
     if ((fd == 1 || fd == 2) && buf !is null && count > 0) {
         const int t = cast(int)g_current_task_id;
         const(char)* nm = (t >= 0 && t < MAX_TASKS) ? g_taskExecName[t] : null;
         if (nm !is null && nm[0] == 'l' && nm[1] == 'k' && nm[2] == 'l')
             lklLogWrite(cast(const(char)*)buf, count);
+        else if (nm !is null && cstrEqPrefix(nm, "hos-log")) {
+            const(char)* p = cast(const(char)*)buf;
+            for (size_t i = 0; i < count; i++) logupTap(p[i]);
+        }
     }
     ObjHeader* oh = fdObjectByIndexWithRights(fd, CAP_RIGHT_WRITE);
     if (oh is null) return cast(ssize_t)negErrno(EBADF);
@@ -11043,8 +11088,10 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     g_desktopClaimedFb = true;   // the compositor now presents — no more kernel fb drawing
     // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
     cursorRepaintAfterPresent();
-    // USB-log capture status — ALWAYS on (ungated): the user needs to SEE whether the /run/klog dump
-    // is reaching the USB stick.  Re-stamped every present so it persists over the desktop.
+    // Log-egress status — ALWAYS on (ungated): the user needs to SEE whether the debug log reached
+    // its destination.  scp uploads (LOG UPLOAD row) and the USB-stick fallback (USB LOG row) are
+    // re-stamped every present so they persist over the desktop.
+    logupStatusRepaint();
     usblogStatusRepaint();
     // WiFi/LKL real-hardware debug HUDs (survey line, MSI/CSR rows, LKL console) are re-stamped
     // ON TOP of the compositor every present.  They clutter the clean GNOME desktop, so gate them

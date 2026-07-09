@@ -136,8 +136,15 @@ static assert(BootModuleRecord.sizeof == 128);
 // those closes would tear down the connection (the seat "Could not flush" bug).
 // Threads (CLONE_VM) share their process's table.  `g_fdTable` points at the
 // active process's table; the syscall dispatcher selects it per task each call
-// via fdtabSetActive().  FDTAB_COUNT must be >= MAX_TASKS (task.d).
-enum int FDTAB_COUNT = 64;
+// via fdtabSetActive().  FDTAB_COUNT must be >= MAX_TASKS (task.d): fdTabId is
+// assigned as the task id, so a task id past this bound has NO table of its own —
+// fdtabSetActive() would clamp it onto table 0 and the task would silently operate
+// on the COMPOSITOR's live fds (FW13 wifi-connect freeze: MAX_TASKS was bumped to
+// 256 for the NM stack, tids crossed 64, the panel forked wl-wifi-menu as tid 65,
+// whose exec/fd churn closed weston's epoll out from under it -> clean exit(0)).
+enum int FDTAB_COUNT = 256;
+static assert(FDTAB_COUNT >= MAX_TASKS,
+              "every task id must map to its own fd table (see fdtabSetActive)");
 __gshared File[1024][FDTAB_COUNT] g_fdTabs;
 // Active table pointer; set by fdtabSetActive() before each syscall is serviced
 // (and defensively to process 0's table on first use).  &g_fdTabs[0][0] is not a
@@ -151,16 +158,31 @@ __gshared File* g_fdTable;
 // the fork-copied struct); best-effort (cleared/overwritten per open; not fork-propagated).
 __gshared int g_activeFdTabId = 0;
 enum int FDPATH_MAX = 160;
-__gshared char[FDPATH_MAX][1024][FDTAB_COUNT] g_fdPath;
+// '\0'-init, NOT char.init: D's char.init is 0xFF, which emits this whole array
+// as ~40 MiB of initialized .data in kernel.elf — Limine's high-memory allocator
+// OOMs loading the file.  Zero-filled it lands in .bss (and empty-string slots
+// beat 0xFF garbage anyway).
+__gshared char[FDPATH_MAX][1024][FDTAB_COUNT] g_fdPath = '\0';
 __gshared char[256] g_pendingOpenPath;   // set at open() entry, stored into g_fdPath on success
 
 // Point g_fdTable at process `fdTabId`'s table.  Called from the syscall
 // dispatcher with the current task's fdTabId before each syscall is serviced.
 public void fdtabSetActive(int fdTabId) {
-    if (fdTabId < 0 || fdTabId >= FDTAB_COUNT) fdTabId = 0;
+    if (fdTabId < 0 || fdTabId >= FDTAB_COUNT) {
+        // Must never happen (static assert ties FDTAB_COUNT to MAX_TASKS).  If it
+        // does, clamping to table 0 aliases the task onto the compositor's fds —
+        // a freeze that looks like weston exiting for no reason.  Scream first.
+        if (g_fdtabRangeLogged < 8) {
+            ++g_fdtabRangeLogged;
+            klog("[fdtab] BUG: fdTabId out of range: "); klog_dec(cast(ulong)fdTabId);
+            klog(" (clamping to 0 — task now ALIASES table 0!)\n");
+        }
+        fdTabId = 0;
+    }
     g_activeFdTabId = fdTabId;
     g_fdTable = &g_fdTabs[fdTabId][0];
 }
+__gshared uint g_fdtabRangeLogged = 0;
 
 // Bump the backing-INSTANCE refcount for fd types whose kernel instance is shared
 // across fd-table copies (fork) and dups: epoll instances, eventfds, memfd records.
@@ -192,8 +214,16 @@ public void fdInstanceRef(File* f) @nogc nothrow {
 // refcounts of shared kernel objects (sockets/pipes) so the child holds its own
 // reference and the parent closing its copy doesn't destroy them.
 public void fdtabForkCopy(int srcTabId, int dstTabId) {
-    if (srcTabId < 0 || srcTabId >= FDTAB_COUNT) return;
-    if (dstTabId < 0 || dstTabId >= FDTAB_COUNT || dstTabId == srcTabId) return;
+    if (srcTabId < 0 || srcTabId >= FDTAB_COUNT ||
+        dstTabId < 0 || dstTabId >= FDTAB_COUNT) {
+        // Must never happen (static assert ties FDTAB_COUNT to MAX_TASKS).  A silent
+        // return here left a forked child with NO fd table of its own; combined with
+        // the fdtabSetActive clamp it then lived inside table 0 (the compositor's).
+        klog("[fdtab] BUG: fork copy out of range src=");
+        klog_dec(cast(ulong)srcTabId); klog(" dst="); klog_dec(cast(ulong)dstTabId); klog("\n");
+        return;
+    }
+    if (dstTabId == srcTabId) return;
     capTableCloneNarrowing(srcTabId, dstTabId, CAP_RIGHT_ALL);
     foreach (i; 0 .. 1024) {
         g_fdTabs[dstTabId][i] = g_fdTabs[srcTabId][i];

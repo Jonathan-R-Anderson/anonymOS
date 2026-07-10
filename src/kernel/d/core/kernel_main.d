@@ -1495,6 +1495,30 @@ private void maybeSpawnNetLaunch() {
 // Hyprland render loop from the (currently-broken, WIP) NetworkManager path. Set true only
 // to debug the desktop without WiFi bring-up; false = normal boot.
 private __gshared bool g_skipNetForTest = false;
+
+// Debug boots (/epin-debug-net.conf boot module present) use direct wpa_supplicant (-c) + external
+// udhcpc for the log-upload path.  NetworkManager + its agent + the nmcli boot-doctor are then pure
+// dead weight: NM never registers on D-Bus and they SPIN retrying it, churning dbus-daemon and starving
+// the Weston compositor into repeated freezes — THE "OS keeps crashing" instability (reproduced under
+// VirtualBox).  So skip that whole stack on debug boots and leave the CPU to the compositor.
+private __gshared int g_debugNetBoot = -1;   // -1=unknown, 0=no, 1=yes (cached)
+private bool debugNetBootPresent() {
+    if (g_debugNetBoot < 0) {
+        g_debugNetBoot = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "epin-debug-net.conf")) { g_debugNetBoot = 1; break; }
+            }
+        }
+    }
+    return g_debugNetBoot == 1;
+}
+
 private __gshared bool g_wpaStarted = false;
 private void maybeSpawnWpa() {
     if (g_skipNetForTest) return;
@@ -1509,6 +1533,7 @@ private __gshared bool g_nmStarted = false;
 private void maybeSpawnNetworkManager() {
     if (g_skipNetForTest) return;
     if (g_nmStarted) return;
+    if (debugNetBootPresent()) return;   // debug boot uses direct wpa; NM never registers + churns dbus -> freezes
     if (!g_dbusStarted) return;                                        // system bus must be up first
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
     g_nmStarted = true;
@@ -1525,6 +1550,7 @@ private __gshared int  g_wifiAgentDelay   = 0;
 private void maybeSpawnWifiAgent() {
     if (g_skipNetForTest) return;
     if (g_wifiAgentStarted) return;
+    if (debugNetBootPresent()) return;   // debug boot: agent would spin against the bypassed NM -> freezes
     if (g_wifiBridgePresent) return;   // the COM2 host-WiFi bridge owns /run/wifi/* — no demo agent
     // Gate on dbus only (NOT g_nmStarted): the agent retries the bus for 90s, falls back
     // to a demo network list when NM / the wifi device is absent, and picks up real NM
@@ -1558,6 +1584,7 @@ private __gshared int  g_nmcliDelay   = 0;
 private void maybeSpawnNmcli() {
     if (g_skipNetForTest) return;
     if (g_nmcliStarted) return;
+    if (debugNetBootPresent()) return;   // debug boot: NM poll is a foregone "stuck" verdict + churns dbus
     // UNGATED (not requiring g_nmStarted): the boot-doctor diagnoses the whole chain — dbus, the LKL
     // provider socket, and NM registration — and writes /run/boot-status.txt.  It must run even when
     // NM never launched (that is exactly what we are diagnosing).
@@ -1588,6 +1615,7 @@ private __gshared bool g_dbusStarted = false;
 private __gshared int  g_dbusDelay   = 0;
 private void maybeSpawnDbus() {
     if (g_dbusStarted) return;
+    if (debugNetBootPresent()) return;   // debug boot needs no dbus (NM/agent/nmcli skipped; weston uses builtin seatd); dbus-daemon otherwise spins ~1000/s starving the compositor -> freezes
     if (g_dbusDelay++ < 40) return;   // let the desktop settle first
     g_dbusStarted = true;
     klog("[dbus] M0: launching hos-dbus-launch -> dbus-daemon (persistent system bus)\n");

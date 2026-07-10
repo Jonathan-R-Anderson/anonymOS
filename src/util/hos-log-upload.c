@@ -203,6 +203,16 @@ static int wifi_activated(void)
     return atoi(last + 1) >= 100;
 }
 
+/* Network is ready to upload the moment the DHCP lease + connected route are up.  The udhcpc lease
+ * script touches /run/wifi/dhcp-ok right after `ifconfig` + `route add`, so that marker appears within
+ * ~1s of the DHCP ACK — WAY before (or entirely without) NM reaching device-state>=100.  On this box
+ * NM's n-dhcp4 stalls and the lease comes from the external udhcpc, so wifi_activated() (NM state) can
+ * stay <100 forever; gating on dhcp-ok removes that stall from the critical path. */
+static int network_ready(void)
+{
+    return file_exists("/run/wifi/dhcp-ok") || wifi_activated();
+}
+
 static char g_scp_lasterr[160];   /* last line the scp/ssh client printed (the failure reason) */
 
 static int run_scp(const char *target_user, const char *target_ip, const char *target_path, const char *key_path)
@@ -286,7 +296,7 @@ static int run_scp(const char *target_user, const char *target_ip, const char *t
             rc = 4;
             break;
         }
-        if (time(0) - start >= 60) {
+        if (time(0) - start >= 20) {   /* was 60s; shorter so a hung/AP-blocked connection frees the retry loop fast */
             logf_stderr("scp timed out; terminating child");
             kill(pid, SIGTERM);
             nap_ms(1000);
@@ -366,13 +376,14 @@ int main(void)
         return 2;
     }
 
-    for (int attempt = 1; attempt <= 20; attempt++) {
+    /* Fast-poll for the lease marker (up to ~120s, every 500ms) rather than waiting on NM device-state
+     * (which never reaches 100 here — the lease is from the external udhcpc), so the first scp fires
+     * within ~1s of the DHCP ACK instead of up to 60s later. */
+    for (int i = 0; i < 240 && !network_ready(); i++) nap_ms(500);
+
+    for (int attempt = 1; attempt <= 40; attempt++) {
         write_snapshot();
-        if (!wifi_activated() && attempt <= 6) {
-            logf_stderr("waiting for Wi-Fi activation before scp attempt %d", attempt);
-            nap_ms(10000);
-            continue;
-        }
+        if (!network_ready()) { nap_ms(500); continue; }   /* lease renewing — re-poll fast, don't burn a slow retry */
         logf_stderr("scp attempt %d -> %s@%s:%s", attempt, target_user, target_ip, target_path);
         int rc = run_scp(target_user, target_ip, target_path, key_for_scp);
         if (rc == 0) {
@@ -388,7 +399,7 @@ int main(void)
             logf_stderr("scp exited rc=%d: %s", rc, g_scp_lasterr);
         else
             logf_stderr("scp exited rc=%d", rc);
-        nap_ms(30000);
+        nap_ms(3000);   /* fast retry so many attempts fit inside a short uptime before a crash */
     }
     logf_stderr("giving up after repeated scp failures");
     return 1;

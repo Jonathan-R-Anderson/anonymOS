@@ -35,6 +35,7 @@ enum {
     SCREEN_KEYBOARD,
     SCREEN_TIMEZONE,
     SCREEN_NETWORK,
+    SCREEN_DRIVERS,
     SCREEN_DISK,
     SCREEN_FILESYSTEM,
     SCREEN_ENCRYPTION,
@@ -50,7 +51,7 @@ enum {
 /* Ordered walk through the wizard; SCREEN_DECOY is included only in Hidden-OS mode. */
 static const int SCREEN_ORDER[] = {
     SCREEN_WELCOME, SCREEN_LANGUAGE, SCREEN_KEYBOARD, SCREEN_TIMEZONE,
-    SCREEN_NETWORK, SCREEN_DISK, SCREEN_FILESYSTEM, SCREEN_ENCRYPTION,
+    SCREEN_NETWORK, SCREEN_DRIVERS, SCREEN_DISK, SCREEN_FILESYSTEM, SCREEN_ENCRYPTION,
     SCREEN_DECOY, SCREEN_BOOTINTEGRITY, SCREEN_ACCOUNT, SCREEN_IDENTITIES,
     SCREEN_REVIEW, SCREEN_PROGRESS,
 };
@@ -169,6 +170,20 @@ static const struct opt IDENTITIES[] = {
     { "Anonymous",  "Routed for maximum anonymity",               "anonymous",  0 },
 };
 
+/* Peripheral drivers to detect + install into BOTH the real and decoy OS (roadmap §Drivers).
+ * `code` is the driver/module name used to (a) map detected hardware, (b) fetch firmware from
+ * upstream linux-firmware for the real OS, and (c) select the Alpine apk for the decoy.  The static
+ * rows below are the fallback set; once hardware detection lands (/config/hardware.detect) the list is
+ * rebuilt from what's actually present and the matching rows are pre-checked. */
+static const struct opt DRIVERS[] = {
+    { "Wi-Fi (Intel)",      "iwlwifi + firmware for Intel AX/AC Wi-Fi",     "iwlwifi",       0 },
+    { "Wi-Fi (Realtek)",    "rtw88/rtw89 for Realtek Wi-Fi (USB/PCIe)",     "rtw88",         0 },
+    { "Ethernet (Intel)",   "e1000e/igb for Intel wired NICs",              "e1000e",        0 },
+    { "Webcam (UVC)",       "uvcvideo for USB webcams",                     "uvcvideo",      0 },
+    { "Microphone / Audio", "snd-usb-audio for USB microphones + audio",    "snd-usb-audio", 0 },
+    { "Keyboard / Mouse",   "usbhid for USB keyboards + mice",              "usbhid",        0 },
+};
+
 #define ARRAY_LEN(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
 static int hex_digit(int c)
@@ -279,6 +294,9 @@ struct app {
 
     /* identity profile toggles */
     int identity_on[16];
+
+    /* peripheral driver toggles (SCREEN_DRIVERS) */
+    int drivers_on[16];
 
     /* disk enumeration from /config/disks.json; target_sel 0 = automatic */
     struct disk_entry disks[8];
@@ -397,6 +415,7 @@ static const char *screen_title(struct app *app)
     case SCREEN_KEYBOARD: return "Keyboard layout";
     case SCREEN_TIMEZONE: return "Time zone";
     case SCREEN_NETWORK: return "Network";
+    case SCREEN_DRIVERS: return "Peripheral drivers";
     case SCREEN_DISK: return "Installation disk";
     case SCREEN_FILESYSTEM: return "Filesystem";
     case SCREEN_ENCRYPTION: return "Encryption";
@@ -417,6 +436,7 @@ static const char *screen_subtitle(struct app *app)
     case SCREEN_KEYBOARD: return "Select the layout that matches your keyboard.";
     case SCREEN_TIMEZONE: return "Pick the time zone of the installed system.";
     case SCREEN_NETWORK: return "Networking is optional during installation.";
+    case SCREEN_DRIVERS: return "Detected hardware -- choose drivers to install into both operating systems.";
     case SCREEN_DISK: return "The selected disk will be erased and made bootable.";
     case SCREEN_FILESYSTEM: return "Choose the filesystem for the main partition.";
     case SCREEN_ENCRYPTION: return "Protect the installation with disk encryption.";
@@ -437,6 +457,7 @@ static const char *screen_short_name(int s)
     case SCREEN_KEYBOARD: return "Keyboard";
     case SCREEN_TIMEZONE: return "Time zone";
     case SCREEN_NETWORK: return "Network";
+    case SCREEN_DRIVERS: return "Drivers";
     case SCREEN_DISK: return "Disk";
     case SCREEN_FILESYSTEM: return "Filesystem";
     case SCREEN_ENCRYPTION: return "Encryption";
@@ -1071,6 +1092,21 @@ static void draw_identity_list(struct app *app, cairo_t *cr)
     draw_scrollbar(app, cr, count);
 }
 
+static void draw_driver_list(struct app *app, cairo_t *cr)
+{
+    int count = ARRAY_LEN(DRIVERS);
+    clamp_scroll(app, count);
+    int vis = list_visible_rows(app);
+    for (int i = 0; i < vis; i++) {
+        int idx = app->list_scroll + i;
+        if (idx >= count)
+            break;
+        draw_list_row(app, cr, i, DRIVERS[idx].label, DRIVERS[idx].sub,
+                      app->drivers_on[idx], 0, 1);
+    }
+    draw_scrollbar(app, cr, count);
+}
+
 static void draw_disk_list(struct app *app, cairo_t *cr)
 {
     int count = disk_row_count(app);
@@ -1277,6 +1313,8 @@ static void draw_demo(struct app *app)
         draw_disk_list(app, cr);
     else if (app->screen == SCREEN_IDENTITIES)
         draw_identity_list(app, cr);
+    else if (app->screen == SCREEN_DRIVERS)
+        draw_driver_list(app, cr);
 
     int fields[8];
     int n = fields_for_screen(app, fields, 8);
@@ -2080,6 +2118,13 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
         if (row >= 0) {
             app->identity_on[row] = !app->identity_on[row];
             redraw_commit(app, "identity toggle");
+            return;
+        }
+    } else if (app->screen == SCREEN_DRIVERS) {
+        int row = list_row_under_pointer(app, ARRAY_LEN(DRIVERS));
+        if (row >= 0) {
+            app->drivers_on[row] = !app->drivers_on[row];
+            redraw_commit(app, "driver toggle");
             return;
         }
     }

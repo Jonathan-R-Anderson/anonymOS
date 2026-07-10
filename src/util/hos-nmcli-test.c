@@ -254,6 +254,14 @@ int main(void)
 {
     (void)!write(1, "boot-doctor: starting checks...\n", 31);
     (void)!write(2, "boot-doctor: starting checks...\n", 31);
+    /* DEBUG BOOTS bypass NetworkManager (direct wpa_supplicant), so NM never registers and this 20-iter
+     * NM poll just churns dbus-daemon (part of the freeze storm) toward a foregone "NM stuck" verdict.
+     * Skip it on the direct-wpa path. */
+    if (access("/epin-debug-net.conf", F_OK) == 0) {
+        const char *m = "boot-doctor: debug-net boot -> skipping NM poll (direct wpa)\n";
+        (void)!write(2, m, strlen(m));
+        return 0;
+    }
     /* Check the two sockets ONCE (each connect spawns a provider handler thread; don't churn them).
      * Their state doesn't change once up.  Then poll NM (dbus-send forks are reaped via wait4). */
     int db = probe_connect("/run/dbus/system_bus_socket");

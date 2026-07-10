@@ -31,8 +31,10 @@ static char *const g_envp[] = { "LD_PRELOAD=/libnshim.so", "PATH=/", "HOME=/", "
 int main(void)
 {
     /* Let the LKL create wlan0 before the first attempt (udhcpc's SIOCGIFINDEX needs it to exist; it
-     * need not be associated yet — udhcpc retries the DISCOVER until wpa brings the link up). */
-    sleep_s(8);
+     * need not be associated yet — udhcpc retries the DISCOVER until wpa brings the link up).  Kept short
+     * (the retry loop below re-execs udhcpc every 5s if wlan0 isn't ready) so the lease starts ASAP on a
+     * box that may crash within a minute. */
+    sleep_s(2);
 
     for (;;) {
         logline("[udhcpc-launch] exec /busybox-dyn udhcpc -i wlan0 -f -s /udhcpc-script (LD_PRELOAD=/libnshim.so)");

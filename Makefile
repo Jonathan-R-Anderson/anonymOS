@@ -132,6 +132,7 @@ WPALAUNCH_BIN := build/hos-wpa-launch
 WIFIAGENT_BIN := build/hos-wifi-agent
 UDHCPCSCRIPT_BIN := build/hos-udhcpc-script   # udhcpc lease handler (ELF; forks busybox-dyn to set IP)
 UDHCPCLAUNCH_BIN := build/hos-udhcpc-launch   # kernel-spawned launcher: execs busybox-dyn udhcpc (LKL DHCP)
+SCPTEST_BIN      := build/hos-scp-test        # one-command scp/upload self-test (/scp-test)
 LOGUPLOAD_BIN := build/hos-log-upload
 WIFITERM_BIN := build/hos-wifiterm
 THREADTEST_BIN := build/hos-thread-test
@@ -518,6 +519,10 @@ $(UDHCPCLAUNCH_BIN): src/util/hos-udhcpc-launch.c
 	@echo "==== Building hos-udhcpc-launch (kernel-spawned launcher for busybox-dyn udhcpc under the shim) ===="
 	$(MUSL_CC) -static -O2 -Wall -o $@ src/util/hos-udhcpc-launch.c
 
+$(SCPTEST_BIN): src/util/hos-scp-test.c
+	@echo "==== Building hos-scp-test (one-command /scp-test upload self-test) ===="
+	$(MUSL_CC) -static -O2 -Wall -o $@ src/util/hos-scp-test.c
+
 $(WIFIAGENT_BIN): src/util/hos-wifi-agent.c
 	@echo "==== Building hos-wifi-agent (M6 libdbus NM<->file bridge for the Wi-Fi menu) ===="
 	$(MUSL_CC) -O2 -Wall -o $@ src/util/hos-wifi-agent.c \
@@ -630,7 +635,7 @@ $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_B
 $(BUSYBOX_DYN_BIN):
 	$(MAKE) -C deps/busybox busybox-dyn
 
-stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -743,7 +748,8 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 		cp $(BUSYBOX_DYN_BIN) cd/busybox-dyn; \
 		cp $(UDHCPCSCRIPT_BIN) cd/udhcpc-script; \
 		cp $(UDHCPCLAUNCH_BIN) cd/hos-udhcpc-launch; \
-		printf '    module_path: boot():/NetworkManager\n    module_path: boot():/nmcli\n    module_path: boot():/libnm.so.0\n    module_path: boot():/libndp.so.0\n    module_path: boot():/hos-nm-launch\n    module_path: boot():/hos-nmcli-test\n    module_path: boot():/hos-wifi-agent\n    module_path: boot():/busybox-dyn\n    module_path: boot():/udhcpc-script\n    module_path: boot():/hos-udhcpc-launch\n' >> cd/boot/limine/limine.conf; \
+		cp $(SCPTEST_BIN) cd/scp-test; \
+		printf '    module_path: boot():/NetworkManager\n    module_path: boot():/nmcli\n    module_path: boot():/libnm.so.0\n    module_path: boot():/libndp.so.0\n    module_path: boot():/hos-nm-launch\n    module_path: boot():/hos-nmcli-test\n    module_path: boot():/hos-wifi-agent\n    module_path: boot():/busybox-dyn\n    module_path: boot():/udhcpc-script\n    module_path: boot():/hos-udhcpc-launch\n    module_path: boot():/scp-test\n' >> cd/boot/limine/limine.conf; \
 		echo "Included M2b real NetworkManager daemon + nmcli + libnm.so.0 + libndp.so.0 + hos-nm-launch + hos-nmcli-test"; \
 	fi
 	cp $(THREADTEST_BIN) cd/hos-thread-test

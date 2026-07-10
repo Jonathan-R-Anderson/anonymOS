@@ -130,7 +130,7 @@ static void *epin_usblog_thread(void *arg)
      * mount result.  Every fprintf(stderr) here lands in /run/klog -> the desktop "Logs" app (filter
      * "usblog"), so even a FAILED capture is diagnosable ON the machine.  We prefer the LARGEST device
      * (the 123 GB log stick dwarfs the boot ESP) and try every filesystem we built. */
-    { struct timespec s = { 12, 0 }; nanosleep(&s, NULL); }
+    { struct timespec s = { 4, 0 }; nanosleep(&s, NULL); }   /* was 12s; the round loop below retries every 2s, so late USB enumeration is still caught — cut for faster first-write on a box that may crash early */
     /* Ensure /proc is mounted (we read /proc/partitions).  Idempotent: a 2nd mount just returns -EBUSY. */
     lkl_sys_mkdir("/proc", 0555);
     lkl_sys_mount("proc", "/proc", "proc", 0, 0);
@@ -1193,14 +1193,15 @@ int main(int argc, char **argv)
     pthread_t tkbd, tmse, tusb, tnet;
     pthread_create(&tkbd, NULL, epin_input_reader, &g_kbdReader);   /* USB kbd/mouse -> input rings */
     pthread_create(&tmse, NULL, epin_input_reader, &g_mseReader);
-    /* Log egress: when the scp uploader is configured (/epin-debug-net.conf boot module present),
-     * hos-log-upload owns log delivery (with its own on-screen LOG UPLOAD status row) — do NOT hunt
-     * for a USB stick.  The USB capture remains the fallback for boots with no debug-net config. */
+    /* Log egress: when the scp uploader is configured (/epin-debug-net.conf present), the NETWORK path
+     * owns log delivery — do NOT run the USB-stick hunt.  (USB capture was exhausted as unreliable on
+     * this hardware, and its blocking mount attempts share the single LKL "cpu" with the net provider,
+     * slowing association.)  USB remains only as the fallback for boots with no debug-net config. */
     {
         int cfd = open("/epin-debug-net.conf", 0 /*O_RDONLY*/);
         if (cfd >= 0) {
             close(cfd);
-            fprintf(stderr, ">>> usblog: /epin-debug-net.conf present -> scp upload owns log egress; USB capture disabled\n");
+            fprintf(stderr, ">>> usblog: /epin-debug-net.conf present -> network scp owns log egress; USB capture disabled\n");
         } else {
             pthread_create(&tusb, NULL, epin_usblog_thread, NULL);  /* /run/klog -> USB stick */
         }

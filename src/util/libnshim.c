@@ -23,6 +23,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <sys/un.h>
 #include <net/if.h>
 #include <poll.h>
@@ -62,6 +63,8 @@ static int (*r_ioctl)(int,unsigned long,void*);
 static int (*r_poll)(struct pollfd*,nfds_t,int);
 static ssize_t (*r_read)(int,void*,size_t);
 static ssize_t (*r_write)(int,const void*,size_t);
+static ssize_t (*r_writev)(int,const struct iovec*,int);
+static ssize_t (*r_readv)(int,const struct iovec*,int);
 static int (*r_fcntl)(int,int,...);
 static int (*r_open)(const char*,int,...);
 static int (*r_select)(int,fd_set*,fd_set*,fd_set*,struct timeval*);
@@ -72,7 +75,7 @@ static void resolve(void)
 #define R(f) r_##f = dlsym(RTLD_NEXT, #f)
     R(socket); R(bind); R(connect); R(sendto); R(recvfrom); R(sendmsg); R(recvmsg);
     R(setsockopt); R(getsockopt); R(getsockname); R(close); R(ioctl); R(poll); R(read); R(write); R(fcntl);
-    R(open); R(select);
+    R(open); R(select); R(writev); R(readv);
 #undef R
 }
 
@@ -579,6 +582,25 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 /* wpa mostly uses recvmsg/sendmsg, but guard read/write on routed fds too. */
 ssize_t read(int fd, void *buf, size_t n){ resolve(); if(routed(fd)) return recvfrom(fd,buf,n,0,0,0); return r_read(fd,buf,n); }
 ssize_t write(int fd, const void *buf, size_t n){ resolve(); if(routed(fd)) return sendto(fd,buf,n,0,0,0); return r_write(fd,buf,n); }
+/* writev/readv MUST be interposed too: Dropbear's dbclient (the scp transport) writes every encrypted
+ * SSH packet with writev() (packet.c write_packet).  Without this, writev() on a routed socket hits the
+ * shim's UNCONNECTED AF_UNIX placeholder fd (r_socket at socket()) and fails ENOTCONN "Socket not
+ * connected" — the connect/read go through fine, but the first packet write dies.  Route both through
+ * the existing sendmsg/recvmsg, which coalesce/scatter the iov to NSP_SENDTO/NSP_RECVFROM on the LKL. */
+ssize_t writev(int fd, const struct iovec *iov, int iovcnt){
+    resolve();
+    if(!routed(fd)) return r_writev(fd, iov, iovcnt);
+    struct msghdr m; memset(&m, 0, sizeof m);
+    m.msg_iov = (struct iovec*)iov; m.msg_iovlen = iovcnt;
+    return sendmsg(fd, &m, 0);
+}
+ssize_t readv(int fd, const struct iovec *iov, int iovcnt){
+    resolve();
+    if(!routed(fd)) return r_readv(fd, iov, iovcnt);
+    struct msghdr m; memset(&m, 0, sizeof m);
+    m.msg_iov = (struct iovec*)iov; m.msg_iovlen = iovcnt;
+    return recvmsg(fd, &m, 0);
+}
 
 /* select(): dropbear's dbclient (the scp transport) is select-driven — without this, a routed
  * TCP socket's placeholder fd is select()ed against the LOCAL kernel (never ready) and the SSH

@@ -450,6 +450,16 @@ static void auto_connect_tick(DBusConnection *c, int have, dbus_uint32_t st, int
 int main(void){
     mkdir("/run", 0755);
     mkdir("/run/wifi", 0755);
+    /* DEBUG BOOTS use direct wpa_supplicant + external udhcpc; NetworkManager is bypassed and never
+     * registers on D-Bus, so this agent would just SPIN retrying NM — it + dbus-daemon become the top
+     * CPU hoggers and starve the Weston compositor into repeated freezes.  That churn IS the "OS keeps
+     * crashing" instability (reproduced under VirtualBox: hos-wifi-agent + dbus-daemon top the HOG list
+     * in every freeze event).  The Wi-Fi menu is unused on a debug boot (the log just scp's out), so
+     * exit immediately and leave the CPU to the compositor + the direct-wpa/udhcpc/upload path. */
+    if (access("/epin-debug-net.conf", F_OK) == 0) {
+        fprintf(stderr, "[wifi-agent] debug-net boot (direct wpa) -> NM unused; exiting to avoid the dbus/NM spin\n");
+        return 0;
+    }
     g_demo_enabled = (getenv("HOS_WIFI_DEMO") != NULL);   /* off by default */
     load_auto_creds();                                    /* boot auto-connect target (/epin-debug-net.conf) */
     /* Point libdbus at OUR dbus-daemon (a kernel-spawned process gets a fixed minimal env, so

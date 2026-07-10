@@ -63,8 +63,11 @@ enum {
     FIELD_REAL_PASSWORD,
     FIELD_REAL_CONFIRM,
     FIELD_HIDDEN_PASSWORD,
+    FIELD_HIDDEN_CONFIRM,
     FIELD_OUTER_PASSWORD,
+    FIELD_OUTER_CONFIRM,
     FIELD_DECOY_BOOT_PASSWORD,
+    FIELD_DECOY_BOOT_CONFIRM,
     FIELD_DECOY_USER,
     FIELD_DECOY_FULLNAME,
     FIELD_DECOY_PASSWORD,
@@ -298,6 +301,12 @@ struct app {
     /* peripheral driver toggles (SCREEN_DRIVERS) */
     int drivers_on[16];
 
+    /* decoy/hidden disk apportioning (SCREEN_DECOY slider): decoy_percent is the
+     * decoy OS's share of the usable (post-overhead) space; the hidden OS gets the
+     * rest. decoy_dragging tracks an in-progress pointer drag on the slider knob. */
+    int decoy_percent;
+    int decoy_dragging;
+
     /* disk enumeration from /config/disks.json; target_sel 0 = automatic */
     struct disk_entry disks[8];
     int disk_count;
@@ -305,6 +314,9 @@ struct app {
     int target_index;       /* AHCI index to install to, or -1 for automatic */
 
     int list_scroll;        /* row offset for the current scrollable list */
+    int content_scroll;     /* pixel scroll offset for the form-field content pane */
+    int clip_top;           /* draw_text_ft vertical clip window (0/0 == no clip) */
+    int clip_bottom;
     char install_cmd[32];   /* "install" or "install <idx>" */
 };
 
@@ -382,8 +394,11 @@ static const char *field_label(struct app *app, int field)
     case FIELD_HIDDEN_PASSWORD:
         return app->encryption_mode == ENC_FULL ? "Disk unlock password"
                                                 : "Hidden OS boot password";
+    case FIELD_HIDDEN_CONFIRM: return "Confirm hidden password";
     case FIELD_OUTER_PASSWORD: return "Outer volume password";
+    case FIELD_OUTER_CONFIRM: return "Confirm outer password";
     case FIELD_DECOY_BOOT_PASSWORD: return "Decoy OS boot password";
+    case FIELD_DECOY_BOOT_CONFIRM: return "Confirm decoy boot password";
     case FIELD_DECOY_USER: return "Decoy username";
     case FIELD_DECOY_FULLNAME: return "Decoy full name";
     case FIELD_DECOY_PASSWORD: return "Decoy login password";
@@ -397,8 +412,11 @@ static int field_secret(int field)
     return field == FIELD_REAL_PASSWORD ||
            field == FIELD_REAL_CONFIRM ||
            field == FIELD_HIDDEN_PASSWORD ||
+           field == FIELD_HIDDEN_CONFIRM ||
            field == FIELD_OUTER_PASSWORD ||
+           field == FIELD_OUTER_CONFIRM ||
            field == FIELD_DECOY_BOOT_PASSWORD ||
+           field == FIELD_DECOY_BOOT_CONFIRM ||
            field == FIELD_DECOY_PASSWORD;
 }
 
@@ -607,7 +625,9 @@ static int fields_for_screen(struct app *app, int out[], int max)
         if (app->encryption_mode == ENC_FULL && n < max)
             out[n++] = FIELD_HIDDEN_PASSWORD;
         if (app->encryption_mode == ENC_HIDDEN) {
-            int f[] = { FIELD_HIDDEN_PASSWORD, FIELD_OUTER_PASSWORD, FIELD_DECOY_BOOT_PASSWORD };
+            int f[] = { FIELD_HIDDEN_PASSWORD, FIELD_HIDDEN_CONFIRM,
+                        FIELD_OUTER_PASSWORD, FIELD_OUTER_CONFIRM,
+                        FIELD_DECOY_BOOT_PASSWORD, FIELD_DECOY_BOOT_CONFIRM };
             for (size_t i = 0; i < sizeof(f) / sizeof(f[0]) && n < max; i++) out[n++] = f[i];
         }
     } else if (app->screen == SCREEN_DECOY) {
@@ -628,9 +648,27 @@ static void field_rect(struct app *app, int ordinal,
                        double *x, double *y, double *w, double *h)
 {
     *x = CONTENT_X;
-    *y = FIELD_Y0 + ordinal * FIELD_STEP;
+    *y = FIELD_Y0 + ordinal * FIELD_STEP - app->content_scroll;
     *w = content_w(app);
     *h = FIELD_H;
+}
+
+/* ── scrollable form content pane ───────────────────────────────────────────── */
+/* Pages whose main focus is a column of form fields get their own scroll pane so
+ * a tall page (the 6-field Hidden-OS setup) never spills onto the button bar. */
+static int screen_is_form(int screen)
+{
+    return screen == SCREEN_ACCOUNT || screen == SCREEN_ENCRYPTION ||
+           screen == SCREEN_DECOY;
+}
+static int content_view_top(struct app *app)
+{
+    /* Encryption keeps its segmented control fixed above the scroll pane. */
+    return app->screen == SCREEN_ENCRYPTION ? 176 : 108;
+}
+static int content_view_bottom(struct app *app)
+{
+    return app->height - 100;   /* clears the fixed status line + button bar */
 }
 
 static void segment_rect(struct app *app, int which,
@@ -644,11 +682,136 @@ static void segment_rect(struct app *app, int which,
     *h = 46;
 }
 
+/* ── decoy / hidden disk apportioning (SCREEN_DECOY slider) ─────────────────── */
+/* Fixed reserve for the GPT, the ESP + pre-boot authenticator, and the three
+ * VeraCrypt-style volume headers with their backup copies and alignment padding.
+ * Everything past this reserve is split between the decoy OS and the hidden (real)
+ * OS by the slider, so decoy + hidden + overhead always sum to the whole disk. */
+enum { DISK_OVERHEAD_MIB = 576, DISK_DEFAULT_MIB = 65536 /* 64 GiB fallback */ };
+enum { DECOY_SLIDER_Y = 420, DECOY_SLIDER_H = 6, DECOY_KNOB_R = 11 };
+enum { DECOY_PCT_MIN = 10, DECOY_PCT_MAX = 90 };
+
+static long selected_disk_mib(struct app *app)
+{
+    if (app->target_sel > 0 && app->target_sel - 1 < app->disk_count) {
+        long m = app->disks[app->target_sel - 1].size_mib;
+        if (m > 0) return m;
+    }
+    if (app->disk_count > 0 && app->disks[0].size_mib > 0)
+        return app->disks[0].size_mib;
+    return DISK_DEFAULT_MIB;
+}
+
+/* Break the selected disk into overhead / decoy / hidden (all MiB); the three sum
+ * to the total disk size exactly (decoy + hidden = usable, + overhead = total). */
+static void decoy_layout(struct app *app, long *disk, long *overhead,
+                         long *decoy, long *hidden)
+{
+    long total = selected_disk_mib(app);
+    long ov = DISK_OVERHEAD_MIB;
+    if (ov > total) ov = total;
+    long usable = total - ov;
+    if (usable < 0) usable = 0;
+    int pct = app->decoy_percent;
+    if (pct < DECOY_PCT_MIN) pct = DECOY_PCT_MIN;
+    if (pct > DECOY_PCT_MAX) pct = DECOY_PCT_MAX;
+    long dec = usable * pct / 100;
+    if (disk) *disk = total;
+    if (overhead) *overhead = ov;
+    if (decoy) *decoy = dec;
+    if (hidden) *hidden = usable - dec;
+}
+
+static void decoy_slider_rect(struct app *app, double *x, double *y,
+                              double *w, double *h)
+{
+    *x = CONTENT_X;
+    *y = DECOY_SLIDER_Y - app->content_scroll;   /* scrolls with the form pane */
+    *w = content_w(app);
+    *h = DECOY_SLIDER_H;
+}
+
+static void decoy_set_from_pointer(struct app *app, double px)
+{
+    double x, y, w, h;
+    decoy_slider_rect(app, &x, &y, &w, &h);
+    double t = w > 0 ? (px - x) / w : 0;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    app->decoy_percent = DECOY_PCT_MIN +
+        (int)(t * (DECOY_PCT_MAX - DECOY_PCT_MIN) + 0.5);
+}
+
+/* "12.3 GB" for >=1 GiB, else "512 MB". */
+static void fmt_size(long mib, char *buf, size_t cap)
+{
+    if (mib >= 1024) {
+        long gb10 = mib * 10 / 1024;
+        snprintf(buf, cap, "%ld.%ld GB", gb10 / 10, gb10 % 10);
+    } else {
+        snprintf(buf, cap, "%ld MB", mib);
+    }
+}
+
+/* Lowest content-space Y (no scroll) the current form page draws to. */
+static int content_natural_bottom(struct app *app)
+{
+    int fields[8];
+    int n = fields_for_screen(app, fields, 8);
+    int base = field_ordinal_base(app);
+    int bottom = content_view_top(app);
+    if (n > 0)
+        bottom = FIELD_Y0 + (n - 1 + base) * FIELD_STEP + FIELD_H;
+    if (app->screen == SCREEN_DECOY) {
+        int labels_bottom = DECOY_SLIDER_Y + 24 + 4 * 24 + 8;   /* slider + 4 readout lines */
+        if (labels_bottom > bottom) bottom = labels_bottom;
+    }
+    return bottom;
+}
+
+static int content_max_scroll(struct app *app)
+{
+    if (!screen_is_form(app->screen)) return 0;
+    int over = content_natural_bottom(app) - content_view_bottom(app);
+    return over > 0 ? over : 0;
+}
+
+static void clamp_content_scroll(struct app *app)
+{
+    int maxs = content_max_scroll(app);
+    if (app->content_scroll < 0) app->content_scroll = 0;
+    if (app->content_scroll > maxs) app->content_scroll = maxs;
+}
+
+/* Scroll so the focused field (and its label 20px above it) is inside the pane. */
+static void ensure_field_visible(struct app *app)
+{
+    if (!screen_is_form(app->screen)) return;
+    int f = app->focused_field;
+    if (f < 0) { clamp_content_scroll(app); return; }
+    int fields[8];
+    int n = fields_for_screen(app, fields, 8);
+    int base = field_ordinal_base(app);
+    int ord = -1;
+    for (int i = 0; i < n; i++)
+        if (fields[i] == f) { ord = i + base; break; }
+    if (ord < 0) { clamp_content_scroll(app); return; }
+    int top = FIELD_Y0 + ord * FIELD_STEP;
+    int bot = top + FIELD_H;
+    int vt = content_view_top(app), vb = content_view_bottom(app);
+    if (top - 20 - app->content_scroll < vt)
+        app->content_scroll = top - 20 - vt;
+    if (bot - app->content_scroll > vb)
+        app->content_scroll = bot - vb;
+    clamp_content_scroll(app);
+}
+
 static void focus_first_field(struct app *app)
 {
     int fields[8];
     int n = fields_for_screen(app, fields, 8);
     app->focused_field = n > 0 ? fields[0] : -1;
+    ensure_field_visible(app);
 }
 
 static void cycle_focus(struct app *app)
@@ -662,16 +825,29 @@ static void cycle_focus(struct app *app)
     for (int i = 0; i < n; i++) {
         if (fields[i] == app->focused_field) {
             app->focused_field = fields[(i + 1) % n];
+            ensure_field_visible(app);
             return;
         }
     }
     app->focused_field = fields[0];
+    ensure_field_visible(app);
 }
 
 static int passwords_match(struct app *app)
 {
     return strcmp(app->field_text[FIELD_REAL_PASSWORD],
                   app->field_text[FIELD_REAL_CONFIRM]) == 0;
+}
+
+/* Hidden-OS mode has three passwords, each entered twice; all pairs must match. */
+static int enc_passwords_match(struct app *app)
+{
+    return strcmp(app->field_text[FIELD_HIDDEN_PASSWORD],
+                  app->field_text[FIELD_HIDDEN_CONFIRM]) == 0 &&
+           strcmp(app->field_text[FIELD_OUTER_PASSWORD],
+                  app->field_text[FIELD_OUTER_CONFIRM]) == 0 &&
+           strcmp(app->field_text[FIELD_DECOY_BOOT_PASSWORD],
+                  app->field_text[FIELD_DECOY_BOOT_CONFIRM]) == 0;
 }
 
 /* Whether the Continue/Install button should be enabled for the current screen. */
@@ -689,8 +865,12 @@ static int screen_can_advance(struct app *app)
             return app->field_len[FIELD_HIDDEN_PASSWORD] > 0;
         if (app->encryption_mode == ENC_HIDDEN)
             return app->field_len[FIELD_HIDDEN_PASSWORD] > 0 &&
+                   app->field_len[FIELD_HIDDEN_CONFIRM] > 0 &&
                    app->field_len[FIELD_OUTER_PASSWORD] > 0 &&
-                   app->field_len[FIELD_DECOY_BOOT_PASSWORD] > 0;
+                   app->field_len[FIELD_OUTER_CONFIRM] > 0 &&
+                   app->field_len[FIELD_DECOY_BOOT_PASSWORD] > 0 &&
+                   app->field_len[FIELD_DECOY_BOOT_CONFIRM] > 0 &&
+                   enc_passwords_match(app);
         return 1;
     }
     if (app->screen == SCREEN_DECOY) {
@@ -846,9 +1026,13 @@ static void draw_text_ft(struct app *app, const char *text, int x, int y,
             base = bm->buffer - (int)(bm->rows - 1) * pitch;
         }
 
+        int clip_lo = app->clip_top;
+        int clip_hi = app->clip_bottom > 0 ? app->clip_bottom : app->height;
         for (int row = 0; row < (int)bm->rows; row++) {
             int py = gy + row;
             if (py < 0 || py >= app->height)
+                continue;
+            if (py < clip_lo || py >= clip_hi)
                 continue;
             const unsigned char *src_row = base + row * pitch;
             for (int col = 0; col < (int)bm->width; col++) {
@@ -1191,8 +1375,172 @@ static void draw_review(struct app *app)
                  app->field_text[FIELD_DECOY_USER], app->field_text[FIELD_DECOY_HOSTNAME]);
         draw_text_ft(app, line, x, y, w, 13, 0xffc8d2dfu); y += step;
     }
-    draw_text_ft(app, "The selected disk will be erased when you continue.",
-                 x, app->height - 108, w, 13, 0xffffd08au);
+    /* Legend for the disk-layout graphic; the bar itself is drawn in the cairo
+     * phase by draw_disk_graphic() so its rectangles land under these labels. */
+    draw_text_ft(app, "Disk layout - the selected disk is erased and written as:",
+                 x, app->height - 196, w, 13, 0xffffd08au);
+    char sz[32], leg[200];
+    if (app->encryption_mode == ENC_HIDDEN) {
+        long disk, ov, dec, hid;
+        decoy_layout(app, &disk, &ov, &dec, &hid);
+        fmt_size(ov, sz, sizeof sz);
+        snprintf(leg, sizeof leg, "Overhead %s", sz);
+        draw_text_ft(app, leg, x, app->height - 104, 170, 12, 0xff9aa6b4u);
+        fmt_size(dec, sz, sizeof sz);
+        snprintf(leg, sizeof leg, "Decoy OS %s", sz);
+        draw_text_ft(app, leg, x + 176, app->height - 104, 180, 12, 0xff2fb3a3u);
+        fmt_size(hid, sz, sizeof sz);
+        snprintf(leg, sizeof leg, "Hidden OS %s", sz);
+        draw_text_ft(app, leg, x + 366, app->height - 104, 200, 12, 0xff6ba8ffu);
+    } else {
+        long total = selected_disk_mib(app);
+        long esp = DISK_OVERHEAD_MIB;
+        if (esp > total) esp = total;
+        fmt_size(esp, sz, sizeof sz);
+        snprintf(leg, sizeof leg, "Boot/overhead %s", sz);
+        draw_text_ft(app, leg, x, app->height - 104, 210, 12, 0xff9aa6b4u);
+        fmt_size(total - esp, sz, sizeof sz);
+        snprintf(leg, sizeof leg, "EpinAnonymOS %s", sz);
+        draw_text_ft(app, leg, x + 216, app->height - 104, 240, 12, 0xff2fb3a3u);
+    }
+}
+
+/* Slider knob + track on the Decoy OS page (cairo phase). */
+static void draw_decoy_slider(struct app *app, cairo_t *cr)
+{
+    double x, y, w, h;
+    decoy_slider_rect(app, &x, &y, &w, &h);
+    int pct = app->decoy_percent;
+    if (pct < DECOY_PCT_MIN) pct = DECOY_PCT_MIN;
+    if (pct > DECOY_PCT_MAX) pct = DECOY_PCT_MAX;
+    double t = (double)(pct - DECOY_PCT_MIN) / (DECOY_PCT_MAX - DECOY_PCT_MIN);
+
+    rounded_rect(cr, x, y, w, h, h / 2);
+    cairo_set_source_rgb(cr, 0.16, 0.20, 0.25);
+    cairo_fill(cr);
+    if (t > 0) {
+        rounded_rect(cr, x, y, w * t, h, h / 2);
+        cairo_set_source_rgb(cr, 0.05, 0.62, 0.55);
+        cairo_fill(cr);
+    }
+    double kx = x + w * t, ky = y + h / 2;
+    cairo_arc(cr, kx, ky, DECOY_KNOB_R, 0, 6.2831853);
+    cairo_set_source_rgb(cr, 0.90, 0.94, 0.98);
+    cairo_fill(cr);
+    cairo_arc(cr, kx, ky, DECOY_KNOB_R - 4, 0, 6.2831853);
+    cairo_set_source_rgb(cr, 0.05, 0.62, 0.55);
+    cairo_fill(cr);
+}
+
+static int pct_of(long part, long whole)
+{
+    if (whole <= 0) return 0;
+    if (part < 0) part = 0;
+    return (int)((part * 100 + whole / 2) / whole);
+}
+
+/* Percent/GB readout beneath the decoy slider (text overlay phase). */
+static void draw_decoy_labels(struct app *app)
+{
+    long disk, ov, dec, hid;
+    decoy_layout(app, &disk, &ov, &dec, &hid);
+    double x, y, w, h;
+    decoy_slider_rect(app, &x, &y, &w, &h);
+    char sz[32], line[160];
+
+    snprintf(line, sizeof line,
+             "Decoy OS disk allocation  -  %d%% of usable space", app->decoy_percent);
+    draw_text_ft(app, line, CONTENT_X, (int)y - 30, content_w(app), 13, 0xffc8d2dfu);
+
+    int ly = (int)y + 24;
+    fmt_size(dec, sz, sizeof sz);
+    snprintf(line, sizeof line, "Decoy OS:  %d%%   %s", pct_of(dec, disk), sz);
+    draw_text_ft(app, line, CONTENT_X, ly, content_w(app), 13, 0xff2fb3a3u); ly += 24;
+    fmt_size(hid, sz, sizeof sz);
+    snprintf(line, sizeof line, "Hidden OS (real):  %d%%   %s", pct_of(hid, disk), sz);
+    draw_text_ft(app, line, CONTENT_X, ly, content_w(app), 13, 0xff6ba8ffu); ly += 24;
+    fmt_size(ov, sz, sizeof sz);
+    snprintf(line, sizeof line, "Encryption overhead:  %d%%   %s", pct_of(ov, disk), sz);
+    draw_text_ft(app, line, CONTENT_X, ly, content_w(app), 13, 0xff9aa6b4u); ly += 24;
+    fmt_size(disk, sz, sizeof sz);
+    snprintf(line, sizeof line, "Total disk:  %s", sz);
+    draw_text_ft(app, line, CONTENT_X, ly, content_w(app), 12, 0xff8b96a4u);
+}
+
+/* Proportional stacked bar of how the disk will be partitioned (cairo phase,
+ * SCREEN_REVIEW). Segment sizes mirror the decoy slider; legend is in draw_review. */
+static void draw_disk_graphic(struct app *app, cairo_t *cr)
+{
+    double x = CONTENT_X, w = content_w(app);
+    double y = app->height - 160, h = 34;
+
+    long mib[3];
+    double rc[3], gc[3], bc[3];
+    int nseg;
+    if (app->encryption_mode == ENC_HIDDEN) {
+        long disk, ov, dec, hid;
+        decoy_layout(app, &disk, &ov, &dec, &hid);
+        nseg = 3;
+        mib[0] = ov;  rc[0] = 0.60; gc[0] = 0.65; bc[0] = 0.72;
+        mib[1] = dec; rc[1] = 0.05; gc[1] = 0.62; bc[1] = 0.55;
+        mib[2] = hid; rc[2] = 0.26; gc[2] = 0.52; bc[2] = 0.95;
+    } else {
+        long total = selected_disk_mib(app);
+        long esp = DISK_OVERHEAD_MIB;
+        if (esp > total) esp = total;
+        nseg = 2;
+        mib[0] = esp;         rc[0] = 0.60; gc[0] = 0.65; bc[0] = 0.72;
+        mib[1] = total - esp; rc[1] = 0.05; gc[1] = 0.62; bc[1] = 0.55;
+    }
+
+    long tot = 0;
+    for (int i = 0; i < nseg; i++) tot += mib[i] > 0 ? mib[i] : 0;
+    if (tot <= 0) tot = 1;
+
+    rounded_rect(cr, x, y, w, h, 6);
+    cairo_set_source_rgb(cr, 0.12, 0.15, 0.19);
+    cairo_fill(cr);
+
+    double cx = x;
+    for (int i = 0; i < nseg; i++) {
+        double sw = w * ((double)(mib[i] > 0 ? mib[i] : 0) / (double)tot);
+        if (sw < 1) continue;
+        cairo_rectangle(cr, cx, y, sw, h);
+        cairo_set_source_rgb(cr, rc[i], gc[i], bc[i]);
+        cairo_fill(cr);
+        cx += sw;
+    }
+    rounded_rect(cr, x, y, w, h, 6);
+    cairo_set_source_rgb(cr, 0.25, 0.30, 0.36);
+    cairo_set_line_width(cr, 1.0);
+    cairo_stroke(cr);
+}
+
+/* Scrollbar for the form content pane, drawn on the right gutter when the page's
+ * content is taller than the viewport. */
+static void draw_content_scrollbar(struct app *app, cairo_t *cr)
+{
+    int maxs = content_max_scroll(app);
+    if (maxs <= 0)
+        return;
+    int vt = content_view_top(app), vb = content_view_bottom(app);
+    double track_h = vb - vt;
+    double tx = CONTENT_X + content_w(app) + 10, tw = 5;
+
+    rounded_rect(cr, tx, vt, tw, track_h, 2.5);
+    cairo_set_source_rgb(cr, 0.14, 0.18, 0.22);
+    cairo_fill(cr);
+
+    double content_h = content_natural_bottom(app) - vt;
+    double frac = content_h > 0 ? track_h / content_h : 1.0;
+    if (frac > 1) frac = 1;
+    double thumb_h = track_h * frac;
+    if (thumb_h < 26) thumb_h = 26;
+    double sfrac = (double)app->content_scroll / (double)maxs;
+    double thumb_y = vt + (track_h - thumb_h) * sfrac;
+    rounded_rect(cr, tx, thumb_y, tw, thumb_h, 2.5);
+    cairo_set_source_rgb(cr, 0.30, 0.55, 0.52);
+    cairo_fill(cr);
 }
 
 static void draw_welcome(struct app *app)
@@ -1315,12 +1663,39 @@ static void draw_demo(struct app *app)
         draw_identity_list(app, cr);
     else if (app->screen == SCREEN_DRIVERS)
         draw_driver_list(app, cr);
+    else if (app->screen == SCREEN_REVIEW)
+        draw_disk_graphic(app, cr);
+
+    int form = screen_is_form(app->screen);
+    if (form) {
+        /* Clip fields/slider to the scroll pane so scrolled-out rows can't paint
+         * over the title, segmented control, or button bar. clip_top/clip_bottom
+         * do the same for the text glyphs drawn straight into app->pixels. */
+        clamp_content_scroll(app);
+        cairo_save(cr);
+        cairo_rectangle(cr, CONTENT_X - 6, content_view_top(app),
+                        content_w(app) + 24,
+                        content_view_bottom(app) - content_view_top(app));
+        cairo_clip(cr);
+        app->clip_top = content_view_top(app);
+        app->clip_bottom = content_view_bottom(app);
+    }
 
     int fields[8];
     int n = fields_for_screen(app, fields, 8);
     int base = field_ordinal_base(app);
     for (int i = 0; i < n; i++)
         draw_field(app, cr, fields[i], i + base);
+
+    if (app->screen == SCREEN_DECOY)
+        draw_decoy_slider(app, cr);
+
+    if (form) {
+        cairo_restore(cr);
+        app->clip_top = 0;
+        app->clip_bottom = 0;
+        draw_content_scrollbar(app, cr);
+    }
 
     if (app->screen == SCREEN_PROGRESS)
         draw_progress(app, cr);
@@ -1345,14 +1720,29 @@ static void draw_demo(struct app *app)
         if (app->encryption_mode == ENC_NONE)
             draw_text_ft(app, "No disk encryption will be configured.",
                          CONTENT_X, 196, content_w(app), 13, 0xffc8d2dfu);
-        else if (app->encryption_mode == ENC_HIDDEN)
-            draw_text_ft(app,
-                "Three passwords: hidden OS (real), outer volume (decoy-sensitive), and decoy OS.",
-                CONTENT_X, app->height - 116, content_w(app), 12, 0xff9aa6b4u);
+        else if (app->encryption_mode == ENC_HIDDEN) {
+            int mismatch = (app->field_len[FIELD_HIDDEN_CONFIRM] > 0 ||
+                            app->field_len[FIELD_OUTER_CONFIRM] > 0 ||
+                            app->field_len[FIELD_DECOY_BOOT_CONFIRM] > 0) &&
+                           !enc_passwords_match(app);
+            if (mismatch)
+                draw_text_ft(app, "Passwords do not match.",
+                             CONTENT_X, app->height - 90, content_w(app), 12, 0xffff8a8au);
+            else
+                draw_text_ft(app,
+                    "Hidden OS (real), outer volume (decoy), and decoy OS boot passwords.",
+                    CONTENT_X, app->height - 90, content_w(app), 12, 0xff9aa6b4u);
+        }
     } else if (app->screen == SCREEN_ACCOUNT) {
         if (app->field_len[FIELD_REAL_CONFIRM] > 0 && !passwords_match(app))
             draw_text_ft(app, "Passwords do not match.",
-                         CONTENT_X, app->height - 110, content_w(app), 12, 0xffff8a8au);
+                         CONTENT_X, app->height - 90, content_w(app), 12, 0xffff8a8au);
+    } else if (app->screen == SCREEN_DECOY) {
+        app->clip_top = content_view_top(app);
+        app->clip_bottom = content_view_bottom(app);
+        draw_decoy_labels(app);
+        app->clip_top = 0;
+        app->clip_bottom = 0;
     } else if (app->screen == SCREEN_REVIEW) {
         draw_review(app);
     }
@@ -1565,7 +1955,18 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap)
     append_json_string(buf, cap, &pos, "decoyUser", app->field_text[FIELD_DECOY_USER], 1);
     append_json_string(buf, cap, &pos, "decoyFullName", app->field_text[FIELD_DECOY_FULLNAME], 1);
     append_json_string(buf, cap, &pos, "decoyPassword", app->field_text[FIELD_DECOY_PASSWORD], 1);
-    append_json_string(buf, cap, &pos, "decoyHostname", app->field_text[FIELD_DECOY_HOSTNAME], 0);
+    append_json_string(buf, cap, &pos, "decoyHostname", app->field_text[FIELD_DECOY_HOSTNAME], 1);
+    {
+        char pctbuf[16], decbuf[24], hidbuf[24];
+        long disk_mib, ov_mib, dec_mib, hid_mib;
+        decoy_layout(app, &disk_mib, &ov_mib, &dec_mib, &hid_mib);
+        snprintf(pctbuf, sizeof pctbuf, "%d", app->decoy_percent);
+        snprintf(decbuf, sizeof decbuf, "%ld", dec_mib);
+        snprintf(hidbuf, sizeof hidbuf, "%ld", hid_mib);
+        append_json_string(buf, cap, &pos, "decoyPercent", pctbuf, 1);
+        append_json_string(buf, cap, &pos, "decoySizeMiB", decbuf, 1);
+        append_json_string(buf, cap, &pos, "hiddenSizeMiB", hidbuf, 0);
+    }
     append_cstr(buf, cap, &pos, "}\n");
     if (pos >= cap)
         pos = cap - 1;
@@ -1652,6 +2053,7 @@ static int order_index_of(int s)
 static void enter_screen(struct app *app)
 {
     app->list_scroll = 0;
+    app->content_scroll = 0;
     focus_first_field(app);
     /* auto-scroll a list to reveal the current selection */
     if (screen_is_list(app->screen)) {
@@ -1893,6 +2295,44 @@ static void entry_append_key(struct app *app, uint32_t code)
         return;
     }
 
+    /* Keyboard accessibility for the mouse-driven controls: Left/Right (and
+     * Up/Down) pick the encryption mode on the Encryption page and nudge the
+     * decoy allocation slider on the Decoy page — so the whole wizard is usable
+     * without a pointer. */
+    if (app->screen == SCREEN_ENCRYPTION) {
+        if (code == 105 || code == 103) {   /* Left / Up */
+            if (app->encryption_mode > 0) {
+                app->encryption_mode--;
+                focus_first_field(app);
+                redraw_commit(app, "encryption mode");
+            }
+            return;
+        }
+        if (code == 106 || code == 108) {   /* Right / Down */
+            if (app->encryption_mode < 2) {
+                app->encryption_mode++;
+                focus_first_field(app);
+                redraw_commit(app, "encryption mode");
+            }
+            return;
+        }
+    } else if (app->screen == SCREEN_DECOY) {
+        if (code == 105) {                  /* Left: less decoy space */
+            if (app->decoy_percent > DECOY_PCT_MIN) {
+                app->decoy_percent--;
+                redraw_commit(app, "decoy pct");
+            }
+            return;
+        }
+        if (code == 106) {                  /* Right: more decoy space */
+            if (app->decoy_percent < DECOY_PCT_MAX) {
+                app->decoy_percent++;
+                redraw_commit(app, "decoy pct");
+            }
+            return;
+        }
+    }
+
     if (!app->entry_focused)
         return;
     if (code == 15) {
@@ -2038,6 +2478,14 @@ static void pointer_motion(void *data, struct wl_pointer *pointer,
     (void)time;
     app->pointer_x = wl_fixed_to_double(sx);
     app->pointer_y = wl_fixed_to_double(sy);
+
+    /* Live-update the decoy allocation while the knob is being dragged. */
+    if (app->decoy_dragging && app->screen == SCREEN_DECOY) {
+        int before = app->decoy_percent;
+        decoy_set_from_pointer(app, app->pointer_x);
+        if (app->decoy_percent != before)
+            redraw_commit(app, "decoy slider drag");
+    }
 }
 
 static int in_rect(struct app *app, double x, double y, double w, double h)
@@ -2070,10 +2518,29 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
     (void)pointer;
     (void)serial;
     (void)time;
-    if (button != 0x110 || state != WL_POINTER_BUTTON_STATE_PRESSED)
+    if (button != 0x110)
         return;
+    if (state != WL_POINTER_BUTTON_STATE_PRESSED) {
+        app->decoy_dragging = 0;   /* release ends any slider drag */
+        return;
+    }
 
     double x, y, w, h;
+
+    /* Decoy allocation slider: grab the knob/track and jump to the pointer. */
+    if (app->screen == SCREEN_DECOY) {
+        double sx, sy, sw, sh;
+        decoy_slider_rect(app, &sx, &sy, &sw, &sh);
+        if (app->pointer_x >= sx - DECOY_KNOB_R &&
+            app->pointer_x <= sx + sw + DECOY_KNOB_R &&
+            app->pointer_y >= sy - DECOY_KNOB_R &&
+            app->pointer_y <= sy + sh + DECOY_KNOB_R) {
+            app->decoy_dragging = 1;
+            decoy_set_from_pointer(app, app->pointer_x);
+            redraw_commit(app, "decoy slider");
+            return;
+        }
+    }
 
     if (app->screen == SCREEN_WELCOME) {
         btn_rect(app, BTN_SECONDARY, &x, &y, &w, &h);
@@ -2185,6 +2652,18 @@ static void pointer_axis(void *data, struct wl_pointer *pointer,
     (void)time;
     if (axis != 0)  /* vertical only */
         return;
+    double v = wl_fixed_to_double(value);
+
+    /* Form pages scroll their field pane by pixels. */
+    if (screen_is_form(app->screen)) {
+        if (content_max_scroll(app) <= 0)
+            return;
+        app->content_scroll += (v > 0) ? 28 : -28;
+        clamp_content_scroll(app);
+        redraw_commit(app, "content scroll");
+        return;
+    }
+
     int count = 0;
     if (screen_is_list(app->screen)) {
         screen_opts(app->screen, &count);
@@ -2197,7 +2676,6 @@ static void pointer_axis(void *data, struct wl_pointer *pointer,
     } else {
         return;
     }
-    double v = wl_fixed_to_double(value);
     app->list_scroll += (v > 0) ? 1 : -1;
     clamp_scroll(app, count);
     redraw_commit(app, "scroll");
@@ -2388,6 +2866,7 @@ int main(void)
     app.focused_field = -1;
     app.encryption_mode = ENC_NONE;
     app.target_sel = 0;
+    app.decoy_percent = 40;   /* default decoy share of usable space; hidden gets 60% */
     snprintf(app.install_cmd, sizeof app.install_cmd, "install");
     set_field(&app, FIELD_HOSTNAME, "epin");
     set_field(&app, FIELD_REAL_USER, "user");

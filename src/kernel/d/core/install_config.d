@@ -51,6 +51,8 @@ __gshared char[IC_FIELD_MAX] g_icBootIntegrity;
 __gshared uint g_icBootIntegrityLen;
 __gshared char[IC_FIELD_MAX] g_icIdentities;
 __gshared uint g_icIdentitiesLen;
+__gshared char[IC_FIELD_MAX] g_icDrivers;      // comma-joined driver codes chosen in the installer
+__gshared uint g_icDriversLen;
 __gshared char[IC_FIELD_MAX] g_icDecoyUser;
 __gshared uint g_icDecoyUserLen;
 __gshared char[IC_FIELD_MAX] g_icDecoyFullName;
@@ -193,6 +195,7 @@ public bool installConfigApply() {
     icJsonGetString("filesystem", g_icFilesystem[], g_icFilesystemLen);
     icJsonGetString("bootIntegrity", g_icBootIntegrity[], g_icBootIntegrityLen);
     icJsonGetString("identities", g_icIdentities[], g_icIdentitiesLen);
+    icJsonGetString("drivers", g_icDrivers[], g_icDriversLen);
     icJsonGetString("decoyUser", g_icDecoyUser[], g_icDecoyUserLen);
     icJsonGetString("decoyFullName", g_icDecoyFullName[], g_icDecoyFullNameLen);
     icJsonGetString("decoyHostname", g_icDecoyHostname[], g_icDecoyHostnameLen);
@@ -224,6 +227,7 @@ public bool installConfigApply() {
     klog(" bootIntegrity=");
     if (g_icBootIntegrityLen > 0) icLogSlice(g_icBootIntegrity.ptr, g_icBootIntegrityLen); else klog("off".ptr);
     if (g_icIdentitiesLen > 0) { klog(" identities="); icLogSlice(g_icIdentities.ptr, g_icIdentitiesLen); }
+    if (g_icDriversLen > 0) { klog(" drivers="); icLogSlice(g_icDrivers.ptr, g_icDriversLen); }
     if (g_icDecoyUserLen > 0 || g_icDecoyHostnameLen > 0) {
         klog(" decoy=");
         if (g_icDecoyUserLen > 0) icLogSlice(g_icDecoyUser.ptr, g_icDecoyUserLen);

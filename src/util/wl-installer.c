@@ -1527,6 +1527,21 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap)
         }
     }
 
+    char drv[160];
+    {
+        size_t p = 0;
+        drv[0] = 0;
+        for (int i = 0; i < ARRAY_LEN(DRIVERS); i++) {
+            if (!app->drivers_on[i])
+                continue;
+            int n = snprintf(drv + p, sizeof drv - p, "%s%s",
+                             p ? "," : "", DRIVERS[i].code);
+            if (n < 0 || (size_t)n >= sizeof drv - p)
+                break;
+            p += (size_t)n;
+        }
+    }
+
     append_cstr(buf, cap, &pos, "{\n");
     append_json_string(buf, cap, &pos, "schema", "epin.install.v1", 1);
     append_json_string(buf, cap, &pos, "hostname", app->field_text[FIELD_HOSTNAME], 1);
@@ -1542,6 +1557,7 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap)
     append_json_string(buf, cap, &pos, "targetDisk", target, 1);
     append_json_string(buf, cap, &pos, "bootIntegrity", BOOTINTEGRITY[app->bootintegrity_idx].code, 1);
     append_json_string(buf, cap, &pos, "identities", ids, 1);
+    append_json_string(buf, cap, &pos, "drivers", drv, 1);
     append_json_string(buf, cap, &pos, "encryption", encryption_name(app), 1);
     append_json_string(buf, cap, &pos, "hiddenPassword", app->field_text[FIELD_HIDDEN_PASSWORD], 1);
     append_json_string(buf, cap, &pos, "outerPassword", app->field_text[FIELD_OUTER_PASSWORD], 1);
@@ -1851,6 +1867,10 @@ static void list_move(struct app *app, int delta)
         app->list_scroll += delta;
         clamp_scroll(app, ARRAY_LEN(IDENTITIES));
         return;
+    } else if (app->screen == SCREEN_DRIVERS) {
+        app->list_scroll += delta;
+        clamp_scroll(app, ARRAY_LEN(DRIVERS));
+        return;
     } else {
         return;
     }
@@ -1866,7 +1886,7 @@ static void entry_append_key(struct app *app, uint32_t code)
 {
     /* List/disk/identity screens: arrow keys + space select, Enter advances. */
     if (screen_is_list(app->screen) || app->screen == SCREEN_DISK ||
-        app->screen == SCREEN_IDENTITIES) {
+        app->screen == SCREEN_IDENTITIES || app->screen == SCREEN_DRIVERS) {
         if (code == 103) { list_move(app, -1); return; }   /* Up */
         if (code == 108) { list_move(app, +1); return; }   /* Down */
         if (code == 28) { if (screen_can_advance(app)) go_next(app); return; } /* Enter */
@@ -2172,6 +2192,8 @@ static void pointer_axis(void *data, struct wl_pointer *pointer,
         count = disk_row_count(app);
     } else if (app->screen == SCREEN_IDENTITIES) {
         count = ARRAY_LEN(IDENTITIES);
+    } else if (app->screen == SCREEN_DRIVERS) {
+        count = ARRAY_LEN(DRIVERS);
     } else {
         return;
     }

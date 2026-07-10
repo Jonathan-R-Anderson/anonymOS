@@ -1523,10 +1523,12 @@ private __gshared bool g_wpaStarted = false;
 private void maybeSpawnWpa() {
     if (g_skipNetForTest) return;
     if (g_wpaStarted) return;
-    if (!g_dbusStarted) return;                                        // system bus must be up first
+    // Debug-net boots drive wpa in direct -c mode (no D-Bus) and dbus is gated off there, so requiring
+    // g_dbusStarted would wedge wifi forever. Only normal (-u/NetworkManager) boots need the bus first.
+    if (!debugNetBootPresent() && !g_dbusStarted) return;             // system bus must be up first (normal boots)
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
     g_wpaStarted = true;
-    klog("[wpa] M5: dbus + net-provider live -> launching hos-wpa-launch -> wpa_supplicant -u under the shim\n");
+    klog("[wpa] M5: net-provider live -> launching hos-wpa-launch -> wpa_supplicant under the shim\n");
     spawnWaylandProgram("hos-wpa-launch\0".ptr, "[wpa]\0".ptr);
 }
 private __gshared bool g_nmStarted = false;
@@ -1572,7 +1574,7 @@ private void maybeSpawnUdhcpc() {
     if (g_skipNetForTest) return;
     if (g_udhcpcStarted) return;
     if (g_wifiBridgePresent) return;                                  // COM2 host-bridge owns wifi
-    if (!g_dbusStarted) return;
+    if (!debugNetBootPresent() && !g_dbusStarted) return;             // dbus is gated off on debug-net boots; udhcpc never needs it
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;  // LKL net-provider (owns wlan0) up
     if (g_udhcpcDelay++ < 90) return;                                 // after NM/wpa so wlan0 exists (+launcher's own settle)
     g_udhcpcStarted = true;

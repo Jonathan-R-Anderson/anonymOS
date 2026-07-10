@@ -60,9 +60,14 @@ int main(void)
         /* DEBUG FAST PATH: write a direct config and drive the radio without NM. */
         int cf = open("/wpa-direct.conf", O_CREAT|O_WRONLY|O_TRUNC, 0644);
         if (cf >= 0) {
+            /* NO ctrl_interface: it is an AF_UNIX SOCK_DGRAM socket, and this kernel's AF_UNIX
+             * implements only SOCK_STREAM -> socket(PF_UNIX,SOCK_DGRAM) returns EPROTONOSUPPORT,
+             * which makes wpa fail "Failed to add interface wlan0" and tear the radio back down.
+             * The debug fast-path drives the radio purely from this config (no wpa_cli consumer:
+             * udhcpc + log-upload are independent), so wpa associates headlessly without it. */
             char cfg[512];
             int m = snprintf(cfg, sizeof cfg,
-                "ctrl_interface=/run/wpa_supplicant\nupdate_config=0\nap_scan=1\n"
+                "update_config=0\nap_scan=1\n"
                 "network={\n\tssid=\"%s\"\n\tpsk=\"%s\"\n\tkey_mgmt=WPA-PSK\n\tscan_ssid=1\n}\n",
                 ssid, psk);
             if (m > 0) (void)!write(cf, cfg, (size_t)m);

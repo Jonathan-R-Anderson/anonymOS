@@ -15,6 +15,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 /* busybox-dyn is dynamic → LD_PRELOAD makes its sockets/ioctls reach the LKL-owned wlan0. */
@@ -54,6 +55,11 @@ int main(int argc, char **argv)
         { char *a[] = { "/busybox-dyn", "route", "add", "default", "gw", first, 0 }; run(a); }
     }
 
+    /* Ensure /run/wifi exists: on debug-net boots the wifi-agent (which normally creates it) is
+     * gated off, so without this the marker open() fails ENOENT -> /scp-test + the log-uploader
+     * both think there is no lease even though the link is fully up. */
+    mkdir("/run", 0755);
+    mkdir("/run/wifi", 0755);
     int f = open("/run/wifi/dhcp-ok", O_CREAT | O_WRONLY | O_TRUNC, 0644);
     if (f >= 0) { (void)!write(f, ip, strlen(ip)); (void)!write(f, "\n", 1); close(f); }
     fprintf(stderr, "[udhcpc-script] %s: applied %s/%s gw '%s' on %s\n",

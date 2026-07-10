@@ -95,6 +95,44 @@ private const(char)* netVendorInfo(ushort vid, ubyte subClass) @nogc nothrow {
         default:     return "UNKNOWN vendor -> match modalias to a Linux driver".ptr;
     }
 }
+
+// Map a detected PCI device to the Linux driver `code` the installer offers (matching the DRIVERS[]
+// codes in wl-installer.c where possible), or null if we don't surface it.  Drives the installer's
+// auto-detect: /config/hardware.detect lists these codes and the Drivers page pre-checks the matches.
+private const(char)* pciDriverCode(ref PCIDevice d) @nogc nothrow {
+    if (d.classCode == 0x02) {                     // network controller
+        const bool wifi = (d.subClass == 0x80);    // 0x00=Ethernet, 0x80=Other(wireless)
+        switch (d.vendorId) {
+            case 0x8086: return wifi ? "iwlwifi".ptr : "e1000e".ptr;
+            case 0x10EC: return wifi ? "rtw88".ptr   : "r8169".ptr;
+            case 0x14C3: return "mt76".ptr;
+            case 0x14E4: return wifi ? "brcmfmac".ptr : "tg3".ptr;
+            case 0x168C: return "ath9k".ptr;
+            case 0x17CB: return "ath11k".ptr;
+            case 0x1AF4: return "virtio_net".ptr;
+            default:     return "net-unknown".ptr;
+        }
+    }
+    if (d.classCode == 0x04) return "snd_hda_intel".ptr;   // multimedia/audio (PCI, not the USB mic path)
+    return null;                                            // GPU/other: not an installable driver here
+}
+
+// Write a comma-separated list of driver codes for the PCI devices actually present into `buf` (NUL-
+// terminated; returns byte length).  @nogc/fixed-buffer, mirrors wifiSurvey()'s use of scanPCIDevices().
+// The USB peripherals (webcam/mic/kbd/mouse) live behind LKL and are merged in separately (milestone 3).
+public size_t detectDriverCodes(char* buf, size_t cap) @nogc nothrow {
+    size_t n = 0;
+    if (cap == 0) return 0;
+    auto devs = scanPCIDevices();
+    foreach (ref d; devs) {
+        auto code = pciDriverCode(d);
+        if (code is null) continue;
+        if (n > 0 && n + 1 < cap) buf[n++] = ',';
+        while (*code != 0 && n + 1 < cap) buf[n++] = *code++;
+    }
+    buf[n] = 0;
+    return n;
+}
 // The survey result is captured into these fixed lines so it can be RE-STAMPED onto the
 // desktop every frame (the boot-log copy scrolls away when the compositor takes the
 // screen).  Set g_wifiHudEnabled = false once the chip is known.

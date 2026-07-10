@@ -109,6 +109,7 @@ enum FileType {
     FD_DOMAIN_CTL,       // DM10.3: /config/domain.action — writes are domain control commands
     FD_INSTALL_CTL,      // INSTALLER §D: /config/install.action — writes drive the in-OS installer
     FD_INSTALL_PROGRESS, // INSTALLER §D: /config/install.progress — reads return 0..1000 permille
+    FD_HW_DETECT,        // DRIVERS: /config/hardware.detect — reads return the detected driver codes (PCI)
     FD_FB,               // /dev/fb0 — read the composited framebuffer (screenshot); FBIOGET_VSCREENINFO
     FD_KLOG,             // /run/klog — live read-only view of the kernel log RAM ring (core.io g_klogRing)
 }
@@ -1782,6 +1783,22 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)w;
     }
 
+    // DRIVERS: /config/hardware.detect — return the comma-separated Linux driver codes for the PCI
+    // devices present, streamed by f.offset so any buffer size works, then EOF.
+    if (f.type == FileType.FD_HW_DETECT) {
+        import drivers.pci : detectDriverCodes;
+        if (_buf is null) return negErrno(EFAULT);
+        char[256] hb;
+        size_t hn = detectDriverCodes(hb.ptr, hb.length);
+        if (f.offset >= hn) return 0;   // EOF
+        size_t avail = hn - cast(size_t)f.offset;
+        ulong w = (cast(ulong)avail < _count) ? cast(ulong)avail : _count;
+        auto buffer = cast(ubyte*)_buf;
+        foreach (i; 0 .. w) buffer[i] = cast(ubyte)hb[cast(size_t)f.offset + cast(size_t)i];
+        f.offset += w;
+        return cast(ssize_t)w;
+    }
+
     // /run/klog — the kernel log RAM ring (klog + all FD_CONSOLE stdout/stderr + *.log mirrors),
     // streamed live so the desktop Logs viewer shows the full boot + iwlwifi bring-up.  f.offset is
     // a MONOTONIC stream coordinate; we serve [offset, head) and skip any bytes already overwritten
@@ -3048,6 +3065,19 @@ public int sys_open(const(char)* path, int flags) {
     if (cstrEq(path, "/config/install.progress")) {
         if ((flags & 3) != O_RDONLY) return negErrno(EACCES);   // read-only
         g_fdTable[fd].type     = FileType.FD_INSTALL_PROGRESS;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        return publishActiveFdReturn(fd);
+    }
+
+    // DRIVERS: /config/hardware.detect — read-only; returns a comma-separated list of the Linux driver
+    // codes for the PCI devices actually present (e.g. "iwlwifi,e1000e,snd_hda_intel"), so the installer
+    // Drivers page auto-populates + pre-checks the hardware in THIS machine (like install.progress above).
+    if (cstrEq(path, "/config/hardware.detect")) {
+        if ((flags & 3) != O_RDONLY) return negErrno(EACCES);   // read-only
+        g_fdTable[fd].type     = FileType.FD_HW_DETECT;
         g_fdTable[fd].flags    = flags;
         g_fdTable[fd].offset   = 0;
         g_fdTable[fd].backend  = null;

@@ -2337,6 +2337,43 @@ static void registry_global_remove(void *data, struct wl_registry *registry,
     (void)name;
 }
 
+/* DRIVERS auto-detect: read the kernel's synthetic /config/hardware.detect (a comma-separated list of
+ * the Linux driver codes for the PCI devices actually present, e.g. "iwlwifi,e1000e,snd_hda_intel") and
+ * pre-check the matching Drivers rows, so the page opens showing what THIS machine needs.  Absent file
+ * (e.g. running outside the installer) just leaves everything unchecked. */
+static int code_in_list(const char *code, const char *list)
+{
+    size_t clen = strlen(code);
+    const char *p = list;
+    while ((p = strstr(p, code)) != NULL) {
+        char before = (p == list) ? ',' : p[-1];
+        char after = p[clen];
+        if ((before == ',' || before == '\n' || before == '\0') &&
+            (after == ',' || after == '\n' || after == '\0'))
+            return 1;
+        p += clen;
+    }
+    return 0;
+}
+
+static void detect_drivers(struct app *app)
+{
+    int fd = open("/config/hardware.detect", O_RDONLY);
+    if (fd < 0)
+        return;
+    char buf[512];
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n <= 0)
+        return;
+    buf[n] = 0;
+    for (int i = 0; i < ARRAY_LEN(DRIVERS); i++) {
+        if (code_in_list(DRIVERS[i].code, buf))
+            app->drivers_on[i] = 1;
+    }
+    log_line("INSTALLER: hardware.detect -> pre-checked present drivers");
+}
+
 static const struct wl_registry_listener registry_listener = {
     .global = registry_global,
     .global_remove = registry_global_remove,
@@ -2358,6 +2395,7 @@ int main(void)
     set_field(&app, FIELD_DECOY_FULLNAME, "Decoy User");
     set_field(&app, FIELD_DECOY_HOSTNAME, "decoy-pc");
     app.identity_on[0] = 1;   /* Personal enabled by default */
+    detect_drivers(&app);     /* pre-check drivers for the PCI hardware actually present */
 
     log_line("INSTALLER: starting EpinAnonymOS install entry -- D4.1 START");
     load_disks(&app);

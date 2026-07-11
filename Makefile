@@ -743,7 +743,7 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 	fi
 	@# M2b: stage the REAL NetworkManager daemon + nmcli + libnm.so.0 + libndp.so.0 + launcher
 	@if [ -f deps/nm-build/NetworkManager-1.44.2/build-epin/src/core/NetworkManager ]; then \
-		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/core/NetworkManager-all-sym cd/NetworkManager; \
+		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/core/NetworkManager cd/NetworkManager; \
 		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/nmcli/nmcli cd/nmcli; \
 		cp deps/nm-build/NetworkManager-1.44.2/build-epin/src/libnm-client-impl/libnm.so.0.1.0 cd/libnm.so.0; \
 		cp deps/gtk-stack/sysroot/lib/libndp.so.0.2.0 cd/libndp.so.0; \

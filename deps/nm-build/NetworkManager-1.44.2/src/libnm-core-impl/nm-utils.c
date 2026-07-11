@@ -505,7 +505,13 @@ nmtst_system_encodings_get(void)
 
 /*****************************************************************************/
 
-static void __attribute__((constructor)) _nm_utils_init(void)
+/* EpinAnonymOS links libnm-core into the musl NetworkManager daemon statically.
+ * A constructor here can run before the dynamically linked GLib/GObject init
+ * functions, leaving GObject's quark tables NULL when DBus error enum types are
+ * registered.  The daemon calls this explicitly from main() after GObject is
+ * initialized instead. */
+void _nm_utils_init(void);
+void _nm_utils_init(void)
 {
     static int initialized = 0;
 

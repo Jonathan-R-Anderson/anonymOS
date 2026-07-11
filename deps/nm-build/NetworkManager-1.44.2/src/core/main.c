@@ -283,6 +283,7 @@ _dbus_manager_init(NMConfig *config)
 int
 main(int argc, char *argv[])
 {
+    extern void _nm_utils_init(void);
     gboolean                success = FALSE;
     NMManager              *manager = NULL;
     NMConfig               *config;
@@ -307,6 +308,7 @@ main(int argc, char *argv[])
     /* Known to cause a possible deadlock upon GDBus initialization:
      * https://bugzilla.gnome.org/show_bug.cgi?id=674885 */
     g_type_ensure(G_TYPE_SOCKET);
+    _nm_utils_init();
     g_type_ensure(G_TYPE_DBUS_CONNECTION);
     g_type_ensure(NM_TYPE_DBUS_MANAGER);
 

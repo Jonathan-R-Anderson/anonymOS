@@ -776,13 +776,17 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 	cp $(LOGUPLOAD_BIN) cd/hos-log-upload
 	printf '    module_path: boot():/hos-log-upload\n' >> cd/boot/limine/limine.conf
 	@echo "Included hos-log-upload (debug log snapshot + scp launcher)"
-	@if [ -f local/debug-net.conf ]; then \
+	@# Never bake a developer's Wi-Fi credentials into a normal OS image merely because
+	@# local/debug-net.conf exists.  Headless hardware debugging can opt in explicitly
+	@# with `make EMBED_DEBUG_NET=1 ...`; the default image always starts disconnected
+	@# and is configured through wl-wifi-menu's scan/select/password flow.
+	@if [ "$(EMBED_DEBUG_NET)" = "1" ] && [ -f local/debug-net.conf ]; then \
 		cp local/debug-net.conf cd/epin-debug-net.conf; \
 		printf '    module_path: boot():/epin-debug-net.conf\n' >> cd/boot/limine/limine.conf; \
-		echo "Included local network credentials (/epin-debug-net.conf; interactive WiFi remains enabled)"; \
+		echo "Included explicitly requested debug network credentials (/epin-debug-net.conf)"; \
 	fi
 	@# Opt-in emergency/headless path: only this marker disables D-Bus/NM/the interactive scanner.
-	@if [ -f local/debug-fast-net.conf ]; then \
+	@if [ "$(EMBED_DEBUG_NET)" = "1" ] && [ -f local/debug-fast-net.conf ]; then \
 		cp local/debug-fast-net.conf cd/epin-debug-fast-net.conf; \
 		printf '    module_path: boot():/epin-debug-fast-net.conf\n' >> cd/boot/limine/limine.conf; \
 		echo "Included headless fast-network marker (/epin-debug-fast-net.conf)"; \

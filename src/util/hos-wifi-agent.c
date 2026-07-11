@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <time.h>
 #include <sys/stat.h>
 
@@ -30,7 +31,21 @@
 #define AP_IFACE    "org.freedesktop.NetworkManager.AccessPoint"
 #define PROP_IFACE  "org.freedesktop.DBus.Properties"
 
-static void napms(long ms){ struct timespec t = { ms/1000, (ms%1000)*1000000L }; nanosleep(&t, 0); }
+/* This OS's nanosleep wakeup can be lost for a kernel-spawned service.  In
+ * particular, an early D-Bus ECONNREFUSED left the agent asleep forever after
+ * attempt 1 while NetworkManager continued scanning normally.  poll() timeout
+ * wakeups are the path used successfully by the Wayland clients, so use that
+ * clock here as well.  Retry EINTR with the remaining coarse interval; exact
+ * timing is unimportant for this low-frequency service loop. */
+static void napms(long ms){
+    while (ms > 0){
+        int chunk = ms > 60000 ? 60000 : (int)ms;
+        int rc = poll(NULL, 0, chunk);
+        if (rc == 0) ms -= chunk;
+        else if (rc < 0) continue;
+        else break;
+    }
+}
 
 /* --- Properties.Get helpers (blocking) --- */
 
@@ -488,25 +503,39 @@ int main(void){
     }
     g_demo_enabled = (getenv("HOS_WIFI_DEMO") != NULL);   /* off by default */
     load_auto_creds();                                    /* boot auto-connect target (/epin-debug-net.conf) */
+    /* Do not compete with NetworkManager for D-Bus during startup.  The boot
+     * doctor creates this marker only after dbus-send has completed a real
+     * Properties.Get round-trip to NM.  The screenshots showed that launching
+     * this agent from a fixed timer could make its Hello time out while NM was
+     * still unregistered, despite both socket paths already existing. */
+    if (!g_demo_enabled && access("/run/nm-ready", F_OK) != 0) {
+        fprintf(stderr, "[wifi-agent] waiting for NetworkManager D-Bus readiness proof\n");
+        while (access("/run/nm-ready", F_OK) != 0) napms(1000);
+        fprintf(stderr, "[wifi-agent] NetworkManager readiness proof received\n");
+    }
     /* Point libdbus at OUR dbus-daemon (a kernel-spawned process gets a fixed minimal env, so
-     * DBUS_SYSTEM_BUS_ADDRESS isn't inherited), then use the STANDARD shared-connection path
-     * dbus_bus_get(DBUS_BUS_SYSTEM) — the same one dbus-send uses successfully.  (An earlier
-     * dbus_connection_open_private + dbus_bus_register connected + Hello'd fine but the bus reported
-     * NM's name "not provided" on that private connection; the shared path resolves names correctly.) */
+     * DBUS_SYSTEM_BUS_ADDRESS isn't inherited).  Use dbus_bus_get_private(), which performs the
+     * normal bus registration/Hello but never reuses libdbus's process-global shared connection.
+     * On real hardware the first dbus_bus_get() raced early bus startup, and all later calls kept
+     * returning that cached failed shared connection even after the boot doctor proved the bus and
+     * NM were live (attempt 12 still failed).  A fresh private bus connection makes each retry real.
+     * This is deliberately dbus_bus_get_private(), not the old hand-rolled
+     * dbus_connection_open_private()+dbus_bus_register path that had name-resolution trouble. */
     setenv("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/run/dbus/system_bus_socket", 1);
     DBusError e; dbus_error_init(&e);
     DBusConnection *c = 0;
     int bus_attempt = 0;
     while (!c && (!g_demo_enabled || bus_attempt < 3)) {
         bus_attempt++;
-        c = dbus_bus_get(DBUS_BUS_SYSTEM, &e);
+        c = dbus_bus_get_private(DBUS_BUS_SYSTEM, &e);
         if (!c) {
             /* A failed early connection must not permanently kill the only publisher
              * of /run/wifi/networks.  The kernel intentionally launches us late now,
              * but retain a low-frequency retry for unusually slow boots/restarts.
              * Five seconds avoids the old agent+dbus CPU-hog retry storm. */
             if (bus_attempt == 1 || bus_attempt % 12 == 0)
-                fprintf(stderr, "[wifi-agent] system bus not ready (attempt %d); retrying\n", bus_attempt);
+                fprintf(stderr, "[wifi-agent] system bus not ready (attempt %d): %s; retrying\n",
+                        bus_attempt, dbus_error_is_set(&e) ? e.message : "no D-Bus error detail");
             dbus_error_free(&e);
             dbus_error_init(&e);
             napms(5000);

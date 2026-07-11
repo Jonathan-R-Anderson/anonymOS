@@ -1567,14 +1567,13 @@ private void maybeSpawnWifiAgent() {
     if (pitMs() - g_nmStartedMs < 20_000) return;
     g_wifiAgentStarted = true;
     klog("[wifi] M6: launching hos-wifi-agent -> /run/wifi/networks (NM<->menu D-Bus bridge)\n");
-    if (spawnWaylandProgram("hos-wifi-agent\0".ptr, "[wifiag]\0".ptr)) {
-        /* This is a trusted boot service, not the desktop user.  NetworkManager
-         * runs without polkit and therefore authorizes connection changes only
-         * from uid 0.  Give just this agent the root User subject; device access
-         * remains independently capability-gated by DEVCLASS_NET. */
-        const int agentTid = cast(int)g_current_task_id;
-        if (agentTid > 0) g_tasks[agentTid].userObjId = userRootObjId();
-    }
+    /* Keep the ordinary service User identity.  Forcing this task to UID 0 made
+     * dbus-daemon's EXTERNAL authentication wait forever for Hello even though
+     * an immediately preceding non-root dbus-send readiness probe succeeded.
+     * NetworkManager explicitly runs auth-polkit=false, so connection requests
+     * are allowed without ambient root; actual NIC access remains independently
+     * capability-gated by DEVCLASS_NET. */
+    spawnWaylandProgram("hos-wifi-agent\0".ptr, "[wifiag]\0".ptr);
 }
 // External DHCP: NM's in-process n-dhcp4 stalls before ever sending a DISCOVER (its nested epoll+timerfd
 // never fires here), so a standalone busybox udhcpc gets the lease instead (proven: full

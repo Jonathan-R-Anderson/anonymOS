@@ -168,6 +168,11 @@ int main(void)
     const char *conf =
         "[main]\n"
         "plugins=keyfile\n"
+        /* EpinAnonymOS has no polkit daemon.  `false` is NetworkManager's
+         * documented allow-all mode; this lets the non-root Wi-Fi bridge issue
+         * AddAndActivateConnection after authenticating to D-Bus normally.
+         * Hardware access is still enforced by the OS device capability. */
+        "auth-polkit=false\n"
         "dhcp=internal\n"
         "no-auto-default=*\n"
         "[device]\n"

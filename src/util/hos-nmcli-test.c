@@ -236,6 +236,14 @@ static void write_status(const char *s){
     (void)!write(1, s, strlen(s));           /* stdout + stderr, in case one is redirected */
     (void)!write(2, s, strlen(s));
 }
+/* Readiness hand-off to hos-wifi-agent.  A listening D-Bus socket alone is not
+ * enough: on real hardware NM and the bus can still be busy with startup and a
+ * concurrent libdbus Hello from the agent times out.  Publish this only after a
+ * complete dbus-send round-trip to NetworkManager succeeds. */
+static void publish_nm_ready(void){
+    int fd = open("/run/nm-ready", O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd >= 0){ (void)!write(fd, "ready\n", 6); close(fd); }
+}
 /* Append "hdr (N bytes):\n<last ~1400 bytes of path>" into dst; reports absence/size so we can tell
  * "NM never wrote a log" (0 bytes) from "log not materialized/absent". */
 static int tail_append(const char *path, const char *hdr, char *dst, int cap){
@@ -286,7 +294,7 @@ int main(void)
             "VERDICT: %s\n",
             i, present(db), db, present(pv), pv, nm ? "YES" : "no", verdict);
         write_status(buf);
-        if (nm) { ok = 1; break; }
+        if (nm) { ok = 1; publish_nm_ready(); break; }
         if (prov_absent) break;      /* NM can't launch without the provider — verdict won't change */
         napms(3000);
     }

@@ -38,7 +38,7 @@ extern char **environ;
 #define MFD_CLOEXEC 0x0001U
 #endif
 
-enum { WIN_W = 320, WIN_H = 472 };
+enum { WIN_W = 320, WIN_H = 536 };
 
 /* --- layout geometry (shared by the renderer and the hit-tester) --- */
 enum {
@@ -46,20 +46,22 @@ enum {
     CLOSE_X  = WIN_W - 26, CLOSE_Y = 4,  CLOSE_W = 22, CLOSE_H = 22,
     CARD_X   = 12, CARD_W = WIN_W - 24,
 
-    WIFI_Y   = 48,  WIFI_H = 60,
-    VOL_Y    = 120, VOL_H  = 64,
-    BAT_Y    = 196, BAT_H  = 52,
-    TOPBAR_Y = 256, TOPBAR_H = 44,   /* Hyprland top-bar hide/show toggle */
+    HEADER_Y = 32,  HEADER_H = 76,   /* Q0.2: avatar + user + current domain + identity */
 
-    ACT_Y    = 312, ACT_H  = 64,   /* four square buttons */
-    LOGOUT_Y = 388, LOGOUT_H = 48,
+    WIFI_Y   = 112, WIFI_H = 60,
+    VOL_Y    = 184, VOL_H  = 64,
+    BAT_Y    = 260, BAT_H  = 52,
+    TOPBAR_Y = 320, TOPBAR_H = 44,   /* Hyprland top-bar hide/show toggle */
 
-    TRACK_X  = 96, TRACK_W = 180, TRACK_Y = 160, TRACK_H = 6,
+    ACT_Y    = 376, ACT_H  = 64,   /* four square buttons */
+    LOGOUT_Y = 452, LOGOUT_H = 48,
+
+    TRACK_X  = 96, TRACK_W = 180, TRACK_Y = 224, TRACK_H = 6,
     KNOB_W   = 14, KNOB_H = 22,
 };
 
 /* clickable regions returned by hit_region() */
-enum { R_NONE=0, R_CLOSE, R_WIFI, R_TOPBAR, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT };
+enum { R_NONE=0, R_CLOSE, R_WIFI, R_SYSTEM, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT };
 
 struct app {
     struct wl_display *display;
@@ -87,6 +89,10 @@ struct app {
     /* content state */
     char active_ssid[64];
     int  wifi_connected;
+    char user[48], domain[48], identity[48];  /* Q0.2 header (domain/identity-aware) */
+    int  cpu_pct, mem_pct;                     /* Q2.4 live system stats */
+    char ip[24];
+    unsigned long long cpu_prev_total, cpu_prev_idle;
     int  volume;            /* 0..100 (cosmetic) */
     int  dragging;          /* slider knob being dragged */
     int  hover;             /* hovered region for highlight (R_*) */
@@ -143,6 +149,24 @@ static void fill_rect(struct app *app, int x, int y, int w, int h, uint32_t c){
     for (int j=y;j<y+h;j++){ if (j<0||j>=app->height) continue;
         for (int i=x;i<x+w;i++){ if (i<0||i>=app->width) continue; app->pixels[j*app->width+i]=c; } }
 }
+/* Q1: rounded-rect fill (corner pixels outside radius r are skipped -> GNOME-style rounded tiles).
+ * Same O(w*h) cost as fill_rect; on this small card it is negligible.  Real anti-aliasing + translucency
+ * come with the cairo renderer (roadmap Q1.1) once a build loop is available. */
+static void fill_round_rect(struct app *app, int x, int y, int w, int h, int r, uint32_t c){
+    if (r < 0) r = 0;
+    if (r*2 > w) r = w/2;
+    if (r*2 > h) r = h/2;
+    int r2 = r*r;
+    for (int j=0;j<h;j++){ int py=y+j; if (py<0||py>=app->height) continue;
+        for (int i=0;i<w;i++){ int px=x+i; if (px<0||px>=app->width) continue;
+            int cx=-1, cy=-1;
+            if      (i<r     && j<r)     { cx=r;     cy=r;     }
+            else if (i>=w-r  && j<r)     { cx=w-r-1; cy=r;     }
+            else if (i<r     && j>=h-r)  { cx=r;     cy=h-r-1; }
+            else if (i>=w-r  && j>=h-r)  { cx=w-r-1; cy=h-r-1; }
+            if (cx>=0){ int dx=i-cx, dy=j-cy; if (dx*dx+dy*dy > r2) continue; }
+            app->pixels[py*app->width+px]=c; } }
+}
 
 /* --- data: active Wi-Fi SSID from /run/wifi/networks (header '#dev...', rows SSID\tSTR\tSEC\tACTIVE\tPATH) --- */
 static unsigned fnv1a(const unsigned char *b, size_t n){ unsigned h=2166136261u; for (size_t i=0;i<n;i++){ h^=b[i]; h*=16777619u; } return h; }
@@ -173,6 +197,74 @@ static void load_wifi(struct app *app){
     free(buf);
 }
 
+/* --- Q0.2: current user / domain / identity for the header.  Reads optional one-line /run markers if a
+ * session/Domain-Manager daemon publishes them; falls back to sensible defaults otherwise.  Q2.3 wires
+ * the real Domain Manager / identity.d source (switch-domain, capability set, sandbox state). --- */
+static void read_line_file(const char *path, char *out, size_t cap){
+    out[0] = 0;
+    unsigned char *buf; size_t sz;
+    if (load_file(path, &buf, &sz) < 0) return;
+    size_t n = 0;
+    while (n < sz && n + 1 < cap && buf[n] != '\n' && buf[n] != '\r'){ out[n] = (char)buf[n]; n++; }
+    out[n] = 0;
+    free(buf);
+}
+static void load_identity(struct app *app){
+    read_line_file("/run/session.user",    app->user,     sizeof app->user);
+    read_line_file("/run/domain.current",  app->domain,   sizeof app->domain);
+    read_line_file("/run/identity.current", app->identity, sizeof app->identity);
+    if (!app->user[0]){ const char *u = getenv("USER");
+        if (u){ strncpy(app->user, u, sizeof(app->user)-1); app->user[sizeof(app->user)-1] = 0; } }
+}
+
+/* Q2.4: live system stats. read_small() null-terminates (load_file does not), so strstr/strtoull are
+ * safe.  CPU% is a delta across ticks (needs the previous sample), so load_stats runs every ~1s. */
+static int read_small(const char *path, char *out, size_t cap){
+    int fd = open(path, O_RDONLY); if (fd < 0) return -1;
+    ssize_t n = read(fd, out, cap - 1); close(fd);
+    if (n < 0) n = 0; out[n] = 0; return (int)n;
+}
+static void load_stats(struct app *app){
+    char b[4096];
+    if (read_small("/proc/stat", b, sizeof b) > 0 && !strncmp(b, "cpu", 3)){
+        char *p = b + 3;
+        unsigned long long v[10]; int nv = 0;
+        while (nv < 10){ while (*p==' '||*p=='\t') p++; if (*p<'0'||*p>'9') break; v[nv++] = strtoull(p, &p, 10); }
+        unsigned long long total = 0; for (int i=0;i<nv;i++) total += v[i];
+        unsigned long long idle = (nv>4) ? v[3]+v[4] : (nv>3 ? v[3] : 0);
+        unsigned long long dt = total - app->cpu_prev_total, di = idle - app->cpu_prev_idle;
+        if (app->cpu_prev_total && dt > 0){ int pct = (int)((100*(dt-di))/dt); app->cpu_pct = pct<0?0:(pct>100?100:pct); }
+        app->cpu_prev_total = total; app->cpu_prev_idle = idle;
+    }
+    if (read_small("/proc/meminfo", b, sizeof b) > 0){
+        char *mt = strstr(b, "MemTotal:"), *ma = strstr(b, "MemAvailable:");
+        unsigned long long total = mt ? strtoull(mt+9, NULL, 10) : 0;
+        unsigned long long avail = ma ? strtoull(ma+13, NULL, 10) : 0;
+        if (total > 0){ int pct = (int)((100*(total-avail))/total); app->mem_pct = pct<0?0:(pct>100?100:pct); }
+    }
+    read_line_file("/run/wifi/dhcp-ok", app->ip, sizeof app->ip);
+}
+
+/* Q0.3: publish panel state to /run/quicksettings.state so the object FS can surface it as
+ * /objects/desktop/quicksettings (the kernel-side /objects view is a follow-up).  Written at startup
+ * and whenever the live state changes. */
+static void publish_state(struct app *app){
+    mkdir("/run", 0755);
+    int fd = open("/run/quicksettings.state", O_CREAT|O_WRONLY|O_TRUNC, 0644);
+    if (fd < 0) return;
+    char b[320];
+    int n = snprintf(b, sizeof b,
+        "user=%s\ndomain=%s\nidentity=%s\nwifi=%s\nssid=%s\nvolume=%d\ncpu=%d\nmem=%d\nip=%s\n",
+        app->user[0]?app->user:"user",
+        app->domain[0]?app->domain:"Personal",
+        app->identity[0]?app->identity:"Default",
+        app->wifi_connected?"on":"off",
+        app->active_ssid, app->volume,
+        app->cpu_pct, app->mem_pct, app->ip[0]?app->ip:"none");
+    if (n > 0) (void)!write(fd, b, (size_t)n);
+    close(fd);
+}
+
 /* --- fork a Wayland client; close all fds>2 in the child or the socket leaks and the window lingers --- */
 static void launch(const char *path){
     pid_t pid = fork();
@@ -199,15 +291,6 @@ static void session_action(const char *cmd){
     else if (!strcmp(cmd, "reboot"))   reboot(RB_AUTOBOOT);    /* LINUX_REBOOT_CMD_RESTART   */
 }
 
-/* --- Hyprland top-bar hide/show: /wl-layer-bar polls /run/hos-bar.hidden once a
- * second, so we toggle the bar by creating/removing that flag file.  On the Weston
- * desktop (server-managed panel) the flag is simply inert — harmless. --- */
-static int topbar_hidden(void){ struct stat st; return stat("/run/hos-bar.hidden", &st) == 0; }
-static void topbar_toggle(void){
-    if (topbar_hidden()) unlink("/run/hos-bar.hidden");
-    else { mkdir("/run", 0755); int fd = open("/run/hos-bar.hidden", O_CREAT|O_WRONLY, 0644); if (fd >= 0) close(fd); }
-}
-
 /* --- hit-testing: which region is under (px,py)? --- */
 static void act_btn_rect(int i, int *x, int *y, int *w, int *h){
     int bw = (CARD_W - 3*8) / 4;            /* four buttons, three 8px gaps */
@@ -220,7 +303,7 @@ static int hit_region(struct app *app, double px, double py){
     (void)app;
     if (in_rect(px,py,CLOSE_X,CLOSE_Y,CLOSE_W,CLOSE_H)) return R_CLOSE;
     if (in_rect(px,py,CARD_X,WIFI_Y,CARD_W,WIFI_H))     return R_WIFI;
-    if (in_rect(px,py,CARD_X,TOPBAR_Y,CARD_W,TOPBAR_H)) return R_TOPBAR;
+    if (in_rect(px,py,CARD_X,TOPBAR_Y,CARD_W,TOPBAR_H)) return R_SYSTEM;
     static const int reg[4] = { R_SETTINGS, R_LOCK, R_RESTART, R_POWER };
     for (int i=0;i<4;i++){ int bx,by,bw,bh; act_btn_rect(i,&bx,&by,&bw,&bh);
         if (in_rect(px,py,bx,by,bw,bh)) return reg[i]; }
@@ -271,15 +354,30 @@ static void draw_menu(struct app *app){
     fill_rect(app, CLOSE_X, CLOSE_Y, CLOSE_W, CLOSE_H, (app->hover==R_CLOSE)?CLOSEC:ROWH);
     draw_text(app, "x", CLOSE_X+7, CLOSE_Y+3, 16, 14, TXT);
 
+    /* --- Q0.2 identity header: avatar + username + current domain + current identity --- */
+    {
+        fill_round_rect(app, CARD_X, HEADER_Y, CARD_W, HEADER_H, 14, ROW);
+        int asz = 52, ax = CARD_X+8, ay = HEADER_Y+(HEADER_H-asz)/2;
+        fill_round_rect(app, ax, ay, asz, asz, asz/2, ACC);    /* circular avatar */
+        char initial[2]; initial[0] = app->user[0] ? (char)(app->user[0] & ~0x20) : 'U'; initial[1] = 0;
+        draw_text(app, initial, ax+asz/2-8, ay+asz/2-14, asz, 26, TITLE);
+        int tx = ax + asz + 14, tw = CARD_X+CARD_W - (ax+asz+14) - 10;
+        draw_text(app, app->user[0] ? app->user : "user", tx, HEADER_Y+12, tw, 16, TXT);
+        char dl[80]; snprintf(dl, sizeof dl, "Domain:   %s", app->domain[0]   ? app->domain   : "Personal");
+        draw_text(app, dl, tx, HEADER_Y+36, tw, 12, DIM);
+        char il[80]; snprintf(il, sizeof il, "Identity: %s", app->identity[0] ? app->identity : "Default");
+        draw_text(app, il, tx, HEADER_Y+54, tw, 12, DIM);
+    }
+
     /* --- Wi-Fi row --- */
-    fill_rect(app, CARD_X, WIFI_Y, CARD_W, WIFI_H, (app->hover==R_WIFI)?ROWH:ROW);
+    fill_round_rect(app, CARD_X, WIFI_Y, CARD_W, WIFI_H, 12, (app->hover==R_WIFI)?ROWH:ROW);
     draw_wifi_glyph(app, CARD_X+14, WIFI_Y+14, app->wifi_connected?ACC:DIM);
     draw_text(app, "Wi-Fi", CARD_X+48, WIFI_Y+9, 160, 15, TXT);
     draw_text(app, app->wifi_connected ? app->active_ssid : "Not connected",
               CARD_X+48, WIFI_Y+31, CARD_W-64, 12, app->wifi_connected?OK:DIM);
 
     /* --- Volume row --- */
-    fill_rect(app, CARD_X, VOL_Y, CARD_W, VOL_H, ROW);
+    fill_round_rect(app, CARD_X, VOL_Y, CARD_W, VOL_H, 12, ROW);
     draw_speaker_glyph(app, CARD_X+14, VOL_Y+10, TXT);
     draw_text(app, "Volume", CARD_X+48, VOL_Y+8, 120, 14, TXT);
     char vbuf[8]; snprintf(vbuf, sizeof vbuf, "%d", app->volume);
@@ -293,21 +391,19 @@ static void draw_menu(struct app *app){
               app->dragging?ACC:TXT);
 
     /* --- Battery row --- */
-    fill_rect(app, CARD_X, BAT_Y, CARD_W, BAT_H, ROW);
+    fill_round_rect(app, CARD_X, BAT_Y, CARD_W, BAT_H, 12, ROW);
     draw_battery_glyph(app, CARD_X+14, BAT_Y+16, DIM, OK);
     draw_text(app, "Battery", CARD_X+52, BAT_Y+9, 160, 15, TXT);
     draw_text(app, "AC", CARD_X+52, BAT_Y+31, 120, 12, DIM);
 
-    /* --- Top bar row: hide/show the Hyprland top bar (a GNOME-style pill switch) --- */
+    /* --- Q2.4 System row: live CPU / RAM / IP (click -> /wl-sysmon) --- */
     {
-        int tbHidden = topbar_hidden();
-        fill_rect(app, CARD_X, TOPBAR_Y, CARD_W, TOPBAR_H, (app->hover==R_TOPBAR)?ROWH:ROW);
-        draw_text(app, "Top bar", CARD_X+16, TOPBAR_Y+7, 160, 15, TXT);
-        draw_text(app, tbHidden ? "Hidden" : "Shown", CARD_X+16, TOPBAR_Y+25, 120, 12, tbHidden?DIM:OK);
-        int swW=46, swH=24, swX=CARD_X+CARD_W-swW-14, swY=TOPBAR_Y+(TOPBAR_H-swH)/2;
-        fill_rect(app, swX, swY, swW, swH, tbHidden?TRK:OK);              /* pill: shown=green, hidden=track */
-        int knobX = tbHidden ? swX+3 : swX+swW-(swH-6)-3;                 /* knob slides left/right */
-        fill_rect(app, knobX, swY+3, swH-6, swH-6, TXT);
+        fill_round_rect(app, CARD_X, TOPBAR_Y, CARD_W, TOPBAR_H, 12, (app->hover==R_SYSTEM)?ROWH:ROW);
+        draw_text(app, "System", CARD_X+16, TOPBAR_Y+5, 120, 14, TXT);
+        char sl[96];
+        snprintf(sl, sizeof sl, "CPU %d%%   RAM %d%%   %s",
+                 app->cpu_pct, app->mem_pct, app->ip[0] ? app->ip : "no IP");
+        draw_text(app, sl, CARD_X+16, TOPBAR_Y+24, CARD_W-24, 12, DIM);
     }
 
     /* --- action buttons (Settings / Lock / Restart / Power) --- */
@@ -317,7 +413,7 @@ static void draw_menu(struct app *app){
         int bx,by,bw,bh; act_btn_rect(i,&bx,&by,&bw,&bh);
         int hot = (app->hover==reg[i]);
         uint32_t bc = (i==3) ? (hot?DANGER:0xff3a2530u) : (hot?ROWH:0xff2a3140u);
-        fill_rect(app, bx, by, bw, bh, bc);
+        fill_round_rect(app, bx, by, bw, bh, 10, bc);
         /* tiny centered icon block + label under it */
         uint32_t ic = (i==3)?DANGER:ACC;
         fill_rect(app, bx + bw/2 - 8, by + 12, 16, 16, ic);
@@ -326,7 +422,7 @@ static void draw_menu(struct app *app){
     }
 
     /* --- Log Out (full width) --- */
-    fill_rect(app, CARD_X, LOGOUT_Y, CARD_W, LOGOUT_H, (app->hover==R_LOGOUT)?ROWH:0xff2a3140u);
+    fill_round_rect(app, CARD_X, LOGOUT_Y, CARD_W, LOGOUT_H, 12, (app->hover==R_LOGOUT)?ROWH:0xff2a3140u);
     draw_text(app, "Log Out", CARD_X + CARD_W/2 - 26, LOGOUT_Y + 16, CARD_W, 15, TXT);
 }
 
@@ -385,7 +481,7 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t 
     switch (hit_region(a, a->pointer_x, a->pointer_y)){
         case R_CLOSE:    exit(0);
         case R_WIFI:     launch("/wl-wifi-menu"); break;
-        case R_TOPBAR:   topbar_toggle(); redraw_commit(a); break;
+        case R_SYSTEM:   launch("/wl-sysmon"); break;
         case R_SETTINGS: launch("/wl-domain-manager"); break;
         case R_LOCK:     session_action("lock"); break;
         case R_RESTART:  session_action("reboot"); break;
@@ -447,7 +543,10 @@ static const struct wl_registry_listener registry_listener = { .global=registry_
 static void live_refresh(struct app *app){
     unsigned char *buf; size_t sz; unsigned h = 0;
     if (load_file("/run/wifi/networks", &buf, &sz) == 0){ h = fnv1a(buf, sz); free(buf); }
-    if (h != app->last_hash){ app->last_hash = h; load_wifi(app); redraw_commit(app); }
+    if (h != app->last_hash){ app->last_hash = h; load_wifi(app); }
+    load_stats(app);        /* CPU%/RAM/IP refresh every tick */
+    publish_state(app);
+    redraw_commit(app);     /* redraw each ~1s tick to update the System row */
 }
 
 int main(void){
@@ -457,6 +556,9 @@ int main(void){
     signal(SIGCHLD, SIG_IGN);
     init_freetype(&app);
     load_wifi(&app);
+    load_identity(&app);
+    load_stats(&app);
+    publish_state(&app);
 
     log_line("QSETTINGS: starting quick-settings menu");
     app.display = wl_display_connect(NULL);

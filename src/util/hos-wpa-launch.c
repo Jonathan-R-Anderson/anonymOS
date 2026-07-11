@@ -1,7 +1,7 @@
 /*
  * hos-wpa-launch.c -- bring up wpa_supplicant (static-musl).
  *
- * DEBUG BOOTS (/epin-debug-net.conf present): drive wpa_supplicant DIRECTLY from a generated config
+ * HEADLESS DEBUG BOOTS (/epin-debug-fast-net.conf present): drive wpa_supplicant DIRECTLY from a generated config
  * (`-c /wpa-direct.conf` with a network={ssid,psk} block) instead of `-u` (D-Bus/NetworkManager) mode.
  * This is the single biggest speed win for "boot -> associated -> lease -> scp": it removes the whole
  * daemon ladder (NetworkManager taking ~11s just to own its bus name, then wpa idling until NM calls
@@ -56,7 +56,8 @@ int main(void)
       if (lf >= 0) { dup2(lf,1); dup2(lf,2); if (lf > 2) close(lf); } }
 
     char ssid[128] = {0}, psk[128] = {0};
-    if (read_cred("wifi_ssid", ssid, sizeof ssid) && read_cred("wifi_psk", psk, sizeof psk) && ssid[0]) {
+    if (access("/epin-debug-fast-net.conf", F_OK) == 0 &&
+        read_cred("wifi_ssid", ssid, sizeof ssid) && read_cred("wifi_psk", psk, sizeof psk) && ssid[0]) {
         /* DEBUG FAST PATH: write a direct config and drive the radio without NM. */
         int cf = open("/wpa-direct.conf", O_CREAT|O_WRONLY|O_TRUNC, 0644);
         if (cf >= 0) {

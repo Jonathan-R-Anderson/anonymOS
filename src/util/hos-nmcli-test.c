@@ -257,7 +257,7 @@ int main(void)
     /* DEBUG BOOTS bypass NetworkManager (direct wpa_supplicant), so NM never registers and this 20-iter
      * NM poll just churns dbus-daemon (part of the freeze storm) toward a foregone "NM stuck" verdict.
      * Skip it on the direct-wpa path. */
-    if (access("/epin-debug-net.conf", F_OK) == 0) {
+    if (access("/epin-debug-fast-net.conf", F_OK) == 0) {
         const char *m = "boot-doctor: debug-net boot -> skipping NM poll (direct wpa)\n";
         (void)!write(2, m, strlen(m));
         return 0;

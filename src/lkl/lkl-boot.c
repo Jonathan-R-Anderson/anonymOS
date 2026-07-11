@@ -965,11 +965,16 @@ static void epin_net_serve_conn(int cs)
             long pp[6] = { (long)&pfd, 1, (long)&tmo, 0, 8, 0 };
             long pr = lkl_syscall(__lkl__NR_ppoll, pp);
             if (pr <= 0) { rs.ret = (pr == 0) ? -11 /*EAGAIN: timed out*/ : pr; break; }
-            /* OR in MSG_TRUNC (0x20): on a netlink SOCK_DGRAM, if the datagram is larger than maxlen the
+            /* OR in MSG_TRUNC (0x20) only for datagram sockets: on netlink, if the datagram is larger than maxlen the
              * kernel copies maxlen bytes and DISCARDS the tail — but with MSG_TRUNC recvfrom returns the
-             * TRUE datagram length.  libnl needs that (it PEEKs to size its buffer, then re-reads); without
-             * it, the tail is lost, libnl's dump walker desyncs, never sees NLMSG_DONE, and NM hangs. */
-            p[0]=rq.fd; p[1]=(long)respbuf; p[2]=maxlen; p[3]=rq.a2 | 0x20 /*MSG_TRUNC*/;
+             * TRUE datagram length.  Applying MSG_TRUNC to TCP is invalid stream emulation and can discard
+             * bytes, so first query SO_TYPE and preserve the caller's flags for SOCK_STREAM. */
+            int stype = 0; unsigned stypelen = sizeof stype;
+            long sp[6] = { rq.fd, LKL_SOL_SOCKET, LKL_SO_TYPE, (long)&stype, (long)&stypelen, 0 };
+            long sr = lkl_syscall(__lkl__NR_getsockopt, sp);
+            int recvflags = rq.a2;
+            if (sr == 0 && stype != LKL_SOCK_STREAM) recvflags |= 0x20 /*MSG_TRUNC*/;
+            p[0]=rq.fd; p[1]=(long)respbuf; p[2]=maxlen; p[3]=recvflags;
             p[4]=(long)respaddr; p[5]=(long)&alen;
             rs.ret = lkl_syscall(__lkl__NR_recvfrom, p);
             /* rs.ret is the TRUE datagram length; respbuf holds only min(true,maxlen) bytes, so send just
@@ -993,6 +998,16 @@ static void epin_net_serve_conn(int cs)
             rs.ret = lkl_syscall(__lkl__NR_getsockname, p);
             if (rs.ret == 0 && alen <= sizeof respaddr) rs.addrlen = alen;
             break; }
+        case NSP_GETPEERNAME: {
+            unsigned alen = sizeof respaddr;
+            p[0]=rq.fd; p[1]=(long)respaddr; p[2]=(long)&alen;
+            rs.ret = lkl_syscall(__lkl__NR_getpeername, p);
+            if (rs.ret == 0 && alen <= sizeof respaddr) rs.addrlen = alen;
+            break; }
+        case NSP_SHUTDOWN:
+            p[0]=rq.fd; p[1]=rq.a0;
+            rs.ret = lkl_syscall(__lkl__NR_shutdown, p);
+            break;
         case NSP_CLOSE:
             rs.ret = lkl_sys_close(rq.fd);
             break;

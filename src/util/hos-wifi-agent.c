@@ -270,6 +270,15 @@ static void dict_str(DBusMessageIter *dict, const char *key, const char *val){
     dbus_message_iter_close_container(&e, &v);
     dbus_message_iter_close_container(dict, &e);
 }
+static void dict_u32(DBusMessageIter *dict, const char *key, dbus_uint32_t val){
+    DBusMessageIter e, v;
+    dbus_message_iter_open_container(dict, DBUS_TYPE_DICT_ENTRY, 0, &e);
+    dbus_message_iter_append_basic(&e, DBUS_TYPE_STRING, &key);
+    dbus_message_iter_open_container(&e, DBUS_TYPE_VARIANT, "u", &v);
+    dbus_message_iter_append_basic(&v, DBUS_TYPE_UINT32, &val);
+    dbus_message_iter_close_container(&e, &v);
+    dbus_message_iter_close_container(dict, &e);
+}
 /* append a {s -> ay} entry (byte array variant, e.g. ssid) */
 static void dict_ay(DBusMessageIter *dict, const char *key, const unsigned char *bytes, int len){
     DBusMessageIter e, v, arr;
@@ -329,8 +338,14 @@ static void do_connect(DBusConnection *c, const char *ssid, const char *psk){
             dict_str(&sub, "psk", psk);
         close_setting(&conn, &e, &sub);
     }
-    open_setting(&conn, "ipv4", &e, &sub); dict_str(&sub, "method", "auto"); close_setting(&conn, &e, &sub);
-    open_setting(&conn, "ipv6", &e, &sub); dict_str(&sub, "method", "auto"); close_setting(&conn, &e, &sub);
+    open_setting(&conn, "ipv4", &e, &sub);
+        dict_str(&sub, "method", "auto");
+        /* NM's built-in DHCP client stalls on this OS; external udhcpc supplies
+         * the lease.  Keep NM from timing out and tearing down the successful
+         * WPA association before that lease arrives. */
+        dict_u32(&sub, "dhcp-timeout", 2147483647u);
+    close_setting(&conn, &e, &sub);
+    open_setting(&conn, "ipv6", &e, &sub); dict_str(&sub, "method", "ignore"); close_setting(&conn, &e, &sub);
 
     dbus_message_iter_close_container(&args, &conn);
 
@@ -342,8 +357,17 @@ static void do_connect(DBusConnection *c, const char *ssid, const char *psk){
     DBusError err; dbus_error_init(&err);
     DBusMessage *r = dbus_connection_send_with_reply_and_block(c, m, 15000, &err);
     dbus_message_unref(m);
-    if (r) { fprintf(stderr, "[wifi-agent] AddAndActivateConnection('%s') OK\n", ssid); dbus_message_unref(r); }
-    else   { fprintf(stderr, "[wifi-agent] AddAndActivateConnection('%s') FAILED: %s\n", ssid, err.message?err.message:"?"); dbus_error_free(&err); }
+    if (r) {
+        unlink("/run/wifi/error");
+        fprintf(stderr, "[wifi-agent] AddAndActivateConnection('%s') OK\n", ssid);
+        dbus_message_unref(r);
+    } else {
+        const char *why = err.message ? err.message : "connection request failed";
+        int ef = open("/run/wifi/error", O_CREAT|O_WRONLY|O_TRUNC, 0600);
+        if (ef >= 0){ (void)!write(ef, why, strlen(why)); close(ef); }
+        fprintf(stderr, "[wifi-agent] AddAndActivateConnection('%s') FAILED: %s\n", ssid, why);
+        dbus_error_free(&err);
+    }
 }
 
 /* poll /run/wifi/connect ("SSID\nPASSWORD\n"); returns 1 if a request was handled. */
@@ -456,7 +480,7 @@ int main(void){
      * crashing" instability (reproduced under VirtualBox: hos-wifi-agent + dbus-daemon top the HOG list
      * in every freeze event).  The Wi-Fi menu is unused on a debug boot (the log just scp's out), so
      * exit immediately and leave the CPU to the compositor + the direct-wpa/udhcpc/upload path. */
-    if (access("/epin-debug-net.conf", F_OK) == 0) {
+    if (access("/epin-debug-fast-net.conf", F_OK) == 0) {
         fprintf(stderr, "[wifi-agent] debug-net boot (direct wpa) -> NM unused; exiting to avoid the dbus/NM spin\n");
         return 0;
     }

@@ -43,6 +43,8 @@ enum {
     NSP_LOG         = 12, /* buf = text                              -> provider prints it (visible) */
     NSP_IOCTL       = 13, /* fd, a0=cmd, buf=arg-struct(in)          -> ret; resp buf=arg-struct(out) */
     NSP_GETTRACE    = 14, /* (no args)                               -> resp buf = accumulated NSP_LOG text (M4 diag) */
+    NSP_GETPEERNAME = 15, /* fd, a0=maxlen                            -> ret; resp addr           */
+    NSP_SHUTDOWN    = 16, /* fd, a0=how                               -> ret                     */
 };
 
 typedef struct {

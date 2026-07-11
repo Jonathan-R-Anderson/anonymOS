@@ -68,6 +68,8 @@ static ssize_t (*r_readv)(int,const struct iovec*,int);
 static int (*r_fcntl)(int,int,...);
 static int (*r_open)(const char*,int,...);
 static int (*r_select)(int,fd_set*,fd_set*,fd_set*,struct timeval*);
+static int (*r_getpeername)(int,struct sockaddr*,socklen_t*);
+static int (*r_shutdown)(int,int);
 
 static void resolve(void)
 {
@@ -75,7 +77,7 @@ static void resolve(void)
 #define R(f) r_##f = dlsym(RTLD_NEXT, #f)
     R(socket); R(bind); R(connect); R(sendto); R(recvfrom); R(sendmsg); R(recvmsg);
     R(setsockopt); R(getsockopt); R(getsockname); R(close); R(ioctl); R(poll); R(read); R(write); R(fcntl);
-    R(open); R(select); R(writev); R(readv);
+    R(open); R(select); R(writev); R(readv); R(getpeername); R(shutdown);
 #undef R
 }
 
@@ -275,6 +277,28 @@ int connect(int fd, const struct sockaddr *addr, socklen_t len)
     if (!routed(fd)) return r_connect(fd, addr, len);
     long r = nsp(NSP_CONNECT, g_remote[fd], 0,0,0, 0,0, addr, len, 0,0,0,0,0,0);
     return r==0 ? 0 : (int)fail(r);
+}
+
+/* The placeholder is not connected in the native kernel, so peer and half-close operations must be
+ * executed by the LKL provider that owns the real socket. */
+int getpeername(int fd, struct sockaddr *addr, socklen_t *alen)
+{
+    resolve();
+    if (!routed(fd)) return r_getpeername(fd, addr, alen);
+    uint32_t ga = 0;
+    long r = nsp(NSP_GETPEERNAME, g_remote[fd], alen ? *alen : 0, 0,0,
+                 0,0,0,0, 0,0,0, addr, addr&&alen ? *alen : 0, &ga);
+    if (r != 0) return (int)fail(r);
+    if (alen) *alen = ga;
+    return 0;
+}
+
+int shutdown(int fd, int how)
+{
+    resolve();
+    if (!routed(fd)) return r_shutdown(fd, how);
+    long r = nsp(NSP_SHUTDOWN, g_remote[fd], how,0,0, 0,0,0,0, 0,0,0,0,0,0);
+    return r == 0 ? 0 : (int)fail(r);
 }
 
 ssize_t sendto(int fd, const void *buf, size_t len, int flags,

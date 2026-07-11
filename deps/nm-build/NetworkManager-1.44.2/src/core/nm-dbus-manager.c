@@ -1637,8 +1637,36 @@ _new_unix_process(GDBusMethodInvocation *context,
                                                                &pid);
     }
 
-    if (!success)
+    if (!success) {
+        /* EpinAnonymOS's system bus reliably exposes the peer UID but does not
+         * yet expose all process metadata needed by GetConnectionUnixProcessID.
+         * NetworkManager normally requires both, causing trusted native system
+         * agents (notably hos-wifi-agent) to fail AddAndActivateConnection with
+         * "Unable to determine UID" even though the bus verified them as root.
+         *
+         * Re-query UID alone and accept only a positively identified uid 0 as
+         * an internal system request.  Unknown and non-root callers still fail
+         * closed; this is deliberately not a blanket authorization bypass. */
+        gulong verified_uid = G_MAXULONG;
+        gboolean uid_ok;
+
+        if (context)
+            uid_ok = nm_dbus_manager_get_caller_info(nm_dbus_manager_get(),
+                                                      context,
+                                                      NULL,
+                                                      &verified_uid,
+                                                      NULL);
+        else
+            uid_ok = nm_dbus_manager_get_caller_info_from_message(nm_dbus_manager_get(),
+                                                                   connection,
+                                                                   message,
+                                                                   NULL,
+                                                                   &verified_uid,
+                                                                   NULL);
+        if (uid_ok && verified_uid == 0)
+            return nm_auth_subject_new_internal();
         return NULL;
+    }
 
     g_return_val_if_fail(dbus_sender && *dbus_sender, NULL);
     /* polkit glib library stores uid and pid as int. There might be some

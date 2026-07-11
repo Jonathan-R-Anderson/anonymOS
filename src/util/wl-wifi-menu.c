@@ -70,6 +70,8 @@ struct app {
     int  editing;                  // password dialog open
     char edit_ssid[64];            // network being connected
     char editbuf[96];              // typed password
+    char pending_ssid[64];         // submitted SSID; close only after it becomes active
+    char connect_error[160];       // agent/NM rejection shown instead of silent failure
     int  editlen;
     int  shift;
     unsigned last_hash;
@@ -231,7 +233,8 @@ static void draw_menu(struct app *app){
     fill_rect(app, 0, 0, app->width, app->height, BG);
     fill_rect(app, 0, 0, app->width, HEADER_H, HDR);
     draw_text(app, "Wi-Fi", 14, 13, 200, 18, TXT);
-    const char *st = app->dev_state>=100 ? "connected" : app->dev_state==30 ? "not connected" :
+    const char *st = app->pending_ssid[0] ? "connecting..." :
+                     app->dev_state>=100 ? "connected" : app->dev_state==30 ? "not connected" :
                      app->dev_state>=40 ? "connecting..." : app->iface[0] ? "ready" : "no adapter";
     draw_text(app, st, app->width-140, 16, 128, 12, DIM);
 
@@ -258,6 +261,20 @@ static void draw_menu(struct app *app){
         draw_signal(app, app->width-40, y+14, n->strength, ON, OFF);
         /* lock glyph for secured */
         if (strcmp(n->sec,"open")!=0) draw_text(app, "*", app->width-56, y+12, 12, 15, DIM);
+    }
+
+    if (app->pending_ssid[0]){
+        int py = app->height - 54;
+        char line[160];
+        snprintf(line, sizeof line, "Connecting to %s...", app->pending_ssid);
+        fill_rect(app, 0, py, app->width, 54, 0xff0d1e2bu);
+        fill_rect(app, 0, py, app->width, 2, ACC);
+        draw_text(app, line, 16, py+17, app->width-32, 13, ACC);
+    } else if (app->connect_error[0]){
+        int py = app->height - 70;
+        fill_rect(app, 0, py, app->width, 70, 0xff35191du);
+        draw_text(app, "Connection failed", 16, py+11, app->width-32, 13, 0xffff7b83u);
+        draw_text(app, app->connect_error, 16, py+34, app->width-32, 11, TXT);
     }
 
     if (app->editing){
@@ -319,9 +336,13 @@ static void redraw_commit(struct app *app){
 /* write the connect request for the agent, then reset the dialog. */
 static void submit_connect(struct app *app, const char *ssid, const char *psk){
     mkdir("/run", 0755); mkdir("/run/wifi", 0755);
+    unlink("/run/wifi/error");
+    app->connect_error[0] = 0;
     int fd = open("/run/wifi/connect", O_CREAT|O_WRONLY|O_TRUNC, 0600);
     if (fd >= 0){ char line[256]; int n = snprintf(line, sizeof line, "%s\n%s\n", ssid, psk?psk:"");
         (void)!write(fd, line, n); close(fd); }
+    strncpy(app->pending_ssid, ssid, sizeof(app->pending_ssid)-1);
+    app->pending_ssid[sizeof(app->pending_ssid)-1] = 0;
     char m[128]; snprintf(m, sizeof m, "WIFIMENU: connect '%s'", ssid); log_line(m);
 }
 
@@ -363,7 +384,28 @@ static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surfa
 static void kb_key(void *d, struct wl_keyboard *k, uint32_t se, uint32_t t, uint32_t key, uint32_t state){ (void)k;(void)se;(void)t; struct app*a=d;
     if (key==42||key==54){ a->shift = (state==1); return; }
     if (state != 1) return;              /* press only */
-    if (!a->editing) return;
+    if (!a->editing){
+        /* Keyboard navigation for the network list.  Previously all keys were
+         * discarded here, so pressing Enter on a visible SSID did literally
+         * nothing unless it had first been clicked with the pointer. */
+        if (a->n_nets <= 0) return;
+        if (key==103 /* KEY_UP */){
+            if (a->hover < 0) a->hover = a->n_nets - 1;
+            else if (a->hover > 0) a->hover--;
+            redraw_commit(a); return;
+        }
+        if (key==108 /* KEY_DOWN */){
+            if (a->hover < 0) a->hover = 0;
+            else if (a->hover + 1 < a->n_nets) a->hover++;
+            redraw_commit(a); return;
+        }
+        if (key==28 /* KEY_ENTER */){
+            if (a->hover < 0) a->hover = 0;
+            row_click(a, a->hover);
+            return;
+        }
+        return;
+    }
     if (key==1){ a->editing=0; a->editbuf[0]=0; a->editlen=0; redraw_commit(a); return; }   /* Esc */
     if (key==28){ a->editing=0; submit_connect(a, a->edit_ssid, a->editbuf); a->editbuf[0]=0; a->editlen=0; redraw_commit(a); return; } /* Enter */
     if (key==14){ if (a->editlen>0) a->editbuf[--a->editlen]=0; redraw_commit(a); return; }  /* Backspace */
@@ -405,8 +447,33 @@ static const struct wl_registry_listener registry_listener = { .global=registry_
 
 static void live_refresh(struct app *app){
     unsigned char *buf; size_t sz; unsigned h = 0;
+    if (app->pending_ssid[0]){
+        unsigned char *eb; size_t es;
+        if (load_file("/run/wifi/error", &eb, &es) == 0){
+            size_t n = es < sizeof(app->connect_error)-1 ? es : sizeof(app->connect_error)-1;
+            memcpy(app->connect_error, eb, n); app->connect_error[n] = 0; free(eb);
+            app->pending_ssid[0] = 0;
+            redraw_commit(app);
+        }
+    }
     if (load_file("/run/wifi/networks", &buf, &sz) == 0){ h = fnv1a(buf, sz); free(buf); }
-    if (h != app->last_hash){ app->last_hash = h; load_networks(app); if (!app->editing) redraw_commit(app); }
+    if (h != app->last_hash){
+        app->last_hash = h;
+        load_networks(app);
+        /* A consumed request only proves that Enter reached the agent.  Dismiss
+         * after NetworkManager confirms that this exact SSID is active; failed
+         * authentication therefore leaves the menu open for another attempt. */
+        if (app->pending_ssid[0]){
+            for (int i=0; i<app->n_nets; i++){
+                if (app->nets[i].active && strcmp(app->nets[i].ssid, app->pending_ssid)==0){
+                    log_line("WIFIMENU: connection active; closing menu");
+                    app->running = 0;
+                    return;
+                }
+            }
+        }
+        if (!app->editing) redraw_commit(app);
+    }
     /* Diagnostics (no adapter): refresh only every ~4s AND redraw only when the content actually changed
      * — a blind redraw+file-read every second was needless load (and on the laptop repeatedly read NM's
      * held-open /run/nm.log), a plausible contributor to the desktop hang. */

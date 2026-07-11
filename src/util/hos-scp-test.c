@@ -3,8 +3,8 @@
  *
  * TRANSPORT = HTTP POST (not scp/SSH).  The FW13's SSH-over-LKL-shim handshake resets during the banner
  * exchange (sshd logs `kex_exchange_identification: read: Connection reset by peer`), but plain TCP works
- * fine -- so we upload /run/klog with `busybox-dyn wget --post-file` (a dynamic applet: LD_PRELOAD routes
- * its socket/connect/send through the LKL/wlan0, and HTTP has no SSH handshake to fail on) to a tiny
+ * fine -- so we upload /run/klog with `hos-http-upload`, a dynamic client which deliberately uses
+ * send/recv rather than musl stdio (stdio's direct syscalls bypass LD_PRELOAD), to a tiny
  * user-space receiver on the target (local/epin-log-receiver.py) that writes the body to
  * ~/epinanonymos-debug.log.  Target host+port come from /epin-debug-net.conf (log_target_ip/log_http_port).
  *
@@ -105,13 +105,12 @@ int main(void)
     { char lease[64]; read_file("/run/wifi/dhcp-ok", lease, sizeof lease);
       fprintf(stderr, "[upload]   OK: leased IP = %s\n", lease[0] ? lease : "(present)"); }
 
-    /* ── STEP 3: HTTP POST via busybox-dyn wget (plain TCP, no SSH) ──────────── */
-    fprintf(stderr, "[upload] STEP 3/3  POST /run/klog -> %s (busybox-dyn wget via LKL)...\n", url);
+    /* ── STEP 3: HTTP POST via direct socket calls (plain TCP, no SSH) ──────── */
+    fprintf(stderr, "[upload] STEP 3/3  POST /run/klog -> %s (direct socket client via LKL)...\n", url);
     char out[600];
-    char *const wget_argv[] = { "/busybox-dyn", "wget", "-q", "-T", "15",
-                                "--post-file=/run/klog", "-O", "/dev/null", url, 0 };
-    int rc = run_capture(wget_argv, out, sizeof out);
-    if (out[0]) fprintf(stderr, "[upload]   wget said: %s\n", out);
+    char *const http_argv[] = { "/hos-http-upload", tip, tport, "/run/klog", 0 };
+    int rc = run_capture(http_argv, out, sizeof out);
+    if (out[0]) fprintf(stderr, "[upload]   client said: %s\n", out);
 
     if (rc == 0) {
         fprintf(stderr, "[upload] RESULT: SUCCESS -- /run/klog POSTed to %s\n", url);

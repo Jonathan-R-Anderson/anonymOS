@@ -148,7 +148,7 @@ static const struct opt TIMEZONES[] = {
 static const struct opt NETWORKS[] = {
     { "Offline install",        "Configure networking after first boot (default)", "offline", 0 },
     { "Wired connection (DHCP)", "Use the wired Ethernet adapter",                 "wired",   0 },
-    { "Wi-Fi",                  "No Wi-Fi driver on this hardware yet",            "wifi",    1 },
+    { "Wi-Fi",                  "Connect to a Wi-Fi network to download drivers",  "wifi",    0 },
 };
 
 static const struct opt FILESYSTEMS[] = {
@@ -1566,6 +1566,26 @@ static void draw_welcome(struct app *app)
 
 static void draw_network_note(struct app *app)
 {
+    /* When Wi-Fi is the chosen network, show the LIVE connection status so the user can confirm the
+     * link is up before the driver download.  The install boot brings Wi-Fi up automatically
+     * (kernel-spawned wpa + udhcpc from /epin-debug-net.conf); /run/wifi/dhcp-ok holds the leased IP. */
+    if (strcmp(NETWORKS[app->network_idx].code, "wifi") == 0) {
+        char ip[48] = {0};
+        int fd = open("/run/wifi/dhcp-ok", O_RDONLY);
+        if (fd >= 0) {
+            int n = (int)read(fd, ip, sizeof ip - 1);
+            if (n > 0) ip[n] = 0;
+            for (char *q = ip; *q; q++) if (*q == '\n' || *q == '\r') *q = 0;
+            close(fd);
+        }
+        char line[120];
+        if (ip[0])
+            snprintf(line, sizeof line, "Wi-Fi connected  -  %s  (ready to download drivers)", ip);
+        else
+            snprintf(line, sizeof line, "Wi-Fi connecting...  (associating / waiting for a DHCP lease)");
+        draw_text_ft(app, line, CONTENT_X, app->height - 134, content_w(app),
+                     13, ip[0] ? 0xff57d977u : 0xffffd08au);
+    }
     draw_text_ft(app,
         "Network access is not required to install. zkSync boot attestation needs it.",
         CONTENT_X, app->height - 116, content_w(app), 12, 0xff8b96a4u);

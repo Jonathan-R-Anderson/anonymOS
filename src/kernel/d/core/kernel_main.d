@@ -1496,7 +1496,8 @@ private void maybeSpawnNetLaunch() {
 // to debug the desktop without WiFi bring-up; false = normal boot.
 private __gshared bool g_skipNetForTest = false;
 
-// Debug boots (/epin-debug-net.conf boot module present) use direct wpa_supplicant (-c) + external
+// Explicit headless debug boots (/epin-debug-fast-net.conf boot module present) use direct
+// wpa_supplicant (-c) + external
 // udhcpc for the log-upload path.  NetworkManager + its agent + the nmcli boot-doctor are then pure
 // dead weight: NM never registers on D-Bus and they SPIN retrying it, churning dbus-daemon and starving
 // the Weston compositor into repeated freezes — THE "OS keeps crashing" instability (reproduced under
@@ -1512,7 +1513,7 @@ private bool debugNetBootPresent() {
                 const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
                 const(char)* modBase = modName;
                 for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
-                if (cstrEqK(modBase, "epin-debug-net.conf")) { g_debugNetBoot = 1; break; }
+                if (cstrEqK(modBase, "epin-debug-fast-net.conf")) { g_debugNetBoot = 1; break; }
             }
         }
     }

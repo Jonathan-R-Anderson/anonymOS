@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
+#include <poll.h>
 #include <errno.h>
 #include "hos-net-proto.h"
 #ifndef MAP_FIXED_NOREPLACE
@@ -854,17 +855,21 @@ static void epin_wifi_report(void)
 
 /* read/write exactly n bytes over a stream fd; 1 = ok, 0 = eof/error.  EpinAnonymOS AF_UNIX
  * read/write are NON-blocking (return -EAGAIN when the rx buffer is empty / tx buffer full and
- * the peer is still open), so we retry on EAGAIN with a short yield = blocking emulation.  Only
- * a real 0 (peer closed / EOF) or a non-EAGAIN error ends the loop.  (TODO: poll()-based wait to
- * avoid the 2ms poll granularity once long-lived wpa/NM connections need it.) */
-static void nsp_yield(void){ struct timespec ts = { 0, 2000000L }; nanosleep(&ts, NULL); }
+ * the peer is still open), so we retry on EAGAIN — waiting EVENT-DRIVEN in host poll() (the kernel
+ * parks this thread and wakes it within a ~1ms tick of readiness) instead of the old flat 2ms
+ * nanosleep.  That nap was a scheduling quantum under EVERY RPC (the serve loop sits in
+ * nsp_read_full between requests), and across NM's thousands of boot-enumeration netlink
+ * round-trips it summed to tens of seconds of WiFi bring-up; idle it was 500 wakeups/s per
+ * connection of pure churn, now a parked poll.  Only a real 0 (peer closed / EOF) or a non-EAGAIN
+ * error ends the loop; the poll timeout is just a safety re-check bound. */
+static void nsp_wait(int fd, short ev){ struct pollfd p = { fd, ev, 0 }; poll(&p, 1, 1000); }
 static int nsp_read_full(int fd, void *buf, size_t n)
 {
     size_t got = 0;
     while (got < n) {
         long r = read(fd, (char *)buf + got, n - got);
         if (r > 0) { got += (size_t)r; continue; }
-        if (r < 0 && errno == EAGAIN) { nsp_yield(); continue; }
+        if (r < 0 && errno == EAGAIN) { nsp_wait(fd, POLLIN); continue; }
         return 0;   /* r == 0 (EOF) or a real error */
     }
     return 1;
@@ -875,7 +880,7 @@ static int nsp_write_full(int fd, const void *buf, size_t n)
     while (put < n) {
         long r = write(fd, (const char *)buf + put, n - put);
         if (r > 0) { put += (size_t)r; continue; }
-        if (r < 0 && errno == EAGAIN) { nsp_yield(); continue; }
+        if (r < 0 && errno == EAGAIN) { nsp_wait(fd, POLLOUT); continue; }
         return 0;
     }
     return 1;
@@ -958,8 +963,12 @@ static void epin_net_serve_conn(int cs)
                 respbuf = nb; respcap = maxlen;
             }
             unsigned alen = sizeof respaddr;
-            /* Wait up to 5s for readability first, so a missing/expected-empty reply can't block
-             * this client's thread forever (e.g. a client that reads past a netlink dump's end). */
+            /* Wait up to 1s for readability first, so a missing/expected-empty reply can't block
+             * this client's thread forever (e.g. a client that reads past a netlink dump's end).
+             * On timeout we return -EAGAIN; for blocking fds the SHIM retries (libnshim.c recvfrom:
+             * ~60s cap while a request is outstanding, with a lost-reply RE-REQUEST at ~5s; ~240s
+             * for pure event waits).  This ppoll is fully event-driven: data arriving mid-wait
+             * returns immediately, so the 1s costs nothing on the happy path. */
             struct { int fd; short events; short revents; } pfd = { rq.fd, 1 /*POLLIN*/, 0 };
             struct { long sec, nsec; } tmo = { 1, 0 };   /* 1s: the shim retries for blocking fds */
             long pp[6] = { (long)&pfd, 1, (long)&tmo, 0, 8, 0 };
@@ -1091,10 +1100,16 @@ static void *epin_net_provider_thread(void *arg)
 
     static int connCount = 0;
     for (;;) {
+        /* EpinAnonymOS accept() is non-blocking (-EAGAIN when no client is queued): park in poll()
+         * until the listener is readable instead of the old flat 100ms nanosleep — a connecting
+         * client (wpa/NM/udhcpc launch) is served within a tick rather than up to 100ms late, and
+         * an idle provider makes no wakeups at all. */
+        struct pollfd lp = { ls, POLLIN, 0 };
+        poll(&lp, 1, 1000);
         int cs = accept(ls, NULL, NULL);
         if (cs < 0) {
-            struct timespec ts = { .tv_sec = 0, .tv_nsec = 100000000L };
-            nanosleep(&ts, NULL);
+            struct timespec ts = { .tv_sec = 0, .tv_nsec = 20000000L };
+            nanosleep(&ts, NULL);   /* real accept error (not just empty queue): don't hot-spin */
             continue;
         }
         fprintf(stderr, ">>> net-provider: client #%d connected (fd %d)\n", ++connCount, cs);

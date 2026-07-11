@@ -1062,6 +1062,12 @@ private struct LocalSocket
     size_t backlog;
     int peerId;
     bool peerClosed;
+    // Credentials captured when this endpoint is created.  SO_PEERCRED must
+    // report the PEER endpoint's owner, not whichever task happens to execute
+    // getsockopt (the latter made dbus-daemon attribute every client to itself).
+    int ownerPid;
+    uint ownerUid;
+    uint ownerGid;
     char[108] path;
     size_t pathLength;
     int[localSocketPendingCapacity] pending;
@@ -1118,6 +1124,9 @@ private int allocLocalSocket(int domain, int type)
             sock.domain = domain;
             sock.type = type;
             sock.state = LocalSocketState.created;
+            sock.ownerPid = linuxPidForTask(cast(int)g_current_task_id);
+            sock.ownerUid = userCurrentUid();
+            sock.ownerGid = userCurrentGid();
             return cast(int)i;
         }
     }
@@ -1518,15 +1527,22 @@ private long copySockoptInt(ulong val, ulong len, int outValue)
     return 0;
 }
 
-private long copySockoptUcred(ulong val, ulong len)
+private long copySockoptUcred(ulong val, ulong len, LocalSocket* sock = null)
 {
     if (val == 0 || len == 0) return negErrno(EFAULT);
     auto optLen = cast(uint*)len;
     if (*optLen < LinuxUcred.sizeof) return negErrno(EINVAL);
     auto cred = cast(LinuxUcred*)val;
-    cred.pid = 1;
-    cred.uid = userCurrentUid(); // IR-P3: from the active task's User object
-    cred.gid = userCurrentGid();
+    auto peer = (sock !is null && sock.peerId >= 0) ? localSocketById(sock.peerId) : null;
+    if (peer !is null) {
+        cred.pid = peer.ownerPid;
+        cred.uid = peer.ownerUid;
+        cred.gid = peer.ownerGid;
+    } else {
+        cred.pid = linuxPidForTask(cast(int)g_current_task_id);
+        cred.uid = userCurrentUid();
+        cred.gid = userCurrentGid();
+    }
     *optLen = cast(uint)LinuxUcred.sizeof;
     return 0;
 }
@@ -9753,8 +9769,10 @@ public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulon
     // recognised FD_SOCKET, so a strict ENOTSOCK makes the builtin backend fail to
     // open the seat ("Not a socket") and aquamarine never activates the session.
     // Return the active task's User object credentials for any open fd.
-    if (lvl == SOL_SOCKET && cast(int)opt == SO_PEERCRED)
-        return copySockoptUcred(val, len);
+    if (lvl == SOL_SOCKET && cast(int)opt == SO_PEERCRED) {
+        auto anySock = fileSocket(f);
+        return copySockoptUcred(val, len, anySock);
+    }
 
     auto sock = fileSocket(f);
     if (sock is null) return negErrno(ENOTSOCK);
@@ -9762,7 +9780,7 @@ public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulon
 
     switch (cast(int)opt) {
         case SO_PEERCRED:
-            return copySockoptUcred(val, len);
+            return copySockoptUcred(val, len, sock);
         case SO_TYPE:
             return copySockoptInt(val, len, sock.type);
         case SO_ERROR:

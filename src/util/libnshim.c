@@ -113,6 +113,17 @@ static unsigned short g_last_tx[MAXFD];    /* last netlink nlmsg_type sent on a 
 static unsigned char  g_last_cmd[MAXFD];   /* last genl cmd (nl80211) sent on a routed fd */
 static unsigned int   g_last_txlen[MAXFD]; /* last netlink TX payload length on a routed fd */
 static long           g_last_truelen[MAXFD]; /* last netlink RX true datagram length (H3 discriminator) */
+/* LOST-REPLY RECOVERY state (recvfrom): a blocking netlink read whose request's reply got lost used
+ * to burn the full retry cap (240 x the provider's 1s recv-poll = ~4min of dead boot time) before
+ * surfacing.  Track whether a reply is outstanding, and keep a copy of the last request so an
+ * IDEMPOTENT read (dump / rtnetlink GET / genl GETFAMILY) can simply be re-issued after ~5s. */
+#define NSHIM_REQSAVE 4096
+static int            g_nlproto[MAXFD];      /* netlink protocol (NETLINK_ROUTE/GENERIC) of a routed fd */
+static unsigned short g_last_nlflags[MAXFD]; /* nlmsghdr.nlmsg_flags of the last request */
+static char           g_pending[MAXFD];      /* a NLM_F_REQUEST was sent; its reply not yet complete */
+static char           g_rx_since_tx[MAXFD];  /* something arrived since the last request (mid-dump) */
+static char          *g_req_save[MAXFD];     /* saved bytes of the last request (<= NSHIM_REQSAVE) */
+static unsigned       g_req_savelen[MAXFD];  /* 0 = nothing re-issuable saved */
 
 static int routed(int fd){ return fd >= 0 && fd < MAXFD && g_routed[fd]; }
 
@@ -128,8 +139,18 @@ __attribute__((constructor)) static void nshim_cfg(void){ g_log = getenv("HOS_SH
 static int g_conn = -1;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static int rdf(int fd, void *b, unsigned n){ unsigned g=0; while(g<n){ long r=r_read(fd,(char*)b+g,n-g); if(r>0){g+=r;continue;} if(r<0&&errno==EAGAIN){struct timespec t={0,2000000L};nanosleep(&t,0);continue;} return 0;} return 1; }
-static int wrf(int fd, const void *b, unsigned n){ unsigned p=0; while(p<n){ long r=r_write(fd,(const char*)b+p,n-p); if(r>0){p+=r;continue;} if(r<0&&errno==EAGAIN){struct timespec t={0,2000000L};nanosleep(&t,0);continue;} return 0;} return 1; }
+/* EpinAnonymOS AF_UNIX read/write are NON-blocking (-EAGAIN on empty rx / full tx while the peer
+ * lives), so blocking is emulated.  Wait EVENT-DRIVEN in poll() (the kernel parks the task and its
+ * tick re-checks readiness, so we wake within ~1ms of data) — NOT a fixed nanosleep: the old 2ms
+ * nap put a scheduling quantum under every RPC byte-wait, and across the thousands of netlink
+ * round-trips in NM's boot enumeration those quanta summed to tens of seconds of WiFi bring-up.
+ * The poll timeout is only a safety re-check bound; readiness normally wakes us first. */
+static void fdwait(int fd, short ev){
+    if (!r_poll){ struct timespec t={0,2000000L}; nanosleep(&t,0); return; }
+    struct pollfd p={fd,ev,0}; r_poll(&p,1,1000);
+}
+static int rdf(int fd, void *b, unsigned n){ unsigned g=0; while(g<n){ long r=r_read(fd,(char*)b+g,n-g); if(r>0){g+=r;continue;} if(r<0&&errno==EAGAIN){fdwait(fd,POLLIN);continue;} return 0;} return 1; }
+static int wrf(int fd, const void *b, unsigned n){ unsigned p=0; while(p<n){ long r=r_write(fd,(const char*)b+p,n-p); if(r>0){p+=r;continue;} if(r<0&&errno==EAGAIN){fdwait(fd,POLLOUT);continue;} return 0;} return 1; }
 
 static int provider_connect(void)
 {
@@ -225,6 +246,35 @@ static int count_bss(const unsigned char *b, unsigned n)
 /* set errno from a negative provider return; return -1 (or 0 mapping handled by caller). */
 static long fail(long r){ if (r < 0 && r > -1000) errno = (int)(-r); else if (r <= -1000) errno = EIO; return -1; }
 
+/* Is this received netlink buffer the END of the outstanding request's reply?  A dump ends with
+ * NLMSG_DONE(3); an ack/error is NLMSG_ERROR(2); a plain (non-NLM_F_MULTI) reply is complete in
+ * itself.  Used to clear g_pending so the lost-reply logic knows when nothing is owed anymore. */
+static int nl_reply_complete(const unsigned char *b, unsigned n)
+{
+    unsigned off = 0;
+    while (off + 16 <= n) {
+        uint32_t len  = *(const uint32_t*)(b+off);
+        uint16_t type = *(const uint16_t*)(b+off+4);
+        uint16_t flg  = *(const uint16_t*)(b+off+6);
+        if (len < 16 || off+len > n) break;
+        if (type == 3 /*NLMSG_DONE*/ || type == 2 /*NLMSG_ERROR*/) return 1;
+        if (!(flg & 0x2 /*NLM_F_MULTI*/)) return 1;
+        off += (len+3)&~3;
+    }
+    return 0;
+}
+
+/* May the saved request be safely RE-SENT after its reply was lost?  Only idempotent reads:
+ * any NLM_F_DUMP, an rtnetlink RTM_GET* (type%4==2 on NETLINK_ROUTE), or genl-ctrl GETFAMILY.
+ * State-changing requests (NEW/DEL/SET, nl80211 TRIGGER_SCAN/CONNECT...) are never re-sent. */
+static int nl_resendable(int fd)
+{
+    if ((g_last_nlflags[fd] & 0x300 /*NLM_F_DUMP=ROOT|MATCH*/) == 0x300) return 1;
+    if (g_nlproto[fd] == 0 /*NETLINK_ROUTE*/ && g_last_tx[fd] >= 16 && (g_last_tx[fd] & 3) == 2) return 1;
+    if (g_nlproto[fd] == 16 /*NETLINK_GENERIC*/ && g_last_tx[fd] == 16 /*nlctrl*/ && g_last_cmd[fd] == 3 /*CTRL_CMD_GETFAMILY*/) return 1;
+    return 0;
+}
+
 /* ===================== interposed libc functions ===================== */
 
 int socket(int domain, int type, int protocol)
@@ -253,6 +303,8 @@ int socket(int domain, int type, int protocol)
     if (ph < 0 || ph >= MAXFD) { nsp(NSP_CLOSE,(int)R,0,0,0,0,0,0,0,0,0,0,0,0,0); errno=EMFILE; return -1; }
     g_routed[ph] = 1; g_remote[ph] = (int)R; g_dom[ph] = domain;
     g_nonblock[ph] = (type & 04000 /*SOCK_NONBLOCK*/) ? 1 : 0;
+    g_nlproto[ph] = (domain == AF_NETLINK) ? protocol : -1;
+    g_pending[ph] = 0; g_rx_since_tx[ph] = 0; g_req_savelen[ph] = 0;   /* fd numbers get reused */
     if (g_log) { char m[80]; snprintf(m,sizeof m,"shim: wpa opened routed socket (family %d) -> LKL fd %ld", domain, R); shim_log(m); }
     if (domain == AF_PACKET && g_pktSetup < 128) {
         char m[96]; snprintf(m, sizeof m, "shim: AF_PACKET socket(type=0x%x,proto=0x%x) -> LKL fd %ld (dhcp-diag)", type, protocol, R); flog(m); g_pktSetup++;
@@ -307,12 +359,21 @@ ssize_t sendto(int fd, const void *buf, size_t len, int flags,
     resolve();
     if (!routed(fd)) return r_sendto(fd, buf, len, flags, addr, alen);
     /* record the last netlink request on this fd so the STUCK diagnostic (recvfrom) can name the op a
-     * genuine no-reply hang is blocked on. */
-    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && len >= 20) {
+     * genuine no-reply hang is blocked on — and keep its BYTES so a lost reply to an idempotent read
+     * can be recovered by simply re-issuing the request (LOST-REPLY RECOVERY in recvfrom). */
+    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && len >= 16) {
         const unsigned char *b = buf;
         g_last_tx[fd]  = *(const unsigned short*)(b+4);   /* nlmsghdr.nlmsg_type */
-        g_last_cmd[fd] = b[16];                            /* genlmsghdr.cmd (nl80211) */
+        g_last_cmd[fd] = (len >= 20) ? b[16] : 0;          /* genlmsghdr.cmd (nl80211) */
         g_last_txlen[fd] = (unsigned)len;
+        g_last_nlflags[fd] = *(const unsigned short*)(b+6);/* nlmsghdr.nlmsg_flags */
+        g_pending[fd] = (g_last_nlflags[fd] & 0x1 /*NLM_F_REQUEST*/) ? 1 : 0;
+        g_rx_since_tx[fd] = 0;
+        g_req_savelen[fd] = 0;
+        if (g_pending[fd] && len <= NSHIM_REQSAVE) {
+            if (!g_req_save[fd]) g_req_save[fd] = malloc(NSHIM_REQSAVE);
+            if (g_req_save[fd]) { memcpy(g_req_save[fd], buf, len); g_req_savelen[fd] = (unsigned)len; }
+        }
     }
     if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_PACKET && g_pktTx < 128) {
         char m[80]; snprintf(m, sizeof m, "shim: AF_PACKET TX len=%zu (dhcp-diag)", len); flog(m); g_pktTx++;
@@ -328,30 +389,54 @@ ssize_t recvfrom(int fd, void *buf, size_t len, int flags,
     if (!routed(fd)) return r_recvfrom(fd, buf, len, flags, addr, alen);
     uint32_t got=0, ga=0;
     /* Honor blocking semantics: for a BLOCKING socket (not O_NONBLOCK, no MSG_DONTWAIT), the
-     * provider's per-call 5s poll-timeout returning -EAGAIN must NOT surface to the app (libnl's
-     * blocking recvmsg mishandles it) — retry until data arrives.  For non-blocking, return EAGAIN. */
+     * provider's per-call 1s recv-poll (lkl-boot.c NSP_RECVFROM) returning -EAGAIN must NOT surface
+     * to the app (libnl's blocking recvmsg mishandles it) — retry until data arrives.  For
+     * non-blocking, return EAGAIN.  One retry ~= 1 second.
+     * LOST-REPLY RECOVERY: when a request is outstanding (g_pending) and NOTHING of its reply has
+     * arrived, a lost reply used to burn the full old 240-try cap (~4min of dead boot) before
+     * surfacing — now an idempotent read (nl_resendable) is simply RE-ISSUED after ~5s, and the
+     * outstanding-request cap is 60s.  Pure event waits (mcast listeners, nothing owed) keep the
+     * long 240s cap so a legitimately quiet blocking socket isn't broken. */
     int blocking = !g_nonblock[fd] && !(flags & 0x40 /*MSG_DONTWAIT*/);
+    int nlfd = (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK);
     long r;
     for (int tries = 0; ; tries++) {
         got = 0; ga = 0;
         r = nsp(NSP_RECVFROM, g_remote[fd], (int)len, 0, flags, 0,0,0,0,
                 buf,(uint32_t)len,&got, addr, addr&&alen?*alen:0, &ga);
-        if (r == -11 /*EAGAIN*/ && blocking && tries < 240) {
+        if (r == -11 /*EAGAIN*/ && blocking && tries < ((nlfd && g_pending[fd]) ? 60 : 240)) {
             /* M3 trace: NM's platform init is stuck here waiting for a reply that never comes.
              * Log which request (the last TX on this netlink fd) it is blocked on. */
-            if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && (tries == 1 || tries == 5 || tries == 30)) {
+            if (nlfd && (tries == 1 || tries == 5 || tries == 30)) {
                 char m[160]; snprintf(m,sizeof m,"nm-trace: STUCK fd=%d %d-EAGAIN waiting reply nlmsg_type=%u genl_cmd=%u len_last=%u prev_rx_true_len=%ld cap=%u%s",
                                       fd, tries, g_last_tx[fd], g_last_cmd[fd], g_last_txlen[fd], g_last_truelen[fd], (unsigned)NSP_HARDCAP,
                                       (g_last_truelen[fd] > (long)NSP_HARDCAP) ? " *** PREV RX EXCEEDED HARDCAP ***" : "");
                 flog(m);
                 shim_log(m);   /* genuine no-reply hang: surface it (bounded: only tries 1/5/30) */
             }
-            continue;   /* ~20min cap; data normally <5s */
+            /* Re-issue a lost idempotent request (same bytes = same nlmsg_seq, so the app's reply
+             * matching is untouched).  Only when NO part of the reply ever arrived — a mid-dump
+             * loss must NOT be re-sent (the app already consumed earlier parts; a re-run would
+             * duplicate them) and instead surfaces via the 60s cap. */
+            if (nlfd && g_pending[fd] && !g_rx_since_tx[fd] && g_req_savelen[fd] &&
+                (tries == 5 || tries == 20) && nl_resendable(fd)) {
+                char m[120]; snprintf(m,sizeof m,"nm-trace: RE-REQUEST fd=%d after %ds nlmsg_type=%u genl_cmd=%u (reply lost)",
+                                      fd, tries, g_last_tx[fd], g_last_cmd[fd]);
+                flog(m); shim_log(m);
+                nsp(NSP_SENDTO, g_remote[fd], 0,0,0, g_req_save[fd], g_req_savelen[fd], 0,0, 0,0,0,0,0,0);
+            }
+            continue;
         }
         break;
     }
-    /* record the true datagram length for the STUCK diagnostic (above) to report on a genuine hang. */
-    if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_NETLINK && r >= 0) g_last_truelen[fd] = r;
+    /* record the true datagram length for the STUCK diagnostic (above) to report on a genuine hang,
+     * and advance the lost-reply state machine: data arrived; a DONE/ERROR/non-MULTI message means
+     * the outstanding request has been fully answered. */
+    if (nlfd && r >= 0) {
+        g_last_truelen[fd] = r;
+        g_rx_since_tx[fd] = 1;
+        if (got && nl_reply_complete((const unsigned char*)buf, got)) g_pending[fd] = 0;
+    }
     if (fd >= 0 && fd < MAXFD && g_dom[fd] == AF_PACKET && r >= 0 && g_pktRx < 128) {
         char m[80]; snprintf(m, sizeof m, "shim: AF_PACKET RX len=%ld (dhcp-diag)", (long)r); flog(m); g_pktRx++;
     }
@@ -571,16 +656,49 @@ unsigned int if_nametoindex(const char *name)
     return (unsigned int)ifr.ifr_ifindex;
 }
 
-/* poll(): route each routed fd through NSP_POLL, real-poll the rest, loop until ready/timeout. */
+/* poll(): route each routed fd through NSP_POLL, real-poll the rest, loop until ready/timeout.
+ * EVENT-DRIVEN WAITING (WiFi boot-latency fix — the old loop r_poll'd locals with timeout 0 and
+ * flat-slept 10ms per round, taxing EVERY main-loop wakeup of NM/wpa/udhcpc with up to 10ms; over
+ * the thousands of netlink round-trips of NM's boot enumeration that summed to tens of seconds):
+ *  - ONE routed fd and NO locals (udhcpc's lease select, libnl waits): a provider-side BLOCKING
+ *    NSP_POLL (a1 = timeout, ppoll'd against the LKL fd) — readiness returns the instant it
+ *    happens, no quantum at all.  Sliced to 100ms so the mutex-serialized shared connection is
+ *    never held long (another thread's RPC interleaves between slices).
+ *  - MIXED set (NM's GLib loop: D-Bus/timer fds + routed netlink): non-blocking NSP_POLL rounds
+ *    for the routed fds, then wait INSIDE r_poll(locals) so a local event wakes us instantly and
+ *    is returned on the spot; the wait starts at 1ms (hot bring-up traffic) and backs off x2 to
+ *    50ms (idle) so routed readiness is seen within ~1ms when it matters without idle CPU churn
+ *    (idle NSP_POLL rounds: 20/s vs the old flat 100/s). */
 int poll(struct pollfd *fds, nfds_t nfds, int timeout)
 {
     resolve();
-    int any_routed = 0;
-    for (nfds_t i=0;i<nfds;i++) if (routed(fds[i].fd)) { any_routed = 1; break; }
-    if (!any_routed) return r_poll(fds, nfds, timeout);
+    int n_routed = 0, n_local = 0;
+    for (nfds_t i=0;i<nfds;i++) { if (routed(fds[i].fd)) n_routed++; else n_local++; }
+    if (!n_routed) return r_poll(fds, nfds, timeout);
 
     struct timespec start; clock_gettime(CLOCK_MONOTONIC, &start);
+    int wait_ms = 1;                                   /* adaptive: 1ms hot -> 50ms idle */
     for (;;) {
+        int remaining = -1;                            /* ms left; -1 = infinite */
+        if (timeout >= 0) {
+            struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
+            long el = (now.tv_sec-start.tv_sec)*1000 + (now.tv_nsec-start.tv_nsec)/1000000;
+            remaining = (timeout > el) ? (int)(timeout - el) : 0;
+        }
+
+        if (n_routed == 1 && n_local == 0 && timeout != 0) {
+            /* single routed fd, nothing local: block provider-side (fully event-driven) */
+            struct pollfd *f = &fds[0];
+            for (nfds_t i=0;i<nfds;i++) if (routed(fds[i].fd)) { f = &fds[i]; break; }
+            f->revents = 0;
+            int slice = (remaining < 0 || remaining > 100) ? 100 : remaining;
+            long rv = nsp(NSP_POLL, g_remote[f->fd], f->events, slice, 0, 0,0,0,0, 0,0,0,0,0,0);
+            if (rv > 0) { f->revents = (short)rv; return 1; }
+            if (rv < 0) { struct timespec nap = {0, 50000000L}; nanosleep(&nap, 0); }  /* dead provider: don't hot-spin */
+            if (remaining >= 0 && remaining <= slice) return 0;
+            continue;
+        }
+
         int ready = 0;
         for (nfds_t i=0;i<nfds;i++) {
             fds[i].revents = 0;
@@ -593,13 +711,29 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout)
             }
         }
         if (ready) return ready;
-        if (timeout == 0) return 0;
-        if (timeout > 0) {
-            struct timespec now; clock_gettime(CLOCK_MONOTONIC, &now);
-            long ms = (now.tv_sec-start.tv_sec)*1000 + (now.tv_nsec-start.tv_nsec)/1000000;
-            if (ms >= timeout) return 0;
+        if (timeout == 0 || remaining == 0) return 0;
+
+        int w = wait_ms;
+        if (remaining >= 0 && w > remaining) w = remaining;
+        if (n_local) {
+            /* wait ON the local fds: a local event (D-Bus message, GLib timerfd) ends the wait
+             * instantly and is reported right here, skipping a whole extra round. */
+            struct pollfd lp[64]; int ln = 0;
+            for (nfds_t i=0;i<nfds && ln<64;i++)
+                if (!routed(fds[i].fd)) { lp[ln].fd=fds[i].fd; lp[ln].events=fds[i].events; lp[ln].revents=0; ln++; }
+            int lr = r_poll(lp, (nfds_t)ln, w);
+            if (lr > 0) {
+                int nr = 0, k = 0;
+                for (nfds_t i=0;i<nfds;i++) {
+                    fds[i].revents = 0;
+                    if (!routed(fds[i].fd) && k < ln) { fds[i].revents = lp[k].revents; if (lp[k].revents) nr++; k++; }
+                }
+                if (nr) return nr;
+            }
+        } else {
+            struct timespec nap = { w/1000, (long)(w%1000)*1000000L }; nanosleep(&nap, 0);
         }
-        struct timespec nap = {0, 10000000L}; nanosleep(&nap, 0);   /* 10ms poll granularity */
+        if (wait_ms < 50) { wait_ms *= 2; if (wait_ms > 50) wait_ms = 50; }
     }
 }
 

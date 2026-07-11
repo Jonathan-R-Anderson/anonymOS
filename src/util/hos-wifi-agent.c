@@ -447,14 +447,16 @@ static void load_auto_creds(void){
 }
 
 /* Kick off the association from the boot creds when the radio is idle.  Throttled
- * (~15s between tries) and bounded so a persistently-failing PSK can't pile up
- * profiles; re-arms once the device actually connects. */
+ * (~5s = 1 cycle between tries: a retry against an idle radio is cheap, and the old
+ * ~15s spacing added dead time to every boot whose first attempt raced the scan)
+ * and bounded so a persistently-failing PSK can't pile up profiles; re-arms once
+ * the device actually connects. */
 static void auto_connect_tick(DBusConnection *c, int have, dbus_uint32_t st, int cycle){
     if (!have || !g_auto_ssid[0]) return;
     if (st == 100 /*NM_DEVICE_STATE_ACTIVATED*/){ g_auto_attempts = 0; return; }
     if (st != 30 /*DISCONNECTED*/ && st != 120 /*FAILED*/) return;  /* busy connecting */
     if (g_auto_attempts >= 8) return;
-    if (g_auto_attempts != 0 && (cycle - g_auto_last_cycle) < 3) return;
+    if (g_auto_attempts != 0 && (cycle - g_auto_last_cycle) < 1) return;
     g_auto_attempts++;
     g_auto_last_cycle = cycle;
     fprintf(stderr, "[wifi-agent] boot auto-connect attempt %d -> '%s' (dev state %u)\n",
@@ -494,15 +496,23 @@ int main(void){
     setenv("DBUS_SYSTEM_BUS_ADDRESS", "unix:path=/run/dbus/system_bus_socket", 1);
     DBusError e; dbus_error_init(&e);
     DBusConnection *c = 0;
-    for (int i=0;i<90 && !c;i++){
+    int bus_attempt = 0;
+    while (!c && (!g_demo_enabled || bus_attempt < 3)) {
+        bus_attempt++;
         c = dbus_bus_get(DBUS_BUS_SYSTEM, &e);
-        if (!c){ dbus_error_free(&e); dbus_error_init(&e); napms(1000); }
+        if (!c) {
+            /* A failed early connection must not permanently kill the only publisher
+             * of /run/wifi/networks.  The kernel intentionally launches us late now,
+             * but retain a low-frequency retry for unusually slow boots/restarts.
+             * Five seconds avoids the old agent+dbus CPU-hog retry storm. */
+            if (bus_attempt == 1 || bus_attempt % 12 == 0)
+                fprintf(stderr, "[wifi-agent] system bus not ready (attempt %d); retrying\n", bus_attempt);
+            dbus_error_free(&e);
+            dbus_error_init(&e);
+            napms(5000);
+        }
     }
     if (!c){
-        if (!g_demo_enabled){
-            fprintf(stderr, "[wifi-agent] no system bus; exiting (set HOS_WIFI_DEMO=1 for the test list)\n");
-            return 1;
-        }
         /* HOS_WIFI_DEMO: no system bus — run the demo loop so the Wi-Fi drop-down
          * still lists (fake) networks and select/connect works end-to-end for UI tests. */
         fprintf(stderr, "[wifi-agent] no system bus; entering demo mode\n");

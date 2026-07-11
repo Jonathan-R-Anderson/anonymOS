@@ -46,7 +46,7 @@ import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
 import core.namespace : nsSelfTest, nsStats, nsClone; // Phase 9: per-process namespaces
 import core.namespace : nsRestrictedSelfTest;          // DOMAIN_MANAGER DM2: deny-by-default proof
 import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
-                  userSetActiveSubject, USER_RIGHT_LOGIN, USER_RIGHT_SPAWN; // Phase 10 / IR-P3
+                  userRootObjId, userSetActiveSubject, USER_RIGHT_LOGIN, USER_RIGHT_SPAWN; // Phase 10 / IR-P3
 import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
 import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
 import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B update + rollback
@@ -1533,6 +1533,7 @@ private void maybeSpawnWpa() {
     spawnWaylandProgram("hos-wpa-launch\0".ptr, "[wpa]\0".ptr);
 }
 private __gshared bool g_nmStarted = false;
+private __gshared ulong g_nmStartedMs = 0;
 private void maybeSpawnNetworkManager() {
     if (g_skipNetForTest) return;
     if (g_nmStarted) return;
@@ -1540,6 +1541,7 @@ private void maybeSpawnNetworkManager() {
     if (!g_dbusStarted) return;                                        // system bus must be up first
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
     g_nmStarted = true;
+    g_nmStartedMs = pitMs();
     klog("[nm] M2b: dbus + net-provider live -> launching hos-nm-launch -> NetworkManager under the shim\n");
     spawnWaylandProgram("hos-nm-launch\0".ptr, "[nm]\0".ptr);
 }
@@ -1547,23 +1549,32 @@ private void maybeSpawnNetworkManager() {
 // M6: the Wi-Fi menu's D-Bus engine.  Once NM is up, hos-wifi-agent (libdbus) polls NM for the Wi-Fi
 // device + access points and bridges them to /run/wifi/networks (+ processes /run/wifi/connect), so the
 // Wayland menu stays a pure file renderer.  It only speaks D-Bus (native AF_UNIX to our dbus-daemon) so
-// it needs neither LD_PRELOAD nor the net-provider; it retries the bus for ~90s so early spawn is fine.
+// it needs neither LD_PRELOAD nor the net-provider.
 private __gshared bool g_wifiAgentStarted = false;
-private __gshared int  g_wifiAgentDelay   = 0;
 private void maybeSpawnWifiAgent() {
     if (g_skipNetForTest) return;
     if (g_wifiAgentStarted) return;
     if (debugNetBootPresent()) return;   // debug boot: agent would spin against the bypassed NM -> freezes
     if (g_wifiBridgePresent) return;   // the COM2 host-WiFi bridge owns /run/wifi/* — no demo agent
-    // Gate on dbus only (NOT g_nmStarted): the agent retries the bus for 90s, falls back
-    // to a demo network list when NM / the wifi device is absent, and picks up real NM
-    // data the moment it appears — so the Wi-Fi drop-down stays populated and selectable
-    // even on boots where the NM launch chain (provider socket) wedges and NM never runs.
+    // Do not start it merely because the dbus launcher was spawned: dbus-daemon may
+    // not be accepting/authenticating clients yet, and an early dbus_bus_get() used
+    // to wedge the agent + daemon before NM had registered.
     if (!g_dbusStarted) return;
-    if (g_wifiAgentDelay++ < 60) return;   // small head start so NM can own the bus name
+    if (!g_nmStarted || g_nmStartedMs == 0) return;
+    /* The reconcile loop runs thousands of times per second, so the old 60-iteration
+     * "head start" was only milliseconds.  Use the real PIT millisecond clock and let
+     * dbus + NM finish their expensive netlink/platform initialization first. */
+    if (pitMs() - g_nmStartedMs < 20_000) return;
     g_wifiAgentStarted = true;
     klog("[wifi] M6: launching hos-wifi-agent -> /run/wifi/networks (NM<->menu D-Bus bridge)\n");
-    spawnWaylandProgram("hos-wifi-agent\0".ptr, "[wifiag]\0".ptr);
+    if (spawnWaylandProgram("hos-wifi-agent\0".ptr, "[wifiag]\0".ptr)) {
+        /* This is a trusted boot service, not the desktop user.  NetworkManager
+         * runs without polkit and therefore authorizes connection changes only
+         * from uid 0.  Give just this agent the root User subject; device access
+         * remains independently capability-gated by DEVCLASS_NET. */
+        const int agentTid = cast(int)g_current_task_id;
+        if (agentTid > 0) g_tasks[agentTid].userObjId = userRootObjId();
+    }
 }
 // External DHCP: NM's in-process n-dhcp4 stalls before ever sending a DISCOVER (its nested epoll+timerfd
 // never fires here), so a standalone busybox udhcpc gets the lease instead (proven: full

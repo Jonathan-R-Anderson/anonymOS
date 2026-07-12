@@ -112,6 +112,8 @@ enum FileType {
     FD_HW_DETECT,        // DRIVERS: /config/hardware.detect — reads return the detected driver codes (PCI)
     FD_FB,               // /dev/fb0 — read the composited framebuffer (screenshot); FBIOGET_VSCREENINFO
     FD_KLOG,             // /run/klog — live read-only view of the kernel log RAM ring (core.io g_klogRing)
+    FD_UPDATE_CTL,       // UPDATE U1: /config/update.action — writes drive the A/B update engine
+    FD_UPDATE_STATUS,    // UPDATE U1: /config/update.status — reads return the update-engine JSON
 }
 
 struct File {
@@ -1782,13 +1784,15 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)done;
     }
 
-    // INSTALLER §D: /config/install.progress — return the install progress as a 0..1000 permille
-    // decimal string (then EOF), so the installer GUI can poll it and draw a progress bar.
+    // INSTALLER §D: /config/install.progress — the install progress as a decimal string (then
+    // EOF), polled by the installer GUI: -1 = FAILED, 0 = never started, 1..1000 permille.
     if (f.type == FileType.FD_INSTALL_PROGRESS) {
         import drivers.veracrypt_impl : installProgressPermille;
         if (f.offset > 0 || _buf is null) return 0;
         char[8] d; int n = 0;
-        uint v = installProgressPermille();
+        const int sv = installProgressPermille();
+        uint v = (sv < 0) ? cast(uint)(-sv) : cast(uint)sv;
+        if (sv < 0) d[n++] = '-';
         if (v == 0) { d[n++] = '0'; }
         else { char[8] r; int rn = 0; uint x = v; while (x > 0) { r[rn++] = cast(char)('0' + x % 10); x /= 10; } while (rn > 0) d[n++] = r[--rn]; }
         d[n++] = '\n';
@@ -1797,6 +1801,24 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         foreach (i; 0 .. w) buffer[i] = cast(ubyte)d[cast(size_t)i];
         f.offset += w;
         return cast(ssize_t)w;
+    }
+
+    // UPDATE U1: /config/update.status — render the update-engine JSON once, stream on
+    // successive reads (offset-based), EOF at end.  Small (<512B), so a static buffer.
+    if (f.type == FileType.FD_UPDATE_STATUS) {
+        import core.sysupdate : updateStatusRender;
+        if (_buf is null) return negErrno(EFAULT);
+        __gshared char[512] ubuf;
+        __gshared long ulen = -1;
+        if (f.offset == 0) ulen = updateStatusRender(ubuf.ptr, ubuf.length);
+        if (ulen < 0) return 0;
+        if (f.offset >= cast(ulong)ulen) return 0;               // caught up → EOF
+        const ulong avail = cast(ulong)ulen - f.offset;
+        const ulong want  = (_count < avail) ? _count : avail;
+        auto dst = cast(ubyte*)_buf;
+        foreach (i; 0 .. want) dst[i] = cast(ubyte)ubuf[cast(size_t)(f.offset + i)];
+        f.offset += want;
+        return cast(ssize_t)want;
     }
 
     // DRIVERS: /config/hardware.detect — return the comma-separated Linux driver codes for the PCI
@@ -2159,6 +2181,15 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
     if (f.type == FileType.FD_INSTALL_CTL) {
         import drivers.veracrypt_impl : installControlWrite;
         installControlWrite(cast(const(char)*)buf, cast(size_t)count);
+        return cast(ssize_t)count;
+    }
+
+    // UPDATE U1: a write to /config/update.action drives the A/B update engine (Settings
+    // System Update page).  Like install.action the fd-level write always succeeds; the
+    // verb's accept/reject is observable in /config/update.status + the [update] log.
+    if (f.type == FileType.FD_UPDATE_CTL) {
+        import core.sysupdate : updateControlWrite;
+        updateControlWrite(cast(const(char)*)buf, cast(size_t)count);
         return cast(ssize_t)count;
     }
 
@@ -3081,6 +3112,30 @@ public int sys_open(const(char)* path, int flags) {
     if (cstrEq(path, "/config/install.progress")) {
         if ((flags & 3) != O_RDONLY) return negErrno(EACCES);   // read-only
         g_fdTable[fd].type     = FileType.FD_INSTALL_PROGRESS;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        return publishActiveFdReturn(fd);
+    }
+
+    // UPDATE U1: /config/update.action — the A/B update engine CONTROL-WRITE file (mirrors
+    // install.action).  Writes are verbs: switch / rollback / boot-ok / status / init-state.
+    if (cstrEq(path, "/config/update.action")) {
+        if ((flags & 3) == O_RDONLY) return negErrno(EACCES);   // write-only control endpoint
+        g_fdTable[fd].type     = FileType.FD_UPDATE_CTL;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        return publishActiveFdReturn(fd);
+    }
+
+    // UPDATE U1: /config/update.status — read-only; returns the update-engine state as JSON
+    // (version, boot slot, A/B state, last verb outcome) for the Settings System Update page.
+    if (cstrEq(path, "/config/update.status")) {
+        if ((flags & 3) != O_RDONLY) return negErrno(EACCES);   // read-only
+        g_fdTable[fd].type     = FileType.FD_UPDATE_STATUS;
         g_fdTable[fd].flags    = flags;
         g_fdTable[fd].offset   = 0;
         g_fdTable[fd].backend  = null;

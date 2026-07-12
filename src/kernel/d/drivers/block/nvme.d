@@ -217,8 +217,9 @@ private bool submitCommand(ref NVMeQueue q, ref NVMeCmd cmd, NVMeCpl* outCpl)
 {
     ushort cid = cast(ushort)q.sqTail;
 
-    cmd.cdw0 &= 0xFFFF0000u;
-    cmd.cdw0 |= cid;
+    // CDW0 layout: opcode [7:0], fuse [9:8], psdt [15:14], CID [31:16].
+    cmd.cdw0 &= 0x0000FFFFu;
+    cmd.cdw0 |= cast(uint)cid << 16;
 
     q.sq[q.sqTail] = cmd;
 

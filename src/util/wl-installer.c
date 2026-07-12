@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <math.h>
 #include <pango/pangocairo.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -364,11 +365,48 @@ static void list_row_rect(struct app *app, int visible_pos,
 
 /* ── helpers ───────────────────────────────────────────────────────────────── */
 
+/* Install log: every line goes to stdout AND /run/installer.log.  The kernel
+ * mirrors each write to a /run *.log file into the klog ring, so these lines
+ * show LIVE in the desktop Logs app (filter "INSTALLER") and stay readable as
+ * a plain file until reboot.  One persistent fd — the kernel fd pool is tiny
+ * (same lesson as wl-files' create_buffer_once). */
+static int g_ilog_fd = -2;
+
+static void ilog(const char *fmt, ...)
+{
+    char line[512];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(line, sizeof line - 2, fmt, ap);
+    va_end(ap);
+    if (n < 0)
+        return;
+    if (n > (int)sizeof line - 2)
+        n = (int)sizeof line - 2;
+    line[n++] = '\n';
+    line[n] = 0;
+    if (g_ilog_fd == -2)
+        g_ilog_fd = open("/run/installer.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (g_ilog_fd >= 0) {
+        /* runtime .log writes mirror into klog, so skip stdout to avoid double lines */
+        const char *p = line;
+        size_t left = (size_t)n;
+        while (left > 0) {
+            ssize_t w = write(g_ilog_fd, p, left);
+            if (w <= 0)
+                break;
+            p += w;
+            left -= (size_t)w;
+        }
+    } else {
+        fputs(line, stdout);
+        fflush(stdout);
+    }
+}
+
 static void log_line(const char *s)
 {
-    fputs(s, stdout);
-    fputc('\n', stdout);
-    fflush(stdout);
+    ilog("%s", s);
 }
 
 static void set_field(struct app *app, int field, const char *value)
@@ -557,13 +595,17 @@ static void load_disks(struct app *app)
 {
     app->disk_count = 0;
     int fd = open("/config/disks.json", O_RDONLY);
-    if (fd < 0)
+    if (fd < 0) {
+        ilog("INSTALLER: ERROR /config/disks.json open failed (errno=%d) -- no install targets", errno);
         return;
+    }
     char buf[4096];
     ssize_t n = read(fd, buf, sizeof(buf) - 1);
     close(fd);
-    if (n <= 0)
+    if (n <= 0) {
+        ilog("INSTALLER: ERROR /config/disks.json empty read (n=%zd errno=%d)", n, errno);
         return;
+    }
     buf[n] = 0;
 
     const char *p = buf;
@@ -575,20 +617,23 @@ static void load_disks(struct app *app)
         d->index = (int)strtol(ix + 8, NULL, 10);
         const char *sm = strstr(ix, "\"sizeMiB\":");
         d->size_mib = sm ? strtol(sm + 10, NULL, 10) : 0;
-        const char *rl = strstr(ix, "\"role\":\"");
+        const char *rl = strstr(ix, "\"role\":");
         d->role[0] = 0;
         if (rl) {
-            rl += 8;
+            rl += 7;
+            while (*rl == ' ') rl++;
+            if (*rl == '"') rl++;
             int k = 0;
             while (*rl && *rl != '"' && k < (int)sizeof(d->role) - 1)
                 d->role[k++] = *rl++;
             d->role[k] = 0;
         }
         app->disk_count++;
+        ilog("INSTALLER: disk %d: %ld MiB (%s)", d->index, d->size_mib,
+             d->role[0] ? d->role : "available");
         p = sm ? sm + 10 : ix + 8;
     }
-    printf("INSTALLER: enumerated %d disk(s) from /config/disks.json\n", app->disk_count);
-    fflush(stdout);
+    ilog("INSTALLER: enumerated %d disk(s) from /config/disks.json", app->disk_count);
 }
 
 /* Disk page rows: row 0 is Automatic, rows 1..N are the enumerated disks. */
@@ -1596,7 +1641,7 @@ static void draw_progress(struct app *app, cairo_t *cr)
     const char *line1, *line2;
     if (app->install_failed) {
         line1 = "Installation failed.";
-        line2 = "Check the serial log for the [install] FAIL reason, then retry from the live installer.";
+        line2 = "Open the Logs app (top bar) and filter 'install' -- full log: /run/installer.log";
     } else if (app->install_done) {
         line1 = "Installation complete.";
         line2 = "Power off, remove the install medium, then boot the disk.";
@@ -1834,6 +1879,11 @@ static void install_step(struct app *app)
         ssize_t wn = write(fd, app->install_cmd, n);
         (void)wn;
         close(fd);
+    } else {
+        ilog("INSTALLER: ERROR /config/install.action open failed mid-install (errno=%d)", errno);
+        app->install_failed = 1;
+        app->installing = 0;
+        return;
     }
     int pf = open("/config/install.progress", O_RDONLY);
     if (pf >= 0) {
@@ -1842,22 +1892,40 @@ static void install_step(struct app *app)
         close(pf);
         if (n > 0) {
             b[n] = 0;
+            /* Kernel status contract: -1 = FAILED, 0 = never started,
+             * 1..1000 = permille (floored at 1 while active, so a Hidden OS
+             * whole-disk randomization is distinguishable from a dead start). */
             int next = atoi(b);
-            if (next < 0) next = 0;
             if (next > 1000) next = 1000;
-            if (app->installing && next == 0 && app->progress > 0 && app->progress < 1000) {
-                app->install_failed = 1;
-                app->installing = 0;
-            } else if (app->installing && next == 0 && app->progress == 0) {
-                if (++app->install_zero_reads > 3) {
+            if (next < 0) {
+                if (app->installing) {
+                    ilog("INSTALLER: FAILED at %d.%d%% -- kernel refused/aborted the install; "
+                         "open the Logs app and filter 'install' for the [install] FAIL reason",
+                         app->progress / 10, app->progress % 10);
                     app->install_failed = 1;
                     app->installing = 0;
                 }
             } else {
-                app->install_zero_reads = 0;
+                if (app->installing && next == 0) {
+                    if (++app->install_zero_reads > 3) {
+                        ilog("INSTALLER: FAILED -- install never started (progress stayed 0 after %d polls); "
+                             "not an install boot?; open the Logs app and filter 'install'",
+                             app->install_zero_reads);
+                        app->install_failed = 1;
+                        app->installing = 0;
+                    }
+                } else {
+                    app->install_zero_reads = 0;
+                }
+                if (next / 10 != app->progress / 10 && next > 0 && next < 1000)
+                    ilog("INSTALLER: progress %d%%", next / 10);
+                app->progress = next;
             }
-            app->progress = next;
+        } else {
+            ilog("INSTALLER: warn /config/install.progress read returned %zd (errno=%d)", n, errno);
         }
+    } else {
+        ilog("INSTALLER: ERROR /config/install.progress open failed (errno=%d)", errno);
     }
 }
 
@@ -1999,23 +2067,30 @@ static int write_install_config(struct app *app)
     char json[INSTALL_CONFIG_MAX];
     char command[INSTALL_CONFIG_MAX + 8];
     const size_t json_len = build_install_config(app, json, sizeof json);
-    if (json_len == 0)
+    if (json_len == 0) {
+        ilog("INSTALLER: ERROR install config build produced 0 bytes");
         return 0;
+    }
 
     int fd = open("/tmp/install.json", O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (fd >= 0) {
         write_all_len(fd, json, json_len);
         close(fd);
+    } else {
+        ilog("INSTALLER: warn /tmp/install.json open failed (errno=%d)", errno);
     }
 
     memcpy(command, "config ", 7);
     memcpy(command + 7, json, json_len);
     int cfd = open("/config/install.action", O_WRONLY);
-    if (cfd < 0)
+    if (cfd < 0) {
+        ilog("INSTALLER: ERROR /config/install.action open failed (errno=%d) -- not an install boot?", errno);
         return 0;
+    }
     write_all_len(cfd, command, json_len + 7);
     close(cfd);
     app->install_config_written = 1;
+    ilog("INSTALLER: install config sent (%zu bytes json)", json_len);
     return 1;
 }
 
@@ -2030,6 +2105,8 @@ static void start_install(struct app *app)
         snprintf(app->install_cmd, sizeof app->install_cmd, "install %d", app->target_index);
     }
 
+    ilog("INSTALLER: START install: cmd='%s' encryption=%s target_sel=%d disk=%ld MiB",
+         app->install_cmd, encryption_name(app), app->target_sel, selected_disk_mib(app));
     int config_ok = write_install_config(app);
     app->screen = SCREEN_PROGRESS;
     app->progress = 0;
@@ -2040,16 +2117,14 @@ static void start_install(struct app *app)
         close(fd);
         app->installing = 1;
         app->install_failed = 0;
-        printf("INSTALLER: starting install (%s encryption, target=%s)\n",
-               encryption_name(app), app->install_cmd);
     } else {
         if (fd >= 0)
             close(fd);
         app->installing = 0;
         app->install_failed = 1;
-        printf("INSTALLER: no /config/install.action (boot hos-install.iso)\n");
+        ilog("INSTALLER: FAILED before start: %s -- boot hos-install.iso; see Logs app, filter 'install'",
+             config_ok ? "no /config/install.action" : "config send failed");
     }
-    fflush(stdout);
     redraw_commit(app, "install-info");
 }
 
@@ -2072,6 +2147,7 @@ static int order_index_of(int s)
 
 static void enter_screen(struct app *app)
 {
+    ilog("INSTALLER: screen -> %s", screen_title(app));
     app->list_scroll = 0;
     app->content_scroll = 0;
     focus_first_field(app);
@@ -2937,7 +3013,7 @@ int main(void)
                 app.install_done = 1;
                 redraw_commit(&app, "install-done");
                 wl_display_roundtrip(app.display);
-                printf("INSTALLER: install complete (100%%)\n");
+                ilog("INSTALLER: install complete (100%%)");
             }
             continue;
         }

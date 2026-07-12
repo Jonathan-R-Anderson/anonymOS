@@ -565,7 +565,13 @@ public long configfsRender(int id, char* buf, size_t buflen) {
             for (uint t = 1; t < ObjType.Count; ++t) objTotal += objCountType(cast(ObjType)t);
             uint nsCount = 0;  foreach (ref ns; g_namespaces) if (ns.inUse) ++nsCount;
             uint svcCount = 0; foreach (ref s; g_svcs)        if (s.inUse) ++svcCount;
+            import core.sysversion : SYSTEM_VERSION, SYSTEM_VERSION_STRING, SYSTEM_CHANNEL, g_bootSlot;
             lit(b, "{\n  \"kernel\": \"EpinAnonymOS\",\n  \"model\": \"object-capability\",\n");
+            lit(b, "  \"version\": ");        num(b, SYSTEM_VERSION);
+            lit(b, ",\n  \"versionString\": \""); lit(b, SYSTEM_VERSION_STRING); lit(b, "\"");
+            lit(b, ",\n  \"channel\": \"");   lit(b, SYSTEM_CHANNEL); lit(b, "\"");
+            lit(b, ",\n  \"slot\": \"");      put(b, g_bootSlot); lit(b, "\"");
+            lit(b, ",\n");
             lit(b, "  \"installed\": "); lit(b, installConfigPresent() ? "true" : "false");
             lit(b, ",\n");
             lit(b, "  \"objects\": ");    num(b, objTotal);
@@ -701,11 +707,18 @@ public long configfsRender(int id, char* buf, size_t buflen) {
             // (index + size + a role hint).  Read-only; the kernel owns block I/O, so
             // the GUI never touches raw devices — it just chooses an index to install to.
             import drivers.block.ahci : g_ahciDevices;
-            import drivers.block.disk : diskStoreIndex;
+            import drivers.block.disk : diskStoreIndex, diskIsNvme, diskSectors;
             ulong storeSec = 0;
             const int storeIdx = diskStoreIndex(storeSec);
             lit(b, "{ \"disks\": [\n"); bool first = true;
-            foreach (uint i; 0 .. cast(uint)g_ahciDevices.length) {
+            if (diskIsNvme()) {
+                // NVMe machines expose ONE disk at index 0 (disk.d backend convention).
+                lit(b, "  { \"index\": 0, \"sizeMiB\": "); num(b, diskSectors() / 2048);
+                lit(b, ", \"role\": \""); lit(b, (storeIdx == 0) ? "store" : "target"); put(b, '"');
+                lit(b, " }");
+                first = false;
+            }
+            else foreach (uint i; 0 .. cast(uint)g_ahciDevices.length) {
                 auto d = g_ahciDevices[i];
                 if (!d.present || d.type != 1 || d.capacity == 0) continue; // SATA data disks only
                 if (!first) lit(b, ",\n"); first = false;
@@ -746,6 +759,19 @@ public void configPackagesDump() {
     if (n < 0) { klog("[pkg] /config/packages.json render FAIL\n"); return; }
     klog("[pkg] /config/packages.json render OK: "); klog_hex(cast(ulong)pkgRepoCount());
     klog(" packages, "); klog_hex(cast(ulong)n); klog(" bytes\n");
+}
+
+// INSTALLER: one-shot boot proof of the /config/disks.json install-target view — the
+// full JSON, so "installer sees no disks" is diagnosable from klog alone (no GUI).
+__gshared bool g_disksDumped = false;
+public void configDisksDump() {
+    if (g_disksDumped) return;
+    g_disksDumped = true;
+    const long n = configfsRender(CFG_DISKS, g_domDumpBuf.ptr, g_domDumpBuf.length - 1);
+    if (n < 0) { klog("[install] /config/disks.json render FAIL\n"); return; }
+    g_domDumpBuf[cast(size_t)n] = '\0';
+    klog("[install] /config/disks.json: ");
+    klog(g_domDumpBuf.ptr);
 }
 
 // DOMAIN_MANAGER DM0.d: one-shot boot proof that /objects/domains/<name>/{meta,

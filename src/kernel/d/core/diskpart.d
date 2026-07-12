@@ -95,6 +95,57 @@ struct GptLayout {
     ulong rootFirst, rootLast;     // Linux root partition LBA range (2-partition layout)
     ulong sysFirst, sysLast;       // §E encrypted system (decoy OS) partition (3-partition)
     ulong outerFirst, outerLast;   // §E outer-volume partition (holds the hidden volume)
+    // UPDATE U1-B A/B layout: ESP-boot (arbiter) + slot-A + slot-B partitions.
+    ulong bootEspFirst, bootEspLast;
+    ulong slotAFirst, slotBFirst;
+}
+
+private ulong align2048(ulong x) { return (x + 2047) & ~cast(ulong)2047; }
+
+// Build + commit the UPDATE U1 A/B GPT: partition 0 = ESP-boot (type ESP → the ONLY
+// firmware-bootable partition, holds the slot-arbiter), partitions 1 & 2 = slot-A and
+// slot-B (type MS-Basic-Data FAT32 → firmware won't auto-boot them, but its FAT driver
+// still mounts them for the arbiter to chainload). The boot-state sector lives at the
+// FIXED LBA 34 in the pre-partition gap (partitions start at 2048), matching
+// core.bootstate.BOOTSTATE_LBA and the arbiter's hardcoded read.
+bool gptWriteABToDisk(int diskIdx, ulong diskSectors, ulong bootEspSectors,
+                      ulong espSectors, ref GptLayout L) {
+    L.diskSectors = diskSectors;
+    L.bootEspFirst = 2048;
+    L.bootEspLast  = L.bootEspFirst + bootEspSectors - 1;
+    L.slotAFirst   = align2048(L.bootEspLast + 1);
+    L.espFirst     = L.slotAFirst;                       // default ESP = slot-A (config persist target)
+    L.espLast      = L.slotAFirst + espSectors - 1;
+    L.slotBFirst   = align2048(L.espLast + 1);
+    const ulong slotBLast = L.slotBFirst + espSectors - 1;
+    const ulong lastUse = (diskSectors - 1) - 1 - ENTRY_SECTORS;
+    if (slotBLast > lastUse) return false;               // disk too small for A/B
+
+    __gshared ubyte[PRIMARY_SECTORS * SECTOR] pbuf;
+    foreach (i; 0 .. PRIMARY_SECTORS * SECTOR) pbuf[i] = 0;
+    ubyte* ents = pbuf.ptr + 2 * SECTOR;
+    const ulong baseSeed = rdtscSeed();
+    void writeEntry(uint idx, const ubyte[16] typeGuid, ulong first, ulong last, ulong seed) {
+        ubyte* e = ents + idx * GPT_ENTSZ;
+        foreach (i; 0 .. 16) e[i] = typeGuid[i];
+        fillGuid(e + 16, seed);
+        put64(e, 32, first); put64(e, 40, last); put64(e, 48, 0);
+    }
+    writeEntry(0, GUID_ESP,           L.bootEspFirst, L.bootEspLast, baseSeed);
+    writeEntry(1, GUID_MS_BASIC_DATA, L.slotAFirst,   L.espLast,     baseSeed + 0x100);
+    writeEntry(2, GUID_MS_BASIC_DATA, L.slotBFirst,   slotBLast,     baseSeed + 0x200);
+    gptFinalize(pbuf.ptr, diskSectors, baseSeed);
+
+    const ulong lastLba = diskSectors - 1;
+    if (!diskWriteSectorsOn(diskIdx, 0, PRIMARY_SECTORS, pbuf.ptr)) return false;
+    if (!diskWriteSectorsOn(diskIdx, lastLba - ENTRY_SECTORS, ENTRY_SECTORS, pbuf.ptr + 2 * SECTOR))
+        return false;
+    __gshared ubyte[SECTOR] bhdr;
+    foreach (i; 0 .. SECTOR) bhdr[i] = (pbuf.ptr + SECTOR)[i];
+    put64(bhdr.ptr, 24, lastLba); put64(bhdr.ptr, 32, 1); put64(bhdr.ptr, 72, lastLba - ENTRY_SECTORS);
+    put32(bhdr.ptr, 16, 0); put32(bhdr.ptr, 16, crc32(bhdr.ptr, 92));
+    if (!diskWriteSectorsOn(diskIdx, lastLba, 1, bhdr.ptr)) return false;
+    return true;
 }
 
 // Build the PRIMARY GPT region — protective MBR (LBA0) + GPT header (LBA1) +

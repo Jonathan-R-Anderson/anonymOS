@@ -14,25 +14,28 @@ ESP_MB="${1:-320}"
 BOOTX64="deps/bdepend/boot/limine-bin/BOOTX64.EFI"
 PREBOOT_EFI="deps/veracrypt/build/preboot.efi"
 STAGE2_EFI="deps/veracrypt/build/stage2.efi"
+ARBITER_EFI="build/arbiter.efi"   # UPDATE U1-C slot-arbiter (make -C boot/arbiter)
 LIMCONF="cd/boot/limine/limine.conf"
 
 [ -d cd ] || { echo "cd/ not found — run 'make stage-iso-tree' first (or just use 'make iso')" >&2; exit 1; }
 [ -f "$BOOTX64" ] || { echo "$BOOTX64 not found" >&2; exit 1; }
 [ -f "$PREBOOT_EFI" ] || { echo "$PREBOOT_EFI not found — run 'make veracrypt-efi'" >&2; exit 1; }
 [ -f "$STAGE2_EFI" ] || { echo "$STAGE2_EFI not found — run 'make veracrypt-efi'" >&2; exit 1; }
+[ -f "$ARBITER_EFI" ] || { echo "$ARBITER_EFI not found — run 'make arbiter-efi'" >&2; exit 1; }
 
 echo "==== mk-install-iso: building installed-OS ESP images (${ESP_MB} MiB) ===="
 
 # 1. idempotency: drop any prior payload + its module line so the image we build is the
 #    pristine installed OS (NOT itself carrying the installer payload).
-rm -f cd/esp-image cd/esp-hidden-image esp.img hidden-esp.img
+rm -f cd/esp-image cd/esp-hidden-image cd/esp-boot-image esp.img hidden-esp.img esp-boot.img
 sed -i '\#module_path: boot():/esp-image#d' "$LIMCONF"
 sed -i '\#module_path: boot():/esp-hidden-image#d' "$LIMCONF"
+sed -i '\#module_path: boot():/esp-boot-image#d' "$LIMCONF"
 
 ESP_ROOT="$(mktemp -d)"
 INSTALL_PLACEHOLDER="$(mktemp)"
 INSTALL_LIMCONF="$(mktemp)"
-cleanup_install_tmp() { rm -rf "$ESP_ROOT"; rm -f "$INSTALL_PLACEHOLDER" "$INSTALL_LIMCONF" esp.img hidden-esp.img; }
+cleanup_install_tmp() { rm -rf "$ESP_ROOT"; rm -f "$INSTALL_PLACEHOLDER" "$INSTALL_LIMCONF" esp.img hidden-esp.img esp-boot.img; }
 trap cleanup_install_tmp EXIT
 
 cp -a cd/. "$ESP_ROOT"/
@@ -71,6 +74,15 @@ mcopy -i esp.img "$BOOTX64" ::/EFI/BOOT/BOOTX64.EFI
 add_install_placeholder esp.img
 
 echo "  esp.img: $(du -h esp.img | cut -f1) (boot tree ${USED_MB} MiB + BOOTX64.EFI + install.json placeholder)"
+
+# 2b. UPDATE U1: the ESP-boot image — a tiny FAT32 ESP holding ONLY the slot-arbiter as
+#     \EFI\BOOT\BOOTX64.EFI. The installer streams this to GPT partition 0 (the only ESP-
+#     typed partition → the one firmware boots); the arbiter then chainloads slot A or B.
+dd if=/dev/zero of=esp-boot.img bs=1M count=8 status=none
+mkfs.fat -F 32 -n EPINBOOT esp-boot.img >/dev/null
+mmd -i esp-boot.img ::/EFI ::/EFI/BOOT
+mcopy -i esp-boot.img "$ARBITER_EFI" ::/EFI/BOOT/BOOTX64.EFI
+echo "  esp-boot.img: $(du -h esp-boot.img | cut -f1) (arbiter.efi as \\EFI\\BOOT\\BOOTX64.EFI)"
 
 # 3. build the Hidden OS ESP image: same scrubbed boot tree, but the UEFI entrypoint
 #    is the VeraCrypt-style preboot authenticator, with its chain-loaded stage2 present.

@@ -6,6 +6,7 @@ import core.task;
 import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN, HOSQ_WAIT;   // Track B0 / Z4a–b native ABI
 import core.hoscall : configDomainsDump, domObjViewDump, domFsViewDump;   // DOMAIN_MANAGER DM0/DM2.4 boot proofs
 import core.hoscall : configPackagesDump;                                 // DOMAIN_MANAGER DM7 packages view proof
+import core.hoscall : configDisksDump;                                    // INSTALLER disks view proof
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -1449,7 +1450,13 @@ private void maybeSpawnLklTest() {
     if (ngrant == 0) {
         // Fallback demo (no WiFi + no xHCI): a GPU/NVMe if present (opt-in LKL_GPU=1 / LKL_NVME=1 in QEMU).
         uint fb = findDeviceByClass(0x0380);
-        if (fb == 0xFFFFFFFF) fb = findDeviceByClass(0x0108);
+        if (fb == 0xFFFFFFFF) {
+            // NEVER steal the NVMe the native disk layer owns (install target / object
+            // store): LKL's nvme driver resets the controller, killing the native
+            // driver's queues -> every disk write times out -> installer FAIL (gpt).
+            import drivers.block.disk : diskIsNvme;
+            if (!diskIsNvme()) fb = findDeviceByClass(0x0108);
+        }
         if (fb == 0xFFFFFFFF) {
             klog("[lkl] no driveable PCI device (WiFi/xHCI/GPU/NVMe) -> not launching lkl-boot\n");
             return;
@@ -4037,6 +4044,16 @@ void d_kernel_main() {
     domDeviceProof();            // DOMAIN_MANAGER DM8: §7 device-class enforcement (deviceClassGate)
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
+    configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)
+    { import core.sysupdate : updateAdoptBootSlot; updateAdoptBootSlot(); } // UPDATE U1: read A/B boot-state → g_bootSlot
+    { import core.sysversion : updateVersionProof; updateVersionProof(); } // UPDATE U0: version identity proof
+    {   // UPDATE U1: prove the boot-state on-disk contract, but only on a scratch/install
+        // target — never round-trip a real installed system's live boot-state sector.
+        import drivers.veracrypt_impl : bootHasInstallPayload;
+        import core.bootstate : bootStateSelfTest;
+        import core.sysupdate : updateEngineSelfTest;
+        if (bootHasInstallPayload()) { bootStateSelfTest(); updateEngineSelfTest(); }
+    }
     domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
     templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback
     domInheritProof();           // DOMAIN_MANAGER DM9: template inheritance least-privilege merge

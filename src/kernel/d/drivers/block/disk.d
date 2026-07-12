@@ -75,9 +75,22 @@ public void diskInit()
         g_backend = DiskBackend.nvme;
 
         uint bs = nvmeBlockSize();
-        if (bs == 0)
+        if (bs != SECTOR)
         {
-            klog("[disk] NVMe block size invalid\n");
+            // The whole disk layer speaks 512-byte LBAs; a 4K-native namespace
+            // would silently corrupt LBA math, so refuse it loudly instead.
+            klog("[disk] NVMe LBA size unsupported (need 512): 0x");
+            klog_hex(bs);
+            klog("\n");
+            return;
+        }
+
+        // NVMe DMA needs PHYSICAL addresses; callers hand us kernel-virtual
+        // buffers, so all I/O bounces through this DMA-safe buffer.
+        g_bounceVirt = dma_alloc(BOUNCE_BYTES, 4096, &g_bouncePhys);
+        if (g_bounceVirt is null)
+        {
+            klog("[disk] bounce buffer alloc failed\n");
             return;
         }
 
@@ -145,14 +158,19 @@ private bool diskWriteAhci(ulong lba, uint count, const(void)* src)
 
 private bool diskReadNvme(ulong lba, uint count, void* dst)
 {
+    if (g_bounceVirt is null)
+        return false;
+
     ubyte* out_ = cast(ubyte*)dst;
 
     while (count > 0)
     {
         ushort chunk = cast(ushort)(count > NVME_MAX_SECTORS ? NVME_MAX_SECTORS : count);
 
-        if (!nvmeReadBlocks(lba, chunk, cast(size_t)out_))
+        if (!nvmeReadBlocks(lba, chunk, g_bouncePhys))
             return false;
+
+        memcpy(out_, g_bounceVirt, chunk * SECTOR);
 
         out_ += cast(size_t)chunk * SECTOR;
         lba += chunk;
@@ -164,13 +182,18 @@ private bool diskReadNvme(ulong lba, uint count, void* dst)
 
 private bool diskWriteNvme(ulong lba, uint count, const(void)* src)
 {
+    if (g_bounceVirt is null)
+        return false;
+
     const(ubyte)* in_ = cast(const(ubyte)*)src;
 
     while (count > 0)
     {
         ushort chunk = cast(ushort)(count > NVME_MAX_SECTORS ? NVME_MAX_SECTORS : count);
 
-        if (!nvmeWriteBlocks(lba, chunk, cast(size_t)in_))
+        memcpy(g_bounceVirt, in_, chunk * SECTOR);
+
+        if (!nvmeWriteBlocks(lba, chunk, g_bouncePhys))
             return false;
 
         in_ += cast(size_t)chunk * SECTOR;
@@ -278,6 +301,37 @@ public int diskFindTargetBySize(ulong maxSectors, out ulong targetSectors)
     }
 
     return -1;
+}
+
+public bool diskIsNvme() { return g_backend == DiskBackend.nvme; }
+
+// Capacity of the disk at install-target index `idx` under the active backend
+// (NVMe machines expose exactly one disk at index 0; AHCI machines use the
+// g_ahciDevices index).  False if the index names no usable data disk.
+public bool diskIndexCapacity(int idx, out ulong sectors)
+{
+    sectors = 0;
+    if (!g_diskReady)
+        return false;
+
+    if (g_backend == DiskBackend.nvme)
+    {
+        if (idx != 0)
+            return false;
+
+        sectors = g_diskSectors;
+        return true;
+    }
+
+    if (idx < 0 || idx >= cast(int)g_ahciDevices.length)
+        return false;
+
+    auto d = &g_ahciDevices[idx];
+    if (!d.present || d.type != 1 || d.capacity == 0)
+        return false;
+
+    sectors = d.capacity / SECTOR;
+    return true;
 }
 
 public int diskStoreIndex(out ulong sectors)

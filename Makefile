@@ -57,7 +57,7 @@ build/libkernel_d.a:
 	+$(MAKE) -j1 -C src/kernel/d
 
 boot-integrity-contract:
-	scripts/compile-boot-integrity-contract.sh
+	scripts/compile-contracts.sh
 
 build-zksync-wallet:
 	@echo "==== Packing zkSync wallet boot-integrity app ===="
@@ -203,8 +203,8 @@ WALLPAPER_BLOB := $(ASSET_BLOBS_DIR)/wallpapers.blob
 THEME_BLOB    := $(ASSET_BLOBS_DIR)/themes.blob
 ZKSYNC_WALLET_STATIC := deps/zksync-wallet-vue/src/static/boot-integrity
 ZKSYNC_WALLET_BLOB := build/zksync-wallet.blob
-BOOT_INTEGRITY_CONTRACT := installer/contracts/BootIntegrityRegistry.sol
-BOOT_INTEGRITY_ABI := installer/contracts/BootIntegrityRegistry.abi.json
+BOOT_INTEGRITY_CONTRACT := contracts/BootIntegrityRegistry.sol
+BOOT_INTEGRITY_ABI := contracts/BootIntegrityRegistry.abi.json
 BOOT_INTEGRITY_ARTIFACT := build/contracts/BootIntegrityRegistry.artifact.json
 BOOT_INTEGRITY_MANIFEST := build/zksync-attestation.json
 ZKSYNC_NETWORK ?= zksync-sepolia
@@ -1044,7 +1044,11 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 # =========================================================
 iso: hos-install.iso
 
-hos-install.iso: stage-iso-tree veracrypt-efi
+# UPDATE U1-C: build the A/B slot-arbiter UEFI app (build/arbiter.efi).
+arbiter-efi:
+	+$(MAKE) -C boot/arbiter
+
+hos-install.iso: stage-iso-tree veracrypt-efi arbiter-efi
 	scripts/mk-install-iso.sh
 
 # =========================================================

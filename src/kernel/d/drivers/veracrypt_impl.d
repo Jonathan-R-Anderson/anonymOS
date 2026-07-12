@@ -551,6 +551,10 @@ __gshared int    g_instIdx;
 __gshared ulong  g_instLba, g_instRemaining, g_instTotal, g_instOff;
 __gshared ulong  g_instEspFirst, g_instEspSectors;
 __gshared const(ubyte)* g_instSrc;
+// UPDATE U1-B A/B dual-slot install state (0 => legacy single-ESP path).
+__gshared bool   g_abInstall;
+__gshared ulong  g_instSlotBFirst, g_instBootEspFirst, g_instBootEspSectors;
+__gshared const(ubyte)* g_instBootSrc;
 __gshared InstallWriteCap g_instCap;
 private enum size_t INST_CONFIG_MAX = 8192;
 private enum uint INST_SECRET_MAX = 128;
@@ -561,6 +565,8 @@ private enum ubyte INST_PHASE_OUTER_RANDOM = 2;
 private enum ubyte INST_PHASE_DECOY_IMAGE = 3;
 private enum ubyte INST_PHASE_HIDDEN_IMAGE = 4;
 private enum ubyte INST_PHASE_HEADERS = 5;
+private enum ubyte INST_PHASE_SLOTB = 6;     // UPDATE U1-B: stream esp-image → slot-B
+private enum ubyte INST_PHASE_BOOTESP = 7;   // UPDATE U1-B: stream esp-boot (arbiter) → ESP-boot
 private enum ulong INST_HIDDEN_HDR_OFFSET = 128; // VeraCrypt hidden header, 64 KiB into outer volume.
 __gshared char[INST_CONFIG_MAX] g_instConfig;
 __gshared uint g_instConfigLen;
@@ -1193,7 +1199,7 @@ private bool installWriteHiddenHeaders() {
 // up the streaming state.  Returns false (and does nothing) if no payload / disk too small.
 @nogc nothrow
 public bool installBegin(int idx, ulong dsec) {
-    import core.diskpart : GptLayout, gptWriteBootableEsp, gptWriteEncryptedToDisk;
+    import core.diskpart : GptLayout, gptWriteBootableEsp, gptWriteEncryptedToDisk, gptWriteABToDisk;
     import core.install_cap : mintInstallWriteCap, revokeInstallWriteCap;
     import core.exports : phys_to_virt;
     import core.random : random_get_bytes;
@@ -1208,6 +1214,7 @@ public bool installBegin(int idx, ulong dsec) {
             klog("[install] no esp-hidden-image boot module (build an INSTALL ISO)\n");
         else
             klog("[install] no esp-image boot module (build an INSTALL ISO)\n");
+        g_instFailed = true;                             // surface as progress=-1 to the GUI
         return false;
     }
     ulong decoyPhys = 0, decoySize = 0;
@@ -1215,14 +1222,17 @@ public bool installBegin(int idx, ulong dsec) {
     if (hidden) {
         if (!instFindModule("decoy-linux.ext4", decoyPhys, decoySize)) {
             klog("[install] FAIL: Hidden OS selected but decoy-linux.ext4 is not staged\n");
+            g_instFailed = true;
             return false;
         }
         if (!instFindModule("esp-image", hiddenPhys, hiddenSize)) {
             klog("[install] FAIL: Hidden OS selected but esp-image hidden payload is not staged\n");
+            g_instFailed = true;
             return false;
         }
         if (g_instHiddenPasswordLen == 0 || g_instOuterPasswordLen == 0 || g_instDecoyBootPasswordLen == 0) {
             klog("[install] FAIL: Hidden OS selected but boot-volume passwords are incomplete\n");
+            g_instFailed = true;
             return false;
         }
     }
@@ -1232,7 +1242,18 @@ public bool installBegin(int idx, ulong dsec) {
     ulong sysSectors = VC_INSTALL_SYS_SECTORS;
     if (hidden && sysSectors < decoyImageSectors + 4096)
         sysSectors = decoyImageSectors + 4096;
-    if (!hidden && dsec < espSectors + 2048 + 64) { klog("[install] FAIL: target disk too small\n"); return false; }
+
+    // UPDATE U1-B: the non-hidden install is now A/B — find the ESP-boot arbiter image.
+    // If it isn't staged, fall back to the legacy single-ESP install (no A/B) rather than
+    // failing, so an older ISO still installs.
+    ulong bootPhys = 0, bootSize = 0;
+    const bool abInstall = !hidden && instFindModule("esp-boot-image", bootPhys, bootSize);
+    const ulong bootEspSectors = abInstall ? ((bootSize + SEC - 1) / SEC) : 0;
+    if (!hidden) {
+        const ulong need = abInstall ? (2048 + bootEspSectors + 2 * espSectors + 2048 + 64)
+                                     : (espSectors + 2048 + 64);
+        if (dsec < need) { klog("[install] FAIL: target disk too small\n"); g_instFailed = true; return false; }
+    }
     klog("[install] begin idx=0x"); klog_hex(idx); klog(" image=0x"); klog_hex(size);
     klog("B sectors=0x"); klog_hex(espSectors); klog("\n");
 
@@ -1250,6 +1271,8 @@ public bool installBegin(int idx, ulong dsec) {
     bool gptOk;
     if (hidden)
         gptOk = gptWriteEncryptedToDisk(idx, dsec, espSectors, sysSectors, L);
+    else if (abInstall)
+        gptOk = gptWriteABToDisk(idx, dsec, bootEspSectors, espSectors, L);
     else
         gptOk = gptWriteBootableEsp(idx, dsec, espSectors, L);
     if (!gptOk) {
@@ -1274,14 +1297,27 @@ public bool installBegin(int idx, ulong dsec) {
     g_instHiddenImageSize = hidden ? hiddenSize : 0;
     g_instHiddenImageSectors = hiddenImageSectors;
     g_instLba = L.espFirst; g_instRemaining = espSectors;
-    g_instTotal = hidden ? (espSectors + g_instSysSectors + g_instOuterSectors + decoyImageSectors + hiddenImageSectors + 3) : espSectors;
+    // UPDATE U1-B A/B state: slot-A first (= L.espFirst above), then slot-B, then ESP-boot.
+    g_abInstall = abInstall;
+    g_instSlotBFirst = abInstall ? L.slotBFirst : 0;
+    g_instBootEspFirst = abInstall ? L.bootEspFirst : 0;
+    g_instBootEspSectors = bootEspSectors;
+    g_instBootSrc = abInstall ? cast(const(ubyte)*) phys_to_virt(bootPhys) : null;
+    g_instTotal = hidden ? (espSectors + g_instSysSectors + g_instOuterSectors + decoyImageSectors + hiddenImageSectors + 3)
+                : (abInstall ? (2 * espSectors + bootEspSectors) : espSectors);
     g_instOff = 0;
+    g_instLastBeat = 0;
     g_instActive = true; g_instDone = false; g_instFailed = false;
     if (hidden) {
         klog("[install] encrypted Hidden OS GPT written; ESP @lba=0x"); klog_hex(L.espFirst);
         klog(" sys=0x"); klog_hex(L.sysFirst);
         klog(" outer=0x"); klog_hex(L.outerFirst);
         klog("; streaming hidden ESP, then encrypted decoy Linux + hidden OS payload + outer volume\n");
+    } else if (abInstall) {
+        klog("[install] A/B GPT written; ESP-boot @lba=0x"); klog_hex(L.bootEspFirst);
+        klog(" slotA @lba=0x"); klog_hex(L.slotAFirst);
+        klog(" slotB @lba=0x"); klog_hex(L.slotBFirst);
+        klog("; streaming slot-A first\n");
     } else {
         klog("[install] GPT written; ESP @lba=0x"); klog_hex(L.espFirst); klog("; streaming image\n");
     }
@@ -1289,19 +1325,34 @@ public bool installBegin(int idx, ulong dsec) {
 }
 
 // Advance the in-flight install by up to `maxSectors` (0xFFFFFFFF = run to completion).
+__gshared ulong g_instLastBeat = 0;   // heartbeat: last progress value klogged
+
 @nogc nothrow
 public void installStep(uint maxSectors) {
     import core.install_cap : gatedDiskWrite, revokeInstallWriteCap;
     enum uint SEC = 512;
     if (!g_instActive) return;
+    // Heartbeat every 32 MiB so a stall in the klog pinpoints the phase + LBA.
+    if (g_instProgressDone - g_instLastBeat >= 65536) {
+        g_instLastBeat = g_instProgressDone;
+        klog("[install] progress 0x"); klog_hex(g_instProgressDone);
+        klog("/0x"); klog_hex(g_instTotal);
+        klog(" phase=0x"); klog_hex(g_instPhase);
+        klog(" lba=0x"); klog_hex(g_instLba); klog("\n");
+    }
     uint did = 0;
     while (g_instActive && did < maxSectors) {
-        if (g_instPhase == INST_PHASE_ESP) {
+        // UPDATE U1-B: INST_PHASE_ESP / _SLOTB / _BOOTESP are all raw-image streams
+        // (src+off → lba). They share the streaming loop; only the completion transition
+        // differs. INST_PHASE_ESP targets slot-A (the active slot) in A/B mode.
+        if (g_instPhase == INST_PHASE_ESP || g_instPhase == INST_PHASE_SLOTB ||
+            g_instPhase == INST_PHASE_BOOTESP) {
+            const(ubyte)* src = (g_instPhase == INST_PHASE_BOOTESP) ? g_instBootSrc : g_instSrc;
             while (g_instRemaining > 0 && did < maxSectors) {
                 uint chunk = cast(uint)(g_instRemaining > 128 ? 128 : g_instRemaining);
                 if (chunk > maxSectors - did) chunk = maxSectors - did;
                 if (chunk == 0) break;
-                if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, chunk, g_instSrc + g_instOff)) {
+                if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, chunk, src + g_instOff)) {
                     klog("[install] FAIL (write @lba=0x"); klog_hex(g_instLba); klog(")\n");
                     revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
                     instClearTransientPasswords(); instClearHiddenInstallState();
@@ -1314,21 +1365,70 @@ public void installStep(uint maxSectors) {
                 did += chunk;
             }
             if (g_instRemaining != 0) break;
-            if (g_instHiddenMode) {
+
+            if (g_instPhase == INST_PHASE_ESP && g_instHiddenMode) {
                 installEnterHiddenPhase(INST_PHASE_SYS_RANDOM);
                 continue;
             }
-            if (!installPersistConfigToEsp()) {
-                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+
+            // Legacy single-ESP path (no A/B): persist config to the one ESP and finish.
+            if (g_instPhase == INST_PHASE_ESP && !g_abInstall) {
+                if (!installPersistConfigToEsp()) {
+                    revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                    instClearTransientPasswords(); instClearHiddenInstallState();
+                    klog("[install] FAIL (persist install config)\n");
+                    return;
+                }
+                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
                 instClearTransientPasswords(); instClearHiddenInstallState();
-                klog("[install] FAIL (persist install config)\n");
+                klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
+                klog(" (reboot from this disk → UEFI → limine → EpinAnonymOS)\n");
                 return;
             }
-            revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
-            instClearTransientPasswords(); instClearHiddenInstallState();
-            klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
-            klog(" (reboot from this disk → UEFI → limine → EpinAnonymOS)\n");
-            return;
+
+            // A/B: slot-A done → persist config to slot-A, then stream slot-B.
+            if (g_instPhase == INST_PHASE_ESP) {
+                // g_instEspFirst still points at slot-A (set in installBegin).
+                if (!installPersistConfigToEsp()) {
+                    revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                    instClearTransientPasswords();
+                    klog("[install] FAIL (persist config slot-A)\n");
+                    return;
+                }
+                g_instPhase = INST_PHASE_SLOTB;
+                g_instLba = g_instSlotBFirst; g_instRemaining = g_instEspSectors; g_instOff = 0;
+                klog("[install] A/B: slot-A written; streaming slot-B @lba=0x"); klog_hex(g_instSlotBFirst); klog("\n");
+                continue;
+            }
+
+            // A/B: slot-B done → persist config to slot-B, then stream the ESP-boot arbiter.
+            if (g_instPhase == INST_PHASE_SLOTB) {
+                g_instEspFirst = g_instSlotBFirst;
+                if (!installPersistConfigToEsp()) {
+                    revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                    instClearTransientPasswords();
+                    klog("[install] FAIL (persist config slot-B)\n");
+                    return;
+                }
+                g_instPhase = INST_PHASE_BOOTESP;
+                g_instLba = g_instBootEspFirst; g_instRemaining = g_instBootEspSectors; g_instOff = 0;
+                klog("[install] A/B: slot-B written; streaming ESP-boot arbiter @lba=0x"); klog_hex(g_instBootEspFirst); klog("\n");
+                continue;
+            }
+
+            // A/B: ESP-boot (arbiter) done → initialize the boot-state to slot-A, finish.
+            if (g_instPhase == INST_PHASE_BOOTESP) {
+                import core.bootstate : bootStateInit, SLOT_A;
+                if (!bootStateInit(SLOT_A))
+                    klog("[install] WARN: boot-state init failed (arbiter defaults to slot A)\n");
+                else
+                    klog("[install] A/B: boot-state initialized (active=slot A, tries reset)\n");
+                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
+                instClearTransientPasswords(); instClearHiddenInstallState();
+                klog("[install] DONE (A/B): idx=0x"); klog_hex(g_instIdx);
+                klog(" — arbiter → slot A → limine → EpinAnonymOS\n");
+                return;
+            }
         }
 
         if (g_instPhase == INST_PHASE_SYS_RANDOM || g_instPhase == INST_PHASE_OUTER_RANDOM) {
@@ -1394,14 +1494,19 @@ public void installStep(uint maxSectors) {
     }
 }
 
-// Progress of the current/last install as 0..1000 permille (1000 = done; 0 = idle/failed).
+// Progress of the current/last install: -1 = FAILED, 0 = idle/never started,
+// 1..1000 permille.  Floored at 1 while active: Hidden OS randomizes the WHOLE
+// disk, so true permille stays 0 for hundreds of polls on a large drive — a
+// poller must be able to tell "started but early" from "never started".
 @nogc nothrow
-public uint installProgressPermille() {
+public int installProgressPermille() {
     if (g_instDone) return 1000;
-    if (g_instFailed || !g_instActive || g_instTotal == 0) return 0;
+    if (g_instFailed) return -1;
+    if (!g_instActive || g_instTotal == 0) return 0;
     ulong done = g_instProgressDone;
     if (done > g_instTotal) done = g_instTotal;
-    return cast(uint)((done * 1000UL) / g_instTotal);
+    const uint p = cast(uint)((done * 1000UL) / g_instTotal);
+    return (p == 0) ? 1 : cast(int)p;
 }
 
 // Synchronous full install (direct/headless callers).
@@ -1423,8 +1528,7 @@ public bool installBootableToDisk(int idx, ulong dsec) {
 // big to write in one syscall without freezing the UI).
 @nogc nothrow
 public bool installControlWrite(const(char)* cmd, size_t len) {
-    import drivers.block.disk : diskFindTarget;
-    import drivers.block.ahci : g_ahciDevices;
+    import drivers.block.disk : diskFindTarget, diskIndexCapacity;
     enum uint BATCH = 8192;                          // 4 MiB / write → ~60 bar updates
     static immutable string C = "config ";
     static immutable string P = "install";
@@ -1446,15 +1550,16 @@ public bool installControlWrite(const(char)* cmd, size_t len) {
         if (p < len && cmd[p] >= '0' && cmd[p] <= '9') {   // explicit "install <idx>"
             int n = 0;
             while (p < len && cmd[p] >= '0' && cmd[p] <= '9') { n = n * 10 + (cmd[p] - '0'); p++; }
-            if (n < 0 || n >= cast(int)g_ahciDevices.length || !g_ahciDevices[n].present) {
-                klog("[install] control: bad disk index\n"); return false;
+            ulong sec = 0;
+            if (!diskIndexCapacity(n, sec)) {
+                klog("[install] control: bad disk index\n"); g_instFailed = true; return false;
             }
-            idx = n; dsec = g_ahciDevices[n].capacity / 512;
+            idx = n; dsec = sec;
         } else {
             idx = diskFindTarget(dsec);              // a spare disk distinct from the object store
             if (idx < 0) idx = diskStoreIndex(dsec); // single-disk: install onto the only disk
         }
-        if (idx < 0) { klog("[install] control: no disk to install to\n"); return false; }
+        if (idx < 0) { klog("[install] control: no disk to install to\n"); g_instFailed = true; return false; }
         klog("[install] control: 'install' → target idx=0x"); klog_hex(idx); klog("\n");
         if (!installBegin(idx, dsec)) return false;
     }

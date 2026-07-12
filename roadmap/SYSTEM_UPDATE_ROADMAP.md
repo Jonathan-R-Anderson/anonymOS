@@ -19,6 +19,17 @@ the firmware path **falls back to the previous slot automatically**. Publishing 
 requires only a signing key, a zkSync transaction, and any node willing to seed — no
 server anywhere.
 
+## Progress at a glance (updated 2026-07-12)
+- ✅ **U0** — version identity + boot proof — DONE + QEMU-verified.
+- ◑ **U1** — A/B slots + rollback: **U1-A** (boot-state machine, verbs, selftests) ✅ verified
+  headless; **U1-B** (A/B GPT + dual-slot install + boot-state init) ✅ verified on raw disk;
+  **U1-C** (slot-arbiter EFI) BUILT (PE32+) — 2 documented OVMF boot-chain blockers remain
+  (arbiter bypass; pre-existing NVMe-BAR-high HHDM fault). See U1 STATUS.
+- ◑ **U4** — `contracts/UpdateRegistry.sol` (permissionless) WRITTEN + consolidated with
+  `DhtBootstrapRegistry.sol` + `BootIntegrityRegistry.sol` into top-level `contracts/`;
+  deploy + in-kernel reader + wallet flow pending.
+- ⬜ **U2, U3, U5–U9** — not started.
+
 ---
 
 ## What already exists to build on (verified 2026-07-12)
@@ -153,14 +164,18 @@ server anywhere.
 Each milestone ends with a **proof at the init site** (klog line / Logs-app filter) and a
 QEMU verification recipe — same discipline as the installer work.
 
-## U0 — System version identity (tiny, do first)
+## U0 — System version identity (tiny, do first) — ✅ DONE + VERIFIED (2026-07-12)
+Built: `core/sysversion.d` (monotonic `SYSTEM_VERSION`, channel, boot slot); `/config/system.json`
+gained version/versionString/channel/slot. Boot proof confirmed in QEMU:
+`[update] system version=0x1 (0.1.0) channel=stable slot=A`.
+
 `/config/system.json` gains `version` (build-embedded, monotonic integer + human string),
 `channel` (`stable`), `slot` (`A`/`B`), `bootCount`. Build stamps the version into the
 kernel + into `esp-image` at ISO/bundle build time.
 **Verify:** boot proof line `[update] system version=… channel=stable slot=A`; visible in
 Settings → About.
 
-## U1 — A/B slots + boot-state + automatic rollback (LOCAL; no network, no crypto)
+## U1 — A/B slots + boot-state + automatic rollback (LOCAL; no network, no crypto) — ◑ MOSTLY DONE (U1-A/B ✅ verified; U1-C built, 2 boot-chain blockers — see STATUS below)
 1. `diskpart.d`: GPT v2 layout — ESP-A + ESP-B + 1-sector boot-state (magic, seq, CRC,
    `trydSlot`, `triesLeft`, `bootOkSlot`). Installer writes both slots (B = copy of A).
 2. **Slot-arbiter EFI**: read/decrement state, chainload A or B; flip on exhaustion.
@@ -214,7 +229,7 @@ version → `[update] FAIL: rollback` refusal.
 a `.hosupd` = fully offline upgrade path (and the fallback story forever).
 **Verify:** QMP-driven GUI upgrade + rollback in QEMU; logs in Logs app filter `update`.
 
-## U4 — zkSync `UpdateRegistry` anchor (network read; publishing tools)
+## U4 — zkSync `UpdateRegistry` anchor (network read; publishing tools) — ◑ CONTRACT DONE (`contracts/UpdateRegistry.sol` written + consolidated; deploy/reader/wallet pending)
 1. **`contracts/UpdateRegistry.sol` (DONE — written + consolidated):** permissionless
    `(publisher, channel) → {version, artifactRoot, manifestSigHash, revoked}` with the
    "creator deploys once, anyone publishes/validates" model (D4). Remaining: deploy it to

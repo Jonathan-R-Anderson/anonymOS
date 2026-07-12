@@ -91,6 +91,9 @@ kernel.elf: \
 
 BUSYBOX_BIN   := deps/busybox/busybox
 BUSYBOX_DYN_BIN := deps/busybox/busybox-dyn   # dynamic-musl busybox (udhcpc for LKL-routed DHCP)
+MKE2FS_BIN    := deps/e2fsprogs/mke2fs        # DECOY_DISTRO D8: musl-static mke2fs -d (rootfs dir → ext4)
+UNSQUASHFS_BIN := deps/squashfs-tools/unsquashfs # DECOY_DISTRO D8: musl-static unsquashfs (gzip+xz+zstd)
+BSDTAR_BIN    := deps/libarchive/bsdtar        # DECOY_DISTRO D8: musl-static bsdtar (ISO9660 read)
 TEST_DRM_BIN  := build/test-drm
 DRM_GPU_TEST_BIN := build/drm-gpu-test
 DRM_GL_TEST_BIN  := build/drm-gl-test
@@ -640,7 +643,23 @@ $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_B
 $(BUSYBOX_DYN_BIN):
 	$(MAKE) -C deps/busybox busybox-dyn
 
-stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+# DECOY_DISTRO D8: musl-static mke2fs (rootfs dir → populated ext4 for the VeraCrypt decoy).
+$(MKE2FS_BIN):
+	$(MAKE) -C deps/e2fsprogs
+
+# DECOY_DISTRO D8: musl-static unsquashfs (extract a distro live-ISO squashfs). Needs the
+# codec libs (liblzma, libzstd; zlib reused from gtk-stack) built first.
+$(UNSQUASHFS_BIN):
+	$(MAKE) -C deps/xz
+	$(MAKE) -C deps/zstd
+	$(MAKE) -C deps/squashfs-tools
+
+# DECOY_DISTRO D8: musl-static bsdtar (read the distro ISO9660, extract the inner squashfs).
+$(BSDTAR_BIN):
+	$(MAKE) -C deps/xz
+	$(MAKE) -C deps/libarchive
+
+stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -665,6 +684,27 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 		echo "Included busybox"; \
 	else \
 		echo "❌ busybox missing — run: make deps"; \
+	fi
+
+	@if [ -f $(MKE2FS_BIN) ]; then \
+		cp $(MKE2FS_BIN) cd/mke2fs; \
+		echo "Included mke2fs (DECOY_DISTRO D8: rootfs dir -> ext4)"; \
+	else \
+		echo "❌ mke2fs missing — run: make -C deps/e2fsprogs"; \
+	fi
+
+	@if [ -f $(UNSQUASHFS_BIN) ]; then \
+		cp $(UNSQUASHFS_BIN) cd/unsquashfs; \
+		echo "Included unsquashfs (DECOY_DISTRO D8: squashfs -> rootfs, gzip+xz+zstd)"; \
+	else \
+		echo "❌ unsquashfs missing — run: make -C deps/squashfs-tools"; \
+	fi
+
+	@if [ -f $(BSDTAR_BIN) ]; then \
+		cp $(BSDTAR_BIN) cd/bsdtar; \
+		echo "Included bsdtar (DECOY_DISTRO D8: ISO9660 read)"; \
+	else \
+		echo "❌ bsdtar missing — run: make -C deps/libarchive"; \
 	fi
 
 	cp $(TEST_DRM_BIN) cd/test-drm

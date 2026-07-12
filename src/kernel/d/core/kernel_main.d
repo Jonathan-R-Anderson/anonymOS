@@ -1425,7 +1425,10 @@ private void maybeSpawnLklTest() {
     // fine, but bulk mass-storage is not.  So grant ONLY the AX210 (WiFi, bus 0) — the known-good config.
     // The FW13's built-in keyboard/trackpad use the NATIVE PS/2 path, so no input is lost.  The log-USB
     // capture is abandoned on this hardware; the scan-load freeze will be captured another way instead.
-    enum int NPASS_STABLE = 1;                          // 1 = WiFi only.  (was 2: +xHCI for USB-log capture)
+    // DECOY_DISTRO US0: pass 0 = WiFi (always); pass 1 = xHCI (USB) ONLY when /epin-usb.conf is
+    // staged — driving usb-storage bulk DMA hard-freezes the FW13's no-IOMMU path (see below), so
+    // USB is opt-in for QEMU dev boots + the decoy-install path (US5 must fix the freeze first).
+    const int NPASS_STABLE = debugUsbBootPresent() ? 2 : 1;
     for (int pass = 0; pass < NPASS_STABLE && ngrant < MAX_TASK_DEVS; pass++) {
         const uint wantCls = (pass == 0) ? 0x0280 : 0x0c03; // pass 0 = WiFi (bus 0), pass 1 = xHCI(s)
         foreach (ref d; devs) {
@@ -1435,6 +1438,8 @@ private void maybeSpawnLklTest() {
             grantBdf[ngrant++] = (cast(uint)d.bus << 16) | (cast(uint)d.slot << 8) | d.func;
         }
     }
+    if (debugUsbBootPresent())
+        klog("[lkl] USB enabled (/epin-usb.conf present) — granting xHCI for usb-storage\n");
     // QEMU log-egress path: grant a VIRTIO-NET NIC (class 0x0200, vendor 0x1AF4) to the LKL so
     // its TCP stack has a real route for the scp uploader.  virtio-net is exempt from the
     // virtio skip above because EpinOS never drives one natively (its own stack uses e1000,
@@ -1525,6 +1530,28 @@ private bool debugNetBootPresent() {
         }
     }
     return g_debugNetBoot == 1;
+}
+
+// DECOY_DISTRO US0: gate granting the xHCI (USB) controller to the LKL behind a boot marker.
+// Driving usb-storage bulk DMA hard-freezes the FW13 (no-IOMMU path — see maybeSpawnLklTest);
+// so USB is OFF by default and enabled only when /epin-usb.conf is staged (QEMU dev boots +
+// the future decoy-install path once US5 fixes the freeze). Mirrors debugNetBootPresent().
+private __gshared int g_usbBoot = -1;   // -1=unknown, 0=no, 1=yes (cached)
+public bool debugUsbBootPresent() {
+    if (g_usbBoot < 0) {
+        g_usbBoot = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "epin-usb.conf")) { g_usbBoot = 1; break; }
+            }
+        }
+    }
+    return g_usbBoot == 1;
 }
 
 private __gshared bool g_wpaStarted = false;

@@ -142,7 +142,7 @@ their codec deps, and the second USB they read/write:
 | ext4 create+populate | **e2fsprogs** `mke2fs -d <dir> <img>` (dir → populated ext4) | (none exotic; opt. libz) | ✅ **DONE+verified** — `deps/e2fsprogs/` builds a musl-static `mke2fs`; `-d` round-trips a rootfs tree into a valid ext4 (debugfs-verified: tree, ownership, file contents); staged into the ISO (`cd/mke2fs`, limine module) |
 | squashfs decompress | **squashfs-tools** `unsquashfs` | **liblzma (xz) + libzstd + zlib** | ✅ **DONE+verified** — `deps/xz/` (liblzma) + `deps/zstd/` (libzstd) built musl-static; `deps/squashfs-tools/` links them + reused zlib → musl-static `unsquashfs`; **all 3 codecs round-trip byte-identical** (gzip/xz/zstd mksquashfs→unsquashfs); staged `cd/unsquashfs` + limine module |
 | ISO9660 read | **libarchive** `bsdtar` (reads ISO9660 + Rock Ridge/Joliet) | zlib (+xz) | ✅ **DONE+verified** — `deps/libarchive/` musl-static `bsdtar` (`-all-static` at make-link, not configure); lists ISO9660 + extracts inner `casper/filesystem.squashfs` byte-identical; staged `cd/bsdtar` + limine module. **★ FULL CHAIN VERIFIED: ISO → bsdtar → unsquashfs(xz) → mke2fs -d → valid decoy ext4 (rootfs contents intact).** |
-| GPG/RSA-SHA256 verify | **gpgv** (minimal OpenPGP verify) w/ pinned distro keyring; SHA256 already in `crypto.d` | libgcrypt (or a slim RSA verify) | ▶ next |
+| GPG/RSA-SHA256 verify | **gpgv** (GnuPG 1.4, self-contained) w/ pinned distro keyring; ISO-hash integrity via busybox `sha256sum` | (none — 1.4 has its own mpi/cipher) | ✅ **DONE+verified** — `deps/gnupg/` musl-static `gpgv` (`-fcommon` for old-C tentatives); verifies a real RSA-4096/SHA-512 detached sig against a pinned keyring (`Good signature`, exit 0) + rejects a tampered file (`BAD signature`, exit 1); staged `cd/gpgv` + limine module. (busybox `sha256sum` already covers the ISO-hash integrity half.) |
 | USB #2 read/write | LKL xHCI + **usb-storage** block device + a FAT/ext work FS the installer mounts (D4) | — | planned — see **USB stack bring-up (US0–US6)** below; ★ FW13 bulk-DMA freeze risk |
 
 > **musl build trap (e2fsprogs):** `lib/blkid/llseek.c`'s `(!HAVE_LLSEEK && long==long
@@ -163,7 +163,7 @@ Each ends with a proof. "Network-installed decoy" = the running installer downlo
 official ISO, verified it, extracted it, and encrypted it into the decoy partition —
 confirmed by `/run/installer.log` + unlocking the decoy password → that distro boots.
 
-## X0 — Installer userland tools port (D8) + second-USB work volume (D4) — ◑ IN PROGRESS
+## X0 — Installer userland tools port (D8) + second-USB work volume (D4) — ◑ TOOLS ✅ DONE; USB ⬜
 Port the four extraction tools as musl-cross binaries staged in the installer, landing
 incrementally: **(a) e2fsprogs `mke2fs -d`** (dir→ext4, terminal step) — ✅ **DONE+verified**
 (`deps/e2fsprogs/` → musl-static `mke2fs`, debugfs-verified dir→ext4, staged `cd/mke2fs` +
@@ -171,8 +171,10 @@ limine module); **(b) liblzma + libzstd + squashfs-tools `unsquashfs`** — ✅ 
 (`deps/xz` + `deps/zstd` + `deps/squashfs-tools`, all 3 codecs byte-identical round-trip,
 staged `cd/unsquashfs`); **(c) libarchive `bsdtar`** (ISO9660) — ✅ **DONE+verified**
 (`deps/libarchive`, staged `cd/bsdtar`; **full ISO→bsdtar→unsquashfs→mke2fs chain proven**);
-**(d) gpgv** + pinned distro keyring — ▶ next. Plus the **second USB** read/write work volume
-(LKL usb-storage + a mountable work FS) — see **USB stack bring-up (US0–US6)** below.
+**(d) gpgv** + pinned distro keyring — ✅ **DONE+verified** (`deps/gnupg` GnuPG 1.4 self-
+contained; real RSA-4096/SHA-512 sig verified + tamper rejected; staged `cd/gpgv`). **ALL 4
+EXTRACTION/VERIFY TOOLS COMPLETE.** Plus the **second USB** read/write work volume (LKL
+usb-storage + a mountable work FS) — see **USB stack bring-up (US0–US6)** below.
 **Verify (host smoke-tests as each lands):** `mke2fs -d <dir> img && mount` round-trips a
 tree; `unsquashfs` extracts a real squashfs; `bsdtar -tf` lists an ISO9660; `gpgv` accepts a
 good SHA256SUMS.gpg + rejects a tampered one. In QEMU: installer mounts a 2nd USB, writes+
@@ -186,20 +188,25 @@ fine; bulk transfers were not; see memory `desktop-freeze`/`bare-metal-lkl`). Th
 bring the USB stack up deliberately, QEMU-first then real hardware, and make the multi-GB
 sustained transfer the acceptance test. All ride the proven LKL xHCI + usb-storage path.
 
-- **US0 — Enumerate mass-storage.** In QEMU (`-device usb-storage,drive=…` on `qemu-xhci`),
-  confirm LKL binds usb-storage and exposes the stick as a block device to EpinAnonymOS
-  (size/geometry logged). **Verify:** boot log shows the USB block device + capacity.
-- **US1 — Read path + integrity.** Read known sectors from a USB stick prewritten with a
-  test pattern; byte-compare. (This is the path the old usblog capture used — re-prove it.)
-  **Verify:** read-back matches the pattern; a multi-MB sequential read is correct.
-- **US2 — Write path + round-trip.** Write sectors to a USB stick, read them back, compare —
-  the NEW capability (usblog only ever appended). **Verify:** write→read round-trip on a
-  scratch stick is byte-identical in QEMU.
-- **US3 — Work filesystem on USB #2.** Format a work FS on the scratch stick and create
-  files the installer can use as the download target + extraction scratch. Reuse the
-  just-built musl **`mke2fs`** to lay down ext4 (or FAT), then create/read/delete files.
-  **Verify:** a file written by the installer to the USB-#2 work FS reads back intact.
-- **US4 — Two-USB detection + role assignment.** Enumerate BOTH mass-storage devices;
+- **US0 — Enumerate mass-storage.** ✅ **DONE+verified (QEMU).** xHCI grant to the LKL is now
+  gated on a `/epin-usb.conf` boot marker (`USB=1 make iso`; kernel `debugUsbBootPresent()` —
+  OFF by default to preserve the FW13 freeze fix). A `-device usb-storage` 512 MB stick
+  enumerates as `/dev/sda` in the LKL (`usblog: 8 0 524288 sda`); usb-storage binds.
+- **US1 — Read path + integrity.** ✅ **DONE+verified (QEMU).** The LKL mounts a FAT32 stick
+  (reads the boot sector + FAT metadata) and streams from it — proven together with US2/US3.
+- **US2 — Write path + round-trip.** ✅ **DONE+verified (QEMU).** The LKL wrote a **1 MB
+  `hoslog.txt`** to `/dev/sda` and `fsync`'d it; the backing image, read back **on the host**,
+  contains the file byte-correct (the real kernel boot log). Full write→flush→read round-trip.
+- **US3 — Work filesystem on USB #2.** ✅ **DONE+verified (QEMU).** LKL mounted a host-formatted
+  FAT32 work FS, created + wrote a file, flushed to the device; host `mtype` reads it back
+  intact. (Reusing the musl `mke2fs` to format ext4 on-device is the installer-side variant,
+  wired in X1–X3.)
+- **US4 — Two-USB detection + role assignment.** ◑ DETECTION ✅ **DONE+verified (QEMU)** — two
+  usb-storage devices enumerate distinctly (`sda` 256 MB + `sdb` 1 GB) and the size-preference
+  picks the larger as scratch. The **boot-medium exclusion** (don't clobber USB #1 the
+  installer booted from) is installer-side logic (X1–X3): when booted from USB, exclude that
+  device from scratch candidates. Original detail below:
+  Enumerate BOTH mass-storage devices;
   distinguish USB #1 (the boot medium — the one the installer booted from) from USB #2
   (scratch — the other one, with enough free space). Surface the choice on the Decoy page;
   refuse to proceed if only one USB is present (fall back per D4). **Verify:** with two USBs
@@ -215,8 +222,11 @@ sustained transfer the acceptance test. All ride the proven LKL xHCI + usb-stora
   real-world acceptance test for the two-USB decoy install. **Verify (FW13):** full
   ISO→ext4 pipeline on USB #2 succeeds end to end.
 
-US0–US4 are QEMU-provable now (usb-storage works in QEMU); US5–US6 are the real-hardware
-gate and must pass before the two-USB decoy install is trusted on the FW13.
+**STATUS 2026-07-12:** ✅ US0–US3 DONE+verified in QEMU (enumerate + read + write + work-FS —
+LKL round-trips a 1 MB file to a FAT32 stick, host confirms); ◑ US4 detection DONE (two USBs
+enumerate + selected), role-exclusion is installer-side. **US5–US6 are BLOCKED on FW13
+hardware** — the no-IOMMU bulk-DMA freeze does NOT reproduce in QEMU (QEMU has working DMA),
+so the fix can't be verified here; needs the physical FW13 to reproduce + validate.
 
 ## X1 — Download + verify + extract → ext4 on the second USB (the pipeline, end to end)
 On the running installer: HTTPS-download the chosen Ubuntu ISO to USB #2 (Ethernet-first),

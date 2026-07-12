@@ -94,6 +94,7 @@ BUSYBOX_DYN_BIN := deps/busybox/busybox-dyn   # dynamic-musl busybox (udhcpc for
 MKE2FS_BIN    := deps/e2fsprogs/mke2fs        # DECOY_DISTRO D8: musl-static mke2fs -d (rootfs dir → ext4)
 UNSQUASHFS_BIN := deps/squashfs-tools/unsquashfs # DECOY_DISTRO D8: musl-static unsquashfs (gzip+xz+zstd)
 BSDTAR_BIN    := deps/libarchive/bsdtar        # DECOY_DISTRO D8: musl-static bsdtar (ISO9660 read)
+GPGV_BIN      := deps/gnupg/gpgv                # DECOY_DISTRO D8: musl-static gpgv (verify distro SHA256SUMS.gpg)
 TEST_DRM_BIN  := build/test-drm
 DRM_GPU_TEST_BIN := build/drm-gpu-test
 DRM_GL_TEST_BIN  := build/drm-gl-test
@@ -659,7 +660,12 @@ $(BSDTAR_BIN):
 	$(MAKE) -C deps/xz
 	$(MAKE) -C deps/libarchive
 
-stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+# DECOY_DISTRO D8: musl-static gpgv (verify the distro's detached SHA256SUMS.gpg signature
+# against a pinned release key). Self-contained GnuPG 1.4 — no external crypto libs.
+$(GPGV_BIN):
+	$(MAKE) -C deps/gnupg
+
+stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -705,6 +711,13 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 		echo "Included bsdtar (DECOY_DISTRO D8: ISO9660 read)"; \
 	else \
 		echo "❌ bsdtar missing — run: make -C deps/libarchive"; \
+	fi
+
+	@if [ -f $(GPGV_BIN) ]; then \
+		cp $(GPGV_BIN) cd/gpgv; \
+		echo "Included gpgv (DECOY_DISTRO D8: verify distro SHA256SUMS.gpg)"; \
+	else \
+		echo "❌ gpgv missing — run: make -C deps/gnupg"; \
 	fi
 
 	cp $(TEST_DRM_BIN) cd/test-drm
@@ -801,6 +814,15 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 	cp $(THREADTEST_BIN) cd/hos-thread-test
 	printf '    module_path: boot():/hos-thread-test\n' >> cd/boot/limine/limine.conf
 	@echo "Included hos-thread-test (diag: cross-thread wakeup)"
+
+	@# DECOY_DISTRO US0: opt-in USB — `USB=1 make iso` stages the /epin-usb.conf marker so
+	@# the kernel grants the xHCI to the LKL (usb-storage). OFF by default to preserve the
+	@# FW13 no-IOMMU freeze fix; enable only for QEMU USB testing / the decoy-install path.
+	@if [ -n "$(USB)" ]; then \
+		printf 'epin usb enable marker (DECOY_DISTRO US0)\n' > cd/epin-usb.conf; \
+		printf '    module_path: boot():/epin-usb.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /epin-usb.conf (USB=1: xHCI granted to LKL for usb-storage)"; \
+	fi
 	cp $(WIFITERM_BIN) cd/hos-wifiterm
 	printf '    module_path: boot():/hos-wifiterm\n' >> cd/boot/limine/limine.conf
 	@echo "Included hos-wifiterm (TEMP lightweight WiFi-check terminal)"

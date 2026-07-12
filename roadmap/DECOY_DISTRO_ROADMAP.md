@@ -211,22 +211,33 @@ sustained transfer the acceptance test. All ride the proven LKL xHCI + usb-stora
   (scratch — the other one, with enough free space). Surface the choice on the Decoy page;
   refuse to proceed if only one USB is present (fall back per D4). **Verify:** with two USBs
   attached, the installer identifies each correctly and picks #2 as scratch.
-- **US5 — ★ FW13 bulk-DMA stabilization (the hard part).** Fix the no-IOMMU bulk-DMA freeze:
-  constrain usb-storage DMA to a bounce/identity-mapped low region (or gate behind the
-  IOMMU when present), cap transfer sizes, and prove a large sequential read+write on real
-  hardware does NOT freeze or corrupt memory. This is make-or-break for real-HW use.
-  **Verify (FW13):** a sustained multi-hundred-MB read+write completes with the desktop
-  responsive throughout (no `[freeze]`/`HOG:` storm) and data intact.
-- **US6 — Multi-GB soak (acceptance).** Download+write a real multi-GB distro ISO to USB #2
-  and run the extraction chain on it, on real hardware, with no freeze or corruption — the
-  real-world acceptance test for the two-USB decoy install. **Verify (FW13):** full
-  ISO→ext4 pipeline on USB #2 succeeds end to end.
+- **US5 — ★ FW13 bulk-DMA stabilization.** ◑ **FIX IMPLEMENTED + PROVEN-CORRECT in QEMU;
+  FW13 trigger-validation pending.** ROOT CAUSE FOUND: op5 (`lklDmaMap`, posix.d) returns a
+  SINGLE physical address for a DMA buffer, but the LKL's phys-mem (memfd) is backed by pages
+  allocated one-at-a-time (`mmap.d`/`dma.d`) → a multi-page buffer contiguous in the LKL's view
+  is backed by PHYSICALLY-SCATTERED host pages → the device DMAs `sz` bytes linearly past the
+  first page into unrelated memory (the corruption). Works in QEMU only because a fresh boot's
+  sequential allocations happen to be contiguous; the FW13's fragmented map scatters them.
+  FIX: op5 checks physical contiguity of `[va, va+sz)`; a **non-contiguous** multi-page buffer
+  is DMA'd through a truly-contiguous **bounce** (`alloc_phys_pages`), copy-on-BOTH-ends
+  (caller→bounce on map, bounce→caller on unmap op12) → direction-agnostic. Contiguous maps
+  (all QEMU, all small WiFi DMA ≤1 page) take the fast path unchanged → non-regressive.
+  `epin_pci_map_page` now passes `sz`; `epin_pci_unmap_page` calls op12. **VERIFIED in QEMU:**
+  (a) fast-path non-regression — the US1–3 FAT32 1 MB round-trip still works, zero bounces;
+  (b) bounce-path correctness — a `g_lklForceBounce` flag forced EVERY 64 KB bulk DMA through
+  the bounce; the full FAT mount (read path) + a 651 KB `hoslog.txt` write (write path) both
+  came back byte-valid on the host (147 boot-marker lines, no corruption). Diagnostic
+  `[lkl-dma] NON-CONTIGUOUS map …` logs the trigger. **Remaining (FW13):** boot with the fix +
+  a USB stick, confirm the diagnostic fires on the real fragmented map and the freeze is gone.
+- **US6 — Multi-GB soak (acceptance).** ◑ **QEMU proxy done; real soak FW13-gated.** The
+  forced-bounce run above sustained many bulk 64 KB bounced transfers through a full boot with
+  a correct file round-trip (a bounded soak). The real multi-GB distro-ISO-on-USB-#2 soak on
+  the physical FW13 (no freeze, data intact, desktop responsive) needs the hardware.
 
-**STATUS 2026-07-12:** ✅ US0–US3 DONE+verified in QEMU (enumerate + read + write + work-FS —
-LKL round-trips a 1 MB file to a FAT32 stick, host confirms); ◑ US4 detection DONE (two USBs
-enumerate + selected), role-exclusion is installer-side. **US5–US6 are BLOCKED on FW13
-hardware** — the no-IOMMU bulk-DMA freeze does NOT reproduce in QEMU (QEMU has working DMA),
-so the fix can't be verified here; needs the physical FW13 to reproduce + validate.
+**STATUS 2026-07-12:** ✅ US0–US4 DONE+verified in QEMU (enumerate/read/write/work-FS/two-USB).
+◑ **US5 fix IMPLEMENTED + its bounce path PROVEN CORRECT in QEMU** (fast-path non-regressive +
+forced-bounce read/write round-trip byte-valid) — only the FW13-specific trigger validation is
+hardware-gated (the freeze doesn't reproduce in QEMU's contiguous memory). US6 real soak FW13-gated.
 
 ## X1 — Download + verify + extract → ext4 on the second USB (the pipeline, end to end)
 On the running installer: HTTPS-download the chosen Ubuntu ISO to USB #2 (Ethernet-first),

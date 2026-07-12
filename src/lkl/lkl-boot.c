@@ -450,19 +450,23 @@ static void *epin_pci_resource_alloc(struct lkl_pci_dev *dev, unsigned long sz, 
     return register_iomem((void *)(uintptr_t)bar_phys, (int)sz, &epin_iomem_ops);
 }
 
-/* .map_page: translate an LKL buffer's virtual addr -> a phys IOVA the device can DMA to (op5). */
+/* .map_page: translate an LKL buffer's virtual addr -> a phys IOVA the device can DMA to (op5).
+ * US5: pass the transfer SIZE so the kernel can bounce a multi-page buffer whose backing host
+ * pages aren't physically contiguous (the no-IOMMU bulk-DMA corruption fix). */
 static unsigned long long epin_pci_map_page(struct lkl_pci_dev *dev, void *vaddr, unsigned long sz)
 {
-    (void)dev; (void)sz;
-    long phys = epin_pci_call(5, (long)(uintptr_t)vaddr, 0, 0, 0);   /* op5 = virt->phys */
+    (void)dev;
+    long phys = epin_pci_call(5, (long)(uintptr_t)vaddr, 0, (long)sz, 0);   /* op5 = virt->phys(+bounce) */
     if (phys <= 0) {
         fprintf(stderr, ">>> epin_pci: map_page(%p) FAILED (not mapped)\n", vaddr);
         return 0;
     }
     return (unsigned long long)phys;
 }
+/* US5: op12 copies a bounce buffer back to the caller (device writes) + frees it; a no-op for
+ * the direct (contiguous) fast path. h is exactly what map_page returned. */
 static void epin_pci_unmap_page(struct lkl_pci_dev *dev, unsigned long long h, unsigned long sz)
-{ (void)dev; (void)h; (void)sz; }
+{ (void)dev; (void)sz; epin_pci_call(12, (long)h, 0, (long)sz, 0); }
 
 /* ---- L3c: IRQ forward (polled INTx -> lkl_trigger_irq) -------------------------
  * LKL has no MSI/MSI-X, so the device uses a legacy INTx pin.  EpinAnonymOS has no

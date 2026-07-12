@@ -9117,6 +9117,97 @@ public bool deviceIntxAsserted(uint bdf) {
 // the LKL process's stack (0x70..) and thread stacks (0x74..).  See op8 for why this can't be g_nextMmapAddr.
 private __gshared ulong g_lklBarNextVA = 0x7E0000000000UL;
 
+// ── DECOY_DISTRO US5: LKL DMA bounce for the no-IOMMU path ────────────────────────
+// The LKL's "physical RAM" (a memfd) is backed by pages allocated ONE AT A TIME
+// (mmap.d / dma.d), so a buffer that is contiguous in the LKL's view is backed by
+// PHYSICALLY-SCATTERED host pages.  op5 (map_page) can only return ONE physical
+// address; a device that DMAs `sz` bytes linearly from it therefore writes past the
+// first page into UNRELATED physical memory once the buffer spans >1 page — the
+// no-IOMMU bulk-DMA corruption that hard-freezes the FW13.  (Small usbhid DMA fits one
+// page → fine; bulk usb-storage does not.  It "works" in QEMU only because a fresh
+// boot's sequential allocations happen to be contiguous.)
+//
+// Fix: for a multi-page map whose pages are NOT physically contiguous, DMA through a
+// truly-contiguous BOUNCE buffer (alloc_phys_pages — the real contiguous allocator).
+// Copy-on-BOTH-ends makes it direction-agnostic (map_page/unmap_page don't carry the
+// DMA direction): copy caller→bounce on map, bounce→caller on unmap.  Contiguous maps
+// (all of QEMU, all small WiFi DMA) take the fast path unchanged → non-regressive.
+enum uint LKL_DMA_MAXBYTES = 256 * 1024;      // usb-storage transfers are <= ~240 KB
+enum uint LKL_DMA_SLOTS    = 24;               // 24 * 256 KB = 6 MB bounce pool (lazy)
+struct LklBounce { ulong bouncePhys; ulong bounceVirt; ulong callerVirt; uint size; bool inUse; }
+__gshared LklBounce[LKL_DMA_SLOTS] g_lklBounce;
+__gshared bool g_lklBounceInit = false;
+__gshared uint g_lklDmaLog = 0;                // rate-limit the diagnostic
+__gshared bool g_lklForceBounce = false;       // US5: force every multi-page map to bounce (test hook; QEMU-proved the bounce path is correct)
+
+private void lklBounceInit() {
+    import memory.mm : alloc_phys_pages;
+    import core.globals : hhdm_offset;
+    foreach (ref b; g_lklBounce) {
+        const ulong phys = alloc_phys_pages(LKL_DMA_MAXBYTES / 4096);
+        if (phys == 0) { b.bouncePhys = 0; continue; }   // pool partially allocated is fine
+        b.bouncePhys = phys; b.bounceVirt = phys + hhdm_offset; b.inUse = false;
+    }
+    g_lklBounceInit = true;
+}
+
+// Return true iff [va, va+sz) is backed by physically-contiguous pages.
+private bool lklRangeContiguous(ulong va, ulong sz) {
+    import core.addrspace : activeVirtToPhys;
+    ulong p0 = activeVirtToPhys(va & ~0xFFFUL);
+    if (p0 == 0) return false;
+    const ulong last = (va + sz - 1) & ~0xFFFUL;
+    ulong expect = p0;
+    for (ulong pg = va & ~0xFFFUL; pg <= last; pg += 4096) {
+        const ulong p = activeVirtToPhys(pg);
+        if (p == 0 || (p & ~0xFFFUL) != (expect & ~0xFFFUL)) return false;
+        expect += 4096;
+    }
+    return true;
+}
+
+// op5 map: translate a DMA buffer's virt→phys, bouncing if multi-page + non-contiguous.
+private long lklDmaMap(ulong va, ulong sz) {
+    import core.addrspace : activeVirtToPhys;
+    import core.stdc.string : memcpy;
+    const ulong phys = activeVirtToPhys(va);
+    // US5 TEST: g_lklForceBounce forces EVERY multi-page map through the bounce so the bounce
+    // path can be exercised + proven correct in QEMU (where memory is contiguous so it would
+    // otherwise never trigger). Reverted to the contiguity check for production.
+    if (sz <= 4096 || (!g_lklForceBounce && lklRangeContiguous(va, sz)))
+        return cast(long)phys;                          // fast path: single page or contiguous
+    // Non-contiguous multi-page buffer → the corruption case. Bounce it.
+    if (g_lklDmaLog < 32) {
+        klog("[lkl-dma] NON-CONTIGUOUS map va=0x"); klog_hex(va);
+        klog(" sz=0x"); klog_hex(sz); klog(" -> BOUNCE\n"); ++g_lklDmaLog;
+    }
+    if (!g_lklBounceInit) lklBounceInit();
+    if (sz > LKL_DMA_MAXBYTES) {
+        klog("[lkl-dma] BUG: DMA sz=0x"); klog_hex(sz); klog(" > bounce max — corruption risk\n");
+        return cast(long)phys;                          // degrade loudly (should not happen for usb-storage)
+    }
+    foreach (ref b; g_lklBounce) {
+        if (b.bouncePhys == 0 || b.inUse) continue;
+        b.inUse = true; b.callerVirt = va; b.size = cast(uint)sz;
+        memcpy(cast(void*)b.bounceVirt, cast(void*)va, sz);   // caller→bounce (correct for device reads)
+        return cast(long)b.bouncePhys;
+    }
+    klog("[lkl-dma] BUG: bounce pool exhausted — corruption risk\n");
+    return cast(long)phys;                              // degrade loudly
+}
+
+// op12 unmap: if `h` is a bounce, copy bounce→caller and free the slot.
+private void lklDmaUnmap(ulong h) {
+    import core.stdc.string : memcpy;
+    foreach (ref b; g_lklBounce) {
+        if (b.inUse && b.bouncePhys == h) {
+            memcpy(cast(void*)b.callerVirt, cast(void*)b.bounceVirt, b.size);  // bounce→caller (device writes)
+            b.inUse = false;
+            return;
+        }
+    }
+}
+
 public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, ulong val) {
     import drivers.pci : pciConfigRead32, pciConfigWrite32, scanPCIDevices;
     import core.globals : hhdm_offset;
@@ -9179,8 +9270,12 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             else                *cast(shared uint*)va   = cast(uint)val;
             return 0;
         }
-        case 5:                                     // virt->phys: bdf = a userspace virtual addr (DMA IOVA)
-            return cast(long)activeVirtToPhys(bdf);   // caller's OWN memory — no device cap needed
+        case 5:                                     // virt->phys DMA map: bdf = virt addr, size = byte count
+            // US5: bounce non-contiguous multi-page buffers (no-IOMMU corruption fix). `size` may be 0
+            // for legacy single-page callers → treated as one page (fast path).
+            return lklDmaMap(bdf, size == 0 ? 4096 : size);   // caller's OWN memory — no device cap needed
+        case 12:                                    // US5 DMA unmap: bdf = the handle op5 returned; copy a
+            lklDmaUnmap(bdf); return 0;             // bounce back to the caller + free it (no-op if direct)
         case 7:                                     // L5 input bridge: inject an evdev event into the OS
             // bdf=isKeyboard, off=type, size=code, val=value.  Only a granted LKL driver (e.g. the USB
             // LKL holding the xHCI cap) may inject input — a plain task cannot synthesise keystrokes.

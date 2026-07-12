@@ -99,8 +99,10 @@ echo "  hidden-esp.img: $(du -h hidden-esp.img | cut -f1) (preboot.efi + stage2.
 # 4. stage them as installer boot modules + advertise them to limine.
 cp esp.img cd/esp-image
 cp hidden-esp.img cd/esp-hidden-image
+cp esp-boot.img cd/esp-boot-image
 printf '\n    module_path: boot():/esp-image\n' >> "$LIMCONF"
 printf '\n    module_path: boot():/esp-hidden-image\n' >> "$LIMCONF"
+printf '\n    module_path: boot():/esp-boot-image\n' >> "$LIMCONF"
 
 # 5. package the installer ISO using the same Limine/xorriso options as the staged boot tree expects.
 xorriso -as mkisofs \

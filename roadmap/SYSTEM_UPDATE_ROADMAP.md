@@ -172,6 +172,29 @@ Settings → About.
 corrupt B's kernel via a dev verb → reboot → arbiter falls back to A after N tries →
 `[update] AUTO-ROLLBACK to A` in klog. This milestone alone ends "a bad flash bricks it".
 
+**STATUS 2026-07-12 — mostly built + verified; OVMF end-to-end boot has 2 open blockers:**
+- ✅ U1-A boot-state machine (`core/bootstate.d` @ LBA 34, `core/sysupdate.d` verbs
+  switch/rollback/boot-ok/status/init-state, `/config/update.action`+`.status`) — PASS
+  headless (`[bootstate] selftest PASS`, `[update] engine selftest PASS`).
+- ✅ U1-B A/B GPT + dual-slot install (`diskpart.d gptWriteABToDisk`; `veracrypt_impl.d`
+  streams slot-A→slot-B→ESP-boot then `bootStateInit(SLOT_A)`) — VERIFIED on the raw disk
+  (`sgdisk`: p1 8 MiB EF00 arbiter, p2/p3 320 MiB 0700 slots; LBA 34 = `EUBS` try=A ok=A
+  tries=3 active=A). `mk-install-iso.sh` builds `esp-boot.img` (arbiter as BOOTX64.EFI),
+  staged as module `esp-boot-image`; `boot/arbiter/` builds `arbiter.efi` (PE32+).
+- ⛔ **BLOCKER 1 (arbiter bypass):** OVMF boots `\EFI\BOOT\BOOTX64.EFI` from the first FAT
+  partition it enumerates; the SLOTS also carry limine at that path, so a slot's limine
+  runs directly and the arbiter never executes. FIX: the slots must not expose the fallback
+  path — put the **arbiter at `\EFI\BOOT\BOOTX64.EFI` in every partition** (it reads the
+  shared LBA-34 state and redirects), and relocate each slot's limine to
+  `\EFI\anonymos\limine\BOOTX64.EFI` (arbiter's `LIMINE_PATH`). Robust against OVMF's
+  partition-pick. (Needs a slot-flavored esp-image + limine-relocation check.)
+- ⛔ **BLOCKER 2 (pre-existing, not A/B-specific): NVMe BAR-high fault under UEFI.** OVMF
+  maps the NVMe BAR0 at phys `0x800000000` (8 GiB); the kernel HHDM doesn't cover it →
+  page fault in `nvme.d` at first boot. The `-cdrom`/BIOS path placed the BAR low
+  (`0xfebb0000`), so booting an *installed* disk under UEFI is the first time it's hit —
+  this ALSO blocks installed-system boot on the FW13 regardless of A/B. FIX: map the NVMe
+  BAR region on demand (same class as the AHCI HHDM fix) instead of assuming HHDM coverage.
+
 ## U2 — Signed update bundle (`.hosupd`) + kernel-verified staging
 1. `crypto.d`: **Ed25519** verify (+ host-side signing tool `scripts/sign-update.py`).
 2. Bundle = `manifest.json` (channel, version, prevVersion, chunk list w/ SHA256s,

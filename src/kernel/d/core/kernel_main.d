@@ -3339,6 +3339,9 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 89:  return linux_sys_readlink(a, b, c);
         case 90:  return linux_sys_chmod(a, b);        // musl chmod() emits SYS_chmod(90) on x86-64
         case 91:  return linux_sys_fchmod(a, b);       // was ENOSYS -> chmod()/fchmod() silently no-op'd
+        case 92:  return linux_sys_chown(a, b, c);      // NM keyfile writer sets profile ownership
+        case 93:  return linux_sys_fchown(a, b, c);
+        case 94:  return linux_sys_lchown(a, b, c);
         case 96:  return linux_sys_gettimeofday(a, b);
         case 97:  return linux_sys_getrlimit(a, b);
         case 98:  return linux_sys_getrusage(a, b);   // Z1: zsh's `time`/resource reporting

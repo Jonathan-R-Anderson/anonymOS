@@ -199,6 +199,11 @@ static const char *sec_label(dbus_uint32_t flags, dbus_uint32_t wpa, dbus_uint32
  * real data — the demo can never mask real networks. */
 static int  g_nm_misses = 0;
 static char g_demo_active[128] = "";
+/* Last SSID explicitly selected by the user.  NM's own DHCP remains stuck in
+ * ip-config, so ActiveAccessPoint is not always exposed even after external
+ * udhcpc has a valid lease.  Pair this with the fresh dhcp-ok marker to publish
+ * the selected row as active to the menu and Quick Settings. */
+static char g_connect_ssid[128] = "";
 /* The canned demo list is OFF by default (it once looked like real networks and
  * confused the user).  Real WiFi comes from either NetworkManager or, in QEMU, the
  * host WiFi bridge (WIFI=1 makes the kernel COM2 bridge own the /run/wifi files and
@@ -240,7 +245,8 @@ static void write_networks(DBusConnection *c){
     /* External udhcpc obtained a lease (its script touched /run/wifi/dhcp-ok) -> present the device as
      * ACTIVATED(100) so hos-log-upload (wifi_activated: #dev state>=100) proceeds and the menu shows
      * "connected", even though NM itself sits in ip-config forever waiting on its own stalled client. */
-    if (have && state < 100 && access("/run/wifi/dhcp-ok", F_OK) == 0) state = 100;
+    int have_lease = access("/run/wifi/dhcp-ok", F_OK) == 0;
+    if (have && state < 100 && have_lease) state = 100;
     int fd = open("/run/wifi/networks.tmp", O_CREAT|O_WRONLY|O_TRUNC, 0644);
     if (fd < 0) return;
     int n = snprintf(tmp, sizeof tmp, "#dev\t%s\t%s\t%u\n", have?devpath:"", ifname, (unsigned)state);
@@ -260,7 +266,8 @@ static void write_networks(DBusConnection *c){
             dbus_uint32_t fl  = get_u32(c, aps[i], AP_IFACE, "Flags", &ok);
             dbus_uint32_t wpa = get_u32(c, aps[i], AP_IFACE, "WpaFlags", &ok);
             dbus_uint32_t rsn = get_u32(c, aps[i], AP_IFACE, "RsnFlags", &ok);
-            int isact = (strcmp(active, aps[i]) == 0);
+            int isact = (strcmp(active, aps[i]) == 0)
+                     || (have_lease && g_connect_ssid[0] && strcmp(ssid, g_connect_ssid) == 0);
             /* sanitize SSID: strip tabs/newlines */
             for (char *p=ssid; *p; p++) if (*p=='\t'||*p=='\n') *p=' ';
             n = snprintf(tmp, sizeof tmp, "%s\t%u\t%s\t%d\t%s\n",
@@ -330,7 +337,16 @@ static void do_connect(DBusConnection *c, const char *ssid, const char *psk){
         return;
     }
 
-    DBusMessage *m = dbus_message_new_method_call(NM_DEST, NM_PATH, NM_IFACE, "AddAndActivateConnection");
+    /* A lease from the previous selection must never make a new attempt appear
+     * connected.  Record the target and require udhcpc to publish a fresh lease. */
+    unlink("/run/wifi/dhcp-ok");
+    snprintf(g_connect_ssid, sizeof g_connect_ssid, "%s", ssid);
+
+    /* AddAndActivateConnection (v1) always persists through the keyfile plugin.
+     * EpinAnonymOS intentionally has a synthetic /etc, so that fails with
+     * "could not find suitable keyfile file name".  The v2 method lets this
+     * session-owned picker request an in-memory profile instead. */
+    DBusMessage *m = dbus_message_new_method_call(NM_DEST, NM_PATH, NM_IFACE, "AddAndActivateConnection2");
     if (!m) return;
     DBusMessageIter args, conn, e, sub;
     dbus_message_iter_init_append(m, &args);
@@ -369,18 +385,25 @@ static void do_connect(DBusConnection *c, const char *ssid, const char *psk){
     dbus_message_iter_append_basic(&args, DBUS_TYPE_OBJECT_PATH, &dp);
     dbus_message_iter_append_basic(&args, DBUS_TYPE_OBJECT_PATH, &spec);
 
+    /* a{sv} options: persist="memory" avoids the unavailable keyfile store. */
+    DBusMessageIter opts;
+    dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "{sv}", &opts);
+    dict_str(&opts, "persist", "memory");
+    dbus_message_iter_close_container(&args, &opts);
+
     DBusError err; dbus_error_init(&err);
     DBusMessage *r = dbus_connection_send_with_reply_and_block(c, m, 15000, &err);
     dbus_message_unref(m);
     if (r) {
         unlink("/run/wifi/error");
-        fprintf(stderr, "[wifi-agent] AddAndActivateConnection('%s') OK\n", ssid);
+        fprintf(stderr, "[wifi-agent] AddAndActivateConnection2('%s', persist=memory) OK\n", ssid);
         dbus_message_unref(r);
     } else {
         const char *why = err.message ? err.message : "connection request failed";
         int ef = open("/run/wifi/error", O_CREAT|O_WRONLY|O_TRUNC, 0600);
         if (ef >= 0){ (void)!write(ef, why, strlen(why)); close(ef); }
-        fprintf(stderr, "[wifi-agent] AddAndActivateConnection('%s') FAILED: %s\n", ssid, why);
+        fprintf(stderr, "[wifi-agent] AddAndActivateConnection2('%s') FAILED: %s\n", ssid, why);
+        g_connect_ssid[0] = 0;
         dbus_error_free(&err);
     }
 }

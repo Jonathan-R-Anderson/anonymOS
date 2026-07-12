@@ -165,7 +165,8 @@ static void load_networks(struct app *app){
             if (t2){ *t2=0; strncpy(app->iface, t2+1, sizeof(app->iface)-1); }
         } else if (p[0] && app->n_nets < MAX_NETS){
             /* ssid\tstrength\tsec\tactive\tpath */
-            struct net *n = &app->nets[app->n_nets];
+            struct net parsed; memset(&parsed, 0, sizeof parsed);
+            struct net *n = &parsed;
             char *f[5]; int nf=0; char *s=p;
             for (char *q=p; q<=nl && nf<5; q++){ if (*q=='\t'||q==nl){ *q=0; f[nf++]=s; s=q+1; } }
             if (nf >= 4){
@@ -173,7 +174,18 @@ static void load_networks(struct app *app){
                 n->strength = atoi(f[1]);
                 strncpy(n->sec, f[2], sizeof(n->sec)-1); n->sec[sizeof(n->sec)-1]=0;
                 n->active = atoi(f[3]);
-                if (n->ssid[0]) app->n_nets++;
+                if (n->ssid[0]) {
+                    /* NM reports one AccessPoint object per BSSID, so mesh and
+                     * multi-band networks otherwise appear several times.  The
+                     * picker connects by SSID; show one row using the strongest
+                     * observation, while retaining an active duplicate. */
+                    int old = -1;
+                    for (int i=0; i<app->n_nets; i++)
+                        if (strcmp(app->nets[i].ssid, n->ssid)==0){ old=i; break; }
+                    if (old < 0) app->nets[app->n_nets++] = parsed;
+                    else if (parsed.active || (!app->nets[old].active && parsed.strength > app->nets[old].strength))
+                        app->nets[old] = parsed;
+                }
             }
         }
         p = nl + 1;
@@ -348,6 +360,12 @@ static void submit_connect(struct app *app, const char *ssid, const char *psk){
 
 /* --- input --- */
 static void row_click(struct app *app, int row){
+    /* Ignore pointer clicks and key-repeat Enter events while NM is activating.
+     * Without this guard, the Enter that submitted a password was followed by
+     * compositor repeat presses: one reopened the secured row and the next
+     * submitted an empty password, cancelling the valid attempt with NM reason
+     * `new-activation`. */
+    if (app->pending_ssid[0]) return;
     if (row < 0 || row >= app->n_nets) return;
     struct net *n = &app->nets[row];
     if (strcmp(n->sec, "open") == 0){ submit_connect(app, n->ssid, ""); return; }
@@ -385,6 +403,7 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t se, uint32_t t, uint
     if (key==42||key==54){ a->shift = (state==1); return; }
     if (state != 1) return;              /* press only */
     if (!a->editing){
+        if (a->pending_ssid[0]) return;  /* activation owns input until success/error */
         /* Keyboard navigation for the network list.  Previously all keys were
          * discarded here, so pressing Enter on a visible SSID did literally
          * nothing unless it had first been clicked with the pointer. */

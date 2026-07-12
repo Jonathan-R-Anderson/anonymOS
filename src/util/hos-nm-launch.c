@@ -143,6 +143,17 @@ int main(void)
     mkdir("/var", 0755);           mkdir("/var/lib", 0755);
     mkdir("/var/lib/NetworkManager", 0755);
     mkdir("/run", 0755);           mkdir("/run/NetworkManager", 0755);
+    /* AddAndActivateConnection2(persist="memory") still uses the keyfile
+     * plugin's runtime store and commits files with temp-file + rename.  This
+     * directory used to be created only by install_debug_wifi_profile(), so a
+     * credential-free boot could scan but failed every user-selected network
+     * with "failure adding connection: error renaming ...".  NetworkManager
+     * builds vary between /run and /var/run for NMRUNDIR; provide both in this
+     * synthetic filesystem (they are not guaranteed to be aliases here). */
+    mkdir("/run/NetworkManager/system-connections", 0700);
+    mkdir("/var/run", 0755);
+    mkdir("/var/run/NetworkManager", 0755);
+    mkdir("/var/run/NetworkManager/system-connections", 0700);
     install_debug_wifi_profile();
 
     /* NM dlopens its device plugins (incl. wifi!) from NMPLUGINDIR=/usr/lib/NetworkManager/1.44.2.

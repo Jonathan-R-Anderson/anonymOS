@@ -53,6 +53,18 @@ static int   g_nnets = 0;
 static char  g_connect_ssid[64] = {0};   /* the SSID we last asked wpa to join (for the active/checkmark row) */
 static int   g_quietScans = 0;           /* skip scans for a few cycles after a connect: let wpa own the radio */
 
+/* Diagnostic log -> /run/wpa-agent.log (writes to a /run log file are mirrored into /run/klog, so this
+ * is visible in the Logs app (SUPER+L) and on serial — the only window into a real-HW run). */
+static void slog(const char *m)
+{
+    int fd = open("/run/wpa-agent.log", O_CREAT|O_WRONLY|O_APPEND, 0644);
+    if (fd < 0) return;
+    (void)!write(fd, "[wpa-agent] ", 12);
+    (void)!write(fd, m, strlen(m));
+    (void)!write(fd, "\n", 1);
+    close(fd);
+}
+
 /* ---- parking: poll() on the read end of a never-written pipe actually blocks on this kernel ---- */
 static int g_nap_fd = -1;
 static void napms(long ms)
@@ -72,8 +84,11 @@ static void napms(long ms)
  * PARK on the socket fd (poll blocks on a real fd) rather than nanosleep — a 2ms nap-per-byte while
  * waiting for the provider's (slow) scan reply busy-spins a core and starves Weston. */
 static void fd_park(int fd, short ev){ struct pollfd p = { fd, ev, 0 }; poll(&p, 1, 1000); }
-static int rd_full(int fd, void *b, size_t n){ size_t g=0; while(g<n){long r=read(fd,(char*)b+g,n-g); if(r>0){g+=(size_t)r;continue;} if(r<0&&errno==EAGAIN){fd_park(fd,POLLIN);continue;} return 0;} return 1; }
-static int wr_full(int fd, const void *b, size_t n){ size_t p=0; while(p<n){long r=write(fd,(const char*)b+p,n-p); if(r>0){p+=(size_t)r;continue;} if(r<0&&errno==EAGAIN){fd_park(fd,POLLOUT);continue;} return 0;} return 1; }
+/* Bound the wait (~20 x 1s parks with no progress) so a hung provider (e.g. an NSP_SCAN that never
+ * replies) can't wedge the agent forever — a wedged agent would also stop servicing /run/wifi/connect.
+ * On timeout return failure -> the RPC surfaces a framing error -> main() reconnects. */
+static int rd_full(int fd, void *b, size_t n){ size_t g=0; int w=0; while(g<n){long r=read(fd,(char*)b+g,n-g); if(r>0){g+=(size_t)r; w=0; continue;} if(r<0&&errno==EAGAIN){ if(++w>20) return 0; fd_park(fd,POLLIN); continue;} return 0;} return 1; }
+static int wr_full(int fd, const void *b, size_t n){ size_t p=0; int w=0; while(p<n){long r=write(fd,(const char*)b+p,n-p); if(r>0){p+=(size_t)r; w=0; continue;} if(r<0&&errno==EAGAIN){ if(++w>20) return 0; fd_park(fd,POLLOUT); continue;} return 0;} return 1; }
 
 static int prov_connect(void)
 {
@@ -253,6 +268,7 @@ static int check_connect(void)
     else    { snprintf(ssid, sizeof ssid, "%s", buf); }
     if (!ssid[0]) return 0;
 
+    { char m[96]; snprintf(m, sizeof m, "connect request: ssid='%s' (%s)", ssid, psk[0]?"secured":"open"); slog(m); }
     unlink(DHCP_OK);                              /* stale lease must not mark the new attempt "connected" */
     unlink(ERROR_F);                              /* clear any previous failure */
     snprintf(g_connect_ssid, sizeof g_connect_ssid, "%s", ssid);
@@ -288,10 +304,20 @@ int main(void)
     mkdir("/run", 0755);
     mkdir("/run/wifi", 0755);
     seed_connect_ssid();
+    slog("start (direct-wpa Wi-Fi backend)");
+    /* Publish the adapter (wlan0) IMMEDIATELY — before any provider connect or scan — so the menu
+     * shows "ready" and never "no adapter", even while the LKL provider / the (possibly slow) NSP_SCAN
+     * is still coming up.  Previously the first publish happened only AFTER do_scan(), so a menu opened
+     * during that window saw no /run/wifi/networks at all -> "no adapter". */
+    write_networks();
 
-    int s = -1, cyc = 0;
+    int s = -1, cyc = 0, connfail = 0;
     for (;;) {
-        if (s < 0) { s = prov_connect(); if (s < 0) { napms(1000); continue; } }
+        if (s < 0) {
+            s = prov_connect();
+            if (s < 0) { if ((connfail++ % 12) == 0) slog("provider /run/hos-net.sock not reachable yet"); }
+            else { connfail = 0; slog("provider connected"); }
+        }
 
         if (check_connect()) write_networks();    /* service a pending connect promptly */
 
@@ -299,12 +325,16 @@ int main(void)
          * exists (~every 6th cycle) and stay quiet for a few cycles right after a connect — an
          * agent-triggered WEXT scan contends with wpa's own nl80211 scan / active association. */
         int have_lease = (access(DHCP_OK, F_OK) == 0);
-        if (g_quietScans > 0) {
-            g_quietScans--;
-        } else if (!have_lease || (cyc % 6) == 0) {
-            if (do_scan(s) < 0) { close(s); s = -1; }   /* provider dropped -> reconnect next cycle */
+        if (s >= 0) {
+            if (g_quietScans > 0) {
+                g_quietScans--;
+            } else if (!have_lease || (cyc % 6) == 0) {
+                int n = do_scan(s);
+                if (n < 0) { slog("provider RPC error; reconnecting"); close(s); s = -1; }  /* dropped -> reconnect */
+                else { char mm[48]; snprintf(mm, sizeof mm, "scan: %d network(s)", n); slog(mm); }
+            }
         }
-        write_networks();
+        write_networks();   /* always republish the adapter + whatever networks we have */
 
         /* ~5s outer cadence, but poll /run/wifi/connect every 200ms so a click acts fast. */
         for (int k = 0; k < 25; k++) {

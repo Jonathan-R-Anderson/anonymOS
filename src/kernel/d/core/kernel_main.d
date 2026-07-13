@@ -1657,6 +1657,7 @@ private __gshared bool g_udhcpcLeased = false;
 private __gshared int  g_udhcpcDelay  = 0;   // initial settle before the first launch
 private __gshared int  g_udhcpcRetry  = 0;   // respawn throttle once we're launching
 private __gshared int  g_udhcpcSpawns = 0;   // respawn CAP: a udhcpc that keeps crashing must not churn forever
+private __gshared int  g_udhcpcTid    = 0;   // tid of the live udhcpc — never stack a 2nd resident instance
 private void maybeSpawnUdhcpc() {
     if (g_skipNetForTest) return;
     if (g_udhcpcLeased) return;                                       // lease already obtained — done, never respawn
@@ -1666,6 +1667,14 @@ private void maybeSpawnUdhcpc() {
     // The udhcpc lease script writes /run/wifi/dhcp-ok on a successful bind.  Once it exists we're
     // done: latch off and let the live udhcpc stay up to renew.
     if (linux_sys_access(cast(ulong)"/run/wifi/dhcp-ok\0".ptr, 0) == 0) { g_udhcpcLeased = true; return; }
+    // RESIDENCY CAP = 1.  busybox udhcpc runs -f with NO -n, so ONE instance stays alive forever
+    // retrying DISCOVER — a second is pure waste.  Without this, the %600 respawn throttle STACKS up to
+    // 12 CONCURRENT resident udhcpc, and each re-checks readiness with an NSP_POLL RPC to the single
+    // serialized LKL provider on EVERY tick (wakePollers wakes all parked pollers) -> a 12x RPC storm
+    // that starved Weston (the direct-wpa "CPU hog / SUPER+L dead" regression: wlan0 comes up early but
+    // never associates, so all 12 persisted).  Only (re)spawn once the prior udhcpc has actually exited.
+    if (g_udhcpcTid > 0 && g_udhcpcTid < MAX_TASKS &&
+        g_tasks[g_udhcpcTid].active && !g_tasks[g_udhcpcTid].exited) return;
     if (g_udhcpcDelay++ < 90) return;                                 // initial settle: let NM/wpa bring wlan0 up first
     // SUPERVISE, don't one-shot.  The old latch meant that if the first udhcpc died early (it exec'd
     // before wlan0 was actually associated, so its AF_PACKET setup failed and busybox udhcpc exited)
@@ -1688,6 +1697,7 @@ private void maybeSpawnUdhcpc() {
     g_udhcpcSpawns++;
     klog("[udhcpc] (re)launch hos-udhcpc-launch -> busybox udhcpc; supervising until lease (/run/wifi/dhcp-ok)\n");
     spawnWaylandProgram("hos-udhcpc-launch\0".ptr, "[udhcpc]\0".ptr);
+    g_udhcpcTid = cast(int)g_current_task_id;   // remember the live instance so we never stack a 2nd (spawnWaylandProgram set g_current_task_id)
 }
 private __gshared bool g_nmcliStarted = false;
 private __gshared int  g_nmcliDelay   = 0;

@@ -136,6 +136,7 @@ NMLAUNCH_BIN := build/hos-nm-launch
 NMCLITEST_BIN := build/hos-nmcli-test
 WPALAUNCH_BIN := build/hos-wpa-launch
 WIFIAGENT_BIN := build/hos-wifi-agent
+WPAAGENT_BIN := build/hos-wpa-agent          # direct-wpa Wi-Fi menu backend (default; replaces the NM D-Bus bridge)
 UDHCPCSCRIPT_BIN := build/hos-udhcpc-script   # udhcpc lease handler (ELF; forks busybox-dyn to set IP)
 UDHCPCLAUNCH_BIN := build/hos-udhcpc-launch   # kernel-spawned launcher: execs busybox-dyn udhcpc (LKL DHCP)
 SCPTEST_BIN      := build/hos-scp-test        # one-command scp/upload self-test (/scp-test)
@@ -547,6 +548,10 @@ $(WIFIAGENT_BIN): src/util/hos-wifi-agent.c
 		-I$(WAYLAND_SYSROOT)/include/dbus-1.0 -I$(WAYLAND_SYSROOT)/lib/dbus-1.0/include \
 		$(WAYLAND_SYSROOT)/lib/libdbus-1.so -Wl,-rpath,/
 
+$(WPAAGENT_BIN): src/util/hos-wpa-agent.c src/lkl/hos-net-proto.h
+	@echo "==== Building hos-wpa-agent (direct-wpa Wi-Fi menu backend: NSP_SCAN + wpa config/SIGHUP, no dbus) ===="
+	$(MUSL_CC) -static -O2 -Wall -Isrc/lkl -o $@ src/util/hos-wpa-agent.c
+
 $(NMCLITEST_BIN): src/util/hos-nmcli-test.c src/lkl/hos-net-proto.h
 	@echo "==== Building hos-nmcli-test (M2b nmcli D-Bus probe) ===="
 	$(MUSL_CC) -static -O2 -Isrc/lkl -o $@ src/util/hos-nmcli-test.c
@@ -674,7 +679,7 @@ $(BSDTAR_BIN):
 $(GPGV_BIN):
 	$(MAKE) -C deps/gnupg
 
-stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -871,8 +876,9 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 		cp deps/wpa-build/wpa_supplicant-2.10/wpa_supplicant/wpa_cli cd/wpa_cli; \
 		cp deps/wpa-build/libnl-tiny/libnl-tiny.so cd/libnl-tiny.so; \
 		cp $(WPALAUNCH_BIN) cd/hos-wpa-launch; \
-		printf '    module_path: boot():/wpa_supplicant\n    module_path: boot():/wpa_cli\n    module_path: boot():/libnl-tiny.so\n    module_path: boot():/hos-wpa-launch\n' >> cd/boot/limine/limine.conf; \
-		echo "Included wpa_supplicant (M5: D-Bus mode for NM, under the shim) + libnl-tiny.so + hos-wpa-launch"; \
+		cp $(WPAAGENT_BIN) cd/hos-wpa-agent; \
+		printf '    module_path: boot():/wpa_supplicant\n    module_path: boot():/wpa_cli\n    module_path: boot():/libnl-tiny.so\n    module_path: boot():/hos-wpa-launch\n    module_path: boot():/hos-wpa-agent\n' >> cd/boot/limine/limine.conf; \
+		echo "Included wpa_supplicant (direct -c mode, NM-less) + libnl-tiny.so + hos-wpa-launch + hos-wpa-agent"; \
 	fi
 	cp $(LOGUPLOAD_BIN) cd/hos-log-upload
 	printf '    module_path: boot():/hos-log-upload\n' >> cd/boot/limine/limine.conf

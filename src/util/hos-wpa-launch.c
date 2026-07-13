@@ -1,22 +1,27 @@
 /*
- * hos-wpa-launch.c -- bring up wpa_supplicant (static-musl).
+ * hos-wpa-launch.c -- bring up wpa_supplicant (static-musl), DIRECT mode (no NetworkManager, no D-Bus).
  *
- * HEADLESS DEBUG BOOTS (/epin-debug-fast-net.conf present): drive wpa_supplicant DIRECTLY from a generated config
- * (`-c /wpa-direct.conf` with a network={ssid,psk} block) instead of `-u` (D-Bus/NetworkManager) mode.
- * This is the single biggest speed win for "boot -> associated -> lease -> scp": it removes the whole
- * daemon ladder (NetworkManager taking ~11s just to own its bus name, then wpa idling until NM calls
- * SelectNetwork over D-Bus) from the critical path.  wpa associates on its own in ~3-8s, so an UNSTABLE
- * box that crashes fast still gets onto WiFi and scp's its log in time.  Because wpa in -c mode does NOT
- * expose the fi.w1.wpa_supplicant1 D-Bus name, NetworkManager simply can't manage wifi and leaves wlan0
- * to us -- no conflict.  NORMAL boots (no debug-net.conf): keep -u (D-Bus) mode for the interactive menu.
+ * The Wi-Fi menu is driven by hos-wpa-agent, which manages the runtime config /run/wpa-net.conf and
+ * SIGHUPs wpa to associate.  So wpa is launched in `-c` mode against that shared config with a pidfile
+ * (`-P /run/wpa.pid`) the agent reads to signal it.  This removes NetworkManager (the daemon that hung
+ * at `platform-linux: create`, never registered its D-Bus name, and churned dbus/nmcli -> Weston
+ * starvation) from the path entirely: wpa associates on its own in a few seconds, the kernel-supervised
+ * udhcpc leases, and the menu reads scan results from the LKL provider (NSP_SCAN) via hos-wpa-agent.
  *
- * Boot modules land at "/", so LD_LIBRARY_PATH=/ resolves libnl-tiny.so etc.  Logs -> /run/wpa.log.
+ * Initial config: if /epin-debug-net.conf carries wifi_ssid (+wifi_psk) we pre-seed that network so the
+ * box auto-associates at boot; otherwise a bare config (no network) — wpa idles until the user picks a
+ * network in the menu (agent rewrites the config + SIGHUP).  ctrl_interface is intentionally omitted:
+ * it is an AF_UNIX SOCK_DGRAM socket and this kernel implements AF_UNIX SOCK_STREAM only, so requesting
+ * it makes wpa fail "Failed to add interface wlan0" and tear the radio down.  Boot modules land at "/",
+ * so LD_LIBRARY_PATH=/ resolves libnl-tiny.so etc.  Logs -> /run/wpa.log.
  */
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+
+#define WPA_CONF "/run/wpa-net.conf"
 
 static void logline(const char *s){ (void)!write(2, s, strlen(s)); (void)!write(2, "\n", 1); }
 
@@ -48,42 +53,54 @@ int main(void)
     mkdir("/run", 0755);
     mkdir("/run/wpa_supplicant", 0755);
 
-    char *const envp[] = { "LD_PRELOAD=/libnshim.so", "PATH=/", "HOME=/", "LD_LIBRARY_PATH=/",
-                           "DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket", 0 };
+    char *const envp[] = { "LD_PRELOAD=/libnshim.so", "PATH=/", "HOME=/", "LD_LIBRARY_PATH=/", 0 };
 
-    /* wpa's verbose debug -> /run/wpa.log (matches the boot-doctor's expectation). */
+    /* wpa's verbose debug -> /run/wpa.log (matches the boot-doctor / Logs-app expectation). */
     { int lf = open("/run/wpa.log", O_CREAT|O_WRONLY|O_TRUNC, 0644);
       if (lf >= 0) { dup2(lf,1); dup2(lf,2); if (lf > 2) close(lf); } }
 
-    char ssid[128] = {0}, psk[128] = {0};
-    if (access("/epin-debug-fast-net.conf", F_OK) == 0 &&
-        read_cred("wifi_ssid", ssid, sizeof ssid) && read_cred("wifi_psk", psk, sizeof psk) && ssid[0]) {
-        /* DEBUG FAST PATH: write a direct config and drive the radio without NM. */
-        int cf = open("/wpa-direct.conf", O_CREAT|O_WRONLY|O_TRUNC, 0644);
+    /* Seed the runtime config ONCE if the agent hasn't already written one (survives a relaunch). */
+    if (access(WPA_CONF, F_OK) != 0) {
+        char ssid[128] = {0}, psk[128] = {0};
+        int have = (read_cred("wifi_ssid", ssid, sizeof ssid) && ssid[0]);
+        if (have) read_cred("wifi_psk", psk, sizeof psk);
+        int cf = open(WPA_CONF, O_CREAT|O_WRONLY|O_TRUNC, 0600);
         if (cf >= 0) {
-            /* NO ctrl_interface: it is an AF_UNIX SOCK_DGRAM socket, and this kernel's AF_UNIX
-             * implements only SOCK_STREAM -> socket(PF_UNIX,SOCK_DGRAM) returns EPROTONOSUPPORT,
-             * which makes wpa fail "Failed to add interface wlan0" and tear the radio back down.
-             * The debug fast-path drives the radio purely from this config (no wpa_cli consumer:
-             * udhcpc + log-upload are independent), so wpa associates headlessly without it. */
-            char cfg[512];
-            int m = snprintf(cfg, sizeof cfg,
-                "update_config=0\nap_scan=1\n"
-                "network={\n\tssid=\"%s\"\n\tpsk=\"%s\"\n\tkey_mgmt=WPA-PSK\n\tscan_ssid=1\n}\n",
-                ssid, psk);
+            /* wpa_config_read() TERMINATES the whole wpa_supplicant process on ANY config it rejects,
+             * and maybeSpawnWpa is one-shot — so a malformed seeded ssid/psk would kill Wi-Fi for the
+             * session.  Guard exactly what wpa enforces: SSID 1..32 bytes; a WPA passphrase 8..63
+             * chars (written QUOTED).  A 64-char raw PMK would need to be UNQUOTED, which we don't
+             * emit here, so we do NOT accept plen==64 (quoting it => "too long passphrase" => reject).
+             * Anything outside these bounds falls back to a bare no-network config (user picks in the
+             * menu) rather than a config wpa would reject. */
+            size_t slen = strlen(ssid), plen = strlen(psk);
+            int ssid_ok = (slen >= 1 && slen <= 32);
+            int psk_ok  = (plen >= 8 && plen <= 63);
+            char cfg[512]; int m;
+            if (have && ssid_ok && psk[0] && psk_ok)
+                m = snprintf(cfg, sizeof cfg,
+                    "update_config=0\nap_scan=1\nnetwork={\n\tssid=\"%s\"\n\tpsk=\"%s\"\n\tkey_mgmt=WPA-PSK\n\tscan_ssid=1\n}\n",
+                    ssid, psk);
+            else if (have && ssid_ok && !psk[0])
+                m = snprintf(cfg, sizeof cfg,
+                    "update_config=0\nap_scan=1\nnetwork={\n\tssid=\"%s\"\n\tkey_mgmt=NONE\n\tscan_ssid=1\n}\n",
+                    ssid);   /* open network */
+            else
+                m = snprintf(cfg, sizeof cfg, "update_config=0\nap_scan=1\n");   /* bare: user picks in the menu */
             if (m > 0) (void)!write(cf, cfg, (size_t)m);
             close(cf);
-            logline("[wpa-launch] DEBUG fast path: exec /wpa_supplicant -c /wpa-direct.conf -i wlan0 (NM-less direct associate)");
-            char *argv[] = { "/wpa_supplicant", "-i", "wlan0", "-c", "/wpa-direct.conf", "-D", "nl80211", "-dd", 0 };
-            execve("/wpa_supplicant", argv, envp);
-            logline("[wpa-launch] execve(/wpa_supplicant -c) FAILED (missing binary/interp/lib?)");
-            return 1;
         }
     }
 
-    /* NORMAL boot: D-Bus mode for NetworkManager (interactive menu). */
-    logline("[wpa-launch] exec /wpa_supplicant -u (D-Bus mode) under LD_PRELOAD=/libnshim.so");
-    char *argv[] = { "/wpa_supplicant", "-u", "-dd", 0 };
+    /* wpa runs in the FOREGROUND (no -B: -B forks, and this kernel kills fork children), and a
+     * foreground wpa never writes a -P pidfile.  So WE write it: execve() preserves our pid, so
+     * getpid() here IS the pid wpa will run under — which hos-wpa-agent reads to SIGHUP wpa (reload
+     * config -> associate) on a menu connect.  Without this the connect path is a silent no-op. */
+    { char pb[24]; int m = snprintf(pb, sizeof pb, "%d\n", (int)getpid());
+      int pf = open("/run/wpa.pid", O_CREAT|O_WRONLY|O_TRUNC, 0644);
+      if (pf >= 0) { if (m > 0) (void)!write(pf, pb, (size_t)m); close(pf); } }
+    logline("[wpa-launch] exec /wpa_supplicant -c " WPA_CONF " -i wlan0 -D nl80211 (direct, NM-less; pid -> /run/wpa.pid)");
+    char *argv[] = { "/wpa_supplicant", "-i", "wlan0", "-c", WPA_CONF, "-D", "nl80211", "-dd", 0 };
     execve("/wpa_supplicant", argv, envp);
     logline("[wpa-launch] execve(/wpa_supplicant) FAILED (missing binary/interp/lib?)");
     return 1;

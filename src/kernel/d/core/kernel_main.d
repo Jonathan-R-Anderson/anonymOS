@@ -1532,6 +1532,29 @@ private bool debugNetBootPresent() {
     return g_debugNetBoot == 1;
 }
 
+// Direct-wpa Wi-Fi is the DEFAULT.  NetworkManager hangs at `platform-linux: create`, never registers
+// its D-Bus name here, and its NM+dbus+nmcli chain churns the CPU -> Weston starvation ("Wi-Fi
+// unavailable").  Instead hos-wpa-agent drives wpa_supplicant directly (writes /run/wpa-net.conf +
+// SIGHUP) and publishes scan results read from the LKL provider (NSP_SCAN) to /run/wifi/networks; the
+// kernel-supervised udhcpc leases.  NM can be restored by staging an /epin-use-nm.conf opt-out marker.
+private __gshared int g_useNm = -1;   // -1=unknown, 0=direct-wpa (default), 1=NM (opt-out marker present)
+private bool useDirectWifi() {
+    if (g_useNm < 0) {
+        g_useNm = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "epin-use-nm.conf")) { g_useNm = 1; break; }
+            }
+        }
+    }
+    return g_useNm == 0;   // direct-wpa unless the NM opt-out marker is staged
+}
+
 // DECOY_DISTRO US0: gate granting the xHCI (USB) controller to the LKL behind a boot marker.
 // Driving usb-storage bulk DMA hard-freezes the FW13 (no-IOMMU path — see maybeSpawnLklTest);
 // so USB is OFF by default and enabled only when /epin-usb.conf is staged (QEMU dev boots +
@@ -1560,7 +1583,7 @@ private void maybeSpawnWpa() {
     if (g_wpaStarted) return;
     // Debug-net boots drive wpa in direct -c mode (no D-Bus) and dbus is gated off there, so requiring
     // g_dbusStarted would wedge wifi forever. Only normal (-u/NetworkManager) boots need the bus first.
-    if (!debugNetBootPresent() && !g_dbusStarted) return;             // system bus must be up first (normal boots)
+    if (!useDirectWifi() && !g_dbusStarted) return;                   // direct-wpa needs no dbus; only NM mode waits for the bus
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
     g_wpaStarted = true;
     klog("[wpa] M5: net-provider live -> launching hos-wpa-launch -> wpa_supplicant under the shim\n");
@@ -1571,7 +1594,7 @@ private __gshared ulong g_nmStartedMs = 0;
 private void maybeSpawnNetworkManager() {
     if (g_skipNetForTest) return;
     if (g_nmStarted) return;
-    if (debugNetBootPresent()) return;   // debug boot uses direct wpa; NM never registers + churns dbus -> freezes
+    if (useDirectWifi()) return;   // direct-wpa is the default; NM never registers + churns dbus -> freezes
     if (!g_dbusStarted) return;                                        // system bus must be up first
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
     g_nmStarted = true;
@@ -1588,7 +1611,7 @@ private __gshared bool g_wifiAgentStarted = false;
 private void maybeSpawnWifiAgent() {
     if (g_skipNetForTest) return;
     if (g_wifiAgentStarted) return;
-    if (debugNetBootPresent()) return;   // debug boot: agent would spin against the bypassed NM -> freezes
+    if (useDirectWifi()) return;   // direct-wpa uses hos-wpa-agent instead; this D-Bus agent would spin against the bypassed NM
     if (g_wifiBridgePresent) return;   // the COM2 host-WiFi bridge owns /run/wifi/* — no demo agent
     // Do not start it merely because the dbus launcher was spawned: dbus-daemon may
     // not be accepting/authenticating clients yet, and an early dbus_bus_get() used
@@ -1609,6 +1632,23 @@ private void maybeSpawnWifiAgent() {
      * capability-gated by DEVCLASS_NET. */
     spawnWaylandProgram("hos-wifi-agent\0".ptr, "[wifiag]\0".ptr);
 }
+// Direct-wpa menu backend (default): replaces the NM D-Bus bridge (hos-wifi-agent).  hos-wpa-agent
+// asks the LKL provider for scan results (NSP_SCAN) and publishes /run/wifi/networks, and turns a
+// menu connect request (/run/wifi/connect) into a wpa association by rewriting /run/wpa-net.conf and
+// SIGHUP'ing wpa_supplicant.  It speaks only plain AF_UNIX to the provider (no dbus, no LD_PRELOAD).
+private __gshared bool g_wpaAgentStarted = false;
+private __gshared int  g_wpaAgentDelay   = 0;
+private void maybeSpawnWpaAgent() {
+    if (g_skipNetForTest) return;
+    if (g_wpaAgentStarted) return;
+    if (!useDirectWifi()) return;                                     // NM mode uses hos-wifi-agent instead
+    if (g_wifiBridgePresent) return;                                  // the COM2 host-WiFi bridge owns /run/wifi/*
+    if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;  // needs the LKL provider for NSP_SCAN
+    if (g_wpaAgentDelay++ < 40) return;                               // let wpa + the provider settle first
+    g_wpaAgentStarted = true;
+    klog("[wifi] direct-wpa: launching hos-wpa-agent -> NSP_SCAN -> /run/wifi/networks (connect via wpa config + SIGHUP)\n");
+    spawnWaylandProgram("hos-wpa-agent\0".ptr, "[wpaag]\0".ptr);
+}
 // External DHCP: NM's in-process n-dhcp4 stalls before ever sending a DISCOVER (its nested epoll+timerfd
 // never fires here), so a standalone busybox udhcpc gets the lease instead (proven: full
 // DISCOVER→OFFER→REQUEST→ACK through the LKL/AX210).  Kernel-spawned (the wifi-agent's fork()+execve of
@@ -1621,7 +1661,7 @@ private void maybeSpawnUdhcpc() {
     if (g_skipNetForTest) return;
     if (g_udhcpcLeased) return;                                       // lease already obtained — done, never respawn
     if (g_wifiBridgePresent) return;                                  // COM2 host-bridge owns wifi
-    if (!debugNetBootPresent() && !g_dbusStarted) return;             // dbus is gated off on debug-net boots; udhcpc never needs it
+    if (!useDirectWifi() && !g_dbusStarted) return;                   // dbus is gated off in direct-wpa mode; udhcpc never needs it
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;  // LKL net-provider (owns wlan0) up
     // The udhcpc lease script writes /run/wifi/dhcp-ok on a successful bind.  Once it exists we're
     // done: latch off and let the live udhcpc stay up to renew.
@@ -1654,7 +1694,7 @@ private __gshared int  g_nmcliDelay   = 0;
 private void maybeSpawnNmcli() {
     if (g_skipNetForTest) return;
     if (g_nmcliStarted) return;
-    if (debugNetBootPresent()) return;   // debug boot: NM poll is a foregone "stuck" verdict + churns dbus
+    if (useDirectWifi()) return;   // direct-wpa: the NM boot-doctor poll is a foregone "stuck" verdict + churns dbus
     // UNGATED (not requiring g_nmStarted): the boot-doctor diagnoses the whole chain — dbus, the LKL
     // provider socket, and NM registration — and writes /run/boot-status.txt.  It must run even when
     // NM never launched (that is exactly what we are diagnosing).
@@ -1715,7 +1755,7 @@ private void maybeSpawnSshd() {
 
 private void maybeSpawnDbus() {
     if (g_dbusStarted) return;
-    if (debugNetBootPresent()) return;   // debug boot needs no dbus (NM/agent/nmcli skipped; weston uses builtin seatd); dbus-daemon otherwise spins ~1000/s starving the compositor -> freezes
+    if (useDirectWifi()) return;   // direct-wpa needs no dbus (NM/agent/nmcli skipped; weston uses builtin seatd); dbus-daemon otherwise spins ~1000/s starving the compositor -> freezes
     if (g_dbusDelay++ < 40) return;   // let the desktop settle first
     g_dbusStarted = true;
     klog("[dbus] M0: launching hos-dbus-launch -> dbus-daemon (persistent system bus)\n");
@@ -3710,7 +3750,8 @@ private void kernelLoop() {
         maybeSpawnNetworkManager(); // M2b: launch the real NetworkManager daemon once dbus + provider are up
         wifiBridgeDetect();         // WIFI=1: probe COM2 for the host WiFi bridge (one-shot)
         wifiBridgePoll();           // …and pump it: real host nmcli scan/connect <-> /run/wifi/*
-        maybeSpawnWifiAgent();      // M6: Wi-Fi menu's D-Bus bridge (skips itself when the COM2 bridge is live)
+        maybeSpawnWifiAgent();      // M6: Wi-Fi menu's D-Bus bridge (NM mode only; skipped by useDirectWifi + COM2 bridge)
+        maybeSpawnWpaAgent();       // direct-wpa menu backend (default): NSP_SCAN -> /run/wifi/networks, connect via wpa config+SIGHUP
         maybeSpawnUdhcpc();         // external DHCP: busybox udhcpc gets the lease (NM's n-dhcp4 stalls)
         maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
         maybeSpawnLogUpload(); // debug: snapshot logs and scp them when a client is staged

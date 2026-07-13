@@ -1,3 +1,11 @@
+==== Linking Kernel ====
+ld: warning: interrupts_asm.o: missing .note.GNU-stack section implies executable stack
+ld: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+ld: kernel.elf: section .tbss._D7display6server10x11_server19renderAllX11WindowsFNbNiZ15lastWindowCountm lma 0x5e4b40 adjusted to 0x5e4b41
+ld: kernel.elf: section .tbss._D7display6server10x11_server19renderAllX11WindowsFNbNiZ15lastMappedCountm lma 0x5e4b40 adjusted to 0x5e4b49
+ld: kernel.elf: section .tbss._D4core7hoscall12hosSubscribeFNbNimZ2snk lma 0x5e4b40 adjusted to 0x5e4b51
+ld: kernel.elf: section .tbss._D4core8syscalls5posix16drmSetHosWindowsUNbNimZ12g_hosWinLogNk lma 0x5e4b40 adjusted to 0x5e4b55
+ld: warning: kernel.elf has a LOAD segment with RWX permissions
 ==== Generating display.conf (GUI G7 mode config) ====
 ==== Generating manifest.blob from anonymos-config/examples/system.json (§4 config boot) ====
 wrote 551-byte signed manifest to build/manifest.blob (3 services, 3 identities)
@@ -33,7 +41,7 @@ Included SSH-in (dropbear server + hos-sshd-launch; remote via lkl-boot tcp/22 b
 Included M0 real dbus-daemon (system bus) + libdbus-1.so.3 + dbus-send + hos-dbus-launch + hos-dbus-test
 Included M2b real NetworkManager daemon + nmcli + libnm.so.0 + libndp.so.0 + hos-nm-launch + hos-nmcli-test
 Included hos-thread-test (diag: cross-thread wakeup)
-Included /epin-ssh.conf (SSH enabled by default: dropbear remote access, coexists with WiFi; SSH=0 to disable)
+Included /epin-ssh.conf (SSH enabled by default: dropbear remote access, poll-parked launcher, coexists with WiFi; SSH=0 to disable)
 Included /wifi-diag.sh (run: sh /wifi-diag.sh)
 Included hos-wifiterm (TEMP lightweight WiFi-check terminal)
 Included wpa_supplicant (M5: D-Bus mode for NM, under the shim) + libnl-tiny.so + hos-wpa-launch
@@ -69,7 +77,7 @@ pack-assets: wallpapers: 6 files, 160974 bytes -> build/asset-blobs/wallpapers.b
 pack-assets: themes: 6 files, 37388 bytes -> build/asset-blobs/themes.blob
 Included GUI asset category blobs (fonts/icons/cursors/wallpapers/themes)
 Included Weston (GW3) + desktop-shell + terminal — overrides Hyprland as init
-boot-integrity: wrote build/zksync-attestation.json files=141 root=0x1b66941bf01e594bd6f27cec64934a409c87fefec34add0777281b77a6778190 contract=(unset)
+boot-integrity: wrote build/zksync-attestation.json files=141 root=0x007ba6e621d205059900da6356882766226b0fd96ea19c37a183fa7b9d9c9aa3 contract=(unset)
 Included zksync-attestation.json (boot-module hash manifest)
 [veracrypt] built /home/bruns/Documents/EpinAnonymOS/deps/veracrypt/build/preboot.efi + /home/bruns/Documents/EpinAnonymOS/deps/veracrypt/build/stage2.efi
 /home/bruns/Documents/EpinAnonymOS/deps/veracrypt/build/preboot.efi: PE32+ executable (EFI application) x86-64, for MS Windows, 3 sections

@@ -1616,6 +1616,7 @@ private void maybeSpawnWifiAgent() {
 private __gshared bool g_udhcpcLeased = false;
 private __gshared int  g_udhcpcDelay  = 0;   // initial settle before the first launch
 private __gshared int  g_udhcpcRetry  = 0;   // respawn throttle once we're launching
+private __gshared int  g_udhcpcSpawns = 0;   // respawn CAP: a udhcpc that keeps crashing must not churn forever
 private void maybeSpawnUdhcpc() {
     if (g_skipNetForTest) return;
     if (g_udhcpcLeased) return;                                       // lease already obtained — done, never respawn
@@ -1633,6 +1634,18 @@ private void maybeSpawnUdhcpc() {
     // appears, throttled (~every 600 reconciles) so an actively-retrying udhcpc isn't duplicated faster
     // than it can finish DISCOVER→ACK.
     if ((g_udhcpcRetry++ % 600) != 0) return;
+    // CAP the respawns: on hardware where busybox-dyn udhcpc segfaults (code=1, the 0x5a00.. musl crash),
+    // an uncapped supervisor respawns it forever — that was the tid-249 crash-loop churning the FW13's CPU
+    // and (before the reaper) exhausting the task table.  Give up after 12 tries; the reaper still frees the
+    // dead slots, and WiFi can be brought up by hand (LD_PRELOAD=/libnshim.so /busybox-dyn udhcpc -i wlan0 …).
+    if (g_udhcpcSpawns >= 12) {
+        if (g_udhcpcSpawns == 12) {
+            klog("[udhcpc] gave up after 12 launches with no lease — no auto-IP; run udhcpc by hand if needed\n");
+            g_udhcpcSpawns = 13;   // log this once
+        }
+        return;
+    }
+    g_udhcpcSpawns++;
     klog("[udhcpc] (re)launch hos-udhcpc-launch -> busybox udhcpc; supervising until lease (/run/wifi/dhcp-ok)\n");
     spawnWaylandProgram("hos-udhcpc-launch\0".ptr, "[udhcpc]\0".ptr);
 }
@@ -3647,6 +3660,26 @@ private void bootProgressEventHex(const(char)* tag, ulong value, ref uint counte
     }
 }
 
+// STABILITY: reap LEAKED task slots.  exitTask() marks a task exited but ONLY wait4()/releaseTask frees
+// its slot.  A task whose parent is init (tid 0) or is already dead is never wait4()'d, so under a crash
+// loop (a NM/dbus probe or a udhcpc/busybox-dyn respawn that segfaults) those dead slots pile up until
+// MAX_TASKS (256) is exhausted — then NO new process can fork/spawn, so the desktop "won't open windows"
+// and the installer can't launch its helper tools, while the respawn churn also hogs the CPU.  Auto-reap
+// them here — exactly what wait4() would do.  A LIVE, non-init parent keeps its zombies untouched (the
+// panel wait4()s its popovers via the owned-flag toggle; zsh reaps its own jobs), so this is safe.
+private __gshared int g_reapTick = 0;
+private void maybeReapZombies() {
+    if ((g_reapTick++ & 0x3F) != 0) return;   // ~every 64 reconcile loops — cheap
+    for (int t = 1; t < MAX_TASKS; t++) {
+        auto tk = &g_tasks[t];
+        if (!tk.active || !tk.exited) continue;          // only zombies (exited but slot still held)
+        const int p = tk.parentId;
+        const bool nobodyWaits = (p <= 0) || (p >= MAX_TASKS) ||
+                                 !g_tasks[p].active || g_tasks[p].exited;   // init / invalid / dead parent
+        if (nobodyWaits) releaseTask(t);
+    }
+}
+
 private void kernelLoop() {
     while (true) {
         if (!g_loopTagPrinted) {
@@ -3661,6 +3694,7 @@ private void kernelLoop() {
         bklAcquire(&g_bkl);
         freezeProbeKlog();     // freeze diagnostic → /run/klog (filter "freeze"): who hogs the core during a stall
         freezeWatchdog();      // LOST-WAKEUP RECOVERY: un-park stalled sleepers so the compositor resumes
+        maybeReapZombies();    // free leaked task slots (crash-loop zombies) so new apps/installer can spawn
         maybeSpawnWaylandClient();
         // R2.5: GPU-test launchers OFF during Weston-GL bring-up — they contend with
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.

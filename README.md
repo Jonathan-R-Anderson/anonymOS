@@ -296,6 +296,45 @@ no OpenGL/Mesa dependency, which crashes in this freestanding/musl environment.
   min/max/close + rounded corners), a Spotlight-style launcher (Super+Space),
   and a real Finder-style **file manager** (`wl-files`).
 - Bundled assets: Noto fonts, icons, cursors, wallpapers, themes (license-guarded).
+- **Automatic tiling window manager** (Hyprland-style) implemented *inside* the
+  Weston desktop-shell — a literal Hyprland port is impossible on the Pixman CPU
+  renderer, so the tiler lives in the shell plugin. New windows auto-tile
+  (master-stack or dwindle/spiral), with gaps, 9 workspaces, and keyboard-driven
+  focus/move/resize; dialogs and popovers float. The GNOME-style top bar is kept.
+
+#### ⌨️ Keyboard shortcuts
+
+`SUPER` is the Windows/Meta key. Window-management (tiling):
+
+| Shortcut | Action |
+| --- | --- |
+| `SUPER` + `←` `↓` `↑` `→`  /  `H` `J` `K` `L` | Move focus in direction |
+| `SUPER`+`Shift` + arrows / `H` `J` `K` `L` | Move window in direction |
+| `SUPER`+`Shift`+`Return` | Promote focused window to master |
+| `SUPER`+`\` | Cycle layout (master-stack ⇄ dwindle/spiral) |
+| `SUPER`+`,` / `SUPER`+`.` | Shrink / grow the master area |
+| `SUPER`+`Shift`+`,` / `SUPER`+`Shift`+`.` | Fewer / more windows in master |
+| `SUPER`+`Space` | Toggle floating for the focused window |
+| `SUPER`+`F` | Fullscreen · `SUPER`+`Q` close · `SUPER`+`Shift`+`Q` force-kill |
+| `SUPER`+`1`…`9` | Switch to workspace 1–9 |
+| `SUPER`+`Shift`+`1`…`9` | Move focused window to workspace 1–9 |
+
+App launchers / desktop (configurable in [`src/desktop.conf`](src/desktop.conf)):
+
+| Shortcut | Opens |
+| --- | --- |
+| `SUPER`+`A` | Activities — app grid + type-to-search |
+| `SUPER`+`S` | Quick Settings (Wi-Fi / volume / battery / power) |
+| `SUPER`+`C` | Calendar · `SUPER`+`O` Clocks |
+| `SUPER`+`Return` / `SUPER`+`T` | Terminal · `SUPER`+`Y` GLES2 terminal |
+| `SUPER`+`E` | Files · `SUPER`+`N` Text Editor · `SUPER`+`I` Image Viewer |
+| `SUPER`+`W` | Wi-Fi picker · `SUPER`+`D` Settings / Domain Manager |
+| `SUPER`+`M` | System Monitor · `SUPER`+`U` Characters · `SUPER`+`P` Screenshot |
+| `SUPER`+`Alt`+`L` | Logs · `SUPER`+`Alt`+`K` Calculator |
+
+> `SUPER`+`L`/`K` are the tiling focus keys, so Logs/Calculator moved to
+> `SUPER`+`Alt`+`L`/`K`. The tiling bindings live in the desktop-shell plugin
+> (`deps/weston-14.0.0/desktop-shell/shell.c`).
 
 ### 🐚 Shells & command set
 *Roadmaps: [`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md), [`SHELL_AND_COMMANDS_ROADMAP`](roadmap/SHELL_AND_COMMANDS_ROADMAP.md).*

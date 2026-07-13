@@ -1613,17 +1613,27 @@ private void maybeSpawnWifiAgent() {
 // never fires here), so a standalone busybox udhcpc gets the lease instead (proven: full
 // DISCOVER→OFFER→REQUEST→ACK through the LKL/AX210).  Kernel-spawned (the wifi-agent's fork()+execve of
 // it was unreliable); the launcher execve()s /busybox-dyn udhcpc under LD_PRELOAD=/libnshim.so.
-private __gshared bool g_udhcpcStarted = false;
-private __gshared int  g_udhcpcDelay   = 0;
+private __gshared bool g_udhcpcLeased = false;
+private __gshared int  g_udhcpcDelay  = 0;   // initial settle before the first launch
+private __gshared int  g_udhcpcRetry  = 0;   // respawn throttle once we're launching
 private void maybeSpawnUdhcpc() {
     if (g_skipNetForTest) return;
-    if (g_udhcpcStarted) return;
+    if (g_udhcpcLeased) return;                                       // lease already obtained — done, never respawn
     if (g_wifiBridgePresent) return;                                  // COM2 host-bridge owns wifi
     if (!debugNetBootPresent() && !g_dbusStarted) return;             // dbus is gated off on debug-net boots; udhcpc never needs it
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;  // LKL net-provider (owns wlan0) up
-    if (g_udhcpcDelay++ < 90) return;                                 // after NM/wpa so wlan0 exists (+launcher's own settle)
-    g_udhcpcStarted = true;
-    klog("[udhcpc] launching hos-udhcpc-launch -> /busybox-dyn udhcpc (external LKL DHCP; NM n-dhcp4 stalls)\n");
+    // The udhcpc lease script writes /run/wifi/dhcp-ok on a successful bind.  Once it exists we're
+    // done: latch off and let the live udhcpc stay up to renew.
+    if (linux_sys_access(cast(ulong)"/run/wifi/dhcp-ok\0".ptr, 0) == 0) { g_udhcpcLeased = true; return; }
+    if (g_udhcpcDelay++ < 90) return;                                 // initial settle: let NM/wpa bring wlan0 up first
+    // SUPERVISE, don't one-shot.  The old latch meant that if the first udhcpc died early (it exec'd
+    // before wlan0 was actually associated, so its AF_PACKET setup failed and busybox udhcpc exited)
+    // DHCP was dead for the whole session — which is exactly what we saw: manual `udhcpc` gets a lease
+    // instantly, but the boot-time one never persisted.  So keep (re)launching until /run/wifi/dhcp-ok
+    // appears, throttled (~every 600 reconciles) so an actively-retrying udhcpc isn't duplicated faster
+    // than it can finish DISCOVER→ACK.
+    if ((g_udhcpcRetry++ % 600) != 0) return;
+    klog("[udhcpc] (re)launch hos-udhcpc-launch -> busybox udhcpc; supervising until lease (/run/wifi/dhcp-ok)\n");
     spawnWaylandProgram("hos-udhcpc-launch\0".ptr, "[udhcpc]\0".ptr);
 }
 private __gshared bool g_nmcliStarted = false;
@@ -1664,8 +1674,26 @@ private __gshared int  g_dbusDelay   = 0;
 // bridge relays inbound SSH to it). Runs on any boot that has the LKL network path.
 private __gshared bool g_sshdStarted = false;
 private __gshared int  g_sshdDelay   = 0;
+private __gshared int g_sshBoot = -1;
+public bool sshBootPresent() {   // SSH-in is OPT-IN (/epin-ssh.conf, SSH=1) — off by default so
+    if (g_sshBoot < 0) {         // it never runs on a normal boot (it touches the LKL WiFi path).
+        g_sshBoot = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "epin-ssh.conf")) { g_sshBoot = 1; break; }
+            }
+        }
+    }
+    return g_sshBoot == 1;
+}
 private void maybeSpawnSshd() {
     if (g_sshdStarted) return;
+    if (!sshBootPresent()) { g_sshdStarted = true; return; }   // opt-in only (SSH=1)
     if (g_sshdDelay++ < 40) return;      // let the desktop settle first
     g_sshdStarted = true;
     klog("[sshd] launching hos-sshd-launch (SSH-in via lkl-boot tcp/22 -> /run/sshd.sock -> dropbear)\n");

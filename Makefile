@@ -842,8 +842,26 @@ stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) 
 		printf '    module_path: boot():/epin-usb.conf\n' >> cd/boot/limine/limine.conf; \
 		echo "Included /epin-usb.conf (USB=1: xHCI granted to LKL for usb-storage)"; \
 	fi
+
+	@# SSH-in is ON BY DEFAULT and coexists with WiFi. `/epin-ssh.conf` makes the kernel spawn the
+	@# dropbear launcher + the lkl-boot bridge bind LKL tcp/22. The bridge uses a ppoll-with-timeout
+	@# accept (yields the LKL cpu, so WiFi scanning is NOT starved), and the US5 DMA-bounce that broke
+	@# WiFi's RX ring is gated to USB-only — so SSH and WiFi run together. Build `SSH=0 make iso` to
+	@# omit the server entirely (e.g. a distribution image that shouldn't ship a root/epinos backdoor).
+	@if [ "$(SSH)" != "0" ]; then \
+		printf 'epin ssh enable marker (remote access via lkl-boot tcp/22 bridge)\n' > cd/epin-ssh.conf; \
+		printf '    module_path: boot():/epin-ssh.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /epin-ssh.conf (SSH enabled by default: dropbear remote access, coexists with WiFi; SSH=0 to disable)"; \
+	else \
+		echo "Skipped /epin-ssh.conf (SSH=0: no remote-access server in this image)"; \
+	fi
 	cp $(WIFITERM_BIN) cd/hos-wifiterm
 	printf '    module_path: boot():/hos-wifiterm\n' >> cd/boot/limine/limine.conf
+	@# WiFi/DHCP diagnostic script, baked in at /wifi-diag.sh — run `sh /wifi-diag.sh` on the
+	@# desktop terminal; prints a VERDICT naming the exact DHCP failure case + saves /run/wifi-diag.log.
+	cp src/util/wifi-diag.sh cd/wifi-diag.sh
+	printf '    module_path: boot():/wifi-diag.sh\n' >> cd/boot/limine/limine.conf
+	@echo "Included /wifi-diag.sh (run: sh /wifi-diag.sh)"
 	@echo "Included hos-wifiterm (TEMP lightweight WiFi-check terminal)"
 	@# H3: stage wpa_supplicant (dynamic musl) + libnl-tiny.so if built
 	@if [ -f deps/wpa-build/wpa_supplicant-2.10/wpa_supplicant/wpa_supplicant ]; then \

@@ -9173,10 +9173,15 @@ private bool lklRangeContiguous(ulong va, ulong sz) {
 private long lklDmaMap(ulong va, ulong sz) {
     import core.addrspace : activeVirtToPhys;
     import core.stdc.string : memcpy;
+    import core.kernel_main : debugUsbBootPresent;
     const ulong phys = activeVirtToPhys(va);
-    // US5 TEST: g_lklForceBounce forces EVERY multi-page map through the bounce so the bounce
-    // path can be exercised + proven correct in QEMU (where memory is contiguous so it would
-    // otherwise never trigger). Reverted to the contiguity check for production.
+    // US5: the bounce is ONLY needed for usb-storage's bulk DMA, which only runs when USB is
+    // enabled (/epin-usb.conf). On a normal (WiFi) boot, keep op5 at its ORIGINAL single-address
+    // behavior — the AX210's DMA works with it, and the contiguity walk/bounce here otherwise
+    // touched the WiFi DMA path and broke scanning. So gate the whole bounce on the USB marker.
+    if (!debugUsbBootPresent())
+        return cast(long)phys;                          // normal/WiFi boot: original op5 (no bounce)
+    // US5 TEST: g_lklForceBounce forces EVERY multi-page map through the bounce (QEMU proof).
     if (sz <= 4096 || (!g_lklForceBounce && lklRangeContiguous(va, sz)))
         return cast(long)phys;                          // fast path: single page or contiguous
     // Non-contiguous multi-page buffer → the corruption case. Bounce it.

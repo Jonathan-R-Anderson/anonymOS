@@ -1130,9 +1130,17 @@ done:
 static void *epin_ssh_bridge_thread(void *arg)
 {
     (void)arg;
-    /* Give the LKL net stack a moment to have an interface (WiFi/eth) before we bind. */
-    { struct timespec s = { 3, 0 }; nanosleep(&s, NULL); }
-    ssh_log("starting: creating LKL tcp socket for :22");
+    /* SSH-in is OPT-IN: the kernel spawns hos-sshd-launch (which creates /run/sshd.sock) only when
+     * /epin-ssh.conf is staged (SSH=1). If the launcher never comes up, do NOT bind LKL tcp/22 — a
+     * blocking listener on the LKL stack must not run on a normal (WiFi) boot. Wait ~60s for the
+     * launcher socket; if it never appears, exit the bridge quietly (no :22, no WiFi interference). */
+    int launcher_up = 0;
+    for (int i = 0; i < 120; i++) {
+        if (access(SSHD_BRIDGE_SOCK, 0 /*F_OK*/) == 0) { launcher_up = 1; break; }
+        struct timespec s = { 0, 500000000 }; nanosleep(&s, NULL);   /* 0.5s */
+    }
+    if (!launcher_up) return NULL;   /* SSH disabled (no launcher) — bridge stays dormant */
+    ssh_log("launcher present; creating LKL tcp socket for :22");
     long ls = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_STREAM, 0);
     if (ls < 0) { char m[64]; snprintf(m, sizeof m, "lkl socket FAILED (%ld)", ls); ssh_log(m); return NULL; }
     int one = 1;
@@ -1153,6 +1161,14 @@ static void *epin_ssh_bridge_thread(void *arg)
     ssh_log("LISTENING on LKL tcp/22 -> relays to /run/sshd.sock (dropbear)");
 
     for (;;) {
+        /* ppoll-with-timeout, NOT a raw blocking accept: a blocking lkl_sys_accept would hold the
+         * LKL cpu and STARVE the WiFi scan path (which shares the single LKL). The event-driven
+         * ppoll yields the cpu (same pattern the net-provider uses) so scanning keeps working. */
+        struct { int fd; short events; short revents; } pfd = { (int)ls, 1 /*POLLIN*/, 0 };
+        struct { long sec, nsec; } tmo = { 1, 0 };   /* 1s wait; returns immediately on a connection */
+        long pp[6] = { (long)&pfd, 1, (long)&tmo, 0, 8, 0 };
+        long pr = lkl_syscall(__lkl__NR_ppoll, pp);
+        if (pr <= 0) continue;                        /* timeout/err: yield, retry (WiFi runs meanwhile) */
         long cs = lkl_sys_accept(ls, NULL, NULL);
         if (cs < 0) { struct timespec s = { 0, 20000000 }; nanosleep(&s, NULL); continue; }
         ssh_log("SSH connection accepted on tcp/22");

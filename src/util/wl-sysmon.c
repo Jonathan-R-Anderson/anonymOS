@@ -51,6 +51,8 @@ struct app {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
     struct { struct wl_buffer *wl; uint32_t *px; int busy; } bufs[2];  // double-buffered
+    unsigned char *shm_base; size_t shm_total;   // current mmap of the two-slice pool (for teardown on resize)
+    int pending_w, pending_h;                     // compositor-requested size (from toplevel_configure)
     int configured, dirty;
     uint32_t *pixels;
     FT_Library ft;
@@ -305,7 +307,22 @@ static void buffer_release(void *d, struct wl_buffer *wl){ struct app *a = d;
 }
 static const struct wl_buffer_listener buffer_listener = { .release = buffer_release };
 
+/* (Re)create the double-buffered wl_shm pool at the CURRENT app->width/height.
+ * Safe to call again on resize: tears down the previous wl_buffers + client mmap first.
+ * The compositor keeps its own mapping of any still-referenced buffer's fd, so releasing
+ * the client-side mmap here does not corrupt on-screen content. */
 static int create_buffers(struct app *app){
+    /* tear down any previous buffers/mapping (no-op on first call) */
+    for (int i=0;i<2;i++){
+        if (app->bufs[i].wl){ wl_buffer_destroy(app->bufs[i].wl); app->bufs[i].wl = NULL; }
+        app->bufs[i].px = NULL; app->bufs[i].busy = 0;
+    }
+    if (app->shm_base){ munmap(app->shm_base, app->shm_total); app->shm_base = NULL; app->shm_total = 0; }
+    app->dirty = 0;
+
+    app->stride = app->width * 4;
+    app->buffer_size = (size_t)app->stride * app->height;
+
     int fd = create_memfd("epin-sysmon"); if (fd < 0) return -1;
     size_t total = app->buffer_size * 2;
     if (ftruncate(fd, (off_t)total) < 0){ close(fd); return -1; }
@@ -316,11 +333,12 @@ static int create_buffers(struct app *app){
         app->bufs[i].px = (uint32_t*)(base + (size_t)i*app->buffer_size);
         app->bufs[i].wl = wl_shm_pool_create_buffer(pool, (int)((size_t)i*app->buffer_size),
                                                     app->width, app->height, app->stride, WL_SHM_FORMAT_XRGB8888);
-        if (!app->bufs[i].wl){ wl_shm_pool_destroy(pool); close(fd); return -1; }
+        if (!app->bufs[i].wl){ wl_shm_pool_destroy(pool); munmap(base, total); close(fd); return -1; }
         wl_buffer_add_listener(app->bufs[i].wl, &buffer_listener, app);
         app->bufs[i].busy = 0;
     }
     wl_shm_pool_destroy(pool); close(fd);
+    app->shm_base = base; app->shm_total = total;
     return 0;
 }
 static void redraw_commit(struct app *app){
@@ -400,7 +418,10 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)t;(void)s; struct app*a=d;
+    /* record the tiler-dictated size; 0 means "unconstrained" -> keep current */
+    if (w > 0) a->pending_w = w;
+    if (h > 0) a->pending_h = h; }
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
@@ -409,6 +430,15 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    /* Honor a compositor-driven size (tiling WM): if the tiler picked a size that differs
+     * from our current buffers, recreate the shm buffers at the new dimensions so the window
+     * fills its tile. The UI is drawn from scalar fields, so draw_ui() reflows automatically. */
+    if (a->pending_w > 0 && a->pending_h > 0 &&
+        (a->pending_w != a->width || a->pending_h != a->height)){
+        a->width  = a->pending_w;
+        a->height = a->pending_h;
+        if (create_buffers(a) < 0){ log_line("SYSMON: resize buffer failed"); a->running = 0; return; }
+    }
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };

@@ -76,6 +76,16 @@ struct shell_output {
 	struct wl_listener background_surface_listener;
 };
 
+/* ─── EpinAnonymOS tiling window manager ─────────────────────────────────── */
+#define EPIN_NWS 9
+enum epin_layout { EPIN_MASTER_STACK, EPIN_DWINDLE };
+struct epin_ws {
+	struct wl_list tiles;      /* struct shell_surface::epin_tile_link; head = master */
+	enum epin_layout layout;
+	float mfact;               /* master-area fraction (master-stack) */
+	int nmaster;               /* number of windows in the master area */
+};
+
 struct weston_desktop;
 struct desktop_shell {
 	struct weston_compositor *compositor;
@@ -154,6 +164,11 @@ struct desktop_shell {
 	struct wl_list output_list;
 	struct wl_list seat_list;
 	struct wl_list shsurf_list;
+
+	/* EpinAnonymOS tiling state */
+	struct epin_ws epin_ws[EPIN_NWS];
+	unsigned epin_cur_ws;
+	int epin_gap_out, epin_gap_in, epin_border;
 
 	enum weston_desktop_shell_panel_position panel_position;
 

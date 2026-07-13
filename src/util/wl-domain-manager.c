@@ -183,6 +183,7 @@ struct app {
     size_t font_size;
     size_t buffer_size;
     int width, height, stride;
+    int pending_w, pending_h;      // tiling WM: last compositor-requested size (0 = unset)
     int committed, font_ready, sync_after_commit;
     int post_map_frame_armed, post_map_frame_done;
     int running;
@@ -1114,6 +1115,21 @@ static int create_shm_buffer(struct app *app, int width, int height)
     return 0;
 }
 
+// Tiling WM support: the compositor dictates our size via a configure event.  Tear
+// down the persistent shm buffer + its mapping and rebuild at the new dimensions;
+// create_shm_buffer() then reflows the whole UI, whose layout is derived entirely
+// from app->width/app->height (draw_manager + the geometry helpers).  Resizes are
+// infrequent, so allocating a fresh memfd per resize is fine (unlike per-frame).
+static int resize_buffer(struct app *app, int width, int height)
+{
+    if (width <= 0 || height <= 0) return 0;
+    if (app->buffer && width == app->width && height == app->height) return 0;
+    if (app->buffer) { wl_buffer_destroy(app->buffer); app->buffer = NULL; }
+    if (app->pixels && app->pixels != MAP_FAILED) munmap(app->pixels, app->buffer_size);
+    app->pixels = NULL;
+    return create_shm_buffer(app, width, height);   // sets width/height/stride, remaps, redraws
+}
+
 // --- launch ---------------------------------------------------------------
 
 static void launch_app(struct app *app, const char *exe)
@@ -1323,7 +1339,13 @@ static const struct wl_seat_listener seat_listener = { .capabilities = seat_capa
 static void wm_base_ping(void *data, struct xdg_wm_base *wm_base, uint32_t serial) { (void)data; xdg_wm_base_pong(wm_base, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = {.ping = wm_base_ping};
 
-static void toplevel_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s) { (void)data; (void)t; (void)w; (void)h; (void)s; }
+static void toplevel_configure(void *data, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s)
+{
+    struct app *app = data; (void)t; (void)s;
+    // Tiling WM dictates our size here; xdg_surface_configure applies it on ack.
+    if (w > 0) app->pending_w = w;
+    if (h > 0) app->pending_h = h;
+}
 static void toplevel_close(void *data, struct xdg_toplevel *t) { struct app *app = data; (void)t; app->running = 0; }
 static void toplevel_configure_bounds(void *data, struct xdg_toplevel *t, int32_t w, int32_t h) { (void)data; (void)t; (void)w; (void)h; }
 static void toplevel_wm_capabilities(void *data, struct xdg_toplevel *t, struct wl_array *c) { (void)data; (void)t; (void)c; }
@@ -1354,8 +1376,25 @@ static void xdg_surface_configure(void *data, struct xdg_surface *surface, uint3
 {
     struct app *app = data;
     xdg_surface_ack_configure(surface, serial);
-    if (app->committed) return;
-    if (create_shm_buffer(app, DEFAULT_WIDTH, DEFAULT_HEIGHT) < 0) { log_line("DOMAINMGR: buffer failed"); app->running = 0; return; }
+
+    int want_w = app->pending_w > 0 ? app->pending_w : DEFAULT_WIDTH;
+    int want_h = app->pending_h > 0 ? app->pending_h : DEFAULT_HEIGHT;
+
+    // After the first commit, honor compositor-driven resizes (tiling WM): rebuild
+    // the shm buffer at the new size and reflow the UI, then re-attach + commit.
+    if (app->committed) {
+        if (want_w == app->width && want_h == app->height) return;   // size unchanged
+        if (resize_buffer(app, want_w, want_h) < 0) { log_line("DOMAINMGR: resize failed"); return; }
+        wl_surface_attach(app->surface, app->buffer, 0, 0);
+        wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
+        wl_surface_commit(app->surface);
+        wl_display_flush(app->display);
+        printf("DOMAINMGR: resized wl_shm window %dx%d\n", app->width, app->height);
+        fflush(stdout);
+        return;
+    }
+
+    if (create_shm_buffer(app, want_w, want_h) < 0) { log_line("DOMAINMGR: buffer failed"); app->running = 0; return; }
     wl_surface_attach(app->surface, app->buffer, 0, 0);
     wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
     if (!app->post_map_frame_armed) {
@@ -1426,7 +1465,9 @@ int main(void)
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Domain Manager");
     xdg_toplevel_set_app_id(app.toplevel, "epin-domain-manager");
-    xdg_toplevel_set_min_size(app.toplevel, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+    // Tiling WM: keep only a modest floor (NOT min==max) so we stay tileable and can
+    // shrink to fill smaller tiles — the compositor drives the actual size.
+    xdg_toplevel_set_min_size(app.toplevel, 480, 360);
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

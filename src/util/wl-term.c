@@ -108,7 +108,9 @@ struct app {
     struct wl_buffer     *buffer;
     struct wl_callback   *frame_cb;
     uint32_t             *pixels;
+    size_t                pix_bytes;    // mmap'd size of *pixels (for munmap on resize)
     int                   width, height;
+    int                   cfg_w, cfg_h; // last compositor-requested surface size (tiling WM)
     int                   cell_w, cell_h;
     int                   font_px, baseline;
     int                   scale;
@@ -177,6 +179,38 @@ static void init_layout(struct app *a) {
     a->width = COLS * a->cell_w + SCROLLBAR_W * a->scale;  // grid + a strip for the scrollback bar
     a->height = ROWS * a->cell_h + a->deco_h;
     a->baseline = (BASE_FONT_PX - 3) * a->scale;
+}
+
+// Reflow the fixed ROWS×COLS grid to fill a compositor-dictated W×H surface (the
+// tiling window manager calls weston_desktop_surface_set_size on our window).  The
+// grid dimensions are compile-time constants, so we do NOT change the number of
+// rows/columns — that would need a full dynamic-grid rewrite; instead we scale the
+// per-cell pixel size and the FreeType raster size so the 80×24 grid stretches to
+// fill whatever tile is assigned.  deco_h (titlebar) and the scrollbar strip keep
+// their fixed widths.  All rendering helpers clip to width/height, so any size is
+// safe.  This is called from the xdg_surface configure handler after ack.
+static void apply_size(struct app *a, int w, int h) {
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    a->width  = w;
+    a->height = h;
+    int content_w = w - SCROLLBAR_W * a->scale;   // usable grid area (minus scrollbar)
+    int content_h = h - a->deco_h;                // usable grid area (minus titlebar)
+    if (content_w < COLS) content_w = COLS;       // guarantee >=1px per column
+    if (content_h < ROWS) content_h = ROWS;       // guarantee >=1px per row
+    a->cell_w = content_w / COLS; if (a->cell_w < 1) a->cell_w = 1;
+    a->cell_h = content_h / ROWS; if (a->cell_h < 1) a->cell_h = 1;
+    // Pick a font pixel size that fits BOTH cell dimensions, preserving the glyph
+    // proportion the base layout uses (a 10×20 cell at 17px).
+    int fpw = a->cell_w * BASE_FONT_PX / BASE_CELL_W;
+    int fph = a->cell_h * BASE_FONT_PX / BASE_CELL_H;
+    a->font_px = fpw < fph ? fpw : fph;
+    if (a->font_px < 6) a->font_px = 6;
+    a->baseline = a->font_px - 2;                 // fallback (used by the 8×8 bitmap path)
+    if (a->font_ready && FT_Set_Pixel_Sizes(a->face, 0, (FT_UInt)a->font_px) == 0) {
+        if (a->face->size && a->face->size->metrics.ascender > 0)
+            a->baseline = (int)(a->face->size->metrics.ascender >> 6) + a->scale;
+    }
 }
 
 static int load_file(const char *path, unsigned char **out, size_t *out_size) {
@@ -685,6 +719,7 @@ static int create_shm_buffer(struct app *a) {
     if (ftruncate(fd, (off_t)size) < 0) { perror("G4TERM: ftruncate"); close(fd); return -1; }
     a->pixels = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (a->pixels == MAP_FAILED) { perror("G4TERM: mmap"); close(fd); return -1; }
+    a->pix_bytes = size;   // remembered so a resize can munmap the old mapping
     struct wl_shm_pool *pool = wl_shm_create_pool(a->shm, fd, (int)size);
     a->buffer = wl_shm_pool_create_buffer(pool, 0, a->width, a->height, stride, WL_SHM_FORMAT_XRGB8888);
     wl_shm_pool_destroy(pool);
@@ -1043,18 +1078,50 @@ static const struct xdg_wm_base_listener wm_base_listener = { .ping = wm_base_pi
 static void xdg_surface_configure(void *data, struct xdg_surface *surface, uint32_t serial) {
     struct app *a = data;
     xdg_surface_ack_configure(surface, serial);
-    if (a->committed) return;
-    if (create_shm_buffer(a) < 0) { a->running = 0; return; }
-    grid_clear(a);
-    a->post_map_frame_armed = 1;
-    commit(a);
-    a->committed = 1;
-    printf("G4TERM: committed terminal window %dx%d -- G4 COMMIT\n", a->width, a->height); fflush(stdout);
+
+    // The tiling WM dictates our surface size via toplevel_configure (cfg_w/cfg_h).
+    // When it hasn't asked for a specific size (0), keep our natural size.
+    int want_w = (a->cfg_w > 0) ? a->cfg_w : a->width;
+    int want_h = (a->cfg_h > 0) ? a->cfg_h : a->height;
+
+    if (!a->committed) {
+        if (want_w != a->width || want_h != a->height) apply_size(a, want_w, want_h);
+        if (create_shm_buffer(a) < 0) { a->running = 0; return; }
+        grid_clear(a);
+        a->post_map_frame_armed = 1;
+        commit(a);
+        a->committed = 1;
+        printf("G4TERM: committed terminal window %dx%d -- G4 COMMIT\n", a->width, a->height); fflush(stdout);
+        return;
+    }
+
+    // Already mapped: honor a compositor-driven resize.  Reflow the grid to the new
+    // size, recreate the shm buffer, and repaint — but do NOT clear the grid (that
+    // would wipe the shell's output) and do NOT early-return on 'committed' when the
+    // size actually changed.  The old buffer is freed only AFTER the new one is
+    // committed, so the compositor never reads freed/unmapped memory.
+    if (want_w != a->width || want_h != a->height) {
+        struct wl_buffer *old_buf = a->buffer;
+        uint32_t         *old_px = a->pixels;
+        size_t            old_bytes = a->pix_bytes;
+        apply_size(a, want_w, want_h);
+        if (create_shm_buffer(a) < 0) { a->running = 0; return; }
+        a->dirty = 1;
+        commit(a);                              // renders + attaches + commits the NEW buffer
+        if (old_buf) wl_buffer_destroy(old_buf);
+        if (old_px && old_px != MAP_FAILED && old_bytes) munmap(old_px, old_bytes);
+        printf("G4TERM: resized terminal window %dx%d -- G4 RESIZE\n", a->width, a->height); fflush(stdout);
+    }
 }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure = xdg_surface_configure };
 
 static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s)
-{ (void)d; (void)t; (void)w; (void)h; (void)s; }
+{
+    (void)t; (void)s;
+    struct app *a = d;
+    // Record the compositor's requested size (>0); xdg_surface_configure applies it.
+    if (a && w > 0 && h > 0) { a->cfg_w = w; a->cfg_h = h; }
+}
 static void toplevel_close(void *data, struct xdg_toplevel *t) { (void)t; ((struct app *)data)->running = 0; }
 static void toplevel_cfg_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h)
 { (void)d; (void)t; (void)w; (void)h; }

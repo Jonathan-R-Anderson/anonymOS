@@ -138,7 +138,10 @@ struct app {
     uint32_t             *bufpx[2];
     int                   buf_busy[2];
     int                   cur_buf;
+    void                 *sw_map;      // base of the shm mapping (kept so resize can munmap it)
+    size_t                sw_map_sz;   // size of that mapping
     int                   width, height;
+    int                   pend_w, pend_h;   // compositor-requested surface size (0 = unset)
     int                   cell_w, cell_h;
     int                   font_px, baseline;
     int                   scale;
@@ -856,7 +859,18 @@ static const struct wl_buffer_listener sw_buf_listener = { .release = sw_buf_rel
 // Set up a double-buffered wl_shm surface (used when there is no GL renderer).
 static int create_sw_surface(struct app *a) {
     if (!a->shm) { printf("G4TERM: no wl_shm -- cannot software-present\n"); return -1; }
-    if (a->pixels) { free(a->pixels); a->pixels = NULL; }      // drop any GL malloc from create_gl_surface
+    // Tear down whatever the pixel buffer currently is: a GL malloc on the first call, or the
+    // previous shm mapping when we are re-creating at a new size (compositor-driven resize).
+    if (a->sw_map) {                                           // resize path: pixels aliases the mapping
+        for (int i = 0; i < 2; i++) {
+            if (a->bufs[i]) { wl_buffer_destroy(a->bufs[i]); a->bufs[i] = NULL; }
+            a->bufpx[i] = NULL; a->buf_busy[i] = 0;
+        }
+        munmap(a->sw_map, a->sw_map_sz); a->sw_map = NULL; a->sw_map_sz = 0;
+        a->pixels = NULL;                                      // was aliasing the mapping -- do NOT free()
+    } else if (a->pixels) {
+        free(a->pixels); a->pixels = NULL;                     // drop any GL malloc from create_gl_surface
+    }
     a->stride = a->width * 4;
     size_t bufsz = (size_t)a->stride * (size_t)a->height;
     size_t total = bufsz * 2;
@@ -864,6 +878,7 @@ static int create_sw_surface(struct app *a) {
     if (fd < 0 || ftruncate(fd, (off_t)total) < 0) { perror("G4TERM: sw memfd"); if (fd >= 0) close(fd); return -1; }
     void *map = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map == MAP_FAILED) { perror("G4TERM: sw mmap"); close(fd); return -1; }
+    a->sw_map = map; a->sw_map_sz = total;                     // keep for munmap on the next resize
     struct wl_shm_pool *pool = wl_shm_create_pool(a->shm, fd, (int32_t)total);
     for (int i = 0; i < 2; i++) {
         a->bufpx[i] = (uint32_t *)((char *)map + (size_t)i * bufsz);
@@ -1002,6 +1017,18 @@ static int create_gl_surface(struct app *a) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     printf("G4TERM: GL renderer=%s\n", (const char *)glGetString(GL_RENDERER)); fflush(stdout);
+    return 0;
+}
+
+// Compositor-driven resize (GL present): grow/shrink the CPU framebuffer and the
+// EGL window to the new surface size.  render() clears the whole buffer each frame,
+// so the reallocated region needs no zeroing; the fullscreen quad + glViewport pick
+// up the new dimensions in commit().
+static int resize_gl_surface(struct app *a) {
+    uint32_t *np = realloc(a->pixels, (size_t)a->width * (size_t)a->height * 4);
+    if (!np) { perror("G4TERM: realloc pixels"); return -1; }
+    a->pixels = np;
+    if (a->egl_window) wl_egl_window_resize(a->egl_window, a->width, a->height, 0, 0);
     return 0;
 }
 
@@ -1465,25 +1492,55 @@ static const struct xdg_wm_base_listener wm_base_listener = { .ping = wm_base_pi
 static void xdg_surface_configure(void *data, struct xdg_surface *surface, uint32_t serial) {
     struct app *a = data;
     xdg_surface_ack_configure(surface, serial);
-    if (a->committed) return;
-    // Prefer GL; fall back to a wl_shm software present when there is no GL renderer (the Pixman/gtk
-    // software desktop), so the terminal still launches.  HOS_TERM_SW=1 forces software.
-    int gl_ok = 0;
-    if (!getenv("HOS_TERM_SW")) gl_ok = (create_gl_surface(a) == 0);
-    if (!gl_ok) {
-        printf("G4TERM: GL surface unavailable -- falling back to software (wl_shm)\n"); fflush(stdout);
-        if (create_sw_surface(a) < 0) { a->running = 0; return; }
+
+    if (!a->committed) {
+        // First configure: adopt the tile size the compositor asked for (if any) BEFORE
+        // building the presentation surface, so the very first buffer is already tile-sized.
+        if (a->pend_w > 0 && a->pend_h > 0) { a->width = a->pend_w; a->height = a->pend_h; }
+        // Prefer GL; fall back to a wl_shm software present when there is no GL renderer (the Pixman/gtk
+        // software desktop), so the terminal still launches.  HOS_TERM_SW=1 forces software.
+        int gl_ok = 0;
+        if (!getenv("HOS_TERM_SW")) gl_ok = (create_gl_surface(a) == 0);
+        if (!gl_ok) {
+            printf("G4TERM: GL surface unavailable -- falling back to software (wl_shm)\n"); fflush(stdout);
+            if (create_sw_surface(a) < 0) { a->running = 0; return; }
+        }
+        grid_clear(a);
+        a->post_map_frame_armed = 1;
+        commit(a);
+        a->committed = 1;
+        printf("G4TERM: committed terminal window %dx%d -- G4 COMMIT\n", a->width, a->height); fflush(stdout);
+        return;
     }
-    grid_clear(a);
-    a->post_map_frame_armed = 1;
-    commit(a);
-    a->committed = 1;
-    printf("G4TERM: committed terminal window %dx%d -- G4 COMMIT\n", a->width, a->height); fflush(stdout);
+
+    // Already mapped: honor a compositor-driven resize (the tiling WM sets our tile size).
+    // The character grid is a fixed ROWS x COLS array, so we do NOT reflow the text — instead
+    // we recreate the presentation buffer at the new surface size so the WINDOW fills its tile;
+    // the cell grid stays natural-size, anchored under the titlebar, and the titlebar buttons,
+    // scrollbar and identity border re-anchor to the new edges (see risk_notes: letterbox).
+    if (a->pend_w > 0 && a->pend_h > 0 && (a->pend_w != a->width || a->pend_h != a->height)) {
+        a->width = a->pend_w; a->height = a->pend_h;
+        if (a->sw_mode) {
+            if (create_sw_surface(a) < 0) { a->running = 0; return; }  // rebuilds the shm buffers at the new size
+        } else {
+            if (resize_gl_surface(a) < 0) return;
+        }
+        a->dirty = 1;
+        commit(a);
+        printf("G4TERM: resized terminal window %dx%d -- G4 RESIZE\n", a->width, a->height); fflush(stdout);
+    }
 }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure = xdg_surface_configure };
 
 static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s)
-{ (void)d; (void)t; (void)w; (void)h; (void)s; }
+{
+    (void)t; (void)s;
+    struct app *a = d;
+    // Tiling WM: the compositor dictates the tile size here (0 = "you choose").
+    // Stash it; xdg_surface_configure adopts it after the ack.
+    if (w > 0) a->pend_w = w;
+    if (h > 0) a->pend_h = h;
+}
 static void toplevel_close(void *data, struct xdg_toplevel *t) { (void)t; ((struct app *)data)->running = 0; }
 static void toplevel_cfg_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h)
 { (void)d; (void)t; (void)w; (void)h; }

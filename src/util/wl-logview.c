@@ -317,6 +317,10 @@ int main(void){
     app.toplevel=xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel,&toplevel_listener,&app);
     xdg_toplevel_set_title(app.toplevel,"Logs"); xdg_toplevel_set_app_id(app.toplevel,"epin-logview");
+    /* FLOAT: mark this popover as fixed-size (min==max = natural size) so the tiling WM's
+     * epin_is_tileable() returns false and leaves it as a free-floating window, not a tile. */
+    xdg_toplevel_set_min_size(app.toplevel,WIN_W,WIN_H);
+    xdg_toplevel_set_max_size(app.toplevel,WIN_W,WIN_H);
     wl_surface_commit(app.surface); wl_display_flush(app.display);
     int wlfd=wl_display_get_fd(app.display);
     int tick=0;

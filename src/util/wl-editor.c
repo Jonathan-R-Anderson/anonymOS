@@ -47,11 +47,14 @@ enum {
     PX = 15, LINEH = 19,          /* glyph size + line pitch */
     CLOSE_W = 20, CLOSE_H = 20,
 };
-#define CLOSE_X (WIN_W - CLOSE_W - 6)
+/* Size-dependent layout reads the LIVE window size (a->width/a->height) so the client reflows
+ * when the tiling WM resizes it.  These macros therefore assume a `struct app *a` is in scope
+ * wherever they are used -- true in every function below; main() spells out app.width/app.height. */
+#define CLOSE_X (a->width - CLOSE_W - 6)
 #define CLOSE_Y ((TITLE_H - CLOSE_H) / 2)
 #define TEXT_TOP (TITLE_H + 2)
-#define TEXT_BOT (WIN_H - STATUS_H)
-#define TEXT_W  (WIN_W - TEXT_X - 4)
+#define TEXT_BOT (a->height - STATUS_H)
+#define TEXT_W  (a->width - TEXT_X - 4)
 
 struct line { char *buf; int len; int cap; };   /* buf is always NUL-terminated */
 
@@ -75,6 +78,8 @@ struct app {
     unsigned char *font_data;
     size_t font_size, buffer_size;
     int width, height, stride;
+    int pending_w, pending_h;                       /* last size the compositor asked for (applied on ack) */
+    unsigned char *shm_base; size_t shm_map_size;   /* live wl_shm mapping, tracked so resize can munmap it */
     int font_ready, running;
     double pointer_x, pointer_y;
 
@@ -301,6 +306,7 @@ static int create_buffers(struct app *app){
     if (ftruncate(fd, (off_t)total) < 0){ close(fd); return -1; }
     unsigned char *base = mmap(NULL, total, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (base == MAP_FAILED){ close(fd); return -1; }
+    app->shm_base = base; app->shm_map_size = total;   /* remembered so resize_buffers() can munmap it */
     struct wl_shm_pool *pool = wl_shm_create_pool(app->shm, fd, (int)total);
     for (int i=0;i<2;i++){
         app->bufs[i].px = (uint32_t*)(base + (size_t)i*app->buffer_size);
@@ -341,6 +347,33 @@ static void clamp_col(struct app *a){
     int len = a->lines[a->cur_line].len;
     if (a->cur_col > len) a->cur_col = len;
     if (a->cur_col < 0) a->cur_col = 0;
+}
+
+/* --- compositor-driven resize (tiling WM) -------------------------------- */
+/* Tear down the current shm pool/buffers + mapping.  Safe because on resize we immediately
+ * attach a freshly-created buffer; the destroyed proxies emit no further release events. */
+static void destroy_buffers(struct app *a){
+    for (int i=0;i<2;i++){
+        if (a->bufs[i].wl){ wl_buffer_destroy(a->bufs[i].wl); a->bufs[i].wl = NULL; }
+        a->bufs[i].px = NULL; a->bufs[i].busy = 0;
+    }
+    if (a->shm_base && a->shm_map_size) munmap(a->shm_base, a->shm_map_size);
+    a->shm_base = NULL; a->shm_map_size = 0;
+}
+/* Adopt the size the compositor dictated: rebuild the double-buffered shm at (w,h), then let
+ * draw() reflow the text grid into the new extent.  Returns -1 (and stops the client) on failure. */
+static int resize_buffers(struct app *a, int w, int h){
+    if (w < 160) w = 160;                       /* floor keeps the layout math non-negative */
+    if (h < 120) h = 120;
+    if (w == a->width && h == a->height) return 0;
+    destroy_buffers(a);
+    a->width = w; a->height = h; a->stride = w * 4; a->buffer_size = (size_t)a->stride * h;
+    a->dirty = 0;                               /* any deferred redraw referred to the old buffers */
+    if (create_buffers(a) < 0){ log_line("EDITOR: resize buffer failed"); a->running = 0; return -1; }
+    a->rows     = (TEXT_BOT - TEXT_TOP) / LINEH;
+    a->vis_cols = a->cell_w > 0 ? TEXT_W / a->cell_w : 0;
+    ensure_visible(a);                          /* keep the caret/scroll valid in the new viewport */
+    return 0;
 }
 static void ed_insert_char(struct app *a, char c){
     line_insert(&a->lines[a->cur_line], a->cur_col, c);
@@ -482,7 +515,11 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)t;(void)s; struct app*a=d;
+    /* Record the compositor's requested size; 0 means "you pick", so keep the current size then.
+     * The change is applied when the paired xdg_surface.configure is acked (see below). */
+    if (w > 0) a->pending_w = w;
+    if (h > 0) a->pending_h = h; }
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
@@ -491,6 +528,12 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    /* Honor the compositor-driven (tiled) size: recreate the shm buffers when it changed, then
+     * redraw so the text grid reflows to fill the tile.  Skips no-op/floating (0-size) configures. */
+    if (a->pending_w > 0 && a->pending_h > 0 &&
+        (a->pending_w != a->width || a->pending_h != a->height)){
+        if (resize_buffers(a, a->pending_w, a->pending_h) < 0) return;   /* fatal: main loop exits */
+    }
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };
@@ -516,7 +559,7 @@ int main(int argc, char **argv){
     static struct app app; memset(&app, 0, sizeof app);
     app.running = 1;
     app.width = WIN_W; app.height = WIN_H; app.stride = WIN_W*4; app.buffer_size = (size_t)app.stride*WIN_H;
-    app.rows = (TEXT_BOT - TEXT_TOP) / LINEH;
+    app.rows = (app.height - STATUS_H - TEXT_TOP) / LINEH;
     app.caret_on = 1;
     signal(SIGCHLD, SIG_IGN);
 
@@ -527,7 +570,7 @@ int main(int argc, char **argv){
 
     init_freetype(&app);
     measure_cell(&app);
-    app.vis_cols = app.cell_w > 0 ? TEXT_W / app.cell_w : 0;
+    app.vis_cols = app.cell_w > 0 ? (app.width - TEXT_X - 4) / app.cell_w : 0;
     load_path(&app, open_path);
 
     log_line("EDITOR: starting text editor");

@@ -47,6 +47,8 @@ struct app {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
     struct { struct wl_buffer *wl; uint32_t *px; int busy; } bufs[2];  // double-buffered
+    void *map_base; size_t map_size;   // current shm mapping (tracked for teardown on resize)
+    int pending_w, pending_h;          // size from the latest toplevel_configure (0 = compositor deferred)
     int configured, dirty;
     uint32_t *pixels;              // the buffer draw() currently targets
     FT_Library ft;
@@ -235,6 +237,7 @@ static int create_buffers(struct app *app){
     if (ftruncate(fd, (off_t)total) < 0){ close(fd); return -1; }
     unsigned char *base = mmap(NULL, total, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (base == MAP_FAILED){ close(fd); return -1; }
+    app->map_base = base; app->map_size = total;
     struct wl_shm_pool *pool = wl_shm_create_pool(app->shm, fd, (int)total);
     for (int i=0;i<2;i++){
         app->bufs[i].px = (uint32_t*)(base + (size_t)i*app->buffer_size);
@@ -248,7 +251,7 @@ static int create_buffers(struct app *app){
     return 0;
 }
 static void redraw_commit(struct app *app){
-    if (!app->configured) return;
+    if (!app->configured || !app->bufs[0].wl) return;
     int i = app->bufs[0].busy ? 1 : 0;
     if (app->bufs[i].busy){ app->dirty = 1; return; }
     app->pixels = app->bufs[i].px;
@@ -258,6 +261,28 @@ static void redraw_commit(struct app *app){
     wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
     wl_surface_commit(app->surface);
     wl_display_flush(app->display);
+}
+
+/* --- resize: honour a compositor-driven size (e.g. the tiling WM's set_size) --- */
+static void destroy_buffers(struct app *app){
+    for (int i=0;i<2;i++){
+        if (app->bufs[i].wl) wl_buffer_destroy(app->bufs[i].wl);
+        app->bufs[i].wl = NULL; app->bufs[i].px = NULL; app->bufs[i].busy = 0;
+    }
+    if (app->map_base && app->map_base != MAP_FAILED && app->map_size)
+        munmap(app->map_base, app->map_size);
+    app->map_base = NULL; app->map_size = 0;
+    app->pixels = NULL; app->dirty = 0;
+}
+/* draw() is fully size-relative (image is scaled-to-fit, CSD/text keyed off width/height),
+ * so rebuilding the shm buffers at the new dimensions reflows the content automatically. */
+static void resize_to(struct app *app, int w, int h){
+    if (w <= 0 || h <= 0) return;
+    if (w == app->width && h == app->height) return;
+    destroy_buffers(app);
+    app->width = w; app->height = h;
+    app->stride = w * 4; app->buffer_size = (size_t)app->stride * h;
+    if (create_buffers(app) < 0){ log_line("IMGVIEW: resize buffer alloc failed"); app->running = 0; }
 }
 
 /* --- input --- */
@@ -327,7 +352,10 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)t;(void)s; struct app*a=d;
+    /* store the compositor-dictated tile size; 0 means "you pick" so keep our default. Applied in xdg_surface_configure. */
+    if (w > 0) a->pending_w = w;
+    if (h > 0) a->pending_h = h; }
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
@@ -336,6 +364,10 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    /* apply the latest toplevel_configure size before drawing; rebuild buffers only if it actually changed */
+    int nw = a->pending_w > 0 ? a->pending_w : a->width;
+    int nh = a->pending_h > 0 ? a->pending_h : a->height;
+    if (nw != a->width || nh != a->height) resize_to(a, nw, nh);
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };

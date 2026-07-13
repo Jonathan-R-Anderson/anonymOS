@@ -146,7 +146,19 @@ struct shell_surface {
 
 	bool destroying;
 	struct wl_list link;	/** desktop_shell::shsurf_list */
+
+	/* EpinAnonymOS tiling */
+	bool epin_tiled;             /* currently managed by the tiler */
+	bool epin_floating;          /* user forced this window to float */
+	int epin_ws_index;           /* which workspace it belongs to */
+	struct wl_list epin_tile_link;   /* desktop_shell::epin_ws[].tiles */
+	int epin_x, epin_y, epin_w, epin_h;  /* last laid-out rect (for directional focus/move) */
 };
+
+/* EpinAnonymOS tiling: forward decls (desktop_surface_removed uses these before
+ * the engine is defined further down). */
+static void epin_tile_remove(struct shell_surface *shsurf);
+static void epin_relayout(struct desktop_shell *shell);
 
 struct shell_grab {
 	struct weston_pointer_grab grab;
@@ -2145,6 +2157,12 @@ desktop_surface_removed(struct weston_desktop_surface *desktop_surface,
 	if (!shsurf)
 		return;
 
+	/* EpinAnonymOS tiling: drop the closing window from its tile list + reflow */
+	if (shsurf->epin_tiled) {
+		epin_tile_remove(shsurf);
+		epin_relayout(shsurf->shell);
+	}
+
 	wl_list_for_each(seat, &shsurf->shell->compositor->seat_list, link) {
 		struct shell_seat *shseat = get_shell_seat(seat);
 		/* activate() controls the focused surface activation and
@@ -2244,6 +2262,431 @@ set_position_from_xwayland(struct shell_surface *shsurf)
 #endif
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EpinAnonymOS tiling window manager — automatic tiling (Hyprland/dwm-style)
+ * layered onto Weston's desktop-shell.  Normal toplevels are inserted into the
+ * current workspace's tile list and laid out by epin_relayout(); dialogs,
+ * fixed-size popovers, maximized/fullscreen and user-floated windows stay on the
+ * floating path.  Keyboard-driven.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static struct epin_ws *
+epin_cur(struct desktop_shell *shell)
+{
+	return &shell->epin_ws[shell->epin_cur_ws];
+}
+
+static bool
+epin_is_tileable(struct shell_surface *shsurf)
+{
+	struct weston_size mn, mx;
+
+	if (!shsurf || !shsurf->desktop_surface)
+		return false;
+	if (shsurf->epin_floating)
+		return false;
+	if (shsurf->state.maximized || shsurf->state.fullscreen)
+		return false;
+	/* transient/dialog windows (they have a parent) float */
+	if (weston_desktop_surface_get_parent(shsurf->desktop_surface))
+		return false;
+	/* fixed-size windows (min == max) are popovers/dialogs → float */
+	mn = weston_desktop_surface_get_min_size(shsurf->desktop_surface);
+	mx = weston_desktop_surface_get_max_size(shsurf->desktop_surface);
+	if (mn.width > 0 && mn.width == mx.width &&
+	    mn.height > 0 && mn.height == mx.height)
+		return false;
+	return true;
+}
+
+static void
+epin_tile_insert(struct desktop_shell *shell, struct shell_surface *shsurf)
+{
+	struct epin_ws *ws = epin_cur(shell);
+
+	if (shsurf->epin_tiled)
+		return;
+	shsurf->epin_tiled = true;
+	shsurf->epin_ws_index = shell->epin_cur_ws;
+	/* append at the tail; SUPER+Shift+Return promotes to master */
+	wl_list_insert(ws->tiles.prev, &shsurf->epin_tile_link);
+}
+
+static void
+epin_tile_remove(struct shell_surface *shsurf)
+{
+	if (!shsurf->epin_tiled)
+		return;
+	wl_list_remove(&shsurf->epin_tile_link);
+	shsurf->epin_tiled = false;
+}
+
+static void
+epin_geom_push(struct shell_surface *shsurf, int x, int y, int w, int h)
+{
+	struct weston_coord_global pos;
+	struct weston_geometry geom;
+
+	if (w < 1) w = 1;
+	if (h < 1) h = 1;
+	shsurf->epin_x = x; shsurf->epin_y = y;
+	shsurf->epin_w = w; shsurf->epin_h = h;
+	geom = weston_desktop_surface_get_geometry(shsurf->desktop_surface);
+	pos.c = weston_coord(x - geom.x, y - geom.y);
+	weston_view_set_position(shsurf->view, pos);
+	weston_desktop_surface_set_size(shsurf->desktop_surface, w, h);
+}
+
+static void
+epin_relayout(struct desktop_shell *shell)
+{
+	struct epin_ws *ws = epin_cur(shell);
+	struct weston_output *output = weston_shell_utils_get_default_output(shell->compositor);
+	pixman_rectangle32_t area;
+	struct shell_surface *s;
+	int n = 0, i, go = shell->epin_gap_out, gi = shell->epin_gap_in, b = shell->epin_border;
+	int ax, ay, aw, ah;
+
+	if (!output)
+		return;
+	wl_list_for_each(s, &ws->tiles, epin_tile_link)
+		n++;
+	if (n == 0)
+		return;
+
+	get_output_work_area(shell, output, &area);
+	ax = (int)area.x + go;
+	ay = (int)area.y + go;
+	aw = (int)area.width - 2 * go;
+	ah = (int)area.height - 2 * go;
+	if (aw < 1) aw = 1;
+	if (ah < 1) ah = 1;
+
+	if (ws->layout == EPIN_DWINDLE) {
+		int x = ax, y = ay, w = aw, h = ah;
+		i = 0;
+		wl_list_for_each(s, &ws->tiles, epin_tile_link) {
+			if (i == n - 1) {
+				epin_geom_push(s, x + b, y + b, w - 2 * b, h - 2 * b);
+				break;
+			}
+			if ((i & 1) == 0) {   /* split vertically: take the left half */
+				int half = (w - gi) / 2;
+				if (half < 1) half = 1;
+				epin_geom_push(s, x + b, y + b, half - 2 * b, h - 2 * b);
+				x += half + gi;
+				w -= half + gi;
+			} else {              /* split horizontally: take the top half */
+				int half = (h - gi) / 2;
+				if (half < 1) half = 1;
+				epin_geom_push(s, x + b, y + b, w - 2 * b, half - 2 * b);
+				y += half + gi;
+				h -= half + gi;
+			}
+			i++;
+		}
+	} else {   /* EPIN_MASTER_STACK */
+		int nm = ws->nmaster;
+		int ns, mw, sx, sw;
+		if (nm > n) nm = n;
+		if (nm < 0) nm = 0;
+		ns = n - nm;
+		if (nm == 0)      mw = 0;
+		else if (nm >= n) mw = aw;
+		else              mw = (int)((aw - gi) * ws->mfact);
+		sx = (nm == 0) ? ax : ax + mw + gi;
+		sw = (nm == 0) ? aw : aw - mw - gi;
+		if (sw < 1) sw = 1;
+		i = 0;
+		wl_list_for_each(s, &ws->tiles, epin_tile_link) {
+			if (i < nm) {
+				int rowh = (nm > 0) ? (ah - (nm - 1) * gi) / nm : ah;
+				int ry;
+				if (rowh < 1) rowh = 1;
+				ry = ay + i * (rowh + gi);
+				epin_geom_push(s, ax + b, ry + b, mw - 2 * b, rowh - 2 * b);
+			} else {
+				int j = i - nm;
+				int rowh = (ns > 0) ? (ah - (ns - 1) * gi) / ns : ah;
+				int ry;
+				if (rowh < 1) rowh = 1;
+				ry = ay + j * (rowh + gi);
+				epin_geom_push(s, sx + b, ry + b, sw - 2 * b, rowh - 2 * b);
+			}
+			i++;
+		}
+	}
+}
+
+/* ─── keyboard control ──────────────────────────────────────────────────── */
+
+static struct shell_surface *
+epin_focused(struct weston_keyboard *kb)
+{
+	struct weston_surface *surf;
+
+	if (!kb || !kb->focus)
+		return NULL;
+	surf = weston_surface_get_main_surface(kb->focus);
+	if (!surf)
+		return NULL;
+	return get_shell_surface(surf);
+}
+
+static void
+epin_activate(struct desktop_shell *shell, struct shell_surface *t)
+{
+	struct weston_seat *seat;
+
+	if (!t || !t->view)
+		return;
+	wl_list_for_each(seat, &shell->compositor->seat_list, link)
+		activate(shell, t->view, seat, WESTON_ACTIVATE_FLAG_CONFIGURE);
+}
+
+/* direction: 0 left, 1 down, 2 up, 3 right */
+static void
+epin_focus_dir(struct desktop_shell *shell, struct shell_surface *cur, int dir)
+{
+	struct epin_ws *ws = epin_cur(shell);
+	struct shell_surface *s, *best = NULL;
+	long bestd = 0;
+	int cx, cy;
+
+	if (!cur || !cur->epin_tiled) {
+		if (!wl_list_empty(&ws->tiles)) {
+			s = wl_container_of(ws->tiles.next, s, epin_tile_link);
+			epin_activate(shell, s);
+		}
+		return;
+	}
+	cx = cur->epin_x + cur->epin_w / 2;
+	cy = cur->epin_y + cur->epin_h / 2;
+	wl_list_for_each(s, &ws->tiles, epin_tile_link) {
+		int sx, sy, dx, dy, ok = 0;
+		long d;
+		if (s == cur)
+			continue;
+		sx = s->epin_x + s->epin_w / 2;
+		sy = s->epin_y + s->epin_h / 2;
+		dx = sx - cx; dy = sy - cy;
+		switch (dir) {
+		case 0: ok = (sx < cx); break;
+		case 3: ok = (sx > cx); break;
+		case 2: ok = (sy < cy); break;
+		case 1: ok = (sy > cy); break;
+		}
+		if (!ok)
+			continue;
+		d = (long)dx * dx + (long)dy * dy;
+		if (!best || d < bestd) { best = s; bestd = d; }
+	}
+	if (best)
+		epin_activate(shell, best);
+}
+
+/* move the focused window one slot toward the head (left/up) or tail (right/down) */
+static void
+epin_move_dir(struct desktop_shell *shell, struct shell_surface *cur, int dir)
+{
+	struct epin_ws *ws;
+	struct wl_list *other;
+
+	if (!cur || !cur->epin_tiled)
+		return;
+	ws = &shell->epin_ws[cur->epin_ws_index];
+	if (dir == 0 || dir == 2)
+		other = cur->epin_tile_link.prev;   /* toward head */
+	else
+		other = cur->epin_tile_link.next;   /* toward tail */
+	if (other == &ws->tiles)
+		return;   /* already at the end */
+	wl_list_remove(&cur->epin_tile_link);
+	if (dir == 0 || dir == 2)
+		wl_list_insert(other->prev, &cur->epin_tile_link);
+	else
+		wl_list_insert(other, &cur->epin_tile_link);
+	epin_relayout(shell);
+	epin_activate(shell, cur);
+}
+
+static void
+epin_promote(struct desktop_shell *shell, struct shell_surface *cur)
+{
+	struct epin_ws *ws;
+
+	if (!cur || !cur->epin_tiled)
+		return;
+	ws = &shell->epin_ws[cur->epin_ws_index];
+	wl_list_remove(&cur->epin_tile_link);
+	wl_list_insert(&ws->tiles, &cur->epin_tile_link);
+	epin_relayout(shell);
+	epin_activate(shell, cur);
+}
+
+static void
+epin_toggle_float(struct desktop_shell *shell, struct shell_surface *cur)
+{
+	if (!cur)
+		return;
+	if (cur->epin_tiled) {
+		epin_tile_remove(cur);
+		cur->epin_floating = true;
+		weston_view_set_initial_position(cur->view, shell);
+		epin_relayout(shell);
+	} else {
+		cur->epin_floating = false;
+		if (epin_is_tileable(cur)) {
+			epin_tile_insert(shell, cur);
+			epin_relayout(shell);
+		}
+	}
+}
+
+/* ─── workspaces ──────────────────────────────────────────────────────────
+ * A window not on the current workspace is parked far off-screen (its view stays
+ * mapped but invisible + un-clickable); switching relayouts the target workspace,
+ * which repositions its windows back on-screen. */
+static void
+epin_ws_hide(struct desktop_shell *shell, unsigned wi)
+{
+	struct shell_surface *s;
+	struct weston_coord_global off;
+
+	off.c = weston_coord(100000, 100000);
+	wl_list_for_each(s, &shell->epin_ws[wi].tiles, epin_tile_link)
+		weston_view_set_position(s->view, off);
+}
+
+static void
+epin_ws_switch(struct desktop_shell *shell, unsigned n)
+{
+	struct shell_surface *s;
+
+	if (n >= EPIN_NWS || n == shell->epin_cur_ws)
+		return;
+	epin_ws_hide(shell, shell->epin_cur_ws);
+	shell->epin_cur_ws = n;
+	epin_relayout(shell);
+	if (!wl_list_empty(&shell->epin_ws[n].tiles)) {
+		s = wl_container_of(shell->epin_ws[n].tiles.next, s, epin_tile_link);
+		epin_activate(shell, s);
+	}
+}
+
+static void
+epin_ws_move_to(struct desktop_shell *shell, struct shell_surface *cur, unsigned n)
+{
+	struct weston_coord_global off;
+
+	if (!cur || !cur->epin_tiled || n >= EPIN_NWS ||
+	    (unsigned)cur->epin_ws_index == n)
+		return;
+	wl_list_remove(&cur->epin_tile_link);
+	cur->epin_ws_index = n;
+	wl_list_insert(shell->epin_ws[n].tiles.prev, &cur->epin_tile_link);
+	off.c = weston_coord(100000, 100000);
+	weston_view_set_position(cur->view, off);   /* now on another workspace → park it */
+	epin_relayout(shell);                        /* reflow the workspace it left */
+}
+
+/* ─── binding thunks (weston key-binding signature; data = shell) ────────── */
+
+static void
+epin_kb_focus_left(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_focus_dir(d, epin_focused(kb), 0); }
+static void
+epin_kb_focus_down(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_focus_dir(d, epin_focused(kb), 1); }
+static void
+epin_kb_focus_up(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_focus_dir(d, epin_focused(kb), 2); }
+static void
+epin_kb_focus_right(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_focus_dir(d, epin_focused(kb), 3); }
+
+static void
+epin_kb_move_left(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_move_dir(d, epin_focused(kb), 0); }
+static void
+epin_kb_move_down(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_move_dir(d, epin_focused(kb), 1); }
+static void
+epin_kb_move_up(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_move_dir(d, epin_focused(kb), 2); }
+static void
+epin_kb_move_right(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_move_dir(d, epin_focused(kb), 3); }
+
+static void
+epin_kb_promote(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_promote(d, epin_focused(kb)); }
+
+static void
+epin_kb_toggle_float(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{ epin_toggle_float(d, epin_focused(kb)); }
+
+static void
+epin_kb_cycle_layout(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{
+	struct desktop_shell *shell = d;
+	struct epin_ws *ws = epin_cur(shell);
+	ws->layout = (ws->layout == EPIN_MASTER_STACK) ? EPIN_DWINDLE : EPIN_MASTER_STACK;
+	epin_relayout(shell);
+}
+
+static void
+epin_kb_mfact_dec(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{
+	struct desktop_shell *shell = d;
+	struct epin_ws *ws = epin_cur(shell);
+	ws->mfact -= 0.05f;
+	if (ws->mfact < 0.15f) ws->mfact = 0.15f;
+	epin_relayout(shell);
+}
+static void
+epin_kb_mfact_inc(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{
+	struct desktop_shell *shell = d;
+	struct epin_ws *ws = epin_cur(shell);
+	ws->mfact += 0.05f;
+	if (ws->mfact > 0.85f) ws->mfact = 0.85f;
+	epin_relayout(shell);
+}
+
+static void
+epin_kb_nmaster_dec(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{
+	struct desktop_shell *shell = d;
+	struct epin_ws *ws = epin_cur(shell);
+	if (ws->nmaster > 0) ws->nmaster--;
+	epin_relayout(shell);
+}
+static void
+epin_kb_nmaster_inc(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{
+	struct desktop_shell *shell = d;
+	struct epin_ws *ws = epin_cur(shell);
+	ws->nmaster++;
+	epin_relayout(shell);
+}
+
+static void
+epin_kb_close(struct weston_keyboard *kb, const struct timespec *t, uint32_t k, void *d)
+{
+	struct shell_surface *cur = epin_focused(kb);
+	if (cur && cur->desktop_surface)
+		weston_desktop_surface_close(cur->desktop_surface);
+}
+
+/* SUPER+1..9 switch, SUPER+Shift+1..9 move-to; workspace index derived from the key */
+static void
+epin_kb_ws_switch(struct weston_keyboard *kb, const struct timespec *t, uint32_t key, void *d)
+{ epin_ws_switch(d, key - KEY_1); }
+static void
+epin_kb_ws_move(struct weston_keyboard *kb, const struct timespec *t, uint32_t key, void *d)
+{ epin_ws_move_to(d, epin_focused(kb), key - KEY_1); }
+
 static void
 map(struct desktop_shell *shell, struct shell_surface *shsurf)
 {
@@ -2259,6 +2702,10 @@ map(struct desktop_shell *shell, struct shell_surface *shsurf)
 		set_maximized_position(shell, shsurf);
 	} else if (shsurf->xwayland.is_set) {
 		set_position_from_xwayland(shsurf);
+	} else if (epin_is_tileable(shsurf)) {
+		/* EpinAnonymOS tiling: insert into the current workspace + reflow */
+		epin_tile_insert(shell, shsurf);
+		epin_relayout(shell);
 	} else {
 		weston_view_set_initial_position(shsurf->view, shell);
 	}
@@ -5057,14 +5504,47 @@ shell_add_bindings(struct weston_compositor *ec, struct desktop_shell *shell)
 					     mod | MODIFIER_SHIFT,
 					     resize_binding, shell);
 
-	weston_compositor_add_key_binding(ec, KEY_LEFT, mod | MODIFIER_SHIFT,
-					  set_tiled_orientation_left, NULL);
-	weston_compositor_add_key_binding(ec, KEY_RIGHT, mod | MODIFIER_SHIFT,
-					  set_tiled_orientation_right, NULL);
-	weston_compositor_add_key_binding(ec, KEY_UP, mod | MODIFIER_SHIFT,
-					  set_tiled_orientation_up, NULL);
-	weston_compositor_add_key_binding(ec, KEY_DOWN, mod | MODIFIER_SHIFT,
-					  set_tiled_orientation_down, NULL);
+	/* ─── EpinAnonymOS tiling window-manager bindings ───────────────────
+	 * focus:  SUPER + arrows  /  SUPER + H J K L
+	 * move:   SUPER + SHIFT + arrows  /  SUPER + SHIFT + H J K L
+	 * (SUPER+SHIFT+arrows replace the old half-screen tiled-orientation snap) */
+	weston_compositor_add_key_binding(ec, KEY_LEFT,  mod, epin_kb_focus_left,  shell);
+	weston_compositor_add_key_binding(ec, KEY_DOWN,  mod, epin_kb_focus_down,  shell);
+	weston_compositor_add_key_binding(ec, KEY_UP,    mod, epin_kb_focus_up,    shell);
+	weston_compositor_add_key_binding(ec, KEY_RIGHT, mod, epin_kb_focus_right, shell);
+	weston_compositor_add_key_binding(ec, KEY_H, mod, epin_kb_focus_left,  shell);
+	weston_compositor_add_key_binding(ec, KEY_J, mod, epin_kb_focus_down,  shell);
+	weston_compositor_add_key_binding(ec, KEY_K, mod, epin_kb_focus_up,    shell);
+	weston_compositor_add_key_binding(ec, KEY_L, mod, epin_kb_focus_right, shell);
+	weston_compositor_add_key_binding(ec, KEY_LEFT,  mod | MODIFIER_SHIFT, epin_kb_move_left,  shell);
+	weston_compositor_add_key_binding(ec, KEY_DOWN,  mod | MODIFIER_SHIFT, epin_kb_move_down,  shell);
+	weston_compositor_add_key_binding(ec, KEY_UP,    mod | MODIFIER_SHIFT, epin_kb_move_up,    shell);
+	weston_compositor_add_key_binding(ec, KEY_RIGHT, mod | MODIFIER_SHIFT, epin_kb_move_right, shell);
+	weston_compositor_add_key_binding(ec, KEY_H, mod | MODIFIER_SHIFT, epin_kb_move_left,  shell);
+	weston_compositor_add_key_binding(ec, KEY_J, mod | MODIFIER_SHIFT, epin_kb_move_down,  shell);
+	weston_compositor_add_key_binding(ec, KEY_K, mod | MODIFIER_SHIFT, epin_kb_move_up,    shell);
+	weston_compositor_add_key_binding(ec, KEY_L, mod | MODIFIER_SHIFT, epin_kb_move_right, shell);
+	/* layout: promote-to-master, toggle-float, cycle master-stack⇄dwindle,
+	 * master-fraction, master-count, close, fullscreen */
+	weston_compositor_add_key_binding(ec, KEY_ENTER, mod | MODIFIER_SHIFT, epin_kb_promote,      shell);
+	weston_compositor_add_key_binding(ec, KEY_SPACE, mod,                  epin_kb_toggle_float, shell);
+	weston_compositor_add_key_binding(ec, KEY_BACKSLASH, mod,              epin_kb_cycle_layout, shell);
+	weston_compositor_add_key_binding(ec, KEY_COMMA, mod,                  epin_kb_mfact_dec,    shell);
+	weston_compositor_add_key_binding(ec, KEY_DOT,   mod,                  epin_kb_mfact_inc,    shell);
+	weston_compositor_add_key_binding(ec, KEY_COMMA, mod | MODIFIER_SHIFT, epin_kb_nmaster_dec,  shell);
+	weston_compositor_add_key_binding(ec, KEY_DOT,   mod | MODIFIER_SHIFT, epin_kb_nmaster_inc,  shell);
+	weston_compositor_add_key_binding(ec, KEY_Q,     mod,                  epin_kb_close,        shell);
+	weston_compositor_add_key_binding(ec, KEY_F,     mod,                  fullscreen_binding,   NULL);
+	/* workspaces: SUPER+1..9 switch, SUPER+SHIFT+1..9 move window to workspace */
+	{
+		int wsk;
+		for (wsk = 0; wsk < 9; wsk++) {
+			weston_compositor_add_key_binding(ec, KEY_1 + wsk, mod,
+							  epin_kb_ws_switch, shell);
+			weston_compositor_add_key_binding(ec, KEY_1 + wsk, mod | MODIFIER_SHIFT,
+							  epin_kb_ws_move, shell);
+		}
+	}
 
 	if (ec->capabilities & WESTON_CAP_ROTATION_ANY)
 		weston_compositor_add_button_binding(ec, BTN_MIDDLE, mod,
@@ -5076,7 +5556,8 @@ shell_add_bindings(struct weston_compositor *ec, struct desktop_shell *shell)
 					  ec);
 	weston_compositor_add_key_binding(ec, KEY_F10, mod, backlight_binding,
 					  ec);
-	weston_compositor_add_key_binding(ec, KEY_K, mod,
+	/* force-kill moved off SUPER+K (now focus-up) to SUPER+SHIFT+Q; SUPER+Q closes gracefully */
+	weston_compositor_add_key_binding(ec, KEY_Q, mod | MODIFIER_SHIFT,
 				          force_kill_binding, shell);
 
 	weston_install_debug_key_binding(ec, mod);
@@ -5164,6 +5645,21 @@ wet_shell_init(struct weston_compositor *ec,
 
 	wl_list_init(&shell->seat_list);
 	wl_list_init(&shell->shsurf_list);
+
+	/* EpinAnonymOS tiling defaults */
+	{
+		unsigned wi;
+		for (wi = 0; wi < EPIN_NWS; wi++) {
+			wl_list_init(&shell->epin_ws[wi].tiles);
+			shell->epin_ws[wi].layout = EPIN_MASTER_STACK;
+			shell->epin_ws[wi].mfact = 0.55f;
+			shell->epin_ws[wi].nmaster = 1;
+		}
+		shell->epin_cur_ws = 0;
+		shell->epin_gap_out = 12;
+		shell->epin_gap_in = 8;
+		shell->epin_border = 0;   /* focus border added with the decoration pass */
+	}
 	wl_list_init(&shell->output_list);
 	wl_list_init(&shell->output_create_listener.link);
 	wl_list_init(&shell->output_move_listener.link);

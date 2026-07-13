@@ -64,6 +64,9 @@ struct app {
     unsigned char *font_data;
     size_t font_size, buffer_size;
     int width, height, stride;
+    int pending_w, pending_h;      // last size dictated by the compositor's tiler (0 = none yet)
+    unsigned char *map_base;       // current shm pool mmap (kept so resize can munmap it)
+    size_t map_size;
     int font_ready, running;
     double pointer_x, pointer_y;
 
@@ -267,12 +270,28 @@ static void buffer_release(void *d, struct wl_buffer *wl){ struct app *a = d;
 }
 static const struct wl_buffer_listener buffer_listener = { .release = buffer_release };
 
+/* Release the current shm pool mapping and its two wl_buffers.  Safe to call with nothing allocated
+ * (startup) and safe while a buffer is still "busy": destroying an in-use wl_shm buffer is allowed --
+ * the compositor keeps its own mapping of the shared fd alive, so our munmap does not pull the pixels
+ * out from under it. */
+static void destroy_buffers(struct app *app){
+    for (int i=0;i<2;i++){
+        if (app->bufs[i].wl){ wl_buffer_destroy(app->bufs[i].wl); app->bufs[i].wl = NULL; }
+        app->bufs[i].px = NULL;
+        app->bufs[i].busy = 0;
+    }
+    if (app->map_base){ munmap(app->map_base, app->map_size); app->map_base = NULL; app->map_size = 0; }
+    app->dirty = 0;
+}
+
 static int create_buffers(struct app *app){
+    destroy_buffers(app);              /* also reused as the resize path: drop the previous pool first */
     int fd = create_memfd("epin-screenshot"); if (fd < 0) return -1;
     size_t total = app->buffer_size * 2;
     if (ftruncate(fd, (off_t)total) < 0){ close(fd); return -1; }
     unsigned char *base = mmap(NULL, total, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (base == MAP_FAILED){ close(fd); return -1; }
+    app->map_base = base; app->map_size = total;
     struct wl_shm_pool *pool = wl_shm_create_pool(app->shm, fd, (int)total);
     for (int i=0;i<2;i++){
         app->bufs[i].px = (uint32_t*)(base + (size_t)i*app->buffer_size);
@@ -289,6 +308,7 @@ static int create_buffers(struct app *app){
  * (never modify a buffer the compositor may still be reading -> that vanished the window on real HW). */
 static void redraw_commit(struct app *app){
     if (!app->configured) return;
+    if (!app->bufs[0].wl || !app->bufs[1].wl) return;   /* buffers gone (a failed resize) */
     int i = app->bufs[0].busy ? 1 : 0;
     if (app->bufs[i].busy){ app->dirty = 1; return; }
     app->pixels = app->bufs[i].px;
@@ -349,7 +369,9 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)t;(void)s; struct app*a=d;
+    if (w > 0) a->pending_w = w;      /* the tiler dictates our size here; 0 = "you choose" */
+    if (h > 0) a->pending_h = h; }
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
@@ -358,6 +380,15 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    /* Honor a compositor-driven resize: rebuild the shm buffers at the new size, then repaint.
+     * draw() lays every element out from app->width/height on each frame, so the content reflows
+     * for free -- no fixed content array to rescale. */
+    if (a->pending_w > 0 && a->pending_h > 0 &&
+        (a->pending_w != a->width || a->pending_h != a->height)){
+        a->width = a->pending_w; a->height = a->pending_h;
+        a->stride = a->width * 4; a->buffer_size = (size_t)a->stride * a->height;
+        if (create_buffers(a) < 0) log_line("SCREENSHOT: resize buffer alloc failed");
+    }
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };

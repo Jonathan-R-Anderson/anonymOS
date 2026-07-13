@@ -67,6 +67,8 @@ struct app {
     int  error;                    // last '=' produced an error -> show "Error"
     int  shift;
     int  hover;                    // hovered button index (-1 none)
+    int  cfg_w, cfg_h;             // last compositor-dictated size (0 = unset)
+    unsigned char *map_base; size_t map_total;  // current shm mapping (for resize teardown)
 };
 
 static void log_line(const char *s){ fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -157,23 +159,28 @@ static const struct btn BTNS[] = {
 };
 enum { N_BTNS = (int)(sizeof(BTNS)/sizeof(BTNS[0])) };
 
-static void btn_rect(int i, int *bx, int *by, int *bw, int *bh){
+/* Button geometry is REFLOWED from the live window size so the 4x5 grid fills the tile.
+ * Falls back to the design metrics (BW/BH) when the window is at its natural size. */
+static void btn_rect(struct app *app, int i, int *bx, int *by, int *bw, int *bh){
     const struct btn *b = &BTNS[i];
-    *bx = PAD + b->col*(BW+GAP);
-    *by = GRID_Y + b->row*(BH+GAP);
-    *bw = b->span*BW + (b->span-1)*GAP;
-    *bh = BH;
+    int cw = (app->width - 2*PAD - 3*GAP) / 4;          /* one column, reflowed to fill width  */
+    int rh = (app->height - GRID_Y - PAD - 4*GAP) / 5;  /* one row (5 rows), reflowed to fill   */
+    if (cw < 1) cw = 1;
+    if (rh < 1) rh = 1;
+    *bx = PAD + b->col*(cw+GAP);
+    *by = GRID_Y + b->row*(rh+GAP);
+    *bw = b->span*cw + (b->span-1)*GAP;
+    *bh = rh;
 }
 static int button_at(struct app *app, double px, double py){
-    (void)app;
-    for (int i=0;i<N_BTNS;i++){ int bx,by,bw,bh; btn_rect(i,&bx,&by,&bw,&bh);
+    for (int i=0;i<N_BTNS;i++){ int bx,by,bw,bh; btn_rect(app,i,&bx,&by,&bw,&bh);
         if (px>=bx && px<bx+bw && py>=by && py<by+bh) return i; }
     return -1;
 }
 
 /* close box geometry (top-right of the titlebar) */
-static int in_close_box(double x, double y){
-    int cx = WIN_W-22, cy = 5, cw = 16, ch = 16;
+static int in_close_box(struct app *a, double x, double y){
+    int cx = a->width-22, cy = 5, cw = 16, ch = 16;
     return (x>=cx && x<cx+cw && y>=cy && y<cy+ch);
 }
 
@@ -259,7 +266,7 @@ static void draw_calc(struct app *app){
 
     /* button grid */
     for (int i=0;i<N_BTNS;i++){
-        int bx,by,bw,bh; btn_rect(i,&bx,&by,&bw,&bh);
+        int bx,by,bw,bh; btn_rect(app,i,&bx,&by,&bw,&bh);
         int hov = (i==app->hover);
         uint32_t bc;
         switch (BTNS[i].kind){
@@ -290,6 +297,7 @@ static int create_buffers(struct app *app){
     if (ftruncate(fd, (off_t)total) < 0){ close(fd); return -1; }
     unsigned char *base = mmap(NULL, total, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (base == MAP_FAILED){ close(fd); return -1; }
+    app->map_base = base; app->map_total = total;      /* kept so resize_to() can munmap it */
     struct wl_shm_pool *pool = wl_shm_create_pool(app->shm, fd, (int)total);
     for (int i=0;i<2;i++){
         app->bufs[i].px = (uint32_t*)(base + (size_t)i*app->buffer_size);
@@ -317,6 +325,27 @@ static void redraw_commit(struct app *app){
     wl_display_flush(app->display);
 }
 
+/* Tear down the current double-buffered shm mapping (used before rebuilding at a new size). */
+static void destroy_buffers(struct app *app){
+    for (int i=0;i<2;i++){
+        if (app->bufs[i].wl){ wl_buffer_destroy(app->bufs[i].wl); app->bufs[i].wl = NULL; }
+        app->bufs[i].px = NULL; app->bufs[i].busy = 0;
+    }
+    if (app->map_base && app->map_base != (unsigned char*)MAP_FAILED)
+        munmap(app->map_base, app->map_total);
+    app->map_base = NULL; app->map_total = 0;
+    app->pixels = NULL;
+}
+/* Compositor dictated a new tile size: rebuild the shm buffers at (w,h); draw_calc() reflows content. */
+static void resize_to(struct app *app, int w, int h){
+    if (w <= 0 || h <= 0 || (w == app->width && h == app->height)) return;
+    destroy_buffers(app);
+    app->width = w; app->height = h; app->stride = w*4;
+    app->buffer_size = (size_t)app->stride * h;
+    app->dirty = 0;
+    if (create_buffers(app) < 0) log_line("CALC: resize buffer failed");
+}
+
 /* --- input --- */
 static void press_button(struct app *app, int i){
     if (i < 0 || i >= N_BTNS) return;
@@ -336,7 +365,7 @@ static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t
     if (nh != a->hover){ a->hover = nh; redraw_commit(a); } }
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
-    if (in_close_box(a->pointer_x, a->pointer_y)){ log_line("CALC: close"); exit(0); }
+    if (in_close_box(a, a->pointer_x, a->pointer_y)){ log_line("CALC: close"); exit(0); }
     int i = button_at(a, a->pointer_x, a->pointer_y);
     if (i >= 0) press_button(a, i); }
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax, wl_fixed_t v){ (void)d;(void)p;(void)t;(void)ax;(void)v; }
@@ -391,7 +420,9 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)t;(void)s; struct app*a=d;
+    if (w > 0) a->cfg_w = w;                          /* remember the tiling compositor's size... */
+    if (h > 0) a->cfg_h = h; }                        /* ...applied in xdg_surface_configure     */
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
@@ -401,6 +432,10 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
     a->configured = 1;
+    /* Honor the compositor-driven size: recreate the shm buffers + reflow when the tile changes.
+     * (First configure at the natural size hits the no-op guard, so the initial path is unchanged.) */
+    if (a->cfg_w > 0 && a->cfg_h > 0 && (a->cfg_w != a->width || a->cfg_h != a->height))
+        resize_to(a, a->cfg_w, a->cfg_h);
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };
 
@@ -435,8 +470,7 @@ int main(void){
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Calculator");
     xdg_toplevel_set_app_id(app.toplevel, "epin-calc");
-    xdg_toplevel_set_min_size(app.toplevel, WIN_W, WIN_H);
-    xdg_toplevel_set_max_size(app.toplevel, WIN_W, WIN_H);
+    /* No min==max fixed-size hint: this app is TILEABLE and honors the compositor-driven size. */
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

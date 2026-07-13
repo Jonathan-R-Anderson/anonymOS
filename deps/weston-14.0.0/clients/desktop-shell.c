@@ -311,11 +311,12 @@ epin_spawn(const char *path)
 static struct {
 	const char       *path;
 	volatile pid_t    pid;
+	volatile int      owned;   /* 1 = pid is OUR live child (set at spawn, cleared at reap) */
 } epin_popovers[] = {
-	{ "/wl-quicksettings", 0 },
-	{ "/wl-wifi-menu",     0 },
-	{ "/wl-calendar",      0 },
-	{ "/wl-overview",      0 },
+	{ "/wl-quicksettings", 0, 0 },
+	{ "/wl-wifi-menu",     0, 0 },
+	{ "/wl-calendar",      0, 0 },
+	{ "/wl-overview",      0, 0 },
 };
 
 static void
@@ -324,26 +325,54 @@ epin_popover_reaped(pid_t pid)
 	unsigned i;
 
 	for (i = 0; i < sizeof(epin_popovers) / sizeof(epin_popovers[0]); i++)
-		if (epin_popovers[i].pid == pid)
+		if (epin_popovers[i].pid == pid) {
 			epin_popovers[i].pid = 0;
+			epin_popovers[i].owned = 0;
+		}
 }
 
 static void
 epin_popover_toggle(const char *path)
 {
 	unsigned i;
+	pid_t reaped;
+	int status;
+
+	/* Drain any exited children NOW instead of waiting for an async SIGCHLD: on this
+	 * kernel SIGCHLD is only delivered at the next blocking read, so a popover the user
+	 * just closed may still hold a stale slot at click time.  Reap first, then decide. */
+	while ((reaped = waitpid(-1, &status, WNOHANG)) > 0)
+		epin_popover_reaped(reaped);
 
 	for (i = 0; i < sizeof(epin_popovers) / sizeof(epin_popovers[0]); i++) {
 		if (strcmp(epin_popovers[i].path, path) != 0)
 			continue;
-		if (epin_popovers[i].pid > 0 &&
-		    kill(epin_popovers[i].pid, 0) == 0) {
-			/* live popover: this click collapses it */
+		/* The ONLY "is it open" signal is `owned` — set at spawn, cleared at reap.
+		 * kill(pid,0) is deliberately NOT used: this kernel reuses pids fast, so a
+		 * stale pid can alias an unrelated live task and make the toggle SIGTERM that
+		 * task and swallow the click — that is the "panel won't launch" bug. */
+		if (epin_popovers[i].owned && epin_popovers[i].pid > 0) {
+			/* our live child → this click collapses it */
 			kill(epin_popovers[i].pid, SIGTERM);
 			epin_popovers[i].pid = 0;
+			epin_popovers[i].owned = 0;
 			return;
 		}
-		epin_popovers[i].pid = epin_spawn(path);
+		/* Block SIGCHLD across spawn+store so a fast-exiting child can't be reaped
+		 * (clearing the slot) before we record its pid. */
+		{
+			sigset_t block, prev;
+			pid_t p;
+			sigemptyset(&block);
+			sigaddset(&block, SIGCHLD);
+			sigprocmask(SIG_BLOCK, &block, &prev);
+			p = epin_spawn(path);
+			if (p > 0) {
+				epin_popovers[i].pid = p;
+				epin_popovers[i].owned = 1;
+			}
+			sigprocmask(SIG_SETMASK, &prev, NULL);
+		}
 		return;
 	}
 	/* unknown path: plain spawn (no toggle) */
@@ -2011,7 +2040,16 @@ int main(int argc, char *argv[])
 
 	grab_surface_create(&desktop);
 
-	signal(SIGCHLD, sigchild_handler);
+	{
+		/* sigaction (not signal): durable persistent handler + SA_RESTART so the
+		 * event-loop poll auto-restarts instead of failing with EINTR. */
+		struct sigaction sa;
+		memset(&sa, 0, sizeof sa);
+		sa.sa_handler = sigchild_handler;
+		sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+		sigemptyset(&sa.sa_mask);
+		sigaction(SIGCHLD, &sa, NULL);
+	}
 
 	display_run(desktop.display);
 

@@ -2816,6 +2816,12 @@ private void dispatchSyscall(int tid) {
             if (ret > 0) {
                 // Parent gets child pid; child already has RAX=0 in its Task.regs
                 task.regs[REG_RAX] = cast(ulong)linuxPidForTask(cast(int)ret);
+            } else {
+                // fork FAILED (forkTask returns -12 ENOMEM on slot exhaustion).  Without this
+                // else, RAX keeps the syscall number (57) → fork() looks like it returned a bogus
+                // positive child pid, so callers that check `pid < 0` (e.g. the panel's epin_spawn)
+                // never see the failure and store a fake "live child".  Return the negative errno.
+                task.regs[REG_RAX] = cast(ulong)(ret < 0 ? ret : -12 /*ENOMEM*/);
             }
             return; // already set return value
 

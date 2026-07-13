@@ -585,6 +585,36 @@ static int create_shm_buffer(struct app *app, int width, int height)
     return 0;
 }
 
+// Compositor-driven resize (tiling WM): tear down the persistent buffer and its
+// mapping, then rebuild at the new geometry.  The directory list reflows for
+// free because draw_files() derives every layout metric from app->width/height.
+// munmap MUST run before create_shm_buffer overwrites app->buffer_size, so it
+// uses the OLD size that is still live here.
+static int resize_buffer(struct app *app, int width, int height)
+{
+    if (app->buffer) {
+        wl_buffer_destroy(app->buffer);
+        app->buffer = NULL;
+    }
+    if (app->pixels && app->pixels != MAP_FAILED) {
+        munmap(app->pixels, app->buffer_size);
+        app->pixels = NULL;
+    }
+    // Pre-clamp the scroll offset for the new row count so the reflowed list
+    // stays in range once draw_files() runs inside create_shm_buffer().
+    {
+        int h = height > 0 ? height : DEFAULT_HEIGHT;
+        int vis = (h - TOOLBAR_H - STATUS_H) / ROW_H;
+        if (vis < 1)
+            vis = 1;
+        if (app->scroll > app->n_entries - vis)
+            app->scroll = app->n_entries - vis;
+        if (app->scroll < 0)
+            app->scroll = 0;
+    }
+    return create_shm_buffer(app, width, height);
+}
+
 static void wm_base_ping(void *data, struct xdg_wm_base *wm_base, uint32_t serial)
 {
     (void)data;
@@ -649,11 +679,31 @@ static void xdg_surface_configure(void *data, struct xdg_surface *surface, uint3
 {
     struct app *app = data;
     xdg_surface_ack_configure(surface, serial);
-    if (app->committed)
+
+    // Honor the compositor's (tiling WM) suggested size so the window fills its
+    // tile; fall back to the natural size when the compositor sends 0x0.
+    int want_w = app->pending_width  > 0 ? app->pending_width  : DEFAULT_WIDTH;
+    int want_h = app->pending_height > 0 ? app->pending_height : DEFAULT_HEIGHT;
+
+    if (app->committed) {
+        // Post-map resize: only rebuild when the tile size actually changed.
+        if (want_w == app->width && want_h == app->height)
+            return;
+        if (resize_buffer(app, want_w, want_h) < 0) {
+            log_line("G17FILES: resize_buffer failed");
+            return;
+        }
+        wl_surface_attach(app->surface, app->buffer, 0, 0);
+        wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
+        wl_surface_commit(app->surface);
+        wl_display_flush(app->display);
+        printf("G17FILES: resized wl_shm window %dx%d -- G17 RESIZE\n", app->width, app->height);
+        fflush(stdout);
         return;
-    // Render at a fixed, crisp size regardless of the compositor's (tiled)
-    // configure suggestion; the compositor maps the surface into the window box.
-    if (create_shm_buffer(app, DEFAULT_WIDTH, DEFAULT_HEIGHT) < 0) {
+    }
+
+    // First commit: map at the configured size and reflow the list to fit.
+    if (create_shm_buffer(app, want_w, want_h) < 0) {
         log_line("G17FILES: create_shm_buffer failed");
         app->running = 0;
         return;

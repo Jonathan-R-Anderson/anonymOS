@@ -576,6 +576,10 @@ int main(void){
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "System");
     xdg_toplevel_set_app_id(app.toplevel, "epin-quicksettings");
+    /* Float as a fixed-size popover: min==max size makes the tiling WM's
+     * epin_is_tileable() return false so this card is left floating. */
+    xdg_toplevel_set_min_size(app.toplevel, WIN_W, WIN_H);
+    xdg_toplevel_set_max_size(app.toplevel, WIN_W, WIN_H);
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

@@ -416,6 +416,10 @@ int main(void){
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Activities");
     xdg_toplevel_set_app_id(app.toplevel, "epin-overview");
+    /* FLOAT under the tiling WM: min==max marks us fixed-size so the tiler
+     * (epin_is_tileable()) skips us and leaves this overview as a floating popover. */
+    xdg_toplevel_set_min_size(app.toplevel, WIN_W, WIN_H);
+    xdg_toplevel_set_max_size(app.toplevel, WIN_W, WIN_H);
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

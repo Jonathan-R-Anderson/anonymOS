@@ -50,6 +50,8 @@ struct app {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
     struct { struct wl_buffer *wl; uint32_t *px; int busy; } bufs[2];  // double-buffered
+    void *map_base; size_t map_total;   // backing mmap for bufs (kept so resize can tear it down)
+    int cfg_w, cfg_h;                   // last compositor-requested tile size (0 = none yet)
     int configured, dirty;         // dirty = a redraw was deferred because both buffers were busy
     uint32_t *pixels;              // the buffer draw()/draw_text() currently target
     FT_Library ft;
@@ -137,17 +139,18 @@ static void fill_rect(struct app *app, int x, int y, int w, int h, uint32_t c){
 }
 
 /* --- geometry helpers --- */
-static void btn_rect(int idx, int *x, int *y, int *w, int *h){
-    int avail = WIN_W - 2*BTN_MARGIN - 2*BTN_GAP;
+static void btn_rect(struct app *app, int idx, int *x, int *y, int *w, int *h){
+    int avail = app->width - 2*BTN_MARGIN - 2*BTN_GAP;
     int bw = avail/3;
     *x = BTN_MARGIN + idx*(bw + BTN_GAP);
-    *y = BTN_Y; *w = bw; *h = BTN_H;
+    *y = app->height - BTN_MARGIN - BTN_H;   /* anchor the button row to the bottom of the tile */
+    *w = bw; *h = BTN_H;
 }
 static int point_in(double px, double py, int x, int y, int w, int h){
     return px >= x && px < x+w && py >= y && py < y+h;
 }
 /* close box: top-right of the titlebar */
-static void close_rect(int *x, int *y, int *w, int *h){ *x = WIN_W - 24; *y = 6; *w = 16; *h = 16; }
+static void close_rect(struct app *app, int *x, int *y, int *w, int *h){ *x = app->width - 24; *y = 6; *w = 16; *h = 16; }
 
 /* --- rendering --- */
 static void draw(struct app *app){
@@ -159,7 +162,7 @@ static void draw(struct app *app){
     /* --- CSD titlebar --- */
     fill_rect(app, 0, 0, app->width, TITLE_H, HDR);
     draw_text(app, "Clocks", 12, 6, 200, 15, TXT);
-    { int cx,cy,cw,ch; close_rect(&cx,&cy,&cw,&ch);
+    { int cx,cy,cw,ch; close_rect(app,&cx,&cy,&cw,&ch);
       fill_rect(app, cx, cy, cw, ch, app->hover_btn==3 ? CLOSE : BTN);
       draw_text(app, "x", cx+5, cy+1, 12, 13, TXT); }
 
@@ -192,7 +195,7 @@ static void draw(struct app *app){
     const char *labels[3] = { "Start", "Stop", "Reset" };
     uint32_t accent[3] = { GRN, RED, AMBER };
     for (int i=0;i<3;i++){
-        int bx,by,bw,bh; btn_rect(i,&bx,&by,&bw,&bh);
+        int bx,by,bw,bh; btn_rect(app,i,&bx,&by,&bw,&bh);
         fill_rect(app, bx, by, bw, bh, app->hover_btn==i ? BTNH : BTN);
         fill_rect(app, bx, by+bh-3, bw, 3, accent[i]);
         int lw = text_width(app, labels[i], 15);
@@ -214,6 +217,7 @@ static int create_buffers(struct app *app){
     if (ftruncate(fd, (off_t)total) < 0){ close(fd); return -1; }
     unsigned char *base = mmap(NULL, total, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (base == MAP_FAILED){ close(fd); return -1; }
+    app->map_base = base; app->map_total = total;   /* kept for resize teardown */
     struct wl_shm_pool *pool = wl_shm_create_pool(app->shm, fd, (int)total);
     for (int i=0;i<2;i++){
         app->bufs[i].px = (uint32_t*)(base + (size_t)i*app->buffer_size);
@@ -225,6 +229,17 @@ static int create_buffers(struct app *app){
     }
     wl_shm_pool_destroy(pool); close(fd);
     return 0;
+}
+/* Tear down the current buffers + their backing mmap so create_buffers() can rebuild at a new size.
+ * Destroying an attached buffer is legal; we immediately attach+commit a fresh one after recreating. */
+static void destroy_buffers(struct app *app){
+    for (int i=0;i<2;i++){
+        if (app->bufs[i].wl){ wl_buffer_destroy(app->bufs[i].wl); app->bufs[i].wl = NULL; }
+        app->bufs[i].px = NULL; app->bufs[i].busy = 0;
+    }
+    if (app->map_base && app->map_base != MAP_FAILED) munmap(app->map_base, app->map_total);
+    app->map_base = NULL; app->map_total = 0;
+    app->dirty = 0;   /* any deferred redraw referred to the now-destroyed buffers */
 }
 /* Draw into a FREE buffer and commit it; if both are in use, mark dirty and redraw on the next release
  * (never modify a buffer the compositor may still be reading -> that vanished the window on real HW). */
@@ -244,11 +259,11 @@ static void redraw_commit(struct app *app){
 /* --- input --- */
 static void handle_click(struct app *app){
     /* close box */
-    { int cx,cy,cw,ch; close_rect(&cx,&cy,&cw,&ch);
+    { int cx,cy,cw,ch; close_rect(app,&cx,&cy,&cw,&ch);
       if (point_in(app->pointer_x, app->pointer_y, cx, cy, cw, ch)){ log_line("CLOCKS: close"); exit(0); } }
     /* stopwatch buttons */
     for (int i=0;i<3;i++){
-        int bx,by,bw,bh; btn_rect(i,&bx,&by,&bw,&bh);
+        int bx,by,bw,bh; btn_rect(app,i,&bx,&by,&bw,&bh);
         if (!point_in(app->pointer_x, app->pointer_y, bx, by, bw, bh)) continue;
         if (i == 0){ if (!app->sw_running){ app->sw_start = now_mono(); app->sw_running = 1; } }        /* Start */
         else if (i == 1){ if (app->sw_running){ app->sw_accum += now_mono() - app->sw_start; app->sw_running = 0; } } /* Stop */
@@ -259,9 +274,9 @@ static void handle_click(struct app *app){
 }
 
 static int hit_test_btn(struct app *app){
-    int cx,cy,cw,ch; close_rect(&cx,&cy,&cw,&ch);
+    int cx,cy,cw,ch; close_rect(app,&cx,&cy,&cw,&ch);
     if (point_in(app->pointer_x, app->pointer_y, cx, cy, cw, ch)) return 3;
-    for (int i=0;i<3;i++){ int bx,by,bw,bh; btn_rect(i,&bx,&by,&bw,&bh);
+    for (int i=0;i<3;i++){ int bx,by,bw,bh; btn_rect(app,i,&bx,&by,&bw,&bh);
         if (point_in(app->pointer_x, app->pointer_y, bx, by, bw, bh)) return i; }
     return -1;
 }
@@ -312,7 +327,9 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)t;(void)s; struct app*a=d;
+    if (w > 0 && h > 0){ a->cfg_w = w; a->cfg_h = h; }   /* remember the compositor-dictated tile size */
+}
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
@@ -321,6 +338,14 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    /* Honor a compositor-driven resize: rebuild the wl_shm buffers at the new size before redrawing.
+     * The initial configure (no size hint, cfg_w/cfg_h==0) keeps the natural WIN_W x WIN_H buffers. */
+    if (a->cfg_w > 0 && a->cfg_h > 0 && (a->cfg_w != a->width || a->cfg_h != a->height)){
+        a->width = a->cfg_w; a->height = a->cfg_h;
+        a->stride = a->width * 4; a->buffer_size = (size_t)a->stride * a->height;
+        destroy_buffers(a);
+        if (create_buffers(a) < 0){ log_line("CLOCKS: resize buffer failed"); a->running = 0; return; }
+    }
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };

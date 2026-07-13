@@ -562,6 +562,12 @@ int main(void){
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Wi-Fi");
     xdg_toplevel_set_app_id(app.toplevel, "epin-wifi-menu");
+    /* FLOAT under the tiling WM: marking the toplevel fixed-size (min==max at our
+     * natural popover dimensions) makes the desktop-shell tiler's epin_is_tileable()
+     * return false, so this drop-down menu is left as a floating popover instead of
+     * being stretched into a tile. */
+    xdg_toplevel_set_min_size(app.toplevel, WIN_W, WIN_H);
+    xdg_toplevel_set_max_size(app.toplevel, WIN_W, WIN_H);
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

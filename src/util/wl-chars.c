@@ -54,6 +54,8 @@ struct app {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
     struct { struct wl_buffer *wl; uint32_t *px; int busy; } bufs[2];  // double-buffered
+    void *map_base; size_t map_total;   // client mmap of the shm pool (munmap'd on resize)
+    int pending_w, pending_h;           // size requested by the last toplevel_configure
     int configured, dirty;
     uint32_t *pixels;              // the buffer draw_grid()/draw_text() currently target
     FT_Library ft;
@@ -266,12 +268,23 @@ static void buffer_release(void *d, struct wl_buffer *wl){ struct app *a = d;
 }
 static const struct wl_buffer_listener buffer_listener = { .release = buffer_release };
 
+/* Tear down the current shm buffers + client mapping (before rebuilding at a new size). */
+static void destroy_buffers(struct app *app){
+    for (int i=0;i<2;i++){
+        if (app->bufs[i].wl){ wl_buffer_destroy(app->bufs[i].wl); app->bufs[i].wl = NULL; }
+        app->bufs[i].px = NULL; app->bufs[i].busy = 0;
+    }
+    if (app->map_base){ munmap(app->map_base, app->map_total); app->map_base = NULL; app->map_total = 0; }
+    app->dirty = 0;
+}
+
 static int create_buffers(struct app *app){
     int fd = create_memfd("epin-chars"); if (fd < 0) return -1;
     size_t total = app->buffer_size * 2;
     if (ftruncate(fd, (off_t)total) < 0){ close(fd); return -1; }
     unsigned char *base = mmap(NULL, total, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (base == MAP_FAILED){ close(fd); return -1; }
+    app->map_base = base; app->map_total = total;
     struct wl_shm_pool *pool = wl_shm_create_pool(app->shm, fd, (int)total);
     for (int i=0;i<2;i++){
         app->bufs[i].px = (uint32_t*)(base + (size_t)i*app->buffer_size);
@@ -295,6 +308,22 @@ static void redraw_commit(struct app *app){
     wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
     wl_surface_commit(app->surface);
     wl_display_flush(app->display);
+}
+
+/* Honor a compositor-driven size: rebuild the shm buffers at (w,h).  The grid geometry
+ * (columns / visible rows) is derived live from app->width/height, so the character grid
+ * reflows to fill the new tile; scroll is re-clamped to the new row count. */
+static void resize(struct app *app, int w, int h){
+    if (w < 1) w = 1;
+    if (h < 1) h = 1;
+    destroy_buffers(app);
+    app->width = w; app->height = h;
+    app->stride = w*4; app->buffer_size = (size_t)app->stride * h;
+    if (create_buffers(app) < 0){ log_line("CHARS: resize buffer alloc failed"); app->running = 0; return; }
+    app->pixels = app->bufs[0].px;
+    int ms = max_scroll(app);
+    if (app->scroll_row > ms) app->scroll_row = ms;
+    if (app->scroll_row < 0) app->scroll_row = 0;
 }
 
 /* --- copy the picked character --- */
@@ -378,7 +407,9 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)t;(void)s; struct app*a=d;
+    if (w > 0) a->pending_w = w;   /* the tiler dictates our size; 0 = client's choice */
+    if (h > 0) a->pending_h = h; }
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
@@ -387,6 +418,10 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    /* If the compositor picked a size different from our buffers, rebuild at that size. */
+    if (a->pending_w > 0 && a->pending_h > 0 &&
+        (a->pending_w != a->width || a->pending_h != a->height))
+        resize(a, a->pending_w, a->pending_h);
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };

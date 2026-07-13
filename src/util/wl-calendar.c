@@ -378,6 +378,9 @@ int main(void){
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Calendar");
     xdg_toplevel_set_app_id(app.toplevel, "epin-calendar");
+    /* FLOAT: min==max fixes the size so the tiler treats us as a floating popover. */
+    xdg_toplevel_set_min_size(app.toplevel, WIN_W, WIN_H);
+    xdg_toplevel_set_max_size(app.toplevel, WIN_W, WIN_H);
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

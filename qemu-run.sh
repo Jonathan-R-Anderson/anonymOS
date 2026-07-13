@@ -91,7 +91,7 @@ if [ "${NET:-0}" = "1" ] || [ "${NET:-0}" = "e1000" ]; then
            -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
   echo "[qemu-run] NET=1: e1000 + user-net (guest 10.0.2.15, gw 10.0.2.2); frames dumped to net.pcap"
 elif [ "${NET:-0}" = "virtio" ]; then
-  NETDEV=( -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+  NETDEV=( -netdev socket,id=net0,listen=127.0.0.1:5609 -device virtio-net-pci,netdev=net0
            -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
   echo "[qemu-run] NET=virtio: virtio-net + user-net; frames dumped to net.pcap"
 fi

@@ -51,6 +51,8 @@ server anywhere.
 
 ---
 
+the blockchain needs to have a series of i2p addresses saved to it used for bootstrapping. the namespaces used for dispersing the updates need to be fully validated as unmodified. and the hashes of the files they contain for pushing updates need to be signed. 
+
 ## Architecture decisions (resolve before U2)
 
 ### D1 — Update unit: whole-image A/B, not package surgery

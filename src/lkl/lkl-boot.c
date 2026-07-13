@@ -918,6 +918,17 @@ static void provtrace_append(const char *s, unsigned n)
     pthread_mutex_unlock(&g_provtracelock);
 }
 
+/* Per-LKL-fd SO_TYPE cache.  NSP_RECVFROM needs the socket type to decide whether to OR in MSG_TRUNC,
+ * but SO_TYPE is immutable per socket, so querying it via getsockopt on EVERY receive doubled the LKL
+ * syscalls on NM's hottest path.  Cache it: populated at NSP_SOCKET (the type is the create arg),
+ * cleared at NSP_CLOSE, and lazily filled on a recvfrom cache-miss (fds not born via NSP_SOCKET).
+ * 0 = unknown.  A stale-0 read merely recomputes (still correct); the ONLY nonzero writer is create
+ * with the true type, so a read can never see a WRONG nonzero value even under the pooled-connection
+ * concurrency.  LKL fds are small ints; index is range-guarded.  SOCK_NONBLOCK/SOCK_CLOEXEC are
+ * masked off the create arg so the base type (SOCK_STREAM=1/DGRAM=2/RAW=3) is stored. */
+#define NSP_SOTYPE_MAX 4096
+static int g_sotype[NSP_SOTYPE_MAX];
+
 /* Serve one connected client: a loop of framed RPC requests, each executed against the LKL. */
 static void epin_net_serve_conn(int cs)
 {
@@ -942,6 +953,8 @@ static void epin_net_serve_conn(int cs)
         switch (rq.op) {
         case NSP_SOCKET:
             rs.ret = lkl_sys_socket(rq.a0, rq.a1, rq.a2);
+            if (rs.ret >= 0 && rs.ret < NSP_SOTYPE_MAX)     /* memoize base SO_TYPE for NSP_RECVFROM */
+                g_sotype[rs.ret] = rq.a1 & ~(04000 /*SOCK_NONBLOCK*/ | 02000000 /*SOCK_CLOEXEC*/);
             break;
         case NSP_BIND:
             p[0]=rq.fd; p[1]=(long)reqaddr; p[2]=rq.addrlen;
@@ -982,9 +995,16 @@ static void epin_net_serve_conn(int cs)
              * kernel copies maxlen bytes and DISCARDS the tail — but with MSG_TRUNC recvfrom returns the
              * TRUE datagram length.  Applying MSG_TRUNC to TCP is invalid stream emulation and can discard
              * bytes, so first query SO_TYPE and preserve the caller's flags for SOCK_STREAM. */
-            int stype = 0; unsigned stypelen = sizeof stype;
-            long sp[6] = { rq.fd, LKL_SOL_SOCKET, LKL_SO_TYPE, (long)&stype, (long)&stypelen, 0 };
-            long sr = lkl_syscall(__lkl__NR_getsockopt, sp);
+            /* SO_TYPE is immutable — use the per-fd cache (populated at NSP_SOCKET); only query LKL on
+             * a miss, then memoize.  Removes one getsockopt syscall per receive on NM's hottest path. */
+            int stype = (rq.fd >= 0 && rq.fd < NSP_SOTYPE_MAX) ? g_sotype[rq.fd] : 0;
+            int sr = 0;
+            if (stype == 0) {
+                unsigned stypelen = sizeof stype;
+                long sp[6] = { rq.fd, LKL_SOL_SOCKET, LKL_SO_TYPE, (long)&stype, (long)&stypelen, 0 };
+                sr = (int)lkl_syscall(__lkl__NR_getsockopt, sp);
+                if (sr == 0 && rq.fd >= 0 && rq.fd < NSP_SOTYPE_MAX) g_sotype[rq.fd] = stype;
+            }
             int recvflags = rq.a2;
             if (sr == 0 && stype != LKL_SOCK_STREAM) recvflags |= 0x20 /*MSG_TRUNC*/;
             p[0]=rq.fd; p[1]=(long)respbuf; p[2]=maxlen; p[3]=recvflags;
@@ -1022,6 +1042,7 @@ static void epin_net_serve_conn(int cs)
             rs.ret = lkl_syscall(__lkl__NR_shutdown, p);
             break;
         case NSP_CLOSE:
+            if (rq.fd >= 0 && rq.fd < NSP_SOTYPE_MAX) g_sotype[rq.fd] = 0;  /* fd numbers get reused */
             rs.ret = lkl_sys_close(rq.fd);
             break;
         case NSP_IOCTL:

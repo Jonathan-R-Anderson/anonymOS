@@ -276,7 +276,13 @@ int main(void)
     int pv = probe_connect("/run/hos-net.sock");
     const int prov_absent = (strcmp(present(pv), "absent") == 0);
     int ok = 0;
-    for (int i = 1; i <= 20; i++) {
+    /* This loop's REAL job is to create /run/nm-ready (via publish_nm_ready) the moment NM registers —
+     * the wifi-agent blocks on that file before it can drive the Wi-Fi menu.  NM registers SLOWLY on this
+     * hardware (netlink-over-shim ~40-60s), so we must keep polling well past that or the Wi-Fi UI never
+     * comes up (regression: an earlier cut to 3 iters quit at 18s, before NM was ready).  Each iteration
+     * is only ONE dbus-send (nm_registered), and napms() here is a real nanosleep, so ~40 iters × 3s is
+     * cheap — it sleeps between checks and stops the instant NM registers (publish_nm_ready + break). */
+    for (int i = 1; i <= 40; i++) {
         int nm = nm_registered();
         const char *verdict =
             nm ? "NM IS UP + registered -- the full stack works on real hardware (M2b OK)."
@@ -287,7 +293,7 @@ int main(void)
                : "provider+dbus PRESENT but NM not registered -> NM launched but is stuck/crashed before D-Bus.";
         char buf[640];
         snprintf(buf, sizeof buf,
-            "=== EpinAnonymOS boot-doctor (iter %d/20) ===\n"
+            "=== EpinAnonymOS boot-doctor (iter %d/40) ===\n"
             "dbus   /run/dbus/system_bus_socket : %s (errno %d)\n"
             "prov   /run/hos-net.sock           : %s (errno %d)\n"
             "NM     registered on the bus       : %s\n"

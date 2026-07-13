@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <time.h>
+#include <errno.h>
 #include <sys/stat.h>
 
 #define NM_DEST  "org.freedesktop.NetworkManager"
@@ -37,13 +38,19 @@
  * wakeups are the path used successfully by the Wayland clients, so use that
  * clock here as well.  Retry EINTR with the remaining coarse interval; exact
  * timing is unimportant for this low-frequency service loop. */
+/* poll(NULL,0,ms) does NOT block on this kernel — with nfds==0 it returns instantly, so the old loop
+ * busy-spun and showed up as cur=hos-wifi-agent pegging the core (starving Weston).  poll() only PARKS
+ * when it has a real fd to watch, so park on the read end of a never-written pipe: it is never readable,
+ * so poll() sleeps out the whole timeout instead of spinning. */
+static int g_nap_fd = -1;
 static void napms(long ms){
+    if (g_nap_fd < 0){ int pp[2]; if (pipe(pp) == 0) g_nap_fd = pp[0]; }
     while (ms > 0){
         int chunk = ms > 60000 ? 60000 : (int)ms;
-        int rc = poll(NULL, 0, chunk);
-        if (rc == 0) ms -= chunk;
-        else if (rc < 0) continue;
-        else break;
+        struct pollfd p = { g_nap_fd, POLLIN, 0 };
+        int rc = poll(&p, 1, chunk);          /* real fd, never ready -> parks for `chunk` ms */
+        if (rc < 0){ if (errno == EINTR) continue; ms -= chunk; }
+        else ms -= chunk;                      /* rc==0 timeout (expected); count it either way */
     }
 }
 

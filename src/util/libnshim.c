@@ -135,9 +135,29 @@ static int g_log = 0;
 static int g_ap_total = 0;
 __attribute__((constructor)) static void nshim_cfg(void){ g_log = getenv("HOS_SHIM_LOG") != 0; }
 
-/* --- one persistent provider connection, mutex-serialized --- */
-static int g_conn = -1;
-static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+/* --- provider connection POOL (was a single mutex-serialized connection) ---
+ * A single shared connection + one global mutex meant a BLOCKING recvfrom — whose provider side
+ * (lkl-boot.c NSP_RECVFROM) ppolls up to 1s for a reply — held the lock for that whole second,
+ * freezing EVERY other routed syscall in the process.  NM is heavily multi-threaded and opens many
+ * netlink sockets, so its entire boot enumeration serialized behind each blocking read.
+ *
+ * Now: a small POOL of connections, each with its own mutex.  A routed call is pinned to a slot by
+ * its LKL remote fd (fd % NSP_POOL): (a) all traffic for ONE socket always uses ONE connection, so
+ * netlink's per-socket request/response ordering is preserved, while (b) calls on DIFFERENT sockets
+ * proceed concurrently on different connections.  The provider already spawns one serve-thread per
+ * accepted connection (lkl-boot.c epin_net_conn_thread), and all its threads share the single LKL
+ * kernel's global fd table, so any connection may operate on any LKL fd — no provider change needed.
+ * fd-less control ops (NSP_SOCKET create; rfd < 0) use slot 0. */
+#define NSP_POOL 16
+static int             g_conn[NSP_POOL];
+static pthread_mutex_t g_connlock[NSP_POOL];
+static pthread_once_t  g_pool_once = PTHREAD_ONCE_INIT;
+static void pool_init(void){ for (int i=0;i<NSP_POOL;i++){ g_conn[i] = -1; pthread_mutex_init(&g_connlock[i], 0); } }
+/* Set once the provider has ever answered.  Before that (early boot) provider_connect is PATIENT —
+ * the provider is racing to come up.  After that, a reconnect (triggered by the framing self-heal
+ * below) FAST-FAILS instead of burning the full 10s retry under the slot mutex: if the provider has
+ * genuinely died, every routed call would otherwise stall 10s and block all fds sharing that slot. */
+static int g_ever_connected = 0;
 
 /* EpinAnonymOS AF_UNIX read/write are NON-blocking (-EAGAIN on empty rx / full tx while the peer
  * lives), so blocking is emulated.  Wait EVENT-DRIVEN in poll() (the kernel parks the task and its
@@ -158,7 +178,11 @@ static int provider_connect(void)
     if (s < 0) return -1;
     struct sockaddr_un sa; memset(&sa,0,sizeof sa);
     sa.sun_family = AF_UNIX; strncpy(sa.sun_path, NSP_PATH, sizeof(sa.sun_path)-1);
-    for (int i=0;i<200;i++){ if (r_connect(s,(struct sockaddr*)&sa,sizeof sa)==0) return s;
+    /* PATIENT (200x50ms=10s) only until the provider first answers — it is racing to come up at boot.
+     * Afterwards a reconnect FAST-FAILS (3x50ms=150ms) so a dead provider can't stall every syscall
+     * for 10s under the slot mutex. */
+    int tries = g_ever_connected ? 3 : 200;
+    for (int i=0;i<tries;i++){ if (r_connect(s,(struct sockaddr*)&sa,sizeof sa)==0){ g_ever_connected = 1; return s; }
                              struct timespec t={0,50000000L}; nanosleep(&t,0); }
     r_close(s); return -1;
 }
@@ -171,34 +195,50 @@ static long nsp(uint32_t op, int rfd, int a0,int a1,int a2,
                 void *raddr, uint32_t raddrmax, uint32_t *ralen)
 {
     long ret = -1000;
-    pthread_mutex_lock(&g_lock);
-    if (g_conn < 0) g_conn = provider_connect();
-    if (g_conn < 0) { pthread_mutex_unlock(&g_lock); return -1000; }
+    pthread_once(&g_pool_once, pool_init);
+    /* slot 0 is the CONTROL plane (socket create + close); data-plane ops hash to slots 1..NSP_POOL-1
+     * by fd.  Two reasons: (1) a create-cleanup NSP_CLOSE must reuse the SAME warm connection the
+     * create used — a cold hash-slot could need a fresh native fd, impossible in the EMFILE path that
+     * triggers that cleanup, which would leak the LKL socket; keeping close on slot 0 avoids it.
+     * (2) reserving slot 0 for control means a blocking recvfrom (which parks its slot up to 1s) never
+     * lands on slot 0, so it can never head-of-line-block a create/close.  A data op keeps per-fd
+     * affinity (same fd -> same slot 1..15) so netlink per-socket ordering holds; close is a socket's
+     * LAST op (app-serialized after all its data ops complete) so routing it to slot 0 cannot reorder
+     * against them. */
+    int slot = (rfd >= 0 && op != NSP_CLOSE) ? (1 + (rfd % (NSP_POOL - 1))) : 0;
+    pthread_mutex_lock(&g_connlock[slot]);
+    if (g_conn[slot] < 0) g_conn[slot] = provider_connect();
+    if (g_conn[slot] < 0) { pthread_mutex_unlock(&g_connlock[slot]); return -1000; }
+    int c = g_conn[slot];
 
     nsp_req rq; memset(&rq,0,sizeof rq);
     rq.op=op; rq.fd=rfd; rq.a0=a0; rq.a1=a1; rq.a2=a2; rq.buflen=sblen; rq.addrlen=salen;
-    if (!wrf(g_conn,&rq,sizeof rq)) goto out;
-    if (sblen && !wrf(g_conn,sbuf,sblen)) goto out;
-    if (salen && !wrf(g_conn,saddr,salen)) goto out;
+    if (!wrf(c,&rq,sizeof rq)) goto out;
+    if (sblen && !wrf(c,sbuf,sblen)) goto out;
+    if (salen && !wrf(c,saddr,salen)) goto out;
 
     nsp_resp rs;
-    if (!rdf(g_conn,&rs,sizeof rs)) goto out;
+    if (!rdf(c,&rs,sizeof rs)) goto out;
     char junk[512];
     if (rs.buflen) {
         uint32_t take = rs.buflen < rbufmax ? rs.buflen : rbufmax;
-        if (take && rbuf && !rdf(g_conn,rbuf,take)) goto out;
+        if (take && rbuf && !rdf(c,rbuf,take)) goto out;
         if (rblen) *rblen = take;
-        for (uint32_t left = rs.buflen - take; left; ){ uint32_t c=left<sizeof junk?left:sizeof junk; if(!rdf(g_conn,junk,c))goto out; left-=c; }
+        for (uint32_t left = rs.buflen - take; left; ){ uint32_t cc=left<sizeof junk?left:sizeof junk; if(!rdf(c,junk,cc))goto out; left-=cc; }
     } else if (rblen) *rblen = 0;
     if (rs.addrlen) {
         uint32_t take = rs.addrlen < raddrmax ? rs.addrlen : raddrmax;
-        if (take && raddr && !rdf(g_conn,raddr,take)) goto out;
+        if (take && raddr && !rdf(c,raddr,take)) goto out;
         if (ralen) *ralen = take;
-        for (uint32_t left = rs.addrlen - take; left; ){ uint32_t c=left<sizeof junk?left:sizeof junk; if(!rdf(g_conn,junk,c))goto out; left-=c; }
+        for (uint32_t left = rs.addrlen - take; left; ){ uint32_t cc=left<sizeof junk?left:sizeof junk; if(!rdf(c,junk,cc))goto out; left-=cc; }
     } else if (ralen) *ralen = 0;
     ret = (long)rs.ret;
 out:
-    pthread_mutex_unlock(&g_lock);
+    /* A framing failure (ret still the -1000 transport sentinel) leaves this stream byte-desynced;
+     * drop the slot's connection so the NEXT call reconnects fresh instead of corrupting every
+     * future RPC on it.  The pool confines the damage to one slot, not the whole process. */
+    if (ret == -1000) { r_close(c); g_conn[slot] = -1; }
+    pthread_mutex_unlock(&g_connlock[slot]);
     return ret;
 }
 

@@ -5525,7 +5525,10 @@ private immutable VFEntry[] g_vfs = [
     { "/etc/hosts",         "127.0.0.1 localhost hanonymOS\n::1 localhost\n"                           },
     { "/etc/machine-id",    "deadbeefcafe00001234567890abcdef\n"                                       },
     { "/etc/nsswitch.conf", "passwd: files\ngroup: files\nshadow: files\nhosts: files dns\n"          },
-    { "/etc/passwd",        "root:x:0:0:root:/root:/bin/zsh\nuser:x:1000:1000:user:/home/user:/bin/zsh\n" },
+    // SSH-in DEBUG default credential: root's password hash inline (password "epinos") so dropbear
+    // (--disable-shadow) can authenticate remote logins. This is the fallback served before the user
+    // registry populates. See core.user.userRebuildPasswd for the derived-passwd equivalent.
+    { "/etc/passwd",        "root:$6$epinos00$hsmBcuD.jeUa5U5JgNPZ5NXUWOGpuIAopa/fwC9uOcFyNXtF4OO/aIkJ1A1qZ6jCMmH5lYQ7G2UWz5TmCy5ES0:0:0:root:/root:/bin/zsh\nuser:x:1000:1000:user:/home/user:/bin/zsh\n" },
     { "/etc/shadow",        "root::::::::\n"                                                           },
     { "/etc/group",         "root:x:0:\n"                                                              },
     { "/etc/shells",        "/bin/zsh\n/bin/sh\n/bin/ash\n/busybox\n"                                  },

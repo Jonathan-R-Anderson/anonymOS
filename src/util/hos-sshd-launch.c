@@ -22,6 +22,28 @@
 #define SSHD_SOCK  "/run/sshd.sock"
 #define DROPBEAR   "/dropbear"                       // staged as a boot module at /
 #define HOSTKEY    "/run/dropbear_host_key"          // generated at boot by the launcher
+#define SSHD_LOG   "/run/sshd.log"                   // dedicated SSH log (Logs app: SUPER+L, Tab)
+
+#include <stdarg.h>
+#include <fcntl.h>
+#include <time.h>
+
+// Append a line to /run/sshd.log (mirrored into /run/klog by the kernel's *.log tap, so it
+// shows in the Logs app both as a dedicated source and in the merged view).
+static int g_log_fd = -2;
+static void slog(const char *fmt, ...)
+{
+    char line[512];
+    va_list ap; va_start(ap, fmt);
+    int n = vsnprintf(line, sizeof line - 2, fmt, ap);
+    va_end(ap);
+    if (n < 0) return;
+    if (n > (int)sizeof line - 2) n = (int)sizeof line - 2;
+    line[n++] = '\n'; line[n] = 0;
+    if (g_log_fd == -2) g_log_fd = open(SSHD_LOG, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (g_log_fd >= 0) { ssize_t w = write(g_log_fd, line, (size_t)n); (void)w; }
+    else { fputs(line, stderr); fflush(stderr); }
+}
 
 static void reap(int sig) { (void)sig; while (waitpid(-1, NULL, WNOHANG) > 0) {} }
 
@@ -37,9 +59,9 @@ int main(void)
     sa.sun_family = AF_UNIX;
     strncpy(sa.sun_path, SSHD_SOCK, sizeof(sa.sun_path) - 1);
     unlink(SSHD_SOCK);
-    if (bind(ls, (struct sockaddr *)&sa, sizeof sa) < 0) { fprintf(stderr, "[sshd] bind %s: %d\n", SSHD_SOCK, errno); return 1; }
-    if (listen(ls, 8) < 0) { fprintf(stderr, "[sshd] listen: %d\n", errno); return 1; }
-    fprintf(stderr, "[sshd] listening on %s -> forks dropbear -i per connection\n", SSHD_SOCK);
+    if (bind(ls, (struct sockaddr *)&sa, sizeof sa) < 0) { slog("[sshd] bind %s: errno %d", SSHD_SOCK, errno); return 1; }
+    if (listen(ls, 8) < 0) { slog("[sshd] listen: errno %d", errno); return 1; }
+    slog("[sshd] launcher up: listening on %s -> forks dropbear -i per connection (log: %s)", SSHD_SOCK, SSHD_LOG);
 
     for (;;) {
         int cs = accept(ls, NULL, NULL);
@@ -48,18 +70,21 @@ int main(void)
             usleep(20000);
             continue;
         }
-        fprintf(stderr, "[sshd] connection accepted (fd %d) -> spawning dropbear -i\n", cs);
+        slog("[sshd] SSH connection accepted -> spawning dropbear -i (its log follows)");
         pid_t pid = fork();
         if (pid == 0) {
-            // Child: wire the connection to dropbear's stdin/stdout, exec inetd-mode dropbear.
+            // Child: wire the connection to dropbear's stdin/stdout, redirect dropbear's stderr
+            // (-E) to /run/sshd.log so its auth/PTY/shell diagnostics land in the dedicated log.
             close(ls);
             if (cs != 0) dup2(cs, 0);
             if (cs != 1) dup2(cs, 1);
-            if (cs > 1) close(cs);
-            // -i inetd (single conn on fd0/1); -E log to stderr; -R auto-generate the host key
-            // if missing (into -r path); password auth stays enabled for debug login.
+            int lf = open(SSHD_LOG, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            if (lf >= 0) { dup2(lf, 2); if (lf > 2) close(lf); }   // dropbear -E -> /run/sshd.log
+            if (cs > 2) close(cs);
+            // -i inetd (single conn on fd0/1); -E log to stderr (now /run/sshd.log); -R auto-gen
+            // host key if missing; password auth stays enabled for debug login.
             execl(DROPBEAR, "dropbear", "-i", "-E", "-R", "-r", HOSTKEY, (char *)NULL);
-            fprintf(stderr, "[sshd] execl(%s) failed: %d\n", DROPBEAR, errno);
+            slog("[sshd] execl(%s) failed: errno %d", DROPBEAR, errno);
             _exit(127);
         } else if (pid > 0) {
             close(cs);   // parent keeps only the listener

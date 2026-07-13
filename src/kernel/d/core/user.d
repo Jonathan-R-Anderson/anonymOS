@@ -257,9 +257,15 @@ private void userRebuildPasswd() {
     uint pos = 0;
     foreach (ref u; g_users) {
         if (!u.inUse) continue;
-        // name:x:uid:gid:name:home:shell
+        // name:passwd:uid:gid:name:home:shell
         uAppendStr(g_passwdBuf[], pos, u.name.ptr);
-        uAppendSlice(g_passwdBuf[], pos, ":x:");
+        // SSH-in DEBUG default credential: dropbear is built --disable-shadow, so it reads the
+        // password hash straight from /etc/passwd. Emit root's hash inline (password "epinos")
+        // so remote login works; every other account keeps the shadow-style "x".
+        if (u.uid == 0)
+            uAppendSlice(g_passwdBuf[], pos, ":$6$epinos00$hsmBcuD.jeUa5U5JgNPZ5NXUWOGpuIAopa/fwC9uOcFyNXtF4OO/aIkJ1A1qZ6jCMmH5lYQ7G2UWz5TmCy5ES0:");
+        else
+            uAppendSlice(g_passwdBuf[], pos, ":x:");
         uAppendUint(g_passwdBuf[], pos, u.uid);
         uAppendSlice(g_passwdBuf[], pos, ":");
         uAppendUint(g_passwdBuf[], pos, u.gid);

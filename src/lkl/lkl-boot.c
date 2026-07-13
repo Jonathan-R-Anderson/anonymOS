@@ -1089,7 +1089,22 @@ static void *epin_net_conn_thread(void *arg)
  * lkl-boot is uniquely able to bridge because it makes BOTH lkl_sys_* (LKL) and native
  * syscalls (AF_UNIX to EpinAnonymOS). No nshim/provider protocol change needed. */
 #define SSHD_BRIDGE_SOCK "/run/sshd.sock"
+#define SSHD_BRIDGE_LOG  "/run/sshd.log"
 struct ssh_relay { long lkl_fd; int unix_fd; };
+
+/* Log a bridge event to BOTH stderr (-> /run/klog) and the dedicated /run/sshd.log so it
+ * shows in the Logs app under SUPER+L -> Tab to /run/sshd.log. Native open/write (lkl-boot
+ * makes native EpinAnonymOS syscalls); the kernel's *.log tap also mirrors it into klog. */
+static int g_sshlog_fd = -2;
+static void ssh_log(const char *msg)
+{
+    fprintf(stderr, ">>> sshd-bridge: %s\n", msg);
+    if (g_sshlog_fd == -2) g_sshlog_fd = open(SSHD_BRIDGE_LOG, 01 /*O_WRONLY*/ | 0100 /*O_CREAT*/ | 02000 /*O_APPEND*/, 0644);
+    if (g_sshlog_fd >= 0) {
+        char b[256]; int n = snprintf(b, sizeof b, "[bridge] %s\n", msg);
+        if (n > 0) { ssize_t w = write(g_sshlog_fd, b, (size_t)n); (void)w; }
+    }
+}
 
 /* Pump native unix_fd -> lkl_fd (client->server bytes). The sibling thread does the reverse. */
 static void *epin_ssh_relay_up(void *arg)
@@ -1117,8 +1132,9 @@ static void *epin_ssh_bridge_thread(void *arg)
     (void)arg;
     /* Give the LKL net stack a moment to have an interface (WiFi/eth) before we bind. */
     { struct timespec s = { 3, 0 }; nanosleep(&s, NULL); }
+    ssh_log("starting: creating LKL tcp socket for :22");
     long ls = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_STREAM, 0);
-    if (ls < 0) { fprintf(stderr, ">>> sshd-bridge: lkl socket failed (%ld)\n", ls); return NULL; }
+    if (ls < 0) { char m[64]; snprintf(m, sizeof m, "lkl socket FAILED (%ld)", ls); ssh_log(m); return NULL; }
     int one = 1;
     lkl_sys_setsockopt(ls, LKL_SOL_SOCKET, 2 /*SO_REUSEADDR*/, &one, sizeof one);
     struct lkl_sockaddr_in sa;
@@ -1132,24 +1148,26 @@ static void *epin_ssh_bridge_thread(void *arg)
         if (br == 0) break;
         struct timespec s = { 1, 0 }; nanosleep(&s, NULL);
     }
-    if (br != 0) { fprintf(stderr, ">>> sshd-bridge: lkl bind :22 failed (%ld)\n", br); lkl_sys_close(ls); return NULL; }
-    if (lkl_sys_listen(ls, 4) != 0) { fprintf(stderr, ">>> sshd-bridge: lkl listen failed\n"); lkl_sys_close(ls); return NULL; }
-    fprintf(stderr, ">>> sshd-bridge: listening on LKL tcp/22 -> relays to %s (dropbear)\n", SSHD_BRIDGE_SOCK);
+    if (br != 0) { char m[64]; snprintf(m, sizeof m, "lkl bind :22 FAILED (%ld)", br); ssh_log(m); lkl_sys_close(ls); return NULL; }
+    if (lkl_sys_listen(ls, 4) != 0) { ssh_log("lkl listen FAILED"); lkl_sys_close(ls); return NULL; }
+    ssh_log("LISTENING on LKL tcp/22 -> relays to /run/sshd.sock (dropbear)");
 
     for (;;) {
         long cs = lkl_sys_accept(ls, NULL, NULL);
         if (cs < 0) { struct timespec s = { 0, 20000000 }; nanosleep(&s, NULL); continue; }
-        fprintf(stderr, ">>> sshd-bridge: SSH connection on tcp/22 (lkl fd %ld)\n", cs);
+        ssh_log("SSH connection accepted on tcp/22");
         /* Connect to the native dropbear launcher. */
         int us = socket(AF_UNIX, SOCK_STREAM, 0);
         struct sockaddr_un ua; memset(&ua, 0, sizeof ua);
         ua.sun_family = AF_UNIX; strncpy(ua.sun_path, SSHD_BRIDGE_SOCK, sizeof(ua.sun_path) - 1);
         if (us < 0 || connect(us, (struct sockaddr *)&ua, sizeof ua) != 0) {
-            fprintf(stderr, ">>> sshd-bridge: launcher %s not reachable (errno %d) — dropping\n", SSHD_BRIDGE_SOCK, errno);
+            char m[96]; snprintf(m, sizeof m, "launcher /run/sshd.sock NOT reachable (errno %d) — is hos-sshd-launch up? dropping", errno);
+            ssh_log(m);
             if (us >= 0) close(us);
             lkl_sys_close(cs);
             continue;
         }
+        ssh_log("relaying SSH session to dropbear via /run/sshd.sock");
         struct ssh_relay *r = malloc(sizeof *r);
         r->lkl_fd = cs; r->unix_fd = us;
         pthread_t up;
@@ -1168,7 +1186,7 @@ static void *epin_ssh_bridge_thread(void *arg)
         /* the up-relay exits on its own read returning 0; give it a moment then close fds */
         struct timespec s = { 0, 50000000 }; nanosleep(&s, NULL);
         lkl_sys_close(cs); close(us);
-        fprintf(stderr, ">>> sshd-bridge: SSH session closed\n");
+        ssh_log("SSH session closed");
     }
     return NULL;
 }

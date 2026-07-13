@@ -1,0 +1,4 @@
+[qemu-run] KVM acceleration enabled
+[qemu-run] using QEMU emulator version 9.2.0
+[qemu-run] GPU=1 HEADLESS=1: egl-headless virgl (no window; read serial.log; QMP at qmp.sock)
+[qemu-run] host-WiFi bridge OFF (no host WiFi device, or WIFI=0)

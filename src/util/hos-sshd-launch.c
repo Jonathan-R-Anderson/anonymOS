@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <poll.h>
 
 #define SSHD_SOCK  "/run/sshd.sock"
 #define DROPBEAR   "/dropbear"                       // staged as a boot module at /
@@ -64,12 +65,19 @@ int main(void)
     slog("[sshd] launcher up: listening on %s -> forks dropbear -i per connection (log: %s)", SSHD_SOCK, SSHD_LOG);
 
     for (;;) {
+        /* PARK on the listen socket — the ONLY thing that keeps this launcher from starving the
+         * Weston compositor.  On this kernel a listener's fd reports readable ONLY when a connection
+         * is actually queued (posix.d fdReadableImpl: pendingHead != pendingTail), and the syscall
+         * dispatcher PARKS poll(7) with a non-zero timeout until an fd becomes ready or the timeout
+         * elapses (kernel_main.d ~3177).  So poll(&listener, 1, 1000ms) blocks at ~0 CPU when idle and
+         * wakes the instant a real SSH connection arrives.  (accept() itself is non-blocking here and
+         * returns EAGAIN on an empty queue; usleep / nanosleep / poll(NULL,0,ms) do NOT park — those
+         * were the ~75%-CPU spin that made the desktop look frozen.) */
+        struct pollfd lp = { ls, POLLIN, 0 };
+        poll(&lp, 1, 1000);
         int cs = accept(ls, NULL, NULL);
-        if (cs < 0) {
-            if (errno == EINTR) continue;
-            usleep(20000);
-            continue;
-        }
+        if (cs < 0)
+            continue;   /* 1s timeout or a spurious wake with an empty queue → re-poll (re-parks) */
         slog("[sshd] SSH connection accepted -> spawning dropbear -i (its log follows)");
         pid_t pid = fork();
         if (pid == 0) {

@@ -1082,6 +1082,97 @@ static void *epin_net_conn_thread(void *arg)
     return NULL;
 }
 
+/* ---- SSH-in bridge: LKL TCP :22  <->  native AF_UNIX /run/sshd.sock ------------
+ * The working network is the LKL's (WiFi on real HW), so inbound SSH must be accepted on
+ * the LKL stack. This thread lkl_sys_listen()s on :22 and relays each accepted connection
+ * to the native hos-sshd-launch daemon over /run/sshd.sock, which forks `dropbear -i` on it.
+ * lkl-boot is uniquely able to bridge because it makes BOTH lkl_sys_* (LKL) and native
+ * syscalls (AF_UNIX to EpinAnonymOS). No nshim/provider protocol change needed. */
+#define SSHD_BRIDGE_SOCK "/run/sshd.sock"
+struct ssh_relay { long lkl_fd; int unix_fd; };
+
+/* Pump native unix_fd -> lkl_fd (client->server bytes). The sibling thread does the reverse. */
+static void *epin_ssh_relay_up(void *arg)
+{
+    struct ssh_relay *r = (struct ssh_relay *)arg;
+    char buf[8192];
+    for (;;) {
+        long n = read(r->unix_fd, buf, sizeof buf);          /* native AF_UNIX read */
+        if (n <= 0) break;
+        long off = 0;
+        while (off < n) {
+            long w = lkl_sys_write(r->lkl_fd, buf + off, (unsigned)(n - off));   /* LKL write */
+            if (w <= 0) goto done;
+            off += w;
+        }
+    }
+done:
+    lkl_sys_shutdown(r->lkl_fd, 2 /*SHUT_RDWR*/);
+    shutdown(r->unix_fd, 2);
+    return NULL;
+}
+
+static void *epin_ssh_bridge_thread(void *arg)
+{
+    (void)arg;
+    /* Give the LKL net stack a moment to have an interface (WiFi/eth) before we bind. */
+    { struct timespec s = { 3, 0 }; nanosleep(&s, NULL); }
+    long ls = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_STREAM, 0);
+    if (ls < 0) { fprintf(stderr, ">>> sshd-bridge: lkl socket failed (%ld)\n", ls); return NULL; }
+    int one = 1;
+    lkl_sys_setsockopt(ls, LKL_SOL_SOCKET, 2 /*SO_REUSEADDR*/, &one, sizeof one);
+    struct lkl_sockaddr_in sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sin_family = LKL_AF_INET;
+    sa.sin_port   = (unsigned short)((22 << 8) | (22 >> 8));   /* htons(22) on little-endian */
+    sa.sin_addr.lkl_s_addr = 0;                                /* INADDR_ANY */
+    long br;
+    for (int i = 0; i < 60; i++) {                            /* retry: interface may still be coming up */
+        br = lkl_sys_bind(ls, (struct lkl_sockaddr *)&sa, sizeof sa);
+        if (br == 0) break;
+        struct timespec s = { 1, 0 }; nanosleep(&s, NULL);
+    }
+    if (br != 0) { fprintf(stderr, ">>> sshd-bridge: lkl bind :22 failed (%ld)\n", br); lkl_sys_close(ls); return NULL; }
+    if (lkl_sys_listen(ls, 4) != 0) { fprintf(stderr, ">>> sshd-bridge: lkl listen failed\n"); lkl_sys_close(ls); return NULL; }
+    fprintf(stderr, ">>> sshd-bridge: listening on LKL tcp/22 -> relays to %s (dropbear)\n", SSHD_BRIDGE_SOCK);
+
+    for (;;) {
+        long cs = lkl_sys_accept(ls, NULL, NULL);
+        if (cs < 0) { struct timespec s = { 0, 20000000 }; nanosleep(&s, NULL); continue; }
+        fprintf(stderr, ">>> sshd-bridge: SSH connection on tcp/22 (lkl fd %ld)\n", cs);
+        /* Connect to the native dropbear launcher. */
+        int us = socket(AF_UNIX, SOCK_STREAM, 0);
+        struct sockaddr_un ua; memset(&ua, 0, sizeof ua);
+        ua.sun_family = AF_UNIX; strncpy(ua.sun_path, SSHD_BRIDGE_SOCK, sizeof(ua.sun_path) - 1);
+        if (us < 0 || connect(us, (struct sockaddr *)&ua, sizeof ua) != 0) {
+            fprintf(stderr, ">>> sshd-bridge: launcher %s not reachable (errno %d) — dropping\n", SSHD_BRIDGE_SOCK, errno);
+            if (us >= 0) close(us);
+            lkl_sys_close(cs);
+            continue;
+        }
+        struct ssh_relay *r = malloc(sizeof *r);
+        r->lkl_fd = cs; r->unix_fd = us;
+        pthread_t up;
+        pthread_create(&up, NULL, epin_ssh_relay_up, r);       /* unix -> lkl */
+        pthread_detach(up);
+        /* This thread does lkl -> unix inline, then cleans up when either side closes. */
+        char buf[8192];
+        for (;;) {
+            long n = lkl_sys_read(cs, buf, sizeof buf);
+            if (n <= 0) break;
+            long off = 0;
+            while (off < n) { long w = write(us, buf + off, (size_t)(n - off)); if (w <= 0) goto rdone; off += w; }
+        }
+    rdone:
+        lkl_sys_shutdown(cs, 2); shutdown(us, 2);
+        /* the up-relay exits on its own read returning 0; give it a moment then close fds */
+        struct timespec s = { 0, 50000000 }; nanosleep(&s, NULL);
+        lkl_sys_close(cs); close(us);
+        fprintf(stderr, ">>> sshd-bridge: SSH session closed\n");
+    }
+    return NULL;
+}
+
 static void *epin_net_provider_thread(void *arg)
 {
     (void)arg;
@@ -1243,6 +1334,8 @@ int main(int argc, char **argv)
     /* H1: start the WiFi provider EARLY (before the blocking boot scan) so its socket exists ASAP — a
      * native client reaches wlan0 only through this DEVCLASS_NET-gated AF_UNIX socket. */
     pthread_create(&tnet, NULL, epin_net_provider_thread, NULL);
+    /* SSH-in: bridge LKL tcp/22 -> native dropbear launcher so the machine is remotely reachable. */
+    { pthread_t tssh; pthread_create(&tssh, NULL, epin_ssh_bridge_thread, NULL); pthread_detach(tssh); }
     /* QEMU scp-egress: configure a granted virtio-net ethN with slirp statics (no-op if absent). */
     {
         pthread_t teth;

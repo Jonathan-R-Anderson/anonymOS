@@ -11,10 +11,11 @@ INSTALL_DIR := $(abspath install)
 DBCLIENT_BIN := $(INSTALL_DIR)/bin/dbclient
 SCP_BIN := $(INSTALL_DIR)/bin/scp
 DROPBEARKEY_BIN := $(INSTALL_DIR)/bin/dropbearkey
+DROPBEAR_BIN := $(INSTALL_DIR)/bin/dropbear    # SSH SERVER (inetd -i mode; bridged via lkl-boot)
 
 .PHONY: all clean distclean
 
-all: $(DBCLIENT_BIN) $(SCP_BIN) $(DROPBEARKEY_BIN)
+all: $(DBCLIENT_BIN) $(SCP_BIN) $(DROPBEARKEY_BIN) $(DROPBEAR_BIN)
 
 $(DROPBEAR_TARBALL):
 	@echo "[dropbear] Downloading $(DROPBEAR_TARBALL)..."
@@ -54,9 +55,9 @@ $(DROPBEAR_SRC)/config.status: $(DROPBEAR_SRC)/configure $(MUSL_CC) Makefile
 		CC=$(MUSL_CC) \
 		CFLAGS="-Os -Wno-undef"
 
-$(DROPBEAR_SRC)/dbclient $(DROPBEAR_SRC)/scp $(DROPBEAR_SRC)/dropbearkey: $(DROPBEAR_SRC)/config.status
-	@echo "[dropbear] Building dbclient + scp + dropbearkey..."
-	$(MAKE) $(MAKE_BUILD_FLAGS) -C $(DROPBEAR_SRC) PROGRAMS="dbclient scp dropbearkey" MULTI=0 SCPPROGRESS=0
+$(DROPBEAR_SRC)/dbclient $(DROPBEAR_SRC)/scp $(DROPBEAR_SRC)/dropbearkey $(DROPBEAR_SRC)/dropbear: $(DROPBEAR_SRC)/config.status
+	@echo "[dropbear] Building dbclient + scp + dropbearkey + dropbear (server)..."
+	$(MAKE) $(MAKE_BUILD_FLAGS) -C $(DROPBEAR_SRC) PROGRAMS="dbclient scp dropbearkey dropbear" MULTI=0 SCPPROGRESS=0
 
 $(DBCLIENT_BIN): $(DROPBEAR_SRC)/dbclient
 	mkdir -p $(INSTALL_DIR)/bin
@@ -69,6 +70,11 @@ $(SCP_BIN): $(DROPBEAR_SRC)/scp
 	strip $@
 
 $(DROPBEARKEY_BIN): $(DROPBEAR_SRC)/dropbearkey
+	mkdir -p $(INSTALL_DIR)/bin
+	cp $< $@
+	strip $@
+
+$(DROPBEAR_BIN): $(DROPBEAR_SRC)/dropbear
 	mkdir -p $(INSTALL_DIR)/bin
 	cp $< $@
 	strip $@

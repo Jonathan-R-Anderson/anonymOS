@@ -1660,6 +1660,18 @@ private void maybeSpawnLogUpload() {
 // the prerequisite for every NetworkManager client.  Later this becomes a persistent service for NM.
 private __gshared bool g_dbusStarted = false;
 private __gshared int  g_dbusDelay   = 0;
+// SSH-in: start the dropbear launcher (listens on AF_UNIX /run/sshd.sock; lkl-boot's tcp/22
+// bridge relays inbound SSH to it). Runs on any boot that has the LKL network path.
+private __gshared bool g_sshdStarted = false;
+private __gshared int  g_sshdDelay   = 0;
+private void maybeSpawnSshd() {
+    if (g_sshdStarted) return;
+    if (g_sshdDelay++ < 40) return;      // let the desktop settle first
+    g_sshdStarted = true;
+    klog("[sshd] launching hos-sshd-launch (SSH-in via lkl-boot tcp/22 -> /run/sshd.sock -> dropbear)\n");
+    spawnWaylandProgram("hos-sshd-launch\0".ptr, "[sshd]\0".ptr);
+}
+
 private void maybeSpawnDbus() {
     if (g_dbusStarted) return;
     if (debugNetBootPresent()) return;   // debug boot needs no dbus (NM/agent/nmcli skipped; weston uses builtin seatd); dbus-daemon otherwise spins ~1000/s starving the compositor -> freezes
@@ -3622,6 +3634,7 @@ private void kernelLoop() {
         // maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test — GL_RENDERER=virgl end-to-end
         //maybeSpawnThreadTest(); // diag (served its purpose): glib cross-thread wakeup — see g_pitMs/x2apic
         maybeSpawnDbus();      // M0: start the real system dbus-daemon (persistent bus)
+        maybeSpawnSshd();      // SSH-in: start the dropbear launcher for remote access
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)

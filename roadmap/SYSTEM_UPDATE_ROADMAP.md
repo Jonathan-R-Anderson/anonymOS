@@ -1,5 +1,8 @@
 # System Upgrade + Rollback over I2P/DHT with zkSync-Anchored Releases
 
+the blockchain needs to have a series of i2p addresses saved to it used for bootstrapping. the namespaces used for dispersing the updates need to be fully validated as unmodified. and the hashes of the files they contain for pushing updates need to be signed. make a smart contract to do this 
+
+
 ## Goal (user, 2026-07-12)
 
 1. **Upgrade the installed system** and **roll back** when an upgrade is bad.
@@ -51,7 +54,7 @@ server anywhere.
 
 ---
 
-the blockchain needs to have a series of i2p addresses saved to it used for bootstrapping. the namespaces used for dispersing the updates need to be fully validated as unmodified. and the hashes of the files they contain for pushing updates need to be signed. 
+
 
 ## Architecture decisions (resolve before U2)
 

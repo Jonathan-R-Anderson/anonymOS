@@ -102,6 +102,22 @@ static void slog(const char *m)
     close(fd);
 }
 
+/* Live one-line status published to /run/wifi/agent-status — wl-wifi-menu shows it in the menu when
+ * the network list is empty, so the user can SEE where the scan stands (adapter/nl80211/scan count)
+ * without a terminal or the Logs app.  Also mirrored to the log. */
+static char g_diag[192] = {0};
+static void set_diag(const char *m)
+{
+    if (!strcmp(g_diag, m)) return;                 /* unchanged — don't rewrite/relog */
+    snprintf(g_diag, sizeof g_diag, "%s", m);
+    slog(m);
+    int fd = open("/run/wifi/agent-status.tmp", O_CREAT|O_WRONLY|O_TRUNC, 0644);
+    if (fd < 0) return;
+    (void)!write(fd, g_diag, strlen(g_diag));
+    close(fd);
+    rename("/run/wifi/agent-status.tmp", "/run/wifi/agent-status");
+}
+
 /* ---- parking: poll() on the read end of a never-written pipe actually blocks on this kernel ---- */
 static int g_nap_fd = -1;
 static void napms(long ms)
@@ -488,7 +504,7 @@ static int check_connect(void)
     else    { snprintf(ssid, sizeof ssid, "%s", buf); }
     if (!ssid[0]) return 0;
 
-    { char m[96]; snprintf(m, sizeof m, "connect request: ssid='%s' (%s)", ssid, psk[0]?"secured":"open"); slog(m); }
+    { char m[128]; snprintf(m, sizeof m, "connecting to '%s' (%s)...", ssid, psk[0]?"secured":"open"); set_diag(m); }
     unlink(DHCP_OK);
     unlink(ERROR_F);
     snprintf(g_connect_ssid, sizeof g_connect_ssid, "%s", ssid);
@@ -518,25 +534,26 @@ int main(void)
     mkdir("/run", 0755);
     mkdir("/run/wifi", 0755);
     seed_connect_ssid();
-    slog("start (direct-wpa Wi-Fi backend, nl80211 scan)");
+    set_diag("Wi-Fi agent starting...");
     write_networks();   /* publish the adapter immediately -> menu shows "ready", not "no adapter" */
 
-    int s = -1, cyc = 0, connfail = 0;
+    int s = -1, cyc = 0;
     for (;;) {
         if (s < 0) {
             s = prov_connect();
-            if (s < 0) { if ((connfail++ % 12) == 0) slog("provider /run/hos-net.sock not reachable yet"); }
-            else { connfail = 0; slog("provider connected"); }
+            if (s < 0) set_diag("connecting to the Wi-Fi provider...");
+            else slog("provider connected");
         }
         if (s >= 0 && g_ifindex < 0) {
             g_ifindex = resolve_ifindex(s);
-            if (g_ifindex == -2) { slog("provider RPC error resolving ifindex; reconnecting"); close(s); s = -1; }
-            else if (g_ifindex < 0) slog("wlan0 not found yet (no ifindex)");
-            else { char m[40]; snprintf(m, sizeof m, "wlan0 ifindex=%d", g_ifindex); slog(m); }
+            if (g_ifindex == -2) { set_diag("provider error resolving adapter - reconnecting"); close(s); s = -1; }
+            else if (g_ifindex < 0) set_diag("waiting for wlan0 (adapter coming up)...");
+            else { char m[56]; snprintf(m, sizeof m, "wlan0 up (if=%d), starting nl80211...", g_ifindex); set_diag(m); }
         }
         if (s >= 0 && g_ifindex >= 0 && g_famid < 0) {
             resolve_famid(s);
-            if (g_famid > 0) { char m[40]; snprintf(m, sizeof m, "nl80211 family id=%d", g_famid); slog(m); }
+            if (g_famid > 0) set_diag("adapter + nl80211 ready, scanning...");
+            else set_diag("resolving nl80211 (retrying)...");
         }
 
         if (check_connect()) write_networks();
@@ -545,11 +562,21 @@ int main(void)
         if (s >= 0 && g_ifindex >= 0 && g_famid > 0) {
             if (g_quietScans > 0) {
                 g_quietScans--;
-            } else if (!have_lease || (cyc % 6) == 0) {
+            } else if ((cyc % (have_lease ? 12 : 3)) == 0) {
+                /* Cadence: ~15s disconnected (cyc%3), ~60s connected (cyc%12).  A hardware scan every
+                 * outer cycle (5s) keeps the radio ~continuously scanning — that adds CPU/provider
+                 * churn AND starves wpa's ability to associate (the radio can't scan and connect at
+                 * once).  cyc 0 fires the first scan immediately so the menu still populates quickly. */
                 nl80211_trigger(s);          /* fire a fresh scan (results land async, read next cycle) */
                 int n = nl80211_scan(s);     /* read the cfg80211 BSS cache (previous trigger's + wpa's results) */
-                if (n < 0) { slog("provider RPC error scanning; reconnecting"); close(s); s = -1; }
-                else { char m[56]; snprintf(m, sizeof m, "scan: %d network(s) (%d BSS)", g_nnets, n); slog(m); }
+                if (n < 0) { set_diag("provider error while scanning - reconnecting"); close(s); s = -1; }
+                else if (have_lease) { /* connected — leave the diag to the connect state */ }
+                else {
+                    char m[96];
+                    if (g_nnets > 0) snprintf(m, sizeof m, "scan OK: %d network(s) in range (if=%d nl80211=%d)", g_nnets, g_ifindex, g_famid);
+                    else snprintf(m, sizeof m, "scan ran, 0 networks in range yet (if=%d nl80211=%d BSS=%d)", g_ifindex, g_famid, n);
+                    set_diag(m);
+                }
             }
         }
         write_networks();

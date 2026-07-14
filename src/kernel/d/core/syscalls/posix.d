@@ -10850,9 +10850,9 @@ __gshared bool g_dispLogConn;
 __gshared bool g_dispLogDumb;
 __gshared bool g_dispLogPresent;
 // When true, re-stamp the WiFi/LKL real-hardware debug HUDs over the compositor every present
-// (survey line + MSI/CSR rows + LKL console).  Default OFF for a clean GNOME desktop; flip to true
-// to bring the on-screen AX210 bring-up trace back during real-hardware WiFi debugging.
-__gshared bool g_wifiDebugHud = false;
+// (survey line + MSI/CSR rows + LKL console).  Keep this ON while Wi-Fi detection is under active
+// bring-up: it is the only driver/interrupt trace visible on a real laptop without serial output.
+__gshared bool g_wifiDebugHud = true;
 // IMPORTANT: write display-claim markers DIRECTLY to the framebuffer, NOT via klog.
 // On a serial-less laptop the kernel disables the gated fb console early ("framebuffer
 // log off for fast boot", kernel_main.d) so klog goes to serial only = invisible on the
@@ -11300,9 +11300,8 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     logupStatusRepaint();
     usblogStatusRepaint();
     // WiFi/LKL real-hardware debug HUDs (survey line, MSI/CSR rows, LKL console) are re-stamped
-    // ON TOP of the compositor every present.  They clutter the clean GNOME desktop, so gate them
-    // behind g_wifiDebugHud (default OFF).  Set it true to bring the on-screen WiFi bring-up trace
-    // back when debugging the AX210 on real hardware.
+    // ON TOP of the compositor every present.  They are gated so a future release can restore a
+    // clean desktop, but remain enabled during real-hardware WiFi bring-up.
     if (g_wifiDebugHud) {
         { import drivers.pci : wifiSurveyRepaint; wifiSurveyRepaint(); }  // persist the WiFi survey on-screen
         msiHudRepaint();   // persist the MSI diagnostic (addr/data/fire-count) on row 2

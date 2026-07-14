@@ -1,7 +1,7 @@
 #!/bin/sh
 # EpinAnonymOS WiFi/DHCP diagnostic. Captures the whole layer-2 -> IP pipeline in
 # one shot so we stop guessing. Prints to the terminal AND to /run/wifi-diag.log
-# (mirrored into the Logs app: SUPER+L). Read the VERDICT block at the bottom.
+# (mirrored into the Logs app: SUPER+ALT+L). Read the VERDICT block at the bottom.
 OUT=/run/wifi-diag.log
 {
   echo "======== wifi-diag ========"
@@ -42,4 +42,4 @@ OUT=/run/wifi-diag.log
     echo "NEITHER launcher NOR udhcpc running -> maybeSpawnUdhcpc gate skipped it (kernel side)."
   fi
 } 2>&1 | tee "$OUT"
-echo ">>> also saved to $OUT (Logs app: SUPER+L, Tab to it)"
+echo ">>> also saved to $OUT (Logs app: SUPER+ALT+L; Wi-Fi diagnostics open by default)"

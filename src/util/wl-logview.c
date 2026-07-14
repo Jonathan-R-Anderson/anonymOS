@@ -6,7 +6,8 @@
  * and driver log, which on real hardware has no serial capture and can't be photographed as it scrolls.
  *   /run/klog          : the kernel log RAM ring — kernel klog + ALL program stdout/stderr merged live
  *                        (lkl-boot/iwlwifi, dbus, NetworkManager, wpa, boot-doctor).  This is tab 0.
- *   Tab / Left / Right : cycle sources (/run/klog, installer.log, sshd.log, scp.log, nm.log, wpa.log, boot-status.txt, wifi/networks, dbus.log)
+ *   Tab / Left / Right : cycle sources (/run/klog, installer.log, sshd.log, scp.log, nm.log,
+ *                        wpa.log, boot-status.txt, wifi/networks, dbus.log, wpa-agent.log)
  *   /                  : FILTER — type a substring (e.g. "iwl") to show ONLY matching lines; Enter=apply,
  *                        Esc=clear, Backspace=delete.  The one fast way to find something in a 5000-line log.
  *   Up / Down / PageUp / PageDown / Home : scroll;  End : jump to bottom and tail-follow
@@ -44,7 +45,7 @@ enum { WIN_W = 1000, WIN_H = 700, HEADER_H = 40, PX = 13, LINEH = 17,
 /* /run/klog is the kernel log RAM ring: kernel klog + ALL program stdout/stderr (lkl-boot/iwlwifi,
  * dbus, NetworkManager, wpa, boot-doctor) merged live — the one place to read the whole boot. */
 static const char *FILES[] = {
-    "/run/klog", "/run/installer.log", "/run/sshd.log", "/run/scp.log", "/run/nm.log", "/run/wpa.log", "/run/boot-status.txt", "/run/wifi/networks", "/run/dbus.log",
+    "/run/klog", "/run/installer.log", "/run/sshd.log", "/run/scp.log", "/run/nm.log", "/run/wpa.log", "/run/boot-status.txt", "/run/wifi/networks", "/run/dbus.log", "/run/wpa-agent.log",
 };
 enum { NFILES = (int)(sizeof(FILES)/sizeof(FILES[0])) };
 
@@ -301,6 +302,7 @@ static const struct wl_registry_listener registry_listener={.global=reg_global,.
 int main(void){
     static struct app app; memset(&app,0,sizeof app);
     app.running=1; app.width=WIN_W; app.height=WIN_H; app.stride=WIN_W*4; app.buffer_size=(size_t)app.stride*WIN_H;
+    app.cur=NFILES-1;  /* Wi-Fi screen: direct-WPA provider/scan diagnostics */
     app.rows=(WIN_H-HEADER_H-6)/LINEH; app.follow=0; app.scroll=0;   /* open at the TOP, no auto-scroll (End turns on follow) */
     signal(SIGCHLD,SIG_IGN);
     init_freetype(&app);

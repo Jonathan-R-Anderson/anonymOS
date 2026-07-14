@@ -76,6 +76,7 @@ struct app {
     int  shift;
     unsigned last_hash;
     char diag[2000];               // /run/boot-status.txt (shown when there's no adapter, since there is no terminal)
+    char agent_status[256];        // /run/wifi/agent-status — hos-wpa-agent's live one-line state (shown when the list is empty)
 };
 
 static void log_line(const char *s){ fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -149,6 +150,12 @@ static unsigned fnv1a(const unsigned char *b, size_t n){ unsigned h=2166136261u;
 static void load_networks(struct app *app){
     unsigned char *buf; size_t sz;
     app->n_nets = 0; app->iface[0]=0; app->dev_state = 0;
+    /* hos-wpa-agent's live status (adapter/nl80211/scan count) — shown when the list is empty so the
+     * user can see where the scan stands without a terminal or the Logs app. */
+    app->agent_status[0] = 0;
+    { int afd = open("/run/wifi/agent-status", O_RDONLY);
+      if (afd >= 0) { int an = (int)read(afd, app->agent_status, sizeof(app->agent_status)-1); close(afd);
+                      if (an > 0) { app->agent_status[an] = 0; char *anl = strchr(app->agent_status, '\n'); if (anl) *anl = 0; } } }
     if (load_file("/run/wifi/networks", &buf, &sz) < 0) return;
     char *p = (char*)buf; char *end = (char*)buf + sz;
     while (p < end){
@@ -253,9 +260,13 @@ static void draw_menu(struct app *app){
     if (app->n_nets == 0){
         draw_text(app, app->iface[0] ? "Scanning for networks..." : "Wi-Fi unavailable",
                   16, HEADER_H+20, app->width-32, 13, DIM);
+        /* hos-wpa-agent's live self-diagnosis (adapter/nl80211/scan count) so an empty list is
+         * explained ON-SCREEN — no terminal / Logs app needed to see where the scan stands. */
+        if (app->agent_status[0])
+            draw_wrapped(app, app->agent_status, 16, HEADER_H+44, app->width-32, 11, 14, ACC);
         /* No adapter + no terminal to diagnose: show the boot-doctor's verdict right here. */
         if (!app->iface[0] && app->diag[0]){
-            int y = HEADER_H + 46;
+            int y = HEADER_H + 80;
             fill_rect(app, 0, y-6, app->width, 1, 0xff2d3444u);
             draw_text(app, "diagnostics (/run/boot-status.txt):", 12, y, app->width-24, 11, ACC);
             draw_wrapped(app, app->diag, 12, y+18, app->width-24, 11, 14, DIM);

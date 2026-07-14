@@ -3,3 +3,4 @@
 [qemu-run] GPU=1 HEADLESS=1: egl-headless virgl (no window; read serial.log; QMP at qmp.sock)
 [qemu-run] NET=virtio: virtio-net + user-net; frames dumped to net.pcap
 [qemu-run] host-WiFi bridge OFF (no host WiFi device, or WIFI=0)
+qemu-system-x86_64: Guest says index 28281 is available

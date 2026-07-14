@@ -53,7 +53,12 @@ int main(void)
     mkdir("/run", 0755);
     mkdir("/run/wpa_supplicant", 0755);
 
-    char *const envp[] = { "LD_PRELOAD=/libnshim.so", "PATH=/", "HOME=/", "LD_LIBRARY_PATH=/", 0 };
+    /* Keep shim diagnostics on: these travel through the provider's NSP_LOG channel and expose the
+     * exact routed socket/ioctl where nl80211 initialization stops.  Resolve the interposer eagerly;
+     * lazy binding on the first socket call can re-enter musl's loader while the shim is resolving
+     * RTLD_NEXT symbols on this minimal pthread/futex implementation. */
+    char *const envp[] = { "LD_PRELOAD=/libnshim.so", "LD_BIND_NOW=1", "HOS_SHIM_LOG=1",
+                           "PATH=/", "HOME=/", "LD_LIBRARY_PATH=/", 0 };
 
     /* wpa's verbose debug -> /run/wpa.log (matches the boot-doctor / Logs-app expectation). */
     { int lf = open("/run/wpa.log", O_CREAT|O_WRONLY|O_TRUNC, 0644);

@@ -21,6 +21,7 @@
 #include <sys/un.h>
 #include <arpa/inet.h>
 #include <poll.h>
+#include <fcntl.h>
 #include <errno.h>
 #include "hos-net-proto.h"
 #ifndef MAP_FIXED_NOREPLACE
@@ -493,8 +494,16 @@ static void *epin_irq_thread(void *arg)
     for (;;) {
         /* op6: BLOCK in the kernel until our granted device's interrupt is pending.  The
          * EpinAnonymOS kernel poll-loop (which always runs) does the detection and wakes us — so
-         * this thread is PARKED between interrupts.  Returns 1 = real interrupt, 0 = 50ms safety. */
-        epin_pci_call(6, 0, 0, 0, 0);
+         * this thread is PARKED between interrupts.  Returns 1 = real interrupt, 0 = 50ms safety.
+         *
+         * Do not turn the safety timeout into a synthetic IRQ.  iwlwifi calls synchronize_irq()
+         * while switching from its temporary INIT firmware to the registered mac80211 device.
+         * Injecting an IRQ every 50ms kept that synchronization busy immediately after the driver
+         * printed the NVM/base MAC address, so ieee80211_register_hw() never created wlan0.  The
+         * host MSI counter proves that real AX210 interrupts arrive; only those should be forwarded. */
+        long wake = epin_pci_call(6, 0, 0, 0, 0);
+        if (wake <= 0)
+            continue;
         int i, n = g_irq.n;
         for (i = 0; i < n; i++)
             lkl_trigger_irq(g_irq.irqs[i]);   /* raise every wifi IRQ; handlers ack their own causes */
@@ -516,7 +525,7 @@ static int epin_pci_irq_init(struct lkl_pci_dev *dev, int irq)
         pthread_t th;
         pthread_create(&th, NULL, epin_irq_thread, NULL);
     }
-    fprintf(stderr, ">>> epin_pci: irq_init irq=%d bdf=%lx nvec=%d (op6 wake -> trigger all)\n",
+    fprintf(stderr, ">>> epin_pci: irq_init irq=%d bdf=%lx nvec=%d (real op6 wake -> trigger all; timeouts ignored)\n",
             irq, d->bdf, g_irq.n);
     return 0;
 }
@@ -1172,7 +1181,7 @@ static void *epin_ssh_bridge_thread(void *arg)
     long ls = lkl_sys_socket(LKL_AF_INET, LKL_SOCK_STREAM, 0);
     if (ls < 0) { char m[64]; snprintf(m, sizeof m, "lkl socket FAILED (%ld)", ls); ssh_log(m); return NULL; }
     int one = 1;
-    lkl_sys_setsockopt(ls, LKL_SOL_SOCKET, 2 /*SO_REUSEADDR*/, &one, sizeof one);
+    lkl_sys_setsockopt(ls, LKL_SOL_SOCKET, 2 /*SO_REUSEADDR*/, (char *)&one, sizeof one);
     struct lkl_sockaddr_in sa;
     memset(&sa, 0, sizeof sa);
     sa.sin_family = LKL_AF_INET;

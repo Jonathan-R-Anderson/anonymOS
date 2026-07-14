@@ -311,9 +311,23 @@ $(GL_WL_TEST_BIN): src/util/gl-wl-test.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	    -Wl,--end-group -lpthread -lm; \
 	else echo "gl-wl-test: skipped (gtk-stack sysroot not built)"; touch $@; fi
 
-# L2: the LKL embedder (Linux kernel as a library). Prebuilt out-of-tree against ~/lkl-build
-# (see src/lkl/README.md); staged as a boot module only when present.
-LKL_BOOT_BIN := $(HOME)/lkl-build/lkl-boot-musl
+# L2: the LKL embedder (Linux kernel as a library).  LKL itself is built out of tree,
+# but the embedder must be rebuilt from this checkout so staging cannot silently copy
+# a stale ~/lkl-build/lkl-boot-musl after src/lkl/lkl-boot.c changes.
+LKL_BUILD_DIR ?= $(HOME)/lkl-build
+LKL_MUSL_CC ?= $(LKL_BUILD_DIR)/x86_64-linux-musl-cross/bin/x86_64-linux-musl-gcc
+LKL_MUSL_STRIP ?= $(LKL_BUILD_DIR)/x86_64-linux-musl-cross/bin/x86_64-linux-musl-strip
+LKL_LIB ?= $(LKL_BUILD_DIR)/linux/tools/lkl/liblkl.a
+LKL_INCLUDE ?= $(LKL_BUILD_DIR)/linux/tools/lkl/include
+LKL_BOOT_BIN := build/lkl-boot-musl
+
+$(LKL_BOOT_BIN): src/lkl/lkl-boot.c src/lkl/hos-net-proto.h $(LKL_LIB)
+	@echo "==== Building lkl-boot from current WiFi sources ===="
+	@mkdir -p $(@D)
+	$(LKL_MUSL_CC) -O2 -static -no-pie -o $@ src/lkl/lkl-boot.c \
+		-I$(LKL_INCLUDE) -Wl,--whole-archive $(LKL_LIB) \
+		-Wl,--no-whole-archive -lpthread -lrt
+	$(LKL_MUSL_STRIP) $@
 GL_TERM_BIN := build/gl-term
 $(GL_TERM_BIN): src/util/gl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
@@ -679,7 +693,7 @@ $(BSDTAR_BIN):
 $(GPGV_BIN):
 	$(MAKE) -C deps/gnupg
 
-stage-iso-tree: kernel.elf $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd

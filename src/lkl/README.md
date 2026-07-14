@@ -21,8 +21,9 @@
     # link NON-PIE static (EpinAnonymOS wants ET_EXEC, not static-pie):
     <...>/x86_64-linux-musl-gcc -O2 -static -no-pie -o lkl-boot-musl lkl-boot.c -I <lkl>/include \
         -Wl,--whole-archive <lkl>/liblkl.a -Wl,--no-whole-archive -lpthread -lrt && strip lkl-boot-musl
-Wired in: Makefile `LKL_BOOT_BIN := $(HOME)/lkl-build/lkl-boot-musl` → staged as the `lkl-boot` boot
-module; `maybeSpawnLklTest()` (kernel_main.d) spawns it. **The musl binary LAUNCHES on EpinAnonymOS.**
+Wired in: Makefile builds the current `src/lkl/lkl-boot.c` as `build/lkl-boot-musl` and stages it as the
+`lkl-boot` boot module; `maybeSpawnLklTest()` (kernel_main.d) spawns it. The LKL archive and headers still
+come from `~/lkl-build`, but the embedder can no longer silently remain stale after an in-repo edit.
 
 ## The L2 gap (next): LKL's POSIX-timer / signal clock
 lkl-boot-musl launches but spins on `ENOSYS 128` (rt_sigtimedwait) + `222` (timer_create). LKL's POSIX
@@ -44,7 +45,7 @@ copies in this dir and must be copied over the LKL tree before building:
 - Also out-of-repo (documented in `roadmap/BARE_METAL_ROADMAP.md`, not copied here): the LKL `defconfig`
   (`CONFIG_MMU`+`DRM`+`DRM_BOCHS`+`TTM`) and the 1-line `ttm_module.c` `CONFIG_LKL` guard (L6.0).
 
-★ **Build trap:** the build compiles `~/lkl-build/lkl-boot.c`, NOT the repo `src/lkl/lkl-boot.c`. **Copy
-`lkl-boot.c` AND `lkl-iomem.c` into the build tree before building** — a forgotten copy silently builds a
-STALE binary (e.g. missing the L6.0 `shmem_mmap` host-op → `bootmem_init` calls a null op → the LKL faults
-at `rip=0` before Linux even boots).
+★ **Build trap:** driver and LKL host-library overlays still must be copied into `~/lkl-build/linux`
+before rebuilding `liblkl.a`. The top-level Makefile now compiles the embedder directly from
+`src/lkl/lkl-boot.c`, so only the kernel-side overlays (such as `lkl-iomem.c` and the wireless driver)
+need synchronization. A stale `liblkl.a` can still hide kernel-side changes.

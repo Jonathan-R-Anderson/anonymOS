@@ -1361,12 +1361,28 @@ int main(int argc, char **argv)
     /* ONE LKL now drives ALL our granted devices (AX210 WiFi + xHCI USB, each on its own PCI bus), so we
      * run every service in this single instance (WiFi + USB), sized for the WiFi stack (the big consumer;
      * usb-storage is light on top). */
-    ret = lkl_start_kernel("mem=256M loglevel=5 lkl_pci=epin mac80211_hwsim.radios=0");
+    /* Keep INFO enabled while AX210 bring-up is unresolved.  iwlwifi reports firmware selection,
+     * hardware revision and the exact probe stage at INFO; loglevel=5 hid all of that and left only
+     * the later "waiting for wlan0" symptom.  epin_lkl_print already throttles the stream. */
+    ret = lkl_start_kernel("mem=256M loglevel=7 lkl_pci=epin mac80211_hwsim.radios=0");
     if (ret < 0) {
         fprintf(stderr, "lkl_start_kernel failed: %ld\n", ret);
         return 1;
     }
     fprintf(stderr, ">>> LKL up inside EpinAnonymOS.\n");
+    /* iwlwifi requests its embedded firmware asynchronously during the PCI probe.  LKL is a
+     * single-CPU cooperative kernel: immediately starting provider/input threads and repeatedly
+     * issuing SIOCGIFINDEX from epin_wifi_bringup made those host syscalls contend with the queued
+     * firmware worker.  The hardware log proved it: regulatory/firmware work did not run until
+     * ~82 seconds, after the polling phase.  Leave the freshly booted LKL alone briefly; its timer
+     * IRQ thread continues entering the kernel and can schedule the firmware worker, but no service
+     * client can take the CPU away from it. */
+    fprintf(stderr, ">>> wifi: quiet firmware settle (10s before provider clients/polling)...\n");
+    {
+        struct timespec settle = { .tv_sec = 10, .tv_nsec = 0 };
+        while (nanosleep(&settle, &settle) != 0 && errno == EINTR) {}
+    }
+    fprintf(stderr, ">>> wifi: firmware settle complete; starting services\n");
     /* L5: do NOT halt — the USB enumeration runs ASYNCHRONOUSLY in the kernel's hub work-thread.
      * Halting here rebooted the kernel mid-enumeration ("reboot: Restarting system" at ~t=3s),
      * before usbhid bound + /dev/input/event* appeared — THAT was the "stall".  Keep the LKL

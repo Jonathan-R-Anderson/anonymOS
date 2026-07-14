@@ -3314,16 +3314,18 @@ private void dispatchSyscall(int tid) {
         // (FIRES>0), and it is EDGE-triggered + self-limiting: the device asserts once per event
         // and the driver's hard ISR masks until its threaded handler re-enables, so lkl_trigger_irq
         // fires only a handful of times per handshake — no storm.
-        // NOTE: the CSR_INT *poll* wake is deliberately DISABLED here.  It was added when FIRES=0
-        // (MSI-X, undelivered); now that the real MSI works it only COMPETES with it and its
-        // continuous (level-sensitive) firing starved the LKL's timer thread → frozen clock at
-        // firmware-load (~0.6s).  wifiCsrPending()/the CSR HUD stay for diagnostics only.
+        // If the native MSI edge is dropped, recover it from iwlwifi's authoritative CSR_INT status.
+        // This is safe because wifiCsrPending() requires an UNMASKED cause: the first synthetic IRQ
+        // makes iwlwifi mask CSR_INT while its threaded handler drains/ACKs it, so it cannot storm or
+        // starve the timer thread.  It is also attempted only when no native MSI delta is pending.
         wifiIrqDiagKlog();                         // W1 diagnostic → /run/klog (throttled 1 Hz): FIRES/CSR_INT/MASK/ALIVE
         // MULTI-DEVICE: one LKL may hold several devices (AX210 + xHCI).  MSI is global (any device's MSI
         // bumps g_msiIrqCount), so lklMsiPending already covers all of them; for INTx, wake if ANY granted
         // device is asserting.  On wake the LKL fires lkl_trigger_irq for ALL its registered irqs and each
         // driver's ISR checks whether its own device actually raised — the standard shared-vector pattern.
-        bool wake = lklMsiPending(gbdf);
+        bool wake = lklMsiPending();
+        if (!wake)
+            wake = wifiCsrPending();
         if (!wake)
             for (int di = 0; di < 8; di++) {       // taskGrantedDevByIndex returns -1 past the last device
                 const long b = taskGrantedDevByIndex(tid, di);

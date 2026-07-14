@@ -52,9 +52,14 @@ all:
 # D Kernel
 # =========================================================
 
-build/libkernel_d.a:
+.PHONY: refresh-d-kernel
+refresh-d-kernel:
 	@echo "==== Building D Kernel ===="
 	+$(MAKE) -j1 -C src/kernel/d
+
+# The D sub-make owns the real per-source dependency graph.  Always enter it before deciding
+# whether kernel.elf is current; otherwise an existing archive hides edits under src/kernel/d.
+build/libkernel_d.a: refresh-d-kernel
 
 boot-integrity-contract:
 	scripts/compile-contracts.sh

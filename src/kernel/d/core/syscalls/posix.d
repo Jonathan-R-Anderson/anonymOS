@@ -8964,7 +8964,7 @@ public uint taskGrantedBdf(int tid) {
 // LAPIC; the asm handler bumps g_msiIrqCount.  op6 (the LKL IRQ wait) treats a count delta
 // as "interrupt pending" and wakes the driver's ISR.
 extern extern(C) __gshared ulong g_msiIrqCount;   // asm.S msiHandler bumps this per MSI
-__gshared uint  g_msiDeviceBdf = 0xFFFFFFFF;      // the device whose MSI is programmed to vec 0x30
+__gshared uint  g_msiDeviceBdf = 0xFFFFFFFF;      // WiFi BDF only, for iwlwifi CSR diagnostics
 __gshared ulong g_msiLastSeen  = 0;               // op6's last-observed g_msiIrqCount
 __gshared uint  g_msiAddrLo = 0, g_msiData = 0;   // the programmed MSI message (for the on-screen HUD)
 __gshared bool  g_msiSetupDone = false;
@@ -8995,9 +8995,11 @@ public uint readApicId() @nogc nothrow {   // the CURRENT cpu's x2APIC ID
     asm @nogc nothrow { mov ECX, 0x802; rdmsr; mov id, EAX; }
     return id;
 }
-// True (once) when an MSI arrived for the granted device since op6 last checked.
-public bool lklMsiPending(uint bdf) @nogc nothrow {
-    if (g_msiDeviceBdf != bdf) return false;
+// True (once) when any MSI arrived since op6 last checked.  Every LKL-owned device programs the
+// same native vector, and the LKL embedder deliberately raises every registered Linux IRQ so each
+// driver's handler can inspect/ack its own cause.  This therefore must NOT be gated by one BDF:
+// xHCI commonly configures MSI after the AX210, and the old BDF gate then dropped all WiFi events.
+public bool lklMsiPending() @nogc nothrow {
     const ulong now = g_msiIrqCount;
     if (now != g_msiLastSeen) { g_msiLastSeen = now; return true; }
     return false;
@@ -9018,6 +9020,7 @@ __gshared uint g_wifiCsrMask = 0;     // last-read CSR_INT_MASK (0x00C, host int
 // own main/threaded handler starves (firmware-alive livelock, LKL clock frozen).  After a
 // CSR-driven wake we PARK until this deadline (≈2ms), yielding the cpu so the driver can drain.
 public __gshared ulong g_wifiCsrCooldownMs = 0;
+public __gshared ulong g_wifiCsrWakeCount = 0;      // mask-gated synthetic wakes (diagnostic)
 
 // Read the wifi device's iwlwifi CSR register at BAR0+regOff through the HHDM.  BAR0 is a
 // 64-bit memory BAR (cfg 0x10 low / 0x14 high); the CSR block lives in its first page and is
@@ -9052,15 +9055,18 @@ public void wifiCsrRefresh() @nogc nothrow {
 // re-masking → the LKL threaded handler never gets CPU to drain it (livelock; CSR_INT stuck at
 // 0x3=ALIVE|WAKEUP).  ANDing with the mask makes us go quiet the instant the driver masks, so
 // the threaded handler runs, ACKs CSR_INT, and re-enables the mask.
-public bool wifiCsrPending(uint bdf) @nogc nothrow {
-    if (g_msiDeviceBdf != bdf || !g_msiSetupDone) return false;
+public bool wifiCsrPending() @nogc nothrow {
+    const uint bdf = g_msiDeviceBdf;
+    if (bdf == 0xFFFFFFFF || !g_msiSetupDone) return false;
     const uint ci = wifiCsrRead(bdf, 0x008);                 // CSR_INT (status)
     g_wifiCsrInt = ci;
     if (ci == 0 || ci == 0xFFFFFFFF) return false;           // nothing pending / device not accessible
     const uint mask = wifiCsrRead(bdf, 0x00C);               // CSR_INT_MASK (host interrupt enable)
     g_wifiCsrMask = mask;
     if (mask == 0xFFFFFFFF) return false;                    // device not accessible
-    return (ci & mask) != 0;                                 // only an ENABLED cause → run the ISR (no storm)
+    const bool pending = (ci & mask) != 0;                    // only an ENABLED cause → run the ISR (no storm)
+    if (pending) ++g_wifiCsrWakeCount;
+    return pending;
 }
 
 // Persistent HUD (row 3): the live CSR_INT / FH status, so we can SEE whether the firmware ever
@@ -9102,6 +9108,7 @@ public void wifiIrqDiagKlog() @nogc nothrow {
     klog(" MASK=0x"); klog_hex(g_wifiCsrMask);
     klog(" FH=0x"); klog_hex(g_wifiCsrFh);
     klog(" ALIVE="); klog_dec((g_wifiCsrInt & 1) ? 1 : 0);
+    klog(" CSR_WAKES="); klog_dec(g_wifiCsrWakeCount);
     klog(" bdf=0x"); klog_hex(g_msiDeviceBdf); klog("\n");
 }
 
@@ -9324,11 +9331,20 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
         case 9: {                                   // W1 MSI setup: return the msi_msg field `off` for the LKL
             // to program into the device's MSI capability.  off 0=address_lo, 1=address_hi, 2=data.
             if (!taskHasDevCap(tid, cast(uint)bdf)) return negErrno(EPERM);   // L4: your device only
-            if (off == 0) {                          // address_lo (+ record the device → op6 uses the MSI path)
+            if (off == 0) {                          // address_lo (all LKL devices share the native MSI vector)
+                import drivers.pci : pciConfigRead32;
                 const uint apicId = g_bspApicId;     // ALWAYS the BSP (where vector 0x30 lives), not the caller's CPU
                 const uint addrLo = cast(uint)(0xFEE00000UL | (cast(ulong)apicId << 12)); // physical dest, no RH/DM
-                g_msiDeviceBdf = cast(uint)bdf;
-                g_msiLastSeen  = g_msiIrqCount;
+                const uint ubdf = cast(uint)bdf;
+                const ubyte pciBus = cast(ubyte)((ubdf >> 16) & 0xFF);
+                const ubyte pciDev = cast(ubyte)((ubdf >> 8) & 0xFF);
+                const ubyte pciFun = cast(ubyte)(ubdf & 0xFF);
+                const uint classReg = pciConfigRead32(pciBus, pciDev, pciFun, 0x08);
+                const uint classSub = (classReg >> 16) & 0xFFFF;
+                if (classSub == 0x0280)              // network controller / wireless: CSR HUD target only
+                    g_msiDeviceBdf = ubdf;
+                if (!g_msiSetupDone)                 // do not discard another device's pending MSI
+                    g_msiLastSeen = g_msiIrqCount;
                 g_msiAddrLo    = addrLo;
                 g_msiData      = MSI_VECTOR;
                 g_msiSetupDone = true;

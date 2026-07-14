@@ -9180,14 +9180,16 @@ private bool lklRangeContiguous(ulong va, ulong sz) {
 private long lklDmaMap(ulong va, ulong sz) {
     import core.addrspace : activeVirtToPhys;
     import core.stdc.string : memcpy;
-    import core.kernel_main : debugUsbBootPresent;
+    import core.kernel_main : debugUsbBootPresent, wifiDmaBounceBootPresent;
     const ulong phys = activeVirtToPhys(va);
-    // US5: the bounce is ONLY needed for usb-storage's bulk DMA, which only runs when USB is
-    // enabled (/epin-usb.conf). On a normal (WiFi) boot, keep op5 at its ORIGINAL single-address
-    // behavior — the AX210's DMA works with it, and the contiguity walk/bounce here otherwise
-    // touched the WiFi DMA path and broke scanning. So gate the whole bounce on the USB marker.
-    if (!debugUsbBootPresent())
-        return cast(long)phys;                          // normal/WiFi boot: original op5 (no bounce)
+    // US5 / US5b: the bounce fixes non-contiguous multi-page DMA corruption. It is needed for
+    // usb-storage's bulk DMA (/epin-usb.conf) AND — the reason it exists here — for the AX210 FIRMWARE
+    // load: a large host->device DMA whose scattered backing pages make op5's single-address return
+    // corrupt pages 2..N -> bad LMAC ucode -> "Failed to start RT ucode -110" (LMAC PC 0xd0),
+    // intermittently.  Gated OFF on plain WiFi boots (it once broke streaming-RX scanning); enabled for
+    // WiFi ONLY when /epin-wifi-dma-bounce.conf is staged (WIFI_DMA_BOUNCE=1) so the fix is A/B-testable.
+    if (!debugUsbBootPresent() && !wifiDmaBounceBootPresent())
+        return cast(long)phys;                          // no bounce requested: original single-address op5
     // US5 TEST: g_lklForceBounce forces EVERY multi-page map through the bounce (QEMU proof).
     if (sz <= 4096 || (!g_lklForceBounce && lklRangeContiguous(va, sz)))
         return cast(long)phys;                          // fast path: single page or contiguous
@@ -9307,7 +9309,7 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             // path (register_iomem caps a region at 16MB-1) and far too hot (a syscall per pixel word via
             // op3/op4); mapping it straight in makes the driver's TTM blits plain memcpys.  bdf = BAR phys
             // base, size = BAR length.  Same cap gate as op3/op4 — the WHOLE range must be a granted BAR.
-            import arch.x86_64.arch : map_page_hhdm, PTE_PRESENT, PTE_RW, PTE_USER, PTE_CD;
+            import arch.x86_64.arch : map_page_hhdm, PTE_PRESENT, PTE_RW, PTE_USER, PTE_CD, PTE_WT;
             import core.syscalls.mmap : alloc_phys_page_wrapper;
             if (size == 0) return negErrno(EINVAL);
             const ulong barPhys = bdf & ~0xFFFUL;
@@ -9323,7 +9325,14 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             // normal mmap bump, with room below the 0x800000000000 user-canonical ceiling.
             const ulong vbase = g_lklBarNextVA;
             g_lklBarNextVA += (barLen + 0x1FFFFFUL) & ~0x1FFFFFUL;            // 2MB-rounded bump (gap between BARs)
-            const ulong mapFlags = PTE_PRESENT | PTE_RW | PTE_USER | PTE_CD;  // device MMIO: uncached
+            // Caching mode carried in `off`: 0 = UC- (PCD only — PAT entry 2; an MTRR may downgrade it to
+            // write-combining, which is fine, even desirable, for a GPU framebuffer aperture). 1 = strong UC
+            // (PCD|PWT — PAT entry 3: uncacheable AND strongly ordered; an MTRR CANNOT override it to WC).
+            // Device CSR registers (AX210 wifi) MUST be strong-UC: readl/writel need each access to reach the
+            // chip in-order, un-combined, un-speculated — otherwise the RF-sequencer handshake mistimes.
+            const ulong mapFlags = (off == 1)
+                ? (PTE_PRESENT | PTE_RW | PTE_USER | PTE_CD | PTE_WT)         // strong UC: device registers
+                : (PTE_PRESENT | PTE_RW | PTE_USER | PTE_CD);                 // UC-: large aperture / framebuffer
             for (ulong o = 0; o < barLen; o += 4096)                          // map runs in the caller's CR3
                 map_page_hhdm(barPhys + o, vbase + o, mapFlags, &alloc_phys_page_wrapper);
             return cast(long)(vbase + (bdf - barPhys));                       // preserve any sub-page offset

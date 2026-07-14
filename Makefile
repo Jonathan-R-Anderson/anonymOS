@@ -866,6 +866,13 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		printf '    module_path: boot():/epin-usb.conf\n' >> cd/boot/limine/limine.conf; \
 		echo "Included /epin-usb.conf (USB=1: xHCI granted to LKL for usb-storage)"; \
 	fi
+	@# WIFI_DMA_BOUNCE=1: opt-in the LKL DMA bounce for WiFi boots (US5b) — the fix for the AX210
+	@# "Failed to start RT ucode -110" (corrupt LMAC firmware from a scattered multi-page firmware DMA).
+	@if [ -n "$(WIFI_DMA_BOUNCE)" ]; then \
+		printf 'epin wifi dma-bounce marker (US5b: fix AX210 firmware -110)\n' > cd/epin-wifi-dma-bounce.conf; \
+		printf '    module_path: boot():/epin-wifi-dma-bounce.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /epin-wifi-dma-bounce.conf (WIFI_DMA_BOUNCE=1: bounce scattered firmware DMA)"; \
+	fi
 
 	@# SSH-in is ON BY DEFAULT and coexists with WiFi.  `/epin-ssh.conf` makes the kernel spawn the
 	@# dropbear launcher + the lkl-boot bridge bind LKL tcp/22.  The launcher's accept() loop now PARKS

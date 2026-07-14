@@ -430,22 +430,40 @@ static void *epin_pci_resource_alloc(struct lkl_pci_dev *dev, unsigned long sz, 
      *    and a routed op3/op4 SYSCALL per iwl_read32/write32 is ~1000x too slow → the erratum
      *    workaround can't keep the chip busy at hardware speed → RF sequencer fails (LMAC=0xd0,
      *    -110).  op8 maps the BAR straight into this process so iwl_read32/write32 become direct
-     *    uncached MMIO — real-hardware speed, exactly like a native kernel's ioremap.
-     * Other small register BARs (GPU bochs dispi/VGA, USB xHCI) keep the proven routed path. */
-    /* NOTE: direct-mapping the WiFi (small) register BAR via op8 REGRESSED it — iwl_read32(HW_REV)
-     * returned 0xFFFFFFFF (device not responding) and the probe died at -EIO before firmware load.
-     * The op8 direct-map path works for the large GPU framebuffer BAR but NOT for this small MMIO
-     * register BAR (mapping/attr issue under investigation), so the AX210 stays on the proven ROUTED
-     * op3/op4 path (which reaches firmware-load + the alive attempt). Only huge apertures direct-map. */
-    if (sz > 0xFFFFFF) {
-        long va = epin_pci_call(8, (long)bar_phys, 0, (long)sz, 0);   /* op8 = direct-map BAR phys */
+     *    volatile MMIO — real-hardware speed, exactly like a native kernel's ioremap.
+     *
+     * ★ 2026-07-13 — the earlier direct-map "regression" (iwl_read32(HW_REV) == 0xFFFFFFFF) was NOT a
+     * mapping/attr issue: lkl_iomem_access() had NO host_va branch, so readl on a direct region hit
+     * its `!ops` guard, returned -1, and __raw_readl handed back an uninitialized stack word. The
+     * register was never actually read. That's fixed in lib/iomem.c; the direct path now does a real
+     * volatile access. Register BARs are mapped STRONG-UC (op8 cache mode 1) so the access is uncached
+     * and strongly-ordered regardless of MTRR state; the framebuffer keeps UC-/WC (mode 0) for fast
+     * write-combined blits. Escape hatch: a /epin-net-routed-mmio.conf marker forces the old routed
+     * path for the network BAR (real-HW A/B without a rebuild). */
+    const uint8_t base_class = (uint8_t)(epin_pci_call(0, d->bdf, 0x08, 4, 0) >> 24);
+    const int is_network = (base_class == 0x02);
+    const int is_large   = (sz > 0xFFFFFF);
+    const int net_routed = (access("/epin-net-routed-mmio.conf", 0 /*F_OK*/) == 0);
+    if (is_large || (is_network && !net_routed)) {
+        const long cache_mode = is_network ? 1 : 0;   /* 1 = strong UC (device registers), 0 = UC- */
+        long va = epin_pci_call(8, (long)bar_phys, cache_mode, (long)sz, 0);   /* op8 = direct-map BAR phys */
         if (va > 0) {
             void *tok = register_iomem_direct((void *)(uintptr_t)va, (int)sz);
-            fprintf(stderr, ">>> epin_pci: BAR%d DIRECT phys=0x%llx -> va=0x%lx tok=%p\n",
-                    idx, bar_phys, va, tok);
+            fprintf(stderr, ">>> epin_pci: BAR%d DIRECT phys=0x%llx -> va=0x%lx tok=%p (%s)\n",
+                    idx, bar_phys, va, tok, is_network ? "net-reg strongUC" : "aperture UC-");
             if (tok) {
-                g_vram_base = (unsigned long)va;   /* L6.2: VRAM host-VA for direct pixel writes */
-                g_vram_size = (unsigned long)sz;
+                if (is_large) {                        /* L6.2: VRAM host-VA for direct pixel writes */
+                    g_vram_base = (unsigned long)va;
+                    g_vram_size = (unsigned long)sz;
+                }
+                if (is_network) {
+                    /* Diagnostic only (do NOT fall back on it): at resource-alloc time PCI memory-space
+                     * may not be command-enabled yet, so an all-ones read here can be benign. The driver's
+                     * own HW_REV probe (moments later, now fast+direct) is the real signal. */
+                    volatile uint32_t *csr0 = (volatile uint32_t *)(uintptr_t)va;
+                    fprintf(stderr, ">>> epin_pci: BAR%d net-reg DIRECT probe[+0]=0x%08x (pre-enable; informational)\n",
+                            idx, (unsigned)*csr0);
+                }
                 return tok;
             }
             fprintf(stderr, ">>> epin_pci: BAR%d register_iomem_direct full — routed fallback\n", idx);

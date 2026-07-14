@@ -1577,6 +1577,30 @@ public bool debugUsbBootPresent() {
     return g_usbBoot == 1;
 }
 
+// The AX210 firmware load is a large multi-page host->device DMA.  On the no-IOMMU FW13, if the LKL
+// backs that buffer with physically-SCATTERED pages, op5's single-address translation makes the
+// device DMA garbage for pages 2..N -> corrupt LMAC ucode -> "Failed to start RT ucode -110"
+// (LMAC PC stuck 0xd0), intermittently.  The US5 bounce fixes that but is gated off on WiFi boots
+// because it once broke streaming-RX scanning; so re-enable it ONLY when /epin-wifi-dma-bounce.conf
+// is staged (build with WIFI_DMA_BOUNCE=1), so it is safe to A/B test on real HW.
+private __gshared int g_wifiDmaBounce = -1;   // -1=unknown, 0=no, 1=yes (cached)
+public bool wifiDmaBounceBootPresent() {
+    if (g_wifiDmaBounce < 0) {
+        g_wifiDmaBounce = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "epin-wifi-dma-bounce.conf")) { g_wifiDmaBounce = 1; break; }
+            }
+        }
+    }
+    return g_wifiDmaBounce == 1;
+}
+
 private __gshared bool g_wpaStarted = false;
 private void maybeSpawnWpa() {
     if (g_skipNetForTest) return;

@@ -53,23 +53,28 @@ static void *timer_thread(void *arg)
         while (!t->armed && !t->stop)
             pthread_cond_wait(&t->c, &t->m);          /* idle until armed (woken by re-arm signal) */
         if (t->stop) { pthread_mutex_unlock(&t->m); break; }
-        long long now = mono_ns(), dl = t->deadline;
+        /* Wait on the condition itself, using the CLOCK_MONOTONIC absolute deadline configured in
+         * ht_timer_alloc().  The old nanosleep() could NOT be interrupted by ht_timer_set_oneshot's
+         * condition signal: when LKL re-armed an earlier deadline, the timer kept sleeping until the
+         * obsolete later one.  That produced 200ms+ late clock IRQs during iwlwifi firmware work and
+         * delayed/prevented wlan0 registration.  A condition timed-wait wakes immediately on every
+         * re-arm, then recomputes the deadline while still holding the timer-state mutex. */
+        for (;;) {
+            const long long dl = t->deadline;
+            struct timespec abs = { .tv_sec  = dl / 1000000000LL,
+                                    .tv_nsec = dl % 1000000000LL };
+            if (mono_ns() >= dl)
+                break;
+            (void)pthread_cond_timedwait(&t->c, &t->m, &abs);
+            if (t->stop || !t->armed)
+                break;
+            /* A re-arm changes t->deadline and signals t->c; loop to wait for the new deadline. */
+        }
+        if (t->stop) { pthread_mutex_unlock(&t->m); break; }
+        if (!t->armed) { pthread_mutex_unlock(&t->m); continue; }
+        t->armed = 0;
         pthread_mutex_unlock(&t->m);
-
-        long long rem = dl - now;
-        if (rem > 0) {
-            struct timespec ts = { .tv_sec  = rem / 1000000000LL,
-                                   .tv_nsec = rem % 1000000000LL };
-            nanosleep(&ts, NULL);                     /* a REAL sleep — the kernel parks this thread */
-        }
-        pthread_mutex_lock(&t->m);
-        if (mono_ns() >= t->deadline) {               /* due (a re-arm may have pushed it later) */
-            t->armed = 0;
-            pthread_mutex_unlock(&t->m);
-            t->fn();                                  /* fire -> the LKL clock IRQ */
-        } else {
-            pthread_mutex_unlock(&t->m);              /* re-armed later: loop and sleep the remainder */
-        }
+        t->fn();                                      /* fire -> the LKL clock IRQ */
     }
     return NULL;
 }
@@ -749,12 +754,14 @@ static void epin_wifi_scan(long s, const char *ifname)
 }
 
 /* Find wlanN (iwlwifi's async probe creates it) and bring it up.  Returns 1 + copies the ifname
- * to ifout on success (polls up to ~15s), else 0.  Idempotent — safe to call from both the boot
+ * to ifout on success (polls up to ~60s), else 0.  Real AX210 firmware initialization can exceed
+ * 15 seconds on the single-core LKL path, especially immediately after boot.  Giving up at 15s let
+ * the fallback USB logger begin blocking storage work just before wlan0 was ready.  Idempotent — safe to call from both the boot
  * proof and the provider's scan handler on separate LKL sockets. */
 static int epin_wifi_bringup(long s, char *ifout, int outsz)
 {
     static const char *const names[] = { "wlan0", "wlan1", "wlp0s0", 0 };
-    for (int tries = 0; tries < 30; tries++) {
+    for (int tries = 0; tries < 120; tries++) {
         for (int i = 0; names[i]; i++) {
             struct lkl_ifreq ifr;
             memset(&ifr, 0, sizeof ifr);
@@ -1371,6 +1378,7 @@ int main(int argc, char **argv)
     lkl_sys_mkdir("/dev", 0755);
     lkl_sys_mkdir("/dev/input", 0755);
     pthread_t tkbd, tmse, tusb, tnet;
+    int start_usblog_after_wifi = 0;
     pthread_create(&tkbd, NULL, epin_input_reader, &g_kbdReader);   /* USB kbd/mouse -> input rings */
     pthread_create(&tmse, NULL, epin_input_reader, &g_mseReader);
     /* Log egress: when the scp uploader is configured (/epin-debug-net.conf present), the NETWORK path
@@ -1383,7 +1391,11 @@ int main(int argc, char **argv)
             close(cfd);
             fprintf(stderr, ">>> usblog: /epin-debug-net.conf present -> network scp owns log egress; USB capture disabled\n");
         } else {
-            pthread_create(&tusb, NULL, epin_usblog_thread, NULL);  /* /run/klog -> USB stick */
+            /* Do not start this yet.  USB partition enumeration/mount attempts are blocking LKL
+             * storage operations on the same single cooperative LKL CPU used by iwlwifi's async
+             * firmware loader.  Starting the probe here used to starve the AX210 probe before it
+             * registered wlan0 (the last visible line was "usblog: probing..."). */
+            start_usblog_after_wifi = 1;
         }
     }
     /* H1: start the WiFi provider EARLY (before the blocking boot scan) so its socket exists ASAP — a
@@ -1399,6 +1411,11 @@ int main(int argc, char **argv)
     }
     /* bring wlan0 up once iwlwifi's async probe creates it + prove the scan/RX path (H0) */
     epin_wifi_report();
+    /* Wi-Fi has now had its exclusive firmware/device-registration window.  Only after
+     * that critical path completes (or reports a real failure) may the fallback USB logger perform
+     * its blocking partition and mount probes. */
+    if (start_usblog_after_wifi)
+        pthread_create(&tusb, NULL, epin_usblog_thread, NULL);      /* /run/klog -> USB stick */
 
     /* NOTE: the old "run hos-init as an LKL userspace process" Stage 0 is REMOVED — proven
      * impossible: LKL has no cpu user-mode (arch/lkl start_thread() is an empty stub), so it

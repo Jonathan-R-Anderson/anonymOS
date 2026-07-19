@@ -542,7 +542,7 @@ $(NMLAUNCH_BIN): src/util/hos-nm-launch.c
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-nm-launch.c
 
 $(WPALAUNCH_BIN): src/util/hos-wpa-launch.c
-	@echo "==== Building hos-wpa-launch (M5 static launcher for wpa_supplicant -u D-Bus mode) ===="
+	@echo "==== Building hos-wpa-launch (static direct-mode wpa_supplicant supervisor) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-wpa-launch.c
 
 $(UDHCPCSCRIPT_BIN): src/util/hos-udhcpc-script.c
@@ -568,7 +568,7 @@ $(WIFIAGENT_BIN): src/util/hos-wifi-agent.c
 		$(WAYLAND_SYSROOT)/lib/libdbus-1.so -Wl,-rpath,/
 
 $(WPAAGENT_BIN): src/util/hos-wpa-agent.c src/lkl/hos-net-proto.h
-	@echo "==== Building hos-wpa-agent (direct-wpa Wi-Fi menu backend: NSP_SCAN + wpa config/SIGHUP, no dbus) ===="
+	@echo "==== Building hos-wpa-agent (direct-wpa Wi-Fi menu backend: NSP_SCAN + wpa SIGHUP reload, no dbus) ===="
 	$(MUSL_CC) -static -O2 -Wall -Isrc/lkl -o $@ src/util/hos-wpa-agent.c
 
 $(NMCLITEST_BIN): src/util/hos-nmcli-test.c src/lkl/hos-net-proto.h
@@ -872,6 +872,13 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		printf 'epin wifi dma-bounce marker (US5b: fix AX210 firmware -110)\n' > cd/epin-wifi-dma-bounce.conf; \
 		printf '    module_path: boot():/epin-wifi-dma-bounce.conf\n' >> cd/boot/limine/limine.conf; \
 		echo "Included /epin-wifi-dma-bounce.conf (WIFI_DMA_BOUNCE=1: bounce scattered firmware DMA)"; \
+	fi
+	@# NET_ROUTED_MMIO=1: A/B escape hatch — force the OLD routed op3/op4 register path for the WiFi
+	@# NIC (undo the op8 direct-map) so we can compare firmware bringup direct-MMIO vs routed on real HW.
+	@if [ -n "$(NET_ROUTED_MMIO)" ]; then \
+		printf 'epin net routed-mmio marker (A/B: force routed op3/op4 register access for the WiFi BAR)\n' > cd/epin-net-routed-mmio.conf; \
+		printf '    module_path: boot():/epin-net-routed-mmio.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /epin-net-routed-mmio.conf (NET_ROUTED_MMIO=1: WiFi register BAR uses the routed path, not op8 direct-map)"; \
 	fi
 
 	@# SSH-in is ON BY DEFAULT and coexists with WiFi.  `/epin-ssh.conf` makes the kernel spawn the

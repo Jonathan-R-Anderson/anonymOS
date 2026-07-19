@@ -8,9 +8,10 @@
  * starvation) from the path entirely: wpa associates on its own in a few seconds, the kernel-supervised
  * udhcpc leases, and the menu reads scan results from the LKL provider (NSP_SCAN) via hos-wpa-agent.
  *
- * Initial config: if /epin-debug-net.conf carries wifi_ssid (+wifi_psk) we pre-seed that network so the
- * box auto-associates at boot; otherwise a bare config (no network) — wpa idles until the user picks a
- * network in the menu (agent rewrites the config + SIGHUP).  ctrl_interface is intentionally omitted:
+ * Initial config is always bare so nl80211 and its provider sockets initialize before any expensive
+ * credential processing.  Credentials from /epin-debug-net.conf (or a config recovered after an
+ * unexpected wpa exit) are queued for the agent, which applies them after wpa marks itself ready.
+ * ctrl_interface is intentionally omitted:
  * it is an AF_UNIX SOCK_DGRAM socket and this kernel implements AF_UNIX SOCK_STREAM only, so requesting
  * it makes wpa fail "Failed to add interface wlan0" and tear the radio down.  Boot modules land at "/",
  * so LD_LIBRARY_PATH=/ resolves libnl-tiny.so etc.  Logs -> /run/wpa.log.
@@ -22,6 +23,9 @@
 #include <sys/stat.h>
 
 #define WPA_CONF "/run/wpa-net.conf"
+#define WPA_READY "/run/wpa-ready"
+#define CONNECT_F "/run/wifi/connect"
+#define CONNECT_TMP "/run/wifi/connect.tmp"
 
 static void logline(const char *s){ (void)!write(2, s, strlen(s)); (void)!write(2, "\n", 1); }
 
@@ -48,10 +52,55 @@ static int read_cred(const char *key, char *out, size_t outsz)
     return 0;
 }
 
+/* Recover credentials written by hos-wpa-agent before an unexpected supplicant restart.  The agent
+ * emits a deliberately small format, so no general wpa configuration parser is needed here. */
+static int read_saved_cred(char *ssid, size_t ssz, char *psk, size_t psz)
+{
+    int fd = open(WPA_CONF, O_RDONLY);
+    if (fd < 0) return 0;
+    char b[1024]; int n = (int)read(fd, b, sizeof b - 1); close(fd);
+    if (n <= 0) return 0;
+    b[n] = 0;
+    char *s = strstr(b, "ssid=\"");
+    if (!s) return 0;
+    s += 6; char *se = strchr(s, '"');
+    if (!se || se == s || (size_t)(se - s) >= ssz) return 0;
+    memcpy(ssid, s, (size_t)(se - s)); ssid[se - s] = 0;
+
+    char *p = strstr(b, "psk=\"");
+    if (p) {
+        p += 5; char *pe = strchr(p, '"');
+        if (!pe || (size_t)(pe - p) >= psz) return 0;
+        memcpy(psk, p, (size_t)(pe - p)); psk[pe - p] = 0;
+    } else if ((p = strstr(b, "psk=")) != NULL) {
+        p += 4; char *pe = strchr(p, '\n'); if (!pe) pe = p + strlen(p);
+        if ((size_t)(pe - p) >= psz) return 0;
+        memcpy(psk, p, (size_t)(pe - p)); psk[pe - p] = 0;
+    }
+    return 1;
+}
+
+static int queue_connect(const char *ssid, const char *psk)
+{
+    char req[300];
+    int n = snprintf(req, sizeof req, "%s\n%s\n", ssid, psk);
+    if (n <= 0 || n >= (int)sizeof req) return 0;
+    int fd = open(CONNECT_TMP, O_CREAT|O_WRONLY|O_TRUNC, 0600);
+    if (fd < 0) return 0;
+    int wrote = (int)write(fd, req, (size_t)n); close(fd);
+    if (wrote != n || rename(CONNECT_TMP, CONNECT_F) != 0) {
+        unlink(CONNECT_TMP);
+        return 0;
+    }
+    return 1;
+}
+
 int main(void)
 {
     mkdir("/run", 0755);
     mkdir("/run/wpa_supplicant", 0755);
+    mkdir("/run/wifi", 0755);
+    unlink(WPA_READY); /* a stale marker must never permit SIGHUP before this instance is ready */
 
     /* Keep shim diagnostics on: these travel through the provider's NSP_LOG channel and expose the
      * exact routed socket/ioctl where nl80211 initialization stops.  Resolve the interposer eagerly;
@@ -64,37 +113,30 @@ int main(void)
     { int lf = open("/run/wpa.log", O_CREAT|O_WRONLY|O_TRUNC, 0644);
       if (lf >= 0) { dup2(lf,1); dup2(lf,2); if (lf > 2) close(lf); } }
 
-    /* Seed the runtime config ONCE if the agent hasn't already written one (survives a relaunch). */
-    if (access(WPA_CONF, F_OK) != 0) {
-        char ssid[128] = {0}, psk[128] = {0};
-        int have = (read_cred("wifi_ssid", ssid, sizeof ssid) && ssid[0]);
+    /* Always initialize nl80211 with a BARE config.  Parsing a passphrase runs PBKDF2 before driver
+     * setup; on this cooperative kernel that ordering can leave the first provider socket starved.
+     * Preserve an agent-written config across a supervised relaunch, otherwise use debug boot creds,
+     * but queue either for the agent to apply only after wpa publishes WPA_READY. */
+    char ssid[128] = {0}, psk[128] = {0};
+    int have = read_saved_cred(ssid, sizeof ssid, psk, sizeof psk);
+    if (!have) {
+        have = (read_cred("wifi_ssid", ssid, sizeof ssid) && ssid[0]);
         if (have) read_cred("wifi_psk", psk, sizeof psk);
-        int cf = open(WPA_CONF, O_CREAT|O_WRONLY|O_TRUNC, 0600);
-        if (cf >= 0) {
-            /* wpa_config_read() TERMINATES the whole wpa_supplicant process on ANY config it rejects,
-             * and maybeSpawnWpa is one-shot — so a malformed seeded ssid/psk would kill Wi-Fi for the
-             * session.  Guard exactly what wpa enforces: SSID 1..32 bytes; a WPA passphrase 8..63
-             * chars (written QUOTED).  A 64-char raw PMK would need to be UNQUOTED, which we don't
-             * emit here, so we do NOT accept plen==64 (quoting it => "too long passphrase" => reject).
-             * Anything outside these bounds falls back to a bare no-network config (user picks in the
-             * menu) rather than a config wpa would reject. */
-            size_t slen = strlen(ssid), plen = strlen(psk);
-            int ssid_ok = (slen >= 1 && slen <= 32);
-            int psk_ok  = (plen >= 8 && plen <= 63);
-            char cfg[512]; int m;
-            if (have && ssid_ok && psk[0] && psk_ok)
-                m = snprintf(cfg, sizeof cfg,
-                    "update_config=0\nap_scan=1\nnetwork={\n\tssid=\"%s\"\n\tpsk=\"%s\"\n\tkey_mgmt=WPA-PSK\n\tscan_ssid=1\n}\n",
-                    ssid, psk);
-            else if (have && ssid_ok && !psk[0])
-                m = snprintf(cfg, sizeof cfg,
-                    "update_config=0\nap_scan=1\nnetwork={\n\tssid=\"%s\"\n\tkey_mgmt=NONE\n\tscan_ssid=1\n}\n",
-                    ssid);   /* open network */
-            else
-                m = snprintf(cfg, sizeof cfg, "update_config=0\nap_scan=1\n");   /* bare: user picks in the menu */
-            if (m > 0) (void)!write(cf, cfg, (size_t)m);
-            close(cf);
-        }
+    }
+    int cf = open(WPA_CONF, O_CREAT|O_WRONLY|O_TRUNC, 0600);
+    if (cf >= 0) {
+        static const char bare[] = "update_config=0\nap_scan=1\n";
+        (void)!write(cf, bare, sizeof bare - 1);
+        close(cf);
+    }
+    if (have) {
+        size_t slen = strlen(ssid), plen = strlen(psk);
+        int valid = slen >= 1 && slen <= 32 &&
+                    (plen == 0 || (plen >= 8 && plen <= 63) || plen == 64);
+        if (valid && queue_connect(ssid, psk))
+            logline("[wpa-launch] credentials queued until nl80211 is ready");
+        else
+            logline("[wpa-launch] ignored invalid or unqueueable boot credentials");
     }
 
     /* wpa runs in the FOREGROUND (no -B: -B forks, and this kernel kills fork children), and a

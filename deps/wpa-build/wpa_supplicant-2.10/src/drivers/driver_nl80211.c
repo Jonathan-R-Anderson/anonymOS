@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 /*
  * Driver interaction with Linux nl80211/cfg80211
  * Copyright (c) 2002-2015, Jouni Malinen <j@w1.fi>
@@ -1872,28 +1876,37 @@ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
 		return -1;
 	}
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: opening generic-netlink command socket");
 	global->nl = nl_create_handle(global->nl_cb, "nl");
 	if (global->nl == NULL)
 		goto err;
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: generic-netlink command socket ready");
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: resolving nl80211 family");
 	global->nl80211_id = genl_ctrl_resolve(global->nl, "nl80211");
 	if (global->nl80211_id < 0) {
 		wpa_printf(MSG_ERROR, "nl80211: 'nl80211' generic netlink not "
 			   "found");
 		goto err;
 	}
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: nl80211 family resolved");
 
-	global->nlctrl_id = genl_ctrl_resolve(global->nl, "nlctrl");
-	if (global->nlctrl_id < 0) {
-		wpa_printf(MSG_ERROR,
-			   "nl80211: 'nlctrl' generic netlink not found");
-		goto err;
-	}
+	/* GENL_ID_CTRL is fixed by the generic-netlink UAPI.  Upstream resolves
+	 * "nlctrl" with a second full CTRL_CMD_GETFAMILY dump, but the remote
+	 * provider path can lose the second dump reply on a reused command socket.
+	 * The first dump above already proved generic netlink is operational; avoid
+	 * the redundant transaction and use the ABI-defined controller ID. */
+	global->nlctrl_id = GENL_ID_CTRL;
+	wpa_printf(MSG_INFO,
+		   "EpinAnonymOS nl80211: using fixed generic-netlink control family ID");
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: opening generic-netlink event socket");
 	global->nl_event = nl_create_handle(global->nl_cb, "event");
 	if (global->nl_event == NULL)
 		goto err;
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: generic-netlink event socket ready");
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: resolving scan multicast group");
 	ret = nl_get_multicast_id(global, "nl80211", "scan");
 	if (ret >= 0)
 		ret = nl_socket_add_membership(global->nl_event, ret);
@@ -1903,7 +1916,9 @@ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
 			   ret, nl_geterror(ret));
 		goto err;
 	}
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: scan multicast group ready");
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: resolving mlme multicast group");
 	ret = nl_get_multicast_id(global, "nl80211", "mlme");
 	if (ret >= 0)
 		ret = nl_socket_add_membership(global->nl_event, ret);
@@ -1913,7 +1928,9 @@ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
 			   ret, nl_geterror(ret));
 		goto err;
 	}
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: mlme multicast group ready");
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: resolving regulatory multicast group");
 	ret = nl_get_multicast_id(global, "nl80211", "regulatory");
 	if (ret >= 0)
 		ret = nl_socket_add_membership(global->nl_event, ret);
@@ -1923,7 +1940,9 @@ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
 			   ret, nl_geterror(ret));
 		/* Continue without regulatory events */
 	}
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: regulatory multicast step complete");
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: resolving vendor multicast group");
 	ret = nl_get_multicast_id(global, "nl80211", "vendor");
 	if (ret >= 0)
 		ret = nl_socket_add_membership(global->nl_event, ret);
@@ -1933,6 +1952,7 @@ static int wpa_driver_nl80211_init_nl_global(struct nl80211_global *global)
 			   ret, nl_geterror(ret));
 		/* Continue without vendor events */
 	}
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: vendor multicast step complete");
 
 	nl_cb_set(global->nl_cb, NL_CB_SEQ_CHECK, NL_CB_CUSTOM,
 		  no_seq_check, NULL);
@@ -8700,14 +8720,18 @@ static void * nl80211_global_init(void *ctx)
 	cfg->ctx = global;
 	cfg->newlink_cb = wpa_driver_nl80211_event_rtm_newlink;
 	cfg->dellink_cb = wpa_driver_nl80211_event_rtm_dellink;
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: opening rtnetlink event socket");
 	global->netlink = netlink_init(cfg);
 	if (global->netlink == NULL) {
 		os_free(cfg);
 		goto err;
 	}
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: rtnetlink event socket ready");
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: initializing generic-netlink state");
 	if (wpa_driver_nl80211_init_nl_global(global) < 0)
 		goto err;
+	wpa_printf(MSG_INFO, "EpinAnonymOS nl80211: generic-netlink state ready");
 
 	global->ioctl_sock = socket(PF_INET, SOCK_DGRAM, 0);
 	if (global->ioctl_sock < 0) {

@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
@@ -492,20 +493,25 @@ static unsigned long long epin_pci_map_page(struct lkl_pci_dev *dev, void *vaddr
 static void epin_pci_unmap_page(struct lkl_pci_dev *dev, unsigned long long h, unsigned long sz)
 { (void)dev; (void)sz; epin_pci_call(12, (long)h, 0, (long)sz, 0); }
 
-/* ---- L3c: IRQ forward (polled INTx -> lkl_trigger_irq) -------------------------
- * LKL has no MSI/MSI-X, so the device uses a legacy INTx pin.  EpinAnonymOS has no
- * kernel-mode interrupt delivery (it polls), so we mirror the model in userspace: a
- * thread polls the device's PCI Status register (bit 3 = Interrupt Status, set while
- * INTx is asserted) and raises the matching Linux IRQ inside LKL.  A periodic safety
- * trigger guarantees forward progress even if the status read ever lies.
+/* ---- L3c: host interrupt -> lkl_trigger_irq ------------------------------------
+ * EpinAnonymOS receives the native MSI or detects a pending INTx/iwlwifi CSR cause, then op6
+ * wakes this thread so it can raise the corresponding Linux IRQ inside LKL.  The 50 ms op6
+ * timeout is only a scheduling safety net and must not manufacture an interrupt.
  */
-/* MSI-X: the AX210 (gen2) requests SEVERAL vectors (up to num_cpus+2) — ALIVE/HW causes land on
- * the non-RX vector, RX on the others.  All our vectors share IDT 0x30 (op9 returns the same
- * message), so op6/g_msiIrqCount can't tell which fired.  Track EVERY registered irq for the
- * granted device and raise them all on each wake — each Linux handler reads its own MSI-X cause
- * register and ignores a spurious call, so the ALIVE handler is guaranteed to run. */
-#define EPIN_MAX_IRQS 16
-static struct { long bdf; int irqs[EPIN_MAX_IRQS]; int n; } g_irq;
+/* The LKL PCI core calls irq_init() once with a provisional PCI/INTx IRQ and again when MSI is
+ * installed.  MSI-X is deliberately refused by arch/lkl, so these are NOT two vectors that must
+ * both be raised: the later MSI IRQ replaces the provisional one.  Raising both made iwlwifi's
+ * hard handler run twice for one event.  The second invocation could leave CSR_INT_MASK at zero,
+ * after which the host's mask-aware CSR poll could never wake the threaded handler to restore it.
+ *
+ * Keep one current Linux IRQ per PCI device.  This also preserves the shared-host-vector model for
+ * multiple devices: an op6 wake raises each device's one current IRQ and its handler checks whether
+ * that device has a cause pending. */
+#define EPIN_MAX_IRQ_DEVS 16
+static struct {
+    struct { long bdf; int irq; } dev[EPIN_MAX_IRQ_DEVS];
+    int n;
+} g_irq;
 static void *epin_irq_thread(void *arg)
 {
     (void)arg;
@@ -524,7 +530,7 @@ static void *epin_irq_thread(void *arg)
             continue;
         int i, n = g_irq.n;
         for (i = 0; i < n; i++)
-            lkl_trigger_irq(g_irq.irqs[i]);   /* raise every wifi IRQ; handlers ack their own causes */
+            lkl_trigger_irq(g_irq.dev[i].irq); /* one active IRQ per device; handler verifies its cause */
     }
     return NULL;
 }
@@ -532,18 +538,25 @@ static int g_irq_thread_started;
 static int epin_pci_irq_init(struct lkl_pci_dev *dev, int irq)
 {
     struct epin_pci_dev *d = (struct epin_pci_dev *)dev;
-    int i, found = 0;
-    g_irq.bdf = d->bdf;
-    for (i = 0; i < g_irq.n; i++)                 /* dedup: irq_init may be re-called per vector */
-        if (g_irq.irqs[i] == irq) { found = 1; break; }
-    if (!found && g_irq.n < EPIN_MAX_IRQS)
-        g_irq.irqs[g_irq.n++] = irq;              /* MSI-X: accumulate all vectors (INTx/MSI: just 1) */
+    int i;
+    for (i = 0; i < g_irq.n; i++) {
+        if (g_irq.dev[i].bdf == d->bdf) {
+            /* The MSI registration supersedes this device's provisional PCI IRQ. */
+            g_irq.dev[i].irq = irq;
+            break;
+        }
+    }
+    if (i == g_irq.n && g_irq.n < EPIN_MAX_IRQ_DEVS) {
+        g_irq.dev[g_irq.n].bdf = d->bdf;
+        g_irq.dev[g_irq.n].irq = irq;
+        g_irq.n++;
+    }
     if (!g_irq_thread_started) {
         g_irq_thread_started = 1;
         pthread_t th;
         pthread_create(&th, NULL, epin_irq_thread, NULL);
     }
-    fprintf(stderr, ">>> epin_pci: irq_init irq=%d bdf=%lx nvec=%d (real op6 wake -> trigger all; timeouts ignored)\n",
+    fprintf(stderr, ">>> epin_pci: irq_init irq=%d bdf=%lx ndev=%d (one active irq/device; timeouts ignored)\n",
             irq, d->bdf, g_irq.n);
     return 0;
 }
@@ -702,11 +715,33 @@ static void epin_lkl_print(const char *str, int len)
 #define WX_SIOCGIWSCAN  0x8B19
 #define WX_SIOCGIWAP    0x8B15   /* per-AP marker (BSSID) in scan results */
 #define WX_SIOCGIWESSID 0x8B1B   /* SSID in scan results */
+#define WX_SIOCGIWENCODE 0x8B2B  /* legacy privacy/encryption flags */
+#define WX_IWEVQUAL      0x8C01  /* signal quality event */
+#define WX_IWEVGENIE     0x8C05  /* WPA/RSN information elements */
+#define WX_IW_ENCODE_DISABLED 0x8000
 struct wx_iw_point { void *pointer; unsigned short length; unsigned short flags; };
+union wx_iwreq_data {
+    char name[16];
+    struct wx_iw_point data;
+    unsigned char pad[16];
+};
+struct wx_iw_event {
+    unsigned short len;
+    unsigned short cmd;
+    union wx_iwreq_data u;
+};
 struct wx_iwreq {
     char ifrn_name[16];
-    union { char name[16]; struct wx_iw_point data; unsigned char pad[16]; } u;
+    union wx_iwreq_data u;
 };
+
+/* The event stream only packs the first four bytes (len/cmd).  On a native 64-bit
+ * ioctl the payload still begins at IW_EV_LCP_LEN (8), and point-event data begins
+ * at IW_EV_POINT_LEN (16).  Using the packed 4/8-byte offsets here made the point
+ * metadata look like an SSID, producing blank or "?" network names. */
+#define WX_EV_LCP_LEN   (sizeof(struct wx_iw_event) - sizeof(union wx_iwreq_data))
+#define WX_EV_POINT_OFF offsetof(struct wx_iw_point, length)
+#define WX_EV_POINT_LEN (WX_EV_LCP_LEN + sizeof(struct wx_iw_point) - WX_EV_POINT_OFF)
 
 /* Core WEXT scan: trigger on `ifname` via LKL socket `s`, format results as text into out[]
  * ("SSID: ...\n" lines + a "DONE N AP(s), M bytes\n" trailer).  Returns AP count, or -1 on error.
@@ -748,18 +783,55 @@ static int epin_wifi_scan_core(long s, const char *ifname, char *out, int outsz)
         unsigned len = wrq.u.data.length;
         if (len > sizeof buf) len = sizeof buf;
         int aps = 0; unsigned o = 0;               /* walk the iw_event stream */
+        int have_ap = 0, signal = 50;
+        char ssid[33] = {0}, security[8] = "open";
+#define WSC_FLUSH_AP() do { \
+            if (have_ap && ssid[0]) WSC_OUT("NET\t%s\t%d\t%s\n", ssid, signal, security); \
+        } while (0)
         while (o + 4 <= len) {
             unsigned short ev_len = *(unsigned short *)(buf + o);
             unsigned short ev_cmd = *(unsigned short *)(buf + o + 2);
             if (ev_len < 4 || (unsigned)(o + ev_len) > len) break;
-            if (ev_cmd == WX_SIOCGIWAP) aps++;
-            else if (ev_cmd == WX_SIOCGIWESSID && ev_len > 8) {
-                unsigned sl = ev_len - 8; if (sl > 32) sl = 32;
-                char ssid[33]; memcpy(ssid, buf + o + 8, sl); ssid[sl] = 0;
-                WSC_OUT("SSID: %s\n", ssid[0] ? ssid : "(hidden)");
+            if (ev_cmd == WX_SIOCGIWAP) {
+                WSC_FLUSH_AP();
+                aps++; have_ap = 1; signal = 50; ssid[0] = 0;
+                strcpy(security, "open");
+            }
+            else if (ev_cmd == WX_SIOCGIWESSID && ev_len >= WX_EV_POINT_LEN) {
+                unsigned sl = *(unsigned short *)(buf + o + WX_EV_LCP_LEN);
+                if (sl > ev_len - WX_EV_POINT_LEN) sl = ev_len - WX_EV_POINT_LEN;
+                if (sl > 32) sl = 32;
+                memcpy(ssid, buf + o + WX_EV_POINT_LEN, sl); ssid[sl] = 0;
+                for (unsigned k = 0; k < sl; k++)
+                    if (ssid[k] == '\t' || ssid[k] == '\n' || ssid[k] == '\r') ssid[k] = ' ';
+            } else if (ev_cmd == WX_IWEVQUAL && ev_len >= WX_EV_LCP_LEN + 4) {
+                int dbm = (signed char)buf[o + WX_EV_LCP_LEN + 1]; /* iw_quality.level */
+                signal = dbm >= -50 ? 100 : dbm <= -100 ? 0 : (dbm + 100) * 2;
+            } else if (ev_cmd == WX_SIOCGIWENCODE && ev_len >= WX_EV_POINT_LEN) {
+                unsigned short flags = *(unsigned short *)(buf + o + WX_EV_LCP_LEN + 2);
+                if (!(flags & WX_IW_ENCODE_DISABLED)) strcpy(security, "wep");
+            } else if (ev_cmd == WX_IWEVGENIE && ev_len >= WX_EV_POINT_LEN) {
+                unsigned ie_len = *(unsigned short *)(buf + o + WX_EV_LCP_LEN);
+                if (ie_len > ev_len - WX_EV_POINT_LEN) ie_len = ev_len - WX_EV_POINT_LEN;
+                unsigned p = 0;
+                while (p + 2 <= ie_len) {
+                    unsigned id = buf[o + WX_EV_POINT_LEN + p];
+                    unsigned il = buf[o + WX_EV_POINT_LEN + p + 1];
+                    if (p + 2 + il > ie_len) break;
+                    if (id == 48) strcpy(security, "wpa2");
+                    else if (id == 221 && il >= 4 &&
+                             buf[o+WX_EV_POINT_LEN+p+2] == 0x00 &&
+                             buf[o+WX_EV_POINT_LEN+p+3] == 0x50 &&
+                             buf[o+WX_EV_POINT_LEN+p+4] == 0xF2 &&
+                             buf[o+WX_EV_POINT_LEN+p+5] == 0x01 && strcmp(security, "wpa2"))
+                        strcpy(security, "wpa");
+                    p += 2 + il;
+                }
             }
             o += ev_len;
         }
+        WSC_FLUSH_AP();
+#undef WSC_FLUSH_AP
         WSC_OUT("DONE %d AP(s), %u bytes\n", aps, len);
         rc = aps;
         goto done;
@@ -871,7 +943,11 @@ static void epin_wifi_report(void)
     if (s < 0) { fprintf(stderr, ">>> wifi: socket failed %ld\n", s); return; }
     char ifname[32];
     if (epin_wifi_bringup(s, ifname, sizeof ifname)) {
-        fprintf(stderr, ">>> wifi: %s up (boot scan skipped so wpa_supplicant owns the radio)\n", ifname);
+        /* iwlwifi cannot register wlanN until INIT firmware is alive and the AX210's mandatory
+         * PNVM handshake has completed.  The driver's detailed PNVM lines are KERN_INFO and are
+         * intentionally hidden at production loglevel=5, so emit one cheap, searchable proof here. */
+        fprintf(stderr, ">>> wifi: PNVM/firmware init complete; %s up (wpa_supplicant owns scans)\n",
+                ifname);
         /* epin_wifi_scan(s, ifname);  // H0 boot scan disabled: it contended with wpa's own scan */
     } else {
         fprintf(stderr, ">>> wifi: no wlanN (firmware not alive)\n");
@@ -1388,10 +1464,11 @@ int main(int argc, char **argv)
     /* ONE LKL now drives ALL our granted devices (AX210 WiFi + xHCI USB, each on its own PCI bus), so we
      * run every service in this single instance (WiFi + USB), sized for the WiFi stack (the big consumer;
      * usb-storage is light on top). */
-    /* Keep INFO enabled while AX210 bring-up is unresolved.  iwlwifi reports firmware selection,
-     * hardware revision and the exact probe stage at INFO; loglevel=5 hid all of that and left only
-     * the later "waiting for wlan0" symptom.  epin_lkl_print already throttles the stream. */
-    ret = lkl_start_kernel("mem=256M loglevel=7 lkl_pci=epin mac80211_hwsim.radios=0");
+    /* AX210 bring-up is now RESOLVED (fw ALIVE + PNVM + wlan0 up), so drop back to loglevel=5
+     * (KERN_WARNING+): the verbose INFO printk flood runs every char through kchar -> the klog ring
+     * = sustained single-core load that starves Weston during scans (the [freeze] storm). Raise back
+     * to 7 only when actively debugging driver bring-up. */
+    ret = lkl_start_kernel("mem=256M loglevel=5 lkl_pci=epin mac80211_hwsim.radios=0");
     if (ret < 0) {
         fprintf(stderr, "lkl_start_kernel failed: %ld\n", ret);
         return 1;

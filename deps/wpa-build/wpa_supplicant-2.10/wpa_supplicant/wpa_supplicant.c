@@ -4908,12 +4908,16 @@ static int select_driver(struct wpa_supplicant *wpa_s, int i)
 	struct wpa_global *global = wpa_s->global;
 
 	if (wpa_drivers[i]->global_init && global->drv_priv[i] == NULL) {
+		wpa_printf(MSG_INFO,
+			   "EpinAnonymOS init: nl80211 global initialization starting");
 		global->drv_priv[i] = wpa_drivers[i]->global_init(global);
 		if (global->drv_priv[i] == NULL) {
 			wpa_printf(MSG_ERROR, "Failed to initialize driver "
 				   "'%s'", wpa_drivers[i]->name);
 			return -1;
 		}
+		wpa_printf(MSG_INFO,
+			   "EpinAnonymOS init: nl80211 global initialization complete");
 	}
 
 	wpa_s->driver = wpa_drivers[i];
@@ -6460,6 +6464,7 @@ next_driver:
 	if (wpa_supplicant_set_driver(wpa_s, driver) < 0)
 		return -1;
 
+	wpa_printf(MSG_INFO, "EpinAnonymOS init: nl80211 interface initialization starting");
 	wpa_s->drv_priv = wpa_drv_init(wpa_s, wpa_s->ifname);
 	if (wpa_s->drv_priv == NULL) {
 		const char *pos;
@@ -6480,6 +6485,7 @@ next_driver:
 		wpa_msg(wpa_s, level, "Failed to initialize driver interface");
 		return -1;
 	}
+	wpa_printf(MSG_INFO, "EpinAnonymOS init: nl80211 interface initialization complete");
 	if (wpa_drv_set_param(wpa_s, wpa_s->conf->driver_param) < 0) {
 		wpa_msg(wpa_s, MSG_ERROR, "Driver interface rejected "
 			"driver_param '%s'", wpa_s->conf->driver_param);
@@ -6574,6 +6580,8 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 				   "configuration '%s'.", wpa_s->confname);
 			return -1;
 		}
+		wpa_printf(MSG_INFO,
+			   "EpinAnonymOS init: configuration parsed; preparing interface");
 		wpa_s->confanother = os_rel2abs_path(iface->confanother);
 		if (wpa_s->confanother &&
 		    !wpa_config_read(wpa_s->confanother, wpa_s->conf)) {
@@ -6645,8 +6653,10 @@ static int wpa_supplicant_init_iface(struct wpa_supplicant *wpa_s,
 	 * L2 receive handler so that association events are processed before
 	 * EAPOL-Key packets if both become available for the same select()
 	 * call. */
+	wpa_printf(MSG_INFO, "EpinAnonymOS init: entering nl80211 driver setup");
 	if (wpas_init_driver(wpa_s, iface) < 0)
 		return -1;
+	wpa_printf(MSG_INFO, "EpinAnonymOS init: nl80211 driver setup complete");
 
 	if (wpa_supplicant_init_wpa(wpa_s) < 0)
 		return -1;
@@ -7473,6 +7483,19 @@ int wpa_supplicant_run(struct wpa_global *global)
 
 	eloop_register_signal_terminate(wpa_supplicant_terminate, global);
 	eloop_register_signal_reconfig(wpa_supplicant_reconfig, global);
+
+	/* EpinAnonymOS boot handshake: hos-wpa-agent must not SIGHUP a freshly exec'd
+	 * supplicant until interface/driver initialization has completed and the signal
+	 * handlers above are installed.  A zero-length marker is sufficient and keeps
+	 * the normal upstream event loop unchanged. */
+	{
+		FILE *ready = fopen("/run/wpa-ready", "w");
+		if (ready) {
+			fclose(ready);
+			wpa_printf(MSG_INFO,
+				   "EpinAnonymOS: nl80211 initialized; configuration reloads enabled");
+		}
+	}
 
 	eloop_run();
 

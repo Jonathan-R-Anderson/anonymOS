@@ -9013,14 +9013,21 @@ public bool lklMsiPending() @nogc nothrow {
 // CSR_INT (BAR0+0x008): a status/ACK register the driver clears by writing back, so merely
 // READING it here does NOT steal the cause.  ALIVE = bit 0 (CSR_INT_BIT_ALIVE).
 __gshared uint g_wifiCsrInt  = 0;     // last-read CSR_INT (0x008) — for the HUD
+__gshared uint g_wifiCsrIntSeen = 0;  // STICKY-OR of every raw CSR_INT bit ever polled (regardless of
+                                      // mask). Latches brief fw-error transients (SW_ERR=1<<25 / HW_ERR=
+                                      // 1<<29) the ~1Hz diag sample would miss → splits "fw crashed on the
+                                      // PNVM handshake" from "fw fully silent". Filter "wifi-irq" → INT_SEEN.
 __gshared uint g_wifiCsrFh   = 0;     // last-read CSR_FH_INT_STATUS (0x010)
 __gshared uint g_wifiCsrMask = 0;     // last-read CSR_INT_MASK (0x00C, host interrupt enable)
+__gshared uint g_wifiMsixFh  = 0;     // last-read CSR_MSIX_FH_INT_CAUSES_AD (0x2800) — MSI-X mode
+__gshared uint g_wifiMsixHw  = 0;     // last-read CSR_MSIX_HW_INT_CAUSES_AD (0x2808) — MSI-X mode
 // op6 rate-limit: the LKL irq thread fires lkl_trigger_irq on EVERY op6 return, so a CSR cause
 // that stays pending would make op6 return instantly forever → lkl_trigger_irq spam → the LKL's
 // own main/threaded handler starves (firmware-alive livelock, LKL clock frozen).  After a
 // CSR-driven wake we PARK until this deadline (≈2ms), yielding the cpu so the driver can drain.
 public __gshared ulong g_wifiCsrCooldownMs = 0;
-public __gshared ulong g_wifiCsrWakeCount = 0;      // mask-gated synthetic wakes (diagnostic)
+public __gshared ulong g_wifiCsrWakeCount = 0;      // all CSR-driven synthetic wakes (diagnostic)
+public __gshared ulong g_wifiCsrMask0WakeCount = 0; // bounded recovery wakes while the hard ISR has mask=0
 
 // Read the wifi device's iwlwifi CSR register at BAR0+regOff through the HHDM.  BAR0 is a
 // 64-bit memory BAR (cfg 0x10 low / 0x14 high); the CSR block lives in its first page and is
@@ -9028,6 +9035,7 @@ public __gshared ulong g_wifiCsrWakeCount = 0;      // mask-gated synthetic wake
 private uint wifiCsrRead(uint bdf, uint regOff) @nogc nothrow {
     import drivers.pci : pciConfigRead32;
     import core.globals : hhdm_offset;
+    import ldc.llvmasm;
     const ubyte bus  = cast(ubyte)((bdf >> 16) & 0xFF);
     const ubyte slot = cast(ubyte)((bdf >> 8)  & 0xFF);
     const ubyte func = cast(ubyte)( bdf        & 0xFF);
@@ -9036,7 +9044,21 @@ private uint wifiCsrRead(uint bdf, uint regOff) @nogc nothrow {
     if ((b0 & 0x6) == 0x4)                                   // 64-bit BAR → high dword at 0x14
         base |= cast(ulong)pciConfigRead32(bus, slot, func, 0x14) << 32;
     if (base == 0) return 0xFFFFFFFF;
-    return *cast(shared const uint*)(base + regOff + hhdm_offset);
+    const ulong va = base + regOff + hhdm_offset;
+    // ★★ Device MMIO MUST be read UNCACHED.  The HHDM maps this BAR page WRITE-BACK, but op8 now
+    // hands the LKL iwlwifi driver a SEPARATE strong-UC mapping (0x7E.. VA) of the SAME physical BAR
+    // page.  Two mappings with conflicting cacheability is architecturally undefined on x86: the WB
+    // cache line THIS read hits is never refreshed by the driver's UC accesses, so a plain load
+    // returns a STALE copy that MISSES the device's autonomous CSR_INT=ALIVE update.  That silently
+    // broke op6's wake decision (wifiCsrPending) after direct-map landed → the ISR never runs → the
+    // firmware ALIVE notification is never processed → "Failed to run INIT ucode: -110" (firmware ran
+    // to LMAC PC 0xd05c1c then reset to 0xd0 after the 2s timeout).  Before direct-map, the driver AND
+    // this poll shared the one WB HHDM mapping, so the line stayed fresh — which is why it regressed.
+    // CLFLUSH the line (+ fence) so every CSR read fetches the device's LIVE value regardless of the
+    // alias; the read-miss on a WB-mapped MMIO address goes straight to the device.  (No-op under QEMU,
+    // which doesn't model caches, so this stays safe there.)
+    __asm("clflush ($0)\n\tmfence", "r,~{memory}", va);
+    return *cast(shared const uint*)va;
 }
 
 // Refresh the CSR HUD values (safe to call from the present path — pure MMIO reads, no clear).
@@ -9047,23 +9069,40 @@ public void wifiCsrRefresh() @nogc nothrow {
     g_wifiCsrFh   = wifiCsrRead(g_msiDeviceBdf, 0x010);      // CSR_FH_INT_STATUS
 }
 
-// op6 wake source: is an *unmasked* CSR_INT cause pending on the wifi device?
-// CRITICAL: gate by CSR_INT_MASK (0x00C) exactly like real hardware only asserts the MSI for
-// ENABLED causes.  iwl_pcie_isr (the hard handler) responds to an interrupt by writing
-// CSR_INT_MASK=0 and waking a THREADED handler that does the actual drain+ACK.  If we ignore
-// the mask we re-fire the irq every tick on the still-pending CSR_INT → the hard ISR keeps
-// re-masking → the LKL threaded handler never gets CPU to drain it (livelock; CSR_INT stuck at
-// 0x3=ALIVE|WAKEUP).  ANDing with the mask makes us go quiet the instant the driver masks, so
-// the threaded handler runs, ACKs CSR_INT, and re-enables the mask.
+// op6 wake source: is a CSR_INT cause pending on the wifi device?
+// Normally mirror real hardware and wake only for an enabled cause.  There is one important LKL
+// recovery case: iwl_pcie_isr masks CSR_INT before its threaded handler drains RX and restores the
+// mask.  If that handoff is lost, gating forever on mask==0 deadlocks with an already-DMA'd RX
+// completion sitting in host RAM (the AX210 PNVM_INIT_COMPLETE failure).  Permit a mask-zero kick
+// at most once per 2 ms so the one active Linux IRQ can resume the threaded handler without turning
+// a persistent cause into the old tight lkl_trigger_irq storm.
 public bool wifiCsrPending() @nogc nothrow {
     const uint bdf = g_msiDeviceBdf;
     if (bdf == 0xFFFFFFFF || !g_msiSetupDone) return false;
+
+    // MSI-X cause registers — DIAGNOSTIC READ ONLY (do NOT wake on them).  We run single-MSI (arch/lkl
+    // pci.c refuses MSI-X): the fw signals via legacy CSR_INT below.  Waking op6 on the MSI-X causes
+    // storm-hogged the CPU when MSI-X was briefly enabled (a persistent un-acked FH cause + FIRES=0),
+    // and it didn't fix the cmd-fetch anyway.  Keep the read so [wifi-irq] still shows MSIX_FH/HW.
+    g_wifiMsixFh = wifiCsrRead(bdf, 0x2800);                 // CSR_MSIX_FH_INT_CAUSES_AD
+    g_wifiMsixHw = wifiCsrRead(bdf, 0x2808);                 // CSR_MSIX_HW_INT_CAUSES_AD
+
+    // ── legacy single-MSI mode ─────────────────────────────────────────────────
     const uint ci = wifiCsrRead(bdf, 0x008);                 // CSR_INT (status)
     g_wifiCsrInt = ci;
+    if (ci != 0xFFFFFFFF) g_wifiCsrIntSeen |= ci;            // sticky-latch raw causes (fw-error transients)
     if (ci == 0 || ci == 0xFFFFFFFF) return false;           // nothing pending / device not accessible
     const uint mask = wifiCsrRead(bdf, 0x00C);               // CSR_INT_MASK (host interrupt enable)
     g_wifiCsrMask = mask;
     if (mask == 0xFFFFFFFF) return false;                    // device not accessible
+    if (mask == 0) {
+        const ulong nowMs = pitMs();
+        if (nowMs < g_wifiCsrCooldownMs) return false;
+        g_wifiCsrCooldownMs = nowMs + 2;
+        ++g_wifiCsrWakeCount;
+        ++g_wifiCsrMask0WakeCount;
+        return true;
+    }
     const bool pending = (ci & mask) != 0;                    // only an ENABLED cause → run the ISR (no storm)
     if (pending) ++g_wifiCsrWakeCount;
     return pending;
@@ -9102,13 +9141,21 @@ public void wifiIrqDiagKlog() @nogc nothrow {
     if (nowMs - g_wifiIrqDiagLastMs < 1000) return;         // ~1 Hz (cheap: a few MMIO reads)
     g_wifiIrqDiagLastMs = nowMs;
     wifiCsrRefresh();                                        // refresh CSR_INT / MASK / FH (pure reads, no ACK)
+    g_wifiMsixFh = wifiCsrRead(g_msiDeviceBdf, 0x2800);      // CSR_MSIX_FH_INT_CAUSES_AD
+    g_wifiMsixHw = wifiCsrRead(g_msiDeviceBdf, 0x2808);      // CSR_MSIX_HW_INT_CAUSES_AD
     klog("[wifi-irq] FIRES="); klog_dec(g_msiIrqCount);
     klog(" INTx="); klog_dec(deviceIntxAsserted(g_msiDeviceBdf) ? 1 : 0);
     klog(" CSR_INT=0x"); klog_hex(g_wifiCsrInt);
     klog(" MASK=0x"); klog_hex(g_wifiCsrMask);
-    klog(" FH=0x"); klog_hex(g_wifiCsrFh);
+    klog(" MSIX_FH=0x"); klog_hex(g_wifiMsixFh);            // MSI-X mode: FH causes (RX/TX)
+    klog(" MSIX_HW=0x"); klog_hex(g_wifiMsixHw);            // MSI-X mode: HW causes (ALIVE bit0)
     klog(" ALIVE="); klog_dec((g_wifiCsrInt & 1) ? 1 : 0);
     klog(" CSR_WAKES="); klog_dec(g_wifiCsrWakeCount);
+    klog(" MASK0_WAKES="); klog_dec(g_wifiCsrMask0WakeCount);
+    // Sticky raw-cause latch: did the fw EVER raise SW_ERR (uCode crash, bit25) or HW_ERR (bit29)?
+    // If FWERR=1 the -110 is a firmware crash (e.g. on the -83 PNVM handshake), not a missed interrupt.
+    klog(" INT_SEEN=0x"); klog_hex(g_wifiCsrIntSeen);
+    klog(" FWERR="); klog_dec((g_wifiCsrIntSeen & 0x22000000) ? 1 : 0);   // SW_ERR(1<<25)|HW_ERR(1<<29)
     klog(" bdf=0x"); klog_hex(g_msiDeviceBdf); klog("\n");
 }
 
@@ -10875,9 +10922,10 @@ __gshared bool g_dispLogConn;
 __gshared bool g_dispLogDumb;
 __gshared bool g_dispLogPresent;
 // When true, re-stamp the WiFi/LKL real-hardware debug HUDs over the compositor every present
-// (survey line + MSI/CSR rows + LKL console).  Keep this ON while Wi-Fi detection is under active
-// bring-up: it is the only driver/interrupt trace visible on a real laptop without serial output.
-__gshared bool g_wifiDebugHud = true;
+// (survey line + MSI/CSR rows + LKL console).  DISABLED (2026-07-17, user request): these green
+// overlays clutter the desktop / obscure the Logs viewer.  All the same data is still in the klog
+// (Logs app: [wifi-irq] / iwlwifi / DIAG lines), so nothing diagnostic is lost by turning the HUDs off.
+__gshared bool g_wifiDebugHud = false;
 // IMPORTANT: write display-claim markers DIRECTLY to the framebuffer, NOT via klog.
 // On a serial-less laptop the kernel disables the gated fb console early ("framebuffer
 // log off for fast boot", kernel_main.d) so klog goes to serial only = invisible on the

@@ -1,7 +1,7 @@
 module drivers.pci;
 
 import userland.shell.console : print, printHex, printLine, printUnsigned;
-import core.io : inb, outb;
+import core.io : inb, outb, klog, klog_hex, klog_dec;
 
 @nogc nothrow:
 
@@ -226,6 +226,53 @@ PCIDevice[] scanPCIDevices() {
     }
     
     return g_pciDevices[0 .. g_pciDeviceCount];
+}
+
+// ── PCIe ASPM disable — the AX210 RF/FSEQ "-110" fix ───────────────────────────
+// Clears the ASPM Control field (bits 0-1 of each device's Link Control register in its PCI Express
+// capability) — i.e. `pcie_aspm=off`, done by the real host.  WHY: the embedded LKL enumerates the
+// AX210 as 0000:00:00.0 with NO parent bridge, so Linux's pci_disable_link_state() bails with -EINVAL
+// (a root device has no upstream link_state) and iwlwifi CANNOT turn ASPM off itself.  ASPM L1 then
+// stays as the BIOS left it, and the PCIe link entering L1 during the AX210's RF/FSEQ (CNVI companion
+// chip) power-up corrupts the sequencer → FSEQ_ERROR_CODE=0x20000000 / "Failed to run INIT ucode: -110"
+// — a CONSISTENT failure a cold boot cannot clear.  We (the actual host) own the links, so disable ASPM
+// before the LKL loads firmware.  ASPM off costs a little idle power and never affects functionality.
+// Logs to klog (Logs app filter "pci-aspm") so a real-HW boot shows exactly which links were changed.
+public int pciDisableAspmAll() @nogc nothrow {
+    int disabled = 0;
+    auto devs = scanPCIDevices();
+    foreach (ref d; devs) {
+        // Capabilities List present?  Status register (0x06) bit 4 = bit 20 of the 0x04 dword.
+        const uint statusCmd = pciConfigRead32(d.bus, d.slot, d.func, 0x04);
+        if (!((statusCmd >> 16) & 0x10)) continue;
+        // Walk the capability linked list from the cap pointer (byte at 0x34).
+        ubyte cap = cast(ubyte)(pciConfigRead32(d.bus, d.slot, d.func, 0x34) & 0xFC);
+        int guard = 0;
+        while (cap >= 0x40 && guard++ < 48) {
+            const uint hdr   = pciConfigRead32(d.bus, d.slot, d.func, cap);
+            const ubyte id   = cast(ubyte)(hdr & 0xFF);
+            const ubyte next = cast(ubyte)((hdr >> 8) & 0xFC);
+            if (id == 0x10) {                                       // PCI Express capability
+                const ubyte lnk = cast(ubyte)(cap + 0x10);         // Link Control (low16) / Status (high16)
+                const uint dw = pciConfigRead32(d.bus, d.slot, d.func, lnk);
+                if (dw & 0x3) {                                     // ASPM Control (L0s|L1) enabled → off
+                    // Keep Link Control bits 2..15, clear ASPM bits 0-1; write 0 to Link Status (its
+                    // RW1C bits are no-ops on a 0 write, so we don't disturb them).
+                    pciConfigWrite32(d.bus, d.slot, d.func, lnk, dw & 0x0000FFFCu);
+                    ++disabled;
+                    klog("[pci-aspm] off bdf=0x");
+                    klog_hex((cast(ulong)d.bus << 16) | (cast(ulong)d.slot << 8) | d.func);
+                    klog(" vid=0x"); klog_hex(d.vendorId); klog(" did=0x"); klog_hex(d.deviceId);
+                    klog(" lnkctl 0x"); klog_hex(dw & 0xFFFF);
+                    klog("->0x"); klog_hex(dw & 0xFFFC); klog("\n");
+                }
+                break;
+            }
+            cap = next;
+        }
+    }
+    klog("[pci-aspm] ASPM cleared on "); klog_dec(disabled); klog(" PCIe link(s)\n");
+    return disabled;
 }
 
 /// Basic bus walk that logs every present device/function with IDs and class.

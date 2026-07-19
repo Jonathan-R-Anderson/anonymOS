@@ -1417,6 +1417,12 @@ private void maybeSpawnLklTest() {
     // MSI path) and its net-provider comes up before hos-netlaunch waits on it.
     import drivers.pci : scanPCIDevices;
     auto devs = scanPCIDevices();
+    // AX210 RF/FSEQ "-110" fix: the LKL enumerates the WiFi card as a parent-less root device, so its
+    // pci_disable_link_state() is a no-op and iwlwifi can't turn ASPM off — ASPM L1 during the RF
+    // power-up corrupts the FSEQ sequencer (FSEQ_ERROR_CODE=0x2.., "Failed to run INIT ucode -110").
+    // We own the real PCIe links, so disable ASPM on every link BEFORE granting the card to the LKL.
+    import drivers.pci : pciDisableAspmAll;
+    pciDisableAspmAll();
     uint[MAX_TASK_DEVS] grantBdf; int ngrant = 0;
     // STABILITY RETREAT (FW13): pass 1 (grant the xHCI so usb-storage can capture the log to a USB stick)
     // is DISABLED — driving usb-storage on the FW13's real xHCI hard-freezes the machine (dead cursor).
@@ -1535,7 +1541,7 @@ private bool debugNetBootPresent() {
 // Direct-wpa Wi-Fi is the DEFAULT.  NetworkManager hangs at `platform-linux: create`, never registers
 // its D-Bus name here, and its NM+dbus+nmcli chain churns the CPU -> Weston starvation ("Wi-Fi
 // unavailable").  Instead hos-wpa-agent drives wpa_supplicant directly (writes /run/wpa-net.conf +
-// SIGHUP) and publishes scan results read from the LKL provider (NSP_SCAN) to /run/wifi/networks; the
+// SIGHUP reload) and publishes scan results read from the LKL provider (NSP_SCAN) to /run/wifi/networks; the
 // kernel-supervised udhcpc leases.  NM can be restored by staging an /epin-use-nm.conf opt-out marker.
 private __gshared int g_useNm = -1;   // -1=unknown, 0=direct-wpa (default), 1=NM (opt-out marker present)
 private bool useDirectWifi() {
@@ -1602,16 +1608,29 @@ public bool wifiDmaBounceBootPresent() {
 }
 
 private __gshared bool g_wpaStarted = false;
+private __gshared int  g_wpaTid = 0;
 private void maybeSpawnWpa() {
     if (g_skipNetForTest) return;
-    if (g_wpaStarted) return;
+    if (g_wpaStarted) {
+        /* The agent reloads configuration in-place with SIGHUP so this process retains its
+         * initialized nl80211 sockets and radio ownership.  Still supervise genuine exits. */
+        if (g_wpaTid > 0 && g_wpaTid < MAX_TASKS &&
+            g_tasks[g_wpaTid].active && !g_tasks[g_wpaTid].exited)
+            return;
+        g_wpaStarted = false;
+        g_wpaTid = 0;
+        klog("[wpa] supplicant exited; restarting with current /run/wpa-net.conf\n");
+    }
     // Debug-net boots drive wpa in direct -c mode (no D-Bus) and dbus is gated off there, so requiring
     // g_dbusStarted would wedge wifi forever. Only normal (-u/NetworkManager) boots need the bus first.
     if (!useDirectWifi() && !g_dbusStarted) return;                   // direct-wpa needs no dbus; only NM mode waits for the bus
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
     g_wpaStarted = true;
     klog("[wpa] M5: net-provider live -> launching hos-wpa-launch -> wpa_supplicant under the shim\n");
-    spawnWaylandProgram("hos-wpa-launch\0".ptr, "[wpa]\0".ptr);
+    if (spawnWaylandProgram("hos-wpa-launch\0".ptr, "[wpa]\0".ptr))
+        g_wpaTid = cast(int)g_current_task_id;
+    else
+        g_wpaStarted = false;
 }
 private __gshared bool g_nmStarted = false;
 private __gshared ulong g_nmStartedMs = 0;
@@ -1659,7 +1678,8 @@ private void maybeSpawnWifiAgent() {
 // Direct-wpa menu backend (default): replaces the NM D-Bus bridge (hos-wifi-agent).  hos-wpa-agent
 // asks the LKL provider for scan results (NSP_SCAN) and publishes /run/wifi/networks, and turns a
 // menu connect request (/run/wifi/connect) into a wpa association by rewriting /run/wpa-net.conf and
-// SIGHUP'ing wpa_supplicant.  It speaks only plain AF_UNIX to the provider (no dbus, no LD_PRELOAD).
+// SIGHUP-reloading wpa_supplicant.  It speaks only plain AF_UNIX to the provider
+// (no dbus, no LD_PRELOAD).
 private __gshared bool g_wpaAgentStarted = false;
 private __gshared int  g_wpaAgentDelay   = 0;
 private void maybeSpawnWpaAgent() {
@@ -3241,6 +3261,25 @@ private void dispatchSyscall(int tid) {
     //     still need a turn before Hyprland immediately re-enters epoll.
     // ppoll(271) / epoll_pwait2(441): timeout is a userspace timespec we don't parse
     // here, so keep the original rewind/return-0 yield (re-runs each round-robin turn).
+    //
+    // A real signal must interrupt every blocking fd wait, not only read().  In particular,
+    // wpa_supplicant's eloop sleeps in poll(); hos-wpa-agent sends it SIGHUP after replacing
+    // /run/wpa-net.conf.  kill() wakes the task, but without delivery here the re-run poll simply
+    // parked again forever with SIGHUP still pending, so wpa never loaded the selected network.
+    // Save -EINTR as the post-handler syscall result: after the handler returns, eloop processes
+    // its signal flag and runs wpa_supplicant_reconfig().
+    if (ret == 0 && (rax == 7 || rax == 271 || rax == 232 || rax == 281 ||
+                     rax == 441 || rax == 23 || rax == 270)) {
+        int psig = g_taskPendingSig[tid];
+        if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&
+            g_sigHandler[tid][psig] != 0) {
+            g_taskPendingSig[tid] = 0;
+            g_pollBlocked[tid] = false;
+            g_pollDeadline[tid] = 0;
+            task.regs[REG_RAX] = cast(ulong)(-4);   // poll/select returns -EINTR after handler
+            if (deliverUserSignal(tid, psig)) return;
+        }
+    }
     if (ret == 0 && rax == 271) {
         task.regs[REG_RIP] -= 2;
         bootProgressEventHex("yield", rax, g_yieldScreenTrace);

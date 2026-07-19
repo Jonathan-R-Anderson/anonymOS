@@ -320,6 +320,13 @@ static int nl_resendable(int fd)
 int socket(int domain, int type, int protocol)
 {
     resolve();
+    if (domain == AF_NETLINK && g_log) {
+        char m[96];
+        snprintf(m, sizeof m,
+                 "shim: socket(AF_NETLINK,type=0x%x,proto=%d) entering provider RPC",
+                 type, protocol);
+        flog(m);
+    }
     /* UNGATED (AF_PACKET socket() is rare) — definitively answers 'did the DHCP client ever call
      * socket(AF_PACKET)?': if this never logs during the NM DHCP phase, n-dhcp4 stalls BEFORE creating
      * its packet socket (its start-delay timer never fires) → an external DHCP client is the fix. */
@@ -333,6 +340,11 @@ int socket(int domain, int type, int protocol)
         return r_socket(domain, type, protocol);
     }
     long R = nsp(NSP_SOCKET, -1, domain, type, protocol, 0,0,0,0, 0,0,0,0,0,0);
+    if (domain == AF_NETLINK && g_log) {
+        char m[80];
+        snprintf(m, sizeof m, "shim: socket(AF_NETLINK) provider returned %ld", R);
+        flog(m);
+    }
     if (R < 0) {
         if (domain == AF_PACKET && g_pktSetup < 128) {
             char m[96]; snprintf(m, sizeof m, "shim: AF_PACKET socket(type=0x%x,proto=0x%x) NSP_SOCKET FAILED R=%ld (dhcp-diag)", type, protocol, R); flog(m); g_pktSetup++;

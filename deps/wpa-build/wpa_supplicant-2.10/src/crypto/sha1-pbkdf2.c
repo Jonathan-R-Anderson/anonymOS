@@ -8,6 +8,8 @@
 
 #include "includes.h"
 
+#include <sched.h>
+
 #include "common.h"
 #include "sha1.h"
 
@@ -49,6 +51,14 @@ static int pbkdf2_sha1_f(const char *passphrase, const u8 *ssid,
 		os_memcpy(tmp, tmp2, SHA1_MAC_LEN);
 		for (j = 0; j < SHA1_MAC_LEN; j++)
 			digest[j] ^= tmp2[j];
+
+		/* EpinAnonymOS schedules cooperatively at syscall boundaries.  WPA-PSK's
+		 * 4096-round PBKDF2 otherwise monopolizes the task long enough to trip the
+		 * desktop stall detector while configuration parsing appears frozen at
+		 * "Reading configuration file".  Yield in bounded chunks; this does not
+		 * alter the derived key or weaken the mandated iteration count. */
+		if ((i & 31) == 0)
+			sched_yield();
 	}
 
 	return 0;

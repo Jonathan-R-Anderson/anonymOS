@@ -44,6 +44,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Grouped by what needs them, because a missing one of these usually surfaces
 # thousands of lines deep in someone else's configure script:
 #   * clang/lld/llvm 18 + ldc  — the kernel (D, -betterC) and every musl target
+#   * libclang-rt-18-dev — clang's compiler-rt builtins.  It is only a Recommends of
+#     clang-18, so --no-install-recommends drops it, and then every C++ link through
+#     deps/musl's musl-clang++ wrapper (it passes -rtlib=compiler-rt -unwindlib=none)
+#     dies on "cannot find .../libclang_rt.builtins-x86_64.a"
 #   * meson/ninja/cmake/autotools/gperf/flex/bison — the dependency tarballs
 #   * libwayland-bin, libglib2.0-*-bin — HOST codegen (wayland-scanner,
 #     glib-compile-resources, gdbus-codegen) used by cross-built gtk/weston/mutter
@@ -77,6 +81,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         gperf \
         ldc \
+        libclang-rt-18-dev \
         libglib2.0-bin \
         libglib2.0-dev-bin \
         libtool \
@@ -170,7 +175,9 @@ RUN ./scripts/fill-vendored-sources.sh
 # musl on its own, then probe the wrapper with the EXACT snippet meson uses for its
 # builtin `iconv` check — glib 2.80 does `libiconv = dependency('iconv')`, which
 # compiles and links this and nothing else, and that is what the GTK stack died on.
-# Second probe repeats it with the cross-file's own c_args/c_link_args.  Diagnostic
+# Later probes repeat it with the cross-file's own args, through BOTH wrappers: meson
+# ran that check with musl-clang++, and the C++ wrapper is the one with its own runtime
+# flags, so a C-only probe would have called this toolchain healthy.  Diagnostic
 # only: it never fails the build, so its output lands next to the real error.
 RUN make -C deps musl
 RUN set -x; \
@@ -185,7 +192,11 @@ RUN set -x; \
     "$CC" /tmp/ic.c -o /tmp/ic; echo "PROBE plain link rc=$?"; \
     "$CC" -O2 -fPIC -isystem "$RES/include" -I"$SYSROOT/include" -I"$MUSL/include" \
         -Wl,--allow-multiple-definition -no-pie -L"$SYSROOT/lib" -L"$MUSL/lib" \
-        /tmp/ic.c -o /tmp/ic2; echo "PROBE cross-file-flags link rc=$?"; \
+        /tmp/ic.c -o /tmp/ic2; echo "PROBE cross-file-flags link (C) rc=$?"; \
+    cp /tmp/ic.c /tmp/ic.cpp; \
+    "$MUSL/bin/musl-clang++" -O2 -fPIC -isystem "$RES/include" -I"$SYSROOT/include" -I"$MUSL/include" \
+        -Wl,--allow-multiple-definition -no-pie -L"$SYSROOT/lib" -L"$MUSL/lib" \
+        /tmp/ic.cpp -o /tmp/ic3; echo "PROBE cross-file-flags link (C++) rc=$?"; \
     true
 
 # musl -> libc++ -> gtk-stack -> staged-desktop -> mutter -> weston.  This is the

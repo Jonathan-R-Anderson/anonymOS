@@ -173,7 +173,25 @@ HOST_FLEX_URL := https://github.com/westes/flex/releases/download/v$(HOST_FLEX_V
         libxcursor libxkbfile xkbcommon-x11 libelogind-shim libgudev gnome-desktop mutter \
         clean distclean
 
+# libelogind-shim.c and meta-color-manager-stub.c are not in the repo (a batch-commit
+# gap), so this 30-package build cannot run from a plain checkout at all — but the
+# mutter binary it produces IS committed here, and nothing outside this directory
+# reads deps/mutter/sysroot (the installer ISO does not stage mutter; Weston is the
+# default compositor).  So fall back to the committed binary rather than failing, and
+# skip hours of mesa/X11 compilation for something this build does not ship.
+MUTTER_SHIM_SRC := $(wildcard $(SELF)/libelogind-shim.c)
+
+ifeq ($(MUTTER_SHIM_SRC),)
+all:
+	@if [ -f $(SELF)/mutter ]; then \
+		echo "[mutter] using the committed binary — full build skipped (libelogind-shim.c is not in this checkout)"; \
+	else \
+		echo "[mutter] no binary here, and libelogind-shim.c is not in this checkout" >&2; \
+		exit 1; \
+	fi
+else
 all: mutter
+endif
 
 cxxrt-ready:
 	$(MAKE) $(MAKE_BUILD_FLAGS) -C ../cxxrt all

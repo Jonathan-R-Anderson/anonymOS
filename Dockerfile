@@ -167,9 +167,40 @@ RUN rm -f deps/*/stamps/*
 # vendored next to each tree, without touching anything the repo does ship.
 RUN ./scripts/fill-vendored-sources.sh
 
+# musl on its own, then probe the wrapper with the EXACT snippet meson uses for its
+# builtin `iconv` check — glib 2.80 does `libiconv = dependency('iconv')`, which
+# compiles and links this and nothing else, and that is what the GTK stack died on.
+# Second probe repeats it with the cross-file's own c_args/c_link_args.  Diagnostic
+# only: it never fails the build, so its output lands next to the real error.
+RUN make -C deps musl
+RUN set -x; \
+    CC="$PWD/deps/musl/install/bin/musl-clang"; \
+    SYSROOT="$PWD/deps/gtk-stack/sysroot"; \
+    MUSL="$PWD/deps/musl/install"; \
+    RES="$(clang -print-resource-dir)"; \
+    printf '#include <iconv.h>\nint main() {\n    iconv_open("","");\n}\n' > /tmp/ic.c; \
+    ls -l "$CC" "$MUSL/bin/ld.musl-clang" "$MUSL/include/iconv.h" "$MUSL/lib/libc.a" || true; \
+    nm "$MUSL/lib/libc.a" 2>/dev/null | grep -c 'T iconv_open' || true; \
+    "$CC" -c /tmp/ic.c -o /tmp/ic.o; echo "PROBE compile-only rc=$?"; \
+    "$CC" /tmp/ic.c -o /tmp/ic; echo "PROBE plain link rc=$?"; \
+    "$CC" -O2 -fPIC -isystem "$RES/include" -I"$SYSROOT/include" -I"$MUSL/include" \
+        -Wl,--allow-multiple-definition -no-pie -L"$SYSROOT/lib" -L"$MUSL/lib" \
+        /tmp/ic.c -o /tmp/ic2; echo "PROBE cross-file-flags link rc=$?"; \
+    true
+
 # musl -> libc++ -> gtk-stack -> staged-desktop -> mutter -> weston.  This is the
 # long pole of the whole build (hours); it is one RUN so it caches as one unit.
-RUN make -C deps desktop
+# On failure, dump the newest meson log: `meson setup` prints one line to stdout and
+# puts the actual failing compiler command plus its output in that file.
+RUN make -C deps desktop || { \
+        rc=$?; \
+        f=$(find deps -name meson-log.txt -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-); \
+        if [ -n "$f" ]; then echo "======== tail of $f ========"; tail -200 "$f"; fi; \
+        if [ -f deps/gtk-stack/stamps/meson-cross.ini ]; then \
+            echo "======== meson cross file ========"; cat deps/gtk-stack/stamps/meson-cross.ini; \
+        fi; \
+        exit $rc; \
+    }
 
 # Z2: upstream zsh 5.9 as dynamic musl + its 37 zmodules.
 RUN make -C deps/zsh

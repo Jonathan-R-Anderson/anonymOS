@@ -11,6 +11,11 @@ GTK3_PC      := $(SYSROOT)/lib/pkgconfig/gtk+-3.0.pc
 
 APP_NAME     := desktop-stage
 APP_SRC      := $(SELF)/desktop_stage.c
+# desktop_stage.c never made it into the repo (batch-commit gap) while the binary it
+# produces IS committed here.  $(wildcard) makes the source an OPTIONAL prerequisite
+# so a checkout without it keeps the committed binary instead of dying with
+# "No rule to make target ./desktop_stage.c".
+APP_SRC_OPT  := $(wildcard $(APP_SRC))
 APP_BIN      := $(SELF)/$(APP_NAME)
 
 BASE_CFLAGS  := -O2 -fno-pic -fno-pie -I$(SYSROOT)/include -I$(MUSL_INSTALL)/include
@@ -37,10 +42,18 @@ $(MUSL_CC):
 $(GTK3_PC): $(MUSL_CC)
 	$(MAKE) -C ../gtk-stack gtk3
 
-$(APP_BIN): $(APP_SRC) $(GTK3_PC)
-	$(CC) $(GTK3_CFLAGS) -o $@ $< $(GTK3_LIBS)
-	$(STRIP) $@
-	@echo "[staged-desktop] Built: $@"
+$(APP_BIN): $(APP_SRC_OPT) $(GTK3_PC)
+	@if [ -n "$(APP_SRC_OPT)" ]; then \
+		$(CC) $(GTK3_CFLAGS) -o $@ $(APP_SRC) $(GTK3_LIBS) && \
+		$(STRIP) $@ && \
+		echo "[staged-desktop] Built: $@"; \
+	elif [ -f $@ ]; then \
+		echo "[staged-desktop] keeping the committed $(APP_NAME) (desktop_stage.c not in this checkout)"; \
+		touch $@; \
+	else \
+		echo "[staged-desktop] $(APP_NAME) missing, and desktop_stage.c is not in this checkout" >&2; \
+		exit 1; \
+	fi
 
 clean:
 	rm -f $(APP_BIN)

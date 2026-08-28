@@ -60,6 +60,19 @@ $(NC_LIB): $(NC_TAR)
 #     applied inside configure's (skipped, because cached) rdynamic test — so force it via
 #     EXTRA_LDFLAGS=-Wl,--export-dynamic.  Without it modules fail: "hashgetfn: not found".
 # The exe is NOT stripped (keep .dynsym so modules resolve the core symbols); modules are.
+# Upstream zsh 5.9 emits three benign clang diagnostics that would otherwise be the only
+# noise in this build: Src/params.c unused `str`, Src/Modules/zutil.c set-but-unused
+# `colon`, and Src/Modules/system.c comparing against 0.999 * LONG_MAX (LONG_MAX is not
+# exactly representable as a double, so the constant rounds up).  All three are harmless,
+# and none are ours to fix inside a SHA-verified upstream tarball -- so silence exactly
+# those three and nothing else, keeping real warnings from anon.c/anonymos.c visible.
+# Setting CFLAGS at all stops configure from picking its own (it only auto-selects when
+# CFLAGS is unset), so its "-Wall -Wmissing-prototypes -O2" is restated here and the
+# suppressions appended after -Wall so they win.
+ZSH_CFLAGS := -Wall -Wmissing-prototypes -O2 \
+              -Wno-unused-variable -Wno-unused-but-set-variable \
+              -Wno-implicit-const-int-float-conversion
+
 ZMODDIR := $(CURDIR)/modules
 $(ZSH_BIN): $(ZSH_TAR) $(NC_LIB) anon.c anonymos.c anonymos.mdd
 	echo "$(ZSH_SHA)  $(ZSH_TAR)" | sha256sum -c -
@@ -75,6 +88,7 @@ $(ZSH_BIN): $(ZSH_TAR) $(NC_LIB) anon.c anonymos.c anonymos.mdd
 	ar rcs $(SYSROOT)/lib/libanon.a anon.o
 	cd zsh-$(ZSH_VER) && \
 	  CC="$(MUSL_CC)" \
+	  CFLAGS="$(ZSH_CFLAGS)" \
 	  CPPFLAGS="-I$(SYSROOT)/include -I$(SYSROOT)/include/ncursesw" \
 	  LDFLAGS="-L$(SYSROOT)/lib" \
 	  EXTRA_LDFLAGS="-Wl,--export-dynamic -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=write -Wl,--wrap=execve -Wl,--wrap=wait3 -Wl,--wrap=waitpid" \

@@ -64,8 +64,16 @@ build/libkernel_d.a: refresh-d-kernel
 boot-integrity-contract:
 	scripts/compile-contracts.sh
 
+# The wallet page lives in the deps/zksync-wallet-vue gitlink, which a plain clone
+# leaves empty (no .gitmodules entry maps it).  Skip cleanly in that case, the way
+# every other optional boot module here does: the packer hard-exits on the missing
+# directory, and taking the whole ISO down with it is the wrong trade.
 build-zksync-wallet:
-	@echo "==== Packing zkSync wallet boot-integrity app ===="
+	@if [ ! -d "$(ZKSYNC_WALLET_STATIC)" ]; then \
+		echo "Skipping zksync-wallet.blob ($(ZKSYNC_WALLET_STATIC) not populated)"; \
+		exit 0; \
+	fi; \
+	echo "==== Packing zkSync wallet boot-integrity app ===="; \
 	python3 scripts/pack-zksync-wallet.py \
 		$(ZKSYNC_WALLET_STATIC) \
 		$(ZKSYNC_WALLET_BLOB) \
@@ -326,13 +334,26 @@ LKL_LIB ?= $(LKL_BUILD_DIR)/linux/tools/lkl/liblkl.a
 LKL_INCLUDE ?= $(LKL_BUILD_DIR)/linux/tools/lkl/include
 LKL_BOOT_BIN := build/lkl-boot-musl
 
-$(LKL_BOOT_BIN): src/lkl/lkl-boot.c src/lkl/hos-net-proto.h $(LKL_LIB)
-	@echo "==== Building lkl-boot from current WiFi sources ===="
+# liblkl.a is built OUT of tree (src/lkl/README.md) and is not part of a checkout,
+# so treat it as an OPTIONAL prerequisite.  With the archive present this rebuilds
+# the embedder from the current sources exactly as before; without it, stage an
+# empty file — which the staging step below already reads as "no lkl-boot module"
+# (`if [ -s $(LKL_BOOT_BIN) ]`), the same skip-cleanly pattern gl-term and
+# Hyprland use.  That is what lets a from-scratch build (the Docker image) reach
+# the ISO on a machine that has no LKL tree.  Point it at one to get WiFi back:
+#     make LKL_BUILD_DIR=/path/to/lkl-build
+$(LKL_BOOT_BIN): src/lkl/lkl-boot.c src/lkl/hos-net-proto.h $(wildcard $(LKL_LIB))
 	@mkdir -p $(@D)
-	$(LKL_MUSL_CC) -O2 -static -no-pie -o $@ src/lkl/lkl-boot.c \
-		-I$(LKL_INCLUDE) -Wl,--whole-archive $(LKL_LIB) \
-		-Wl,--no-whole-archive -lpthread -lrt
-	$(LKL_MUSL_STRIP) $@
+	@if [ -f "$(LKL_LIB)" ] && [ -x "$(LKL_MUSL_CC)" ]; then \
+		echo "==== Building lkl-boot from current WiFi sources ===="; \
+		$(LKL_MUSL_CC) -O2 -static -no-pie -o $@ src/lkl/lkl-boot.c \
+			-I$(LKL_INCLUDE) -Wl,--whole-archive $(LKL_LIB) \
+			-Wl,--no-whole-archive -lpthread -lrt && \
+		$(LKL_MUSL_STRIP) $@; \
+	else \
+		echo "lkl-boot: skipped (no $(LKL_LIB) or musl cross-gcc — see src/lkl/README.md; set LKL_BUILD_DIR)"; \
+		: > $@; \
+	fi
 GL_TERM_BIN := build/gl-term
 $(GL_TERM_BIN): src/util/gl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
@@ -987,9 +1008,11 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 	printf '\n    module_path: boot():/decoy-linux.ext4\n' >> cd/boot/limine/limine.conf
 	@echo "Included decoy-linux.ext4 (INSTALLER H1 decoy Linux disk image)"
 
-	cp $(ZKSYNC_WALLET_BLOB) cd/zksync-wallet.blob
-	printf '\n    module_path: boot():/zksync-wallet.blob\n' >> cd/boot/limine/limine.conf
-	@echo "Included zksync-wallet.blob (ZKsync boot-integrity wallet + contract ABI)"
+	@if [ -s $(ZKSYNC_WALLET_BLOB) ]; then \
+		cp $(ZKSYNC_WALLET_BLOB) cd/zksync-wallet.blob; \
+		printf '\n    module_path: boot():/zksync-wallet.blob\n' >> cd/boot/limine/limine.conf; \
+		echo "Included zksync-wallet.blob (ZKsync boot-integrity wallet + contract ABI)"; \
+	 else echo "Skipping zksync-wallet.blob (not packed — see build-zksync-wallet)"; fi
 
 	@if [ -x "$(RUSTC)" ]; then \
 	   $(MAKE) --no-print-directory $(HELLO_WL_BIN) && cp $(HELLO_WL_BIN) cd/hello-wl && \

@@ -436,8 +436,11 @@ migrated to D (`kernel_main.d` opens with *"D replacement for the Haskell
 kernel"*); Haskell now survives only as userspace services and the jhc RTS.
 
 ```sh
-# Full build (serialized/low-resource by default; memory-heavy dep builds)
-make                        # → kernel.elf + busybox + Wayland utils + hos.iso
+# No toolchain on the host?  Docker runs the whole build and hands back the ISO.
+./build-in-docker.sh        # → dist/hos-install.iso
+
+# Full build on a prepared host (serialized/low-resource by default)
+make                        # → kernel.elf + busybox + Wayland utils + hos-install.iso
 
 # Declarative config tool (host toolchain, needs ldc2 + Phobos)
 make anonymos-config        # or: make -C anonymos-config
@@ -446,7 +449,7 @@ make anonymos-config-test   # 87/87 host tests
 # Emit + sign the verified boot manifest, then build the ISO
 anonymos-config/build/anonymos-config emit-manifest -o manifest.blob \
     anonymos-config/examples/system.json
-make hos.iso
+make iso                    # → hos-install.iso
 
 # Run (Linux host, KVM)
 ./qemu-run.sh
@@ -460,15 +463,23 @@ make hos.iso
 ./scripts/qemu-config-verify.sh
 ```
 
-Containerized builds: `Dockerfile` + `build-in-docker.sh`; host prep via
-`setup_host.sh`. Builds require the Docker/Linux cross-toolchain; the ISO +
-QEMU boot gate is not reproducible on macOS alone.
+Containerized builds: `Dockerfile` + `build-in-docker.sh` — `docker build`
+runs the entire make (musl → libc++ → GTK stack → weston/mutter → zsh → the D
+kernel → the ISO) and writes `dist/hos-install.iso`, so Docker is the only host
+requirement. Expect hours on the first run; the dependency stack is cached in
+its own layer, so later runs rebuild only what changed under `src/`. Host prep
+for a native build instead: `setup_host.sh`. The ISO + QEMU boot gate is not
+reproducible on macOS alone.
+
+The LKL WiFi module (`lkl-boot`) needs an out-of-tree LKL tree (`src/lkl/README.md`);
+without one the build skips it and the ISO is built without WiFi. Point at a
+prebuilt tree with `make LKL_BUILD_DIR=/path/to/lkl-build`.
 
 ### Useful targets
 
 | Target | Builds |
 |--------|--------|
-| `make` / `make all` | `kernel.elf` → `hos.iso` |
+| `make` / `make all` | `kernel.elf` → `hos-install.iso` |
 | `make build/libkernel_d.a` | the D kernel archive |
 | `make zsh` | static + dynamic upstream zsh 5.9 |
 | `make anonymos-config` | the declarative-config compiler CLI |

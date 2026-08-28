@@ -1,0 +1,42 @@
+# Build context for the Dockerfile.  deps/ is deliberately NOT excluded: the
+# vendored tarballs, the musl/GTK sysroots and the limine binaries under
+# deps/bdepend are all inputs to the build.  What is excluded is everything the
+# container must produce itself (so a host-built artifact carrying absolute
+# /home/... paths can never leak into the image) plus the git history, which is
+# ~900 MB of context the build never reads.
+.git
+.gitignore
+
+# Produced inside the container by `make` — never ship a host-built artifact in,
+# it would carry absolute /home/... paths from someone else's tree.  (No tracked
+# file lives under any build/ directory, so **/build/ is safe.)
+/build/
+/cd/
+/dist/
+**/build/
+
+# deps/{gtk-stack,cxxrt,mutter,hyprland-hos}/stamps/* ARE tracked, but the static
+# libraries they certify are not (.gitignore drops *.a).  Shipping them in would
+# make the container think the whole GTK stack is already built and fail later at
+# link time, so keep them out and let each package rebuild from its tarball.
+deps/*/stamps/
+
+# Top-level build outputs (bare patterns match top-level paths only).
+*.iso
+*.img
+*.elf
+*.symbols
+
+# Host-specific tool prefix (bison/gperf/meson built for the developer's distro).
+deps/.host-tools/
+
+# Logs, captures and editor/agent state.  (Bare patterns match top-level paths
+# only, which is what we want: deps/ has its own *.out/*.log test fixtures.)
+*.log
+*.out
+*.pcap
+.build-home/
+.claude/
+.vscode/
+.venv/
+**/__pycache__/

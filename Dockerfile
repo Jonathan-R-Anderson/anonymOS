@@ -1,118 +1,201 @@
-FROM ubuntu:18.04
+# syntax=docker/dockerfile:1.7
+# =============================================================================
+# anonymOS — containerized build.  `docker build` runs the ENTIRE make and hands
+# back the installer ISO, so a host needs nothing but Docker: no make, no clang,
+# no ldc2, no musl toolchain.
+#
+#     ./build-in-docker.sh                    # -> dist/hos-install.iso
+#     docker build --target artifacts --output type=local,dest=dist .   # same thing
+#
+# Stages
+#   toolchain — Ubuntu 24.04 + every host tool this tree's makefiles reach for.
+#   deps      — deps/ ONLY (musl, libc++, the GTK stack, weston, mutter, zsh, the
+#               VeraCrypt/preboot EFI apps, the H1 decoy Linux image).  It is a
+#               separate layer keyed on deps/ so editing src/ does not re-run the
+#               multi-hour dependency build.
+#   build     — the rest of the tree: anonymos-config, the D kernel, the boot
+#               tree, and hos-install.iso.
+#   artifacts — a scratch image holding just the ISO (+ kernel.elf), so
+#               `--output` drops them straight onto the host filesystem.  This is
+#               the DEFAULT stage: a plain `docker build .` yields an image whose
+#               entire content is the ISO.
+#
+# Ubuntu 24.04 is not incidental.  deps/gtk-stack hardcodes the clang **18**
+# resource directory ($(LLVM_PREFIX)/lib/clang/18/include), and deps/musl copies
+# the host's Debian-layout UAPI headers (/usr/include/x86_64-linux-gnu/asm) into
+# the musl sysroot — 24.04 is the distro that ships exactly that pair.
+#
+# The old Ubuntu 18.04 + GHC/JHC image survives as Dockerfile.haskell-legacy: it
+# existed for `make progs-haskell` (the legacy JHC userspace), which is not part
+# of `make all` and cannot be built by a modern GHC.
+# =============================================================================
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV LANG=C.UTF-8
-ENV LC_ALL=C.UTF-8
+ARG UBUNTU_VERSION=24.04
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    git \
-    wget \
-    curl \
-    clang \
-    lld \
-    llvm \
-    xorriso \
-    ghc \
-    cabal-install \
-    libncurses5-dev \
-    m4 \
-    python \
-    ca-certificates \
-    libghc-zlib-dev \
-    libghc-utf8-string-dev \
-    libghc-syb-dev \
-    libghc-fgl-dev \
-    libghc-random-dev \
-    libghc-old-time-dev \
-    libghc-regex-compat-dev \
-    libghc-hashtables-dev \
-    alex \
-    happy \
-    isolinux \
-    syslinux-common \
-    ldc \
-    python3 \
-    python3-pip \
+# -----------------------------------------------------------------------------
+# 1. toolchain — the host side of the cross-build
+# -----------------------------------------------------------------------------
+FROM ubuntu:${UBUNTU_VERSION} AS toolchain
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# Grouped by what needs them, because a missing one of these usually surfaces
+# thousands of lines deep in someone else's configure script:
+#   * clang/lld/llvm 18 + ldc  — the kernel (D, -betterC) and every musl target
+#   * meson/ninja/cmake/autotools/gperf/flex/bison — the dependency tarballs
+#   * libwayland-bin, libglib2.0-*-bin — HOST codegen (wayland-scanner,
+#     glib-compile-resources, gdbus-codegen) used by cross-built gtk/weston/mutter
+#   * xorriso/mtools/dosfstools/gdisk/parted/e2fsprogs/fakeroot — the ISO, the
+#     FAT32 ESP images (scripts/mk-install-iso.sh) and the decoy ext4 rootfs
+#   * fonts-noto-{core,mono}/dmz-cursor-theme — `make build-gui-assets` copies
+#     these straight out of /usr/share and hard-fails if any of the four faces is
+#     missing; on 24.04 the two NotoSansMono faces are in fonts-noto-MONO, not core
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        autoconf \
+        automake \
+        bc \
+        bison \
+        build-essential \
+        bzip2 \
+        ca-certificates \
+        cmake \
+        clang \
+        cpio \
+        curl \
+        dmz-cursor-theme \
+        dosfstools \
+        e2fsprogs \
+        fakeroot \
+        file \
+        flex \
+        fonts-noto-core \
+        fonts-noto-mono \
+        gdisk \
+        gettext \
+        git \
+        gperf \
+        ldc \
+        libglib2.0-bin \
+        libglib2.0-dev-bin \
+        libtool \
+        libwayland-bin \
+        lld \
+        llvm \
+        m4 \
+        meson \
+        mtools \
+        ninja-build \
+        openssl \
+        parted \
+        patch \
+        pkg-config \
+        python3 \
+        python3-packaging \
+        python3-pip \
+        python3-setuptools \
+        rsync \
+        squashfs-tools \
+        texinfo \
+        unzip \
+        wget \
+        xorriso \
+        xsltproc \
+        xz-utils \
+        zstd \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Haskell Stack
-RUN curl -sSL https://get.haskellstack.org/ | sh
+# deps/gtk-stack and deps/cxxrt call llvm-ar/llvm-nm/llvm-ranlib/llvm-strip/
+# llvm-objcopy unversioned.  Ubuntu's llvm package has shipped both versioned and
+# unversioned names over the years; link whatever is missing so the build does not
+# depend on which of the two this image happened to get.
+RUN set -eux; \
+    for t in ar nm ranlib strip objcopy config; do \
+        command -v "llvm-$t" >/dev/null 2>&1 && continue; \
+        ln -sf "/usr/lib/llvm-18/bin/llvm-$t" "/usr/local/bin/llvm-$t"; \
+    done; \
+    llvm-config --version; clang --version | head -1; ldc2 --version | head -1
 
-# Setup global stack environment and install dependencies
-WORKDIR /tmp
-RUN stack setup && \
-    stack install yaml unordered-containers scientific
+# R0/R1: two boot modules (hello-wl, hos-term) are Rust->musl.  The Makefile stages
+# them only `if [ -x $(RUSTC) ]` with RUSTC = $(HOME)/.cargo/bin/rustc, so this is
+# what turns them from "skipped" into "included".
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --no-modify-path \
+        --default-toolchain stable --target x86_64-unknown-linux-musl
+ENV PATH=/root/.cargo/bin:$PATH
 
-# Install JHC via modern fork (yobson/jhc-components)
-RUN git clone https://github.com/yobson/jhc-components /tmp/jhc-components && \
-    cd /tmp/jhc-components && \
-    sed -i 's|embed/\*|embed/ChangeLog|g' jhc-common/jhc-common.cabal
-
-COPY src/libs/ext/patches/Typeable.h /tmp/Typeable.h
-WORKDIR /tmp/jhc-components
-
-# Download and patch libraries for JHC (using wget to avoid cabal issues)
-RUN wget https://hackage.haskell.org/package/deepseq-1.2.0.1/deepseq-1.2.0.1.tar.gz && \
-    tar xzf deepseq-1.2.0.1.tar.gz && \
-    wget https://hackage.haskell.org/package/containers-0.4.2.1/containers-0.4.2.1.tar.gz && \
-    tar xzf containers-0.4.2.1.tar.gz && \
-    cp /tmp/Typeable.h containers-0.4.2.1/include/Typeable.h && \
-    sed -i '/^[[:space:]]\+{-# INLINE/d' containers-0.4.2.1/Data/Sequence.hs && \
-    cp -r deepseq-1.2.0.1/* . && \
-    cp -r containers-0.4.2.1/* . && \
-    cp -r include lib/ext/
-    
-RUN sed -i 's/Just nt <- return $ Info.lookup (tvrInfo t)/nt <- maybe (throwError ()) return $ Info.lookup (tvrInfo t)/' jhc-core/src/E/TypeAnalysis.hs && \
-    sed -i 's/Just tt <- return $ getTyp (getType t) dataTable nt/tt <- maybe (throwError ()) return $ getTyp (getType t) dataTable nt/' jhc-core/src/E/TypeAnalysis.hs
-
-RUN stack install cpphs --local-bin-path /usr/local/bin && \
-    stack install --local-bin-path /usr/local/bin
-
-RUN mkdir -p /usr/local/lib/jhc-0.8.2 && \
-    jhc -L . --build-hl lib/jhc-prim/jhc-prim.yaml && \
-    jhc -L . --build-hl lib/jhc/jhc.yaml && \
-    jhc -L . --build-hl lib/haskell-extras/haskell-extras.yaml && \
-    jhc -L . --build-hl lib/haskell2010/haskell2010.yaml && \
-    jhc -L . --build-hl lib/haskell98/haskell98.yaml && \
-    jhc -L . --build-hl lib/applicative/applicative.yaml && \
-    jhc -L . --build-hl lib/ext/deepseq.yaml && \
-    jhc -L . --build-hl lib/ext/containers.yaml && \
-    jhc -L . --build-hl lib/flat-foreign/flat-foreign.yaml && \
-    cp *.hl /usr/local/lib/jhc-0.8.2/ && \
-    cd .. && rm -rf jhc-components
-
-# Build Directory
 WORKDIR /build
 
-# Build Opts
-RUN echo "SRC_ROOT=/build_work/src" > /etc/haskellos_build.opts && \
-    echo "BUILD_ROOT=/build_work/build" >> /etc/haskellos_build.opts && \
-    echo "CROSSCOMPILE_PREFIX=/usr" >> /etc/haskellos_build.opts && \
-    echo "LLVM_PREFIX=/usr/lib/llvm-6.0" >> /etc/haskellos_build.opts && \
-    echo "JHC_LIBS_PREFIX=/usr/local/lib/jhc-0.8.2" >> /etc/haskellos_build.opts && \
-    echo "JHC=/usr/local/bin/jhc" >> /etc/haskellos_build.opts && \
-    echo "" >> /etc/haskellos_build.opts && \
-    echo "TARGET=x86_64" >> /etc/haskellos_build.opts && \
-    echo "HOST=i386" >> /etc/haskellos_build.opts && \
-    echo "" >> /etc/haskellos_build.opts && \
-    echo "RTS_INC=-I\$(SRC_ROOT)/libs/rts -I\$(SRC_ROOT)/libs/rts/rts" >> /etc/haskellos_build.opts && \
-    echo "CBITS_INC=-I\$(SRC_ROOT)/kernel/c" >> /etc/haskellos_build.opts && \
-    echo "PROGS_INC=-I\$(SRC_ROOT)/progs/cbits" >> /etc/haskellos_build.opts && \
-    echo "" >> /etc/haskellos_build.opts && \
-    echo "CROSSCOMPILE_LD=ld" >> /etc/haskellos_build.opts && \
-    echo "CROSSCOMPILE_STRIP=strip" >> /etc/haskellos_build.opts && \
-    echo "CROSSCOMPILE_AS=as" >> /etc/haskellos_build.opts && \
-    echo "CROSSCOMPILE_AR=ar" >> /etc/haskellos_build.opts && \
-    echo "CROSSCOMPILE_CLANG=clang" >> /etc/haskellos_build.opts && \
-    echo "XORRISO=xorriso" >> /etc/haskellos_build.opts && \
-    echo "DC=ldc2" >> /etc/haskellos_build.opts && \
-    echo "CFLAGS_COMMON=-D _JHC_GC=1 -D _JHC_DEBUG=0 -D _JHC_BAREBONES -fno-pic -fno-pie" >> /etc/haskellos_build.opts && \
-    echo "JHC_COMMON=-DTARGET=\$(TARGET) -pcontainers -papplicative -fforall" >> /etc/haskellos_build.opts && \
-    echo "DFLAGS=-betterC -mtriple=x86_64-unknown-none-elf -m64 -O2" >> /etc/haskellos_build.opts && \
-    echo "CFLAGS=-m64 \$(CFLAGS_COMMON) -ffreestanding \$(RTS_INC) \$(CBITS_INC) -include arch.h -include allocator.h -DCOMPILING_HS_KERNEL -mno-red-zone -mcmodel=large -D TARGET=\$(TARGET) -D KERNEL=1 -O2" >> /etc/haskellos_build.opts && \
-    echo "CFLAGS_USER=-m64 \$(CFLAGS_COMMON) \$(RTS_INC) \$(CBITS_INC) \$(PROGS_INC) -D TARGET=\$(TARGET) -D HOS_USER=1 -O2" >> /etc/haskellos_build.opts && \
-    echo "TEST_CFLAGS=\$(CFLAGS_COMMON) -D TARGET=\$(HOST)" >> /etc/haskellos_build.opts
+# Serial by default, exactly like build.opts: several dependency builds (libc++,
+# mutter, weston) are memory-hungry enough to OOM a container that fans out to
+# every core.  Raise it on a big machine: --build-arg BUILD_JOBS=8.
+ARG BUILD_JOBS=1
+ENV BUILD_JOBS=${BUILD_JOBS}
 
-CMD ["/bin/bash"]
+# -----------------------------------------------------------------------------
+# 2. deps — the dependency stack, in its own cacheable layer
+# -----------------------------------------------------------------------------
+FROM toolchain AS deps
+
+# Only what deps/ itself reads: build.opts (included by every dep makefile) and
+# the low-resource wrapper it points BUILD_RESOURCE_RUN at.  Deliberately NOT the
+# top-level Makefile — editing it must not invalidate this layer.
+COPY build.opts ./build.opts
+COPY src/util/bin ./src/util/bin
+COPY deps ./deps
+
+# deps/gtk-stack, deps/mutter and deps/hyprland-hos want $(HOST_TOOLS_BIN)/python3
+# (build.opts: deps/.host-tools/bin).  Nothing in the tree creates it — on a
+# developer's machine it is set up by hand — so create it here; the other host
+# tools that live under deps/.host-tools (bison, gperf, meson) are built/installed
+# into it by the dep makefiles themselves.
+RUN mkdir -p deps/.host-tools/bin && ln -sfn /usr/bin/python3 deps/.host-tools/bin/python3
+
+# deps/{gtk-stack,cxxrt,mutter,hyprland-hos}/stamps/* are tracked in git, but the
+# static libraries they certify are not (.gitignore drops *.a).  A checkout would
+# therefore look "already built" and fail much later at link time on a missing
+# -lgtk-3.  .dockerignore already keeps them out of the context; this is the same
+# guarantee for anyone driving `docker build` with a context of their own.
+RUN rm -f deps/*/stamps/*
+
+# musl -> libc++ -> gtk-stack -> staged-desktop -> mutter -> weston.  This is the
+# long pole of the whole build (hours); it is one RUN so it caches as one unit.
+RUN make -C deps desktop
+
+# Z2: upstream zsh 5.9 as dynamic musl + its 37 zmodules.
+RUN make -C deps/zsh
+
+# INSTALLER E5/H1: the UEFI pre-boot loader + stage2, and the decoy Alpine ext4.
+# Both are stage-iso-tree prerequisites, and both are pure deps/ work.
+RUN make -C deps/veracrypt efi
+RUN make -C deps/decoy-os image verify
+
+# -----------------------------------------------------------------------------
+# 3. build — kernel, boot tree, installer ISO
+# -----------------------------------------------------------------------------
+FROM deps AS build
+
+COPY . /build
+
+# `make all` in three steps, minus the dependency phase the deps stage already
+# did.  Split so a failure says which half broke and a re-run resumes near it.
+RUN make anonymos-config
+RUN make build/libkernel_d.a kernel.elf
+
+# The LKL WiFi module (build/lkl-boot-musl) links against a liblkl.a built from an
+# LKL tree that lives OUTSIDE this repo (src/lkl/README.md), so by default it is
+# absent and stage-iso-tree skips it — the ISO boots, without WiFi.  To include it,
+# put the prebuilt tree in the build context and point at it:
+#     docker build --build-arg LKL_BUILD_DIR=/build/lkl-build ...
+ARG LKL_BUILD_DIR=""
+RUN make ${LKL_BUILD_DIR:+LKL_BUILD_DIR="$LKL_BUILD_DIR"} iso
+
+RUN test -f hos-install.iso && ls -l hos-install.iso
+
+# -----------------------------------------------------------------------------
+# 4. artifacts — what leaves the container (default stage)
+# -----------------------------------------------------------------------------
+FROM scratch AS artifacts
+COPY --from=build /build/hos-install.iso /
+COPY --from=build /build/kernel.elf /

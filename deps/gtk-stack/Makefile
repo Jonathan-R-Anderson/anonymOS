@@ -766,7 +766,16 @@ $(STAMPS)/gtk3: $(DLDIR)/gtk+-$(GTK3_VER).tar.xz \
 	    -Dtests=false \
 	    -Dinstalled_tests=false \
 	    -Dbuiltin_immodules=backend
-	$(NINJA) -C $(BLDDIR)/gtk+-$(GTK3_VER)/_build $(NINJA_BUILD_FLAGS)
+	@# gtk.gresources.xml asks glib-compile-resources for `to-pixdata` preprocessing,
+	@# which shells out to gdk-pixbuf-pixdata.  The cross-built one is installed in our
+	@# own sysroot (static musl x86_64, so it runs fine on the build host) but is not on
+	@# PATH, and without GDK_PIXBUF_PIXDATA set the resource step fails with
+	@# "to-pixdata preprocessing requested, but GDK_PIXBUF_PIXDATA is not set".
+	PIXDATA="$(SYSROOT)/bin/gdk-pixbuf-pixdata"; \
+	[ -x "$$PIXDATA" ] || PIXDATA="$$(command -v gdk-pixbuf-pixdata 2>/dev/null)"; \
+	echo "[gtk3] GDK_PIXBUF_PIXDATA=$$PIXDATA"; \
+	export GDK_PIXBUF_PIXDATA="$$PIXDATA"; \
+	$(NINJA) -C $(BLDDIR)/gtk+-$(GTK3_VER)/_build $(NINJA_BUILD_FLAGS) && \
 	$(NINJA) -C $(BLDDIR)/gtk+-$(GTK3_VER)/_build install
 	touch $@
 

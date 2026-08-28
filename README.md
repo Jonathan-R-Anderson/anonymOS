@@ -440,6 +440,7 @@ kernel"*); Haskell now survives only as userspace services and the jhc RTS.
 ./build-in-docker.sh        # → dist/hos-install.iso
 
 # Full build on a prepared host (serialized/low-resource by default)
+./scripts/fill-vendored-sources.sh   # once per clone: see note below
 make                        # → kernel.elf + busybox + Wayland utils + hos-install.iso
 
 # Declarative config tool (host toolchain, needs ldc2 + Phobos)
@@ -470,6 +471,13 @@ requirement. Expect hours on the first run; the dependency stack is cached in
 its own layer, so later runs rebuild only what changed under `src/`. Host prep
 for a native build instead: `setup_host.sh`. The ISO + QEMU boot gate is not
 reproducible on macOS alone.
+
+Ten of the vendored dependency trees under `deps/` were committed incomplete
+(`openrc-0.54` has the headers but none of its `.c` files, `elogind-255.4` is
+missing 353 of 955 files). Each dep makefile keys extraction on a file that *is*
+present, so it never re-extracts and the build fails far downstream — run
+`./scripts/fill-vendored-sources.sh` once after cloning to fill the gaps from the
+tarballs vendored beside each tree. The Docker build does this for you.
 
 The LKL WiFi module (`lkl-boot`) needs an out-of-tree LKL tree (`src/lkl/README.md`);
 without one the build skips it and the ISO is built without WiFi. Point at a

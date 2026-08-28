@@ -143,6 +143,7 @@ FROM toolchain AS deps
 # top-level Makefile — editing it must not invalidate this layer.
 COPY build.opts ./build.opts
 COPY src/util/bin ./src/util/bin
+COPY scripts/fill-vendored-sources.sh ./scripts/fill-vendored-sources.sh
 COPY deps ./deps
 
 # deps/gtk-stack, deps/mutter and deps/hyprland-hos want $(HOST_TOOLS_BIN)/python3
@@ -158,6 +159,13 @@ RUN mkdir -p deps/.host-tools/bin && ln -sfn /usr/bin/python3 deps/.host-tools/b
 # -lgtk-3.  .dockerignore already keeps them out of the context; this is the same
 # guarantee for anyone driving `docker build` with a context of their own.
 RUN rm -f deps/*/stamps/*
+
+# Same class of trap, one level down: ten of the vendored source trees under deps/
+# were committed incomplete (openrc has the headers but none of the .c files,
+# elogind is missing 353 of 955 files), and each dep makefile keys extraction on a
+# file that IS present, so it never re-extracts.  Fill the gaps from the tarball
+# vendored next to each tree, without touching anything the repo does ship.
+RUN ./scripts/fill-vendored-sources.sh
 
 # musl -> libc++ -> gtk-stack -> staged-desktop -> mutter -> weston.  This is the
 # long pole of the whole build (hours); it is one RUN so it caches as one unit.

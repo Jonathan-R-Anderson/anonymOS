@@ -148,7 +148,7 @@ FROM toolchain AS deps
 # top-level Makefile — editing it must not invalidate this layer.
 COPY build.opts ./build.opts
 COPY src/util/bin ./src/util/bin
-COPY scripts/fill-vendored-sources.sh ./scripts/fill-vendored-sources.sh
+COPY scripts ./scripts
 COPY deps ./deps
 
 # deps/gtk-stack, deps/mutter and deps/hyprland-hos want $(HOST_TOOLS_BIN)/python3
@@ -179,7 +179,7 @@ RUN ./scripts/fill-vendored-sources.sh
 # ran that check with musl-clang++, and the C++ wrapper is the one with its own runtime
 # flags, so a C-only probe would have called this toolchain healthy.  Diagnostic
 # only: it never fails the build, so its output lands next to the real error.
-RUN make -C deps musl
+RUN scripts/docker-build-step.sh make -C deps musl
 RUN set -x; \
     CC="$PWD/deps/musl/install/bin/musl-clang"; \
     SYSROOT="$PWD/deps/gtk-stack/sysroot"; \
@@ -199,27 +199,35 @@ RUN set -x; \
         /tmp/ic.cpp -o /tmp/ic3; echo "PROBE cross-file-flags link (C++) rc=$?"; \
     true
 
-# musl -> libc++ -> gtk-stack -> staged-desktop -> mutter -> weston.  This is the
-# long pole of the whole build (hours); it is one RUN so it caches as one unit.
-# On failure, dump the newest meson log: `meson setup` prints one line to stdout and
-# puts the actual failing compiler command plus its output in that file.
-RUN make -C deps desktop || { \
-        rc=$?; \
-        f=$(find deps -name meson-log.txt -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-); \
-        if [ -n "$f" ]; then echo "======== tail of $f ========"; tail -200 "$f"; fi; \
-        if [ -f deps/gtk-stack/stamps/meson-cross.ini ]; then \
-            echo "======== meson cross file ========"; cat deps/gtk-stack/stamps/meson-cross.ini; \
-        fi; \
-        exit $rc; \
-    }
+# The dependency stack, one RUN per phase instead of one for the lot.  Docker keeps
+# every completed step as a layer, so a failure deep in the GTK stack resumes from the
+# last good phase rather than rebuilding musl and libc++ from scratch each attempt.
+# Each step runs through scripts/docker-build-step.sh, which on failure repeats the
+# last 150 lines of that step plus the newest meson-log.txt at the END of the output,
+# where the real error is otherwise hidden hundreds of lines up.
+RUN scripts/docker-build-step.sh make -C deps cxxrt
+RUN scripts/docker-build-step.sh make -C deps busybox openrc
+RUN scripts/docker-build-step.sh make -C deps dbus dconf networkmanager \
+        elogind logind pipewire pipewire-pulse wireplumber
+# Split at glib: it is the single longest package in the GTK chain, and everything
+# after it (cairo, pango, gdk-pixbuf, atk, epoxy, gtk3) is where the cross-build
+# breakages actually turn up.
+RUN scripts/docker-build-step.sh make -C deps/gtk-stack glib
+RUN scripts/docker-build-step.sh make -C deps gtk-stack
+RUN scripts/docker-build-step.sh make -C deps staged-desktop
+RUN scripts/docker-build-step.sh make -C deps mutter
+RUN scripts/docker-build-step.sh make -C deps weston
+# Assertion, not work: with every phase above done this is a no-op, and it fails loudly
+# if the split above ever drifts from what `desktop` actually pulls in.
+RUN scripts/docker-build-step.sh make -C deps desktop
 
 # Z2: upstream zsh 5.9 as dynamic musl + its 37 zmodules.
-RUN make -C deps/zsh
+RUN scripts/docker-build-step.sh make -C deps/zsh
 
 # INSTALLER E5/H1: the UEFI pre-boot loader + stage2, and the decoy Alpine ext4.
 # Both are stage-iso-tree prerequisites, and both are pure deps/ work.
-RUN make -C deps/veracrypt efi
-RUN make -C deps/decoy-os image verify
+RUN scripts/docker-build-step.sh make -C deps/veracrypt efi
+RUN scripts/docker-build-step.sh make -C deps/decoy-os image verify
 
 # -----------------------------------------------------------------------------
 # 3. build — kernel, boot tree, installer ISO
@@ -230,8 +238,8 @@ COPY . /build
 
 # `make all` in three steps, minus the dependency phase the deps stage already
 # did.  Split so a failure says which half broke and a re-run resumes near it.
-RUN make anonymos-config
-RUN make build/libkernel_d.a kernel.elf
+RUN scripts/docker-build-step.sh make anonymos-config
+RUN scripts/docker-build-step.sh make build/libkernel_d.a kernel.elf
 
 # The LKL WiFi module (build/lkl-boot-musl) links against a liblkl.a built from an
 # LKL tree that lives OUTSIDE this repo (src/lkl/README.md), so by default it is
@@ -239,7 +247,7 @@ RUN make build/libkernel_d.a kernel.elf
 # put the prebuilt tree in the build context and point at it:
 #     docker build --build-arg LKL_BUILD_DIR=/build/lkl-build ...
 ARG LKL_BUILD_DIR=""
-RUN make ${LKL_BUILD_DIR:+LKL_BUILD_DIR="$LKL_BUILD_DIR"} iso
+RUN scripts/docker-build-step.sh make ${LKL_BUILD_DIR:+LKL_BUILD_DIR="$LKL_BUILD_DIR"} iso
 
 RUN test -f hos-install.iso && ls -l hos-install.iso
 

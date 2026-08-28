@@ -51,6 +51,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #   * meson/ninja/cmake/autotools/gperf/flex/bison — the dependency tarballs
 #   * libwayland-bin, libglib2.0-*-bin — HOST codegen (wayland-scanner,
 #     glib-compile-resources, gdbus-codegen) used by cross-built gtk/weston/mutter
+#   * libegl-dev/libgl-dev/libgles-dev — deps/gtk-stack's gl-headers step stages the
+#     Khronos headers by copying /usr/include/{EGL,GL,GLES,GLES2,GLES3,KHR} out of the
+#     host; without them libepoxy compiles with no KHR/khrplatform.h and dies
 #   * xorriso/mtools/dosfstools/gdisk/parted/e2fsprogs/fakeroot — the ISO, the
 #     FAT32 ESP images (scripts/mk-install-iso.sh) and the decoy ext4 rootfs
 #   * fonts-noto-{core,mono}/dmz-cursor-theme — `make build-gui-assets` copies
@@ -81,6 +84,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         gperf \
         ldc \
+        libegl-dev \
+        libgl-dev \
+        libgles-dev \
         libclang-rt-18-dev \
         libglib2.0-bin \
         libglib2.0-dev-bin \

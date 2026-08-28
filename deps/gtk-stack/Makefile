@@ -541,12 +541,19 @@ xkbcommon: $(STAMPS)/xkbcommon
 $(STAMPS)/gl-headers: $(SELF)/Makefile | dirs
 	@echo "[gl-headers] Staging host GL/EGL headers (optional: skipped if absent)..."
 	mkdir -p $(SYSROOT)/include
-	rm -rf $(addprefix $(SYSROOT)/include/,$(GL_HEADER_DIRS))
-	for d in $(GL_HEADER_DIRS); do \
-	    if [ ! -d "/usr/include/$$d" ]; then \
-	        echo "[gl-headers] host header directory /usr/include/$$d not found — skipping (GL/EGL optional; software-rendering path unaffected)"; \
-	    else \
+	@# Replace a header directory ONLY when the host actually has one to replace it
+	@# with.  The sysroot ships its own copies of these six; blanket-deleting them
+	@# first meant a machine without the Khronos dev packages (a container, say) was
+	@# left with no GL headers at all, and libepoxy then failed to compile with
+	@# "Has header KHR/khrplatform.h : NO".
+	@for d in $(GL_HEADER_DIRS); do \
+	    if [ -d "/usr/include/$$d" ]; then \
+	        rm -rf "$(SYSROOT)/include/$$d"; \
 	        cp -a "/usr/include/$$d" "$(SYSROOT)/include/"; \
+	    elif [ -d "$(SYSROOT)/include/$$d" ]; then \
+	        echo "[gl-headers] /usr/include/$$d absent — keeping the sysroot's own $$d headers"; \
+	    else \
+	        echo "[gl-headers] host header directory /usr/include/$$d not found — skipping (GL/EGL optional; software-rendering path unaffected)"; \
 	    fi; \
 	done
 	# Create empty stub static libraries for EGL/gbm/GLESv2/glapi so packages

@@ -238,6 +238,28 @@ RUN mkdir -p deps/gtk-stack/sysroot/lib \
 RUN scripts/docker-build-step.sh make -C deps gtk-stack
 RUN scripts/docker-build-step.sh make -C deps staged-desktop
 RUN scripts/docker-build-step.sh make -C deps mutter
+# weston's GL renderer really calls into EGL/GLES, unlike gtk3 which only links them.
+# In a clean tree deps/gtk-stack/sysroot/lib/libEGL.a and libGLESv2.a are the EMPTY STUBS
+# that the gl-headers rule drops in (the real Mesa libraries come from the deps/mutter
+# chain, which a clean tree skips), so libweston/renderer-gl/gl-renderer.so fails to link
+# with ~200 undefined eglGetError/glGenTextures/... references.
+#
+# anonymOS ships the Pixman software renderer anyway — stage-iso-tree copies gl-renderer.so
+# only "if [ -f ]" (Makefile:1149) and advertises it to limine the same way (Makefile:1169) —
+# so a pixman-only weston is the configuration this ISO already expects.  Detect a stub by
+# asking whether libEGL.a actually defines eglGetError, and turn the GL renderer off only
+# then; a tree with real Mesa libraries keeps building it.
+#
+# Done here rather than in deps/weston/Makefile so it does not invalidate the COPY deps
+# layer and rebuild the whole dependency stack.  Move it into that Makefile (as a
+# $(shell nm ...) guard on -Drenderer-gl=) once the build is green end to end.
+RUN if llvm-nm deps/gtk-stack/sysroot/lib/libEGL.a 2>/dev/null | grep -q ' T eglGetError'; then \
+        echo "[weston] real libEGL found — keeping -Drenderer-gl=true"; \
+    else \
+        echo "[weston] sysroot libEGL.a is a stub — building weston without the GL renderer"; \
+        sed -i 's/-Drenderer-gl=true/-Drenderer-gl=false/' deps/weston/Makefile; \
+        grep -n 'renderer-gl' deps/weston/Makefile; \
+    fi
 RUN scripts/docker-build-step.sh make -C deps weston
 # Assertion, not work: with every phase above done this is a no-op, and it fails loudly
 # if the split above ever drifts from what `desktop` actually pulls in.
@@ -257,6 +279,28 @@ RUN scripts/docker-build-step.sh make -C deps/decoy-os image verify
 FROM deps AS build
 
 COPY . /build
+
+# `COPY . /build` just restored 202 committed sysroot .pc/.la/.cmake files, and those
+# carry the ORIGINAL developer's absolute paths (prefix=/home/bruns/Documents/EpinAnonymOS).
+# deps/gtk-stack rewrote them to this tree during the deps stage
+# (deps/gtk-stack/Makefile:149-158, the sysroot-relocated rule) — the COPY silently undoes
+# that, so every pkg-config lookup in this stage would hand the linker a prefix that does
+# not exist here.  Re-apply the same rewrite, with the same three literals.
+RUN find deps/gtk-stack/sysroot -type f \( -name '*.pc' -o -name '*.la' -o -name '*.cmake' \) \
+        -exec sed -i \
+          -e 's|/home/bruns/Documents/EpinAnonymOS|/build|g' \
+          -e 's|/home/bruns/Documents/HanonymOS|/build|g' \
+          -e 's|/home/bruns/Documents/haskellos|/build|g' \
+          {} + \
+    && echo "[sysroot] relocated .pc/.la/.cmake to /build"
+
+# build/hos-wifi-agent links $(WAYLAND_SYSROOT)/lib/libdbus-1.so by absolute path
+# (Makefile:589), unconditionally.  The real library and its libdbus-1.so.3 symlink are
+# committed, but the unversioned development symlink matches .gitignore:23 (*.so) and so
+# is absent from every clone.  Recreate it; nothing in the build produces it.
+RUN [ -e deps/gtk-stack/sysroot/lib/libdbus-1.so ] \
+    || ln -sf libdbus-1.so.3 deps/gtk-stack/sysroot/lib/libdbus-1.so \
+    && ls -l deps/gtk-stack/sysroot/lib/libdbus-1.so
 
 # `make all` in three steps, minus the dependency phase the deps stage already
 # did.  Split so a failure says which half broke and a re-run resumes near it.

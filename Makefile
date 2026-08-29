@@ -304,25 +304,25 @@ $(DRM_GPU_TEST_BIN): src/util/drm-gpu-test.c
 # R2.4b: a dynamic-musl GLES2 program that renders through Mesa's virgl driver.
 # Gated on the gtk-stack sysroot (libEGL.a etc.); skips cleanly if Mesa isn't built.
 $(DRM_GL_TEST_BIN): src/util/drm-gl-test.c
-	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
+	@if grep -qa eglGetDisplay deps/gtk-stack/sysroot/lib/libEGL.a 2>/dev/null; then \
 	  echo "==== Building drm-gl-test (R2.4b GLES2-via-virgl test) ===="; \
 	  $(MUSL_CC) -O2 -Ideps/gtk-stack/sysroot/include -Ideps/gtk-stack/sysroot/include/libdrm -o $@ $< \
 	    -Ldeps/gtk-stack/sysroot/lib -Wl,--start-group \
 	      -lEGL -lGLESv2 -lgbm -lglapi -ldrm -lexpat -lz -lffi \
 	      -lwayland-server -lwayland-client -lwayland-egl \
 	    -Wl,--end-group -lpthread -lm; \
-	else echo "drm-gl-test: skipped (gtk-stack sysroot not built)"; touch $@; fi
+	else echo "drm-gl-test: skipped (no real libEGL — Mesa not built, only the gl-headers stub)"; touch $@; fi
 
 GL_WL_TEST_BIN := build/gl-wl-test
 $(GL_WL_TEST_BIN): src/util/gl-wl-test.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
-	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
+	@if grep -qa eglGetDisplay deps/gtk-stack/sysroot/lib/libEGL.a 2>/dev/null; then \
 	  echo "==== Building gl-wl-test (R3 EGL/GLES2 Wayland client) ===="; \
 	  $(MUSL_CC) -O2 -Ideps/gtk-stack/sysroot/include -Ibuild -o $@ $< $(XDG_SHELL_CODE) \
 	    -Ldeps/gtk-stack/sysroot/lib -Wl,--start-group \
 	      -lEGL -lGLESv2 -lgbm -lglapi -ldrm -lexpat -lz -lffi \
 	      -lwayland-server -lwayland-client -lwayland-egl \
 	    -Wl,--end-group -lpthread -lm; \
-	else echo "gl-wl-test: skipped (gtk-stack sysroot not built)"; touch $@; fi
+	else echo "gl-wl-test: skipped (no real libEGL — Mesa not built, only the gl-headers stub)"; touch $@; fi
 
 # L2: the LKL embedder (Linux kernel as a library).  LKL itself is built out of tree,
 # but the embedder must be rebuilt from this checkout so staging cannot silently copy
@@ -356,7 +356,7 @@ $(LKL_BOOT_BIN): src/lkl/lkl-boot.c src/lkl/hos-net-proto.h $(wildcard $(LKL_LIB
 	fi
 GL_TERM_BIN := build/gl-term
 $(GL_TERM_BIN): src/util/gl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
-	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
+	@if grep -qa eglGetDisplay deps/gtk-stack/sysroot/lib/libEGL.a 2>/dev/null; then \
 	  echo "==== Building gl-term (R3 GLES2 Wayland terminal) ===="; \
 	  $(MUSL_CC) -O2 -Ideps/gtk-stack/sysroot/include -Ideps/gtk-stack/sysroot/include/freetype2 -Ibuild -Isrc/util \
 	    -o $@ src/util/gl-term.c $(XDG_SHELL_CODE) \
@@ -365,7 +365,7 @@ $(GL_TERM_BIN): src/util/gl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG
 	      -lwayland-server -lwayland-client -lwayland-egl \
 	      -lfreetype -lpng16 -lbz2 \
 	    -Wl,--end-group -lpthread -lm; \
-	else echo "gl-term: skipped (gtk-stack sysroot not built)"; touch $@; fi
+	else echo "gl-term: skipped (no real libEGL — Mesa not built, only the gl-headers stub)"; touch $@; fi
 
 $(COMPOSITOR_BIN): src/util/compositor.c
 	@echo "==== Building compositor ===="

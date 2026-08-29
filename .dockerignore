@@ -30,6 +30,9 @@ deps/*/stamps/
 # Host-specific tool prefix (bison/gperf/meson built for the developer's distro).
 deps/.host-tools/
 
+# Build logs from build-in-docker.sh (written into the repo, never an input).
+logs/
+
 # Logs, captures and editor/agent state.  (Bare patterns match top-level paths
 # only, which is what we want: deps/ has its own *.out/*.log test fixtures.)
 *.log

@@ -15,6 +15,14 @@
 /dist/
 **/build/
 
+# deps/cxxrt/src is the vendored llvm-project 18.1.8 source: 1.9 GB and 138k files,
+# 77% of this repo's file count, and deps/cxxrt/Makefile re-creates it from a ~130 MB
+# tarball it downloads itself.  Sending it would dominate every build context upload
+# (the legacy builder re-sends the whole context on every run) to save one download
+# that Docker layer-caches anyway.  Its stamps are excluded below, so the container
+# fetches and extracts it.
+deps/cxxrt/src/
+
 # deps/{gtk-stack,cxxrt,mutter,hyprland-hos}/stamps/* ARE tracked, but the static
 # libraries they certify are not (.gitignore drops *.a).  Shipping them in would
 # make the container think the whole GTK stack is already built and fail later at

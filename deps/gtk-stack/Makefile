@@ -556,15 +556,11 @@ $(STAMPS)/gl-headers: $(SELF)/Makefile | dirs
 	        echo "[gl-headers] host header directory /usr/include/$$d not found — skipping (GL/EGL optional; software-rendering path unaffected)"; \
 	    fi; \
 	done
-	# Create empty stub static libraries for EGL/gbm/GLESv2/glapi/drm so packages
+	# Create empty stub static libraries for EGL/gbm/GLESv2/glapi so packages
 	# that detect the GL headers and add -lEGL etc. to their link line succeed.
 	# anonymOS uses the Pixman software renderer — GL is never called at runtime,
 	# so the stubs only need to satisfy the linker (empty archives with one .o).
-	@# drm is here because the committed gbm.pc/egl.pc pull in -ldrm, but the real
-	@# libdrm is built by deps/weston, which runs AFTER gtk-stack — so from a clean
-	@# tree gtk3 fails to link with "cannot find -ldrm".  weston's own install
-	@# overwrites this stub with the real library later.
-	@for lib in EGL gbm GLESv2 glapi drm; do \
+	@for lib in EGL gbm GLESv2 glapi; do \
 	    if [ ! -f "$(SYSROOT)/lib/lib$$lib.a" ]; then \
 	        tmpobj=$$(mktemp /tmp/glstub_XXXXXX.o); \
 	        printf '' | $(CC) -xc -c - -o $$tmpobj 2>/dev/null || \

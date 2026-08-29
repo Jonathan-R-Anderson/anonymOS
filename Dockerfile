@@ -218,6 +218,23 @@ RUN scripts/docker-build-step.sh make -C deps dbus dconf networkmanager \
 # after it (cairo, pango, gdk-pixbuf, atk, epoxy, gtk3) is where the cross-build
 # breakages actually turn up.
 RUN scripts/docker-build-step.sh make -C deps/gtk-stack glib
+# gtk3's executables link -ldrm, because the sysroot's committed gbm.pc/egl.pc list
+# it — but the real libdrm is built by deps/weston, which runs AFTER gtk-stack.  From
+# a clean tree gtk3 therefore dies with "cannot find -ldrm"; a developer's tree hides
+# it, having a libdrm.a left in the sysroot by an earlier weston build (it is
+# gitignored, so it never leaves that machine).  Stub it exactly like gl-headers does
+# for EGL/gbm/GLESv2/glapi; weston's install overwrites it with the real library.
+#
+# This lives in the Dockerfile rather than in deps/gtk-stack/Makefile's gl-headers
+# rule on purpose: editing anything under deps/ invalidates the COPY deps layer and
+# rebuilds the entire dependency stack (~45 min).  Inserted here, every layer above
+# stays cached and only gtk-stack re-runs.  Move it into the Makefile once the build
+# is green end to end — that is its proper home for non-container builds.
+RUN mkdir -p deps/gtk-stack/sysroot/lib \
+    && printf '' | clang -xc -c - -o /tmp/drmstub.o \
+    && llvm-ar rcs deps/gtk-stack/sysroot/lib/libdrm.a /tmp/drmstub.o \
+    && rm -f /tmp/drmstub.o \
+    && echo "[stub] deps/gtk-stack/sysroot/lib/libdrm.a (real libdrm comes from deps/weston)"
 RUN scripts/docker-build-step.sh make -C deps gtk-stack
 RUN scripts/docker-build-step.sh make -C deps staged-desktop
 RUN scripts/docker-build-step.sh make -C deps mutter

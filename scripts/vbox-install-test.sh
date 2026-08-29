@@ -113,9 +113,12 @@ case "$ACTION" in
         [ -f "$STORE_VDI" ] && echo "[vbox] store disk:  $STORE_VDI"
         VBoxManage controlvm "$VM" poweroff >/dev/null 2>&1 || true
         sleep 1
-        VBoxManage storageattach "$VM" --storagectl SATA --port 2 --device 0 --type dvddrive --medium none >/dev/null
-        VBoxManage storageattach "$VM" --storagectl SATA --port 0 --device 0 --type hdd --medium none >/dev/null
-        VBoxManage storageattach "$VM" --storagectl SATA --port 1 --device 0 --type hdd --medium none >/dev/null
+        # Clear the three slots.  These are "make sure nothing is here" calls, so a slot
+        # that is already empty (or has no drive at all) must not abort the script under
+        # set -e — VBoxManage errors with VBOX_E_OBJECT_NOT_FOUND in exactly that case.
+        VBoxManage storageattach "$VM" --storagectl SATA --port 2 --device 0 --type dvddrive --medium none >/dev/null 2>&1 || true
+        VBoxManage storageattach "$VM" --storagectl SATA --port 0 --device 0 --type hdd --medium none >/dev/null 2>&1 || true
+        VBoxManage storageattach "$VM" --storagectl SATA --port 1 --device 0 --type hdd --medium none >/dev/null 2>&1 || true
         VBoxManage storageattach "$VM" --storagectl SATA --port 0 --device 0 --type hdd --medium "$SYS_VDI" >/dev/null
         if [ -f "$STORE_VDI" ]; then
             VBoxManage storageattach "$VM" --storagectl SATA --port 1 --device 0 --type hdd --medium "$STORE_VDI" >/dev/null

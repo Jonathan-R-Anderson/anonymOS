@@ -16,7 +16,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VM="EpinAnonymOS-Install"
-ISO="$PWD/hos-install.iso"
+# Which ISO to attach.  $1 is the action, so the ISO comes from $ISO or is auto-detected:
+# `make iso` leaves it in the repo root, ./build-in-docker.sh writes it to dist/.
+ISO="${ISO:-}"
+if [ -z "$ISO" ]; then
+    for candidate in "$PWD/hos-install.iso" "$PWD/dist/hos-install.iso"; do
+        [ -f "$candidate" ] && { ISO="$candidate"; break; }
+    done
+fi
 VMDIR="${VBOX_VMDIR:-$HOME/VirtualBox VMs/$VM}"
 STORE_VDI="$VMDIR/store.vdi"
 SYS_VDI="$VMDIR/system.vdi"
@@ -24,7 +31,17 @@ MEM_MB="${MEM_MB:-3072}"
 SYS_GB="${SYS_GB:-8}"
 ACTION="${1:-}"
 
-[ -f "$ISO" ] || { echo "ERROR: $ISO not found — run 'make hos-install.iso' first." >&2; exit 1; }
+[ -n "$ISO" ] && [ -f "$ISO" ] || {
+    echo "ERROR: no installer ISO found (looked for hos-install.iso and dist/hos-install.iso)." >&2
+    echo "       Build one with 'make iso' / ./build-in-docker.sh, or set ISO=/path/to/hos-install.iso" >&2
+    exit 1
+}
+[ -r "$ISO" ] || {
+    echo "ERROR: $ISO is not readable by $USER (a sudo build leaves it root-owned)." >&2
+    echo "       Fix with: sudo chown $USER $ISO" >&2
+    exit 1
+}
+echo "[vbox] using ISO: $ISO"
 
 case "$ACTION" in
     --boot-disk)

@@ -47,6 +47,23 @@ fi
 # A5/F4 persistence: a 32 MiB raw SATA disk on an AHCI controller backs the object
 # store across reboots (created on first run; kept out of git via .gitignore).
 DISK_IMG="hos-disk.img"
+
+# Which ISO to boot.  Order: first positional arg, then $ISO, then the ISO the build
+# actually produces (hos-install.iso), then the legacy hos.iso name this script used to
+# hardcode.  `make iso` builds hos-install.iso in the repo root; ./build-in-docker.sh
+# writes it to dist/ (or wherever OUT_DIR pointed).
+ISO="${1:-${ISO:-}}"
+if [ -z "$ISO" ]; then
+  for candidate in hos-install.iso dist/hos-install.iso hos.iso dist/hos.iso; do
+    [ -f "$candidate" ] && { ISO="$candidate"; break; }
+  done
+fi
+if [ ! -f "$ISO" ]; then
+  echo "[qemu-run] no ISO found. Pass one:  ./qemu-run.sh path/to/hos-install.iso" >&2
+  echo "[qemu-run] (or set ISO=path; looked for hos-install.iso, dist/hos-install.iso, hos.iso)" >&2
+  exit 1
+fi
+echo "[qemu-run] booting $ISO"
 if [ ! -f "$DISK_IMG" ]; then
   qemu-img create -f raw "$DISK_IMG" 32M >/dev/null 2>&1 || dd if=/dev/zero of="$DISK_IMG" bs=1M count=32 status=none
   echo "[qemu-run] created $DISK_IMG (32M) for persistent object store"
@@ -150,7 +167,7 @@ fi
 
 exec "$QEMU_BIN" \
   -boot d \
-  -cdrom hos.iso \
+  -cdrom "$ISO" \
   -serial file:serial.log \
   "${WIFISERIAL[@]}" \
   -m "$MEM" \

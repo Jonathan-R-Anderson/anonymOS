@@ -6937,7 +6937,25 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     return cast(long)negErrno(25); // ENOTTY for everything else
 }
 
+// ── TEMP boot-hang trace (remove once the weston/libseat stall is diagnosed) ──
+// Weston reads the input devices sysfs uevent files and then goes quiet without
+// ever opening a device node, so the syscall it is parked in is invisible.  These
+// entry traces name it: the LAST [trace] line before the log falls silent is the
+// call that never returned.  poll and ppoll are capped so a polling loop cannot
+// flood the serial line and bury the interesting tail.
+__gshared uint g_hangTracePollCount = 0;
+__gshared uint g_hangTraceFutexCount = 0;   // separate budget: the poll flood must not starve it
+enum uint HANG_TRACE_POLL_MAX = 300;
+
+private void hangTrace2(const(char)* name, ulong a, ulong b) {
+    klog("[trace] "); klog(name);
+    klog(" a="); klog_hex(a);
+    klog(" b="); klog_hex(b);
+    klog("\n");
+}
+
 public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
+    hangTrace2("ioctl fd,cmd", fd, cmd);
     ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_IOCTL);
     if (oh is null) return negErrno(EBADF);
     auto iop = g_objOps[oh.type].ioctl;
@@ -7714,10 +7732,12 @@ public long linux_sys_connect(ulong sockfd, ulong addr, ulong addrlen) {
 }
 
 public long linux_sys_sendmsg(ulong sockfd, ulong msg, ulong flags) {
+    hangTrace2("sendmsg fd,flags", sockfd, flags);
     return cast(long)sys_sendmsg(cast(int)sockfd, cast(msghdr*)msg, cast(int)flags);
 }
 
 public long linux_sys_recvmsg(ulong sockfd, ulong msg, ulong flags) {
+    hangTrace2("recvmsg fd,flags", sockfd, flags);
     return cast(long)sys_recvmsg(cast(int)sockfd, cast(msghdr*)msg, cast(int)flags);
 }
 
@@ -7812,6 +7832,15 @@ public long linux_sys_rt_sigaction(ulong signum, ulong act, ulong oldact, ulong 
 }
 
 public long linux_sys_futex(ulong uaddr, ulong op, ulong val, ulong timeout, ulong uaddr2, ulong val3) {
+    // TEMP boot-hang trace: pthread_join parks in FUTEX_WAIT with no timeout, so the
+    // last futex line before silence identifies the wait that never woke.  Bounded so a
+    // busy lock cannot flood the UART.
+    if (g_hangTraceFutexCount < HANG_TRACE_POLL_MAX) {
+        ++g_hangTraceFutexCount;
+        klog("[trace] futex op="); klog_hex(op);
+        klog(" uaddr="); klog_hex(uaddr);
+        klog(" val="); klog_hex(val); klog("\n");
+    }
     enum FUTEX_WAIT = 0;
     enum FUTEX_WAKE = 1;
     enum FUTEX_PRIVATE_FLAG = 0x80;
@@ -9465,11 +9494,13 @@ private long pollScanFds(ulong fds, ulong nfds) {
 }
 
 public long linux_sys_poll(ulong fds, ulong nfds, ulong timeout) {
+    if (g_hangTracePollCount < HANG_TRACE_POLL_MAX) { ++g_hangTracePollCount; hangTrace2("poll nfds,timeout", nfds, timeout); }
     return pollScanFds(fds, nfds);
 }
 // ppoll(fds, nfds, timeout_ts, sigmask, sigsetsize): scan readiness like poll;
 // the timeout/blocking is handled cooperatively by the syscall dispatcher.
 public long linux_sys_ppoll(ulong fds, ulong nfds, ulong tmo, ulong sig, ulong sz) {
+    if (g_hangTracePollCount < HANG_TRACE_POLL_MAX) { ++g_hangTracePollCount; hangTrace2("ppoll nfds,tmo", nfds, tmo); }
     return pollScanFds(fds, nfds);
 }
 // Scan select() fd_set bitmasks for readiness and rewrite each set IN PLACE to only the ready fds,
@@ -12276,7 +12307,14 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     // frame, so a klog/console write per call floods the slow serial UART and,
     // under KVM, throttles the whole compositor (one VM-exit per byte).
     uint nr = request & 0xFF;
-    if (arg == 0) return negErrno(EFAULT);
+    // DRM_IOCTL_SET_MASTER (0x1e) and DROP_MASTER (0x1f) are DRM_IO() ioctls: they carry
+    // NO argument, so seatd calls ioctl(fd, DRM_IOCTL_SET_MASTER, 0) (seatd-0.9.1
+    // common/drm.c:17).  The blanket arg==0 guard below answered those with EFAULT and
+    // made the `case DRM_NR_SET_MASTER: return 0;` further down unreachable dead code —
+    // which is where the boot log's "Could not make device fd drm master: Bad address"
+    // comes from.  Exempt exactly those two; every other DRM ioctl dereferences arg.
+    if (arg == 0 && nr != DRM_NR_SET_MASTER && nr != DRM_NR_DROP_MASTER)
+        return negErrno(EFAULT);
 
     // R2.4: virtio-gpu / virgl render ioctls (DRM_COMMAND_BASE 0x40 + DRM_VIRTGPU_* 0x01..0x0b).
     if (nr >= 0x41 && nr <= 0x4b) return handleVirtgpuIoctl(nr, arg);

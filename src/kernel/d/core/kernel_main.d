@@ -2888,6 +2888,11 @@ private void dispatchSyscall(int tid) {
 
         // clone / fork (clone with SIGCHLD flags acts like fork)
         case 56:
+            // TEMP boot-hang trace: is clone() even reached?  libudev-zero spawns one
+            // pthread per /sys/dev/char entry and joins them; no [clone] line in the boot
+            // log means the threads were never created and the join can never return.
+            klog("[trace] clone flags="); klog_hex(rdi);
+            klog(" stack="); klog_hex(rsi); klog("\n");
             // clone(flags=rdi, stack=rsi, ptid=rdx, ctid=r10, tls=r8).
             // CLONE_VM ⇒ thread creation (pthread_create / std::thread): a new
             // task sharing this address space, running on the supplied stack.

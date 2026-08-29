@@ -41,7 +41,14 @@ if [ "${GPU:-0}" = "1" ]; then
   fi
 else
   MEM="${MEM:-512}"
-  GFX=(-display gtk)
+  # HEADLESS=1 on the software path too: no window, serial only.  Needed to boot this
+  # from a non-interactive shell (CI, an agent, or over ssh) and just read serial.log.
+  if [ "${HEADLESS:-0}" = "1" ]; then
+    GFX=(-display none)
+    echo "[qemu-run] HEADLESS=1: no window; read serial.log"
+  else
+    GFX=(-display gtk)
+  fi
 fi
 
 # A5/F4 persistence: a 32 MiB raw SATA disk on an AHCI controller backs the object

@@ -6947,10 +6947,33 @@ __gshared uint g_hangTracePollCount = 0;
 __gshared uint g_hangTraceFutexCount = 0;   // separate budget: the poll flood must not starve it
 enum uint HANG_TRACE_POLL_MAX = 300;
 
+// Which process is calling — without this the poll traces are unattributable and the
+// two re-arming pollers (seatd child, sshd launcher) look identical to weston.
+private void hangTraceWho() {
+    klog(" who="); klog_dec(g_current_task_id); klog(":");
+    const(char)* p = g_taskExecName[cast(int)g_current_task_id];
+    klog(p !is null ? p : "?".ptr);
+}
+
+// The kernel re-runs a parked poll on every tick, so two idle processes alone burned the
+// entire 300-line budget last boot and hid whatever weston was blocked on.  Skip those two
+// known re-arm patterns — the seatd child (nfds=2, infinite) and the sshd launcher
+// (nfds=1, 1000ms) — so the budget is spent on NOVEL polls.  libseat blocks weston with
+// poll(&fd, 1, -1): nfds=1 AND infinite, which matches neither and will be logged.
+private void hangTracePoll(const(char)* name, ulong nfds, ulong timeout) {
+    enum ulong INFINITE = 0xFFFFFFFFFFFFFFFF;
+    if (nfds == 2 && timeout == INFINITE) return;   // seatd child poller
+    if (nfds == 1 && timeout == 1000) return;       // sshd launcher
+    if (g_hangTracePollCount >= HANG_TRACE_POLL_MAX) return;
+    ++g_hangTracePollCount;
+    hangTrace2(name, nfds, timeout);
+}
+
 private void hangTrace2(const(char)* name, ulong a, ulong b) {
     klog("[trace] "); klog(name);
     klog(" a="); klog_hex(a);
     klog(" b="); klog_hex(b);
+    hangTraceWho();
     klog("\n");
 }
 
@@ -9494,13 +9517,13 @@ private long pollScanFds(ulong fds, ulong nfds) {
 }
 
 public long linux_sys_poll(ulong fds, ulong nfds, ulong timeout) {
-    if (g_hangTracePollCount < HANG_TRACE_POLL_MAX) { ++g_hangTracePollCount; hangTrace2("poll nfds,timeout", nfds, timeout); }
+    hangTracePoll("poll nfds,timeout", nfds, timeout);
     return pollScanFds(fds, nfds);
 }
 // ppoll(fds, nfds, timeout_ts, sigmask, sigsetsize): scan readiness like poll;
 // the timeout/blocking is handled cooperatively by the syscall dispatcher.
 public long linux_sys_ppoll(ulong fds, ulong nfds, ulong tmo, ulong sig, ulong sz) {
-    if (g_hangTracePollCount < HANG_TRACE_POLL_MAX) { ++g_hangTracePollCount; hangTrace2("ppoll nfds,tmo", nfds, tmo); }
+    hangTracePoll("ppoll nfds,tmo", nfds, tmo);
     return pollScanFds(fds, nfds);
 }
 // Scan select() fd_set bitmasks for readiness and rewrite each set IN PLACE to only the ready fds,

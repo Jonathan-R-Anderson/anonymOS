@@ -24,9 +24,34 @@ if [ -z "$ISO" ]; then
         [ -f "$candidate" ] && { ISO="$candidate"; break; }
     done
 fi
-VMDIR="${VBOX_VMDIR:-$HOME/VirtualBox VMs/$VM}"
-STORE_VDI="$VMDIR/store.vdi"
-SYS_VDI="$VMDIR/system.vdi"
+# Where the VM's disks live.  Do not assume "$HOME/VirtualBox VMs/$VM": VirtualBox's
+# default machine folder is configurable, and a VM created earlier (or by hand) can
+# have its VDIs anywhere.  Resolution order for each disk:
+#   1. an explicit SYS_VDI= / STORE_VDI= from the environment
+#   2. whatever is actually attached to the VM, asked of VBoxManage
+#   3. $VMDIR/<name>.vdi, with VMDIR taken from VirtualBox's own default folder
+VBOX_DEFAULT_DIR="$(VBoxManage list systemproperties 2>/dev/null \
+    | sed -n 's/^Default machine folder: *//p' | head -1)"
+VMDIR="${VBOX_VMDIR:-${VBOX_DEFAULT_DIR:-$HOME/VirtualBox VMs}/$VM}"
+
+# vdi_attached <name-fragment> — path of an attached .vdi whose filename matches, if any.
+vdi_attached() {
+    VBoxManage showvminfo "$VM" --machinereadable 2>/dev/null \
+        | sed -n 's/^"SATA-[0-9]*-[0-9]*"="\(.*\.vdi\)"$/\1/p' \
+        | grep -i "$1" | head -1
+}
+
+# resolve_vdi <env-value> <name> — print the disk path to use, or nothing.
+resolve_vdi() {
+    local explicit="$1" name="$2" found
+    if [ -n "$explicit" ]; then printf '%s\n' "$explicit"; return; fi
+    found="$(vdi_attached "$name")"
+    [ -n "$found" ] && { printf '%s\n' "$found"; return; }
+    printf '%s\n' "$VMDIR/$name.vdi"
+}
+
+STORE_VDI="$(resolve_vdi "${STORE_VDI:-}" store)"
+SYS_VDI="$(resolve_vdi "${SYS_VDI:-}" system)"
 MEM_MB="${MEM_MB:-3072}"
 SYS_GB="${SYS_GB:-8}"
 ACTION="${1:-}"
@@ -44,6 +69,29 @@ ACTION="${1:-}"
 echo "[vbox] using ISO: $ISO"
 
 case "$ACTION" in
+    --boot-iso)
+        # Re-attach the installer ISO to the EXISTING VM and boot from it, without
+        # recreating anything.  This is the non-destructive counterpart to a bare run:
+        # it keeps store.vdi and system.vdi exactly as they are.  Use it to boot a new
+        # ISO against a VM you already installed into, or when the DVD slot is empty.
+        if ! VBoxManage showvminfo "$VM" >/dev/null 2>&1; then
+            echo "ERROR: VM '$VM' does not exist — create it first with: $0" >&2
+            exit 1
+        fi
+        VBoxManage controlvm "$VM" poweroff >/dev/null 2>&1 || true
+        sleep 1
+        # Disks back to their install-time ports (a prior --boot-disk moves system to 0).
+        VBoxManage storageattach "$VM" --storagectl SATA --port 0 --device 0 --type hdd --medium none >/dev/null 2>&1 || true
+        VBoxManage storageattach "$VM" --storagectl SATA --port 1 --device 0 --type hdd --medium none >/dev/null 2>&1 || true
+        [ -f "$STORE_VDI" ] && VBoxManage storageattach "$VM" --storagectl SATA --port 0 --device 0 --type hdd --medium "$STORE_VDI" >/dev/null
+        [ -f "$SYS_VDI" ]   && VBoxManage storageattach "$VM" --storagectl SATA --port 1 --device 0 --type hdd --medium "$SYS_VDI"   >/dev/null
+        VBoxManage storageattach "$VM" --storagectl SATA --port 2 --device 0 --type dvddrive --medium "$ISO" >/dev/null
+        VBoxManage modifyvm "$VM" --boot1 dvd --boot2 disk --boot3 none --boot4 none >/dev/null
+        echo "[vbox] attached $ISO to the DVD drive; booting '$VM' from it"
+        echo "[vbox] serial log: $VMDIR/serial.log"
+        VBoxManage startvm "$VM"
+        exit 0
+        ;;
     --boot-disk)
         if ! VBoxManage showvminfo "$VM" >/dev/null 2>&1; then
             echo "ERROR: VM '$VM' does not exist — install first with: $0 --start" >&2
@@ -51,8 +99,18 @@ case "$ACTION" in
         fi
         if [ ! -f "$SYS_VDI" ]; then
             echo "ERROR: installed system disk not found: $SYS_VDI" >&2
+            echo "" >&2
+            echo "Disks currently attached to '$VM':" >&2
+            VBoxManage showvminfo "$VM" --machinereadable 2>/dev/null \
+                | sed -n 's/^"SATA-[0-9]*-[0-9]*"="\(.*\)"$/  \1/p' >&2 || true
+            echo "" >&2
+            echo "Point at it explicitly if it lives elsewhere:" >&2
+            echo "  SYS_VDI=/path/to/system.vdi $0 --boot-disk" >&2
+            echo "Or, if you have not installed to disk yet, do that first: $0 --start" >&2
             exit 1
         fi
+        echo "[vbox] system disk: $SYS_VDI"
+        [ -f "$STORE_VDI" ] && echo "[vbox] store disk:  $STORE_VDI"
         VBoxManage controlvm "$VM" poweroff >/dev/null 2>&1 || true
         sleep 1
         VBoxManage storageattach "$VM" --storagectl SATA --port 2 --device 0 --type dvddrive --medium none >/dev/null
@@ -69,13 +127,24 @@ case "$ACTION" in
         ;;
     ""|--start) ;;
     *)
-        echo "Usage: $0 [--start|--boot-disk]" >&2
+        echo "Usage: $0 [--start|--boot-iso|--boot-disk]" >&2
+        echo "  (no args)    recreate the VM from scratch — DELETES store.vdi and system.vdi" >&2
+        echo "  --start      same, then start it" >&2
+        echo "  --boot-iso   boot the existing VM from the ISO, keeping its disks" >&2
+        echo "  --boot-disk  boot the installed system disk, DVD detached" >&2
         exit 2
         ;;
 esac
 
 # Tear down any prior VM of this name (and its disks) so the script is re-runnable.
 if VBoxManage showvminfo "$VM" >/dev/null 2>&1; then
+    echo "" >&2
+    echo "!!  VM '$VM' already exists.  Recreating it DELETES its disks:" >&2
+    [ -f "$STORE_VDI" ] && echo "      $STORE_VDI" >&2
+    [ -f "$SYS_VDI" ]   && echo "      $SYS_VDI   <- any installed system on it" >&2
+    echo "    To boot the existing VM instead, Ctrl-C now and run:  $0 --boot-iso" >&2
+    echo "    Continuing in 5s..." >&2
+    sleep 5
     echo "==> removing existing VM '$VM'"
     VBoxManage controlvm "$VM" poweroff >/dev/null 2>&1 || true
     sleep 1

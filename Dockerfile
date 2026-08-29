@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 # =============================================================================
 # anonymOS — containerized build.  `docker build` runs the ENTIRE make and hands
 # back the installer ISO, so a host needs nothing but Docker: no make, no clang,

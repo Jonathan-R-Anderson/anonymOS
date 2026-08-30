@@ -6950,21 +6950,40 @@ enum uint HANG_TRACE_POLL_MAX = 300;
 // Which process is calling — without this the poll traces are unattributable and the
 // two re-arming pollers (seatd child, sshd launcher) look identical to weston.
 private void hangTraceWho() {
+    const int tid = cast(int)g_current_task_id;
     klog(" who="); klog_dec(g_current_task_id); klog(":");
-    const(char)* p = g_taskExecName[cast(int)g_current_task_id];
+    const(char)* p = (tid >= 0 && tid < MAX_TASKS) ? g_taskExecName[tid] : null;
     klog(p !is null ? p : "?".ptr);
 }
 
-// The kernel re-runs a parked poll on every tick, so two idle processes alone burned the
-// entire 300-line budget last boot and hid whatever weston was blocked on.  Skip those two
-// known re-arm patterns — the seatd child (nfds=2, infinite) and the sshd launcher
-// (nfds=1, 1000ms) — so the budget is spent on NOVEL polls.  libseat blocks weston with
-// poll(&fd, 1, -1): nfds=1 AND infinite, which matches neither and will be logged.
+// Per-task poll trace state.  A parked poll is re-armed by the kernel on EVERY scheduler
+// pass, so one idle process emits thousands of identical lines and buries the tail.
+__gshared uint[MAX_TASKS]  g_hangTracePollSeen;      // lines spent by this task
+__gshared ulong[MAX_TASKS] g_hangTracePollLastNfds;  // last shape seen from this task…
+__gshared ulong[MAX_TASKS] g_hangTracePollLastTmo;   // …so a re-arm of it can be collapsed
+enum uint HANG_TRACE_POLL_PER_TID = 32;
+
+// Collapse by (task, shape) rather than by shape alone.  The previous version skipped
+// nfds=2/infinite and nfds=1/1000ms outright to keep two idle pollers from eating the
+// budget — but that filter is blind to WHO is polling, so it would equally have hidden
+// weston had weston blocked in either shape, silently discarding the one line the trace
+// exists to capture.  Here the first poll of a given shape from a given task always
+// prints; only a re-arm of that same shape by that same task is dropped.  A per-task cap
+// keeps any one process from starving the others, with the global budget as a backstop.
 private void hangTracePoll(const(char)* name, ulong nfds, ulong timeout) {
-    enum ulong INFINITE = 0xFFFFFFFFFFFFFFFF;
-    if (nfds == 2 && timeout == INFINITE) return;   // seatd child poller
-    if (nfds == 1 && timeout == 1000) return;       // sshd launcher
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return;
+
+    if (g_hangTracePollSeen[tid] != 0 &&
+        g_hangTracePollLastNfds[tid] == nfds &&
+        g_hangTracePollLastTmo[tid]  == timeout) return;   // parked on a shape already logged
+
+    g_hangTracePollLastNfds[tid] = nfds;
+    g_hangTracePollLastTmo[tid]  = timeout;
+
+    if (g_hangTracePollSeen[tid] >= HANG_TRACE_POLL_PER_TID) return;
     if (g_hangTracePollCount >= HANG_TRACE_POLL_MAX) return;
+    ++g_hangTracePollSeen[tid];
     ++g_hangTracePollCount;
     hangTrace2(name, nfds, timeout);
 }

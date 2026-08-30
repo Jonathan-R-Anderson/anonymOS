@@ -138,7 +138,7 @@ fi
 
 # A stale server socket makes QEMU fail to bind (and it exits without an obvious error);
 # clear them so a relaunch always starts cleanly.
-rm -f "$PWD/qmp.sock"
+rm -f "$PWD/qmp.sock" "$PWD/mon.sock"
 
 # Forward the HOST's real WiFi (nmcli scan + connect) into the guest over a dedicated COM2
 # serial port.  QEMU exposes COM2 as a listening UNIX socket; the host bridge
@@ -172,6 +172,18 @@ else
   echo "[qemu-run] host-WiFi bridge OFF (no host WiFi device, or WIFI=0)"
 fi
 
+# HMP monitor on a UNIX socket, ALWAYS — the one thing that turns a wedged guest from a
+# rebuild-and-guess loop into a measurement.  When the serial log goes silent you can ask
+# the running VM where its CPU actually is, without rebuilding the ISO:
+#
+#   for i in $(seq 5); do echo "info registers" | nc -U mon.sock | grep -E '^RIP'; sleep 1; done
+#
+# RIP in kernel space and MOVING  -> the kernel loop is alive; userspace is blocked.
+# RIP in kernel space and PINNED  -> the kernel is wedged inside one syscall handler.
+# RIP in the userspace range      -> the guest process is spinning; no syscall involved.
+#
+# (`info registers` / `x/20i $pc` / `info mem` all work.  QMP stays on qmp.sock for the
+# GPU path — QMP and HMP are separate sockets and coexist fine.)
 exec "$QEMU_BIN" \
   -boot d \
   -cdrom "$ISO" \
@@ -181,6 +193,7 @@ exec "$QEMU_BIN" \
   -smp "${SMP:-1}" \
   -no-reboot \
   -no-shutdown \
+  -monitor "unix:$PWD/mon.sock,server=on,wait=off" \
   -d int,cpu_reset,guest_errors \
   -D qemu-debug.log \
   "${ACCEL[@]}" \

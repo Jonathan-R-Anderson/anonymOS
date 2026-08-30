@@ -4386,6 +4386,12 @@ void d_kernel_main() {
     klog("[dkernel] init phys="); klog_hex(initPhys);
     klog(" size="); klog_hex(initSize); klog("\n");
     procFb("init=", initExecName);   // direct-fb: which compositor/binary is PID1
+    // PID1 is loaded HERE, not through execveTask, so it never passed the boot-module
+    // scan that assigns g_taskExecName — leaving task 0 (and every task forked from it,
+    // which inherits the null) nameless in every diagnostic that names a task: the freeze
+    // watchdog's cur=/HOG= line, the crash HUD, and the hang trace's who=.  They all
+    // printed "?" for the compositor, the one process those diagnostics exist to watch.
+    g_taskExecName[0] = initExecName;
     bootProgress("elf");
 
     // Allocate a new PML4 for the init process

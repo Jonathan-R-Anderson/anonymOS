@@ -96,3 +96,82 @@ been any budget left when weston reached it.
   `CLIENT_OPEN_DEVICE`, or the reply never wakes the parent).
 - No weston poll line at all → weston is blocked in a syscall not yet traced; next step is
   to trace the syscall dispatcher itself for that task id.
+
+## Iteration 4 result — the trace answered, and the answer was silence
+
+The iteration-4 kernel shipped and booted (ISO 19:07 > posix.d 18:33; `grep -a "trace] clone
+flags" dist/kernel.elf` → 1). Weston reached libinput's device enumeration, read the four
+sysfs uevent files, and stopped. The last kernel-visible event is
+
+    [open] /sys/class/input/event0/uevent          (serial.log:341)
+
+Weston's own clock puts all of it inside **31 ms**; the VM then sat wedged for 9+ minutes
+with the vCPU thread holding a full core.
+
+The decision tree lands on **branch 2 — no weston poll line at all** — and this time the
+absence is real evidence rather than a starved budget: only **45 of the 300** trace lines
+were spent (30 ioctl, 6 poll, 5 recvmsg, 4 sendmsg). ioctl/sendmsg/recvmsg are uncapped, and
+clone/futex are still wired, so Weston genuinely issued **none** of the seven traced calls
+after that open.
+
+### But the instrumentation could not close it, and iteration 4 caused two of the three gaps
+
+1. **The poll skip filtered by SHAPE, not by task.** It dropped every `nfds=2`/infinite and
+   every `nfds=1`/1000 ms poll from *any* task. The justification was that libseat blocks
+   weston with `nfds=1, timeout=-1`, which matches neither — but that is an assumption about
+   the very thing being measured. Had weston blocked in either skipped shape, the filter
+   would have discarded the one line it was added to capture.
+2. **`who=` printed `?` on every line.** `g_taskExecName[0]` is null: PID1 is loaded by the
+   boot path in `kernel_main.d` (~:4388), not through `execveTask`, so it never passes the
+   boot-module scan at :1041 that assigns `execName`. tid 3 inherits the null from tid 0 via
+   fork (:886). The tid half worked (0=weston, 2=sshd launcher, 3=seatd child); the name
+   half was a no-op in every diagnostic, including the freeze HUD and crash HUD.
+3. **Nothing could separate "weston blocked" from "kernel wedged".** `[open]` is logged at
+   syscall *entry* (posix.d:3544) with no return, so it is not even known whether that last
+   `open()` came back. And the new skip silenced the sshd launcher's 1 Hz poll — the log's
+   last remaining liveness heartbeat. Nothing else in `kernelLoop` prints periodically:
+   every `maybeSpawn*` that would log is latched off (dbus/NM/nmcli by `useDirectWifi()`,
+   wpa/udhcpc by the absent `/run/hos-net.sock`, since `[lkl] no driveable PCI device`), and
+   `freezeProbeKlog` returns immediately unless the desktop has **already presented a
+   frame** — so the freeze watchdog is structurally incapable of firing for a hang that
+   happens before the first present.
+
+The 100 % CPU is not evidence either way: `kernelLoop` (kernel_main.d:3803) never halts
+while any task exists — it runs `/idle` instead.
+
+## Iteration 5 — stop instrumenting; measure the guest directly
+
+Four rebuild-and-guess cycles happened because the VM is launched with **no monitor and no
+gdbstub**, so a wedged guest can only be re-instrumented, never inspected.
+
+**Changed:**
+- `qemu-run.sh`: always pass `-monitor unix:$PWD/mon.sock,server=on,wait=off` (and `rm -f`
+  it alongside `qmp.sock`). QMP stays on `qmp.sock` for the GPU path; the two coexist.
+- `posix.d hangTracePoll()`: collapse by **(task, shape)** instead of by shape. The first
+  poll of a given shape from a given task always prints; only a re-arm of that same shape by
+  that same task is dropped. Per-task cap (32) for fairness, global 300 as a backstop. This
+  cannot hide a task the way the shape filter could.
+- `posix.d hangTraceWho()`: bounds-guard the tid index.
+- `kernel_main.d`: set `g_taskExecName[0] = initExecName` where PID1 is loaded, so the
+  compositor is named in the hang trace, the freeze HUD and the crash HUD.
+
+**The measurement that makes the next iteration unnecessary** — no rebuild required, works
+on the ISO already built:
+
+    for i in $(seq 5); do echo "info registers" | nc -U mon.sock | grep -E '^RIP'; sleep 1; done
+
+- RIP in kernel space and **moving** → the kernel loop is alive; weston is blocked in
+  userspace, and the syscall it is parked in is one not yet traced.
+- RIP in kernel space and **pinned** → the kernel is wedged inside that last `open()`.
+- RIP in weston's range (`0x5a00_…`) → weston is spinning in userspace; no syscall involved,
+  which is why no trace line was ever going to appear.
+
+That single reading halves the search space in two minutes instead of a 30-minute Docker
+rebuild, and it is the branch every previous iteration was implicitly guessing at.
+
+### Unrelated, observed while diagnosing
+- `wifi-host-bridge.log`: `setsid: failed to execute python3` — the host WiFi bridge never
+  starts on this NixOS box, so `/run/wifi/*` is never fed.
+- QEMU emulates COM2 regardless of whether a host peer connected, so the 16550 scratch probe
+  still sets `g_wifiBridgePresent = true`. The guest therefore runs `wifiBridgePoll()`'s
+  ~12k-node overlay scan at 10 Hz, under the BKL, for a bridge that is not there.

@@ -50,13 +50,23 @@ openrc-cross.ini: $(MUSL_CC)
 	@printf "c_args = ['-static', '-I%s/include']\n"   "$(MUSL_INSTALL)" >> $@
 	@printf "c_link_args = ['-static', '-L%s/lib']\n"  "$(MUSL_INSTALL)" >> $@
 
+# --sysconfdir MUST be absolute.  meson.build:221 hands get_option('sysconfdir') straight to
+# tools/meson_runlevels.sh, and that script ends with
+#     ln -snf "${rc_libexecdir}"/sh/functions.sh "${DESTDIR}/${init_d_dir}"
+# -- note the slash between DESTDIR and init_d_dir, which the rest of the script does
+# NOT have.  With meson defaulting sysconfdir to the RELATIVE "etc" and the install
+# rule below forcing DESTDIR= (empty), that expands to the real host /etc/init.d and
+# the install dies with "ln: failed to create symbolic link '/etc/init.d/functions.sh':
+# Permission denied" (and would silently scribble on the host if run as root).
 # ── Configure ─────────────────────────────────────────────────────────────────
-$(OPENRC_SRC)/build/build.ninja: $(OPENRC_SRC)/meson.build openrc-cross.ini
+$(OPENRC_SRC)/build/build.ninja: $(OPENRC_SRC)/meson.build openrc-cross.ini Makefile
 	@echo "[openrc] Configuring with meson..."
+	rm -rf $(OPENRC_SRC)/build
 	meson setup $(OPENRC_SRC)/build $(OPENRC_SRC) \
 	  --cross-file openrc-cross.ini \
 	  --prefix=$(OPENRC_INSTALL) \
 	  --sbindir=sbin \
+	  --sysconfdir=$(OPENRC_INSTALL)/etc \
 	  --buildtype=release \
 	  --default-library=static \
 	  -Drootprefix=$(OPENRC_INSTALL) \

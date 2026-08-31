@@ -3742,6 +3742,8 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
     klog(resolved ? " — N1: gateway ARP RESOLVED (a frame round-tripped!)\n"
                   : " — N1: gateway ARP not resolved\n");
     netHudProbe("arp".ptr, resolved);
+    // If nothing was received, dump what the NIC itself thinks its rx ring is.
+    if (getNetRxFrames() == 0) { import drivers.network.network : e1000Diag; e1000Diag(); }
 
     // A DNS lookup is the ACTUAL answer to "do I have internet?".  arp=OK only proves the
     // gateway is reachable on the LAN; resolving a name needs routing past it and a working

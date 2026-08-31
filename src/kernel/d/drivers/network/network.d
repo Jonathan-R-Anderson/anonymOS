@@ -646,3 +646,32 @@ public void netHudRepaint(uint y0) @nogc nothrow {
     for (int i = 0; i < g_netHudN; i++)
         fb_draw_hud_row(y0 + cast(uint)(i * 16), g_netHud[i].ptr);
 }
+
+// One-shot e1000 RX diagnostic.  Read the registers BACK from the device and compare them
+// with what we programmed, then show descriptor 0.  This distinguishes the three remaining
+// explanations for "frames arrive at the device but rx stays 0":
+//
+//   RDBAL/RDLEN readback != what we wrote  -> our MMIO register writes are not landing
+//   RDH still 0                            -> the device never wrote a descriptor at all
+//   RDH advanced but desc[0].status == 0   -> it DMA'd the descriptor somewhere else,
+//                                             i.e. RDBAL does not match g_rxDescriptors
+public void e1000Diag() @nogc nothrow {
+    import core.io : klog, klog_hex;
+    if (g_netDevice.type != NetworkDeviceType.E1000 || !g_networkAvailable) return;
+    auto d = &g_netDevice;
+    klog("[e1000diag] RCTL=");  klog_hex(readE1000Reg(d, E1000Reg.RCTL));
+    klog(" RDBAL=");            klog_hex(readE1000Reg(d, E1000Reg.RDBAL));
+    klog(" RDBAH=");            klog_hex(readE1000Reg(d, E1000Reg.RDBAH));
+    klog(" RDLEN=");            klog_hex(readE1000Reg(d, E1000Reg.RDLEN));
+    klog("\n[e1000diag] RDH=");  klog_hex(readE1000Reg(d, E1000Reg.RDH));
+    klog(" RDT=");              klog_hex(readE1000Reg(d, E1000Reg.RDT));
+    klog(" STATUS=");           klog_hex(readE1000Reg(d, E1000Reg.STATUS));
+    klog("\n[e1000diag] ringVirt="); klog_hex(cast(ulong)g_rxDescriptors);
+    if (g_rxDescriptors !is null) {
+        klog(" d0.addr=");   klog_hex(g_rxDescriptors[0].addr);
+        klog(" d0.status="); klog_hex(g_rxDescriptors[0].status);
+        klog(" d0.len=");    klog_hex(g_rxDescriptors[0].length);
+        klog(" d1.status="); klog_hex(g_rxDescriptors[1].status);
+    }
+    klog("\n");
+}

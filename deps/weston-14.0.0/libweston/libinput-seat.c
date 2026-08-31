@@ -458,14 +458,37 @@ udev_input_init(struct udev_input *input, struct weston_compositor *c,
 		libinput_log_set_handler(input->libinput, &libinput_log_func);
 		libinput_log_set_priority(input->libinput, priority);
 
+		/* libinput explains every device rejection through log_info(), and NONE
+		 * of those lines reached the serial log last boot -- only its ERROR-level
+		 * quirks warnings did.  Print the priority we actually installed so we can
+		 * tell "libinput stayed silent because it was filtered" from "libinput
+		 * stayed silent because it never ran".  10=DEBUG 20=INFO 30=ERROR.
+		 */
+		weston_log("libinput: path ctx priority=%d\n", (int)priority);
+
+		/* The pointer and the post-state are logged deliberately, because the
+		 * boot before this one produced a self-contradictory trace: both calls
+		 * below reported success ("added"), yet the kernel logged no open() of
+		 * /dev/input/event* and not one EVIOC ioctl (every traced ioctl was DRM
+		 * type 'd'), and udev_input_enable() then still reported zero devices.
+		 * libinput cannot return non-NULL here without evdev_device_create()
+		 * having opened the node and run libevdev_new_from_fd(), so exactly one
+		 * of those observations is lying.  %p distinguishes a real heap device
+		 * from a bogus non-zero value, and has_devices= says whether weston's
+		 * seat actually received LIBINPUT_EVENT_DEVICE_ADDED.
+		 */
 		for (i = 0; i < sizeof(epin_fixed_nodes) / sizeof(epin_fixed_nodes[0]); i++) {
-			if (libinput_path_add_device(input->libinput, epin_fixed_nodes[i]))
-				weston_log("libinput: added %s\n", epin_fixed_nodes[i]);
-			else
-				weston_log("libinput: FAILED to add %s\n", epin_fixed_nodes[i]);
+			struct libinput_device *d =
+				libinput_path_add_device(input->libinput, epin_fixed_nodes[i]);
+
+			weston_log("libinput: add %s -> %p\n",
+				   epin_fixed_nodes[i], (void *)d);
 		}
 
 		process_events(input);
+
+		weston_log("libinput: after fallback has_devices=%d\n",
+			   (int)epin_input_has_devices(input));
 	}
 
 

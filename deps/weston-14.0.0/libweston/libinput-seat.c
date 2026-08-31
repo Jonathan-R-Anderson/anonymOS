@@ -27,6 +27,7 @@
 #include "config.h"
 
 #include <stdint.h>
+#include <stdbool.h>   /* epin_input_has_devices() returns bool */
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -336,6 +337,20 @@ libinput_log_func(struct libinput *libinput,
 {
 	weston_vlog(format, args);
 }
+/* True when any seat has at least one device -- same test udev_input_enable() uses to decide
+ * whether to print "no input devices found". */
+static bool
+epin_input_has_devices(struct udev_input *input)
+{
+	struct udev_seat *seat;
+
+	wl_list_for_each(seat, &input->compositor->seat_list, base.link)
+		if (!wl_list_empty(&seat->devices_list))
+			return true;
+
+	return false;
+}
+
 
 int
 udev_input_init(struct udev_input *input, struct weston_compositor *c,
@@ -386,6 +401,49 @@ udev_input_init(struct udev_input *input, struct weston_compositor *c,
 	}
 
 	process_events(input);
+
+	/* anonymOS: PATH-BACKEND FALLBACK.
+	 *
+	 * With libudev-zero over our synthetic /sys, the udev enumeration can come up empty
+	 * ("warning: no input devices found") even though /dev/input/event0 and event1 are
+	 * perfectly usable.  The consequence is severe and easy to misread: weston ends up with
+	 * no keyboard and no pointer, so no SUPER+key shortcut fires and no click lands, while
+	 * the kernel-drawn cursor keeps moving -- the desktop looks alive but is deaf.
+	 *
+	 * This kernel always exposes exactly two evdev nodes at fixed, known paths, so when the
+	 * udev scan finds nothing there is no reason to depend on it: drop that context and add
+	 * the nodes explicitly through libinput's PATH backend, which performs no /sys
+	 * enumeration at all.  Strictly a fallback -- when udev works, nothing here runs.
+	 */
+	if (!epin_input_has_devices(input)) {
+		static const char *const epin_fixed_nodes[] = {
+			"/dev/input/event0",   /* keyboard */
+			"/dev/input/event1",   /* pointer  */
+		};
+		unsigned i;
+
+		weston_log("libinput: udev scan found no devices; "
+			   "falling back to fixed evdev paths\n");
+
+		libinput_unref(input->libinput);
+		input->libinput = libinput_path_create_context(&libinput_interface, input);
+		if (!input->libinput) {
+			weston_log("libinput: path create_context failed; no input devices\n");
+			return 0;
+		}
+		libinput_log_set_handler(input->libinput, &libinput_log_func);
+		libinput_log_set_priority(input->libinput, priority);
+
+		for (i = 0; i < sizeof(epin_fixed_nodes) / sizeof(epin_fixed_nodes[0]); i++) {
+			if (libinput_path_add_device(input->libinput, epin_fixed_nodes[i]))
+				weston_log("libinput: added %s\n", epin_fixed_nodes[i]);
+			else
+				weston_log("libinput: FAILED to add %s\n", epin_fixed_nodes[i]);
+		}
+
+		process_events(input);
+	}
+
 
 	return udev_input_enable(input);
 }

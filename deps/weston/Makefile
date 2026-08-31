@@ -266,7 +266,18 @@ $(STAMP_DIR)/libseat-built: $(DL_DIR)/libseat-$(LIBSEAT_VER).tar.gz $(STAMP_DIR)
 #    Flip this back to true only once libGLESv2/libEGL/libgbm really are installed into
 #    deps/gtk-stack/sysroot (see roadmap R2 / VIRGL_BLOB_ROADMAP for that work).
 # ════════════════════════════════════════════════════════════════════════════
-$(STAMP_DIR)/weston-built: $(WESTON_SRC)/meson.build | $(STAMP_DIR)/libdrm-built $(STAMP_DIR)/libevdev-built $(STAMP_DIR)/libudev-built $(STAMP_DIR)/libinput-built $(STAMP_DIR)/libdisplay-info-built $(STAMP_DIR)/libseat-built
+# Weston is built from the COMMITTED tree at deps/weston-14.0.0, which we patch (the
+# sessionless-input work, the panel's network indicator, the evdev path-backend fallback).
+# The stamp below used to depend only on meson.build, so editing any of those .c files did
+# NOT rebuild weston -- make saw an up-to-date stamp and skipped the whole step.  Every such
+# edit was silently dropped from the ISO while the build reported success, which is a
+# particularly expensive failure: the change looks shipped and behaves as if it never existed.
+# Depend on the actual sources instead.
+WESTON_PATCHED_SRCS := $(shell find $(WESTON_SRC)/libweston $(WESTON_SRC)/clients \
+                                   $(WESTON_SRC)/desktop-shell $(WESTON_SRC)/frontend \
+                                   -name '*.c' -o -name '*.h' 2>/dev/null)
+
+$(STAMP_DIR)/weston-built: $(WESTON_SRC)/meson.build $(WESTON_PATCHED_SRCS) | $(STAMP_DIR)/libdrm-built $(STAMP_DIR)/libevdev-built $(STAMP_DIR)/libudev-built $(STAMP_DIR)/libinput-built $(STAMP_DIR)/libdisplay-info-built $(STAMP_DIR)/libseat-built
 	@echo "[weston] Configuring weston (build-epin)..."
 	rm -rf $(WESTON_SRC)/build-epin
 	env $(PKG_CONFIG_ENV) meson setup $(WESTON_SRC)/build-epin $(WESTON_SRC) \

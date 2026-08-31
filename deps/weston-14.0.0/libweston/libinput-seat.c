@@ -110,7 +110,7 @@ device_added(struct udev_input *input, struct libinput_device *libinput_device)
 	}
 
 	seat = &udev_seat->base;
-	device = evdev_device_create(libinput_device, seat);
+	device = weston_evdev_device_create(libinput_device, seat);
 	if (device == NULL) {
 		weston_log("Failed to create a device\n");
 		return 1;
@@ -160,7 +160,7 @@ device_removed(struct udev_input *input, struct libinput_device *libinput_device
 		return 1;
 	}
 
-	evdev_device_destroy(device);
+	weston_evdev_device_destroy(device);
 	return 0;
 }
 
@@ -170,7 +170,7 @@ udev_seat_remove_devices(struct udev_seat *seat)
 	struct evdev_device *device, *next;
 
 	wl_list_for_each_safe(device, next, &seat->devices_list, link) {
-		evdev_device_destroy(device);
+		weston_evdev_device_destroy(device);
 	}
 }
 

@@ -1003,8 +1003,8 @@ evdev_device_init_tablet(struct evdev_device *device,
 }
 
 struct evdev_device *
-evdev_device_create(struct libinput_device *libinput_device,
-		    struct weston_seat *seat)
+weston_evdev_device_create(struct libinput_device *libinput_device,
+			   struct weston_seat *seat)
 {
 	struct evdev_device *device;
 
@@ -1054,7 +1054,7 @@ evdev_device_create(struct libinput_device *libinput_device,
 }
 
 void
-evdev_device_destroy(struct evdev_device *device)
+weston_evdev_device_destroy(struct evdev_device *device)
 {
 	if (device->seat_caps & EVDEV_SEAT_POINTER)
 		weston_seat_release_pointer(device->seat);

@@ -118,7 +118,19 @@ all: gtk-hello
 dirs:
 	mkdir -p $(SYSROOT) $(STAMPS) $(DLDIR) $(BLDDIR)
 
-$(HOST_PY_STAMP): $(SELF)/Makefile
+# $(HOST_TOOLS_BIN)/python3 is read by gtk-stack, mutter, hyprland-hos and elogind, and
+# build.opts:13 puts $(HOST_TOOLS_BIN) on PATH -- but NOTHING in the tree creates it.
+# The container papers over it (Dockerfile:164 symlinks /usr/bin/python3); a native
+# build just died with "deps/.host-tools/bin/python3: not found" (exit 127).  Link it
+# to whatever python3 is on PATH, so both paths work.
+$(HOST_PYTHON):
+	@mkdir -p $(HOST_TOOLS_BIN)
+	@p="$$(command -v python3 || true)"; \
+	 if [ -z "$$p" ]; then echo "[host-python] no python3 on PATH" >&2; exit 1; fi; \
+	 ln -sfn "$$p" $@; \
+	 echo "[host-python] linked $@ -> $$p"
+
+$(HOST_PY_STAMP): $(HOST_PYTHON) $(SELF)/Makefile
 	@echo "[host-python] Ensuring python packaging module..."
 	@mkdir -p $(HOST_TOOLS_ROOT)
 	@$(HOST_PYTHON) -c 'import packaging' >/dev/null 2>&1 || $(HOST_PIP_INSTALL) packaging

@@ -11488,6 +11488,9 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     // clean desktop, but remain enabled during real-hardware WiFi bring-up.
     if (g_wifiDebugHud) {
         { import drivers.pci : wifiSurveyRepaint; wifiSurveyRepaint(); }  // persist the WiFi survey on-screen
+        // ...and the live network state right below it.  This is the ONLY place the LAN
+        // status is visible when the pointer does not work and no terminal is reachable.
+        { import drivers.network.network : netHudRepaint; netHudRepaint(); }
         msiHudRepaint();   // persist the MSI diagnostic (addr/data/fire-count) on row 2
         wifiCsrHudRepaint();  // persist the polled CSR_INT / ALIVE state on row 3
         lklLogRepaint();   // persist the LKL/iwlwifi console at the bottom of the desktop

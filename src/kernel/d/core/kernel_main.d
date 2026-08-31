@@ -96,7 +96,8 @@ import network.types : IPv4Address, MACAddress;
 import network.icmp : getIcmpEchoReplies;   // N2: verify a ping round-trips
 import network.dns : dnsResolve;            // N2/N3/N6: prove the IPv4 RX path via a DNS reply
 import network.dhcp : dhcpAcquire, dhcpGetConfig;   // N6 DHCP: the offline-verifiable IPv4+UDP RX proof
-import network.ipv4 : setLocalIPAddress;            // DHCP exchange runs IP-less (src 0.0.0.0)
+import network.ipv4 : setLocalIPAddress, setGateway, setNetmask;  // apply a real DHCP lease
+import network.dns  : setDNSServer;                 // ...including the leased resolver
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -3666,82 +3667,113 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 // Gated: the default boot has `-nic none`, so initNetwork finds no NIC → isNetworkAvailable() is false
 // → we skip everything device-touching.  Only `NET=1` (e1000 + user-net) exercises the driver.
 private void networkSelfTest(bool deepProbe) @nogc nothrow {
-    configureNetwork(10,0,2,15, 10,0,2,2, 255,255,255,0, 10,0,2,3);   // QEMU user-net: guest .15, gw .2
+    import drivers.network.network : netHudClear, netHudNic, netHudAddr, netHudProbe, netHudLine;
+    import core.syscalls.posix : publishNetStatus;
+
+    // configureNetwork() is what runs the PCI probe (initNetwork), so it has to happen
+    // before isNetworkAvailable() can answer.  The address passed here is a placeholder --
+    // DHCP below decides the real one.
+    configureNetwork(0,0,0,0,  0,0,0,0,  255,255,255,0,  0,0,0,0);
     if (!isNetworkAvailable()) {
-        klog("[net] no NIC present — IPv4 stack not started (default boot)\n");
-        { import core.syscalls.posix : publishNetStatus; publishNetStatus(false, 0, 0, 0, 0); }
+        klog("[net] no NIC present — IPv4 stack not started\n");
+        publishNetStatus(false, 0, 0, 0, 0);
+        netHudClear(); netHudLine("NET: NO NIC FOUND - check the VM network device".ptr);
         return;
     }
     startNetworkStack();
     ubyte[6] mac; getMacAddress(mac.ptr);
     ulong macv = 0; foreach (i; 0 .. 6) macv = (macv << 8) | mac[i];
-    // Do not hardcode "e1000": the NIC may equally be virtio-net, the Proxmox default.
-    klog("[net] N0: NIC up, MAC="); klog_hex(macv); klog(" IP=10.0.2.15 gw=10.0.2.2\n");
-    // Tell the desktop panel there IS a wired link, so its indicator stops showing the
-    // slashed "disconnected" glyph just because no Wi-Fi adapter exists in this VM.
-    { import core.syscalls.posix : publishNetStatus; publishNetStatus(true, 10, 0, 2, 15); }
-    // The LAN is now UP: NIC probed, rx/tx rings armed, IPv4 stack running.  Everything below
-    // is verification (ARP / ping / DNS / DHCP) and each step spins up to 8_000_000 poll
-    // iterations, so it is far too slow for the install image, which must reach the installer
-    // GUI quickly.  Bringing the interface up is cheap and unconditional; only the proofs are
-    // gated.
-    if (!deepProbe) { klog("[net] install media: stack up, skipping ARP/ping/DNS/DHCP probes\n"); return; }
-    // N1: resolve the gateway MAC via ARP — send a request, poll the rx ring for the reply.
-    auto gw = IPv4Address(10,0,2,2);
+    klog("[net] N0: NIC up, MAC="); klog_hex(macv); klog("\n");
+
+    // ── Addressing: DHCP FIRST, and KEEP the lease ────────────────────────────────
+    // This used to hardcode QEMU-slirp's 10.0.2.15 / gw 10.0.2.2, and then -- after using a
+    // successful DHCP round-trip purely as a RECEIVE proof -- deliberately throw the lease
+    // away and restore the static address.  That works on QEMU user-mode networking and is
+    // useless anywhere else: on a bridged network (Proxmox vmbr0, real hardware) 10.0.2.x
+    // belongs to nobody, so the box ARPs for a gateway that does not exist and nothing ever
+    // routes.  Ask the network who we are; fall back to the slirp static only if nothing
+    // answers, so the plain-QEMU path keeps behaving exactly as it did.
+    auto zeroIP = IPv4Address(0,0,0,0);
+    setLocalIPAddress(&zeroIP);                  // a DHCP client is IP-less until it has a lease
+    const uint dhcpMs = deepProbe ? 5000 : 3000; // install media pays 3 s for real addressing
+    const bool bound = dhcpAcquire(dhcpMs);
+
+    IPv4Address ip, gw, nm, dns4;
+    if (bound) {
+        dhcpGetConfig(&ip, &gw, &nm, &dns4);
+        klog("[net] DHCP BOUND — using the leased address\n");
+    } else {
+        ip = IPv4Address(10,0,2,15);  gw   = IPv4Address(10,0,2,2);
+        nm = IPv4Address(255,255,255,0); dns4 = IPv4Address(10,0,2,3);
+        klog("[net] DHCP: no OFFER/ACK — falling back to the QEMU user-net static\n");
+    }
+    setLocalIPAddress(&ip);
+    setGateway(&gw);
+    setNetmask(&nm);
+    setDNSServer(&dns4);
+
+    const ulong ipv = (cast(ulong)ip.bytes[0] << 24) | (cast(ulong)ip.bytes[1] << 16)
+                    | (cast(ulong)ip.bytes[2] << 8)  | ip.bytes[3];
+    const ulong gwv = (cast(ulong)gw.bytes[0] << 24) | (cast(ulong)gw.bytes[1] << 16)
+                    | (cast(ulong)gw.bytes[2] << 8)  | gw.bytes[3];
+    klog("[net] addr ip=0x"); klog_hex(ipv); klog(" gw=0x"); klog_hex(gwv); klog("\n");
+
+    publishNetStatus(true, ip.bytes[0], ip.bytes[1], ip.bytes[2], ip.bytes[3]);
+    netHudClear();
+    netHudNic();
+    netHudAddr(ip.bytes[0], ip.bytes[1], ip.bytes[2], ip.bytes[3],
+               gw.bytes[0], gw.bytes[1], gw.bytes[2], gw.bytes[3]);
+    netHudProbe("dhcp".ptr, bound);
+
+    // ── N1: ARP the REAL gateway ──────────────────────────────────────────────────
+    // Runs on EVERY boot, install media included: it is the cheapest true proof that a
+    // frame round-tripped, and on a box whose pointer does not work the HUD line it writes
+    // is the only way to find out.  It was the 8,000,000-iteration budget that was too slow
+    // for the installer, so bound it tightly there rather than skipping the probe.
     arpSendRequest(gw);
     MACAddress gwmac; bool resolved = false;
-    for (uint i = 0; i < 8_000_000u && !resolved; ++i) {
+    const uint arpSpin = deepProbe ? 8_000_000u : 400_000u;
+    for (uint i = 0; i < arpSpin && !resolved; ++i) {
         networkStackPoll();
         if (arpLookup(gw, &gwmac)) resolved = true;
     }
     klog("[net] N0 rx frames="); klog_hex(getNetRxFrames());
     klog(" lastEtherType="); klog_hex(getNetRxLastEtherType());
     klog(resolved ? " — N1: gateway ARP RESOLVED (a frame round-tripped!)\n"
-                  : " — N1: gateway ARP not resolved yet\n");
+                  : " — N1: gateway ARP not resolved\n");
+    netHudProbe("arp".ptr, resolved);
+
+    if (!deepProbe) {
+        klog("[net] install media: DHCP+ARP done; skipping the slower ping/DNS probes\n");
+        return;
+    }
     if (!resolved) return;
-    // N2: ping the gateway — send an ICMP echo, poll the rx ring for the echo reply.
-    ping(10,0,2,2);
+
+    // N2: ping the gateway we actually have.
+    ping(gw.bytes[0], gw.bytes[1], gw.bytes[2], gw.bytes[3]);
     bool gotReply = false;
     for (uint i = 0; i < 8_000_000u && !gotReply; ++i) {
         networkStackPoll();
         if (getIcmpEchoReplies() > 0) gotReply = true;
     }
-    klog("[net] N2: ping 10.0.2.2 ");
+    netHudProbe("ping".ptr, gotReply);
+    klog("[net] N2: ping gateway ");
     klog(gotReply ? "ECHO REPLY received — IPv4 + ICMP work end-to-end!\n"
-                  : "no reply (icmpEchoReplies=0; slirp ICMP is host-blocked by ping_group_range)\n");
-    // IPv4 RECEIVE proof via DNS — slirp answers DNS even when ICMP is host-blocked.  A resolved name
-    // means the guest received + parsed an inbound IP packet (the DNS reply), exercising IPv4 RX + UDP.
-    // The draft IP-send has no ARP defer-and-retransmit, so pre-resolve the DNS server's MAC first.
-    auto dnssrv = IPv4Address(10,0,2,3);
-    arpSendRequest(dnssrv);
+                  : "no reply (many gateways and slirp drop guest ICMP)\n");
+
+    // DNS proves inbound IPv4 + UDP parse.  The draft IP-send has no ARP defer-and-retransmit,
+    // so pre-resolve the DNS server's MAC first.
+    arpSendRequest(dns4);
     MACAddress dm;
-    for (uint i = 0; i < 8_000_000u; ++i) { networkStackPoll(); if (arpLookup(dnssrv, &dm)) break; }
+    for (uint i = 0; i < 8_000_000u; ++i) { networkStackPoll(); if (arpLookup(dns4, &dm)) break; }
     IPv4Address dip;
     const bool dns = dnsResolve("example.com", &dip, 4000);
     const ulong dipv = (cast(ulong)dip.bytes[0] << 24) | (cast(ulong)dip.bytes[1] << 16)
                      | (cast(ulong)dip.bytes[2] << 8) | dip.bytes[3];
-    klog("[net] N2 IPv4-RX / N3 UDP / N6 DNS: dnsResolve(example.com) ");
-    klog(dns ? "OK — inbound IP packet received + parsed! ip=" : "FAILED ip=");
+    netHudProbe("dns".ptr, dns);
+    klog("[net] N3 UDP / N6 DNS: dnsResolve(example.com) ");
+    klog(dns ? "OK — inbound IP packet received + parsed! ip=0x" : "FAILED ip=0x");
     klog_hex(dipv); klog("\n");
-    // N6 DHCP — the OFFLINE-verifiable RX proof: slirp's DHCP server is internal (no internet needed),
-    // unlike ICMP (host-blocked) and DNS (no upstream).  A BOUND lease means the guest received + parsed
-    // inbound IP+UDP packets (the OFFER and the ACK) — proving the full IPv4 + UDP RECEIVE path.
-    auto zeroIP = IPv4Address(0,0,0,0);
-    setLocalIPAddress(&zeroIP);          // a DHCP client is IP-less until it has a lease
-    const bool bound = dhcpAcquire(4000);
-    auto staticIP = IPv4Address(10,0,2,15);
-    setLocalIPAddress(&staticIP);        // restore the static IP afterward
-    klog("[net] N2 IPv4-RX / N3 UDP / N6 DHCP: dhcpAcquire ");
-    if (bound) {
-        IPv4Address lip, lgw, lnm, ldns;
-        dhcpGetConfig(&lip, &lgw, &lnm, &ldns);
-        const ulong lipv = (cast(ulong)lip.bytes[0] << 24) | (cast(ulong)lip.bytes[1] << 16)
-                         | (cast(ulong)lip.bytes[2] << 8) | lip.bytes[3];
-        klog("BOUND — inbound IPv4 + UDP RX PROVEN end-to-end! leased ip=");
-        klog_hex(lipv); klog("\n");
-    } else {
-        klog("not bound (no OFFER/ACK received)\n");
-    }
 }
 
 __gshared uint g_apPitLogCtr = 0;   // SMP_ROADMAP S4.4d: paces the BSP-side AP-progress klog

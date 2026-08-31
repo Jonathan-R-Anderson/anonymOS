@@ -545,3 +545,101 @@ private void enablePCIBusMastering(PCIDevice* dev) @nogc nothrow {
     cmd |= (1 << 2) | (1 << 1);
     pciConfigWrite32(dev.bus, dev.slot, dev.func, 0x04, cmd);
 }
+
+// ════════════════════════════════════════════════════════════════════════════════
+// On-screen network HUD (the green text overlay, top-left)
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// The panel indicator can only ever say "wired / wifi / nothing".  When the question is
+// "am I actually ON the LAN?" that is not enough, and on a machine whose pointer does not
+// work you cannot go clicking through menus to find out.  So mirror the network state onto
+// the same always-visible framebuffer HUD the Wi-Fi survey already uses: it is re-stamped
+// after every compositor present, so it survives the desktop owning the screen, and it
+// needs no input, no working mouse and no userspace at all.
+//
+// Rows are drawn BELOW the Wi-Fi survey block (which occupies rows 16..16+4*16).
+enum int NET_HUD_MAX = 6;
+__gshared char[80][NET_HUD_MAX] g_netHud;
+__gshared int  g_netHudN = 0;
+__gshared bool g_netHudEnabled = true;
+
+private void nhStr(ref char[80] b, ref int n, const(char)* s) @nogc nothrow {
+    while (*s != 0 && n < 79) b[n++] = *s++;
+}
+private void nhHex(ref char[80] b, ref int n, ulong v, int nib) @nogc nothrow {
+    static immutable char[16] hx = "0123456789abcdef";
+    for (int i = nib - 1; i >= 0 && n < 79; --i) b[n++] = hx[(v >> (i * 4)) & 0xF];
+}
+private void nhDec(ref char[80] b, ref int n, ulong v) @nogc nothrow {
+    char[24] tmp; int t = 0;
+    if (v == 0) { if (n < 79) b[n++] = '0'; return; }
+    while (v > 0 && t < 24) { tmp[t++] = cast(char)('0' + (v % 10)); v /= 10; }
+    while (t > 0 && n < 79) b[n++] = tmp[--t];
+}
+
+public void netHudClear() @nogc nothrow { g_netHudN = 0; }
+
+// Append one line.  Silently drops past NET_HUD_MAX so a chatty caller cannot scribble
+// over the rest of the screen.
+public void netHudLine(const(char)* s) @nogc nothrow {
+    if (g_netHudN >= NET_HUD_MAX) return;
+    int n = 0;
+    nhStr(g_netHud[g_netHudN], n, s);
+    g_netHud[g_netHudN][n] = 0;
+    g_netHudN++;
+}
+
+// "NET nic=<kind> mac=<aabbccddeeff> link=<up|down>"
+public void netHudNic() @nogc nothrow {
+    if (g_netHudN >= NET_HUD_MAX) return;
+    int n = 0; auto b = &g_netHud[g_netHudN];
+    nhStr(*b, n, "NET nic=".ptr);
+    switch (g_netDevice.type) {
+        case NetworkDeviceType.E1000:   nhStr(*b, n, "e1000".ptr);  break;
+        case NetworkDeviceType.VirtIO:  nhStr(*b, n, "virtio".ptr); break;
+        case NetworkDeviceType.RTL8139: nhStr(*b, n, "rtl8139".ptr); break;
+        default:                        nhStr(*b, n, "none".ptr);   break;
+    }
+    nhStr(*b, n, " mac=".ptr);
+    foreach (i; 0 .. 6) nhHex(*b, n, g_netDevice.macAddress[i], 2);
+    nhStr(*b, n, g_networkAvailable ? " link=UP".ptr : " link=DOWN".ptr);
+    (*b)[n] = 0;
+    g_netHudN++;
+}
+
+// "NET ip=a.b.c.d gw=a.b.c.d"
+public void netHudAddr(ubyte a, ubyte b_, ubyte c, ubyte d,
+                       ubyte ga, ubyte gb, ubyte gc, ubyte gd) @nogc nothrow {
+    if (g_netHudN >= NET_HUD_MAX) return;
+    int n = 0; auto b = &g_netHud[g_netHudN];
+    nhStr(*b, n, "NET ip=".ptr);
+    nhDec(*b, n, a); nhStr(*b, n, ".".ptr); nhDec(*b, n, b_); nhStr(*b, n, ".".ptr);
+    nhDec(*b, n, c); nhStr(*b, n, ".".ptr); nhDec(*b, n, d);
+    nhStr(*b, n, " gw=".ptr);
+    nhDec(*b, n, ga); nhStr(*b, n, ".".ptr); nhDec(*b, n, gb); nhStr(*b, n, ".".ptr);
+    nhDec(*b, n, gc); nhStr(*b, n, ".".ptr); nhDec(*b, n, gd);
+    (*b)[n] = 0;
+    g_netHudN++;
+}
+
+// "NET <label>=<OK|FAIL> ..." — one line per probe result, plus live rx counters.
+public void netHudProbe(const(char)* label, bool ok) @nogc nothrow {
+    if (g_netHudN >= NET_HUD_MAX) return;
+    int n = 0; auto b = &g_netHud[g_netHudN];
+    nhStr(*b, n, "NET ".ptr); nhStr(*b, n, label);
+    nhStr(*b, n, ok ? "=OK".ptr : "=FAIL".ptr);
+    nhStr(*b, n, "  rx=".ptr); nhDec(*b, n, g_netRxFrames);
+    nhStr(*b, n, " lastEth=0x".ptr); nhHex(*b, n, g_netRxLastEtherType, 4);
+    (*b)[n] = 0;
+    g_netHudN++;
+}
+
+// Re-stamp onto the desktop after each present, below the Wi-Fi survey block.
+public void netHudRepaint() @nogc nothrow {
+    import arch.x86_64.bootstrap : fb_draw_hud_row;
+    import drivers.pci : g_wifiHudN;
+    if (!g_netHudEnabled) return;
+    const uint y0 = cast(uint)(16 + (g_wifiHudN > 0 ? g_wifiHudN : 1) * 16 + 8);
+    for (int i = 0; i < g_netHudN; i++)
+        fb_draw_hud_row(y0 + cast(uint)(i * 16), g_netHud[i].ptr);
+}

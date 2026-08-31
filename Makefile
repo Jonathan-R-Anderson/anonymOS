@@ -582,7 +582,17 @@ $(HTTPUPLOAD_BIN): src/util/hos-http-upload.c
 	@echo "==== Building hos-http-upload (dynamic direct-socket LKL HTTP client) ===="
 	$(MUSL_CC) -O2 -Wall -o $@ src/util/hos-http-upload.c
 
-$(WIFIAGENT_BIN): src/util/hos-wifi-agent.c
+# dbus installs only the VERSIONED libdbus-1.so.3 -> libdbus-1.so.3.32.4.  The plain
+# libdbus-1.so that the hos-wifi-agent link line names is created by the container
+# (Dockerfile, next to the other host fixups) and by nothing else, so a native build
+# dies with:
+#   clang: error: no such file or directory: 'deps/gtk-stack/sysroot/lib/libdbus-1.so'
+# Create it on demand.  Relative link, so it stays valid wherever the sysroot lives.
+$(WAYLAND_SYSROOT)/lib/libdbus-1.so:
+	@ln -sfn libdbus-1.so.3 $@
+	@echo "[dbus] linked $@ -> libdbus-1.so.3"
+
+$(WIFIAGENT_BIN): src/util/hos-wifi-agent.c $(WAYLAND_SYSROOT)/lib/libdbus-1.so
 	@echo "==== Building hos-wifi-agent (M6 libdbus NM<->file bridge for the Wi-Fi menu) ===="
 	$(MUSL_CC) -O2 -Wall -o $@ src/util/hos-wifi-agent.c \
 		-I$(WAYLAND_SYSROOT)/include/dbus-1.0 -I$(WAYLAND_SYSROOT)/lib/dbus-1.0/include \

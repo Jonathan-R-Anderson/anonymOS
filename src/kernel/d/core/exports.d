@@ -989,6 +989,15 @@ ulong linux_seed_initial_stack(
     // backend instead of failing to reach /run/seatd.sock.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LIBSEAT_BACKEND=builtin\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // DIAGNOSTIC: weston reads this in libinput-seat.c:358 and passes it to
+    // libinput_log_set_priority().  Without it libinput logs at INFO and stays silent about
+    // WHY it rejects a device -- and right now it rejects BOTH input devices, so weston has
+    // no keyboard and no pointer at all ("warning: no input devices found").  That is why no
+    // SUPER+key shortcut works and why clicks do nothing: the visible cursor is drawn by the
+    // kernel, not by a compositor that is receiving events.  At debug level libinput prints
+    // the exact skip reason for each device.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "WESTON_LIBINPUT_LOG_PRIORITY=debug\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     // GW3: make the embedded seatd create a NON-VT-bound seat. We have no Linux
     // VTs (/dev/tty0), so a VT-bound seat never becomes "active" (seat_activate
     // needs cur_vt) and seatd then rejects every device open with EPERM ("client

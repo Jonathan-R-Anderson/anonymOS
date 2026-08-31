@@ -3691,7 +3691,7 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
     configureNetwork(0,0,0,0,  0,0,0,0,  255,255,255,0,  0,0,0,0);
     if (!isNetworkAvailable()) {
         klog("[net] no NIC present — IPv4 stack not started\n");
-        publishNetStatus(false, 0, 0, 0, 0);
+        publishNetStatus(false, 0, 0, 0, 0, false);
         netHudClear(); netHudLine("NET: NO NIC FOUND - check the VM network device".ptr);
         return;
     }
@@ -3733,7 +3733,7 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
                     | (cast(ulong)gw.bytes[2] << 8)  | gw.bytes[3];
     klog("[net] addr ip=0x"); klog_hex(ipv); klog(" gw=0x"); klog_hex(gwv); klog("\n");
 
-    publishNetStatus(true, ip.bytes[0], ip.bytes[1], ip.bytes[2], ip.bytes[3]);
+    publishNetStatus(true, ip.bytes[0], ip.bytes[1], ip.bytes[2], ip.bytes[3], false);
     netHudClear();
     netHudNic();
     netHudAddr(ip.bytes[0], ip.bytes[1], ip.bytes[2], ip.bytes[3],
@@ -3775,6 +3775,9 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
         const ulong dipv = (cast(ulong)dip.bytes[0] << 24) | (cast(ulong)dip.bytes[1] << 16)
                          | (cast(ulong)dip.bytes[2] << 8) | dip.bytes[3];
         netHudProbe("dns".ptr, dns);
+        // Republish now that we KNOW whether the box can reach the internet, so the desktop
+        // indicator can say "online" rather than merely "cable plugged in".
+        publishNetStatus(true, ip.bytes[0], ip.bytes[1], ip.bytes[2], ip.bytes[3], dns);
         klog("[net] DNS resolve(example.com) ");
         klog(dns ? "OK — INTERNET REACHABLE, ip=0x" : "FAILED (no internet route) ip=0x");
         klog_hex(dipv); klog("\n");

@@ -5170,8 +5170,11 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
 // glyph forever -- even with a perfectly working Ethernet link.  Publishing the real wired
 // state here is what lets the panel tell "no connection", "wired" and "Wi-Fi" apart.
 //
-// Format, one line: "<kind>\t<up>\t<a.b.c.d>\n"  e.g. "wired\t1\t10.0.2.15\n".
-public void publishNetStatus(bool up, ubyte a, ubyte b, ubyte c, ubyte d) @nogc nothrow {
+// Format, one line: "<kind>\t<up>\t<a.b.c.d>\t<internet>\n"  e.g. "wired\t1\t10.0.2.15\t1\n".
+// The trailing flag is what lets the desktop distinguish "on a LAN" from "actually online" --
+// the kernel proves the difference at boot with a real DNS lookup, and used to keep it to
+// itself, so there was no way to tell from the UI whether the box had internet.
+public void publishNetStatus(bool up, ubyte a, ubyte b, ubyte c, ubyte d, bool internet) @nogc nothrow {
     char[64] buf;
     uint n = 0;
     void putc(char ch) { if (n < buf.length) buf[n++] = ch; }
@@ -5184,6 +5187,8 @@ public void publishNetStatus(bool up, ubyte a, ubyte b, ubyte c, ubyte d) @nogc 
     putc(up ? '1' : '0');
     putc('\t');
     putDec(a); putc('.'); putDec(b); putc('.'); putDec(c); putc('.'); putDec(d);
+    putc('\t');
+    putc(internet ? '1' : '0');
     putc('\n');
     rtAddFile("run/net/status\0".ptr, "run/net/status".length,
               cast(const(ubyte)*)buf.ptr, n);

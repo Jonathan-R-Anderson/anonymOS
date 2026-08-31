@@ -1,4 +1,14 @@
-/*
+	if (fgets(line, sizeof line, f)) {
+		char *save = NULL, *kind, *state, *ip, *net;
+		kind  = strtok_r(line, "\t", &save);
+		state = strtok_r(NULL, "\t", &save);
+		ip    = strtok_r(NULL, "\t", &save);   /* address, unused here */
+		net   = strtok_r(NULL, "\t\n", &save);  /* 1 = internet reachable */
+		(void)ip;
+		if (kind && state && state[0] == '1' &&
+		    (strcmp(kind, "wired") == 0 || strcmp(kind, "eth") == 0))
+			up = (net && net[0] == '1') ? 2 : 1;   /* 2 = online, 1 = LAN only */
+	}/*
  * Copyright © 2011 Kristian Høgsberg
  * Copyright © 2011 Collabora, Ltd.
  *
@@ -504,10 +514,13 @@ epin_net_state(int *bars)
  * SHAPE from the Wi-Fi arcs, not just a different fill, so the two are distinguishable at a
  * glance and without relying on colour. */
 static void
-epin_draw_ethernet(cairo_t *cr, double cx, double cy)
+epin_draw_ethernet(cairo_t *cr, double cx, double cy, int online)
 {
+	/* Full brightness only when a real DNS lookup succeeded.  A dim plug means "cable is
+	 * up but nothing resolves" -- the distinction the desktop previously could not show. */
+	const double a = online ? 0.9 : 0.42;
 	cairo_set_line_width(cr, 1.4);
-	cairo_set_source_rgba(cr, 1, 1, 1, 0.9);
+	cairo_set_source_rgba(cr, 1, 1, 1, a);
 
 	/* connector body */
 	epin_rounded_rect(cr, cx - 6, cy - 7, 12, 9, 1.5);
@@ -515,6 +528,7 @@ epin_draw_ethernet(cairo_t *cr, double cx, double cy)
 
 	/* pins */
 	cairo_set_line_width(cr, 1.0);
+	cairo_set_source_rgba(cr, 1, 1, 1, a);
 	for (int i = 0; i < 3; i++) {
 		double px = cx - 3.2 + i * 3.2;
 		cairo_move_to(cr, px, cy - 5.5);
@@ -524,6 +538,7 @@ epin_draw_ethernet(cairo_t *cr, double cx, double cy)
 
 	/* latch + cable going down */
 	cairo_set_line_width(cr, 1.4);
+	cairo_set_source_rgba(cr, 1, 1, 1, a);
 	cairo_move_to(cr, cx - 2, cy + 2);
 	cairo_line_to(cr, cx - 2, cy + 4);
 	cairo_line_to(cr, cx + 2, cy + 4);
@@ -635,7 +650,7 @@ panel_indicator_redraw_handler(struct widget *widget, void *data)
 		int bars = -1;
 		switch (epin_net_state(&bars)) {
 		case EPIN_NET_WIFI:  epin_draw_wifi(cr, x + 7, cy + 5, bars); break;
-		case EPIN_NET_WIRED: epin_draw_ethernet(cr, x + 7, cy + 2);   break;
+		case EPIN_NET_WIRED: epin_draw_ethernet(cr, x + 7, cy + 2, epin_wired_up() == 2); break;
 		default:             epin_draw_nonet(cr, x + 7, cy + 2);      break;
 		}
 	}

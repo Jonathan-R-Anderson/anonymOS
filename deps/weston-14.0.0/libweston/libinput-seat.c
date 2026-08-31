@@ -435,13 +435,20 @@ udev_input_init(struct udev_input *input, struct weston_compositor *c,
 
 		/* Deliberately NOT libinput_unref() on the old udev context.
 		 *
-		 * That call is what killed the compositor.  Disassembly of the shipped
-		 * drm-backend.so puts the #GP (exception 0x0d, rip=0x74000079a073) at an
-		 * indirect dispatch inside libinput_unref -- `call *0x8(%rax)` / `call
-		 * *0x10(%rax)` at +0x50ab1/+0x50abe, i.e. interface_backend->suspend and
-		 * ->destroy -- so weston died tearing this context down, before a single
-		 * device was ever added.  The RIP is not at a valid instruction boundary on
-		 * any reachable path, so control got there through a corrupt code pointer.
+		 * That call is what killed the compositor: with it, weston took a #GP
+		 * (exception 0x0d, rip=0x74000079a073) between the log line above and the
+		 * first add_device below; without it, the desktop reaches the shell.
+		 *
+		 * On the precise mechanism, be careful what you conclude.  The RIP is NOT
+		 * at a valid instruction boundary anywhere on this path (for a page-aligned
+		 * module base the offset would have to end in 0x073, and every candidate
+		 * lands mid-instruction), so control arrived through a corrupt code pointer
+		 * rather than by executing libinput_unref's own dispatches.  It is NOT
+		 * simply a mis-relocated interface_backend vtable either: the two indirect
+		 * dispatches at +0x50ab1/+0x50abe target 0xcf6e0, whose relocation addends
+		 * are 0x7ab40/0x7ac40/0x7acf0/0x7ad20 -- none of them 0x7b073.  So the
+		 * teardown reliably trips the fault, but which pointer it jumps through is
+		 * still unproven.  Do not restore this call on the theory that it is fixed.
 		 *
 		 * Abandoning the context instead is cheap and safe here: it owns no devices
 		 * (that is exactly why we are in this fallback), it was never registered

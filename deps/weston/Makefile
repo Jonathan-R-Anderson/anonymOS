@@ -318,6 +318,36 @@ $(STAMP_DIR)/weston-built: $(WESTON_SRC)/meson.build $(WESTON_PATCHED_SRCS) | $(
 		-Ddoc=false
 	@echo "[weston] Building weston..."
 	ninja -C $(WESTON_SRC)/build-epin $(NINJA_BUILD_FLAGS)
+	# ODR GUARD -- do not remove.  libinput and weston both define a global
+	# evdev_device_create(); upstream that is harmless because libinput is a shared
+	# library, but the sed at line ~198 above makes it a static_library, so both land
+	# in drm-backend.so.  Static-archive order then wins for weston (its
+	# libinput-device.c.o is linked before libinput.a, so evdev.c.o is never pulled in
+	# to satisfy the name) and libinput's OWN internal call in path_device_enable ends
+	# up in weston's function -- which never opens /dev/input/event*, never runs
+	# libevdev and never queues LIBINPUT_EVENT_DEVICE_ADDED, yet returns non-NULL.
+	# Result: a compositor with no keyboard and no pointer, through BOTH the udev and
+	# the path backend, with no error anywhere in the log.  Cost us a very long hunt.
+	#
+	# The tell is the symbol's size: libinput's evdev_device_create is ~3.7 KB, weston's
+	# wrapper is ~0.5 KB.  libexec_weston.so.0 (which does NOT link libinput-device.c)
+	# keeps the correct 3750-byte one, so compare against that.  weston's copies are now
+	# named weston_evdev_device_create/_destroy; if a bare evdev_device_create in
+	# drm-backend.so is ever smaller than 2 KB again, the collision is back.
+	@if command -v nm >/dev/null 2>&1; then \
+	    drmso=$$(find $(WESTON_SRC)/build-epin -name 'drm-backend.so' -print -quit 2>/dev/null); \
+	    if [ -n "$$drmso" ]; then \
+	        hex=$$(nm -S --defined-only "$$drmso" 2>/dev/null \
+	               | awk '$$4=="evdev_device_create"{print $$2; exit}'); \
+	        if [ -n "$$hex" ] && [ $$((16#$$hex)) -lt 2048 ]; then \
+	            echo "[weston] ERROR: evdev_device_create in $$drmso is only $$((16#$$hex)) bytes"; \
+	            echo "[weston]        -> weston's copy displaced libinput's again (ODR collision)."; \
+	            echo "[weston]        -> input will be DEAD: no keyboard, no pointer, no error logged."; \
+	            echo "[weston]        -> see libweston/libinput-device.h for the rename that fixes it."; \
+	            exit 1; \
+	        fi; \
+	    fi; \
+	fi
 	@echo "[weston] Built: $(WESTON_SRC)/build-epin/frontend/weston"
 	@touch $@
 

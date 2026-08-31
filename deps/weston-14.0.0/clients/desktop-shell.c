@@ -1,14 +1,4 @@
-	if (fgets(line, sizeof line, f)) {
-		char *save = NULL, *kind, *state, *ip, *net;
-		kind  = strtok_r(line, "\t", &save);
-		state = strtok_r(NULL, "\t", &save);
-		ip    = strtok_r(NULL, "\t", &save);   /* address, unused here */
-		net   = strtok_r(NULL, "\t\n", &save);  /* 1 = internet reachable */
-		(void)ip;
-		if (kind && state && state[0] == '1' &&
-		    (strcmp(kind, "wired") == 0 || strcmp(kind, "eth") == 0))
-			up = (net && net[0] == '1') ? 2 : 1;   /* 2 = online, 1 = LAN only */
-	}/*
+/*
  * Copyright © 2011 Kristian Høgsberg
  * Copyright © 2011 Collabora, Ltd.
  *
@@ -484,12 +474,15 @@ epin_wired_up(void)
 	if (!f)
 		return 0;
 	if (fgets(line, sizeof line, f)) {
-		char *save = NULL, *kind, *state;
+		char *save = NULL, *kind, *state, *ip, *net;
 		kind  = strtok_r(line, "\t", &save);
 		state = strtok_r(NULL, "\t", &save);
+		ip    = strtok_r(NULL, "\t", &save);     /* address, unused here */
+		net   = strtok_r(NULL, "\t\n", &save);   /* 1 = internet reachable */
+		(void)ip;
 		if (kind && state && state[0] == '1' &&
 		    (strcmp(kind, "wired") == 0 || strcmp(kind, "eth") == 0))
-			up = 1;
+			up = (net && net[0] == '1') ? 2 : 1;  /* 2 = online, 1 = LAN only */
 	}
 	fclose(f);
 	return up;

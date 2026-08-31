@@ -1609,9 +1609,18 @@ public bool wifiDmaBounceBootPresent() {
 }
 
 private __gshared bool g_wpaStarted = false;
+// Bounded-retry state.  maybeSpawnWpa() is the ONLY spawner that clears its own latch when a
+// spawn fails -- every other one latches permanently on the first attempt -- so a missing
+// hos-wpa-launch boot module made it retry on EVERY kernel-loop pass.  Measured: 88,070
+// attempts in one boot, three klog lines each, all written to the 115200-baud UART while the
+// loop holds the BKL.  That starves the compositor and every task; it is why the live desktop
+// was unusable.  Give up after a few failures instead.
+private __gshared bool g_wpaGaveUp    = false;
+private __gshared int  g_wpaSpawnFails = 0;
+private enum int WPA_MAX_SPAWN_FAILS  = 3;
 private __gshared int  g_wpaTid = 0;
 private void maybeSpawnWpa() {
-    if (g_skipNetForTest) return;
+    if (g_skipNetForTest || g_wpaGaveUp) return;
     if (g_wpaStarted) {
         /* The agent reloads configuration in-place with SIGHUP so this process retains its
          * initialized nl80211 sockets and radio ownership.  Still supervise genuine exits. */
@@ -1631,7 +1640,13 @@ private void maybeSpawnWpa() {
     if (spawnWaylandProgram("hos-wpa-launch\0".ptr, "[wpa]\0".ptr))
         g_wpaTid = cast(int)g_current_task_id;
     else
+    {
         g_wpaStarted = false;
+        if (++g_wpaSpawnFails >= WPA_MAX_SPAWN_FAILS) {
+            g_wpaGaveUp = true;
+            klog("[wpa] hos-wpa-launch could not be spawned 3x -- giving up (was retrying every kernel-loop pass)\n");
+        }
+    }
 }
 private __gshared bool g_nmStarted = false;
 private __gshared ulong g_nmStartedMs = 0;

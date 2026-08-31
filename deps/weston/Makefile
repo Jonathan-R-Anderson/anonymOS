@@ -41,9 +41,18 @@ MESON_CROSS_FLAGS := \
 	--buildtype=release \
 	--default-library=static
 
-.PHONY: all clean distclean
+.PHONY: all clean distclean libdrm
 
 all: $(STAMP_DIR)/weston-built
+
+# gtk-stack's gtk3 links -ldrm, but libdrm is built HERE and deps/Makefile orders weston
+# AFTER gtk-stack.  The headers and libdrm.pc are committed while libdrm.a is gitignored
+# (.gitignore:22 "*.a"), so pkg-config happily advertises -ldrm and a fresh checkout only
+# finds out 662 files into the gtk3 link: "/usr/bin/ld: cannot find -ldrm".  A machine
+# that had built once already has the .a sitting in the shared sysroot and never sees it.
+# Expose libdrm as its own target so deps/Makefile can build it BEFORE gtk-stack -- it
+# depends on nothing but musl + the cross file, so this creates no cycle.
+libdrm: $(STAMP_DIR)/libdrm-built
 
 # ── Dependency order ──────────────────────────────────────────────────────────
 # libdrm       (no deps)

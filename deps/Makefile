@@ -1,7 +1,7 @@
 PROJECT_ROOT ?= $(abspath ..)
 include $(PROJECT_ROOT)/build.opts
 
-.PHONY: all core desktop full musl cxxrt busybox openrc dbus dconf networkmanager elogind logind pipewire pipewire-pulse wireplumber gtk-stack staged-desktop mutter weston hyprland hyprland-status gnome-settings-daemon gnome-control-center gnome-shell gdm gnome clean distclean
+.PHONY: all core desktop full musl libdrm cxxrt busybox openrc dbus dconf networkmanager elogind logind pipewire pipewire-pulse wireplumber gtk-stack staged-desktop mutter weston hyprland hyprland-status gnome-settings-daemon gnome-control-center gnome-shell gdm gnome clean distclean
 
 CORE_DEPS := musl busybox openrc dbus dconf networkmanager elogind logind pipewire pipewire-pulse wireplumber
 DESKTOP_DEPS := gtk-stack staged-desktop mutter weston
@@ -50,7 +50,13 @@ pipewire-pulse: pipewire
 wireplumber: pipewire dbus
 	$(MAKE) $(MAKE_BUILD_FLAGS) -C compat wireplumber
 
-gtk-stack: cxxrt
+# libdrm physically lives in deps/weston, but gtk-stack LINKS against it, so it has to
+# be built first.  See the note in deps/weston/Makefile: libdrm.a is gitignored while
+# its .pc is committed, so without this a fresh checkout dies at "cannot find -ldrm".
+libdrm: musl
+	$(MAKE) $(MAKE_BUILD_FLAGS) -C weston libdrm
+
+gtk-stack: cxxrt libdrm
 	$(MAKE) $(MAKE_BUILD_FLAGS) -C gtk-stack all
 
 staged-desktop: gtk-stack

@@ -4079,8 +4079,19 @@ private const(char)[] displayCmdlineContent() {
     const(char)[] cfg = displayConfigContent();
     const ulong fbW = (g_fb !is null) ? g_fb.width : 0;
     const ulong fbH = (g_fb !is null) ? g_fb.height : 0;
-    cmdlineAppendKeyUint(p, max, "display.width", displayConfigUint(cfg, "display.width", fbW != 0 ? fbW : 1280));
-    cmdlineAppendKeyUint(p, max, "display.height", displayConfigUint(cfg, "display.height", fbH != 0 ? fbH : 800));
+    // Report the REAL framebuffer unless display.force_mode=1 explicitly pins a size.
+    // Both /display.conf (Makefile:393) and the limine cmdline (limine.conf:11) hardcode
+    // display.width=1280/height=800, and those used to win over the actual mode -- so the
+    // desktop stayed 1280x800 no matter what the display was, which is half of why it
+    // "does not auto resize".  force_mode already exists as the "I really mean it" switch,
+    // so honour the hardware by default and let force_mode override it.
+    const ulong forceMode = displayConfigUint(cfg, "display.force_mode", 0);
+    const ulong outW = (forceMode == 0 && fbW != 0)
+                     ? fbW : displayConfigUint(cfg, "display.width",  fbW != 0 ? fbW : 1280);
+    const ulong outH = (forceMode == 0 && fbH != 0)
+                     ? fbH : displayConfigUint(cfg, "display.height", fbH != 0 ? fbH : 800);
+    cmdlineAppendKeyUint(p, max, "display.width", outW);
+    cmdlineAppendKeyUint(p, max, "display.height", outH);
     cmdlineAppendKeyUint(p, max, "display.scale", displayConfigUint(cfg, "display.scale", 1));
     cmdlineAppendKeyUint(p, max, "display.refresh", displayConfigUint(cfg, "display.refresh", 60));
     cmdlineAppendKeyUint(p, max, "display.force_mode", displayConfigUint(cfg, "display.force_mode", 0));
@@ -5149,6 +5160,33 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
         if (cur < 0) return;
         ++i;                          // skip '/'
     }
+}
+
+// Publish the WIRED link state where the desktop panel can read it.
+//
+// The panel's network indicator (deps/weston-14.0.0/clients/desktop-shell.c, epin_net_state)
+// used to consult ONLY /run/wifi/networks.  Inside a VM there is no Wi-Fi adapter to pass
+// through, so that file never appears and the indicator showed the slashed "disconnected"
+// glyph forever -- even with a perfectly working Ethernet link.  Publishing the real wired
+// state here is what lets the panel tell "no connection", "wired" and "Wi-Fi" apart.
+//
+// Format, one line: "<kind>\t<up>\t<a.b.c.d>\n"  e.g. "wired\t1\t10.0.2.15\n".
+public void publishNetStatus(bool up, ubyte a, ubyte b, ubyte c, ubyte d) @nogc nothrow {
+    char[64] buf;
+    uint n = 0;
+    void putc(char ch) { if (n < buf.length) buf[n++] = ch; }
+    void putDec(ubyte v) {
+        if (v >= 100) putc(cast(char)('0' + v / 100));
+        if (v >= 10)  putc(cast(char)('0' + (v / 10) % 10));
+        putc(cast(char)('0' + v % 10));
+    }
+    foreach (ch; "wired\t") putc(ch);
+    putc(up ? '1' : '0');
+    putc('\t');
+    putDec(a); putc('.'); putDec(b); putc('.'); putDec(c); putc('.'); putDec(d);
+    putc('\n');
+    rtAddFile("run/net/status\0".ptr, "run/net/status".length,
+              cast(const(ubyte)*)buf.ptr, n);
 }
 
 // ─── Host WiFi bridge over COM2 ──────────────────────────────────────────────

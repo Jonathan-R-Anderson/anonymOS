@@ -3667,12 +3667,19 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 // → we skip everything device-touching.  Only `NET=1` (e1000 + user-net) exercises the driver.
 private void networkSelfTest(bool deepProbe) @nogc nothrow {
     configureNetwork(10,0,2,15, 10,0,2,2, 255,255,255,0, 10,0,2,3);   // QEMU user-net: guest .15, gw .2
-    if (!isNetworkAvailable()) { klog("[net] no NIC present — IPv4 stack not started (default boot)\n"); return; }
+    if (!isNetworkAvailable()) {
+        klog("[net] no NIC present — IPv4 stack not started (default boot)\n");
+        { import core.syscalls.posix : publishNetStatus; publishNetStatus(false, 0, 0, 0, 0); }
+        return;
+    }
     startNetworkStack();
     ubyte[6] mac; getMacAddress(mac.ptr);
     ulong macv = 0; foreach (i; 0 .. 6) macv = (macv << 8) | mac[i];
     // Do not hardcode "e1000": the NIC may equally be virtio-net, the Proxmox default.
     klog("[net] N0: NIC up, MAC="); klog_hex(macv); klog(" IP=10.0.2.15 gw=10.0.2.2\n");
+    // Tell the desktop panel there IS a wired link, so its indicator stops showing the
+    // slashed "disconnected" glyph just because no Wi-Fi adapter exists in this VM.
+    { import core.syscalls.posix : publishNetStatus; publishNetStatus(true, 10, 0, 2, 15); }
     // The LAN is now UP: NIC probed, rx/tx rings armed, IPv4 stack running.  Everything below
     // is verification (ARP / ping / DNS / DHCP) and each step spins up to 8_000_000 poll
     // iterations, so it is far too slow for the install image, which must reach the installer

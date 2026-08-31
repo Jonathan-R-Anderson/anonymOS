@@ -449,6 +449,106 @@ epin_draw_wifi(cairo_t *cr, double cx, double cy, int bars)
 	}
 }
 
+/* Network indicator state.  The panel used to consult ONLY /run/wifi/networks, so inside a
+ * VM -- where there is no Wi-Fi adapter to pass through -- it showed the slashed
+ * "disconnected" glyph forever even with a perfectly good wired link.  Distinguish three
+ * states instead:
+ *
+ *   EPIN_NET_NONE   nothing is up            -> slashed glyph
+ *   EPIN_NET_WIRED  wired NIC up (Ethernet)  -> RJ45 plug glyph
+ *   EPIN_NET_WIFI   associated to an AP      -> the usual signal arcs
+ *
+ * Wi-Fi wins when it is actually associated, because that is the link the user chose;
+ * otherwise a live wired link is reported.  The wired half reads /run/net/status, which the
+ * kernel publishes from the in-kernel IPv4 stack as "<kind>\t<up>\t<ip>".
+ */
+enum { EPIN_NET_NONE = 0, EPIN_NET_WIRED = 1, EPIN_NET_WIFI = 2 };
+
+static int
+epin_wired_up(void)
+{
+	FILE *f = fopen("/run/net/status", "r");
+	char line[128];
+	int up = 0;
+
+	if (!f)
+		return 0;
+	if (fgets(line, sizeof line, f)) {
+		char *save = NULL, *kind, *state;
+		kind  = strtok_r(line, "\t", &save);
+		state = strtok_r(NULL, "\t", &save);
+		if (kind && state && state[0] == '1' &&
+		    (strcmp(kind, "wired") == 0 || strcmp(kind, "eth") == 0))
+			up = 1;
+	}
+	fclose(f);
+	return up;
+}
+
+/* Resolve the indicator state; *bars receives the Wi-Fi strength when EPIN_NET_WIFI. */
+static int
+epin_net_state(int *bars)
+{
+	int b = epin_wifi_bars();
+
+	if (bars)
+		*bars = b;
+	if (b > 0)                 /* associated to an AP (0 = adapter present but not connected) */
+		return EPIN_NET_WIFI;
+	if (epin_wired_up())
+		return EPIN_NET_WIRED;
+	return b == 0 ? EPIN_NET_WIFI : EPIN_NET_NONE;   /* adapter up but idle still shows arcs */
+}
+
+/* Wired glyph: an RJ45 plug -- body, latch tab and cable stub.  Deliberately a different
+ * SHAPE from the Wi-Fi arcs, not just a different fill, so the two are distinguishable at a
+ * glance and without relying on colour. */
+static void
+epin_draw_ethernet(cairo_t *cr, double cx, double cy)
+{
+	cairo_set_line_width(cr, 1.4);
+	cairo_set_source_rgba(cr, 1, 1, 1, 0.9);
+
+	/* connector body */
+	epin_rounded_rect(cr, cx - 6, cy - 7, 12, 9, 1.5);
+	cairo_stroke(cr);
+
+	/* pins */
+	cairo_set_line_width(cr, 1.0);
+	for (int i = 0; i < 3; i++) {
+		double px = cx - 3.2 + i * 3.2;
+		cairo_move_to(cr, px, cy - 5.5);
+		cairo_line_to(cr, px, cy - 2.5);
+	}
+	cairo_stroke(cr);
+
+	/* latch + cable going down */
+	cairo_set_line_width(cr, 1.4);
+	cairo_move_to(cr, cx - 2, cy + 2);
+	cairo_line_to(cr, cx - 2, cy + 4);
+	cairo_line_to(cr, cx + 2, cy + 4);
+	cairo_line_to(cr, cx + 2, cy + 2);
+	cairo_stroke(cr);
+	cairo_move_to(cr, cx, cy + 4);
+	cairo_line_to(cr, cx, cy + 7);
+	cairo_stroke(cr);
+}
+
+/* Nothing is up: a slashed circle, distinct from both the arcs and the plug. */
+static void
+epin_draw_nonet(cairo_t *cr, double cx, double cy)
+{
+	cairo_set_line_width(cr, 1.4);
+	cairo_set_source_rgba(cr, 1, 1, 1, 0.40);
+	cairo_new_sub_path(cr);
+	cairo_arc(cr, cx, cy - 1, 6.5, 0, 2 * M_PI);
+	cairo_stroke(cr);
+	cairo_set_source_rgba(cr, 1, 1, 1, 0.75);
+	cairo_move_to(cr, cx - 4.6, cy - 5.6);
+	cairo_line_to(cr, cx + 4.6, cy + 3.6);
+	cairo_stroke(cr);
+}
+
 static void
 epin_draw_volume(cairo_t *cr, double x, double cy)
 {
@@ -530,7 +630,15 @@ panel_indicator_redraw_handler(struct widget *widget, void *data)
 	panel_button_hover_pill(cr, &a, b->focused);
 	cy = a.y + a.height / 2.0;
 	x = a.x + 12;
-	epin_draw_wifi(cr, x + 7, cy + 5, epin_wifi_bars());
+	{
+		/* Three distinct states, not just "wifi or slash" -- see epin_net_state(). */
+		int bars = -1;
+		switch (epin_net_state(&bars)) {
+		case EPIN_NET_WIFI:  epin_draw_wifi(cr, x + 7, cy + 5, bars); break;
+		case EPIN_NET_WIRED: epin_draw_ethernet(cr, x + 7, cy + 2);   break;
+		default:             epin_draw_nonet(cr, x + 7, cy + 2);      break;
+		}
+	}
 	x += 26;
 	epin_draw_volume(cr, x, cy);
 	x += 22;

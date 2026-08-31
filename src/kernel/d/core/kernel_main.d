@@ -3743,8 +3743,28 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
                   : " — N1: gateway ARP not resolved\n");
     netHudProbe("arp".ptr, resolved);
 
+    // A DNS lookup is the ACTUAL answer to "do I have internet?".  arp=OK only proves the
+    // gateway is reachable on the LAN; resolving a name needs routing past it and a working
+    // resolver.  So run it on every boot, install media included, with a short budget there:
+    // it costs ~50 ms when the network works and is hard-bounded when it does not.  The
+    // draft IP-send has no ARP defer-and-retransmit, so pre-resolve the resolver's MAC.
+    if (resolved) {
+        arpSendRequest(dns4);
+        MACAddress dm;
+        const uint dnsSpin = deepProbe ? 8_000_000u : 400_000u;
+        for (uint i = 0; i < dnsSpin; ++i) { networkStackPoll(); if (arpLookup(dns4, &dm)) break; }
+        IPv4Address dip;
+        const bool dns = dnsResolve("example.com", &dip, deepProbe ? 4000 : 1500);
+        const ulong dipv = (cast(ulong)dip.bytes[0] << 24) | (cast(ulong)dip.bytes[1] << 16)
+                         | (cast(ulong)dip.bytes[2] << 8) | dip.bytes[3];
+        netHudProbe("dns".ptr, dns);
+        klog("[net] DNS resolve(example.com) ");
+        klog(dns ? "OK — INTERNET REACHABLE, ip=0x" : "FAILED (no internet route) ip=0x");
+        klog_hex(dipv); klog("\n");
+    }
+
     if (!deepProbe) {
-        klog("[net] install media: DHCP+ARP done; skipping the slower ping/DNS probes\n");
+        klog("[net] install media: DHCP+ARP+DNS done; skipping the slower ICMP ping probe\n");
         return;
     }
     if (!resolved) return;
@@ -3761,19 +3781,6 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
     klog(gotReply ? "ECHO REPLY received — IPv4 + ICMP work end-to-end!\n"
                   : "no reply (many gateways and slirp drop guest ICMP)\n");
 
-    // DNS proves inbound IPv4 + UDP parse.  The draft IP-send has no ARP defer-and-retransmit,
-    // so pre-resolve the DNS server's MAC first.
-    arpSendRequest(dns4);
-    MACAddress dm;
-    for (uint i = 0; i < 8_000_000u; ++i) { networkStackPoll(); if (arpLookup(dns4, &dm)) break; }
-    IPv4Address dip;
-    const bool dns = dnsResolve("example.com", &dip, 4000);
-    const ulong dipv = (cast(ulong)dip.bytes[0] << 24) | (cast(ulong)dip.bytes[1] << 16)
-                     | (cast(ulong)dip.bytes[2] << 8) | dip.bytes[3];
-    netHudProbe("dns".ptr, dns);
-    klog("[net] N3 UDP / N6 DNS: dnsResolve(example.com) ");
-    klog(dns ? "OK — inbound IP packet received + parsed! ip=0x" : "FAILED ip=0x");
-    klog_hex(dipv); klog("\n");
 }
 
 __gshared uint g_apPitLogCtr = 0;   // SMP_ROADMAP S4.4d: paces the BSP-side AP-progress klog

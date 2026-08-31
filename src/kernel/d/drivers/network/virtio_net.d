@@ -273,8 +273,11 @@ export extern(C) bool virtioNetInit(PCIDevice* pci, ubyte* mac) @nogc nothrow {
     kick(g_rx, QUEUE_RX);              // tell the device the rx buffers are ready
 
     g_vnetReady = true;
+    // printHex takes a ulong, so a per-byte call printed 16 hex digits each and the
+    // MAC came out as an unreadable 96-character smear.  Pack it into one value.
+    ulong macv = 0; foreach (i; 0 .. 6) macv = (macv << 8) | mac[i];
     print("[virtio-net] up: rx/tx queues live, MAC=");
-    foreach (i; 0 .. 6) printHex(mac[i]);
+    printHex(macv);
     printLine("");
     return true;
 }

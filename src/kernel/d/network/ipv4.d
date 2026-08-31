@@ -87,7 +87,11 @@ export extern(C) bool ipv4Send(const ref IPv4Address destIP,
     header.destIP = destIP;
     
     // Calculate checksum
-    header.headerChecksum = ipChecksum(cast(ubyte*)header, IPv4Header.sizeof);
+    // htons: ipChecksum() returns a HOST-order value.  Storing it raw wrote the checksum
+    // byte-swapped on the wire, so every IP datagram we sent was dropped as corrupt by the
+    // peer -- which is exactly why ARP (no checksum) worked while DHCP/ICMP/DNS never got a
+    // reply.  Every other multi-byte field here already goes through htons.
+    header.headerChecksum = htons(ipChecksum(cast(ubyte*)header, IPv4Header.sizeof));
     
     // Copy payload
     ubyte* payloadPtr = packetBuffer.ptr + IPv4Header.sizeof;
@@ -151,7 +155,7 @@ export extern(C) void ipv4HandlePacket(const(ubyte)* data, size_t len,
     ushort receivedChecksum = header.headerChecksum;
     IPv4Header* mutableHeader = cast(IPv4Header*)data;
     mutableHeader.headerChecksum = 0;
-    ushort calculatedChecksum = ipChecksum(data, headerLen);
+    ushort calculatedChecksum = htons(ipChecksum(data, headerLen));   // match the on-wire order
     mutableHeader.headerChecksum = receivedChecksum;
     
     if (receivedChecksum != calculatedChecksum) return;

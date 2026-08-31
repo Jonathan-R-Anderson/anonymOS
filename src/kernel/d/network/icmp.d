@@ -54,7 +54,7 @@ export extern(C) bool icmpSendPing(const ref IPv4Address destIP,
     }
     
     // Calculate checksum
-    header.checksum = ipChecksum(buffer.ptr, packetSize);
+    header.checksum = htons(ipChecksum(buffer.ptr, packetSize));   // network byte order
     
     // Send via IPv4
     return ipv4Send(destIP, IPProtocol.ICMP, buffer.ptr, packetSize);
@@ -89,7 +89,7 @@ export extern(C) bool icmpSendPong(const ref IPv4Address destIP,
     }
     
     // Calculate checksum
-    header.checksum = ipChecksum(buffer.ptr, packetSize);
+    header.checksum = htons(ipChecksum(buffer.ptr, packetSize));   // network byte order
     
     // Send via IPv4
     return ipv4Send(destIP, IPProtocol.ICMP, buffer.ptr, packetSize);
@@ -106,7 +106,7 @@ export extern(C) void icmpHandlePacket(const(ubyte)* data, size_t len,
     ushort receivedChecksum = header.checksum;
     ICMPHeader* mutableHeader = cast(ICMPHeader*)data;
     mutableHeader.checksum = 0;
-    ushort calculatedChecksum = ipChecksum(data, len);
+    ushort calculatedChecksum = htons(ipChecksum(data, len));      // match the on-wire order
     mutableHeader.checksum = receivedChecksum;
     
     if (receivedChecksum != calculatedChecksum) return;

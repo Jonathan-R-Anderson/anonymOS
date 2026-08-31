@@ -205,7 +205,7 @@ private bool tcpSendPacket(int sockfd, ubyte flags,
     // Calculate checksum
     IPv4Address localIP;
     getLocalIP(&localIP);
-    header.checksum = tcpChecksum(localIP, conn.remoteIP, buffer.ptr, packetSize);
+    header.checksum = htons(tcpChecksum(localIP, conn.remoteIP, buffer.ptr, packetSize));
     
     // Update sequence number if sending data or SYN/FIN
     if (dataLen > 0 || (flags & (TCPFlags.SYN | TCPFlags.FIN))) {

@@ -78,6 +78,23 @@ export extern(C) void setDNSServer(const IPv4Address* server) @nogc nothrow {
     }
 }
 
+// Skip one DNS name and return the offset just past it.
+//
+// A COMPRESSION POINTER IS A COMPLETE NAME.  The previous code followed the pointer and then
+// *also* skipped a terminating zero -- but there is no root label after a pointer, so it ate
+// the high byte of the following TYPE field.  For an A record TYPE is 0x0001, so the high byte
+// is 0x00, every subsequent field shifted by one, and `type` read back as 0x0100 (256) instead
+// of 1.  Every answer was therefore rejected and every lookup reported failure against a
+// perfectly valid reply -- the exact symptom seen with slirp's answer for example.com.
+private size_t dnsSkipName(const(ubyte)* data, size_t len, size_t offset) @nogc nothrow {
+    while (offset < len) {
+        if ((data[offset] & 0xC0) == 0xC0) return offset + 2;   // pointer: name ends here
+        if (data[offset] == 0)              return offset + 1;  // root label: name ends here
+        offset += data[offset] + 1;                             // ordinary label
+    }
+    return offset;
+}
+
 /// DNS receive callback
 private extern(C) void dnsReceiveCallback(int sockfd, const(ubyte)* data, size_t len,
                                           const ref IPv4Address srcIP, ushort srcPort) @nogc nothrow {
@@ -98,34 +115,13 @@ private extern(C) void dnsReceiveCallback(int sockfd, const(ubyte)* data, size_t
     ushort qdcount = ntohs(header.qdcount);
     
     for (ushort i = 0; i < qdcount && offset < len; i++) {
-        // Skip name (compressed or uncompressed)
-        while (offset < len && data[offset] != 0) {
-            if ((data[offset] & 0xC0) == 0xC0) {
-                // Compressed name (pointer)
-                offset += 2;
-                break;
-            } else {
-                // Label
-                offset += data[offset] + 1;
-            }
-        }
-        if (offset < len && data[offset] == 0) offset++;  // Skip null terminator
-        offset += 4;  // Skip type and class
+        offset = dnsSkipName(data, len, offset);
+        offset += 4;  // type + class
     }
     
     // Parse answers
     for (ushort i = 0; i < ancount && offset < len; i++) {
-        // Skip name
-        while (offset < len && data[offset] != 0) {
-            if ((data[offset] & 0xC0) == 0xC0) {
-                offset += 2;
-                break;
-            } else {
-                offset += data[offset] + 1;
-            }
-        }
-        if (offset < len && data[offset] == 0) offset++;
-        
+        offset = dnsSkipName(data, len, offset);
         if (offset + 10 > len) break;
         
         // Read type, class, TTL, data length

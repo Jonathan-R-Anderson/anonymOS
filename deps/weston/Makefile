@@ -334,13 +334,16 @@ $(STAMP_DIR)/weston-built: $(WESTON_SRC)/meson.build $(WESTON_PATCHED_SRCS) | $(
 	# keeps the correct 3750-byte one, so compare against that.  weston's copies are now
 	# named weston_evdev_device_create/_destroy; if a bare evdev_device_create in
 	# drm-backend.so is ever smaller than 2 KB again, the collision is back.
+	# NOTE: make runs recipes with /bin/sh, which is dash on Ubuntu -- so this must be
+	# POSIX.  Use $$((0x$$hex)), NOT bash's $$((16#$$hex)): dash rejects the base#digits
+	# form with 'arithmetic expression: expecting EOF' and fails the build.
 	@if command -v nm >/dev/null 2>&1; then \
 	    drmso=$$(find $(WESTON_SRC)/build-epin -name 'drm-backend.so' -print -quit 2>/dev/null); \
 	    if [ -n "$$drmso" ]; then \
 	        hex=$$(nm -S --defined-only "$$drmso" 2>/dev/null \
 	               | awk '$$4=="evdev_device_create"{print $$2; exit}'); \
-	        if [ -n "$$hex" ] && [ $$((16#$$hex)) -lt 2048 ]; then \
-	            echo "[weston] ERROR: evdev_device_create in $$drmso is only $$((16#$$hex)) bytes"; \
+	        if [ -n "$$hex" ] && [ $$((0x$$hex)) -lt 2048 ]; then \
+	            echo "[weston] ERROR: evdev_device_create in $$drmso is only $$((0x$$hex)) bytes"; \
 	            echo "[weston]        -> weston's copy displaced libinput's again (ODR collision)."; \
 	            echo "[weston]        -> input will be DEAD: no keyboard, no pointer, no error logged."; \
 	            echo "[weston]        -> see libweston/libinput-device.h for the rename that fixes it."; \

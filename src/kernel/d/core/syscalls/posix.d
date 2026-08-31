@@ -1014,6 +1014,8 @@ private enum int EPROTONOSUPPORT = 93;
 private enum int EOPNOTSUPP = 95;
 private enum int EAFNOSUPPORT = 97;
 private enum int EADDRINUSE = 98;
+private enum int EMSGSIZE     = 90;   // datagram larger than the UDP payload budget
+private enum int EHOSTUNREACH = 113;  // ipv4Send() could not put the frame on the wire
 private enum int ECONNREFUSED = 111;
 private enum int EISCONN = 106;
 private enum int ENOTCONN = 107;
@@ -1059,6 +1061,13 @@ private struct LocalSocket
     bool inUse;
     int domain;
     int type;
+    // AF_INET (SOCK_DGRAM) backing state.  inetUdpFd is the index into network/udp.d's
+    // socket table; -1 when this is not an AF_INET socket.
+    int    inetUdpFd = -1;
+    ushort inetLocalPort;
+    uint   inetPeerIP;      // network byte order
+    ushort inetPeerPort;    // host byte order
+    bool   inetConnected;
     int refCount;     // number of fds referencing this socket (dup-aware close)
     LocalSocketState state;
     size_t backlog;
@@ -1414,6 +1423,12 @@ private void releaseLocalSocket(int socketId)
     if (sock is null)
     {
         return;
+    }
+    // AF_INET: hand the udp.d slot back and drop its callback mapping before the LocalSocket
+    // is reset, otherwise a later datagram would be framed into a recycled socket's rx ring.
+    if (sock.domain == AF_INET)
+    {
+        inetClose(sock);
     }
     resetLocalSocket(*sock);
 }
@@ -7428,6 +7443,223 @@ public long linux_sys_clock_gettime(ulong clk_id, ulong tp) {
     return cast(long)sys_clock_gettime(cast(int)clk_id, cast(timespec*)tp);
 }
 
+
+// ════════════════════════════════════════════════════════════════════════════════
+// AF_INET / SOCK_DGRAM (UDP) socket backend
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Module-scope import: inetUdpRx() names IPv4Address in its SIGNATURE, so a function-body
+// import would not reach it.
+import network.types : IPv4Address;
+//
+// Until now sys_socket() rejected every domain except AF_UNIX and AF_NETLINK, so userspace
+// had NO IP sockets at all -- busybox's nslookup/wget/ping all failed at socket().  Meanwhile
+// the in-kernel IPv4 stack works: we verified DHCP, ARP and DNS end-to-end on the wire.  The
+// stack was simply unreachable from outside the kernel.
+//
+// This wires AF_INET+SOCK_DGRAM onto network/udp.d.  The design deliberately reuses what the
+// AF_UNIX layer already provides rather than inventing a parallel one:
+//
+//   * A LocalSocket is still the object behind the fd, so the fd table, dup/refcounting and
+//     close all keep working unchanged.
+//   * Received datagrams are framed into that socket's EXISTING rx ring, which means the
+//     existing poll/epoll readiness test (socketBufferReadable(sock.rx) > 0) makes an
+//     AF_INET socket pollable for free -- no changes to the poll path at all.
+//
+// Frame layout in the rx ring, one per datagram:
+//     [u16 payloadLen][4 bytes srcIP][u16 srcPort][payload ...]
+// recvfrom() pops the 8-byte header, then exactly payloadLen bytes, so datagram boundaries
+// are preserved (SOCK_DGRAM must not coalesce, unlike the AF_UNIX stream path).
+struct sockaddr_in {
+    ushort sin_family;
+    ushort sin_port;      // network byte order
+    uint   sin_addr;      // network byte order
+    ubyte[8] sin_zero;
+}
+
+private enum size_t INET_DGRAM_HDR = 8;
+private enum size_t INET_MAX_DGRAM = 1472;   // 1500 MTU - 20 IP - 8 UDP
+
+// udp.d socket index -> LocalSocket id, so the receive callback can find its owner.
+private __gshared int[256] g_udpFdToLocal;
+private __gshared bool     g_udpMapReady = false;
+
+private void inetMapInit() @nogc nothrow {
+    if (g_udpMapReady) return;
+    foreach (ref v; g_udpFdToLocal) v = -1;
+    g_udpMapReady = true;
+}
+
+// Called from udpHandlePacket() during networkStackPoll(), i.e. on the kernel loop under the
+// BKL.  Frame the datagram into the owning socket's rx ring; drop it if the ring is full,
+// which is exactly what a real UDP socket does when the receive buffer overflows.
+private extern(C) void inetUdpRx(int udpFd, const(ubyte)* data, size_t len,
+                                 const ref IPv4Address srcIP, ushort srcPort) @nogc nothrow {
+    if (udpFd < 0 || udpFd >= cast(int)g_udpFdToLocal.length) return;
+    const int id = g_udpFdToLocal[udpFd];
+    if (id < 0 || id >= cast(int)g_localSockets.length) return;
+    auto sock = &g_localSockets[id];
+    if (!sock.inUse || data is null) return;
+    if (len > INET_MAX_DGRAM) len = INET_MAX_DGRAM;
+    if (socketBufferWritable(sock.rx) < INET_DGRAM_HDR + len) return;   // no room -> drop
+
+    ubyte[INET_DGRAM_HDR] hdr;
+    hdr[0] = cast(ubyte)(len & 0xFF);
+    hdr[1] = cast(ubyte)((len >> 8) & 0xFF);
+    hdr[2] = srcIP.bytes[0]; hdr[3] = srcIP.bytes[1];
+    hdr[4] = srcIP.bytes[2]; hdr[5] = srcIP.bytes[3];
+    hdr[6] = cast(ubyte)(srcPort & 0xFF);
+    hdr[7] = cast(ubyte)((srcPort >> 8) & 0xFF);
+    socketBufferWrite(sock.rx, hdr.ptr, INET_DGRAM_HDR);
+    socketBufferWrite(sock.rx, data, len);
+}
+
+// True when this LocalSocket is an AF_INET one we manage.
+private bool inetIsInet(LocalSocket* s) @nogc nothrow {
+    return s !is null && s.inUse && s.domain == AF_INET;
+}
+
+// Create an AF_INET socket.  Only SOCK_DGRAM is supported for now; SOCK_STREAM needs the TCP
+// state machine, which is a separate piece of work.
+private int inetSocketCreate(int type, int protocol) @nogc nothrow {
+    import network.udp : udpSocket, udpSetCallback;
+    inetMapInit();
+    if (type != SOCK_DGRAM) return negErrno(EPROTONOSUPPORT);
+    if (protocol != 0 && protocol != 17) return negErrno(EPROTONOSUPPORT);  // 17 = IPPROTO_UDP
+
+    const int id = allocLocalSocket(AF_INET, SOCK_DGRAM);
+    if (id < 0) return negErrno(EMFILE);
+    const int ufd = udpSocket();
+    if (ufd < 0 || ufd >= cast(int)g_udpFdToLocal.length) { releaseLocalSocket(id); return negErrno(EMFILE); }
+
+    g_udpFdToLocal[ufd] = id;
+    g_localSockets[id].inetUdpFd = ufd;
+    udpSetCallback(ufd, &inetUdpRx);
+
+    const int fd = allocSocketFd(id, O_RDWR);
+    if (fd < 0) { g_udpFdToLocal[ufd] = -1; releaseLocalSocket(id); return negErrno(EMFILE); }
+    return fd;
+}
+
+// Bind to a local port.  Port 0 means "pick one" -- udp.d has no ephemeral allocator, so
+// choose from a high range and remember it.
+private __gshared ushort g_inetNextEphemeral = 49152;
+private int inetBind(LocalSocket* s, const(sockaddr)* addr, uint addrlen) @nogc nothrow {
+    import network.udp : udpBind;
+    if (addr is null || addrlen < sockaddr_in.sizeof) return negErrno(EINVAL);
+    auto sin = cast(const(sockaddr_in)*)addr;
+    ushort port = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));   // ntohs
+    if (port == 0) port = g_inetNextEphemeral++;
+    if (!udpBind(s.inetUdpFd, port)) return negErrno(EADDRINUSE);
+    s.inetLocalPort = port;
+    return 0;
+}
+
+// UDP connect() just records a default destination; there is no handshake.
+private int inetConnect(LocalSocket* s, const(sockaddr)* addr, uint addrlen) @nogc nothrow {
+    if (addr is null || addrlen < sockaddr_in.sizeof) return negErrno(EINVAL);
+    auto sin = cast(const(sockaddr_in)*)addr;
+    s.inetPeerIP   = sin.sin_addr;                                          // keep network order
+    s.inetPeerPort = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));
+    s.inetConnected = true;
+    // An unbound socket still needs a source port before it can send.
+    if (s.inetLocalPort == 0) {
+        import network.udp : udpBind;
+        const ushort p = g_inetNextEphemeral++;
+        if (udpBind(s.inetUdpFd, p)) s.inetLocalPort = p;
+    }
+    return 0;
+}
+
+// Send one datagram.  The draft ipv4Send() has no ARP defer-and-retransmit, so resolve the
+// next hop first with a bounded poll -- exactly what the boot self-test has to do.  Bounded
+// because this runs in syscall context holding the BKL; an unbounded spin would freeze the
+// desktop, which is the failure mode this session has already hit twice.
+private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
+                           const(sockaddr)* dest) @nogc nothrow {
+    import network.udp : udpSend;
+    import network.arp : arpSendRequest, arpLookup;
+    import network.stack : networkStackPoll;
+    import network.types : MACAddress;
+
+    if (buf is null || len == 0) return negErrno(EINVAL);
+    if (len > INET_MAX_DGRAM) return negErrno(EMSGSIZE);
+
+    uint  dip;
+    ushort dport;
+    if (dest !is null) {
+        auto sin = cast(const(sockaddr_in)*)dest;
+        dip   = sin.sin_addr;
+        dport = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));
+    } else if (s.inetConnected) {
+        dip = s.inetPeerIP; dport = s.inetPeerPort;
+    } else {
+        return negErrno(EDESTADDRREQ);
+    }
+
+    if (s.inetLocalPort == 0) {           // sendto on an unbound socket: auto-bind
+        import network.udp : udpBind;
+        const ushort p = g_inetNextEphemeral++;
+        if (!udpBind(s.inetUdpFd, p)) return negErrno(EAGAIN);
+        s.inetLocalPort = p;
+    }
+
+    auto ip = IPv4Address(cast(ubyte)(dip & 0xFF), cast(ubyte)((dip >> 8) & 0xFF),
+                          cast(ubyte)((dip >> 16) & 0xFF), cast(ubyte)((dip >> 24) & 0xFF));
+    MACAddress mac;
+    if (!arpLookup(ip, &mac)) {
+        arpSendRequest(ip);
+        for (uint i = 0; i < 200_000u; ++i) {
+            networkStackPoll();
+            if (arpLookup(ip, &mac)) break;
+        }
+    }
+    if (!udpSend(s.inetUdpFd, ip, dport, cast(const(ubyte)*)buf, len)) return negErrno(EHOSTUNREACH);
+    return cast(ssize_t)len;
+}
+
+// Pop exactly one datagram.  Returns EAGAIN when empty so a non-blocking caller behaves; the
+// kernel loop keeps pumping networkStackPoll(), so a poll()-then-recvfrom loop works.
+private ssize_t inetRecvFrom(LocalSocket* s, void* buf, size_t len,
+                             sockaddr* src, uint* srclen) @nogc nothrow {
+    if (buf is null) return negErrno(EINVAL);
+    if (socketBufferReadable(s.rx) < INET_DGRAM_HDR) return negErrno(EAGAIN);
+
+    ubyte[INET_DGRAM_HDR] hdr;
+    socketBufferRead(s.rx, hdr.ptr, INET_DGRAM_HDR);
+    size_t dlen = (cast(size_t)hdr[1] << 8) | hdr[0];
+
+    ubyte[INET_MAX_DGRAM] tmp;
+    if (dlen > INET_MAX_DGRAM) dlen = INET_MAX_DGRAM;
+    const size_t got = socketBufferRead(s.rx, tmp.ptr, dlen);
+
+    size_t copy = got;
+    if (copy > len) copy = len;                       // truncate like a real UDP socket
+    auto out_ = cast(ubyte*)buf;
+    foreach (i; 0 .. copy) out_[i] = tmp[i];
+
+    if (src !is null && srclen !is null && *srclen >= sockaddr_in.sizeof) {
+        auto sin = cast(sockaddr_in*)src;
+        sin.sin_family = cast(ushort)AF_INET;
+        sin.sin_port   = cast(ushort)((hdr[6] << 8) | hdr[7]);   // back to network order
+        sin.sin_addr   = (cast(uint)hdr[2]) | (cast(uint)hdr[3] << 8)
+                       | (cast(uint)hdr[4] << 16) | (cast(uint)hdr[5] << 24);
+        foreach (i; 0 .. 8) sin.sin_zero[i] = 0;
+        *srclen = cast(uint)sockaddr_in.sizeof;
+    }
+    return cast(ssize_t)copy;
+}
+
+private void inetClose(LocalSocket* s) @nogc nothrow {
+    import network.udp : udpClose;
+    if (s.inetUdpFd >= 0 && s.inetUdpFd < cast(int)g_udpFdToLocal.length) {
+        g_udpFdToLocal[s.inetUdpFd] = -1;
+        udpClose(s.inetUdpFd);
+    }
+    s.inetUdpFd = -1;
+    s.inetLocalPort = 0;
+    s.inetConnected = false;
+}
 public int sys_socket(int domain, int type, int protocol) {
     initFdTable();
 
@@ -7444,6 +7676,14 @@ public int sys_socket(int domain, int type, int protocol) {
         const int nfd = allocSocketFd(nid, O_RDWR);
         if (nfd < 0) { releaseLocalSocket(nid); return negErrno(EMFILE); }
         return publishActiveFdReturn(nfd);
+    }
+
+    // AF_INET: real IP sockets, backed by the in-kernel UDP stack.  Until this existed
+    // userspace could not use the network at all -- every tool died at socket().
+    if (domain == AF_INET) {
+        const int ifd = inetSocketCreate(baseType, protocol);
+        if (ifd < 0) return ifd;
+        return publishActiveFdReturn(ifd);
     }
 
     if (domain != AF_UNIX) return negErrno(EAFNOSUPPORT);
@@ -7468,6 +7708,7 @@ public int sys_bind(int sockfd, sockaddr* addr, uint addrlen) {
 
     File* f = &g_fdTable[sockfd];
     auto sock = fileSocket(f);
+    if (inetIsInet(sock)) return inetBind(sock, cast(const(sockaddr)*)addr, addrlen);
     if (sock is null) return negErrno(ENOTSOCK);
     // A netlink monitor socket binds to a sockaddr_nl; accept it as a no-op (we
     // deliver no uevents, so the bound socket just never becomes readable).
@@ -7533,6 +7774,10 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     initFdTable();
     if (sockfd < 0 || sockfd >= 1024) return negErrno(EBADF);
     if (addr is null) return negErrno(EFAULT);
+    {   // AF_INET: UDP connect() just records the default destination; no handshake.
+        auto insock = fileSocket(&g_fdTable[sockfd]);
+        if (inetIsInet(insock)) return inetConnect(insock, addr, addrlen);
+    }
     if (addr.sa_family != AF_UNIX) return negErrno(EAFNOSUPPORT);
 
     File* f = &g_fdTable[sockfd];
@@ -7761,6 +8006,15 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
 }
 
 public ssize_t sys_sendto(int sockfd, const(void)* buf, size_t len, int flags, const(sockaddr)* dest_addr, uint addrlen) {
+    // AF_INET: a real UDP send.  The AF_UNIX path below rejects any dest_addr outright, so
+    // this has to come first.  Bounds-check sockfd here: unlike bind/connect, sendto has no
+    // validation of its own before this point, and indexing g_fdTable blind would be an
+    // out-of-range read.
+    if (sockfd >= 0 && sockfd < 1024) {
+        initFdTable();
+        auto insock = fileSocket(&g_fdTable[sockfd]);
+        if (inetIsInet(insock)) return inetSendTo(insock, buf, len, dest_addr);
+    }
     if (dest_addr !is null) return negErrno(EOPNOTSUPP);
 
     iovec iov;
@@ -7778,6 +8032,13 @@ public ssize_t sys_sendto(int sockfd, const(void)* buf, size_t len, int flags, c
 }
 
 public ssize_t sys_recvfrom(int sockfd, void* buf, size_t len, int flags, sockaddr* src_addr, uint* addrlen) {
+    // AF_INET: pop exactly one datagram and fill sockaddr_in.  Same bounds-check reasoning
+    // as sendto above.
+    if (sockfd >= 0 && sockfd < 1024) {
+        initFdTable();
+        auto insock = fileSocket(&g_fdTable[sockfd]);
+        if (inetIsInet(insock)) return inetRecvFrom(insock, buf, len, src_addr, addrlen);
+    }
     iovec iov;
     iov.iov_base = buf;
     iov.iov_len = len;

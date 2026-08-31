@@ -2844,9 +2844,15 @@ private void dispatchSyscall(int tid) {
             }
             if (mmapOk) {
                 ret = cast(long)vaddr;
-                // Diagnostic: log large file-backed maps (e.g. the DRI driver) so
-                // a crash RIP inside a dlopen'd .so can be mapped back to a base.
-                if (useFile && alignedLen >= 0x100000) {
+                // Diagnostic: log file-backed maps so a crash RIP inside a dlopen'd
+                // .so can be mapped back to a base.
+                //
+                // The threshold used to be 1 MiB, which hid the mappings that matter
+                // most: drm-backend.so is 0xd7000 (880 KiB) and libexec_weston.so.0 is
+                // 0x8b000 (556 KiB), so the ONLY line ever printed was libweston-14.so.0
+                // and a crash RIP in the DRM backend could not be attributed to anything.
+                // 64 KiB still skips the small-fry without hiding a real module.
+                if (useFile && alignedLen >= 0x10000) {
                     klog("[mmap-so] base="); klog_hex(vaddr);
                     klog(" len="); klog_hex(alignedLen);
                     klog(" fd="); klog_hex(mfd); klog("\n");

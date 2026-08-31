@@ -411,9 +411,17 @@ udev_input_init(struct udev_input *input, struct weston_compositor *c,
 	 * the kernel-drawn cursor keeps moving -- the desktop looks alive but is deaf.
 	 *
 	 * This kernel always exposes exactly two evdev nodes at fixed, known paths, so when the
-	 * udev scan finds nothing there is no reason to depend on it: drop that context and add
-	 * the nodes explicitly through libinput's PATH backend, which performs no /sys
-	 * enumeration at all.  Strictly a fallback -- when udev works, nothing here runs.
+	 * udev scan finds nothing there is no reason to depend on its enumeration: add the nodes
+	 * explicitly through libinput's PATH backend.  Strictly a fallback -- when udev works,
+	 * nothing here runs.
+	 *
+	 * What the PATH backend does NOT do is escape libudev-zero.  An earlier version of this
+	 * comment claimed it "performs no /sys enumeration at all"; disassembling the shipped
+	 * drm-backend.so says otherwise.  libinput_path_create_context() calls udev_new(), and
+	 * libinput_path_add_device() calls stat() then udev_device_new_from_devnum(udev, 'c',
+	 * st_rdev), which in libudev-zero becomes a realpath() of /sys/dev/char/<maj>:<min>.
+	 * The win is narrower than it looks: we skip the scandir+subsystem-filter enumeration
+	 * (the part that comes up empty) and go straight to a device we already know the path of.
 	 */
 	if (!epin_input_has_devices(input)) {
 		static const char *const epin_fixed_nodes[] = {
@@ -425,7 +433,23 @@ udev_input_init(struct udev_input *input, struct weston_compositor *c,
 		weston_log("libinput: udev scan found no devices; "
 			   "falling back to fixed evdev paths\n");
 
-		libinput_unref(input->libinput);
+		/* Deliberately NOT libinput_unref() on the old udev context.
+		 *
+		 * That call is what killed the compositor.  Disassembly of the shipped
+		 * drm-backend.so puts the #GP (exception 0x0d, rip=0x74000079a073) at an
+		 * indirect dispatch inside libinput_unref -- `call *0x8(%rax)` / `call
+		 * *0x10(%rax)` at +0x50ab1/+0x50abe, i.e. interface_backend->suspend and
+		 * ->destroy -- so weston died tearing this context down, before a single
+		 * device was ever added.  The RIP is not at a valid instruction boundary on
+		 * any reachable path, so control got there through a corrupt code pointer.
+		 *
+		 * Abandoning the context instead is cheap and safe here: it owns no devices
+		 * (that is exactly why we are in this fallback), it was never registered
+		 * with the event loop (udev_input_enable() runs after this and uses the NEW
+		 * context), and this path executes once, during startup.  The cost is one
+		 * epoll fd plus a small allocation for the life of the process -- strictly
+		 * better than not reaching the desktop at all.
+		 */
 		input->libinput = libinput_path_create_context(&libinput_interface, input);
 		if (!input->libinput) {
 			weston_log("libinput: path create_context failed; no input devices\n");

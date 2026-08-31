@@ -635,11 +635,9 @@ public void netHudProbe(const(char)* label, bool ok) @nogc nothrow {
 }
 
 // Re-stamp onto the desktop after each present, below the Wi-Fi survey block.
-public void netHudRepaint() @nogc nothrow {
+public void netHudRepaint(uint y0) @nogc nothrow {
     import arch.x86_64.bootstrap : fb_draw_hud_row;
-    import drivers.pci : g_wifiHudN;
     if (!g_netHudEnabled) return;
-    const uint y0 = cast(uint)(16 + (g_wifiHudN > 0 ? g_wifiHudN : 1) * 16 + 8);
     for (int i = 0; i < g_netHudN; i++)
         fb_draw_hud_row(y0 + cast(uint)(i * 16), g_netHud[i].ptr);
 }

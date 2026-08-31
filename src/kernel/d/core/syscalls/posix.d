@@ -11483,14 +11483,22 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     // re-stamped every present so they persist over the desktop.
     logupStatusRepaint();
     usblogStatusRepaint();
+    // Network status — ALWAYS on (ungated), for the same reason the log-egress rows above are:
+    // the user needs to SEE whether the LAN came up.  It deliberately does NOT live in the
+    // g_wifiDebugHud block below, because that flag is false and nothing ever sets it true, so
+    // everything inside it is dead code — which is precisely why this overlay never appeared.
+    // Rows start at 16 (below the mouse HUD at row 0); when the WiFi debug HUD *is* enabled its
+    // survey rows occupy that band, so shift down past them in that case only.
+    {
+        import drivers.network.network : netHudRepaint;
+        import drivers.pci : g_wifiHudN;
+        netHudRepaint(g_wifiDebugHud ? cast(uint)(16 + (g_wifiHudN > 0 ? g_wifiHudN : 1) * 16 + 8) : 16u);
+    }
     // WiFi/LKL real-hardware debug HUDs (survey line, MSI/CSR rows, LKL console) are re-stamped
     // ON TOP of the compositor every present.  They are gated so a future release can restore a
     // clean desktop, but remain enabled during real-hardware WiFi bring-up.
     if (g_wifiDebugHud) {
         { import drivers.pci : wifiSurveyRepaint; wifiSurveyRepaint(); }  // persist the WiFi survey on-screen
-        // ...and the live network state right below it.  This is the ONLY place the LAN
-        // status is visible when the pointer does not work and no terminal is reachable.
-        { import drivers.network.network : netHudRepaint; netHudRepaint(); }
         msiHudRepaint();   // persist the MSI diagnostic (addr/data/fire-count) on row 2
         wifiCsrHudRepaint();  // persist the polled CSR_INT / ALIVE state on row 3
         lklLogRepaint();   // persist the LKL/iwlwifi console at the bottom of the desktop

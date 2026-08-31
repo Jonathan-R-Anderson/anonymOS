@@ -364,47 +364,59 @@ public bool displayAutoSizeFromEdid() @nogc nothrow
 {
     import arch.x86_64.bootstrap : g_fb;
     import core.io : klog, klog_hex;
+    import drivers.graphics.virtio_gpu : virtioGpuPreferredSize;
 
     if (g_fb is null) return false;
 
     const uint curW = cast(uint)g_fb.width;
     const uint curH = cast(uint)g_fb.height;
+    uint wantW = 0, wantH = 0;
 
-    if (g_fb.edid is null || g_fb.edid_size < 128) {
-        klog("[display] no EDID from the bootloader; keeping ");
+    // 1) virtio-gpu knows authoritatively what the host window wants.  Ask it first: unlike
+    //    EDID this is a live answer from the device, and it is the only source that exists on
+    //    a Proxmox VM configured with `-vga virtio`.
+    if (virtioGpuPreferredSize(&wantW, &wantH)) {
+        klog("[display] virtio-gpu preferred mode "); klog_hex(wantW);
+        klog("x"); klog_hex(wantH); klog("\n");
+    } else if (g_fb.edid !is null && g_fb.edid_size >= 128) {
+        // 2) Otherwise fall back to the monitor EDID the bootloader handed us.  Byte 54 of
+        //    block 0 begins the PREFERRED detailed timing; horizontal and vertical active
+        //    pixels are split across a low byte and the high nibble of a shared byte.
+        const(ubyte)* e = cast(const(ubyte)*)g_fb.edid;
+        wantW = (cast(uint)e[54 + 2]) | ((cast(uint)(e[54 + 4] & 0xF0)) << 4);
+        wantH = (cast(uint)e[54 + 5]) | ((cast(uint)(e[54 + 7] & 0xF0)) << 4);
+        klog("[display] EDID preferred mode "); klog_hex(wantW);
+        klog("x"); klog_hex(wantH); klog("\n");
+    } else {
+        klog("[display] no virtio-gpu and no EDID; keeping ");
         klog_hex(curW); klog("x"); klog_hex(curH); klog("\n");
         return false;
     }
 
-    const(ubyte)* e = cast(const(ubyte)*)g_fb.edid;
-    // Preferred detailed timing descriptor starts at byte 54.
-    //   +2  : horizontal active, low 8 bits
-    //   +4  : bits 7..4 = horizontal active, high 4 bits
-    //   +5  : vertical active, low 8 bits
-    //   +7  : bits 7..4 = vertical active, high 4 bits
-    const uint wantW = (cast(uint)e[54 + 2]) | ((cast(uint)(e[54 + 4] & 0xF0)) << 4);
-    const uint wantH = (cast(uint)e[54 + 5]) | ((cast(uint)(e[54 + 7] & 0xF0)) << 4);
-
-    klog("[display] EDID preferred mode "); klog_hex(wantW); klog("x"); klog_hex(wantH);
-    klog(" current "); klog_hex(curW); klog("x"); klog_hex(curH); klog("\n");
-
+    klog("[display] current "); klog_hex(curW); klog("x"); klog_hex(curH); klog("\n");
     if (wantW < 640 || wantH < 480 || wantW > 1920 || wantH > 1200) return false;
     if (wantW == curW && wantH == curH) return false;              // already correct
     if (cast(ulong)wantW * wantH * 4 > 16 * 1024 * 1024) {         // stdvga default VRAM
-        klog("[display] EDID mode exceeds 16MiB of VRAM; keeping the current mode\n");
+        klog("[display] preferred mode exceeds 16MiB of VRAM; keeping the current mode\n");
         return false;
     }
 
+    // Applying the mode is only implemented for Bochs/stdvga (the VBE dispi registers).  On a
+    // virtio-gpu display the size is KNOWN from the query above but changing it needs the
+    // SET_SCANOUT path (create resource -> attach backing -> set scanout -> transfer+flush on
+    // every present), which is not wired up yet -- so say so plainly rather than silently
+    // leaving the desktop the wrong size.
     if (!enableBochsVbeMode(wantW, wantH, 32)) {
-        klog("[display] not a Bochs/stdvga VBE device; cannot change mode here\n");
+        klog("[display] cannot apply: not a Bochs/stdvga VBE device.  On virtio-gpu this needs\n");
+        klog("[display] the SET_SCANOUT path; switch the VM to -vga std for auto-sizing today.\n");
         return false;
     }
 
-    // The dispi programming above sets VIRT_WIDTH = XRES at 32bpp, so the scanline pitch
-    // is exactly 4 bytes per pixel.  Publish the new geometry.
+    // The dispi programming sets VIRT_WIDTH = XRES at 32bpp, so the scanline pitch is exactly
+    // 4 bytes per pixel.  Publish the new geometry.
     g_fb.width  = wantW;
     g_fb.height = wantH;
     g_fb.pitch  = cast(ulong)wantW * 4;
-    klog("[display] switched to EDID preferred mode\n");
+    klog("[display] switched to the preferred mode\n");
     return true;
 }

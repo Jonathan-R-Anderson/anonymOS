@@ -115,11 +115,14 @@ if [ "${NET:-0}" = "1" ] || [ "${NET:-0}" = "e1000" ]; then
            -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
   echo "[qemu-run] NET=1: e1000 + user-net (guest 10.0.2.15, gw 10.0.2.2); frames dumped to net.pcap"
 elif [ "${NET:-0}" = "virtio" ]; then
-  NETDEV=( -netdev socket,id=net0,listen=127.0.0.1:5609 -device virtio-net-pci,netdev=net0
+  # virtio-net on USER-MODE networking, same as NET=1 but with the paravirtual NIC.
+  # This used to be `-netdev socket,listen=127.0.0.1:5609`: a VM-to-VM cable with nothing on
+  # the other end, so it could never carry traffic no matter how good the driver was.  virtio
+  # is the DEFAULT NIC model on Proxmox, so this is the configuration worth being able to test.
+  NETDEV=( -netdev user,id=net0 -device virtio-net-pci,netdev=net0
            -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
-  echo "[qemu-run] NET=virtio: virtio-net on a VM-to-VM socket cable (NOT user-net, and nothing is"
-  echo "[qemu-run]              listening on 127.0.0.1:5609) -- and the guest virtio-net driver is a"
-  echo "[qemu-run]              stub.  Use NET=1 (e1000) for a working LAN."
+  echo "[qemu-run] NET=virtio: virtio-net + user-net (guest 10.0.2.15, gw 10.0.2.2) -- the Proxmox"
+  echo "[qemu-run]             default NIC model; frames dumped to net.pcap"
 fi
 
 # USB log capture: a 2nd FAT USB stick that lkl-boot mounts (via the LKL's usb-storage) and dumps

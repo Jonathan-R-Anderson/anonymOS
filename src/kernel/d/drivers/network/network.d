@@ -287,9 +287,6 @@ private bool initE1000(NetworkDevice* dev) @nogc nothrow {
     }
     dev.memBase = readPCIBar(dev.pciDev, 0) + hhdm_offset;
 
-    // Enable bus mastering (REQUIRED for DMA — the rx/tx descriptor rings + buffers)
-    enablePCIBusMastering(dev.pciDev);
-    
     // Reset device (RST bit clears itself and all other bits)
     uint ctrl = readE1000Reg(dev, E1000Reg.CTRL);
     writeE1000Reg(dev, E1000Reg.CTRL, ctrl | 0x04000000); // Set RST (bit 26)
@@ -305,6 +302,14 @@ private bool initE1000(NetworkDevice* dev) @nogc nothrow {
     ctrl = readE1000Reg(dev, E1000Reg.CTRL);
     ctrl |= (1 << 6) | (1 << 5);
     writeE1000Reg(dev, E1000Reg.CTRL, ctrl);
+
+    // Enable bus mastering AFTER the reset, not before.  Without PCI bus-master the device
+    // cannot DMA at all -- QEMU refuses the frame with
+    //   e1000x_rx_can_recv_disabled link_up: 1, rx_enabled 0, pci_master 0
+    // which is exactly what the device trace showed on a failing boot.  Setting it before the
+    // MAC reset leaves a window where it can be lost; the canonical order is
+    // reset -> bus master -> program the rings.  (REQUIRED for DMA: rings + buffers.)
+    enablePCIBusMastering(dev.pciDev);
     
     // Read MAC address from EEPROM
     readE1000Mac(dev);

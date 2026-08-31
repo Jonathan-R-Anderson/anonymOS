@@ -1021,3 +1021,48 @@ private ushort volatileLoadUshort(ushort* ptr) @nogc nothrow {
     // Force read from memory using shared cast (volatile in D)
     return *cast(shared const ushort*)ptr;
 }
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Host display geometry (VIRTIO_GPU_CMD_GET_DISPLAY_INFO)
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// The whole desktop was frozen at whatever mode limine picked at boot: DRM synthesises a
+// single connector mode from g_fb (posix.d fillModeInfo) and nothing ever changed it.  On a
+// plain stdvga there is genuinely no way to learn the host's preferred size at runtime -- but
+// virtio-gpu HAS one, and this kernel already speaks the modern virtio transport to that
+// device (the cap-walk + control virtqueue set up in virtioGpuDetectVirgl).
+//
+// GET_DISPLAY_INFO returns, for each of up to 16 scanouts, a rect plus an "enabled" flag.
+// Scanout 0's rect is what the host window/console currently wants, so it is exactly the
+// number the guest needs in order to come up at the right size.
+//
+// Uses gpuCtrl(), the PROVEN request path -- request at g_gpuBuf+0, response at +2048.
+// Deliberately NOT virtioGpuInit() (:803), which is the legacy decoy that programs a virtual
+// address as a queue PFN and has never worked.
+//
+// Wire layout of the response:
+//   +0    virtio_gpu_ctrl_hdr            24 bytes  (type must be RESP_OK_DISPLAY_INFO)
+//   +24   pmodes[16] of { rect{x,y,w,h}, enabled, flags }   16 * 24 = 384 bytes
+enum uint VIRTIO_GPU_DISPLAY_INFO_RESP_LEN = 24 + 16 * 24;
+
+// Ask the device what size the host display is.  Returns false when there is no virtio-gpu,
+// when its control queue never came up, or when scanout 0 is disabled/degenerate.
+export bool virtioGpuPreferredSize(uint* wOut, uint* hOut) @nogc nothrow {
+    if (wOut is null || hOut is null) return false;
+    if (!g_gpuQueueReady) return false;          // no modern control queue -> nothing to ask
+
+    gpuZeroReq(VirtioGpuCtrlHdr.sizeof);
+    gpuPutU(0, VIRTIO_GPU_CMD_GET_DISPLAY_INFO);   // hdr.type; flags/fence/ctx stay zero
+    const uint resp = gpuCtrl(VirtioGpuCtrlHdr.sizeof, VIRTIO_GPU_DISPLAY_INFO_RESP_LEN);
+    if (resp != VIRTIO_GPU_RESP_OK_DISPLAY_INFO) return false;
+
+    // pmodes[0] sits immediately after the 24-byte header in the response half of g_gpuBuf.
+    const ubyte* pm = g_gpuBuf + 2048 + VirtioGpuCtrlHdr.sizeof;
+    const uint w       = *cast(const uint*)(pm + 8);    // rect.width  (x,y precede it)
+    const uint h       = *cast(const uint*)(pm + 12);   // rect.height
+    const uint enabled = *cast(const uint*)(pm + 16);
+    if (enabled == 0) return false;
+    if (w < 640 || h < 480 || w > 4096 || h > 4096) return false;
+    *wOut = w; *hOut = h;
+    return true;
+}

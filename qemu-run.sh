@@ -117,7 +117,9 @@ if [ "${NET:-0}" = "1" ] || [ "${NET:-0}" = "e1000" ]; then
 elif [ "${NET:-0}" = "virtio" ]; then
   NETDEV=( -netdev socket,id=net0,listen=127.0.0.1:5609 -device virtio-net-pci,netdev=net0
            -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
-  echo "[qemu-run] NET=virtio: virtio-net + user-net; frames dumped to net.pcap"
+  echo "[qemu-run] NET=virtio: virtio-net on a VM-to-VM socket cable (NOT user-net, and nothing is"
+  echo "[qemu-run]              listening on 127.0.0.1:5609) -- and the guest virtio-net driver is a"
+  echo "[qemu-run]              stub.  Use NET=1 (e1000) for a working LAN."
 fi
 
 # USB log capture: a 2nd FAT USB stick that lkl-boot mounts (via the LKL's usb-storage) and dumps

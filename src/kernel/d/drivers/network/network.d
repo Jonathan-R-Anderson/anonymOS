@@ -55,40 +55,49 @@ export extern(C) void initNetwork() @nogc nothrow {
             printLine("[network] Found Intel E1000 network adapter");
             g_netDevice.type = NetworkDeviceType.E1000;
             g_netDevice.pciDev = &dev;
-            initE1000(&g_netDevice);
+            if (!initE1000(&g_netDevice)) {
+                printLine("[network] e1000 init failed -- not claiming this device");
+                continue;   // keep scanning; do not report a LAN we could not bring up
+            }
             g_networkAvailable = true;
             return;
         }
         
         // Generic Intel Network Controller Fallback
         // If it's Intel (0x8086) and Network Class (0x02), try E1000 driver
-        if (dev.vendorId == 0x8086 && dev.classCode == 0x02 && !g_networkAvailable) {
+        // subClass 0x00 == Ethernet controller.  WITHOUT this check an Intel Wi-Fi card (class
+        // 0x02, subClass 0x80 -- e.g. the AX210 in this laptop) was claimed as an e1000: it got
+        // e1000 register writes at its BAR and the scan RETURNED, so a real Ethernet NIC further
+        // down the bus was never seen and Wi-Fi was poked with the wrong driver.
+        if (dev.vendorId == 0x8086 && dev.classCode == 0x02 && dev.subClass == 0x00 && !g_networkAvailable) {
              printLine("[network] Found Generic Intel Network Controller - Attempting E1000 driver...");
              g_netDevice.type = NetworkDeviceType.E1000;
              g_netDevice.pciDev = &dev;
-             initE1000(&g_netDevice);
+             if (!initE1000(&g_netDevice)) {
+                 printLine("[network] e1000 init failed -- not claiming this device");
+                 continue;   // keep scanning; do not report a LAN we could not bring up
+             }
              g_networkAvailable = true;
              return;
         }
         
-        // Realtek RTL8139 (0x10EC = Realtek, 0x8139 = RTL8139)
+        // Realtek RTL8139 (0x10EC:0x8139) -- initRTL8139() is a STUB that only prints.
+        // This branch used to set g_networkAvailable = true and RETURN, which (a) reported a
+        // working LAN that can never send or receive a frame, and (b) abandoned the scan, so a
+        // real e1000 further down the bus was never found.  Log it and keep looking instead.
         if (dev.vendorId == 0x10EC && dev.deviceId == 0x8139) {
-            printLine("[network] Found Realtek RTL8139 network adapter");
-            g_netDevice.type = NetworkDeviceType.RTL8139;
-            g_netDevice.pciDev = &dev;
+            printLine("[network] Found Realtek RTL8139 -- driver is a stub, not claiming it");
             initRTL8139(&g_netDevice);
-            g_networkAvailable = true;
-            return;
+            continue;
         }
-        
-        // VirtIO Network (0x1AF4 = Red Hat, 0x1000 = VirtIO net)
+
+        // VirtIO Network (0x1AF4:0x1000) -- initVirtIO() is a stub too (no virtqueue setup, no
+        // feature negotiation, no virtio_net_hdr anywhere in the tree).  Same reasoning: do not
+        // claim a NIC we cannot drive, and do not stop the scan because of it.
         if (dev.vendorId == 0x1AF4 && dev.deviceId == 0x1000) {
-            printLine("[network] Found VirtIO network adapter");
-            g_netDevice.type = NetworkDeviceType.VirtIO;
-            g_netDevice.pciDev = &dev;
+            printLine("[network] Found VirtIO-net -- driver is a stub, not claiming it");
             initVirtIO(&g_netDevice);
-            g_networkAvailable = true;
-            return;
+            continue;
         }
     }
     
@@ -247,11 +256,27 @@ private __gshared ulong g_netRxLastEtherType = 0;  // N0: ethertype of the most 
 export extern(C) ulong getNetRxFrames() @nogc nothrow { return g_netRxFrames; }
 export extern(C) ulong getNetRxLastEtherType() @nogc nothrow { return g_netRxLastEtherType; }
 
-private void initE1000(NetworkDevice* dev) @nogc nothrow {
+private bool initE1000(NetworkDevice* dev) @nogc nothrow {
     printLine("[e1000] Initializing Intel E1000...");
     
     // Read BAR0 for memory-mapped I/O — map it through the HHDM so memBase is a usable virtual
     // address (the registers are accessed as memBase+offset; the raw phys is not mapped low).
+    // BAR0 must be a MEMORY BAR holding a real address.  readPCIBar() masks the low bits for
+    // BOTH memory and I/O BARs, so it cannot tell them apart, and an unassigned BAR reads back
+    // 0 -- either way memBase would collapse to a bare hhdm_offset and every register access
+    // would land on unrelated memory while init still reported success.  Check before binding.
+    {
+        import drivers.pci : pciConfigRead32;
+        const uint bar0 = pciConfigRead32(dev.pciDev.bus, dev.pciDev.slot, dev.pciDev.func, 0x10);
+        if ((bar0 & 1) != 0) {
+            printLine("[e1000] BAR0 is an I/O BAR, not MMIO -- refusing to bind");
+            return false;
+        }
+        if ((bar0 & 0xFFFFFFF0) == 0) {
+            printLine("[e1000] BAR0 is unassigned (0) -- refusing to bind");
+            return false;
+        }
+    }
     dev.memBase = readPCIBar(dev.pciDev, 0) + hhdm_offset;
 
     // Enable bus mastering (REQUIRED for DMA — the rx/tx descriptor rings + buffers)
@@ -285,6 +310,7 @@ private void initE1000(NetworkDevice* dev) @nogc nothrow {
     
     dev.initialized = true;
     printLine("[e1000] Initialization complete");
+    return true;
 }
 
 private void readE1000Mac(NetworkDevice* dev) @nogc nothrow {

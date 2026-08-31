@@ -1,0 +1,389 @@
+AnonymOS Kernel Starting...
+Base Revision Addr: ffffffff801114a0
+Base Rev Magic 0:  f9562b2d5c95a6c8
+Base Rev Magic 1:  0000000000000001
+Base Revision Val: 0000000000000000
+Paging Mode: 0000000000000000
+Paging Flags: 0000000000000000
+HHDM Offset: ffff800000000000
+[smp] 0000000000000002 CPUs discovered (bsp lapic=0000000000000000)
+[smp] APIC base=00000000fee00d00 x2APIC-cpuid=0000000000000001 limine-flags=0000000000000001
+[smp] 0000000000000001 of 0000000000000001 APs online; 0000000000000001 with GS-addressed per-CPU state verified; bsp idx=0000000000000000
+[smp] BSP per-CPU area OK (currentTask shim seeded)
+[smp] BKL: counter=0000000000030d40 expected=0000000000030d40 PASS (cross-core mutual exclusion across all cores)
+[smp] 0000000000000001 of 0000000000000001 APs installed their own per-CPU GDT/TSS (S4.1: ready for kernel entry)
+[smp] 0000000000000001 of 0000000000000001 APs handled a #BP on their own IST stack (S4.2: per-CPU IDT + fault entry works)
+[smp] 0000000000000001 of 0000000000000001 APs routed `syscall` to their own per-CPU entry stub (S4.3: syscall entry ready)
+Entering bootstrap_kernel D...
+Framebuffer: ffff8000fd000000 0000000000000500x0000000000000320 pitch=0000000000001400 bpp=0000000000000020 model=0000000000000001 rgb=0000000000000008@0000000000000010,0000000000000008@0000000000000008,0000000000000008@0000000000000000 edid=0000000000000080 modes=0000000000000042
+[display] mode 0000000000000000: 0000000000000140x00000000000000c8 pitch=0000000000000280 bpp=000000000000000f model=0000000000000001
+[display] mode 0000000000000001: 0000000000000140x00000000000000c8 pitch=0000000000000280 bpp=0000000000000010 model=0000000000000001
+[display] mode 0000000000000002: 0000000000000140x00000000000000c8 pitch=00000000000003c0 bpp=0000000000000018 model=0000000000000001
+[display] mode 0000000000000003: 0000000000000280x00000000000001e0 pitch=0000000000000500 bpp=000000000000000f model=0000000000000001
+[display] mode 0000000000000004: 0000000000000280x00000000000001e0 pitch=0000000000000500 bpp=0000000000000010 model=0000000000000001
+[display] mode 0000000000000005: 0000000000000280x00000000000001e0 pitch=0000000000000780 bpp=0000000000000018 model=0000000000000001
+[display] mode 0000000000000006: 0000000000000320x0000000000000258 pitch=0000000000000640 bpp=000000000000000f model=0000000000000001
+[display] mode 0000000000000007: 0000000000000320x0000000000000258 pitch=0000000000000640 bpp=0000000000000010 model=0000000000000001
+Clearing framebuffer...
+FB cleared! Writing text...
+FB text written!
+No Limine terminal available!
+init_idt: size of idt_ptr=000000000000000a
+IDT initialized.
+init_gdt: size of gdt_ptr=000000000000000a
+init_gdt: GDT Addr=ffffffff87e18220
+init_gdt: TSS Addr=ffffffff87e18260
+init_gdt: clearing structures
+....... GDT cleared
+............. TSS cleared
+init_gdt: TSS rsp0/ist1=ffffffff87e1c2d0
+init_gdt: setting gates
+init_gdt: setup TSS gate at index 5
+init_gdt: Loading GDT...
+init_gdt: GDT loaded.
+init_gdt: Loading TSS (selector 0x28)...
+init_gdt: TR loaded.
+GDT initialized.
+init_mm: starting
+init_mm: CR3=0000000033a01000
+init_mm: Recursive mapping set at index 510
+init_mm: done
+MM initialized.
+[pubmod] count=0000000000000074 modules@ffff80007534c000
+[pubmod] records@ffff800000100000
+[pubmod] done
+Bundle: module[0] is not a .bundle; skipping legacy bundle read
+Mapping module 2 (init.elf) to 0x400000...
+Mapped 000000000000012a pages
+Calling D kernel main...
+[dkernel] EpinAnonymOS D kernel starting
+[dkernel] framebuffer log off for fast boot; faults re-enable it
+[random] initialized
+[virtio-gpu] R2.1: no virtio-gpu device (0x1AF4:0x1050) on the bus
+[install-config] no install.json boot module; using live/default account config
+[boot-integrity] zkSync attestation not selected
+[ahci] Initializing AHCI...
+[ahci] Found controller at 0000000000000000:0000000000000003.0000000000000000
+[ahci] ABAR phys=0x00000000febf1000 virt=0xffff8000febf1000
+[ahci] Ports Implemented register: 000000000000003f
+[ahci] Checking port 0
+[ahci] checkType: ssts=0000000000000113 det=3 ipm=1 sig=0000000000000101
+[ahci] Port 0 type: 1
+[ahci] SATA drive found at port 0
+[ahci] Port rebased 0
+[ahci] Checking port 1
+[ahci] checkType: ssts=0000000000000000 det=0 ipm=0 sig=00000000ffff0101
+[ahci] checkType: DET != PRESENT, returning NULL
+[ahci] Port 1 type: 0
+[ahci] Checking port 2
+[ahci] checkType: ssts=0000000000000000 det=0 ipm=0 sig=00000000ffff0101
+[ahci] checkType: DET != PRESENT, returning NULL
+[ahci] Port 2 type: 0
+[ahci] Checking port 3
+[ahci] checkType: ssts=0000000000000000 det=0 ipm=0 sig=00000000ffff0101
+[ahci] checkType: DET != PRESENT, returning NULL
+[ahci] Port 3 type: 0
+[ahci] Checking port 4
+[ahci] checkType: ssts=0000000000000000 det=0 ipm=0 sig=00000000ffff0101
+[ahci] checkType: DET != PRESENT, returning NULL
+[ahci] Port 4 type: 0
+[ahci] Checking port 5
+[ahci] checkType: ssts=0000000000000000 det=0 ipm=0 sig=00000000ffff0101
+[ahci] checkType: DET != PRESENT, returning NULL
+[ahci] Port 5 type: 0
+[disk] AHCI SATA data disk ready, sectors=0x0000000000010000
+[disk] selftest PASS (sector round-trip verified)
+[vc-crypto] KAT PASS (AES-256 FIPS-197 + SHA-512 NIST)
+[diskpart] GPT proof PASS (built+validated ESP esp_lba=0x0000000000000022 root_lba=0x0000000000100022 last_usable=0x0000000000ffffde; corruption rejected)
+[install] INSTALL image: skipping disk-writing boot proofs; target disk is reserved for the GUI installer
+[install] READY: esp-image=0x0000000014000000B, target idx=0x0000000000000000 dsec=0x0000000000010000 — click 'Install to Disk' (or: echo install > /config/install.action)
+[objstore] INSTALL image — store stays in-memory (disk is a free install target)
+[domain] selftest PASS
+[ns] restricted selftest PASS (deny-by-default + ro-rights + deny-override)
+[domain] ns proof PASS: Development restricted view (home rw, /Shared ro, Private+/System+unbound denied)
+[configboot] template DevTemplate created -> identity Personal persist=0000000000000000
+[configboot] domain DevSandbox created -> identity Personal template DevTemplate persist=0000000000000002
+[configboot] domain DevSandbox fs policy → restricted ns
+[configboot] domain BankVault created -> identity Banking persist=0000000000000001
+[dkernel] config: serviceStartAll started 0000000000000003
+[dkernel] config: applied 0000000000000003 services, 0000000000000003 identities, 0000000000000003 domains, 0000000000000003 namespaces, gen=0000000000000059
+[domain] /config/domains.json render OK: 000000000000000a domains, 00000000000007fe bytes
+[domain] /objects/domains view OK: 000000000000000a entries; meta=0000000000000091B rels=000000000000004fB caps=00000000000000b4B
+[domain] read-path /objects/domains/Development/meta: kind=0000000000000005 field=0000000000000001 -> OK 0000000000000091 bytes
+[domain] fs manifest proof PASS: DevSandbox ns from manifest (Home+Projects rw, /System/Templates ro, secrets denied, unbound deny-by-default)
+[domain] /objects/domains/DevSandbox/filesystem (DM2.4 RuntimeView):
+# restricted filesystem view of domain DevSandbox
+namespace=81
+defaultPolicy=deny
+# mode  path  (resolved bindings; longest-prefix wins, deny overrides)
+ro    /System/Templates
+ro    /Shared/Public
+rw    /Domains/DevSandbox/Home
+rw    /tmp
+rw    /Shared/Projects
+deny  /Shared/Projects/secrets
+[domain] enter proof PASS: task bound to DevSandbox restricted ns + identity Personal (opens enforced)
+[domain] lifecycle proof PASS: clone/start/pause/resume/shutdown/rename/delete + bad transitions rejected
+[domain] persist proof SKIP (no disk)
+[domain] template proof PASS: DevTemplate immutable template + DevSandbox references it
+[overlay] selftest PASS (write/snapshot/discard/restore/inspect-diff/validate/commit; commit never mutates the base)
+[domain] overlay-write proof PASS: domain-bound writes captured in the overlay (copy-up)
+[domain] control: ping DevSandbox -> OK
+[domain] control: start DevSandbox -> OK
+[domain] control: pause DevSandbox -> OK
+[domain] control: resume DevSandbox -> OK
+[domain] control: snapshot DevSandbox -> OK
+[domain] control: stop DevSandbox -> OK
+[domain] control: clone DevSandbox -> OK
+[domain] control: unknown verb 'frobnicate'
+[domain] control: start Nonexistent -> FAIL
+[domain] control: devoff Development -> OK
+[domain] control: devon Development -> OK
+[domain] control: fsrw Development -> OK
+[domain] control: fsdeny Development -> OK
+[domain] control: create CtlNew -> OK
+[domain] control: fromtpl CtlInst -> OK
+[domain] control proof PASS (lifecycle/clone/create/fromtpl + devon/devoff + fsrw/fsdeny via parse+exec; unknown denied)
+[domain] device proof PASS (per-domain mask: camera EACCES, GUI toggle ON→allowed→OFF→EACCES; input+gpu OK)
+[pkg] repository seeded (0000000000000006 packages)
+[pkg] installed hello into domain objId 0000000000000043
+[pkg] install DENIED (ceiling): system-monitor
+[pkg] installed system-monitor into domain objId 000000000000003f
+[pkg] installed hello into domain objId 0000000000000043
+[pkg] profile applied: minimal
+[pkg] repo proof PASS (cap-gated install/remove + profile apply; admin pkg EACCES in user domain, OK in System)
+[pkg] /config/packages.json render OK: 0000000000000006 packages, 00000000000002db bytes
+[install] /config/disks.json: { "disks": [
+  { "index": 0, "sizeMiB": 32, "role": "store" }
+] }
+[update] no boot-state on disk; slot defaults to A (legacy/pre-U1 install)
+[update] system version=0x0000000000000001 (0.1.0) channel=stable slot=A
+[bootstate] selftest PASS (sector round-trip: try=B ok=A seq bump verified)
+[update] init-state: boot-state initialized for slot A
+[update] switch: next boot -> slot B (fallback slot A)
+[update] rollback: next boot -> known-good slot A
+[update] switch: next boot -> slot B (fallback slot A)
+[update] boot-ok: slot A committed healthy (triesLeft reset)
+[update] control: unknown verb (deny-by-default)
+[update] engine selftest PASS (init/switch/rollback/boot-ok/deny-by-default)
+[domain] distro proof PASS (busybox -> /linux RO; switch to nix re-roots + pkgMgr follows)
+[tpl] bundle proof PASS (export/sign → verify+install; tamper→HMAC reject; untrusted→block→trust→install; rollback)
+[domain] inherit proof PASS (least-privilege merge: effective=intersection; narrow OK, escalation denied+detected)
+[smp] AP parallel work (ran while the BSP booted the desktop): cpu0000000000000001=0000000005fcd010; sharedWork=00000000000005fe
+[smp] S4 foundation PASS: every AP ran sustained parallel kernel work
+[dkernel] init = Weston module (GW3)
+[dkernel] init phys=000000005ed8e000 size=0000000000018160
+archMapKernel: copying kernel mappings
+archMapKernel: PML4[256] = 00000000339aa027
+archMapKernel: PML4[511] = 0000000033a00027
+archMapKernel: done
+[elf] type=0000000000000002 entry=0000000000404370 bias=0000000000000000 phnum=000000000000000b
+[elf] LOAD va=0000000000400000 memsz=0000000000003380 filesz=0000000000003380
+[elf] LOAD va=0000000000404000 memsz=0000000000008eb3 filesz=0000000000008eb3
+[elf] LOAD va=000000000040d000 memsz=0000000000003f68 filesz=0000000000003f68
+[elf] LOAD va=0000000000411db0 memsz=0000000000001790 filesz=0000000000001780
+[dkernel] ELF entry=0000000000404370 topVirt=0000000000414000
+[dkernel] PT_INTERP=/build/deps/musl/install/lib/ld-musl-x86_64.so.1
+[elf] type=0000000000000003 entry=0000000000078954 bias=00005a0000000000 phnum=0000000000000009
+[elf] LOAD va=00005a0000000000 memsz=0000000000013be8 filesz=0000000000013be8
+[elf] LOAD va=00005a0000014000 memsz=000000000006496a filesz=000000000006496a
+[elf] LOAD va=00005a0000079000 memsz=0000000000035974 filesz=0000000000035974
+[elf] LOAD va=00005a00000afa40 memsz=0000000000003488 filesz=00000000000009c2
+[dkernel] interp loaded base=00005a0000000000 entry=00005a0000078954
+[linux-stack] rsp=00007000000ff670 argc=0000000000000002 argv0=00007000000fffa0 envp0=0000000000000000 aux0=00007000000fff90 phdr=0000000000400040 phent=0000000000000038 phnum=000000000000000b entry=0000000000404370 base=00005a0000000000 execfn=00007000000fffa0 random=00007000000fffc0
+[dkernel] rsp=00007000000ff670 rip=00005a0000078954
+archMapKernel: copying kernel mappings
+archMapKernel: PML4[256] = 00000000339aa027
+archMapKernel: PML4[511] = 0000000033a00027
+archMapKernel: done
+[smp] AP idx 0000000000000001 entered apKernelLoop (S4.4a: post-desktop rendezvous)
+[smp] AP idx 0000000000000001 ring0→ring3→ring0 OK (S4.4b: ran a userspace stub on its own entry path)
+[smp] AP idx 0000000000000001 issued getpid via the shared handler under the BKL → pid=0000000000000002 (S4.4c: AP dispatched a real syscall, tid=0000000000000001)
+[smp] AP idx 0000000000000001 now looping getpid in parallel with the desktop (count surfaced from the BSP below)
+[smp] AP task tid=0000000000000001 PINNED to CPU idx 0000000000000001 (BSP scheduler skips it; never migrates) — S8 pinning mechanism
+[apic-timer] BSP tick vec 0x20 src=0000000000000001 init=0000000000003d04
+[dkernel] entering kernel loop
+archMapKernel: copying kernel mappings
+archMapKernel: PML4[256] = 00000000339aa027
+archMapKernel: PML4[511] = 0000000033a00027
+archMapKernel: done
+[elf] type=0000000000000002 entry=000000000040102c bias=0000000000000000 phnum=0000000000000008
+[elf] LOAD va=0000000000400000 memsz=0000000000000224 filesz=0000000000000224
+[elf] LOAD va=0000000000401000 memsz=0000000000000933 filesz=0000000000000933
+[elf] LOAD va=0000000000402000 memsz=0000000000000070 filesz=0000000000000070
+[elf] LOAD va=0000000000403ff0 memsz=00000000000002a0 filesz=0000000000000020
+[linux-stack] rsp=00007000000ff6a0 argc=0000000000000001 argv0=00007000000fffa0 envp0=00007000000fff90 aux0=00007000000fff80 phdr=0000000000400040 phent=0000000000000038 phnum=0000000000000008 entry=000000000040102c base=0000000000000000 execfn=00007000000fffa0 random=00007000000fffc0
+[exec] entry=000000000040102c rsp=00007000000ff6a0
+[idle] idle task spawned as tid 0000000000000002
+[open] //libexec_weston.so.0
+[xkb] unpacked files=0000000000000103 bytes=00000000002e421f allocFails=0000000000000000
+[assets] /fonts.blob unpacked files=0000000000000006 bytes=0000000000404b70 total_files=0000000000000006 total_bytes=0000000000404b70
+[assets] /icons.blob unpacked files=000000000000000b bytes=000000000000658a total_files=0000000000000011 total_bytes=000000000040b0fa
+[assets] /cursors.blob unpacked files=000000000000005b bytes=0000000000320951 total_files=000000000000006c total_bytes=000000000072ba4b
+[assets] /wallpapers.blob unpacked files=0000000000000006 bytes=00000000000274ce total_files=0000000000000072 total_bytes=0000000000752f19
+[assets] /themes.blob unpacked files=0000000000000006 bytes=000000000000920c total_files=0000000000000078 total_bytes=000000000075c125
+[assets] /zshfns.blob unpacked files=00000000000003fa bytes=00000000003d283c total_files=0000000000000472 total_bytes=0000000000b2e961
+[assets] /zshplugins.blob unpacked files=000000000000018b bytes=000000000013de88 total_files=00000000000005fd total_bytes=0000000000c6c7e9
+[assets] /omz.blob unpacked files=0000000000000037 bytes=000000000006adfb total_files=0000000000000634 total_bytes=0000000000cd75e4
+[rtfs] selftest PASS (/bin applets=382, checks 11/11, rtBytes=22822912)
+[open] //../libweston/libweston-14.so.0
+[mmap-so] base=000074000008b000 len=0000000000187000 fd=0000000000000003
+[sshd] launching hos-sshd-launch (SSH-in via lkl-boot tcp/22 -> /run/sshd.sock -> dropbear)
+archMapKernel: copying kernel mappings
+archMapKernel: PML4[256] = 00000000339aa027
+archMapKernel: PML4[511] = 0000000033a00027
+archMapKernel: done
+[elf] type=0000000000000002 entry=000000000040102c bias=0000000000000000 phnum=0000000000000008
+[elf] LOAD va=0000000000400000 memsz=0000000000000224 filesz=0000000000000224
+[elf] LOAD va=0000000000401000 memsz=00000000000062af filesz=00000000000062af
+[elf] LOAD va=0000000000408000 memsz=0000000000000f68 filesz=0000000000000f68
+[elf] LOAD va=0000000000409fe0 memsz=0000000000000420 filesz=0000000000000130
+[linux-stack] rsp=00007000000ff6a0 argc=0000000000000001 argv0=00007000000fffa0 envp0=00007000000fff90 aux0=00007000000fff80 phdr=0000000000400040 phent=0000000000000038 phnum=0000000000000008 entry=000000000040102c base=0000000000000000 execfn=00007000000fffa0 random=00007000000fffc0
+[exec] entry=000000000040102c rsp=00007000000ff6a0
+[sshd] hos-sshd-launch launched as task 0000000000000003
+[open] /run/sshd.log
+[sshd] launcher up: listening on /run/sshd.sock -> forks dropbear -i per connection (log: /run/sshd.log)
+[pci-aspm] ASPM cleared on 0 PCIe link(s)
+[lkl] no driveable PCI device (WiFi/xHCI/GPU/NVMe) -> not launching lkl-boot
+[open] /etc/localtime
+[mmap-einval] len=0 flags=0000000000000001 fd=0000000000000003 off=0000000000000000
+Date: 1970-01-01 UTC
+[00:00:00.006] weston 14.0.0
+               https://wayland.freedesktop.org
+               Bug reports to: https://gitlab.freedesktop.org/wayland/weston/issues/
+               Build: 14.0.0
+[00:00:00.007] Command line: weston --drm-device=card0
+[00:00:00.008] OS: Linux, 6.0.0, #1 SMP HanonymOS, x86_64
+[00:00:00.008] Flight recorder: enabled
+[open] /etc/weston.ini
+[00:00:00.009] Using config file '/etc/weston.ini'
+[00:00:00.009] Output repaint window is 7 ms maximum.
+[trace] ioctl fd,cmd a=0000000000000002 b=0000000000005413 who=0:?
+[trace] ioctl fd,cmd a=0000000000000002 b=0000000000005413 who=0:?
+[open] /drm-backend.so
+[00:00:00.010] Loading module '/drm-backend.so'
+[open] /drm-backend.so
+[00:00:00.012] initializing drm backend
+[00:00:00.012] Trying libseat launcher...
+[trace] ioctl fd,cmd a=0000000000000002 b=0000000000005413 who=0:?
+archMapKernel: copying kernel mappings
+archMapKernel: PML4[256] = 00000000339aa027
+archMapKernel: PML4[511] = 0000000033a00027
+archMapKernel: done
+[fork] parent=0000000000000000 child=0000000000000004
+>>>[trace] sendmsg fd,flags a=000000000000000b b=0000000000004040 who=0:?
+>>>>>>>>>>>[00:00:00.014] [seatd/seat.c:50] Created seat seat0>
+>[00:00:00.014] [seatd/server.c:146] New client connected (pid: 1, uid: 1000, gid: 1000)>[trace] poll nfds,timeout a=0000000000000001 b=ffffffffffffffff who=0:?
+
+[00:00:00.015] [libseat/backend/seatd.c:673] Started embedded seatd
+[trace] recvmsg fd,flags a=000000000000000a b=0000000040000040 who=4:?
+[00:00:00.015] [seatd/seat.c:239] Added client 0 to seat0[trace] poll nfds,timeout a=0000000000000001 b=ffffffffffffffff who=0:?
+
+[trace] sendmsg fd,flags a=000000000000000a b=0000000000004040 who=4:?
+[trace] poll nfds,timeout a=0000000000000001 b=ffffffffffffffff who=0:?
+[trace] recvmsg fd,flags a=000000000000000b b=0000000040000040 who=0:?
+[00:00:00.017] [seatd/seat.c:563] Opened client 0 on seat0
+>>>>>[00:00:00.017] [libseat/libseat.c:62] Seat opened with backend 'builtin'>>
+>[00:00:00.017] [libseat/backend/seatd.c:212] Enabling seat
+[trace] recvmsg fd,flags a=000000000000000b b=0000000040000040 who=0:?
+[00:00:00.018] libseat: session control granted
+>>>>>>[open] /sys/class/drm/card0/uevent
+>>>>[open] /sys/class/drm/uevent
+[open] /sys/class/uevent
+[trace] sendmsg fd,flags a=000000000000000b b=0000000000004040 who=0:?
+[trace] recvmsg fd,flags a=000000000000000a b=0000000040000040 who=4:?
+>>[open] /dev/dri/card0
+[trace] poll nfds,timeout a=0000000000000001 b=ffffffffffffffff who=0:?
+[trace] ioctl fd,cmd a=000000000000000d b=000000000000641e who=4:?
+[trace] sendmsg fd,flags a=000000000000000a b=0000000000004040 who=4:?
+[trace] poll nfds,timeout a=0000000000000001 b=ffffffffffffffff who=0:?
+[trace] recvmsg fd,flags a=000000000000000b b=0000000040000040 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc04064a0 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc04064a0 who=0:?
+[00:00:00.023] using /dev/dri/card0
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc010640c who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc010640c who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc010640c who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=000000004010640d who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc010640c who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=000000004010640d who=0:?
+[00:00:00.025] DRM: does not support atomic modesetting
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc010640c who=0:?
+[00:00:00.025] DRM: does not support GBM modifiers
+[trace] ioctl fd,cmd a=000000000000000c b=000000004010640d who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc010640c who=0:?
+[00:00:00.026] DRM: does not support Atomic async page flip
+[trace] ioctl fd,cmd a=000000000000000c b=000000004010640d who=0:?
+[00:00:00.026] DRM: supports picture aspect ratio
+[00:00:00.027] Using Pixman renderer
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc04064a0 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc04064a0 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc02064b9 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc02064b9 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc04064aa who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc04064aa who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc01064b5 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc01064b5 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc02064b6 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc02064b6 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc02064b9 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc02064b9 who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc04064aa who=0:?
+[trace] ioctl fd,cmd a=000000000000000c b=ffffffffc04064aa who=0:?
+[open] /sys/devices/virtual/dmi/id/uevent
+[open] /sys/firmware/devicetree/base/compatible
+[open] /build/deps/gtk-stack/sysroot/share/libinput
+[00:00:00.032] /build/deps/gtk-stack/sysroot/share/libinput: failed to find data files
+[00:00:00.032] Failed to load the device quirks from /build/deps/gtk-stack/sysroot/share/libinput and /build/deps/gtk-stack/sysroot/etc/libinput/local-overrides.quirks. This will negatively affect device behavior. See https://wayland.freedesktop.org/libinput/doc/1.29.2/device-quirks.html for details.
+[open] /sys/dev/block
+[open] /sys/dev/char
+[open] /sys/class/drm/card0/uevent
+[open] /sys/class/drm/uevent
+[open] /sys/class/uevent
+[open] /sys/class/drm/renderD128/uevent
+[open] /sys/class/drm/uevent
+[open] /sys/class/uevent
+[open] /sys/class/input/event0/uevent
+[open] /sys/class/input/event1/uevent
+[open] /sys/class/input/event1/uevent
+[open] /sys/class/input/event0/uevent
+[smp] cpu1 getpid x000000000000124b apicTicks=0000000000000011 ipiCount=0000000000000001 allocNoBKL=0000000000000001 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000002714 apicTicks=0000000000000020 ipiCount=0000000000000002 allocNoBKL=0000000000000002 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000003bee apicTicks=000000000000002f ipiCount=0000000000000003 allocNoBKL=0000000000000003 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000004f2f apicTicks=000000000000003e ipiCount=0000000000000004 allocNoBKL=0000000000000004 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x00000000000063fa apicTicks=000000000000004d ipiCount=0000000000000005 allocNoBKL=0000000000000006 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000007690 apicTicks=000000000000005c ipiCount=0000000000000006 allocNoBKL=0000000000000007 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000008b97 apicTicks=000000000000006b ipiCount=0000000000000007 allocNoBKL=0000000000000008 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000000a03c apicTicks=000000000000007a ipiCount=0000000000000008 allocNoBKL=000000000000000a — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000000b549 apicTicks=0000000000000089 ipiCount=0000000000000009 allocNoBKL=000000000000000b — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000000ca01 apicTicks=0000000000000097 ipiCount=000000000000000a allocNoBKL=000000000000000c — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000000def3 apicTicks=00000000000000a6 ipiCount=000000000000000b allocNoBKL=000000000000000d — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000000f3d3 apicTicks=00000000000000b5 ipiCount=000000000000000c allocNoBKL=000000000000000f — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000001060e apicTicks=00000000000000c4 ipiCount=000000000000000d allocNoBKL=0000000000000010 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000011741 apicTicks=00000000000000d3 ipiCount=000000000000000e allocNoBKL=0000000000000011 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000012c40 apicTicks=00000000000000e2 ipiCount=000000000000000f allocNoBKL=0000000000000012 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000013fd9 apicTicks=00000000000000f1 ipiCount=0000000000000010 allocNoBKL=0000000000000013 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x00000000000150f8 apicTicks=0000000000000100 ipiCount=0000000000000011 allocNoBKL=0000000000000015 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000001656a apicTicks=000000000000010f ipiCount=0000000000000012 allocNoBKL=0000000000000016 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000017a11 apicTicks=000000000000011e ipiCount=0000000000000013 allocNoBKL=0000000000000017 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000018f0d apicTicks=000000000000012d ipiCount=0000000000000014 allocNoBKL=0000000000000018 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000001a1ed apicTicks=000000000000013b ipiCount=0000000000000015 allocNoBKL=000000000000001a — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000001b448 apicTicks=000000000000014a ipiCount=0000000000000016 allocNoBKL=000000000000001b — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000001c940 apicTicks=0000000000000159 ipiCount=0000000000000017 allocNoBKL=000000000000001c — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000001de01 apicTicks=0000000000000168 ipiCount=0000000000000018 allocNoBKL=000000000000001d — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000001f2e6 apicTicks=0000000000000177 ipiCount=0000000000000019 allocNoBKL=000000000000001f — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x00000000000207bf apicTicks=0000000000000186 ipiCount=000000000000001a allocNoBKL=0000000000000020 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000021c8b apicTicks=0000000000000195 ipiCount=000000000000001b allocNoBKL=0000000000000021 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000002318f apicTicks=00000000000001a4 ipiCount=000000000000001c allocNoBKL=0000000000000023 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000024690 apicTicks=00000000000001b3 ipiCount=000000000000001d allocNoBKL=0000000000000024 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x00000000000257d7 apicTicks=00000000000001c2 ipiCount=000000000000001e allocNoBKL=0000000000000025 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000026715 apicTicks=00000000000001d0 ipiCount=000000000000001f allocNoBKL=0000000000000026 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000027be5 apicTicks=00000000000001df ipiCount=0000000000000020 allocNoBKL=0000000000000027 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000028d53 apicTicks=00000000000001ee ipiCount=0000000000000021 allocNoBKL=0000000000000028 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000002a255 apicTicks=00000000000001fd ipiCount=0000000000000022 allocNoBKL=000000000000002a — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000002b4f5 apicTicks=000000000000020c ipiCount=0000000000000023 allocNoBKL=000000000000002b — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000002c99b apicTicks=000000000000021b ipiCount=0000000000000024 allocNoBKL=000000000000002c — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000002de69 apicTicks=000000000000022a ipiCount=0000000000000025 allocNoBKL=000000000000002d — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x000000000002ef77 apicTicks=0000000000000239 ipiCount=0000000000000026 allocNoBKL=000000000000002e — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000030484 apicTicks=0000000000000248 ipiCount=0000000000000027 allocNoBKL=0000000000000030 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop
+[smp] cpu1 getpid x0000000000031977 apicTicks=0000000000000257 ipiCount=0000000000000028 allocNoBKL=0000000000000031 — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop

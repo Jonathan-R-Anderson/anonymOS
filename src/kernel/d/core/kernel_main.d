@@ -3665,13 +3665,19 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 // NETWORK_AND_MARKETPLACE_ROADMAP N0/N1: bring up the IPv4 stack + prove a frame round-trips (ARP).
 // Gated: the default boot has `-nic none`, so initNetwork finds no NIC → isNetworkAvailable() is false
 // → we skip everything device-touching.  Only `NET=1` (e1000 + user-net) exercises the driver.
-private void networkSelfTest() @nogc nothrow {
+private void networkSelfTest(bool deepProbe) @nogc nothrow {
     configureNetwork(10,0,2,15, 10,0,2,2, 255,255,255,0, 10,0,2,3);   // QEMU user-net: guest .15, gw .2
     if (!isNetworkAvailable()) { klog("[net] no NIC present — IPv4 stack not started (default boot)\n"); return; }
     startNetworkStack();
     ubyte[6] mac; getMacAddress(mac.ptr);
     ulong macv = 0; foreach (i; 0 .. 6) macv = (macv << 8) | mac[i];
     klog("[net] N0: e1000 up, MAC="); klog_hex(macv); klog(" IP=10.0.2.15 gw=10.0.2.2\n");
+    // The LAN is now UP: NIC probed, rx/tx rings armed, IPv4 stack running.  Everything below
+    // is verification (ARP / ping / DNS / DHCP) and each step spins up to 8_000_000 poll
+    // iterations, so it is far too slow for the install image, which must reach the installer
+    // GUI quickly.  Bringing the interface up is cheap and unconditional; only the proofs are
+    // gated.
+    if (!deepProbe) { klog("[net] install media: stack up, skipping ARP/ping/DNS/DHCP probes\n"); return; }
     // N1: resolve the gateway MAC via ARP — send a request, poll the rx ring for the reply.
     auto gw = IPv4Address(10,0,2,2);
     arpSendRequest(gw);
@@ -3975,6 +3981,14 @@ private void kernelLoop() {
                             klog(" — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop\n");
                         }
                     }
+                    // Service the NIC rx ring.  networkStackPoll() early-returns unless the stack
+                    // is running, so this costs nothing on a NIC-less boot.  Nothing else pumps it:
+                    // every other call site is inside a blocking helper (dhcp/dns/http/https), so
+                    // before this the LAN only received while some request was already spinning on
+                    // it -- no background RX, no unsolicited inbound packet, ever.  One frame per
+                    // 1 kHz tick caps RX at ~1000 pps, which is ample for DHCP/DNS/TCP; raise it to
+                    // a bounded drain loop if throughput ever matters.
+                    networkStackPoll();
                     wakePollers();
                     picEOI(false);    // harmless when PIC IRQ0 is masked; covers the legacy-PIT case
                     scheduleNext();
@@ -4541,13 +4555,17 @@ void d_kernel_main() {
     startBspApicTimer();
     g_bspApicId = readApicId();   // WiFi W1: capture the BSP's x2APIC ID (runs on the BSP) for MSI targeting
     wifiSurvey();   // print the machine's network controllers (id + driver/firmware) to the panel
-    if (installMedia) {
-        bootProgress("net-skip");
-    } else {
-        bootProgress("net");
-        networkSelfTest();       // NETWORK_ROADMAP N0/N1: IPv4 stack + ARP round-trip (no-op without NET=1)
-        bootProgress("post-net");
-    }
+    // LAN comes up on EVERY boot, install media included.  Probing the NIC and starting the
+    // IPv4 stack touches no disk; `installMedia` exists to reserve the target DISK for the GUI
+    // installer (see the gptWriteProof branch above), and networking was swept into that gate
+    // by mistake.  That is why hos-install.iso -- the image everyone actually boots -- came up
+    // with no NIC at all: networkSelfTest() is the only caller of startNetworkStack(), which is
+    // the only caller of initNetwork(), so the PCI probe never ran.  Proven with NET=1: the boot
+    // log was byte-identical to a -nic none boot and net.pcap held 0 packets.
+    // Only the multi-second ARP/ping/DNS/DHCP proofs stay off install media, so it still boots fast.
+    bootProgress("net");
+    networkSelfTest(!installMedia);
+    bootProgress("post-net");
     bootProgress("integrity");
     { import core.boot_integrity : bootIntegrityVerifyChain; bootIntegrityVerifyChain(); }
     klog("[dkernel] entering kernel loop\n");

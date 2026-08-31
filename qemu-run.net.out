@@ -1,0 +1,6 @@
+[qemu-run] KVM acceleration enabled
+[qemu-run] using QEMU emulator version 10.2.4
+[qemu-run] HEADLESS=1: no window; read serial.log
+[qemu-run] booting ./dist/hos-install.iso
+[qemu-run] NET=1: e1000 + user-net (guest 10.0.2.15, gw 10.0.2.2); frames dumped to net.pcap
+[qemu-run] host-WiFi bridge OFF (no host WiFi device, or WIFI=0)

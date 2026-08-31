@@ -123,6 +123,33 @@ elif [ "${NET:-0}" = "virtio" ]; then
            -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
   echo "[qemu-run] NET=virtio: virtio-net + user-net (guest 10.0.2.15, gw 10.0.2.2) -- the Proxmox"
   echo "[qemu-run]             default NIC model; frames dumped to net.pcap"
+elif [ "${NET:-0}" = "pfsense" ]; then
+  # Route this guest through a pfSense (or OPNsense) VM running on the HOST.
+  #
+  # anonymOS has no hypervisor -- no VT-x/VMCS/EPT anywhere in src/kernel/d -- so it cannot
+  # run pfSense itself, and the LKL is a Linux-kernel-as-a-library, not a VMM, so it cannot
+  # boot FreeBSD either.  The workable topology is two SIBLING QEMU guests joined by a
+  # socket "cable": pfSense holds the WAN and hands out DHCP on its LAN, anonymOS sits
+  # behind it and takes a lease.  Nothing in the OS changes -- our DHCP client already works,
+  # so it simply leases from pfSense instead of QEMU's built-in 10.0.2.2 user-net.
+  #
+  # Start pfSense FIRST (it must be listening before this guest connects):
+  #
+  #   qemu-system-x86_64 -m 2048 -accel kvm -smp 2 \
+  #     -drive file=pfsense.img,if=virtio,format=raw \
+  #     -netdev user,id=wan -device virtio-net-pci,netdev=wan \
+  #     -netdev socket,id=lan,listen=127.0.0.1:${PFPORT:-5610} \
+  #     -device virtio-net-pci,netdev=lan
+  #
+  # Assign in the pfSense console: WAN = vtnet0 (DHCP from QEMU user-net),
+  # LAN = vtnet1 (192.168.1.1/24 with its DHCP server on, which is the default).
+  # Then boot this side; the HUD should show an ip= in pfSense's LAN subnet and gw=192.168.1.1.
+  NETDEV=( -netdev "socket,id=net0,connect=127.0.0.1:${PFPORT:-5610}"
+           -device virtio-net-pci,netdev=net0
+           -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
+  echo "[qemu-run] NET=pfsense: virtio-net cabled to a pfSense VM on 127.0.0.1:${PFPORT:-5610}"
+  echo "[qemu-run]              start pfSense FIRST (see the recipe in qemu-run.sh), then this."
+  echo "[qemu-run]              Expect a DHCP lease from pfSense's LAN, not QEMU's 10.0.2.x."
 fi
 
 # USB log capture: a 2nd FAT USB stick that lkl-boot mounts (via the LKL's usb-storage) and dumps

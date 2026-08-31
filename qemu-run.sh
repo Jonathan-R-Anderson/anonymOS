@@ -176,7 +176,16 @@ fi
 # rebuild-and-guess loop into a measurement.  When the serial log goes silent you can ask
 # the running VM where its CPU actually is, without rebuilding the ISO:
 #
-#   for i in $(seq 5); do echo "info registers" | nc -U mon.sock | grep -E '^RIP'; sleep 1; done
+#   for i in $(seq 5); do echo "info registers" | nc -N -U mon.sock | grep -E '^[RE]IP'; sleep 1; done
+#
+# The -N is load-bearing: OpenBSD nc does not shutdown(SHUT_WR) its socket on stdin EOF
+# without it, and an HMP session never closes its side, so a plain `nc -U` receives the
+# whole register dump and then blocks forever -- the sampling loop wedges on iteration 1,
+# which reads exactly like the guest hang you are trying to measure.  (Do NOT append
+# `quit` the way scripts/qemu-g*-verify.sh do: that kills the VM, so you get one sample
+# and no VM.  `timeout 2 nc -U` also works but costs 2s per sample.)  ^[RE]IP rather than
+# ^RIP because QEMU prints EIP= while the vCPU is still in 16/32-bit mode, so a real-mode
+# dump would otherwise grep to nothing and look like a hang.
 #
 # RIP in kernel space and MOVING  -> the kernel loop is alive; userspace is blocked.
 # RIP in kernel space and PINNED  -> the kernel is wedged inside one syscall handler.

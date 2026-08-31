@@ -127,11 +127,29 @@ $(DL_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER).tar.gz: | dirs
 	@echo "[weston] Downloading libudev-zero $(LIBUDEV_ZERO_VER)..."
 	@curl -fsSL -o $@ https://github.com/illiliti/libudev-zero/archive/refs/tags/$(LIBUDEV_ZERO_VER).tar.gz
 
-$(STAMP_DIR)/libudev-built: $(DL_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER).tar.gz $(MUSL_CC) $(CROSS_FILE)
+$(STAMP_DIR)/libudev-built: $(DL_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER).tar.gz $(MUSL_CC) $(CROSS_FILE) $(SELF)/Makefile
 	@echo "[weston] Building libudev-zero..."
 	rm -rf $(BUILD_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER)
 	mkdir -p $(BUILD_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER)
 	tar -C $(BUILD_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER) -xf $< --strip-components=1
+	# anonymOS fix: bound the property-list walk.
+	# udev_list_entry_get_by_name() walks the list with a plain NULL-terminated loop,
+	# so ONE corrupt/self-referential `next` pointer spins forever INSIDE Weston --
+	# no syscall, no log line, no desktop.  libinput hits it on every input device:
+	# it looks up LIBINPUT_CALIBRATION_MATRIX, a property that is normally ABSENT, so
+	# the lookup always walks all the way to the end of the list.  Diagnosed by
+	# sampling guest RIP over the QEMU monitor: CPL=3, pinned in a 4-instruction
+	# loop on a node whose next == itself.  See docs/BOOT_DEBUG_LOG.md.
+	# Bound the walk so an absent key fails closed (NULL = "not found", which is
+	# exactly what libinput expects) instead of hanging the compositor forever.
+	sed -i \
+	    -e 's/^    if (!list_entry || !name) {$$/    unsigned long guard = 100000;\n    if (!list_entry || !name) {/' \
+	    -e 's/^    while ((list_entry = list_entry->next));$$/    while ((list_entry = list_entry->next) \&\& --guard);/' \
+	    $(BUILD_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER)/udev_list.c
+	# Fail loudly if upstream text changes and the sed silently no-ops -- otherwise
+	# the build would quietly reproduce the hang.
+	@grep -q -- '--guard' $(BUILD_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER)/udev_list.c || \
+	    { echo "[weston] ERROR: libudev-zero cycle-guard patch did not apply"; exit 1; }
 	# libudev-zero uses a plain Makefile (not meson).  Cross-build the static
 	# library with musl-clang, then install into the sysroot.
 	cd $(BUILD_DIR)/libudev-zero-$(LIBUDEV_ZERO_VER) && \

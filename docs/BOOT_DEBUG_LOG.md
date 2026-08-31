@@ -158,7 +158,13 @@ gdbstub**, so a wedged guest can only be re-instrumented, never inspected.
 **The measurement that makes the next iteration unnecessary** — no rebuild required, works
 on the ISO already built:
 
-    for i in $(seq 5); do echo "info registers" | nc -U mon.sock | grep -E '^RIP'; sleep 1; done
+    for i in $(seq 5); do echo "info registers" | nc -N -U mon.sock | grep -E '^[RE]IP'; sleep 1; done
+
+    The `-N` is load-bearing: OpenBSD `nc` does not `shutdown(SHUT_WR)` on stdin EOF without
+    it and HMP never closes its side, so a plain `nc -U` gets the dump and then blocks forever
+    — the loop wedges on iteration 1. (Reproduced against a live QEMU 10.2.4 HMP socket:
+    exit=124 after `timeout 4` without `-N`, exit=0 in 0s with it.) Do NOT append `quit` the
+    way `scripts/qemu-g*-verify.sh` do — that kills the VM.
 
 - RIP in kernel space and **moving** → the kernel loop is alive; weston is blocked in
   userspace, and the syscall it is parked in is one not yet traced.
@@ -175,3 +181,67 @@ rebuild, and it is the branch every previous iteration was implicitly guessing a
 - QEMU emulates COM2 regardless of whether a host peer connected, so the 16550 scratch probe
   still sets `g_wifiBridgePresent = true`. The guest therefore runs `wifiBridgePoll()`'s
   ~12k-node overlay scan at 10 Hz, under the BKL, for a bridge that is not there.
+
+## Iteration 5 result — SOLVED. Weston spins in libudev-zero, in userspace.
+
+The monitor socket did what five rounds of printf could not, in about two minutes.
+
+**Step 1 — the same hang reproduces in VirtualBox**, byte-for-byte: identical last six log
+lines, identical trace counts (30 ioctl / 4 sendmsg / 5 recvmsg). Not a QEMU device quirk.
+
+**Step 2 — the kernel was never the problem.** The VirtualBox VM has 2 CPUs, so the AP
+progress heartbeat at `kernel_main.d:3975` — which lives *inside* `kernelLoop`, right after
+`increment_ticks()` and just before `wakePollers()`/`scheduleNext()` — keeps printing after
+Weston goes silent, with `apicTicks`, `getpid`, `ipiCount` and `allocNoBKL` all climbing.
+QEMU could never show this because it was run `-smp 1`, so `g_apSyscallCount` stays 0 and the
+heartbeat never arms. **`SMP=2 ./qemu-run.sh` reproduces the heartbeat in QEMU too.**
+
+**Step 3 — sample the guest RIP over `mon.sock`:**
+
+    CPU#0  RIP=000074000005b3b8  CPL=3      <-- ring 3: USERSPACE
+    CPU#0  RIP=000074000005b3bc  CPL=3
+    CPU#0  RIP=000074000005b3bc  CPL=3
+
+`CPL=3`, oscillating over four bytes. Weston is **spinning in userspace**, which is exactly
+why no trace line ever appeared: it issues no syscalls at all. Disassembling there:
+
+    b3b0:  movq  (%r14), %r14        ; entry = entry->next
+    b3b3:  testq %r14, %r14
+    b3b6:  je    out
+    b3b8:  movq  0x10(%r14), %rdi    ; rdi = entry->name          <-- pinned here
+    b3bc:  testq %rdi, %rdi
+    b3bf:  je    b3b0                ; name == NULL -> next        <-- and here
+
+That is `udev_list_entry_get_by_name()` from **libudev-zero 1.0.4**, statically linked into
+libweston (`struct udev_list_entry { next@0x00; value@0x08; name@0x10; }` — matches exactly).
+`RSI`/`R15` point at the search key, which reads:
+
+    LIBINPUT_CALIBRATION_MATRIX
+
+and the node it is stuck on is:
+
+    0x7400007f6fb0:  next  = 0x7400007f6fb0     <-- points to ITSELF
+                     value = 0x7400007f6fb0
+                     name  = NULL
+
+**The bug:** `udev_list_entry_get_by_name()` walks the property list with a plain
+NULL-terminated loop (`while ((list_entry = list_entry->next))`). One self-referential `next`
+and it never terminates. libinput trips it on *every* input device because it looks up
+`LIBINPUT_CALIBRATION_MATRIX` — a property that is **normally absent**, so the lookup always
+walks all the way to the end of the list. Present keys (`ID_SEAT`, `ID_INPUT_KEYBOARD`, …)
+return early, which is why device setup gets as far as it does before wedging.
+
+**Fixed** in `deps/weston/Makefile`: the `libudev-built` rule now patches the walk to be
+bounded, so an absent key fails closed (`NULL` = "not found", which is what libinput expects)
+instead of hanging the compositor. The rule gained `$(SELF)/Makefile` as a prerequisite so
+editing the patch forces a rebuild, and a `grep` guard fails the build loudly if upstream text
+drifts and the `sed` silently no-ops.
+
+### Still open
+The self-referential node is a *symptom* — something produced a list whose `next` points at
+itself, with `value` aliasing the same address and `name` NULL. The guard stops the hang but
+does not explain the corruption. `udev_list_entry_add()` does
+`list_entry2->next = list_entry->next; list_entry->next = list_entry2;`, which yields exactly
+this shape if `calloc()` ever hands back a block aliasing the list head — worth checking the
+kernel's `mmap`/`brk` for overlapping allocations (note the `[mmap-einval] len=0` line that
+appears in every boot log).

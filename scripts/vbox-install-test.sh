@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create (or recreate) a VirtualBox VM that boots hos-install.iso and lets you install
-# EpinAnonymOS to a virtual disk, then boot the installed disk — the full in-OS installer
+# AnonymOS to a virtual disk, then boot the installed disk — the full in-OS installer
 # flow, end to end, on real UEFI firmware.
 #
 #   Build first:   make hos-install.iso          (or: scripts/mk-install-iso.sh)
@@ -15,7 +15,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VM="EpinAnonymOS-Install"
+VM="AnonymOS-Install"
 # Which ISO to attach.  $1 is the action, so the ISO comes from $ISO or is auto-detected:
 # `make iso` leaves it in the repo root, ./build-in-docker.sh writes it to dist/.
 ISO="${ISO:-}"

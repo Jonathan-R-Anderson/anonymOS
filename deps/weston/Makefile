@@ -255,6 +255,16 @@ $(STAMP_DIR)/libseat-built: $(DL_DIR)/libseat-$(LIBSEAT_VER).tar.gz $(STAMP_DIR)
 #    shell, weston-terminal tool.  The sessionless-input patch in
 #    libweston/libinput-seat.c ensures weston still comes up if libinput can't
 #    enumerate devices (the kernel delivers input directly).
+#    NOTE (renderer-gl): this block header has always said "no GL/EGL", but the flag
+#    below said -Drenderer-gl=true, and that mismatch is what broke the build: the GL
+#    renderer compiles gl-shader-config-color-transformation.c, whose glDeleteTextures/
+#    glGenTextures/... references cannot be satisfied because the shared sysroot has no
+#    usable GLESv2 (Mesa is not built into it).  Symptom: hundreds of "undefined
+#    reference to `gl*`" at the very last link of the whole dependency chain.
+#    The OS runs Pixman anyway -- the boot log says "Using Pixman renderer" and the DRM
+#    backend reports no atomic modesetting and no GBM modifiers -- so GL was dead weight.
+#    Flip this back to true only once libGLESv2/libEGL/libgbm really are installed into
+#    deps/gtk-stack/sysroot (see roadmap R2 / VIRGL_BLOB_ROADMAP for that work).
 # ════════════════════════════════════════════════════════════════════════════
 $(STAMP_DIR)/weston-built: $(WESTON_SRC)/meson.build | $(STAMP_DIR)/libdrm-built $(STAMP_DIR)/libevdev-built $(STAMP_DIR)/libudev-built $(STAMP_DIR)/libinput-built $(STAMP_DIR)/libdisplay-info-built $(STAMP_DIR)/libseat-built
 	@echo "[weston] Configuring weston (build-epin)..."
@@ -275,7 +285,7 @@ $(STAMP_DIR)/weston-built: $(WESTON_SRC)/meson.build | $(STAMP_DIR)/libdrm-built
 		-Dbackend-wayland=false \
 		-Dbackend-x11=false \
 		-Dbackend-default=drm \
-		-Drenderer-gl=true \
+		-Drenderer-gl=false \
 		-Dxwayland=false \
 		-Dsystemd=false \
 		-Dremoting=false \

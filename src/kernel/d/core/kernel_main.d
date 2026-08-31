@@ -3671,7 +3671,8 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
     startNetworkStack();
     ubyte[6] mac; getMacAddress(mac.ptr);
     ulong macv = 0; foreach (i; 0 .. 6) macv = (macv << 8) | mac[i];
-    klog("[net] N0: e1000 up, MAC="); klog_hex(macv); klog(" IP=10.0.2.15 gw=10.0.2.2\n");
+    // Do not hardcode "e1000": the NIC may equally be virtio-net, the Proxmox default.
+    klog("[net] N0: NIC up, MAC="); klog_hex(macv); klog(" IP=10.0.2.15 gw=10.0.2.2\n");
     // The LAN is now UP: NIC probed, rx/tx rings armed, IPv4 stack running.  Everything below
     // is verification (ARP / ping / DNS / DHCP) and each step spins up to 8_000_000 poll
     // iterations, so it is far too slow for the install image, which must reach the installer
@@ -4539,6 +4540,13 @@ void d_kernel_main() {
     // directly to the framebuffer (~6s). Runs now — after initPIT (so pitMs
     // paces it) and before kernelLoop (so it owns the framebuffer until the
     // desktop compositor presents). No-op on serial-only/headless boots.
+    // Size the display BEFORE anything paints.  The desktop was locked to whatever mode
+    // limine picked at boot (DRM advertises exactly one mode, synthesised from g_fb in
+    // fillModeInfo), which on Proxmox is the bootloader default regardless of how large
+    // the console actually is -- hence "the dimensions do not auto resize".  This asks the
+    // EDID what the display wants and reprograms the stdvga VBE registers to match.  It is
+    // a no-op on any non-Bochs device, and must run before splashRun() paints.
+    { import display.modesetting : displayAutoSizeFromEdid; displayAutoSizeFromEdid(); }
     if (installMedia) {
         bootProgress("splash-skip");
     } else {

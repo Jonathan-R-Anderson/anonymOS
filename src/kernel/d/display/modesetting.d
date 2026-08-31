@@ -322,3 +322,89 @@ private ushort dispiRead(ushort indexPort, ushort dataPort, ushort reg)
 
     return value;
 }
+
+// ════════════════════════════════════════════════════════════════════════════════
+// Boot-time display sizing (Proxmox / QEMU stdvga)
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// THE PROBLEM
+// -----------
+// The whole desktop is locked to whatever resolution limine happened to set at boot.
+// DRM advertises exactly one mode -- posix.d's fillModeInfo() synthesises it from
+// g_fb.width/height -- and nothing ever changes it, so on Proxmox the desktop is stuck
+// at the bootloader's default (typically 1024x768) no matter how big the console is.
+//
+// WHAT THIS DOES
+// --------------
+// Before the compositor starts, ask the display what it actually wants and switch to it:
+//   1. limine hands us the monitor's EDID (limine_framebuffer.edid / .edid_size).  Byte
+//      54 of block 0 begins the PREFERRED detailed timing descriptor; horizontal and
+//      vertical active pixels are split across a low byte and the high nibble of a shared
+//      byte (the classic EDID packing).
+//   2. If that differs from the current mode, reprogram the Bochs/QEMU stdvga VBE dispi
+//      registers -- the same path enableBochsVbeMode() already implements -- and update
+//      g_fb so every consumer (console, DRM, compositor) sees the new geometry.
+//
+// SAFETY
+// ------
+// enableBochsVbeMode() first checks the VBE_DISPI ID signature, so on any device that is
+// NOT a Bochs-style VGA (virtio-gpu, real hardware) it returns false and we leave the mode
+// alone.  We additionally refuse anything that would not fit the 16 MiB stdvga default
+// VRAM, and never touch the framebuffer BASE address -- for the Bochs LFB it is a fixed
+// BAR, so the existing mapping stays valid.
+//
+// LIMITS -- READ THIS
+// -------------------
+// This makes the guest come up at the RIGHT size.  It is not live auto-resize: plain
+// stdvga has no mechanism to notify a guest that the console window changed, which is why
+// Linux guests do not resize on it either.  True dynamic resize needs the virtio-gpu
+// display (Proxmox: `qm set <vmid> -vga virtio`), whose GET_DISPLAY_INFO/SET_SCANOUT
+// commands drivers/graphics/virtio_gpu.d already implements.
+public bool displayAutoSizeFromEdid() @nogc nothrow
+{
+    import arch.x86_64.bootstrap : g_fb;
+    import core.io : klog, klog_hex;
+
+    if (g_fb is null) return false;
+
+    const uint curW = cast(uint)g_fb.width;
+    const uint curH = cast(uint)g_fb.height;
+
+    if (g_fb.edid is null || g_fb.edid_size < 128) {
+        klog("[display] no EDID from the bootloader; keeping ");
+        klog_hex(curW); klog("x"); klog_hex(curH); klog("\n");
+        return false;
+    }
+
+    const(ubyte)* e = cast(const(ubyte)*)g_fb.edid;
+    // Preferred detailed timing descriptor starts at byte 54.
+    //   +2  : horizontal active, low 8 bits
+    //   +4  : bits 7..4 = horizontal active, high 4 bits
+    //   +5  : vertical active, low 8 bits
+    //   +7  : bits 7..4 = vertical active, high 4 bits
+    const uint wantW = (cast(uint)e[54 + 2]) | ((cast(uint)(e[54 + 4] & 0xF0)) << 4);
+    const uint wantH = (cast(uint)e[54 + 5]) | ((cast(uint)(e[54 + 7] & 0xF0)) << 4);
+
+    klog("[display] EDID preferred mode "); klog_hex(wantW); klog("x"); klog_hex(wantH);
+    klog(" current "); klog_hex(curW); klog("x"); klog_hex(curH); klog("\n");
+
+    if (wantW < 640 || wantH < 480 || wantW > 1920 || wantH > 1200) return false;
+    if (wantW == curW && wantH == curH) return false;              // already correct
+    if (cast(ulong)wantW * wantH * 4 > 16 * 1024 * 1024) {         // stdvga default VRAM
+        klog("[display] EDID mode exceeds 16MiB of VRAM; keeping the current mode\n");
+        return false;
+    }
+
+    if (!enableBochsVbeMode(wantW, wantH, 32)) {
+        klog("[display] not a Bochs/stdvga VBE device; cannot change mode here\n");
+        return false;
+    }
+
+    // The dispi programming above sets VIRT_WIDTH = XRES at 32bpp, so the scanline pitch
+    // is exactly 4 bytes per pixel.  Publish the new geometry.
+    g_fb.width  = wantW;
+    g_fb.height = wantH;
+    g_fb.pitch  = cast(ulong)wantW * 4;
+    klog("[display] switched to EDID preferred mode\n");
+    return true;
+}

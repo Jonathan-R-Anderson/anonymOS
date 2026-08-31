@@ -91,13 +91,21 @@ export extern(C) void initNetwork() @nogc nothrow {
             continue;
         }
 
-        // VirtIO Network (0x1AF4:0x1000) -- initVirtIO() is a stub too (no virtqueue setup, no
-        // feature negotiation, no virtio_net_hdr anywhere in the tree).  Same reasoning: do not
-        // claim a NIC we cannot drive, and do not stop the scan because of it.
-        if (dev.vendorId == 0x1AF4 && dev.deviceId == 0x1000) {
-            printLine("[network] Found VirtIO-net -- driver is a stub, not claiming it");
-            initVirtIO(&g_netDevice);
-            continue;
+        // VirtIO network.  0x1000 is the TRANSITIONAL id that QEMU/Proxmox present by default
+        // (it still exposes the virtio-1.0 capability structures); 0x1041 is modern-only.  Both
+        // are driven through the modern transport in drivers/network/virtio_net.d.  This is the
+        // Proxmox default NIC, so it is the difference between having a LAN and not.
+        if (dev.vendorId == 0x1AF4 && (dev.deviceId == 0x1000 || dev.deviceId == 0x1041)) {
+            printLine("[network] Found VirtIO network adapter");
+            g_netDevice.type = NetworkDeviceType.VirtIO;
+            g_netDevice.pciDev = &dev;
+            if (!initVirtIO(&g_netDevice)) {
+                printLine("[network] virtio-net init failed -- not claiming this device");
+                continue;   // keep scanning; never report a LAN we could not bring up
+            }
+            g_netDevice.initialized = true;
+            g_networkAvailable = true;
+            return;
         }
     }
     
@@ -490,19 +498,26 @@ private int rtl8139Receive(ubyte* buffer, size_t maxLen) @nogc nothrow {
 }
 
 // ============================================================================
-// VirtIO Driver (stub)
+// VirtIO Driver (real -- see drivers/network/virtio_net.d)
 // ============================================================================
 
-private void initVirtIO(NetworkDevice* dev) @nogc nothrow {
-    printLine("[virtio] VirtIO network driver not yet implemented");
+// VirtIO-net is implemented in drivers/network/virtio_net.d: a real modern (virtio-1.0)
+// driver mirroring the proven virtio-gpu transport.  It matters because virtio is the
+// DEFAULT NIC model on Proxmox, where these three functions previously being stubs meant
+// the guest simply had no network device at all.
+private bool initVirtIO(NetworkDevice* dev) @nogc nothrow {
+    import drivers.network.virtio_net : virtioNetInit;
+    return virtioNetInit(dev.pciDev, dev.macAddress.ptr);
 }
 
 private bool virtioSend(const(ubyte)* data, size_t len) @nogc nothrow {
-    return false;
+    import drivers.network.virtio_net : virtioNetSend;
+    return virtioNetSend(data, len);
 }
 
 private int virtioReceive(ubyte* buffer, size_t maxLen) @nogc nothrow {
-    return 0;
+    import drivers.network.virtio_net : virtioNetReceive;
+    return virtioNetReceive(buffer, maxLen);
 }
 
 // ============================================================================

@@ -7,6 +7,7 @@ enum AF_INET = 2;
 enum AF_NETLINK = 16;
 enum SOCK_STREAM = 1;
 enum SOCK_DGRAM = 2;
+enum SOCK_RAW = 3;    // AF_INET+SOCK_RAW+IPPROTO_ICMP is what busybox `ping` opens
 
 struct sockaddr
 {

@@ -3,7 +3,7 @@ module core.syscalls.posix;
 import core.io : inb;
 import core.console : console_putchar, console_serial_putchar, console_backspace, g_fbConsoleEnabled, console_framebuffer_write, g_desktopClaimedFb;
 import core.syscalls.socket : sockaddr, sockaddr_un, msghdr, iovec, cmsghdr,
-                              AF_UNIX, AF_INET, AF_NETLINK, SOCK_STREAM, SOCK_DGRAM,
+                              AF_UNIX, AF_INET, AF_NETLINK, SOCK_STREAM, SOCK_DGRAM, SOCK_RAW,
                               SOL_SOCKET, SCM_RIGHTS;
 import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
                       g_current_task_id, d_store_task_fsbase;
@@ -835,6 +835,15 @@ private uint capRightsForFile(File* f) {
             else rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE;
             rights |= CAP_RIGHT_IOCTL;
             break;
+        case FileType.FD_SOCKET:
+            // Sockets legitimately take ioctls: the SIOCGIF* interface queries
+            // (ifconfig/ip), FIONREAD, FIONBIO.  FD_SOCKET used to fall through to
+            // `default:` below, which grants no CAP_RIGHT_IOCTL -- so the precheck in
+            // linuxSyscallCapPrecheck() rejected EVERY socket ioctl with EBADF before it
+            // ever reached a handler.  That is what `ifconfig` reported as
+            // "siocgifconf: Bad file descriptor".
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL;
+            break;
         case FileType.FD_PTY_MASTER:
         case FileType.FD_PTY_SLAVE:
             rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL;
@@ -1068,6 +1077,9 @@ private struct LocalSocket
     uint   inetPeerIP;      // network byte order
     ushort inetPeerPort;    // host byte order
     bool   inetConnected;
+    // SOCK_RAW (IPPROTO_ICMP) state.  A raw socket has no UDP fd at all -- it sends
+    // straight through ipv4Send() and receives from the ICMP tap, so inetUdpFd stays -1.
+    bool   inetRawIcmp;
     int refCount;     // number of fds referencing this socket (dup-aware close)
     LocalSocketState state;
     size_t backlog;
@@ -6856,6 +6868,166 @@ private long handleInputEvioc(int devIdx, ulong cmd, ulong arg) {
     return 0;
 }
 
+// ── Socket interface ioctls (SIOC*, magic 0x89) ──────────────────────────────
+// `ifconfig` and `ip` discover interfaces by opening any AF_INET socket and issuing
+// SIOCGIFCONF, then querying each name.  None of this existed, so busybox ifconfig
+// failed at the first ioctl.  We expose exactly two interfaces: "lo" and "eth0".
+//
+// Wire layouts (x86-64 Linux) -- get these wrong and userspace reads garbage:
+//   struct ifreq  { char ifr_name[16]; union {...} ifr_ifru; }   16 + 24 = 40 bytes
+//     (the union is 24 bytes because struct ifmap is the largest member, not sockaddr)
+//   struct ifconf { int ifc_len; /*4 pad*/ char *ifc_buf; }      4 + 4 + 8 = 16 bytes
+//   ifr_addr is a sockaddr_in (16 bytes) written at ifr_name+16.
+private enum size_t IFREQ_SIZE = 40;
+
+private enum uint SIOCGIFCONF    = 0x8912;
+private enum uint SIOCGIFFLAGS   = 0x8913;
+private enum uint SIOCGIFADDR    = 0x8915;
+private enum uint SIOCGIFBRDADDR = 0x8919;
+private enum uint SIOCGIFNETMASK = 0x891B;
+private enum uint SIOCGIFMETRIC  = 0x891D;
+private enum uint SIOCGIFMTU     = 0x8921;
+private enum uint SIOCGIFHWADDR  = 0x8927;
+private enum uint SIOCGIFINDEX   = 0x8933;
+
+// Interface identity.  0 = lo, 1 = eth0, -1 = unknown.
+private int ifIndexForName(const(char)* nm) {
+    if (nm is null) return -1;
+    if (cstrEq(nm, "lo"))   return 0;
+    if (cstrEq(nm, "eth0")) return 1;
+    return -1;
+}
+
+// Pack an AF_INET sockaddr into a 16-byte user slot.
+private void ifWriteSockaddrIn(ulong dst, uint beAddr) {
+    smapBegin();
+    auto p = cast(ubyte*)dst;
+    foreach (i; 0 .. 16) p[i] = 0;
+    *cast(ushort*)(dst + 0) = cast(ushort)AF_INET;
+    *cast(ushort*)(dst + 2) = 0;                 // port unused for interface addresses
+    *cast(uint*)  (dst + 4) = beAddr;            // already network byte order
+    smapEnd();
+}
+
+// Our addresses, in network byte order, as the DHCP lease left them.
+private uint ifLocalIPBE() {
+    import network.ipv4 : getLocalIP;
+    import network.types : IPv4Address;
+    IPv4Address a; getLocalIP(&a);
+    return (cast(uint)a.bytes[0]) | (cast(uint)a.bytes[1] << 8)
+         | (cast(uint)a.bytes[2] << 16) | (cast(uint)a.bytes[3] << 24);
+}
+private uint ifNetmaskBE() {
+    import network.ipv4 : getNetmask;
+    import network.types : IPv4Address;
+    IPv4Address m; getNetmask(&m);
+    uint v = (cast(uint)m.bytes[0]) | (cast(uint)m.bytes[1] << 8)
+           | (cast(uint)m.bytes[2] << 16) | (cast(uint)m.bytes[3] << 24);
+    if (v == 0) v = 0x00FFFFFF;                  // 255.255.255.0 if DHCP gave us none
+    return v;
+}
+
+private long handleSocketIoctl(ulong cmd, ulong arg) {
+    if (arg == 0) return negErrno(EFAULT);
+
+    // SIOCGIFCONF: enumerate.  Two-pass protocol -- a NULL ifc_buf (or a short one) means
+    // "just tell me the size", so we must report the full length without writing.
+    if (cast(uint)cmd == SIOCGIFCONF) {
+        const int  bufLen = cast(int)userRead!uint(arg + 0);
+        const ulong bufPtr = userRead!ulong(arg + 8);
+        const int   need   = cast(int)(2 * IFREQ_SIZE);
+
+        if (bufPtr == 0 || bufLen < cast(int)IFREQ_SIZE) {
+            userWrite!uint(arg + 0, cast(uint)need);
+            return 0;
+        }
+
+        int written = 0;
+        for (int i = 0; i < 2 && written + cast(int)IFREQ_SIZE <= bufLen; ++i) {
+            const ulong rec = bufPtr + cast(ulong)written;
+            smapBegin();
+            auto nmp = cast(ubyte*)rec;
+            foreach (k; 0 .. IFREQ_SIZE) nmp[k] = 0;
+            if (i == 0) { nmp[0]='l'; nmp[1]='o'; }
+            else        { nmp[0]='e'; nmp[1]='t'; nmp[2]='h'; nmp[3]='0'; }
+            smapEnd();
+            ifWriteSockaddrIn(rec + 16, (i == 0) ? 0x0000007F : ifLocalIPBE()); // 127.0.0.1
+            written += cast(int)IFREQ_SIZE;
+        }
+        userWrite!uint(arg + 0, cast(uint)written);
+        return 0;
+    }
+
+    // Everything else is a per-interface query keyed by ifr_name.
+    char[17] nm = void;
+    smapBegin();
+    auto src = cast(const(ubyte)*)arg;
+    foreach (i; 0 .. 16) nm[i] = cast(char)src[i];
+    smapEnd();
+    nm[16] = 0;
+    const int ifx = ifIndexForName(nm.ptr);
+    if (ifx < 0) return negErrno(ENODEV);
+    const bool isLo = (ifx == 0);
+
+    switch (cast(uint)cmd) {
+        case SIOCGIFADDR:
+            ifWriteSockaddrIn(arg + 16, isLo ? 0x0000007F : ifLocalIPBE());
+            return 0;
+
+        case SIOCGIFNETMASK:
+            ifWriteSockaddrIn(arg + 16, isLo ? 0x000000FF : ifNetmaskBE());  // lo = /8
+            return 0;
+
+        case SIOCGIFBRDADDR: {
+            if (isLo) return negErrno(EINVAL);          // loopback has no broadcast
+            const uint ip = ifLocalIPBE(), mask = ifNetmaskBE();
+            ifWriteSockaddrIn(arg + 16, (ip & mask) | ~mask);
+            return 0;
+        }
+
+        case SIOCGIFFLAGS: {
+            // IFF_UP 0x1, IFF_BROADCAST 0x2, IFF_LOOPBACK 0x8, IFF_RUNNING 0x40,
+            // IFF_MULTICAST 0x1000.  ifr_flags is a short at ifr_name+16.
+            import drivers.network.network : isNetworkAvailable;
+            ushort fl;
+            if (isLo) fl = 0x0049;
+            else      fl = cast(ushort)(isNetworkAvailable() ? 0x1043 : 0x1002);
+            smapBegin(); *cast(ushort*)(arg + 16) = fl; smapEnd();
+            return 0;
+        }
+
+        case SIOCGIFHWADDR: {
+            // sockaddr with sa_family = ARPHRD_ETHER(1) / ARPHRD_LOOPBACK(772),
+            // then 6 MAC bytes in sa_data.
+            import drivers.network.network : getMacAddress;
+            ubyte[6] mac = 0;
+            if (!isLo) getMacAddress(mac.ptr);
+            smapBegin();
+            auto p = cast(ubyte*)(arg + 16);
+            foreach (i; 0 .. 16) p[i] = 0;
+            *cast(ushort*)(arg + 16) = isLo ? cast(ushort)772 : cast(ushort)1;
+            foreach (i; 0 .. 6) p[2 + i] = mac[i];
+            smapEnd();
+            return 0;
+        }
+
+        case SIOCGIFMTU:
+            smapBegin(); *cast(int*)(arg + 16) = isLo ? 65536 : 1500; smapEnd();
+            return 0;
+
+        case SIOCGIFINDEX:
+            smapBegin(); *cast(int*)(arg + 16) = ifx + 1; smapEnd();   // 1-based like Linux
+            return 0;
+
+        case SIOCGIFMETRIC:
+            smapBegin(); *cast(int*)(arg + 16) = 0; smapEnd();
+            return 0;
+
+        default:
+            return negErrno(25);   // ENOTTY — unknown socket ioctl
+    }
+}
+
 private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     File* f = fileFromObj(oh);
     if (f is null) return negErrno(EBADF);
@@ -6888,6 +7060,12 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     // libinput see capability-less devices and ignore them ("no input devices").
     if (f.type == FileType.FD_INPUT_EVENT) {
         return handleInputEvioc(cast(int)cast(size_t)f.backend, cmd, arg);
+    }
+
+    // Socket interface ioctls (SIOC*, magic byte 0x89).  Note this sits AFTER the DRM
+    // magic test above, which is fine: 0x89 != 0x64, so SIOC never reaches it.
+    if (f.type == FileType.FD_SOCKET && ((cmd >> 8) & 0xFF) == 0x89) {
+        return handleSocketIoctl(cmd, arg);
     }
 
     // /dev/fb0 — report the framebuffer geometry so the Screenshot app knows how many
@@ -7514,16 +7692,81 @@ private extern(C) void inetUdpRx(int udpFd, const(ubyte)* data, size_t len,
     socketBufferWrite(sock.rx, data, len);
 }
 
+// ICMP tap: fan every ICMP packet out to all open SOCK_RAW sockets.
+//
+// A Linux raw socket delivers the IP HEADER TOO, not just the payload -- busybox ping does
+// `hlen = (buf[0] & 0x0f) << 2` and parses the ICMP message at that offset, so handing it a
+// bare ICMP body makes it read the echo header from the wrong place and silently drop every
+// reply.  network/icmp.d hands us the post-IP payload plus the source address, so synthesise
+// the 20-byte header the caller expects.  Only ihl, protocol and the addresses actually get
+// read; the checksum is left zero, which no receiver verifies on an inbound raw socket.
+private extern(C) void inetIcmpRx(const(ubyte)* data, size_t len,
+                                  const ref IPv4Address srcIP) @nogc nothrow {
+    import network.ipv4 : getLocalIP;
+    if (data is null || len == 0) return;
+
+    enum size_t IPHDR = 20;
+    if (len > INET_MAX_DGRAM - IPHDR) len = INET_MAX_DGRAM - IPHDR;
+    const size_t total = IPHDR + len;
+
+    IPv4Address me; getLocalIP(&me);
+
+    ubyte[IPHDR] ip;
+    foreach (i; 0 .. IPHDR) ip[i] = 0;
+    ip[0] = 0x45;                                   // IPv4, ihl = 5 words (20 bytes)
+    ip[2] = cast(ubyte)((total >> 8) & 0xFF);       // total length, big-endian
+    ip[3] = cast(ubyte)(total & 0xFF);
+    ip[8] = 64;                                     // TTL
+    ip[9] = 1;                                      // protocol = ICMP
+    ip[12] = srcIP.bytes[0]; ip[13] = srcIP.bytes[1];
+    ip[14] = srcIP.bytes[2]; ip[15] = srcIP.bytes[3];
+    ip[16] = me.bytes[0]; ip[17] = me.bytes[1];
+    ip[18] = me.bytes[2]; ip[19] = me.bytes[3];
+
+    foreach (ref s; g_localSockets) {
+        if (!s.inUse || !s.inetRawIcmp) continue;
+        if (socketBufferWritable(s.rx) < INET_DGRAM_HDR + total) continue;   // no room -> drop
+
+        ubyte[INET_DGRAM_HDR] hdr;
+        hdr[0] = cast(ubyte)(total & 0xFF);
+        hdr[1] = cast(ubyte)((total >> 8) & 0xFF);
+        hdr[2] = srcIP.bytes[0]; hdr[3] = srcIP.bytes[1];
+        hdr[4] = srcIP.bytes[2]; hdr[5] = srcIP.bytes[3];
+        hdr[6] = 0; hdr[7] = 0;                     // raw sockets carry no port
+        socketBufferWrite(s.rx, hdr.ptr, INET_DGRAM_HDR);
+        socketBufferWrite(s.rx, ip.ptr, IPHDR);
+        socketBufferWrite(s.rx, data, len);
+    }
+}
+
 // True when this LocalSocket is an AF_INET one we manage.
 private bool inetIsInet(LocalSocket* s) @nogc nothrow {
     return s !is null && s.inUse && s.domain == AF_INET;
 }
 
-// Create an AF_INET socket.  Only SOCK_DGRAM is supported for now; SOCK_STREAM needs the TCP
-// state machine, which is a separate piece of work.
+// Create an AF_INET socket.  SOCK_DGRAM (UDP) and SOCK_RAW (ICMP) are supported;
+// SOCK_STREAM needs the TCP state machine, which is a separate piece of work.
 private int inetSocketCreate(int type, int protocol) @nogc nothrow {
     import network.udp : udpSocket, udpSetCallback;
+    import network.icmp : icmpSetRawTap;
     inetMapInit();
+
+    // SOCK_RAW + IPPROTO_ICMP: this is exactly what busybox `ping` opens, and rejecting it
+    // is what produced "can't create raw socket: protocol not supported".  A raw socket
+    // takes no UDP fd -- sends go straight to ipv4Send() and receives arrive through the
+    // ICMP tap in network/icmp.d.
+    if (type == SOCK_RAW) {
+        if (protocol != 1 && protocol != 0) return negErrno(EPROTONOSUPPORT); // 1 = IPPROTO_ICMP
+        const int rid = allocLocalSocket(AF_INET, SOCK_RAW);
+        if (rid < 0) return negErrno(EMFILE);
+        g_localSockets[rid].inetRawIcmp = true;
+        g_localSockets[rid].inetUdpFd   = -1;
+        icmpSetRawTap(&inetIcmpRx);           // idempotent: same handler every time
+        const int rfd = allocSocketFd(rid, O_RDWR);
+        if (rfd < 0) { releaseLocalSocket(rid); return negErrno(EMFILE); }
+        return rfd;
+    }
+
     if (type != SOCK_DGRAM) return negErrno(EPROTONOSUPPORT);
     if (protocol != 0 && protocol != 17) return negErrno(EPROTONOSUPPORT);  // 17 = IPPROTO_UDP
 
@@ -7550,6 +7793,9 @@ private int inetBind(LocalSocket* s, const(sockaddr)* addr, uint addrlen) @nogc 
     auto sin = cast(const(sockaddr_in)*)addr;
     ushort port = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));   // ntohs
     if (port == 0) port = g_inetNextEphemeral++;
+    // Same reasoning as inetConnect(): a raw socket has no UDP fd, so udpBind(-1, ...)
+    // would index the UDP socket table with -1.  bind() on SOCK_RAW is a no-op.
+    if (s.inetRawIcmp) return 0;
     if (!udpBind(s.inetUdpFd, port)) return negErrno(EADDRINUSE);
     s.inetLocalPort = port;
     return 0;
@@ -7562,8 +7808,10 @@ private int inetConnect(LocalSocket* s, const(sockaddr)* addr, uint addrlen) @no
     s.inetPeerIP   = sin.sin_addr;                                          // keep network order
     s.inetPeerPort = cast(ushort)((sin.sin_port >> 8) | (sin.sin_port << 8));
     s.inetConnected = true;
-    // An unbound socket still needs a source port before it can send.
-    if (s.inetLocalPort == 0) {
+    // An unbound socket still needs a source port before it can send -- but a raw socket
+    // has neither a port nor a UDP fd, and udpBind(-1, ...) would index the UDP table with
+    // -1.  connect() on SOCK_RAW only records the peer.
+    if (s.inetLocalPort == 0 && !s.inetRawIcmp) {
         import network.udp : udpBind;
         const ushort p = g_inetNextEphemeral++;
         if (udpBind(s.inetUdpFd, p)) s.inetLocalPort = p;
@@ -7597,7 +7845,8 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
         return negErrno(EDESTADDRREQ);
     }
 
-    if (s.inetLocalPort == 0) {           // sendto on an unbound socket: auto-bind
+    // A raw socket has no UDP fd and no port, so skip the auto-bind entirely.
+    if (s.inetLocalPort == 0 && !s.inetRawIcmp) {   // sendto on an unbound socket: auto-bind
         import network.udp : udpBind;
         const ushort p = g_inetNextEphemeral++;
         if (!udpBind(s.inetUdpFd, p)) return negErrno(EAGAIN);
@@ -7614,6 +7863,15 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
             if (arpLookup(ip, &mac)) break;
         }
     }
+    // SOCK_RAW: `buf` is already a complete ICMP message -- busybox builds the echo header
+    // and computes its checksum itself -- so hand it to the IP layer verbatim with
+    // protocol 1.  Do NOT re-checksum it here; that is the caller's job on a raw socket.
+    if (s.inetRawIcmp) {
+        import network.ipv4 : ipv4Send;
+        if (!ipv4Send(ip, 1, cast(const(ubyte)*)buf, len)) return negErrno(EHOSTUNREACH);
+        return cast(ssize_t)len;
+    }
+
     if (!udpSend(s.inetUdpFd, ip, dport, cast(const(ubyte)*)buf, len)) return negErrno(EHOSTUNREACH);
     return cast(ssize_t)len;
 }
@@ -7659,6 +7917,11 @@ private void inetClose(LocalSocket* s) @nogc nothrow {
     s.inetUdpFd = -1;
     s.inetLocalPort = 0;
     s.inetConnected = false;
+    // Clear the raw flag so a recycled LocalSocket slot is not still fed by the ICMP tap.
+    // The tap itself stays registered for the life of the boot -- it is a single global
+    // hook that fans out to whatever raw sockets happen to be open, so there is nothing
+    // per-socket to unregister.
+    s.inetRawIcmp = false;
 }
 public int sys_socket(int domain, int type, int protocol) {
     initFdTable();

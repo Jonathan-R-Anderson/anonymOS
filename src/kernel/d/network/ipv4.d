@@ -203,3 +203,18 @@ export extern(C) void setNetmask(const IPv4Address* netmask) @nogc nothrow {
         g_netmask = *netmask;
     }
 }
+
+/// Get netmask.  Needed by the SIOCGIFNETMASK ioctl (`ifconfig`), which had no way to
+/// read this back -- only a setter existed.
+export extern(C) void getNetmask(IPv4Address* outMask) @nogc nothrow {
+    if (outMask !is null) {
+        *outMask = g_netmask;
+    }
+}
+
+/// Get gateway.  Same story as getNetmask(): set-only until userspace needed to read it.
+export extern(C) void getGateway(IPv4Address* outGw) @nogc nothrow {
+    if (outGw !is null) {
+        *outGw = g_gateway;
+    }
+}

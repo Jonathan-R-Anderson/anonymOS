@@ -25,6 +25,19 @@ struct ICMPHeader {
 private __gshared ulong g_icmpEchoReplies = 0;
 export extern(C) ulong getIcmpEchoReplies() @nogc nothrow { return g_icmpEchoReplies; }
 
+// Raw-socket tap.  busybox `ping` opens socket(AF_INET, SOCK_RAW, IPPROTO_ICMP) and reads
+// replies off that fd, so every ICMP packet has to be visible to userspace and not just to
+// the in-kernel handler below.  posix.d registers the tap; it is called for EVERY ICMP
+// packet, including echo requests, which is what a raw socket is supposed to see.
+//
+// The tap runs BEFORE the checksum test on purpose: a raw socket is a wire tap, and Linux
+// hands the packet up regardless.  It also runs before the auto-pong, so the in-kernel
+// responder keeps working exactly as before whether or not anyone is listening.
+alias IcmpRawTap = extern(C) void function(const(ubyte)* data, size_t len,
+                                           const ref IPv4Address srcIP) @nogc nothrow;
+private __gshared IcmpRawTap g_icmpRawTap = null;
+export extern(C) void icmpSetRawTap(IcmpRawTap tap) @nogc nothrow { g_icmpRawTap = tap; }
+
 /// Send ICMP echo request (ping)
 export extern(C) bool icmpSendPing(const ref IPv4Address destIP,
                                     ushort identifier,
@@ -99,9 +112,13 @@ export extern(C) bool icmpSendPong(const ref IPv4Address destIP,
 export extern(C) void icmpHandlePacket(const(ubyte)* data, size_t len,
                                         const ref IPv4Address srcIP) @nogc nothrow {
     if (data is null || len < ICMPHeader.sizeof) return;
-    
+
+    // Wire tap first (see icmpSetRawTap): raw sockets must see the packet even if the
+    // checksum test below rejects it or the type is one we do not act on.
+    if (g_icmpRawTap !is null) g_icmpRawTap(data, len, srcIP);
+
     const ICMPHeader* header = cast(const ICMPHeader*)data;
-    
+
     // Verify checksum
     ushort receivedChecksum = header.checksum;
     ICMPHeader* mutableHeader = cast(ICMPHeader*)data;

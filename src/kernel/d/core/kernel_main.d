@@ -295,6 +295,9 @@ private void freezeWatchdog() {
 }
 
 private void wakePollers() @nogc nothrow {
+    // ITIMER_REAL expiry -> pending SIGALRM.  Driven here because wakePollers() already runs on
+    // every PIT tick and is the natural place to un-park time-based waiters.
+    itimerTick();
     foreach (i; 0 .. MAX_TASKS) {
         // Never bare-unpark a futex-parked task: only clearFutexWait may wake one (it sets
         // RAX; a bare waiting=false returns garbage to the middle of a FUTEX_WAIT and musl
@@ -1098,6 +1101,8 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskSigCustom[tid]   = 0;
         g_taskPendingSig[tid]  = 0;
         g_sigHandler[tid][] = 0; g_sigRestorer[tid][] = 0;   // Z1: exec resets handlers to default
+        itimerClear(tid);   // POSIX: execve disarms ITIMER_REAL, so a recycled slot cannot
+                            // inherit a stale alarm and SIGALRM an unrelated program.
     }
 
     // Track A A4: snapshot the caller's argv (mirror of the envp snapshot below) so the
@@ -3665,6 +3670,9 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 35:  return linux_sys_nanosleep(a, b);
         case 36:  return linux_sys_getitimer(a, b);
         case 37:  return linux_sys_alarm(a);
+        // setitimer: was UNROUTED (35,36,37 then 39), so it returned ENOSYS and busybox ping
+        // never got the SIGALRM that sends packets 2..N -- it hung after the first reply.
+        case 38:  return linux_sys_setitimer(a, b, c);
         case 39:  return linux_sys_getpid();
         case 40:  return linux_sys_sendfile(a, b, c, d);
         case 41:  return linux_sys_socket(a, b, c);

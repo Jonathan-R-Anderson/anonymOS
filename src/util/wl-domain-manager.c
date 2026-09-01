@@ -1153,6 +1153,19 @@ static int resize_buffer(struct app *app, int width, int height)
 static void launch_in_domain(struct app *app, const char *exe)
 {
     if (app->sel < 0 || app->sel >= app->n_doms) return;
+
+    // TERM_BIN lists three emulators but only /wl-term and /hos-term are actually staged into
+    // the image -- /gl-term has never been built, and it is the default for some domains, so
+    // clicking Run Shell produced "[exec] not found: /gl-term" and a failed spawn.  Fall back
+    // to a terminal that exists rather than handing the kernel a path that cannot resolve.
+    if (access(exe, X_OK) != 0) {
+        const char *alt = (access("/wl-term", X_OK) == 0) ? "/wl-term"
+                        : (access("/hos-term", X_OK) == 0) ? "/hos-term" : NULL;
+        if (!alt) { log_line("Run Shell: no terminal binary available"); return; }
+        printf("DOMAINMGR: %s missing -> using %s\n", exe, alt); fflush(stdout);
+        exe = alt;
+    }
+
     char cmd[160];
     int len = snprintf(cmd, sizeof(cmd), "spawn %s %s", app->doms[app->sel].name, exe);
     int fd = open("/config/domain.action", O_WRONLY);

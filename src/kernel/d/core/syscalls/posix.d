@@ -13,7 +13,8 @@ import core.stdc.string : memcpy;
 import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    objEnsureNamespace, taskIdFromLinuxPid,
                    g_taskPgid, g_taskSigCustom, deliverSignalToGroup, g_taskExecName,
-                   g_sigHandler, g_sigRestorer, domainRecordWrite;   // DOMAIN_MANAGER DM6.2
+                   g_sigHandler, g_sigRestorer, domainRecordWrite,   // DOMAIN_MANAGER DM6.2
+                   g_taskPendingSig;                                 // ITIMER_REAL -> SIGALRM
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -11320,8 +11321,87 @@ public long linux_sys_chroot(ulong path) {
 }
 public long linux_sys_alarm(ulong sec)              { return 0; }
 public long linux_sys_pause()                       { return negErrno(EINTR); }
-public long linux_sys_setitimer(ulong w, ulong nv, ulong ov) { return 0; }
-public long linux_sys_getitimer(ulong w, ulong cv)  { return 0; }
+// ── ITIMER_REAL → SIGALRM ────────────────────────────────────────────────────
+//
+// busybox `ping` sends its FIRST packet inline and every packet after that from a SIGALRM
+// handler armed with setitimer(ITIMER_REAL).  setitimer was a stub returning 0, and it was not
+// even routed in the dispatcher (35, 36, 37, then 39 — no `case 38`), so it returned ENOSYS,
+// no alarm ever fired, and ping blocked in recvfrom() forever after its first reply.  Observed
+// exactly that: one "64 bytes from 10.0.2.2 seq=0" and then a permanent park.
+//
+// Modelled for ITIMER_REAL only, which is the one that raises SIGALRM.  Expiry is checked on
+// the PIT tick (see itimerTick, called from wakePollers) and delivered through the existing
+// per-task pending-signal slot, so it reuses the signal path the blocking-read park already
+// understands.
+private enum int ITIMER_REAL_W = 0;
+private enum int SIG_ALRM      = 14;
+private __gshared ulong[MAX_TASKS] g_itimerNextMs;   // 0 = disarmed
+private __gshared ulong[MAX_TASKS] g_itimerIvalMs;   // 0 = one-shot
+
+// struct itimerval { struct timeval it_interval; struct timeval it_value; }
+// struct timeval   { long tv_sec; long tv_usec; }   -> it_interval at +0, it_value at +16
+private void itimerWriteOut(ulong ov, ulong ivalMs, ulong remainMs) {
+    if (ov == 0) return;
+    userWrite!long(ov +  0, cast(long)(ivalMs / 1000));
+    userWrite!long(ov +  8, cast(long)((ivalMs % 1000) * 1000));
+    userWrite!long(ov + 16, cast(long)(remainMs / 1000));
+    userWrite!long(ov + 24, cast(long)((remainMs % 1000) * 1000));
+}
+
+public long linux_sys_setitimer(ulong w, ulong nv, ulong ov) {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return negErrno(EINVAL);
+    if (cast(int)w != ITIMER_REAL_W) return 0;      // VIRTUAL/PROF: accept, never fire
+
+    const ulong now = pitMs();
+    const ulong oldIval = g_itimerIvalMs[tid];
+    const ulong oldRem  = (g_itimerNextMs[tid] > now) ? (g_itimerNextMs[tid] - now) : 0;
+    itimerWriteOut(ov, oldIval, oldRem);
+
+    if (nv == 0) { g_itimerNextMs[tid] = 0; g_itimerIvalMs[tid] = 0; return 0; }
+    const long isec  = userRead!long(nv +  0), iusec = userRead!long(nv +  8);
+    const long vsec  = userRead!long(nv + 16), vusec = userRead!long(nv + 24);
+    if (isec < 0 || iusec < 0 || vsec < 0 || vusec < 0) return negErrno(EINVAL);
+    const ulong ivalMs = cast(ulong)isec * 1000 + cast(ulong)iusec / 1000;
+    const ulong valMs  = cast(ulong)vsec * 1000 + cast(ulong)vusec / 1000;
+    g_itimerIvalMs[tid] = ivalMs;
+    // it_value == 0 disarms, per POSIX.  Round a sub-millisecond request up to 1ms so a tiny
+    // interval still makes progress instead of re-arming in the past every tick.
+    g_itimerNextMs[tid] = (valMs == 0 && vusec == 0 && vsec == 0)
+                          ? 0 : now + (valMs == 0 ? 1 : valMs);
+    return 0;
+}
+
+public long linux_sys_getitimer(ulong w, ulong cv) {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return negErrno(EINVAL);
+    if (cast(int)w != ITIMER_REAL_W) { itimerWriteOut(cv, 0, 0); return 0; }
+    const ulong now = pitMs();
+    const ulong rem = (g_itimerNextMs[tid] > now) ? (g_itimerNextMs[tid] - now) : 0;
+    itimerWriteOut(cv, g_itimerIvalMs[tid], rem);
+    return 0;
+}
+
+// Called once per PIT tick from wakePollers().  Fires SIGALRM for every task whose ITIMER_REAL
+// has expired, then re-arms it if it is periodic.  Only sets the pending slot when it is free,
+// so an alarm never displaces a signal already queued for delivery.
+public void itimerTick() {
+    const ulong now = pitMs();
+    foreach (t; 0 .. MAX_TASKS) {
+        const ulong due = g_itimerNextMs[t];
+        if (due == 0 || now < due) continue;
+        g_itimerNextMs[t] = (g_itimerIvalMs[t] != 0) ? now + g_itimerIvalMs[t] : 0;
+        if (g_taskPendingSig[t] == 0) g_taskPendingSig[t] = SIG_ALRM;
+    }
+}
+
+// Clear a task's interval timer — called when a task is torn down so a recycled slot does not
+// inherit a stale alarm.
+public void itimerClear(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    g_itimerNextMs[tid] = 0;
+    g_itimerIvalMs[tid] = 0;
+}
 public long linux_sys_memfd_create(ulong name, ulong flags) {
     initFdTable();
     if ((flags & ~MFD_SUPPORTED_MASK) != 0) return negErrno(EINVAL);

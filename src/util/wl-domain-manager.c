@@ -343,8 +343,8 @@ static void ctl_cycle(struct dconf *c, int i, int dir)
 }
 
 // ── DM10.7 tabbed-layout labels + geometry (shared by the draw + click passes) ──────────────
-#define N_TOOL 5
-static const char *TOOL_LABEL[N_TOOL] = { "+ New", "Clone", "Import", "Marketplace", "Logs/Shell" };
+#define N_TOOL 6
+static const char *TOOL_LABEL[N_TOOL] = { "+ New", "Clone", "Import", "Marketplace", "Logs", "Run Shell" };
 static const char *TAB_LABEL[N_TABS]  = { "Overview","Filesystem","Packages","Network","Permissions","Startup","Appearance" };
 enum { TAB_W = (DEFAULT_WIDTH - LIST_W) / N_TABS };   // fixed tab column width
 
@@ -368,7 +368,7 @@ static const char *FSBTN_LABEL[N_FSBTN] = { "+ Allow ro", "+ Allow rw", "+ Deny"
 static const int   FSBTN_MODE [N_FSBTN] = { 1, 2, 3, 2 };   // edit_mode for the path dialog (Mount == rw)
 
 static void toolbar_btn_rect(int idx, int *x, int *y, int *w, int *h) {
-    static const int wd[N_TOOL] = { 74, 70, 74, 110, 96 };
+    static const int wd[N_TOOL] = { 74, 70, 74, 110, 56, 100 };
     *y = HEADER_H + 6; *h = TOOLBAR_H - 12;
     int cx = PAD;
     for (int i = 0; i < idx; i++) cx += wd[i] + 8;
@@ -1138,6 +1138,37 @@ static int resize_buffer(struct app *app, int width, int height)
 
 // --- launch ---------------------------------------------------------------
 
+// DM3: launch a program CONFINED in the selected domain.
+//
+// Contrast with launch_app() below, which fork()s and execve()s: that child gets environment
+// variables and a window border colour, but the KERNEL never learns it belongs to a domain, so
+// its Task.domainObjId stays 0 and every policy this GUI can set -- the Filesystem tab's
+// fsro/fsrw/fsdeny rules, the Devices tab's toggles including Network -- is evaluated against
+// nothing.  Writing the `spawn` verb instead makes the kernel create the task, bind it into a
+// private clone of the domain's restricted namespace, and stamp its domainObjId, which is what
+// turns all of that policy into something a running process actually feels.
+//
+// The kernel seeds WAYLAND_DISPLAY for every task it execs (exports.d), and the domain
+// namespace binds the compositor socket, so a confined GUI program still gets a window.
+static void launch_in_domain(struct app *app, const char *exe)
+{
+    if (app->sel < 0 || app->sel >= app->n_doms) return;
+    char cmd[160];
+    int len = snprintf(cmd, sizeof(cmd), "spawn %s %s", app->doms[app->sel].name, exe);
+    int fd = open("/config/domain.action", O_WRONLY);
+    if (fd < 0) {
+        log_line("Run Shell: /config/domain.action unavailable");
+        printf("DOMAINMGR: spawn open FAILED\n"); fflush(stdout);
+        return;
+    }
+    ssize_t w = write(fd, cmd, len);
+    close(fd);
+    char m[128];
+    snprintf(m, sizeof(m), "spawn %s confined in '%s' (%zd)", exe, app->doms[app->sel].name, w);
+    log_line(m);
+    printf("DOMAINMGR: %s\n", m); fflush(stdout);
+}
+
 static void launch_app(struct app *app, const char *exe)
 {
     if (app->sel < 0 || app->sel >= app->n_doms) return;
@@ -1189,8 +1220,10 @@ static void handle_click(struct app *app)
                 } else if (i == 2) {                 // Import → instantiate from the selected template
                     snprintf(app->editbuf, sizeof(app->editbuf), "%.16s-instance", app->doms[app->sel].name);
                     app->editlen = (int)strlen(app->editbuf); app->edit_mode = 5; app->editing = 1;
-                } else if (i == 4) {                 // Logs/Shell → scrollable diagnostic log viewer
-                    launch_app(app, "/wl-logview");  // read /run/nm.log etc. (no terminal on the desktop)
+                } else if (i == 4) {                 // Logs → scrollable diagnostic log viewer
+                    launch_app(app, "/wl-logview");  // read /run/nm.log etc. (unconfined: it reads /run)
+                } else if (i == 5) {                 // Run Shell → a terminal CONFINED in this domain
+                    launch_in_domain(app, TERM_BIN[app->cfg[app->sel].term]);
                 }
                 redraw_commit(app, "toolbar");
                 return;                              // Marketplace: out of scope (P2P needs a network stack)
@@ -1318,7 +1351,10 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
     // Up=103 Down=108 Enter=28 Esc=1.
     if (key == 108 && app->sel < app->n_doms - 1) { app->sel++; refresh_fs_view(app); redraw_commit(app, "key"); }
     else if (key == 103 && app->sel > 0)        { app->sel--; refresh_fs_view(app); redraw_commit(app, "key"); }
-    else if (key == 28)                         { launch_app(app, TERM_BIN[app->cfg[app->sel].term]); }
+    // Enter launches the domain's terminal CONFINED (same as the Run Shell button).  This used
+    // to call launch_app(), which only set environment variables -- the shell looked like it was
+    // "in" the domain but the kernel never bound it, so none of the domain's policy applied.
+    else if (key == 28)                         { launch_in_domain(app, TERM_BIN[app->cfg[app->sel].term]); }
     else if (key == 1)                          { app->running = 0; }
 }
 static void kb_mods(void *d, struct wl_keyboard *k, uint32_t s, uint32_t dep, uint32_t la, uint32_t lo, uint32_t grp) { (void)d; (void)k; (void)s; (void)dep; (void)la; (void)lo; (void)grp; }

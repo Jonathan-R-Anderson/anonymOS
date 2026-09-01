@@ -3359,6 +3359,11 @@ private void dispatchSyscall(int tid) {
 
     const bool blkRead =
         (rax == 0 && (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi))) ||
+        // recvfrom(45)/recvmsg(47) on a BLOCKING AF_INET socket with an empty ring: same
+        // rewind+yield treatment.  Without this, busybox ping got EAGAIN from its blocking raw
+        // socket and died with "recvfrom: Resource temporarily unavailable" before the echo
+        // reply could arrive.
+        ((rax == 45 || rax == 47) && inetBlockingRecvFd(rdi)) ||
         (rax == HOS_SYS_QUERY && rdi == HOSQ_DEV_READ &&
          (ptyBlockingReadFd(rsi) || pipeBlockingReadFd(rsi) || isConsoleFd(rsi)));
     if (blkRead && ret == -11 /*EAGAIN*/) {

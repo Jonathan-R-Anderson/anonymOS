@@ -615,6 +615,31 @@ public bool pipeBlockingReadFd(ulong fd) @nogc nothrow {
     return (pipe_.head - pipe_.tail) == 0 && pipe_.writers > 0;
 }
 
+// True when fd is a BLOCKING AF_INET socket whose receive ring is currently empty — so the
+// dispatcher should rewind+yield instead of surfacing EAGAIN, exactly like a blocking pipe or
+// PTY read above.
+//
+// This is what made `ping` fail.  inetRecvFrom() returns EAGAIN on an empty ring, which is
+// correct for a non-blocking socket, but busybox opens a BLOCKING raw socket and treats EAGAIN
+// as fatal: "ping: recvfrom: Resource temporarily unavailable", printed in a tight loop, before
+// the ICMP echo reply ever had a chance to arrive.  A reply is only milliseconds away and
+// networkStackPoll() runs on the kernel tick, so yielding lets the stack take delivery and the
+// rewound recvfrom() completes transparently.
+//
+// Spinning in-kernel instead would hold the BKL and starve the desktop — the failure mode this
+// codebase has already hit more than once (see the bounded ARP spin in inetSendTo).
+public bool inetBlockingRecvFd(ulong fd) @nogc nothrow {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return false;
+    auto f = &g_fdTable[ifd];
+    if (f.type != FileType.FD_SOCKET) return false;
+    if (f.flags & 0x800 /*O_NONBLOCK*/) return false;   // genuine non-blocking socket: real EAGAIN
+    auto s = fileSocket(f);
+    if (!inetIsInet(s)) return false;
+    return socketBufferReadable(s.rx) < INET_DGRAM_HDR;  // nothing whole to pop yet
+}
+
 // ── DRM / KMS infrastructure ─────────────────────────────────────────────────
 private enum size_t GEM_MAX = 64;
 

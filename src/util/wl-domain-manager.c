@@ -352,10 +352,16 @@ enum { TAB_W = (DEFAULT_WIDTH - LIST_W) / N_TABS };   // fixed tab column width
 static const char *LIFE_LABEL[N_LIFE] = { "Start","Stop","Pause","Resume","Snapshot","Commit" };
 static const char *LIFE_VERB [N_LIFE] = { "start","stop","pause","resume","snapshot","commit" };
 
-#define N_DEV 6
-static const char    *DEV_LABEL[N_DEV] = { "Keyboard / Mouse","GPU","Camera","Microphone","Audio","USB" };
-static const char    *DEV_CLASS[N_DEV] = { "input","gpu","camera","mic","audio","usb" };
-static const unsigned DEV_BIT  [N_DEV] = { 1u<<0, 1u<<1, 1u<<2, 1u<<3, 1u<<4, 1u<<5 };
+// The 7th entry is Network (DEVCLASS_NET, 1u<<6).  The kernel bit and its enforcement
+// (netProviderConnectGate) already existed, but the class had no name in
+// domainDeviceClassByName(), so "devon <domain> net" resolved to 0 and did nothing -- and
+// there was no row here to click.  Both ends are wired now, so this row is a REAL per-domain
+// network on/off switch: with it cleared, that domain cannot open an AF_INET socket.
+// It is NOT the NAT/VPN/Tor NetPolicy vocabulary -- that remains unimplemented.
+#define N_DEV 7
+static const char    *DEV_LABEL[N_DEV] = { "Keyboard / Mouse","GPU","Camera","Microphone","Audio","USB","Network" };
+static const char    *DEV_CLASS[N_DEV] = { "input","gpu","camera","mic","audio","usb","net" };
+static const unsigned DEV_BIT  [N_DEV] = { 1u<<0, 1u<<1, 1u<<2, 1u<<3, 1u<<4, 1u<<5, 1u<<6 };
 
 #define N_FSBTN 4
 static const char *FSBTN_LABEL[N_FSBTN] = { "+ Allow ro", "+ Allow rw", "+ Deny", "+ Mount" };

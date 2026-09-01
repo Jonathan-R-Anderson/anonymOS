@@ -3334,6 +3334,24 @@ public int sys_open(const(char)* path, int flags) {
         return publishActiveFdReturn(fd);
     }
 
+    // /proc/net/route from the LIVE routing state.  This MUST be here, inline in sys_open,
+    // next to /proc/cmdline: the g_vfs table's static row (gateway hard-coded 0101A8C0 =
+    // 192.168.1.1, unrelated to the real lease) is served from here, and findVirtualFile()
+    // -- which looks like the natural place -- has ZERO callers in the whole tree and is
+    // dead code.  Anything reading this to find the default gateway (`route -n`, busybox,
+    // or a user checking which way traffic leaves) was being told a fixed lie.
+    if (cstrEq(path, "/proc/net/route")) {
+        const(char)[] content = procNetRouteContent();
+        g_fdTable[fd].type     = FileType.FD_FILE;
+        g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = (content.length > 0)
+            ? cast(void*)content.ptr
+            : cast(void*)cast(size_t)(fileBackendDirectory + 1);
+        g_fdTable[fd].fileSize = content.length;
+        return publishActiveFdReturn(fd);
+    }
+
     if (cstrEq(path, "/proc/org/graph") || cstrEq(path, "/proc/org/stats")) {
         if (!adminRequire(CAP_RIGHT_ADMIN_INSPECT)) return negErrno(EACCES);
         const(char)[] content = cstrEq(path, "/proc/org/graph")
@@ -6342,11 +6360,60 @@ private immutable VFEntry[] g_vfs = [
 
 // Look up a path in the virtual filesystem table.
 // Returns the content slice, or null if not found.
+// /proc/net/route rendered from the LIVE routing state instead of a constant.
+//
+// The static table below used to hard-code gateway 0101A8C0 (192.168.1.1) and network
+// 0001A8C0 (192.168.1.0) no matter what the DHCP lease actually was.  Anything that reads
+// this file to discover the default gateway -- `route -n`, `ip route`, busybox, or a user
+// checking which way traffic leaves -- was told a number unrelated to reality.  That is
+// actively misleading when verifying an upstream router, so render the real values.
+//
+// Linux prints Destination/Gateway/Mask as the 32-bit address in NATIVE byte order, so
+// 192.168.1.1 (bytes 192,168,1,1) comes out as 0101A8C0 -- byte 0 is the low byte.
+private __gshared char[512] g_procNetRouteBuf;
+private const(char)[] procNetRouteContent() {
+    import network.ipv4 : getLocalIP, getNetmask, getGateway;
+    import network.types : IPv4Address;
+
+    IPv4Address ip, mask, gw;
+    getLocalIP(&ip); getNetmask(&mask); getGateway(&gw);
+
+    static uint leKey(const ref IPv4Address a) {
+        return (cast(uint)a.bytes[0]) | (cast(uint)a.bytes[1] << 8)
+             | (cast(uint)a.bytes[2] << 16) | (cast(uint)a.bytes[3] << 24);
+    }
+    size_t n = 0;
+    void put(string s) { foreach (c; s) if (n < g_procNetRouteBuf.length - 1) g_procNetRouteBuf[n++] = c; }
+    void putHex8(uint v) {
+        static immutable char[16] H = "0123456789ABCDEF";
+        for (int sh = 28; sh >= 0; sh -= 4)
+            if (n < g_procNetRouteBuf.length - 1) g_procNetRouteBuf[n++] = H[(v >> sh) & 0xF];
+    }
+
+    put("Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT\n");
+    // Default route via the gateway -- only when we actually have one.
+    if (leKey(gw) != 0) {
+        put("eth0\t00000000\t"); putHex8(leKey(gw));
+        put("\t0003\t0\t0\t100\t00000000\t0\t0\t0\n");
+    }
+    // On-link route for our own subnet (destination = ip & mask, no gateway).
+    const uint m = leKey(mask);
+    if (m != 0) {
+        put("eth0\t"); putHex8(leKey(ip) & m);
+        put("\t00000000\t0001\t0\t0\t100\t"); putHex8(m);
+        put("\t0\t0\t0\n");
+    }
+    g_procNetRouteBuf[n] = 0;
+    return g_procNetRouteBuf[0 .. n];
+}
+
 private const(char)[] findVirtualFile(const(char)* path) {
     if (path is null) return null;
     if (cstrEq(path, "/proc/cmdline")) {
         return displayCmdlineContent();
     }
+    // NOTE: /proc/net/route is served INLINE in sys_open, not here -- this whole function is
+    // dead code (zero callers in the tree), so adding a branch for it here would do nothing.
     if (cstrEq(path, "/proc/display-info")) {
         return displayInfoContent();
     }
@@ -6927,20 +6994,50 @@ private uint ifNetmaskBE() {
     return v;
 }
 
-private long handleSocketIoctl(ulong cmd, ulong arg) {
-    if (arg == 0) return negErrno(EFAULT);
+// Cheap user-pointer sanity check for the socket-ioctl path.
+//
+// smapBegin/smapEnd are empty stubs and userRead/userWrite are bare dereferences, so a bad
+// pointer FAULTS IN KERNEL CONTEXT instead of returning EFAULT.  That exposure is systemic
+// and pre-existing -- the DRM ioctls dereference their `arg` exactly the same way -- and
+// fixing it properly needs a fault-trapping copy_from_user, which is its own piece of work.
+// But socket fds could not reach ANY ioctl until FD_SOCKET was granted CAP_RIGHT_IOCTL, so
+// this path is newly-reachable surface and gets at least a range check: reject the null page
+// and anything at or above the x86-64 canonical user/kernel split.  This is a mitigation,
+// NOT a substitute for a real copy_from_user.
+private bool isUserRange(ulong addr, size_t len) {
+    enum ulong USER_MIN = 0x1000;                   // never trust the null page
+    enum ulong USER_MAX = 0x0000_8000_0000_0000;    // canonical user-half ceiling
+    if (addr < USER_MIN) return false;
+    if (cast(ulong)len > USER_MAX) return false;
+    if (addr > USER_MAX - cast(ulong)len) return false;   // no wrap past the split
+    return true;
+}
 
-    // SIOCGIFCONF: enumerate.  Two-pass protocol -- a NULL ifc_buf (or a short one) means
-    // "just tell me the size", so we must report the full length without writing.
+private long handleSocketIoctl(ulong cmd, ulong arg) {
+    // Every branch below touches at least a full ifreq at `arg`, and SIOCGIFCONF reads a
+    // 16-byte ifconf there, so one check up front covers the struct itself.  The
+    // caller-supplied ifc_buf is checked separately, where its length is known.
+    if (!isUserRange(arg, IFREQ_SIZE)) return negErrno(EFAULT);
+
+    // SIOCGIFCONF: enumerate.  Linux's dev_ifconf() reports the required size ONLY when
+    // ifc_buf is NULL; for any non-NULL buffer it copies what fits and sets ifc_len to the
+    // number of bytes ACTUALLY WRITTEN -- never more.  An earlier version here also took the
+    // size-query branch when the buffer was merely too short for one ifreq, which reported
+    // ifc_len=80 while writing nothing: a caller that trusts ifc_len would then read 80 bytes
+    // out of a buffer it knows is smaller.  Only NULL means "tell me the size".
     if (cast(uint)cmd == SIOCGIFCONF) {
         const int  bufLen = cast(int)userRead!uint(arg + 0);
         const ulong bufPtr = userRead!ulong(arg + 8);
         const int   need   = cast(int)(2 * IFREQ_SIZE);
 
-        if (bufPtr == 0 || bufLen < cast(int)IFREQ_SIZE) {
+        if (bufPtr == 0) {
             userWrite!uint(arg + 0, cast(uint)need);
             return 0;
         }
+        if (bufLen < 0) return negErrno(EINVAL);
+        // bufLen is fully attacker-controlled and we are about to write up to 80 bytes into
+        // bufPtr, so validate the whole declared span before touching any of it.
+        if (!isUserRange(bufPtr, cast(size_t)bufLen)) return negErrno(EFAULT);
 
         int written = 0;
         for (int i = 0; i < 2 && written + cast(int)IFREQ_SIZE <= bufLen; ++i) {
@@ -6951,7 +7048,7 @@ private long handleSocketIoctl(ulong cmd, ulong arg) {
             if (i == 0) { nmp[0]='l'; nmp[1]='o'; }
             else        { nmp[0]='e'; nmp[1]='t'; nmp[2]='h'; nmp[3]='0'; }
             smapEnd();
-            ifWriteSockaddrIn(rec + 16, (i == 0) ? 0x0000007F : ifLocalIPBE()); // 127.0.0.1
+            ifWriteSockaddrIn(rec + 16, (i == 0) ? 0x0100007Fu : ifLocalIPBE()); // 127.0.0.1 (low byte first)
             written += cast(int)IFREQ_SIZE;
         }
         userWrite!uint(arg + 0, cast(uint)written);
@@ -6971,7 +7068,7 @@ private long handleSocketIoctl(ulong cmd, ulong arg) {
 
     switch (cast(uint)cmd) {
         case SIOCGIFADDR:
-            ifWriteSockaddrIn(arg + 16, isLo ? 0x0000007F : ifLocalIPBE());
+            ifWriteSockaddrIn(arg + 16, isLo ? 0x0100007Fu : ifLocalIPBE());   // 127.0.0.1
             return 0;
 
         case SIOCGIFNETMASK:
@@ -7657,6 +7754,11 @@ struct sockaddr_in {
 
 private enum size_t INET_DGRAM_HDR = 8;
 private enum size_t INET_MAX_DGRAM = 1472;   // 1500 MTU - 20 IP - 8 UDP
+// A raw ICMP socket carries no UDP header, so it may legitimately hold a full 1480-byte ICMP
+// message plus the 20-byte IP header we synthesise.  Clamping the raw path to INET_MAX_DGRAM
+// silently truncated large pings (ping -s 1445 and up) while still reporting the requested
+// size, so the receive ring is sized for the real MTU instead.
+private enum size_t INET_MAX_RAW   = 1500;   // full MTU: 20 IP + up to 1480 ICMP
 
 // udp.d socket index -> LocalSocket id, so the receive callback can find its owner.
 private __gshared int[256] g_udpFdToLocal;
@@ -7706,7 +7808,7 @@ private extern(C) void inetIcmpRx(const(ubyte)* data, size_t len,
     if (data is null || len == 0) return;
 
     enum size_t IPHDR = 20;
-    if (len > INET_MAX_DGRAM - IPHDR) len = INET_MAX_DGRAM - IPHDR;
+    if (len > INET_MAX_RAW - IPHDR) len = INET_MAX_RAW - IPHDR;
     const size_t total = IPHDR + len;
 
     IPv4Address me; getLocalIP(&me);
@@ -7831,7 +7933,10 @@ private ssize_t inetSendTo(LocalSocket* s, const(void)* buf, size_t len,
     import network.types : MACAddress;
 
     if (buf is null || len == 0) return negErrno(EINVAL);
-    if (len > INET_MAX_DGRAM) return negErrno(EMSGSIZE);
+    // The send ceiling differs by socket type: a UDP datagram loses 8 bytes to its own
+    // header, a raw ICMP message does not.  Using the UDP bound for both would reject
+    // legitimate full-size pings with EMSGSIZE.
+    if (len > (s.inetRawIcmp ? INET_MAX_RAW - 20 : INET_MAX_DGRAM)) return negErrno(EMSGSIZE);
 
     uint  dip;
     ushort dport;
@@ -7887,8 +7992,8 @@ private ssize_t inetRecvFrom(LocalSocket* s, void* buf, size_t len,
     socketBufferRead(s.rx, hdr.ptr, INET_DGRAM_HDR);
     size_t dlen = (cast(size_t)hdr[1] << 8) | hdr[0];
 
-    ubyte[INET_MAX_DGRAM] tmp;
-    if (dlen > INET_MAX_DGRAM) dlen = INET_MAX_DGRAM;
+    ubyte[INET_MAX_RAW] tmp;
+    if (dlen > INET_MAX_RAW) dlen = INET_MAX_RAW;
     const size_t got = socketBufferRead(s.rx, tmp.ptr, dlen);
 
     size_t copy = got;
@@ -7944,6 +8049,19 @@ public int sys_socket(int domain, int type, int protocol) {
     // AF_INET: real IP sockets, backed by the in-kernel UDP stack.  Until this existed
     // userspace could not use the network at all -- every tool died at socket().
     if (domain == AF_INET) {
+        // Per-domain network access.  DEVCLASS_NET was enforced ONLY on the AF_UNIX connect
+        // to the LKL provider socket, and sys_connect() returns inetConnect() well before
+        // reaching that gate -- so a domain with network switched off could still open an
+        // AF_INET socket and talk to the in-kernel IPv4 stack directly.  socket() is the
+        // right choke point: no descriptor, no traffic, and it covers sendto() on an
+        // unconnected socket too, which a connect()-side check would miss.
+        //
+        // Deny-by-default applies only to tasks actually bound to a domain/identity; an
+        // unseeded task is unrestricted (see netProviderConnectGate), so the desktop and
+        // the kernel's own DHCP/DNS paths are unaffected.
+        const int netGate = netProviderConnectGate();
+        if (netGate != 0) return netGate;
+
         const int ifd = inetSocketCreate(baseType, protocol);
         if (ifd < 0) return ifd;
         return publishActiveFdReturn(ifd);

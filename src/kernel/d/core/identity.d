@@ -242,13 +242,21 @@ public void identityInitDefaults() {
     enum uint DEV_HOME = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_CAMERA | DEVCLASS_MIC | DEVCLASS_USB | DEVCLASS_NET;
     enum uint DEV_WORK = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_USB | DEVCLASS_NET;   // no camera/mic
     enum uint DEV_LOCK = DEVCLASS_INPUT | DEVCLASS_GPU;                                    // no cam/mic/usb/audio/net
+    // DEV_LOCK plus the network class.  DEVCLASS_NET used to gate only the AF_UNIX connect to
+    // the LKL provider socket, where "no NET" sensibly meant "may not manage the WiFi
+    // provider".  Now that sys_socket() consults the same bit, it means "may not use IP at
+    // all" -- and Banking/Untrusted/Disposable each declare a NetPolicy (VPN/Tor/Disposable)
+    // that PRESUMES working network, so leaving them on DEV_LOCK would deny the very traffic
+    // their policy exists to route.  The split is: the device bit decides whether you may
+    // open a socket, NetPolicy decides where the packets are allowed to go.
+    enum uint DEV_LOCKNET = DEV_LOCK | DEVCLASS_NET;
     mkBootIdentity("System\0".ptr,     0xFF808080, TRUST_SYSTEM,     CEIL_FULL, NetPolicy.NAT,        ClipPolicy.AllowDownTrust,    GUI_BASE, false, DEV_FULL);
     mkBootIdentity("Personal\0".ptr,   0xFF2E7D32, TRUST_PERSONAL,   CEIL_USER, NetPolicy.NAT,        ClipPolicy.AskApproval,       GUI_BASE, false, DEV_HOME);
     mkBootIdentity("Work\0".ptr,       0xFF1565C0, TRUST_WORK,       CEIL_USER, NetPolicy.VPN,        ClipPolicy.AllowSameIdentity, GUI_WORK, false, DEV_WORK);
-    mkBootIdentity("Banking\0".ptr,    0xFFFFD600, TRUST_BANKING,    CEIL_USER, NetPolicy.VPN,        ClipPolicy.Deny,              GUI_BANK, false, DEV_LOCK);
+    mkBootIdentity("Banking\0".ptr,    0xFFFFD600, TRUST_BANKING,    CEIL_USER, NetPolicy.VPN,        ClipPolicy.Deny,              GUI_BANK, false, DEV_LOCKNET);
     mkBootIdentity("Development\0".ptr,0xFF6A1B9A, TRUST_DEV,        CEIL_USER, NetPolicy.LocalOnly,  ClipPolicy.AskApproval,       GUI_BASE, false, DEV_FULL);
-    mkBootIdentity("Untrusted\0".ptr,  0xFFB71C1C, TRUST_UNTRUSTED,  CEIL_USER, NetPolicy.Tor,        ClipPolicy.Deny,              GUI_BASE, false, DEV_LOCK);
-    mkBootIdentity("Disposable\0".ptr, 0xFFFF6D00, TRUST_DISPOSABLE, CEIL_USER, NetPolicy.Disposable, ClipPolicy.Deny,              GUI_BASE, true,  DEV_LOCK);
+    mkBootIdentity("Untrusted\0".ptr,  0xFFB71C1C, TRUST_UNTRUSTED,  CEIL_USER, NetPolicy.Tor,        ClipPolicy.Deny,              GUI_BASE, false, DEV_LOCKNET);
+    mkBootIdentity("Disposable\0".ptr, 0xFFFF6D00, TRUST_DISPOSABLE, CEIL_USER, NetPolicy.Disposable, ClipPolicy.Deny,              GUI_BASE, true,  DEV_LOCKNET);
 }
 
 // One-shot boot proof (roadmap §2 outcome): create/lookup/validate; duplicate name,

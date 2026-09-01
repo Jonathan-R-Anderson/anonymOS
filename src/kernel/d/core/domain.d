@@ -266,6 +266,16 @@ public uint domainBuildNamespace(uint domObjId) {
     nsBindDeny(ns, "/Shared/Private\0".ptr);   // a hole inside the allowed /Shared (deny-override)
     nsBindDeny(ns, "/System\0".ptr);           // explicit deny (also covered by deny-by-default)
 
+    // DM3: the compositor socket, so a CONFINED process can actually put a window on screen.
+    //
+    // Without this a domain-bound GUI app dies at connect() and the whole confinement feature
+    // is limited to console programs.  Exposing it does not weaken the identity model: the
+    // compositor is trusted, and it stamps a window's identity from the OWNING PROCESS at
+    // winRegister time rather than from anything the client sends, so a confined app still
+    // cannot spoof its border colour or its label.  Bound as narrowly as possible -- the exact
+    // socket path, not /run and not /run/user.
+    nsBind(ns, "/run/user/1000/wayland-0\0".ptr, root, RW);
+
     // DM11: a non-native domain mounts its distro's Linux compat root at /linux (READ-only).
     if (d.distro != DISTRO_NATIVE) nsBind(ns, "/linux\0".ptr, root, RO);
 
@@ -369,6 +379,12 @@ public uint domainDeviceClassByName(const(char)* n) {
     if (verbEq(n, "mic"))    return DEVCLASS_MIC;
     if (verbEq(n, "audio"))  return DEVCLASS_AUDIO;
     if (verbEq(n, "usb"))    return DEVCLASS_USB;
+    // DEVCLASS_NET was the one class with no name here, which made the whole per-domain
+    // network control dead: "devon Work net" resolved to 0, and domainSetDevice() bails on
+    // `devClass == 0`, so it silently returned false.  The bit itself (identity.d:87) is real
+    // and IS checked by netProviderConnectGate(), so this one line is what connects the
+    // control surface to the enforcement that already existed.
+    if (verbEq(n, "net"))    return DEVCLASS_NET;
     return 0;
 }
 
@@ -403,6 +419,36 @@ private bool verbEq(const(char)* v, string lit) {
     size_t i = 0;
     for (; i < lit.length; ++i) if (v[i] != lit[i]) return false;
     return v[i] == 0;   // exact match (the buffer is NUL-padded)
+}
+
+// DM3: launch a program INTO a domain.
+//
+// This is the piece the whole domain model was waiting on.  domainEnterTask()/domainBindTaskNs()
+// have existed since DM3 but had NO caller outside a boot self-test, so no running process ever
+// carried a domainObjId -- which meant every fsrw/fsdeny/devon/devoff policy the GUI can set was
+// being evaluated against nothing, and the namespace confinement in namespaceCheckOpen() never
+// applied to a real task.  domain.d:630 said as much: "launch into it is DM3 (domainEnterTask
+// via HOSQ_DOMAIN_SPAWN, run from here later)".
+//
+// The actual task creation lives in kernel_main.d (allocTask/execveTask/untypedCreateProcess are
+// not reachable from here, and importing kernel_main would be a cycle -- it already imports us),
+// so kernel_main registers a hook at boot and this module just calls it.  Same pattern as the
+// ICMP raw tap in network/icmp.d.
+alias DomainSpawnFn = extern(C) bool function(uint domObjId, const(char)* prog);
+private __gshared DomainSpawnFn g_domainSpawnHook = null;
+public void domainSetSpawnHook(DomainSpawnFn fn) { g_domainSpawnHook = fn; }
+
+// DM13: the same hook trick for the per-task native->linux ratchet.  core.task imports THIS
+// module (domainBindTaskNs calls domainById), so we cannot import core.task back -- kernel_main
+// imports both and registers the bridge.  `linux` != 0 requests the drop; the callee refuses
+// linux -> native.
+alias DomainModeFn = extern(C) bool function(int linuxMode);
+private __gshared DomainModeFn g_domainModeHook = null;
+public void domainSetModeHook(DomainModeFn fn) { g_domainModeHook = fn; }
+public bool domainSpawnInto(uint domObjId, const(char)* prog) {
+    if (g_domainSpawnHook is null) { klog("[domain] spawn: no launcher registered\n"); return false; }
+    if (domObjId == 0 || prog is null || prog[0] == 0) return false;
+    return g_domainSpawnHook(domObjId, prog);
 }
 public bool domainControlWrite(const(char)* cmd, size_t len) {
     if (cmd is null || len == 0) return false;
@@ -453,6 +499,21 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "profile"))   ok = (name[0] != 0) && (arg[0] != 0) && (pkgApplyProfile(name.ptr, arg.ptr) >= 1);
     else if (verbEq(verb.ptr, "export"))    ok = (id != 0) && (templatePublish(id) == 0);   // DM12: publish as a signed template
     // GUI toolbar: from-scratch Create + instantiate-from-template (Import)
+    // DM3: "spawn <domain> <program>" — run a program confined to the domain.  This is the only
+    // verb that produces a task actually carrying domainObjId, so it is what makes every other
+    // policy verb (fsro/fsrw/fsdeny, devon/devoff) take effect on a live process.
+    else if (verbEq(verb.ptr, "spawn"))     ok = (id != 0) && (arg[0] != 0) && domainSpawnInto(id, arg.ptr);
+    // DM13: "mode self <native|linux>" ratchets the CALLING task (linux -> native is refused,
+    // and the mode is inherited by every child).  "mode <domain> <native|linux>" sets what
+    // future `spawn`s into that domain start as, which is the domain's distro axis:
+    // DISTRO_NATIVE is the native personality, anything else is a Linux one.
+    else if (verbEq(verb.ptr, "mode")) {
+        const bool wantLinux = verbEq(arg.ptr, "linux");
+        if (verbEq(name.ptr, "self"))
+            ok = (g_domainModeHook !is null) && g_domainModeHook(wantLinux ? 1 : 0);
+        else
+            ok = (id != 0) && domainSetDistro(id, wantLinux ? DISTRO_BUSYBOX : DISTRO_NATIVE);
+    }
     else if (verbEq(verb.ptr, "create"))    ok = (name[0] != 0) && (domainCreate(name.ptr, identityByName(arg.ptr), 0) != 0);
     else if (verbEq(verb.ptr, "fromtpl"))   { const uint tp = domainByName(arg.ptr);
                                               ok = (name[0] != 0) && (tp != 0) && (domainCreate(name.ptr, domainById(tp).identityObjId, tp) != 0); }

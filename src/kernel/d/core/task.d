@@ -159,6 +159,40 @@ struct Task {
     // Set by domainBindTaskNs; the rtCreate copy-up hook records this task's file writes into
     // the domain's writable overlay.
     uint domainObjId;
+    // DM13: execution MODE, a one-way ratchet.  0 = native, 1 = linux.
+    //
+    // A session starts native and may DROP DOWN into linux exactly once; linux -> native is
+    // refused, and the mode is inherited by every child, so a process tree can only ever get
+    // more Linux-y, never less.  The point is that dropping into the Linux personality is a
+    // trapdoor: nothing running under it can climb back out to the native object ABI, so a
+    // compromised Linux shell cannot reach native-only authority by re-exec'ing itself.
+    ubyte execMode;
+}
+
+enum ubyte EXECMODE_NATIVE = 0;
+enum ubyte EXECMODE_LINUX  = 1;
+
+// DM13: the ratchet.  Returns true if the task is now in `want`, false if the transition was
+// refused.  Going to the mode you are already in is a no-op success; native<-linux is the only
+// refused direction, and it is refused for EVERY caller regardless of capability -- this is a
+// structural property of the process tree, not a permission.
+public bool taskSetExecMode(int tid, ubyte want) {
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    if (want != EXECMODE_NATIVE && want != EXECMODE_LINUX) return false;
+    auto t = &g_tasks[tid];
+    if (t.execMode == want) return true;
+    if (t.execMode == EXECMODE_LINUX && want == EXECMODE_NATIVE) {
+        klog("[domain] mode: refused linux -> native (one-way ratchet)\n");
+        return false;
+    }
+    t.execMode = want;
+    klog("[domain] mode: task dropped to linux\n");
+    return true;
+}
+
+public ubyte taskExecMode(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return EXECMODE_NATIVE;
+    return g_tasks[tid].execMode;
 }
 
 __gshared Task[MAX_TASKS] g_tasks;

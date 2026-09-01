@@ -729,6 +729,23 @@ private int forkTask(int parentTid) {
     child.parentId   = parentTid;
     child.userObjId  = parent.userObjId;
     child.identityObjId = parent.identityObjId; // IDENTITY_DOMAIN §3: inherit by default
+    // DM3 CONTAINMENT: a forked child MUST stay inside its parent's namespace and domain.
+    // Neither field was inherited here, and objEnsureNamespace() hands any task with no
+    // namespace a fresh nsAlloc() whose default "/" binding grants ALL rights -- so a
+    // domain-confined process escaped its own confinement just by calling fork(), and lost
+    // its domainObjId (and with it the device/network gates) at the same time.
+    child.domainObjId = parent.domainObjId;
+    child.execMode    = parent.execMode;      // DM13: the ratchet is inherited, never reset
+    if (parent.namespaceObjId != 0) {
+        // Private clone, matching domainBindTaskNs: the child gets its own lifetime, and a
+        // later rebind of the parent does not reach into it.
+        child.namespaceObjId = nsClone(parent.namespaceObjId);
+        if (child.namespaceObjId == 0 && parent.domainObjId != 0) {
+            // Fail CLOSED: a confined parent must never produce an unconfined child.
+            releaseTask(childTid);
+            return -12;
+        }
+    }
     child.untypedObjId = untypedCreateProcess(parent.untypedObjId);
     if (child.untypedObjId == 0) {
         releaseTask(childTid);
@@ -882,6 +899,12 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.untypedObjId = parent.untypedObjId;
     child.userObjId  = parent.userObjId;
     child.identityObjId = parent.identityObjId; // IDENTITY_DOMAIN §3: threads share the label
+    // DM3 CONTAINMENT: a thread must carry the same domain label as its process.  Threads
+    // already share the leader's namespace (objEnsureNamespace routes them to it), but
+    // without this the device/network gates -- which read domainObjId -- stopped applying
+    // the moment a confined process started a thread.
+    child.domainObjId = parent.domainObjId;
+    child.execMode    = parent.execMode;      // DM13: the ratchet is inherited, never reset
     g_taskNativeAbi[childTid] = g_taskNativeAbi[parentTid]; // NATIVE_OBJECT_ABI §3: same personality
     g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
     g_taskExecName[childTid]  = g_taskExecName[parentTid];
@@ -1308,6 +1331,86 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     klog_hex(cast(ulong)t); klog("\n");
     g_current_task_id = cast(ulong)t;
     return true;
+}
+
+// DOMAIN_MANAGER DM3: launch a program CONFINED TO A DOMAIN.
+//
+// Registered as core.domain's spawn hook at boot, so `spawn <domain> <program>` written to
+// /config/domain.action lands here.  Until this existed, domainEnterTask()/domainBindTaskNs()
+// had no caller but a self-test: no live task carried a domainObjId, so the namespace
+// confinement in namespaceCheckOpen() and the per-domain device/network gates were all
+// evaluated against nothing.  This is what makes the domain policy real.
+//
+// ORDERING, deliberate: the binary is exec'd FIRST (resolved through task 0's namespace) and
+// the domain namespace is bound immediately AFTER, before the task is ever scheduled.  So a
+// domain can run a program it could not itself open -- the template provides the binary, the
+// domain confines what the running process can reach.  Binding before exec would instead
+// require every domain to expose its own /wl-term etc., which is not how the templates are
+// built.  The child's console stdio is already open by then and deliberately survives, so a
+// confined program can still print.
+private extern(C) bool domainSpawnProgram(uint domObjId, const(char)* prog) {
+    import core.domain : domainBindTaskNs;
+    if (domObjId == 0 || prog is null) return false;
+
+    int t = allocTask();
+    if (t <= 0) { klog("[domain] spawn: no free task slot\n"); return false; }
+
+    g_tasks[t].parentId         = 0;
+    g_tasks[t].processLeaderTid = t;
+    g_tasks[t].userObjId        = g_tasks[0].userObjId;
+    g_tasks[t].untypedObjId     = untypedCreateProcess(0);
+    if (g_tasks[t].untypedObjId == 0) {
+        klog("[domain] spawn: no untyped budget\n");
+        releaseTask(t);
+        return false;
+    }
+    g_tasks[t].namespaceObjId   = nsClone(g_tasks[0].namespaceObjId);
+    capTableClear(g_tasks[t].capTabId);
+    installTaskUntypedCap(t);
+    fdtabSetupConsoleStdio(g_tasks[t].fdTabId);
+
+    ulong savedCr3 = x64ReadCR3();
+    uint savedUntyped = physActiveUntyped();
+    physSetActiveUntyped(g_tasks[t].untypedObjId);
+    long r = execveTask(t, cast(ulong)prog, 0, 0);
+    physSetActiveUntyped(savedUntyped);
+    x64WriteCR3(savedCr3);
+    if (r != 0) {
+        klog("[domain] spawn: exec failed for "); klog(prog); klog("\n");
+        releaseTask(t);
+        return false;
+    }
+
+    // Confine it: private clone of the domain's restricted namespace + the domain's identity
+    // + domainObjId.  From here its absolute opens run the namespaceCheckOpen gauntlet and its
+    // device/network access is the domain's mask.
+    if (domainBindTaskNs(t, domObjId) == 0) {
+        klog("[domain] spawn: bind FAILED (domain has no namespace) -- killing task\n");
+        releaseTask(t);
+        return false;
+    }
+
+    // DM13: the confined task starts in its domain's mode.  A native domain starts native
+    // (execMode is already 0 from allocTask); a Linux-flavoured one starts already dropped,
+    // which is a legal native->linux transition and therefore never trips the ratchet.
+    {
+        import core.domain : domainDistro, DISTRO_NATIVE;
+        import core.task : taskSetExecMode, EXECMODE_LINUX;
+        if (domainDistro(domObjId) != DISTRO_NATIVE)
+            taskSetExecMode(t, EXECMODE_LINUX);
+    }
+
+    klog("[domain] spawn: "); klog(prog); klog(" confined in domain ");
+    klog_hex(cast(ulong)domObjId); klog(" as task "); klog_hex(cast(ulong)t); klog("\n");
+    return true;
+}
+
+// DM13 bridge: core.domain cannot import core.task (core.task already imports core.domain),
+// so "mode self <native|linux>" routes through here.  Applies to the CALLING task.
+private extern(C) bool domainModeSelf(int linuxMode) {
+    import core.task : taskSetExecMode, EXECMODE_NATIVE, EXECMODE_LINUX;
+    return taskSetExecMode(cast(int)g_current_task_id,
+                           linuxMode != 0 ? EXECMODE_LINUX : EXECMODE_NATIVE);
 }
 
 // Spawn the idle task (/idle boot module) once.  Like spawnWaylandProgram but does
@@ -4334,6 +4437,13 @@ void d_kernel_main() {
     identityInitLaunchRules();   // §3 compiled-in transition rules (after the identities exist)
     idnsInitRoots();             // §4 private object-root Directory per identity
     domainInitDefaults();        // DOMAIN_MANAGER DM0: 7 RAM domains, one per identity (after they exist)
+    {   // DM3: give core.domain a launcher, so "spawn <domain> <prog>" can create a confined
+        // task.  core.domain cannot reach allocTask/execveTask (kernel_main already imports it,
+        // so importing back would be a cycle) -- hence the hook.
+        import core.domain : domainSetSpawnHook, domainSetModeHook;
+        domainSetSpawnHook(&domainSpawnProgram);
+        domainSetModeHook(&domainModeSelf);   // DM13: "mode self linux" ratchet
+    }
     domainSelfTest();            // DOMAIN_MANAGER DM0: one-shot proof create/lookup/dup/unknown-id/freeze (deterministic at boot)
     nsRestrictedSelfTest();      // DOMAIN_MANAGER DM2: one-shot proof deny-by-default restricted namespace (deterministic at boot)
     domainNsProof();             // DOMAIN_MANAGER DM2.2: build a real domain's restricted ns + prove its policy

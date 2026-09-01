@@ -1349,7 +1349,8 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
 // built.  The child's console stdio is already open by then and deliberately survives, so a
 // confined program can still print.
 private extern(C) bool domainSpawnProgram(uint domObjId, const(char)* prog) {
-    import core.domain : domainBindTaskNs;
+    // domainBindTaskNs lives in core.task (NOT core.domain, despite the name), which this
+    // module already imports wholesale at the top.
     if (domObjId == 0 || prog is null) return false;
 
     int t = allocTask();

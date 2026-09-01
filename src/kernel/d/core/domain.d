@@ -18,7 +18,11 @@ module core.domain;
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
 import core.identity : identityById, identityByName, IdentityRec,
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
-                       DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB;  // DM8/DM10.7 device policy
+                       DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB,
+                       DEVCLASS_NET;  // DM8/DM10.7 device policy
+                       // DEVCLASS_NET was missing from this list, which is exactly why
+                       // domainDeviceClassByName() had no "net" case: the name could not be
+                       // resolved here, so per-domain network control was unreachable.
 import core.namespace : nsAllocRestricted, nsBind, nsBindDeny, nsRootDir,
                         nsResolveCheck, nsRelease;     // DOMAIN_MANAGER DM2
 import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MANAGER DM2
@@ -434,7 +438,7 @@ private bool verbEq(const(char)* v, string lit) {
 // not reachable from here, and importing kernel_main would be a cycle -- it already imports us),
 // so kernel_main registers a hook at boot and this module just calls it.  Same pattern as the
 // ICMP raw tap in network/icmp.d.
-alias DomainSpawnFn = extern(C) bool function(uint domObjId, const(char)* prog);
+alias DomainSpawnFn = extern(C) bool function(uint domObjId, const(char)* prog) @nogc nothrow;
 private __gshared DomainSpawnFn g_domainSpawnHook = null;
 public void domainSetSpawnHook(DomainSpawnFn fn) { g_domainSpawnHook = fn; }
 
@@ -442,7 +446,7 @@ public void domainSetSpawnHook(DomainSpawnFn fn) { g_domainSpawnHook = fn; }
 // module (domainBindTaskNs calls domainById), so we cannot import core.task back -- kernel_main
 // imports both and registers the bridge.  `linux` != 0 requests the drop; the callee refuses
 // linux -> native.
-alias DomainModeFn = extern(C) bool function(int linuxMode);
+alias DomainModeFn = extern(C) bool function(int linuxMode) @nogc nothrow;
 private __gshared DomainModeFn g_domainModeHook = null;
 public void domainSetModeHook(DomainModeFn fn) { g_domainModeHook = fn; }
 public bool domainSpawnInto(uint domObjId, const(char)* prog) {

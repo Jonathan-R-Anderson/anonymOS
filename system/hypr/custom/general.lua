@@ -67,6 +67,25 @@ hl.config({
     -- playback is off, so deleting this one block restores the host's exact motion.
     animations = {
         enabled = false
+    },
+
+    -- Now that HOS_SCENE_RENDER is exported again, Monitor.cpp:2169 stops hardcoding software
+    -- cursors and the decision reaches config for the first time.  Make it the right one here.
+    --
+    -- The host leaves cursor:no_hardware_cursors at its default 2 ("auto"), which resolves to
+    -- FALSE on this VM (case 2 is nvidia+mgpu/VRR; this renders on softpipe).  That makes
+    -- Hyprland attempt a HARDWARE cursor on every pointer update, which cannot work here: the
+    -- kernel fails DRM_NR_MODE_CURSOR/CURSOR2 with EINVAL on purpose so the compositor
+    -- composites the pointer itself.  The attempt is not free -- attemptHardwareCursor() runs a
+    -- whole RENDER_MODE_FULL_FAKE pass before drmModeSetCursor fails and it falls back to the
+    -- software cursor anyway.  It is also the source of the "legacy drm: cursor null failed" spam.
+    --
+    -- Forcing 1 (software cursors) skips that dead end and routes motion through
+    -- damageIfSoftware(), so the pointer tracks properly instead of moving at the damage-driven
+    -- fallback rate.  use_cpu_buffer = 0 is belt-and-braces if this is ever set back to 2.
+    cursor = {
+        no_hardware_cursors = 1,
+        use_cpu_buffer      = 0
     }
 })
 

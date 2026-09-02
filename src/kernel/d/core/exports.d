@@ -1064,9 +1064,41 @@ ulong linux_seed_initial_stack(
     // and the *_dri.so drivers exist only as dlopen name strings inside the Hyprland binary and
     // resolve to nothing, so eglCreateContext could not succeed even if the memory held.
     //
-    // Setting it only under isCompositorGpu (virgl present) means a no-GPU boot takes the
-    // verified CPU compositor instead of OOMing on a GL path that cannot work.
-    if (isHyprlandC && isCompositorGpu) {
+    // 2026-09-02 REVERT of the isCompositorGpu narrowing.
+    //
+    // Narrowing this to isCompositorGpu did NOT select "the verified CPU compositor".  It
+    // half-selected it, and that is what kills the compositor.  The HOS opt-outs are split
+    // across two DIFFERENT predicates:
+    //
+    //   env HOS_SCENE_RENDER unset ->  GLTexture.cpp:51     skip allocate()  (m_texID stays 0)
+    //                                  SurfaceState.cpp:47  skip client texture upload
+    //                                  Monitor.cpp:2169     force software cursors
+    //   needsCPUCopy()             ->  GLRenderer.cpp:1377  m_hosCPUFrame (skip GL scene)
+    //                                  GLRenderer.cpp:1463  hosComposeShmWindows shortcut
+    //
+    // needsCPUCopy() is assigned at exactly one place -- GLRenderbuffer.cpp:57, inside the
+    // `m_image == EGL_NO_IMAGE_KHR` fallback -- i.e. only when the dmabuf -> EGLImage import
+    // FAILS.  Since the PRIME CPU-alias path landed that import SUCCEEDS, so needsCPUCopy() is
+    // false and m_hosCPUFrame is false and the full GL scene build runs -- out of textures that
+    // GLTexture.cpp deliberately never uploaded.  Hyprland then draws a texture with id 0;
+    // RASSERT(tex->ok()) fires, but raise(SIGABRT) is inert in this kernel, so it falls through
+    // to glBindTexture(GL_TEXTURE_2D, 0) plus a draw, and softpipe faults on its NULL sampler
+    // view (cr2=0x14 inside kms_swrast_dri.so, after 9 surviving asserts).
+    //
+    // Verified against the crashing boot's serial.log: zero "rb:" lines and zero
+    // "CPU-readback" lines out of 37 WARN lines, and three "[prime] ... CPU-alias" lines.
+    //
+    // Both stale claims in the old comment are dead: there IS Mesa in the image (softpipe,
+    // Mesa 23.3.5, GLES 3.0 context created), and mm.d now has a real free list
+    // (FREE_LIST_CAP = 1 << 19), so the OOM rationale is gone -- that boot ran real GL and
+    // logged zero OOM lines.
+    //
+    // Setting it unconditionally for Hyprland re-converges all five gates on ONE predicate.
+    // Do NOT instead widen isCompositorGpu at line ~1055: that flag also gates the
+    // `if (!isCompositorGpu)` block below, which exports LIBGL_ALWAYS_SOFTWARE /
+    // GALLIUM_DRIVER=softpipe / GBM_ALWAYS_SOFTWARE / MESA_LOADER_DRIVER_OVERRIDE.  Without
+    // those, eglCreateContext fails and there is no renderer at all.
+    if (isHyprlandC) {
         envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_SCENE_RENDER=1\0".ptr);
         if (envVirt != 0) envVirts[envc++] = envVirt;
     }
@@ -1120,8 +1152,10 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    // (HOS_SCENE_RENDER=1 is now set unconditionally for Hyprland above, so it applies
-    // on both the virgl and softpipe paths.)
+    // (HOS_SCENE_RENDER=1 is set unconditionally for Hyprland above -- see the long note there --
+    // so the real GL scene path applies on BOTH the virgl and the softpipe paths.  The four
+    // software-forcing vars in THIS block are what make softpipe work at all; they are
+    // orthogonal to HOS_SCENE_RENDER and must stay gated on isCompositorGpu.)
     }
     // NB: AQ_TRACE=1 and EGL_LOG_LEVEL=debug were bring-up debug aids. They make
     // aquamarine log a per-frame scheduleFrame trace and Mesa log every EGL call

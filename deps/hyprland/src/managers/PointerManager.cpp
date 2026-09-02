@@ -645,7 +645,12 @@ void CPointerManager::renderSoftwareCursorsFor(PHLMONITOR pMonitor, const Time::
         return;
 
     auto texture = getCurrentCursorTexture();
-    if (!texture)
+    // EpinAnonymOS: validity, not just non-null.  When HOS_SCENE_RENDER is unset GLTexture.cpp
+    // returns from the pixel-data constructor BEFORE allocate(), so the cursor texture is
+    // non-null but has m_texID == 0 and ok() is false forever -- which drove the compositor
+    // into a softpipe NULL-deref every frame.  Insurance for the case where the dmabuf import
+    // starts failing again and the env/runtime gates re-diverge.
+    if (!texture || !texture->ok())
         return;
 
     box.scale(pMonitor->m_scale);

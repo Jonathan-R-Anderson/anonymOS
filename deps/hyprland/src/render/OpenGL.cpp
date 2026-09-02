@@ -1479,7 +1479,17 @@ static GLenum wrapModeToGl(const uint8_t wrapMode) {
 void CHyprOpenGLImpl::renderTextureInternal(SP<ITexture> tex, const CBox& box, const STextureRenderData& data) {
     RASSERT(g_pHyprRenderer->m_renderData.pMonitor, "Tried to render texture without begin()!");
     RASSERT(tex, "Attempted to draw nullptr texture!");
-    RASSERT(tex->ok(), "Attempted to draw invalid texture!");
+    // EpinAnonymOS: RASSERT (macros.hpp) ends in raise(SIGABRT), which this kernel does not act
+    // on, so a failed assertion does NOT stop the frame -- it falls through to tex->bind() below,
+    // which for an unallocated texture is glBindTexture(target, 0), and then draws with nothing
+    // bound to unit 0.  softpipe dereferences its NULL sampler view (observed: cr2=0x14, rip
+    // inside dri/tls/kms_swrast_dri.so, 9 asserts then a fatal page fault).  Every RASSERT in
+    // this build is a fall-through into undefined behaviour; this one is a proven segfault, so
+    // make it a real early return.
+    if (!tex->ok()) {
+        Log::logger->log(Log::ERR, "renderTextureInternal: attempted to draw invalid texture (id 0); skipping");
+        return;
+    }
 
     TRACY_GPU_ZONE("RenderTextureInternalWithDamage");
 

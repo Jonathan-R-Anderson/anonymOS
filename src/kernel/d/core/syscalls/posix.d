@@ -971,23 +971,6 @@ public bool fdRequireCap(ulong fd, uint rights) {
     int ifd = cast(int)fd;
     if (ifd < 0 || ifd >= 1024) return false;
 
-    // A task's own console is never denied.
-    //
-    // This is THE choke point: linuxSyscallCapPrecheck() calls fdRequireCap() and returns EBADF
-    // before the handler ever runs, so a console bypass placed inside sys_write()/ioctl() is
-    // dead code -- which is exactly the mistake that made the previous build fail identically.
-    //
-    // Observed on every Hyprland boot ([initfail] trace): writev(1)/writev(2) and
-    // ioctl(1, TIOCGWINSZ) all returned EBADF for the init task.  libc++'s std::print THROWS
-    // std::system_error when its write fails, so the first std::println() threw, nothing caught
-    // it, and terminate -> abort() -> a_crash() ("hlt" -> #GP) killed the compositor -- while
-    // the same failure swallowed every message that would have explained it.
-    //
-    // There is no capability worth enforcing between a process and its own serial console, and
-    // failing it closed converts a logging problem into a silent death. Fail OPEN for
-    // FD_CONSOLE only; every other descriptor type still goes through the full cap check.
-    if (g_fdTable !is null && g_fdTable[ifd].type == FileType.FD_CONSOLE)
-        return true;
 
     // BRING-UP DIAG (bounded: init task only, 12 lines).  Three builds in a row denied
     // writev(1)/writev(2)/ioctl(1,TIOCGWINSZ) with EBADF even after the FD_CONSOLE bypass
@@ -1669,17 +1652,19 @@ public void fdtabSetupConsoleStdio(int tableId) {
 }
 
 void initFdTable() {
-    klog("[build] fdcap-diag-v4\n");
     if (g_fdTable is null) g_fdTable = &g_fdTabs[0][0];   // process 0's table
     if (g_fdTableInitialized) return;
-    g_fdTable[0].type = FileType.FD_CONSOLE;
-    g_fdTable[0].flags = O_RDONLY;
-
-    g_fdTable[1].type = FileType.FD_CONSOLE;
-    g_fdTable[1].flags = O_WRONLY;
-
-    g_fdTable[2].type = FileType.FD_CONSOLE;
-    g_fdTable[2].flags = O_WRONLY;
+    // Install stdio by table INDEX, never through g_fdTable.  This function is documented as
+    // setting up process 0's table, but g_fdTable is whatever table fdtabSetActive() selected
+    // for the CURRENT syscall (kernel_main.d:2862), and g_fdTableInitialized is a single global
+    // latch over a per-process resource.  Writing through the pointer therefore handed console
+    // stdio to whichever process made the first fd syscall of the boot and then latched forever:
+    // on a Hyprland boot that was hos-sshd-launch's socket() (tid 2, table 2 -- where the spawn
+    // had already installed console stdio, so the write was an invisible no-op), and table 0 was
+    // left all-FD_NONE, which is what made PID1's writev(1)/ioctl(1) return EBADF.
+    // PID1's stdio is now installed eagerly at task-0 setup (kernel_main.d, next to
+    // installTaskUntypedCap(0)); this call is the idempotent backstop, and it names table 0.
+    fdtabSetupConsoleStdio(0);
 
 
     // Mark initialised BEFORE rtInit so the rtfs builders (rtSymlinkCreate etc.) that

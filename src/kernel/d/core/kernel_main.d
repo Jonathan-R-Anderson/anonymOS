@@ -4488,6 +4488,23 @@ void d_kernel_main() {
         while (true) { asm @nogc nothrow { cli; hlt; } }
     }
     installTaskUntypedCap(0);
+    // Task 0 (PID1) is the ONLY task built by hand here instead of by a spawner wrapper, so it
+    // was the only task whose fd table nobody ever populated: spawnWaylandProgram (1368),
+    // domainSpawnProgram (1422) and maybeSpawnIdle (1512) each call fdtabSetupConsoleStdio()
+    // on the tid they just allocTask()'d (allocTask scans from 1, so never 0), and execveTask
+    // itself touches no fd state.  PID1's stdio was therefore left to initFdTable()'s lazy
+    // one-shot, which writes through the ACTIVE table pointer (g_fdTable, repointed by
+    // fdtabSetActive() before every syscall) and then latches globally -- so whichever process
+    // happened to make the first fd syscall got console stdio, and nobody else ever would.
+    // On a Hyprland boot that was hos-sshd-launch's socket() as tid 2: table 0 stayed
+    // all-FD_NONE, and the compositor's writev(1)/writev(2)/ioctl(1, TIOCGWINSZ) were all
+    // rejected with EBADF in linuxSyscallCapPrecheck -- libc++'s std::print THROWS on a failed
+    // write, so the first std::println() died in abort() before it could report anything.
+    // (Weston only ever worked by accident: it is dynamically linked, so ld.so's open() ran the
+    // one-shot inside tid 0's own syscall, with table 0 active.)  Install PID1's console stdio
+    // eagerly, by table INDEX, exactly like every other task gets at spawn time.
+    fdtabSetupConsoleStdio(g_tasks[0].fdTabId);
+    klog("[build] fdcap-diag-v6 pid1 stdio installed\n");
     physSetActiveUntyped(g_tasks[0].untypedObjId);
     physEnableUntypedGate(true);
     bootProgress("task");

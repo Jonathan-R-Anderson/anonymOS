@@ -1629,12 +1629,13 @@ void initFdTable() {
     if (g_fdTableInitialized) return;
     g_fdTable[0].type = FileType.FD_CONSOLE;
     g_fdTable[0].flags = O_RDONLY;
-    
+
     g_fdTable[1].type = FileType.FD_CONSOLE;
     g_fdTable[1].flags = O_WRONLY;
-    
+
     g_fdTable[2].type = FileType.FD_CONSOLE;
     g_fdTable[2].flags = O_WRONLY;
+
 
     // Mark initialised BEFORE rtInit so the rtfs builders (rtSymlinkCreate etc.) that
     // call initFdTable() re-enter as a no-op instead of recursively re-running setup
@@ -2365,6 +2366,31 @@ public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
             for (size_t i = 0; i < count; i++) logupTap(p[i]);
         }
     }
+    // Console stdio is a kernel-owned device, and a write to it must never fail with EBADF.
+    //
+    // This killed Hyprland.  Its stdio writes were coming back EBADF from the capability
+    // lookup below (observed via the [initfail] trace: writev(1)/writev(2) -> errno 9, plus
+    // ioctl(1, TCGETS) for isatty).  libc++'s std::print/std::println THROW std::system_error
+    // when their write fails, so the very first `std::println("Welcome to Hyprland!")` threw,
+    // nothing caught it, and std::terminate -> abort() -> a_crash() ("hlt", which faults #GP in
+    // ring 3) took the compositor down.  Worse, the same failure swallowed every message that
+    // would have explained it -- the ctor's catch handler, libc++abi's terminate report, all of
+    // it -- which is why the crash looked completely silent and cost several boots to find.
+    //
+    // There is no capability worth enforcing between a process and its own console: it is the
+    // serial log, not a resource another task can be denied. Writing it directly also keeps the
+    // compositor's stderr readable when the object/cap layer is mid-reconciliation.
+    if (fd >= 0 && fd < 1024 && g_fdTable !is null &&
+        g_fdTable[fd].type == FileType.FD_CONSOLE && buf !is null) {
+        const(char)* cs = cast(const(char)*)buf;
+        const bool isCmp = (g_presenterTid >= 0 && cast(int)g_current_task_id == g_presenterTid);
+        foreach (i; 0 .. count) {
+            if (isCmp) cmpLogTap(cs[i]);
+            console_serial_putchar(cs[i]);
+        }
+        return cast(ssize_t)count;
+    }
+
     ObjHeader* oh = fdObjectByIndexWithRights(fd, CAP_RIGHT_WRITE);
     if (oh is null) return cast(ssize_t)negErrno(EBADF);
     auto wop = g_objOps[oh.type].write;
@@ -7527,6 +7553,31 @@ private void hangTrace2(const(char)* name, ulong a, ulong b) {
 
 public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
     hangTrace2("ioctl fd,cmd", fd, cmd);
+    // Terminal queries on the console, answered before the capability lookup for the same
+    // reason as the console write path in sys_write(): isatty(1) was returning EBADF, and
+    // libc++'s std::print consults it to pick its output path.  TCGETS succeeding (the console
+    // IS a terminal) and TCSETS* being accepted keeps stdio on its normal path.
+    if (fd < 1024 && g_fdTable !is null && g_fdTable[cast(int)fd].type == FileType.FD_CONSOLE) {
+        const uint c = cast(uint)cmd;
+        if (c == 0x5401 /*TCGETS*/) {
+            // struct termios is 36 bytes + c_cc[19]; zeroing it is a valid "raw-ish" answer and
+            // is all isatty() needs (it only checks for success).
+            if (arg != 0) { smapBegin(); auto p = cast(ubyte*)arg; foreach (i; 0 .. 60) p[i] = 0; smapEnd(); }
+            return 0;
+        }
+        if (c == 0x5402 || c == 0x5403 || c == 0x5404) return 0;   // TCSETS/TCSETSW/TCSETSF
+        if (c == 0x5413 /*TIOCGWINSZ*/) {
+            // This is the one the [initfail] trace actually caught failing on fd 1.
+            // struct winsize { u16 ws_row, ws_col, ws_xpixel, ws_ypixel; }
+            if (arg != 0) {
+                smapBegin();
+                auto w = cast(ushort*)arg;
+                w[0] = 24; w[1] = 80; w[2] = 0; w[3] = 0;
+                smapEnd();
+            }
+            return 0;
+        }
+    }
     ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_IOCTL);
     if (oh is null) return negErrno(EBADF);
     auto iop = g_objOps[oh.type].ioctl;

@@ -5700,22 +5700,131 @@ private immutable VFEntry[] g_vfs = [
       "DisallowTCP=true\n"
     },
     { "/etc/hypr/hyprland.conf",
-      "# EpinAnonymOS Hyprland bootstrap config\n" ~
+      // Ported from the user's own dots-hyprland setup (~/.config/hypr, end-4 / illogical-impulse).
+      // That config is LUA (hyprland.lua + hyprland/*.lua) driven by Hyprland's Lua plugin API and
+      // quickshell; neither exists here, so the SETTINGS were translated by hand into plain hyprlang.
+      // Appearance/input/misc values are reproduced verbatim from hyprland/general.lua and
+      // colors.lua.  Keybinds are their bindings remapped onto this guest's own clients, because
+      // theirs launch kitty/foot/fuzzel/quickshell/waybar, none of which exist in this image.
+      "# EpinAnonymOS Hyprland config — ported from the user's dots-hyprland (Lua) setup.\n" ~
+      "# Appearance values are verbatim from ~/.config/hypr/hyprland/{general,colors}.lua.\n" ~
+      "\n" ~
+      "# Their host runs scale 1.25 for a HiDPI laptop panel.  This guest is a 1280x800 VM, where\n" ~
+      "# 1.25 would leave a 1024x640 logical desktop AND make softpipe render+downscale every frame.\n" ~
+      "# Scale 1 here; change to 1.25 on real HiDPI hardware.\n" ~
       "monitor=,preferred,auto,1\n" ~
+      "\n" ~
+      "general {\n" ~
+      "    gaps_in = 4\n" ~
+      "    gaps_out = 5\n" ~
+      "    gaps_workspaces = 50\n" ~
+      "    border_size = 1\n" ~
+      "    col.active_border = rgba(44464f77)\n" ~
+      "    col.inactive_border = rgba(1a1b2033)\n" ~
+      "    resize_on_border = true\n" ~
+      "    no_focus_fallback = true\n" ~
+      "    allow_tearing = true\n" ~
+      "    snap {\n" ~
+      "        enabled = true\n" ~
+      "        window_gap = 4\n" ~
+      "        monitor_gap = 5\n" ~
+      "        respect_gaps = true\n" ~
+      "    }\n" ~
+      "}\n" ~
+      "\n" ~
+      "decoration {\n" ~
+      "    rounding = 18\n" ~
+      "    rounding_power = 2.5\n" ~
+      "    dim_inactive = true\n" ~
+      "    dim_strength = 0.05\n" ~
+      "    dim_special = 0.2\n" ~
+      "    blur {\n" ~
+      "        enabled = true\n" ~
+      "        xray = true\n" ~
+      "        special = false\n" ~
+      "        new_optimizations = true\n" ~
+      "        size = 10\n" ~
+      "        passes = 3\n" ~
+      "        brightness = 1\n" ~
+      "        noise = 0.05\n" ~
+      "        contrast = 0.89\n" ~
+      "        vibrancy = 0.5\n" ~
+      "        vibrancy_darkness = 0.5\n" ~
+      "        popups = false\n" ~
+      "        popups_ignorealpha = 0.6\n" ~
+      "    }\n" ~
+      "    shadow {\n" ~
+      "        enabled = true\n" ~
+      "        range = 20\n" ~
+      "        offset = 0 2\n" ~
+      "        render_power = 10\n" ~
+      "        color = rgba(00000020)\n" ~
+      "    }\n" ~
+      "}\n" ~
       "\n" ~
       "input {\n" ~
       "    kb_layout = us\n" ~
+      "    numlock_by_default = true\n" ~
+      "    repeat_delay = 250\n" ~
+      "    repeat_rate = 35\n" ~
+      "    follow_mouse = 1\n" ~
+      "    off_window_axis_events = 2\n" ~
+      "    touchpad {\n" ~
+      "        natural_scroll = true\n" ~
+      "        disable_while_typing = true\n" ~
+      "        clickfinger_behavior = true\n" ~
+      "        scroll_factor = 0.7\n" ~
+      "    }\n" ~
       "}\n" ~
       "\n" ~
-      "general {\n" ~
-      "    gaps_in = 0\n" ~
-      "    gaps_out = 0\n" ~
-      "    border_size = 1\n" ~
+      "dwindle {\n" ~
+      "    preserve_split = true\n" ~
+      "    smart_split = false\n" ~
+      "    smart_resizing = false\n" ~
       "}\n" ~
       "\n" ~
       "misc {\n" ~
       "    disable_hyprland_logo = true\n" ~
       "    disable_splash_rendering = true\n" ~
+      "    background_color = rgba(121318FF)\n" ~
+      "    vrr = 0\n" ~
+      "    animate_manual_resizes = false\n" ~
+      "    animate_mouse_windowdragging = false\n" ~
+      "    enable_swallow = false\n" ~
+      "    focus_on_activate = true\n" ~
+      "    initial_workspace_tracking = false\n" ~
+      "}\n" ~
+      "\n" ~
+      "binds {\n" ~
+      "    scroll_event_delay = 0\n" ~
+      "    hide_special_on_workspace_change = true\n" ~
+      "}\n" ~
+      "\n" ~
+      "# Bezier curves + animations, verbatim from their general.lua.\n" ~
+      "bezier = expressiveFastSpatial, 0.42, 1.67, 0.21, 0.90\n" ~
+      "bezier = expressiveSlowSpatial, 0.39, 1.29, 0.35, 0.98\n" ~
+      "bezier = expressiveDefaultSpatial, 0.38, 1.21, 0.22, 1.00\n" ~
+      "bezier = emphasizedDecel, 0.05, 0.7, 0.1, 1\n" ~
+      "bezier = emphasizedAccel, 0.3, 0, 0.8, 0.15\n" ~
+      "bezier = standardDecel, 0, 0, 0, 1\n" ~
+      "bezier = menu_decel, 0.1, 1, 0, 1\n" ~
+      "bezier = menu_accel, 0.52, 0.03, 0.72, 0.08\n" ~
+      "bezier = stall, 1, -0.1, 0.7, 0.85\n" ~
+      "animations {\n" ~
+      "    enabled = true\n" ~
+      "    animation = windowsIn, 1, 3, emphasizedDecel, popin 80%\n" ~
+      "    animation = windowsOut, 1, 2, emphasizedDecel, popin 90%\n" ~
+      "    animation = windowsMove, 1, 3, emphasizedDecel, slide\n" ~
+      "    animation = fadeIn, 1, 3, emphasizedDecel\n" ~
+      "    animation = fadeOut, 1, 2, emphasizedDecel\n" ~
+      "    animation = border, 1, 10, emphasizedDecel\n" ~
+      "    animation = layersIn, 1, 2.7, emphasizedDecel, popin 93%\n" ~
+      "    animation = layersOut, 1, 2.4, menu_accel, popin 94%\n" ~
+      "    animation = fadeLayersIn, 1, 0.5, menu_decel\n" ~
+      "    animation = fadeLayersOut, 1, 2.7, stall\n" ~
+      "    animation = workspaces, 1, 7, menu_decel, slide\n" ~
+      "    animation = specialWorkspaceIn, 1, 2.8, emphasizedDecel, slidevert\n" ~
+      "    animation = specialWorkspaceOut, 1, 1.2, emphasizedAccel, slidevert\n" ~
       "}\n" ~
       "\n" ~
       "# HOS: our kernel DRM present is synchronous and aquamarine is event-paced; the render engine\n" ~
@@ -5726,13 +5835,74 @@ private immutable VFEntry[] g_vfs = [
       "    damage_tracking = 0\n" ~
       "}\n" ~
       "\n" ~
-      "# GNOME-style top bar (wlr-layer-shell): Activities | clock | wifi/volume/battery.\n" ~
-      "# (Spawned by the kernel autostart alongside the other boot clients — no exec-once\n" ~
-      "# here, or the bar starts twice now that exec-once works.)\n" ~
+      "# ── Window management: their bindings, unchanged ────────────────────────────\n" ~
+      "bind = SUPER, Q, killactive\n" ~
+      "bind = SUPER, F, fullscreen, 0\n" ~
+      "bind = SUPER, D, fullscreen, 1\n" ~
+      "bind = SUPER, P, pin\n" ~
+      "bind = SUPER ALT, Space, togglefloating\n" ~
+      "bind = SUPER, Left, movefocus, l\n" ~
+      "bind = SUPER, Right, movefocus, r\n" ~
+      "bind = SUPER, Up, movefocus, u\n" ~
+      "bind = SUPER, Down, movefocus, d\n" ~
+      "bind = SUPER, bracketleft, movefocus, l\n" ~
+      "bind = SUPER, bracketright, movefocus, r\n" ~
+      "bind = SUPER SHIFT, Left, movewindow, l\n" ~
+      "bind = SUPER SHIFT, Right, movewindow, r\n" ~
+      "bind = SUPER SHIFT, Up, movewindow, u\n" ~
+      "bind = SUPER SHIFT, Down, movewindow, d\n" ~
+      "binde = SUPER, semicolon, splitratio, -0.1\n" ~
+      "binde = SUPER, apostrophe, splitratio, +0.1\n" ~
+      "bind = SUPER, S, togglespecialworkspace, special\n" ~
+      "bind = SUPER SHIFT, S, movetoworkspace, special:special\n" ~
+      "\n" ~
+      "# Workspaces 1-10, and SUPER+ALT+N to send there (their layout).\n" ~
+      "bind = SUPER, 1, workspace, 1\n" ~
+      "bind = SUPER, 2, workspace, 2\n" ~
+      "bind = SUPER, 3, workspace, 3\n" ~
+      "bind = SUPER, 4, workspace, 4\n" ~
+      "bind = SUPER, 5, workspace, 5\n" ~
+      "bind = SUPER, 6, workspace, 6\n" ~
+      "bind = SUPER, 7, workspace, 7\n" ~
+      "bind = SUPER, 8, workspace, 8\n" ~
+      "bind = SUPER, 9, workspace, 9\n" ~
+      "bind = SUPER, 0, workspace, 10\n" ~
+      "bind = SUPER ALT, 1, movetoworkspace, 1\n" ~
+      "bind = SUPER ALT, 2, movetoworkspace, 2\n" ~
+      "bind = SUPER ALT, 3, movetoworkspace, 3\n" ~
+      "bind = SUPER ALT, 4, movetoworkspace, 4\n" ~
+      "bind = SUPER ALT, 5, movetoworkspace, 5\n" ~
+      "\n" ~
+      "# ── Applications: remapped to THIS guest's clients ──────────────────────────\n" ~
+      "# Theirs launch foot/kitty/fuzzel/quickshell/waybar, none of which exist here.\n" ~
+      "# NOTE: their SUPER+D is Maximize (kept above), so the Domain Manager moved to\n" ~
+      "# SUPER+SHIFT+D to avoid stealing their binding.\n" ~
+      "bind = SUPER, Return, exec, /hos-wifiterm\n" ~
+      "bind = SUPER, T, exec, /hos-wifiterm\n" ~
+      "bind = SUPER, A, exec, /wl-overview\n" ~
+      "bind = SUPER, Tab, exec, /wl-overview\n" ~
+      "bind = SUPER, E, exec, /wl-files\n" ~
+      "bind = SUPER SHIFT, D, exec, /wl-domain-manager\n" ~
+      "bind = SUPER, C, exec, /wl-calendar\n" ~
+      "bind = SUPER, W, exec, /wl-wifi-menu\n" ~
+      "bind = SUPER ALT, L, exec, /wl-logview\n" ~
+      "bind = SUPER, N, exec, /wl-quicksettings\n" ~
       "\n" ~
       "# SUPER+B toggles the bar.  It (and the Settings config panel) hide/show the bar by\n" ~
       "# creating/removing /run/hos-bar.hidden, which the bar polls once a second.\n" ~
-      "bind = SUPER, B, exec, sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\"\n"
+      "bind = SUPER, B, exec, sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\"\n" ~
+      "\n" ~
+      "# ── SOFTWARE RENDERING OVERRIDE ─────────────────────────────────────────────\n" ~
+      "# Everything above is their config as written.  This guest has no GPU: Mesa runs the\n" ~
+      "# SOFTPIPE gallium driver (kms_swrast_dri.so, built -Dllvm=disabled, so not even\n" ~
+      "# llvmpipe).  Blur at size 10 / passes 3 plus shadows means several full-screen\n" ~
+      "# gaussian passes per frame on the CPU, which is not viable at 1280x800.\n" ~
+      "# These last assignments win (hyprlang takes the last value), so DELETE THIS BLOCK\n" ~
+      "# to get the full look once there is real GPU acceleration.\n" ~
+      "decoration:blur:enabled = false\n" ~
+      "decoration:shadow:enabled = false\n" ~
+      "decoration:rounding = 8\n" ~
+      "animations:enabled = false\n"
     },
     { "/etc/NetworkManager/NetworkManager.conf",
       "[main]\n" ~

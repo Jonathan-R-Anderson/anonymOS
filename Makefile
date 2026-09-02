@@ -897,6 +897,16 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		printf '    module_path: boot():/epin-usb.conf\n' >> cd/boot/limine/limine.conf; \
 		echo "Included /epin-usb.conf (USB=1: xHCI granted to LKL for usb-storage)"; \
 	fi
+
+	@# Compositor selection — `HYPRLAND=1 make iso` stages the /epin-hyprland.conf marker, which
+	@# makes the kernel skip its Weston pass and select the (already-staged, 38 MB) Hyprland
+	@# module instead.  BOTH compositors stay in the image, so switching back is just a rebuild
+	@# without this flag — no risk of ending up with no desktop at all.
+	@if [ -n "$(HYPRLAND)" ]; then \
+		printf 'epin hyprland compositor marker\n' > cd/epin-hyprland.conf; \
+		printf '    module_path: boot():/epin-hyprland.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /epin-hyprland.conf (HYPRLAND=1: Hyprland selected instead of Weston)"; \
+	fi
 	@# WIFI_DMA_BOUNCE=1: opt-in the LKL DMA bounce for WiFi boots (US5b) — the fix for the AX210
 	@# "Failed to start RT ucode -110" (corrupt LMAC firmware from a scattered multi-page firmware DMA).
 	@if [ -n "$(WIFI_DMA_BOUNCE)" ]; then \

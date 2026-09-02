@@ -1344,7 +1344,18 @@ static void handle_click(struct app *app)
     // Active-tab content.
     if (app->tab == 0) {                            // Overview: cfg pills + lifecycle
         for (int i = 0; i < N_OVPILL; i++) { int bx,by,bw,bh; ov_pill_rect(i,&bx,&by,&bw,&bh);
-            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) { ctl_cycle(&app->cfg[app->sel], OV_CTL[i], 1); redraw_commit(app,"cfg"); return; } }
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
+                ctl_cycle(&app->cfg[app->sel], OV_CTL[i], 1);
+                // The Shell pill has to reach the KERNEL, not just this struct.  A spawned
+                // program's EPIN_SHELL is derived from the domain's own mode (kernel side),
+                // so a pill that only moved GUI state left "native" doing nothing at all.
+                // Pushing it through the `mode` verb keeps the pill, the domain's stored
+                // mode, and what a launched shell actually gets in agreement.
+                if (OV_CTL[i] == 5)
+                    domain_action_arg(app, "mode",
+                                      strcmp(SHELL_ENV[app->cfg[app->sel].shell], "native") == 0
+                                          ? "native" : "linux");
+                redraw_commit(app,"cfg"); return; } }
         for (int a = 0; a < N_LIFE; a++) { int bx,by,bw,bh; life_btn_rect(a,&bx,&by,&bw,&bh);
             if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) { domain_action(app, LIFE_VERB[a]); return; } }
     } else if (app->tab == 1) {                     // Filesystem: +Allow ro/rw / +Deny / +Mount → path dialog
@@ -1602,9 +1613,18 @@ int main(void)
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Domain Manager");
     xdg_toplevel_set_app_id(app.toplevel, "epin-domain-manager");
-    // Tiling WM: keep only a modest floor (NOT min==max) so we stay tileable and can
-    // shrink to fill smaller tiles — the compositor drives the actual size.
-    xdg_toplevel_set_min_size(app.toplevel, 480, 360);
+    // Float instead of tile.  The previous setting (a 480x360 floor and no max) left
+    // min != max, so epin_is_tileable() in desktop-shell.c treated this as an ordinary
+    // tileable window -- and launching an app from here made the tiler split the screen and
+    // resize the Domain Manager to whatever was left (observed: 562x181).  This layout is
+    // fixed-pixel and does not reflow, so at that size it collapses to a sliver of toolbar
+    // and reads as "the Domain Manager crashed".
+    //
+    // epin_is_tileable() floats any surface whose min == max (it treats those as
+    // popovers/dialogs), which is exactly the right classification for a settings window:
+    // it keeps its designed size and stops being collateral damage when a new window opens.
+    xdg_toplevel_set_min_size(app.toplevel, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+    xdg_toplevel_set_max_size(app.toplevel, DEFAULT_WIDTH, DEFAULT_HEIGHT);
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

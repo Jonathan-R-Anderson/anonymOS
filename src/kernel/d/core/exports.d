@@ -864,6 +864,13 @@ private ulong _copyKernelStrToStack(ulong stackPhysVirt, ulong stackVirtBase, re
     return stackVirtBase + next;
 }
 
+// DM3: environment staged for the next execveTask(), used by the domain `spawn` path to hand
+// a confined program its EPIN_DOMAIN / EPIN_SHELL.  Full "KEY=value\0" strings, written by
+// domainSpawnProgram() in kernel_main.d and consumed + cleared by linux_seed_initial_stack().
+// Empty first byte = nothing staged.
+public __gshared char[64] g_spawnEnvDomain = 0;
+public __gshared char[32] g_spawnEnvShell  = 0;
+
 ulong linux_seed_initial_stack(
     ulong stackPhys,
     ulong stackSize,
@@ -915,7 +922,10 @@ ulong linux_seed_initial_stack(
     ulong strCursor = platformPhysOff;
     ulong execFnVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, execName);
 
-    enum bootEnvCount = 48;
+    // 46 fixed entries + up to 2 staged per-spawn ones (EPIN_DOMAIN / EPIN_SHELL) + the NULL
+    // terminator.  Raised from 48 so adding a spawn var cannot silently overrun the array --
+    // at 48 the fixed list was already within two slots of the ceiling.
+    enum bootEnvCount = 56;
     ulong[bootEnvCount] envVirts;
     ulong envc = 0;
 
@@ -1104,6 +1114,29 @@ ulong linux_seed_initial_stack(
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor,
         "WESTON_MODULE_MAP=drm-backend.so=/drm-backend.so;gl-renderer.so=/gl-renderer.so;desktop-shell.so=/desktop-shell.so;weston-desktop-shell=/weston-desktop-shell;weston-keyboard=/weston-keyboard;weston-terminal=/weston-terminal\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+
+    // DM3: per-spawn environment for a program launched INTO a domain.
+    //
+    // The kernel `spawn` verb calls execveTask(t, prog, 0, 0) with no envp, so a confined
+    // program received only this fixed boot environment -- which meant the Domain Manager's
+    // per-domain settings (notably EPIN_SHELL, which selects native vs linux) were silently
+    // dropped and picking "native" appeared to do nothing at all.
+    //
+    // linux_seed_initial_stack() has no tid parameter, and g_current_task_id is still the
+    // CALLER during execveTask, so the spawn stages the strings here immediately before the
+    // exec and we consume (and clear) them.  Not reentrant, which is fine: the spawn path
+    // holds the BKL across both steps.
+    if (g_spawnEnvDomain[0] != 0) {
+        envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, g_spawnEnvDomain.ptr);
+        if (envVirt != 0) envVirts[envc++] = envVirt;
+    }
+    if (g_spawnEnvShell[0] != 0) {
+        envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, g_spawnEnvShell.ptr);
+        if (envVirt != 0) envVirts[envc++] = envVirt;
+    }
+    g_spawnEnvDomain[0] = 0;
+    g_spawnEnvShell[0]  = 0;
+
     bool isHyprland =
     execName !is null &&
     (cstrContainsExports(execName, "Hyprland") ||

@@ -1375,6 +1375,33 @@ private extern(C) bool domainSpawnProgram(uint domObjId, const(char)* prog) {
     installTaskUntypedCap(t);
     fdtabSetupConsoleStdio(g_tasks[t].fdTabId);
 
+    // Stage EPIN_DOMAIN / EPIN_SHELL for the seeder (see g_spawnEnvDomain in exports.d).
+    // execveTask() takes envp=0, so without this a confined program got only the fixed boot
+    // environment and the domain's shell selection was silently ignored -- picking "native"
+    // in the Domain Manager did nothing at all.  The shell follows the domain's own mode:
+    // DISTRO_NATIVE means the native personality, anything else is a Linux one.
+    {
+        import core.domain : domainById, domainDistro, DISTRO_NATIVE;
+        import core.exports : g_spawnEnvDomain, g_spawnEnvShell;
+        auto dr = domainById(domObjId);
+        size_t p = 0;
+        immutable string kd = "EPIN_DOMAIN=";
+        foreach (c; kd) g_spawnEnvDomain[p++] = c;
+        if (dr !is null)
+            foreach (i; 0 .. dr.nameLen)
+                if (p < g_spawnEnvDomain.length - 1) g_spawnEnvDomain[p++] = dr.name[i];
+        g_spawnEnvDomain[p] = 0;
+
+        immutable string ks = "EPIN_SHELL=";
+        immutable string vn = "native";
+        immutable string vl = "linux";
+        p = 0;
+        foreach (c; ks) g_spawnEnvShell[p++] = c;
+        if (domainDistro(domObjId) == DISTRO_NATIVE) { foreach (c; vn) g_spawnEnvShell[p++] = c; }
+        else                                         { foreach (c; vl) g_spawnEnvShell[p++] = c; }
+        g_spawnEnvShell[p] = 0;
+    }
+
     ulong savedCr3 = x64ReadCR3();
     uint savedUntyped = physActiveUntyped();
     physSetActiveUntyped(g_tasks[t].untypedObjId);
@@ -1383,6 +1410,8 @@ private extern(C) bool domainSpawnProgram(uint domObjId, const(char)* prog) {
     x64WriteCR3(savedCr3);
     if (r != 0) {
         klog("[domain] spawn: exec failed for "); klog(prog); klog("\n");
+        import core.exports : g_spawnEnvDomain, g_spawnEnvShell;
+        g_spawnEnvDomain[0] = 0; g_spawnEnvShell[0] = 0;   // exec never consumed them
         releaseTask(t);
         return false;
     }
@@ -1704,6 +1733,32 @@ public bool debugUsbBootPresent() {
         }
     }
     return g_usbBoot == 1;
+}
+
+// Compositor selection.  Weston has always won unconditionally (GW3), so the Hyprland module --
+// which IS staged, all 38 MB of it -- was never even looked at: its selection loop is guarded on
+// `initPhys == 0` and Weston had already set it.
+//
+// Rather than delete Weston (which would leave no desktop at all if Hyprland fails to come up),
+// this is a reversible marker, exactly like /epin-usb.conf above: stage /epin-hyprland.conf with
+// `HYPRLAND=1 make iso` and Hyprland wins; leave it out and Weston still does.  Switching back
+// costs a rebuild, not a debugging session with a black screen.
+private __gshared int g_hyprPref = -1;   // -1=unknown, 0=no, 1=yes (cached)
+public bool hyprlandPreferred() {
+    if (g_hyprPref < 0) {
+        g_hyprPref = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "epin-hyprland.conf")) { g_hyprPref = 1; break; }
+            }
+        }
+    }
+    return g_hyprPref == 1;
 }
 
 // The AX210 firmware load is a large multi-page host->device DMA.  On the no-IOMMU FW13, if the LKL
@@ -4535,7 +4590,9 @@ void d_kernel_main() {
         // helper-client modules (weston-desktop-shell, weston-terminal, …) aren't
         // mistaken for the compositor. Staging weston is what toggles this on;
         // remove it from the ISO to fall back to Hyprland for comparison.
-        for (int i = 0; i < g_module_count && initPhys == 0; i++) {
+        // ...UNLESS /epin-hyprland.conf is staged, in which case skip this pass entirely and let
+        // the Hyprland loop below claim init.  Both compositors stay in the image either way.
+        for (int i = 0; i < g_module_count && initPhys == 0 && !hyprlandPreferred(); i++) {
             auto rec  = cast(multiboot_module_t*)(recs + i * 128);
             auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
             if (cstrEqK(cstrBasenameK(name), "weston\0".ptr)) {
@@ -4545,6 +4602,8 @@ void d_kernel_main() {
                 klog("[dkernel] init = Weston module (GW3)\n");
             }
         }
+        if (hyprlandPreferred())
+            klog("[dkernel] /epin-hyprland.conf staged -> Weston skipped, selecting Hyprland\n");
 
         // First pass: Hyprland is the desktop autostart target when present.
         for (int i = 0; i < g_module_count && initPhys == 0; i++) {

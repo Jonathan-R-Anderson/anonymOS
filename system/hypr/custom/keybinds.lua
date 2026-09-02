@@ -1,1 +1,31 @@
-hl.bind("CTRL+SUPER+ALT+Slash", hl.dsp.exec_cmd("xdg-open ~/.config/hypr/custom/keybinds.lua"), {description = "Edit user keybinds"} )
+-- EpinAnonymOS guest-only application binds.
+--
+-- custom/keybinds.lua is require()d by hyprland.lua AFTER hyprland/keybinds.lua, so these are
+-- additive.  The host's own keys are retargeted at guest apps in custom/variables.lua; what is
+-- left are the applications this OS has and a desktop Linux does not, which therefore have no
+-- key in the host config at all.
+--
+-- These were the binds carried by the previous kernel-embedded hyprlang config.  Porting the
+-- Lua config without them is what took the domain manager off the desktop -- nothing else
+-- launches it: the top bar is spawned by the kernel (spawnWaylandProgram("wl-layer-bar") in
+-- kernel_main.d), but every application was reachable only through these bindings.
+
+hl.bind("SUPER + SHIFT + D", hl.dsp.exec_cmd("/wl-domain-manager"), { description = "Domain Manager (Qubes-style domains)" })
+hl.bind("SUPER + A",         hl.dsp.exec_cmd("/wl-overview"),       { description = "Window overview" })
+hl.bind("SUPER + C",         hl.dsp.exec_cmd("/wl-calendar"),       { description = "Calendar" })
+hl.bind("SUPER + W",         hl.dsp.exec_cmd("/wl-wifi-menu"),      { description = "Wi-Fi menu" })
+hl.bind("SUPER + N",         hl.dsp.exec_cmd("/wl-quicksettings"),  { description = "Quick settings" })
+hl.bind("SUPER + ALT + L",   hl.dsp.exec_cmd("/wl-logview"),        { description = "Log viewer" })
+hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd("/wl-term"),           { description = "Terminal (wl-term)" })
+hl.bind("SUPER + SHIFT + F", hl.dsp.exec_cmd("/wl-files"),          { description = "Files" })
+hl.bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("/wl-sysmon"),         { description = "System monitor" })
+hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("/wl-screenshot"),     { description = "Screenshot" })
+hl.bind("SUPER + SHIFT + A", hl.dsp.exec_cmd("/store-app"),         { description = "App store" })
+
+-- Toggle the kernel-spawned top bar by touching the flag file it polls.
+hl.bind("SUPER + B", hl.dsp.exec_cmd("sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\""),
+        { description = "Toggle top bar" })
+
+-- Kept from the host's own custom/keybinds.lua.
+hl.bind("CTRL + SUPER + ALT + Slash", hl.dsp.exec_cmd("/wl-editor /home/user/.config/hypr/custom/keybinds.lua"),
+        { description = "Edit user keybinds" })

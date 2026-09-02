@@ -1101,7 +1101,7 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		fi; \
 		echo "Included Hyprland (dynamic) + ld-musl"; \
 		if [ -d $(HYPRCFG_SRC) ]; then \
-			python3 scripts/pack-hyprcfg.py $(HYPRCFG_SRC) $(HYPRCFG_BLOB) etc/hypr >/dev/null; \
+			python3 scripts/pack-hyprcfg.py $(HYPRCFG_SRC) $(HYPRCFG_BLOB) home/user/.config/hypr >/dev/null; \
 		fi; \
 		if [ -f $(HYPRCFG_BLOB) ]; then \
 			cp $(HYPRCFG_BLOB) cd/hyprcfg.blob; \

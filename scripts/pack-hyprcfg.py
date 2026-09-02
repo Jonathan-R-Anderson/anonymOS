@@ -23,7 +23,7 @@ import os, sys, struct
 
 SRC  = sys.argv[1]                                   # system/hypr
 OUT  = sys.argv[2]                                   # build/hyprcfg.blob
-DEST = sys.argv[3] if len(sys.argv) > 3 else "etc/hypr"
+DEST = sys.argv[3] if len(sys.argv) > 3 else "home/user/.config/hypr"
 
 # The 92KB fuzzel-emoji.sh list and the ai/ helpers are host-desktop tooling with no guest
 # equivalent -- they would just burn rtfs nodes.  Editor backups likewise.

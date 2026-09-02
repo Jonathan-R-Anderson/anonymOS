@@ -1079,7 +1079,7 @@ ulong linux_seed_initial_stack(
         // it selects CDRMLegacyImpl (drmModeSetCrtc + drmModePageFlip) which the kernel presents.
         envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "AQ_NO_ATOMIC=1\0".ptr);
         if (envVirt != 0) envVirts[envc++] = envVirt;
-        import core.syscalls.posix : g_hyprCfgFiles;
+        import core.syscalls.posix : hyprCfgBlobPresent;
         // Point Hyprland at the user's OWN dots-hyprland config, unpacked to /etc/hypr from
         // hyprcfg.blob.  Its resolver (Jeremy::getMainConfigPath) checks HYPRLAND_CONFIG before
         // any XDG search and honors it as CONFIG_TYPE_EXPLICIT -- which is required here, because
@@ -1094,8 +1094,8 @@ ulong linux_seed_initial_stack(
         // hand-translated hyprlang config that is still compiled in as a virtual file.  Naming a
         // path that does not exist would make Hyprland generateDefaultConfig() and boot the stock
         // desktop, whose wallpaper kills the CAsyncResourceGatherer worker in mallocng.
-        envVirt = (g_hyprCfgFiles > 0)
-            ? _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HYPRLAND_CONFIG=/etc/hypr/hyprland.lua\0".ptr)
+        envVirt = hyprCfgBlobPresent()
+            ? _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HYPRLAND_CONFIG=/home/user/.config/hypr/hyprland.lua\0".ptr)
             : _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HYPRLAND_CONFIG=/etc/hypr/hyprland.conf\0".ptr);
         if (envVirt != 0) envVirts[envc++] = envVirt;
     }

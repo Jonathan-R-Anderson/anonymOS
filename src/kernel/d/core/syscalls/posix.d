@@ -5455,6 +5455,17 @@ __gshared uint g_assetFiles = 0;
 __gshared uint g_assetBytes = 0;
 __gshared uint g_hyprCfgFiles = 0;   // files unpacked from hyprcfg.blob (0 = tree absent)
 
+// True when the Hyprland config tree shipped as a boot module.  The compositor's environment
+// is built while the init ELF is loaded, which is BEFORE the first fd syscall drags in
+// initFdTable -> rtInit -> rtUnpackAssets, so g_hyprCfgFiles is still 0 at that point and must
+// not be used to decide the config path (doing exactly that is what silently kept the old
+// hyprlang file in play on the first attempt).  The limine module list is populated from boot,
+// so asking it is valid at any time.
+public bool hyprCfgBlobPresent() {
+    ulong phys, size;
+    return findBootModule("/hyprcfg.blob\0".ptr, phys, size) && phys != 0 && size > 8;
+}
+
 // Parse one bundled GUI asset boot module — same flat archive format as xkb.blob
 // ([u32 pathLen][path][u32 dataLen][data], paths relative to overlay root, e.g.
 // "usr/share/hypr/wall0.png") — into the rtfs overlay. Optional: boots fine

@@ -280,6 +280,16 @@ public uint domainBuildNamespace(uint domObjId) {
     // socket path, not /run and not /run/user.
     nsBind(ns, "/run/user/1000/wayland-0\0".ptr, root, RW);
 
+    // The PTY pair, so a confined terminal can actually host a shell.  Verified the hard way:
+    // the first successful confined spawn got as far as "G4TERM: open /dev/ptmx: No such file
+    // or directory" -- the namespace was doing its job and denying an unbound path, but a
+    // terminal with no pty cannot run anything.  /dev/pts/N is where the slave appears.
+    //
+    // This is a capability every domain needs to be useful at all, and it grants nothing
+    // outside the domain: a pty is a private channel between the terminal and its own child.
+    nsBind(ns, "/dev/ptmx\0".ptr, root, RW);
+    nsBind(ns, "/dev/pts\0".ptr,  root, RW);
+
     // DM11: a non-native domain mounts its distro's Linux compat root at /linux (READ-only).
     if (d.distro != DISTRO_NATIVE) nsBind(ns, "/linux\0".ptr, root, RO);
 

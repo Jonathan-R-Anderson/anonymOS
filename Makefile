@@ -1162,7 +1162,17 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 			cp $(WLCALENDAR_BIN)   cd/wl-calendar; \
 			cp $(WLWIFIMENU_BIN)   cd/wl-wifi-menu; \
 			cp $(WLQUICKSET_BIN)   cd/wl-quicksettings; \
+			cp $(WLDOMAINMGR_BIN) cd/wl-domain-manager; \
+			cp $(WLLOGVIEW_BIN)   cd/wl-logview; \
+			cp $(WLSYSMON_BIN)    cd/wl-sysmon; \
+			cp $(WLEDITOR_BIN)    cd/wl-editor; \
+			cp $(WLSCREENSHOT_BIN) cd/wl-screenshot; \
+			cp $(WLCALC_BIN)      cd/wl-calc; \
+			cp $(WLCLOCKS_BIN)    cd/wl-clocks; \
+			cp $(WLIMGVIEW_BIN)   cd/wl-imgview; \
+			cp $(WLCHARS_BIN)     cd/wl-chars; \
 			printf '\n    module_path: boot():/wl-layer-bar\n    module_path: boot():/wl-overview\n    module_path: boot():/wl-calendar\n    module_path: boot():/wl-wifi-menu\n    module_path: boot():/wl-quicksettings\n' >> cd/boot/limine/limine.conf; \
+			printf '    module_path: boot():/wl-domain-manager\n    module_path: boot():/wl-logview\n    module_path: boot():/wl-sysmon\n    module_path: boot():/wl-editor\n    module_path: boot():/wl-screenshot\n    module_path: boot():/wl-calc\n    module_path: boot():/wl-clocks\n    module_path: boot():/wl-imgview\n    module_path: boot():/wl-chars\n' >> cd/boot/limine/limine.conf; \
 			echo "Included GNOME top bar (wl-layer-bar, wlr-layer-shell) + Activities/clock/wifi utilities for Hyprland"; \
 		fi; \
 	else \

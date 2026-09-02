@@ -204,9 +204,14 @@ struct app {
     unsigned pkg_mask[MAX_DOMS];   // per-domain installed bitmask over the catalog
     struct gtemplate templates[MAX_TMPL];  // DM12: the local signed-template registry
     int  n_templates;
+    // Applications tab: indices into DMAPPS whose binary actually exists, so the list never
+    // offers a launch that can only fail with "[exec] not found".
+    int  avail[16];
+    int  n_avail;
 };
 
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
+
 static int create_memfd(const char *name) { return (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC); }
 
 static void rounded_rect(cairo_t *cr, double x, double y, double w, double h, double r)
@@ -345,7 +350,7 @@ static void ctl_cycle(struct dconf *c, int i, int dir)
 // ── DM10.7 tabbed-layout labels + geometry (shared by the draw + click passes) ──────────────
 #define N_TOOL 6
 static const char *TOOL_LABEL[N_TOOL] = { "+ New", "Clone", "Import", "Marketplace", "Logs", "Run Shell" };
-static const char *TAB_LABEL[N_TABS]  = { "Overview","Filesystem","Packages","Network","Permissions","Startup","Appearance" };
+static const char *TAB_LABEL[N_TABS]  = { "Overview","Filesystem","Packages","Network","Permissions","Applications","Appearance" };
 enum { TAB_W = (DEFAULT_WIDTH - LIST_W) / N_TABS };   // fixed tab column width
 
 #define N_LIFE 6
@@ -403,6 +408,51 @@ static void profile_btn_rect(int idx, int *x, int *y, int *w, int *h) {
 static void pkg_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Packages install/remove pills
     *y = TAB_Y + 104 + idx * 30; *h = 26; *w = 92; *x = LABEL_X + 320;
 }
+
+// ── Applications tab ─────────────────────────────────────────────────────────
+//
+// The applications a domain can run, each launched CONFINED into that domain.  The Packages
+// tab next door is the repository (install/remove); the Startup tab was a hardcoded stub that
+// listed one app and said "(planned)".  Neither was a launcher, so there was no way to open a
+// terminal inside a domain from this GUI at all -- which is the whole point of the domain.
+//
+// There is no shared app registry in the tree: the desktop's own grid hardcodes this list in
+// wl-overview.c, so this mirrors it.  Rows are filtered by access(X_OK) at load time, which
+// also keeps dead entries (e.g. /gl-term, which has never been built) off the list instead of
+// offering a launch that can only fail.
+struct dmapp { const char *label; const char *exec; };
+static const struct dmapp DMAPPS[] = {
+    { "Terminal",       "/hos-wifiterm" },   /* wl-term w/ EPIN_SHELL=light, software-rendered */
+    { "Files",          "/wl-files"      },
+    { "Text Editor",    "/wl-editor"     },
+    { "Calculator",     "/wl-calc"       },
+    { "System Monitor", "/wl-sysmon"     },
+    { "Image Viewer",   "/wl-imgview"    },
+    { "Clocks",         "/wl-clocks"     },
+    { "Calendar",       "/wl-calendar"   },
+    { "Characters",     "/wl-chars"      },
+    { "Screenshot",     "/wl-screenshot" },
+    { "Logs",           "/wl-logview"    },
+};
+enum { N_DMAPP = (int)(sizeof(DMAPPS)/sizeof(DMAPPS[0])) };
+
+static void appl_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Applications Launch pills
+    *y = TAB_Y + 40 + idx * 30; *h = 26; *w = 92; *x = LABEL_X + 320;
+}
+
+// Build the Applications list once: keep only entries whose binary is actually present and
+// executable.  /gl-term is in the desktop's table but has never been built, and offering it
+// produced a spawn that failed with "[exec] not found" — filter at the source instead.
+static void load_apps(struct app *app)
+{
+    app->n_avail = 0;
+    for (int i = 0; i < N_DMAPP && app->n_avail < (int)(sizeof(app->avail)/sizeof(app->avail[0])); i++)
+        if (access(DMAPPS[i].exec, X_OK) == 0)
+            app->avail[app->n_avail++] = i;
+    printf("DOMAINMGR: %d of %d applications present\n", app->n_avail, N_DMAPP);
+    fflush(stdout);
+}
+
 static void export_btn_rect(int *x, int *y, int *w, int *h) {   // DM12 Appearance-tab Export button
     *x = LABEL_X; *y = TAB_Y + 100; *w = 240; *h = 28;
 }
@@ -895,11 +945,35 @@ static void tab_permissions(struct app *app, cairo_t *cr) {
     }
 }
 
-static void tab_startup(struct app *app, cairo_t *cr) {
-    if (!cr) {
-        draw_text(app,"Startup applications launched when this domain starts:",LABEL_X,TAB_Y+12,520,13,0xff8b94a3u);
-        draw_text(app,"\xe2\x80\xa2  Terminal  (gl-term)",LABEL_X+10,TAB_Y+42,320,13,0xfff2f5fau);
-        draw_text(app,"[ + Add startup app ]   (planned)",LABEL_X,TAB_Y+78,360,12,0xff6b7686u);
+// Applications installed for this domain.  Clicking Launch spawns the program CONFINED into
+// the selected domain (kernel `spawn` verb), so it runs under that domain's namespace, device
+// mask and network policy -- not merely with a colour and some environment variables.
+//
+// This replaces the old "Startup" tab, which drew three static strings (one hardcoded
+// "Terminal (gl-term)" and a "(planned)" note) and could not launch anything.
+static void tab_applications(struct app *app, cairo_t *cr) {
+    struct gdomain *sd = &app->doms[app->sel];
+    if (cr) {
+        for (int i = 0; i < app->n_avail; i++) {
+            int x,y,w,h; appl_row_rect(i,&x,&y,&w,&h);
+            cairo_argb(cr, sd->color);
+            rounded_rect(cr,x,y,w,h,6); cairo_fill(cr);
+        }
+    } else {
+        char hd[128];
+        snprintf(hd,sizeof(hd),"Applications available in '%s' — Launch runs them confined in this domain",
+                 sd->name);
+        draw_text(app, hd, LABEL_X, TAB_Y+10, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+        for (int i = 0; i < app->n_avail; i++) {
+            int x,y,w,h; appl_row_rect(i,&x,&y,&w,&h);
+            const struct dmapp *a = &DMAPPS[app->avail[i]];
+            draw_text(app, a->label, LABEL_X, y+6, 200, 13, 0xfff2f5fau);
+            draw_text(app, a->exec,  LABEL_X+210, y+7, 200, 12, 0xff97a1b0u);
+            draw_text(app, "Launch", x+22, y+5, w-16, 12, 0xffe8edf5u);
+        }
+        if (app->n_avail == 0)
+            draw_text(app,"(no application binaries found on this system)",
+                      LABEL_X+10, TAB_Y+44, 420, 13, 0xff8d97a6u);
     }
 }
 
@@ -939,7 +1013,7 @@ static void draw_tab(struct app *app, cairo_t *cr) {
         case 2: tab_packages(app,cr);    break;
         case 3: tab_network(app,cr);     break;
         case 4: tab_permissions(app,cr); break;
-        case 5: tab_startup(app,cr);     break;
+        case 5: tab_applications(app,cr); break;
         case 6: tab_appearance(app,cr);  break;
     }
 }
@@ -1293,6 +1367,13 @@ static void handle_click(struct app *app)
             if (y>=by-4 && y<=by+bh+4 && x>=LABEL_X) {
                 int on = (app->doms[app->sel].devices & DEV_BIT[i]) != 0;
                 domain_action_arg(app, on ? "devoff" : "devon", DEV_CLASS[i]); return; } }
+    } else if (app->tab == 5) {                     // Applications: Launch confined in this domain
+        for (int i = 0; i < app->n_avail; i++) {
+            int bx,by,bw,bh; appl_row_rect(i,&bx,&by,&bw,&bh);
+            if (x>=bx && x<=bx+bw && y>=by-2 && y<=by+bh+2) {
+                launch_in_domain(app, DMAPPS[app->avail[i]].exec);
+                redraw_commit(app, "launch");
+                return; } }
     } else if (app->tab == 6) {                     // Appearance: Export as a signed template (DM12)
         int bx,by,bw,bh; export_btn_rect(&bx,&by,&bw,&bh);
         if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
@@ -1498,6 +1579,7 @@ int main(void)
     // kernel from system.json — the GUI now reflects DM0-DM6 instead of a hardcoded list.
     load_domains(&app);
     load_packages(&app);             // DM10.7: the software repository (Packages tab)
+    load_apps(&app);                 // Applications tab: which app binaries are actually present
     load_templates(&app);            // DM12: the local signed-template registry (Appearance tab)
     app.last_hash = domains_hash();  // DM10.6: baseline for live-update change detection
     refresh_fs_view(&app);   // DM10.2: the first selected domain's RuntimeView

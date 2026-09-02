@@ -941,6 +941,15 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "PATH=/usr/bin:/bin:/usr/local/bin:/sbin:/usr/sbin\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // TZ short-circuits musl's timezone lookup.  /etc/localtime is a ZERO-LENGTH virtual file,
+    // so __tzset() opens it, fstats size 0, and calls mmap(0, 0, PROT_READ, MAP_SHARED, fd, 0),
+    // which the kernel correctly rejects with EINVAL -- visible in the boot log as
+    // "[open] /etc/localtime" immediately followed by "[mmap-einval] len=0".  musl itself
+    // tolerates that and falls back to UTC, but it is the only failing syscall anywhere near
+    // Hyprland's uncaught std::system_error, and a system_error is built from an errno.
+    // Setting TZ makes __tzset() take the POSIX-string path and never touch the file at all.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "TZ=UTC0\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XDG_RUNTIME_DIR=/run/user/1000\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XDG_CONFIG_HOME=/etc\0".ptr);

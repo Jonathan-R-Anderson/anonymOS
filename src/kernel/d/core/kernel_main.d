@@ -2823,6 +2823,9 @@ private void schedProfStats() {
     foreach (i; 0 .. MAX_TASKS) { g_schedCyc[i] = 0; g_schedN[i] = 0; }
 }
 
+// Bring-up: bounded counter for the [initfail] syscall-error trace below.
+private __gshared int g_initFailLogN = 0;
+
 private void dispatchSyscall(int tid) {
     ulong rax = x64LastSyscallRax;
     ulong rdi = x64LastSyscallRdi;
@@ -3462,6 +3465,28 @@ private void dispatchSyscall(int tid) {
     // g_pollBlocked so a later wait4() on this task isn't misread as a poll/read park (see the scheduler
     // guard above).  The EAGAIN case re-sets it in the park block just below.
     if (rax == 0 && ret != -11 && tid >= 0 && tid < MAX_TASKS) g_pollBlocked[tid] = false;
+
+    // Bring-up diagnostic: log FAILING syscalls made by the init task (the compositor).
+    //
+    // Hyprland dies of an uncaught std::system_error before it initialises its logger, so
+    // nothing it would print ever reaches serial -- the crash backtrace only shows the terminate
+    // machinery (std::__terminate / abort_message / demangling_terminate_handler) and the
+    // typeinfos for system_error/runtime_error/exception, not the throw site.  A system_error
+    // is built FROM AN ERRNO, so the failing syscall that produced it is observable right here.
+    //
+    // Scoped tightly so it cannot become log spam: init task only, errno range only, and a hard
+    // cap of 40 lines.  EAGAIN/EINTR are excluded -- they are ordinary flow control on the
+    // poll/read paths and would drown the signal.
+    if (tid == 0 && ret < 0 && ret > -4096 && g_initFailLogN < 40) {
+        const long e = -ret;
+        if (e != 11 /*EAGAIN*/ && e != 4 /*EINTR*/) {
+            ++g_initFailLogN;
+            klog("[initfail] syscall="); klog_dec(rax);
+            klog(" errno="); klog_dec(cast(ulong)e);
+            klog(" a="); klog_hex(rdi); klog(" b="); klog_hex(rsi);
+            klog("\n");
+        }
+    }
 
     const bool blkRead =
         (rax == 0 && (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi))) ||

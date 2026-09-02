@@ -1044,11 +1044,24 @@ ulong linux_seed_initial_stack(
         import drivers.graphics.virtio_gpu : g_gpuVirgl;
         isCompositorGpu = (isWestonC || isHyprlandC) && g_gpuVirgl;
     }
-    // Hyprland always wants the real GL scene-render path (GLRenderer.cpp gates on
-    // HOS_SCENE_RENDER), whether it ends up on virgl or softpipe.  Weston ignores it.
-    if (isHyprlandC) {
+    // Hyprland's real GL scene-render path (GLRenderer.cpp gates on HOS_SCENE_RENDER) —
+    // but ONLY when there is an actual GPU behind it.
+    //
+    // This used to be set unconditionally, which forced the software path into the one code
+    // path its own author documented as broken.  GLRenderer.cpp:1403-1410 says the default
+    // (clear-only) shortcut is "verified working and fits in 512 MB", while the scene path
+    // "currently OOMs: a compositor re-init constructs 2-3 instances and the kernel's physical
+    // allocator never frees".  On top of that there is no Mesa in the image at all: libglapi.so.0
+    // and the *_dri.so drivers exist only as dlopen name strings inside the Hyprland binary and
+    // resolve to nothing, so eglCreateContext could not succeed even if the memory held.
+    //
+    // Setting it only under isCompositorGpu (virgl present) means a no-GPU boot takes the
+    // verified CPU compositor instead of OOMing on a GL path that cannot work.
+    if (isHyprlandC && isCompositorGpu) {
         envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_SCENE_RENDER=1\0".ptr);
         if (envVirt != 0) envVirts[envc++] = envVirt;
+    }
+    if (isHyprlandC) {
         // Our kernel DRM handler rejects atomic commits (DRM_NR_MODE_ATOMIC -> EINVAL) because the
         // present path is the legacy SET_CRTC/PAGE_FLIP -> drmPresentFb blit.  Weston falls back to
         // legacy on its own, but aquamarine picks the atomic impl the moment SET_CLIENT_CAP(ATOMIC)

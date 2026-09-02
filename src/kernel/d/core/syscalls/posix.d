@@ -969,6 +969,25 @@ private bool deriveActiveFd(int dstFd, int srcFd) {
 public bool fdRequireCap(ulong fd, uint rights) {
     int ifd = cast(int)fd;
     if (ifd < 0 || ifd >= 1024) return false;
+
+    // A task's own console is never denied.
+    //
+    // This is THE choke point: linuxSyscallCapPrecheck() calls fdRequireCap() and returns EBADF
+    // before the handler ever runs, so a console bypass placed inside sys_write()/ioctl() is
+    // dead code -- which is exactly the mistake that made the previous build fail identically.
+    //
+    // Observed on every Hyprland boot ([initfail] trace): writev(1)/writev(2) and
+    // ioctl(1, TIOCGWINSZ) all returned EBADF for the init task.  libc++'s std::print THROWS
+    // std::system_error when its write fails, so the first std::println() threw, nothing caught
+    // it, and terminate -> abort() -> a_crash() ("hlt" -> #GP) killed the compositor -- while
+    // the same failure swallowed every message that would have explained it.
+    //
+    // There is no capability worth enforcing between a process and its own serial console, and
+    // failing it closed converts a logging problem into a silent death. Fail OPEN for
+    // FD_CONSOLE only; every other descriptor type still goes through the full cap check.
+    if (g_fdTable !is null && g_fdTable[ifd].type == FileType.FD_CONSOLE)
+        return true;
+
     if (!publishActiveFd(ifd)) return false;
     return requireCap(cast(int)g_current_task_id, cast(uint)ifd, rights);
 }

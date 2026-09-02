@@ -540,6 +540,51 @@ private void scheduleNext() {
 // Task exit
 // ------------------------------------------------------------------
 
+// Poor-man's backtrace for a crashed user task, printed BEFORE the address space is torn down.
+//
+// Motivated by a real dead end: Hyprland died with `exception 0x0d rip=<ld-musl>+0x1f2ad`, which
+// symbolised to abort()+0x7d -- musl's abort() falls through to a_crash(), and a_crash() on
+// x86-64 is `hlt`, which faults #GP in ring 3.  So we knew it aborted but not WHO called abort,
+// and by the time the monitor could look, exitTask had already unmapped the stack (every word
+// read back as zero).  There is no frame pointer to walk (-O2 omits it), so scan the top of the
+// stack for values that land inside a user text mapping: return addresses stand out, and even an
+// approximate chain names the caller.  Cheap, bounded, and only runs on an actual crash.
+private void crashBacktrace(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    auto t = &g_tasks[tid];
+    const ulong rsp = t.regs[REG_RSP];
+    if (rsp == 0) return;
+
+    // The faulting task's address space is still live here (exitTask has not reclaimed it), but
+    // we may be on another CR3 -- switch to the crashed task's tables to read its stack.
+    const ulong savedCr3 = x64ReadCR3();
+    if (t.pml4Phys != 0) x64WriteCR3(t.pml4Phys);
+
+    klog("[freeze] backtrace rsp="); klog_hex(rsp); klog("\n");
+    // Stay inside the page rsp already sits in.  Walking past it could touch an unmapped page
+    // and fault the KERNEL while it is in the middle of reporting a user crash -- turning a
+    // diagnosable client death into a kernel panic.  One page of stack is plenty to catch the
+    // nearest few return addresses.
+    const ulong pageEnd = (rsp | 0xFFF) + 1;
+    int shown = 0;
+    for (ulong addr = rsp & ~7UL; addr + 8 <= pageEnd && shown < 12; addr += 8) {
+        const ulong off = addr - rsp;
+        const ulong v = *cast(ulong*)addr;
+        // Keep values that look like a return address: the main image (0x400000..topVirt) or the
+        // musl interp at 0x5a0000000000.  Everything else is data and would just be noise.
+        const bool inMain   = (v >= 0x400000UL && v < 0x4000_0000UL);
+        const bool inInterp = (v >= 0x5a00_0000_0000UL && v < 0x5a00_0100_0000UL);
+        if (!inMain && !inInterp) continue;
+        klog("  [+"); klog_hex(off); klog("] "); klog_hex(v);
+        klog(inInterp ? "  (ld-musl+" : "  (main+");
+        klog_hex(inInterp ? (v - 0x5a00_0000_0000UL) : v);
+        klog(")\n");
+        ++shown;
+    }
+    if (shown == 0) klog("  (no return addresses found on the stack)\n");
+    x64WriteCR3(savedCr3);
+}
+
 private void exitTask(int tid, int code) {
     if (tid < 0 || tid >= MAX_TASKS) return;
     if (g_futexWaitActive[tid])
@@ -571,6 +616,7 @@ private void exitTask(int tid, int code) {
         klog("[freeze] CLIENT CRASH t="); klog_dec(cast(ulong)tid);
         klog(" code="); klog_dec(cast(ulong)(cast(uint)code & 0xffff));
         klog(" rip="); klog_hex(t.regs[REG_RIP]); klog("\n");
+        crashBacktrace(tid);
     }
     // direct-fb (real-HW): a process died — name + code. If init=weston shows up here
     // with a nonzero code, the compositor crashed before claiming the display.

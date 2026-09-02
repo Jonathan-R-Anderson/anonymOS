@@ -250,6 +250,7 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
     }
 }
 __gshared bool g_fdTableInitialized = false;
+__gshared int g_fdCapDiagN = 0;   // bring-up: bounded [fdcap] deny logging (see fdRequireCap)
 __gshared pid_t g_nextSyntheticPid = 100;
 
 // --- Pipe infrastructure ---
@@ -988,8 +989,32 @@ public bool fdRequireCap(ulong fd, uint rights) {
     if (g_fdTable !is null && g_fdTable[ifd].type == FileType.FD_CONSOLE)
         return true;
 
-    if (!publishActiveFd(ifd)) return false;
-    return requireCap(cast(int)g_current_task_id, cast(uint)ifd, rights);
+    // BRING-UP DIAG (bounded: init task only, 12 lines).  Three builds in a row denied
+    // writev(1)/writev(2)/ioctl(1,TIOCGWINSZ) with EBADF even after the FD_CONSOLE bypass
+    // above, which should have made that impossible.  Print the fd's actual type and table so
+    // the next boot says WHICH of the two is wrong: a non-console type, or a stale build.
+    if (!publishActiveFd(ifd)) {
+        if (g_current_task_id == 0 && g_fdCapDiagN < 12) {
+            ++g_fdCapDiagN;
+            klog("[fdcap] deny-publish fd="); klog_dec(cast(ulong)ifd);
+            klog(" type="); klog_dec(g_fdTable is null ? 999UL : cast(ulong)g_fdTable[ifd].type);
+            klog(" tab="); klog_dec(cast(ulong)g_activeFdTabId);
+            klog(" init="); klog_dec(g_fdTableInitialized ? 1UL : 0UL);
+            klog("\n");
+        }
+        return false;
+    }
+    if (!requireCap(cast(int)g_current_task_id, cast(uint)ifd, rights)) {
+        if (g_current_task_id == 0 && g_fdCapDiagN < 12) {
+            ++g_fdCapDiagN;
+            klog("[fdcap] deny-cap fd="); klog_dec(cast(ulong)ifd);
+            klog(" type="); klog_dec(g_fdTable is null ? 999UL : cast(ulong)g_fdTable[ifd].type);
+            klog(" want="); klog_hex(cast(ulong)rights);
+            klog("\n");
+        }
+        return false;
+    }
+    return true;
 }
 
 // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): mirror every fd of the *active*
@@ -1644,6 +1669,7 @@ public void fdtabSetupConsoleStdio(int tableId) {
 }
 
 void initFdTable() {
+    klog("[build] fdcap-diag-v4\n");
     if (g_fdTable is null) g_fdTable = &g_fdTabs[0][0];   // process 0's table
     if (g_fdTableInitialized) return;
     g_fdTable[0].type = FileType.FD_CONSOLE;

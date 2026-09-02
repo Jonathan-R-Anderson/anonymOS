@@ -5453,6 +5453,7 @@ __gshared uint g_xkbAllocFails = 0;
 
 __gshared uint g_assetFiles = 0;
 __gshared uint g_assetBytes = 0;
+__gshared uint g_hyprCfgFiles = 0;   // files unpacked from hyprcfg.blob (0 = tree absent)
 
 // Parse one bundled GUI asset boot module — same flat archive format as xkb.blob
 // ([u32 pathLen][path][u32 dataLen][data], paths relative to overlay root, e.g.
@@ -5516,6 +5517,20 @@ private void rtUnpackAssets() {
     // git plugin + the P9k theme + the Z9 plugins + the AnonymOS profile).  Opt-in via the
     // `omz-setup` function in /etc/zshrc, which installs the profile to ~/.zshrc.
     rtUnpackAssetBlob("/omz.blob\0".ptr);
+
+    // The user's own dots-hyprland config tree at /etc/hypr -- hyprland.lua plus the
+    // hyprland/ and custom/ module trees it require()s.  It has to be a real unpacked TREE,
+    // not a virtual-file shim: the config is LUA, and Hyprland 0.55 points package.path at
+    // "<configDir>/?.lua;<configDir>/?/init.lua" (src/config/lua/ConfigManager.cpp), so every
+    // require("hyprland.general") / require("custom.env") in it is resolved by a real open()
+    // under /etc/hypr.  Lands ahead of the synthetic-directory shim by the rtfs-priority rule
+    // at the top of sys_open, exactly like the xkb tree does.
+    // Records whether the tree actually landed, so the compositor spawn can fall back to the
+    // legacy hyprlang config instead of pointing HYPRLAND_CONFIG at a file that is not there.
+    // A missing config is NOT harmless: Hyprland would generateDefaultConfig() and boot the
+    // stock desktop, whose wallpaper sends CAsyncResourceGatherer into wallN.png and kills the
+    // worker thread in mallocng.  Cheap insurance against a packing step that silently no-ops.
+    g_hyprCfgFiles = rtUnpackAssetBlob("/hyprcfg.blob\0".ptr);
 
     // ZKsync boot-integrity wallet and contract artifacts under
     // /system/web/zksync-wallet so the installed OS can deploy/update the

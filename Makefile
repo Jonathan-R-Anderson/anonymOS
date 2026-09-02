@@ -206,6 +206,8 @@ $(DECOY_IMAGE):
 veracrypt-efi:
 	+$(MAKE) -C deps/veracrypt efi
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt
+HYPRCFG_SRC  := system/hypr
+HYPRCFG_BLOB := build/hyprcfg.blob
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
 ZSHFNS_SRC   := deps/zsh/zsh-5.9
@@ -1098,6 +1100,14 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 			printf '\n    module_path: boot():/Hyprland\n    module_path: boot():/ld-musl-x86_64.so.1\n' >> cd/boot/limine/limine.conf; \
 		fi; \
 		echo "Included Hyprland (dynamic) + ld-musl"; \
+		if [ -d $(HYPRCFG_SRC) ]; then \
+			python3 scripts/pack-hyprcfg.py $(HYPRCFG_SRC) $(HYPRCFG_BLOB) etc/hypr >/dev/null; \
+		fi; \
+		if [ -f $(HYPRCFG_BLOB) ]; then \
+			cp $(HYPRCFG_BLOB) cd/hyprcfg.blob; \
+			printf '\n    module_path: boot():/hyprcfg.blob\n' >> cd/boot/limine/limine.conf; \
+			echo "Included hyprcfg.blob (the host's dots-hyprland Lua config tree -> /etc/hypr)"; \
+		fi; \
 		if [ ! -f $(XKB_BLOB) ] && [ -d $(XKB_SRC_DIR) ]; then \
 			python3 scripts/pack-xkb.py $(XKB_SRC_DIR) $(XKB_BLOB); \
 		fi; \

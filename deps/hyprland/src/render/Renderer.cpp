@@ -1369,7 +1369,13 @@ void IHyprRenderer::renderBackground(PHLMONITOR pMonitor) {
             pMonitor->m_splash = renderSplash([this, pMonitor](auto width, auto height, const auto DATA) { return createTexture(width, height, DATA); }, monitorSize.y / 76,
                                               monitorSize.x, monitorSize.y);
 
-        if (pMonitor->m_splash) {
+        // EpinAnonymOS: validity, not just non-null.  renderSplash() can hand back a texture that
+        // exists but is not ok() -- when pango lays out no glyphs the text measures 0x0, and the
+        // 0x0 cairo surface becomes a 0-sized texture.  The SP is non-null, so the old null test
+        // passed and the draw reached RASSERT(tex->ok()) in OpenGL.cpp, which spammed
+        // "Attempted to draw invalid texture!" over the desktop every frame.  The background
+        // texture above already guards with ->ok(); the splash never did.
+        if (pMonitor->m_splash && pMonitor->m_splash->ok()) {
             CTexPassElement::SRenderData data;
             data.box = {{(monitorSize.x - pMonitor->m_splash->m_size.x) / 2.0, monitorSize.y * 0.98 - pMonitor->m_splash->m_size.y}, pMonitor->m_splash->m_size};
             data.tex = pMonitor->m_splash;

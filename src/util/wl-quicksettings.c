@@ -49,15 +49,13 @@ enum {
     HEADER_Y = 32,  HEADER_H = 76,   /* Q0.2: avatar + user + current domain + identity */
 
     WIFI_Y   = 112, WIFI_H = 60,
-    VOL_Y    = 184, VOL_H  = 64,
+    CLOCK_Y  = 184, CLOCK_H = 64,   /* was the volume slider -- see the note at draw time */
     BAT_Y    = 260, BAT_H  = 52,
     TOPBAR_Y = 320, TOPBAR_H = 44,   /* Hyprland top-bar hide/show toggle */
 
     ACT_Y    = 376, ACT_H  = 64,   /* four square buttons */
     LOGOUT_Y = 452, LOGOUT_H = 48,
 
-    TRACK_X  = 96, TRACK_W = 180, TRACK_Y = 224, TRACK_H = 6,
-    KNOB_W   = 14, KNOB_H = 22,
 };
 
 /* clickable regions returned by hit_region() */
@@ -93,8 +91,7 @@ struct app {
     int  cpu_pct, mem_pct;                     /* Q2.4 live system stats */
     char ip[24];
     unsigned long long cpu_prev_total, cpu_prev_idle;
-    int  volume;            /* 0..100 (cosmetic) */
-    int  dragging;          /* slider knob being dragged */
+    /* No volume/dragging state: there is no audio backend, so there was nothing to hold. */
     int  hover;             /* hovered region for highlight (R_*) */
     unsigned last_hash;
 };
@@ -254,12 +251,12 @@ static void publish_state(struct app *app){
     if (fd < 0) return;
     char b[320];
     int n = snprintf(b, sizeof b,
-        "user=%s\ndomain=%s\nidentity=%s\nwifi=%s\nssid=%s\nvolume=%d\ncpu=%d\nmem=%d\nip=%s\n",
+        "user=%s\ndomain=%s\nidentity=%s\nwifi=%s\nssid=%s\ncpu=%d\nmem=%d\nip=%s\n",
         app->user[0]?app->user:"user",
         app->domain[0]?app->domain:"Personal",
         app->identity[0]?app->identity:"Default",
         app->wifi_connected?"on":"off",
-        app->active_ssid, app->volume,
+        app->active_ssid,
         app->cpu_pct, app->mem_pct, app->ip[0]?app->ip:"none");
     if (n > 0) (void)!write(fd, b, (size_t)n);
     close(fd);
@@ -310,29 +307,11 @@ static int hit_region(struct app *app, double px, double py){
     if (in_rect(px,py,CARD_X,LOGOUT_Y,CARD_W,LOGOUT_H)) return R_LOGOUT;
     return R_NONE;
 }
-static int on_slider(struct app *app, double px, double py){
-    (void)app;
-    return px >= TRACK_X-12 && px <= TRACK_X+TRACK_W+12 &&
-           py >= TRACK_Y-14 && py <= TRACK_Y+TRACK_H+14;
-}
-static void set_volume_from_x(struct app *app, double px){
-    int v = (int)((px - TRACK_X) * 100.0 / TRACK_W + 0.5);
-    if (v < 0) v = 0; if (v > 100) v = 100;
-    app->volume = v;
-}
 
 /* --- glyph approximations (fill_rect only) --- */
 static void draw_wifi_glyph(struct app *app, int x, int y, uint32_t on){
     /* four rising signal bars */
     for (int b=0;b<4;b++){ int bh = 4 + b*4; fill_rect(app, x + b*5, y + (16-bh), 3, bh, on); }
-}
-static void draw_speaker_glyph(struct app *app, int x, int y, uint32_t on){
-    /* box + flaring cone approximated by stacked rects, then two sound bars */
-    fill_rect(app, x, y+5, 5, 8, on);
-    fill_rect(app, x+5, y+3, 3, 12, on);
-    fill_rect(app, x+8, y+1, 2, 16, on);
-    fill_rect(app, x+13, y+4, 2, 10, on);
-    fill_rect(app, x+16, y+1, 2, 16, on);
 }
 static void draw_battery_glyph(struct app *app, int x, int y, uint32_t on, uint32_t fillc){
     fill_rect(app, x, y+2, 26, 14, on);           /* body outline */
@@ -344,7 +323,7 @@ static void draw_battery_glyph(struct app *app, int x, int y, uint32_t on, uint3
 /* --- rendering --- */
 static void draw_menu(struct app *app){
     const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, ROW=0xff232834u, ROWH=0xff2d3444u,
-                   TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu, TRK=0xff3a4150u,
+                   TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu,
                    OK=0xff57d977u, DANGER=0xffe0564au, CLOSEC=0xffe0564au;
     fill_rect(app, 0, 0, app->width, app->height, BG);
 
@@ -375,26 +354,35 @@ static void draw_menu(struct app *app){
     draw_text(app, "Wi-Fi", CARD_X+48, WIFI_Y+9, 160, 15, TXT);
     draw_text(app, app->wifi_connected ? app->active_ssid : "Not connected",
               CARD_X+48, WIFI_Y+31, CARD_W-64, 12, app->wifi_connected?OK:DIM);
+    /* --- Date & time row ---
+     *
+     * This is where the Volume slider used to be.  That slider was draggable, showed a filled
+     * track and a knob, published volume=N to /run/quicksettings.state -- and changed nothing:
+     * this image has no audio driver and no mixer, as the file header said all along.  A control
+     * that looks live and is inert is worse than an absent one, so it is gone rather than greyed
+     * out; the row returns when Tier 5 (audio driver + PipeWire) lands, and nothing read the
+     * volume key.  A clock is real, needs no backend, and is on the Tier 1 list. */
+    fill_round_rect(app, CARD_X, CLOCK_Y, CARD_W, CLOCK_H, 12, ROW);
+    {
+        time_t now = time(NULL);
+        struct tm tmv, *tmp = localtime_r(&now, &tmv);
+        char hhmm[16] = "--:--", date[64] = "date unavailable";
+        if (tmp) {
+            strftime(hhmm, sizeof hhmm, "%H:%M", tmp);
+            strftime(date, sizeof date, "%A, %e %B %Y", tmp);
+        }
+        draw_text(app, hhmm, CARD_X+16, CLOCK_Y+8,  120, 22, TXT);
+        draw_text(app, date, CARD_X+16, CLOCK_Y+36, CARD_W-32, 12, DIM);
+    }
 
-    /* --- Volume row --- */
-    fill_round_rect(app, CARD_X, VOL_Y, CARD_W, VOL_H, 12, ROW);
-    draw_speaker_glyph(app, CARD_X+14, VOL_Y+10, TXT);
-    draw_text(app, "Volume", CARD_X+48, VOL_Y+8, 120, 14, TXT);
-    char vbuf[8]; snprintf(vbuf, sizeof vbuf, "%d", app->volume);
-    draw_text(app, vbuf, CARD_X+CARD_W-34, VOL_Y+8, 30, 13, DIM);
-    /* slider track + filled portion + knob */
-    fill_rect(app, TRACK_X, TRACK_Y, TRACK_W, TRACK_H, TRK);
-    int fillw = app->volume * TRACK_W / 100;
-    fill_rect(app, TRACK_X, TRACK_Y, fillw, TRACK_H, ACC);
-    int kcx = TRACK_X + fillw;
-    fill_rect(app, kcx - KNOB_W/2, TRACK_Y + TRACK_H/2 - KNOB_H/2, KNOB_W, KNOB_H,
-              app->dragging?ACC:TXT);
 
     /* --- Battery row --- */
     fill_round_rect(app, CARD_X, BAT_Y, CARD_W, BAT_H, 12, ROW);
     draw_battery_glyph(app, CARD_X+14, BAT_Y+16, DIM, OK);
     draw_text(app, "Battery", CARD_X+52, BAT_Y+9, 160, 15, TXT);
-    draw_text(app, "AC", CARD_X+52, BAT_Y+31, 120, 12, DIM);
+    /* QEMU exposes no battery, and there is no ACPI battery backend, so this is a statement
+     * of fact rather than a reading.  It must not render as a charge percentage. */
+    draw_text(app, "On AC power", CARD_X+52, BAT_Y+31, 160, 12, DIM);
 
     /* --- Q2.4 System row: live CPU / RAM / IP (click -> /wl-sysmon) --- */
     {
@@ -407,7 +395,9 @@ static void draw_menu(struct app *app){
     }
 
     /* --- action buttons (Settings / Lock / Restart / Power) --- */
-    static const char *labels[4] = { "Settings", "Lock", "Restart", "Power" };
+    /* "Domains", not "Settings": the launcher now has a Settings tile (this app) and a separate
+     * Domains tile, so a Settings button here that opens the domain manager would contradict it. */
+    static const char *labels[4] = { "Domains", "Lock", "Restart", "Power" };
     static const int   reg[4]    = { R_SETTINGS, R_LOCK, R_RESTART, R_POWER };
     for (int i=0;i<4;i++){
         int bx,by,bw,bh; act_btn_rect(i,&bx,&by,&bw,&bh);
@@ -470,14 +460,13 @@ static void pointer_enter(void *d, struct wl_pointer *p, uint32_t s, struct wl_s
 static void pointer_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surface *sf){ (void)p;(void)s;(void)sf; struct app*a=d; a->hover=R_NONE; redraw_commit(a); }
 static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t x, wl_fixed_t y){ (void)p;(void)t; struct app*a=d;
     a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y);
-    if (a->dragging){ set_volume_from_x(a, a->pointer_x); redraw_commit(a); return; }
     int nh = hit_region(a, a->pointer_x, a->pointer_y);
     if (nh != a->hover){ a->hover = nh; redraw_commit(a); } }
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
-    if (button != 0x110 /*BTN_LEFT*/) return;
-    if (state == 0){ if (a->dragging){ a->dragging = 0; redraw_commit(a); } return; }  /* release */
-    /* press: slider grab takes priority over region clicks */
-    if (on_slider(a, a->pointer_x, a->pointer_y)){ a->dragging = 1; set_volume_from_x(a, a->pointer_x); redraw_commit(a); return; }
+    /* Presses only.  Without the state check a release re-fires the action, so every click
+     * would act twice -- two launches, or two poweroffs. */
+    if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
+
     switch (hit_region(a, a->pointer_x, a->pointer_y)){
         case R_CLOSE:    exit(0);
         case R_WIFI:     launch("/wl-wifi-menu"); break;
@@ -551,7 +540,7 @@ static void live_refresh(struct app *app){
 
 int main(void){
     static struct app app; memset(&app, 0, sizeof app);
-    app.running = 1; app.hover = R_NONE; app.volume = 65;
+    app.running = 1; app.hover = R_NONE;
     app.width = WIN_W; app.height = WIN_H; app.stride = WIN_W*4; app.buffer_size = (size_t)app.stride*WIN_H;
     signal(SIGCHLD, SIG_IGN);
     init_freetype(&app);

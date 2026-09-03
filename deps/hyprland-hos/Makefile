@@ -19,6 +19,14 @@ HOST_CMAKE    := $(HOST_TOOLS_BIN)/cmake
 PKG_CONFIG_LIBDIR := $(SYSROOT)/lib/pkgconfig:$(SYSROOT)/share/pkgconfig:$(MUSL_INSTALL)/lib/pkgconfig
 PKG_CONFIG_ENV := PKG_CONFIG_LIBDIR="$(PKG_CONFIG_LIBDIR)" PKG_CONFIG_PATH=
 
+# NB libglapi is the one .so in this otherwise-static list, and deliberately so.
+# deps/mutter's mesa build keeps glapi SHARED (see its "R2.4b dual-glapi fix" note): the
+# app's GL entry points and the dlopened DRI driver must share ONE _glapi dispatch table,
+# so a static copy would give the app an empty table.  Mesa therefore never produces a
+# libglapi.a -- the one in the sysroot is the EMPTY STUB deps/gtk-stack creates so that
+# packages adding -lglapi can link.  Linking that stub here left every _glapi_tls_Dispatch
+# and _glapi_get_proc_address reference from the real libEGL.a/libGLESv2.a undefined.
+# The ISO stages libglapi.so as a boot module for the same reason (../../Makefile:1089).
 HYPRLAND_EXTRA_LIBS := \
 	-Wl,--start-group \
 	$(SYSROOT)/lib/libseat.a \
@@ -38,7 +46,7 @@ HYPRLAND_EXTRA_LIBS := \
 	$(SYSROOT)/lib/libxcb.a \
 	$(SYSROOT)/lib/libXau.a \
 	$(SYSROOT)/lib/libXdmcp.a \
-	$(SYSROOT)/lib/libglapi.a \
+	$(SYSROOT)/lib/libglapi.so \
 	$(SYSROOT)/lib/libgbm.a \
 	$(SYSROOT)/lib/libdrm.a \
 	$(SYSROOT)/lib/libzip.a \

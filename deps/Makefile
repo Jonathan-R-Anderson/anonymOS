@@ -87,7 +87,7 @@ mutter: gtk-stack cxxrt musl
 # per missing library, discovered one at a time.
 #
 # Reconcile stamp against artifact here instead: if the archive is missing, drop the
-# stale stamp and rebuild that target.  Costs 15 file tests when everything is present.
+# stale stamp and rebuild that target.  Costs 16 file tests when everything is present.
 #
 # Ordered <artifact under gtk-stack/sysroot>:<phony target in deps/mutter>.  Paths are
 # not all archives: xtrans ships transport sources that libX11 #includes directly, and
@@ -101,7 +101,8 @@ HYPRLAND_SYSROOT_LIBS := \
 	lib/libXrender.a:libxrender      lib/libXcursor.a:libxcursor \
 	lib/libmtdev.a:mtdev             lib/liblcms2.a:lcms2 \
 	lib/libevdev.a:libevdev          lib/libudev.a:libudev-zero \
-	lib/libseat.a:libseat            lib/libinput.a:libinput
+	lib/libseat.a:libseat            lib/libinput.a:libinput \
+	lib/libglapi.so:mesa
 
 hyprland-sysroot-libs:
 	@for pair in $(HYPRLAND_SYSROOT_LIBS); do \

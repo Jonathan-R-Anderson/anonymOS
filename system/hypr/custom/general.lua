@@ -5,27 +5,29 @@
 -- copy of the host's config and stays that way -- every guest deviation lives in this one file,
 -- so the tree remains updatable from the host.
 --
--- READ THIS BEFORE TUNING APPEARANCE HERE.  On the default (non-GPU) boot this guest does not
--- run Hyprland's GL renderer at all:
---   * GLRenderer.cpp:1377 sets m_hosCPUFrame when HOS_SCENE_RENDER is off, and
---     Renderer.cpp:2141-2201 wraps the ENTIRE GL scene build in `if (!m_hosCPUFrame)`.
---   * The desktop is painted instead by hardcoded C++ (hosComposeShmWindows and friends).
---     `grep -c CConfigValue GLRenderer.cpp` returns 1, and it is opengl:nvidia_anti_flicker.
---   * `grep -c "m_layers\|LayerSurface" GLRenderer.cpp` returns 0 -- layer-shell surfaces are
---     never composited on that path, so all 74 layer rules in rules.lua are inert and the
---     visible top bar is the hardcoded one, not a config-driven client.
--- So decoration settings below are NOT what makes this desktop look the way it looks, and
--- turning them on would not make it look like the host.  What this config really delivers on
--- the CPU path is behaviour: keybinds, window placement, workspaces, gestures, input, rules.
+-- 2026-09-03: the deviations below are now CONDITIONAL on the render path, instead of always on.
+-- Two things changed that make that both possible and necessary:
 --
--- The overrides here therefore exist for the GPU path (HOS_SCENE_RENDER=1, set when the
--- compositor comes up on virtio-gpu/virgl), where the GL scene IS built and where this VM's
--- Mesa "softpipe" fallback -- confirmed in the boot log: `Renderer: softpipe`, Mesa's reference
--- rasteriser, slower even than llvmpipe -- would make the host's values unusable.
+--   * a564a31c58 exports HOS_SCENE_RENDER=1 for Hyprland unconditionally, so Hyprland's real GL
+--     scene IS built now.  Previously GLRenderer.cpp:1377 set m_hosCPUFrame and the whole scene
+--     build was skipped, the desktop being painted by hardcoded C++ (hosComposeShmWindows) -- on
+--     that path decoration settings genuinely did nothing.  They do something now.
+--
+--   * The kernel exports GALLIUM_DRIVER=softpipe ONLY on the no-GPU path (exports.d:1141, inside
+--     `if (!isCompositorGpu)`).  That makes it an exact, runtime-accurate test for "am I running
+--     on Mesa's reference rasteriser" -- no build-time guessing.
+--
+-- So: on softpipe the host's blur/shadow/animation values remain unusable and stay off.  Boot
+-- with `GPU=1 ./qemu-run.sh` (virtio-gpu-gl + virgl) and this file steps aside, letting the
+-- host's own values apply unchanged.  That is what makes the guest look like the host, and it no
+-- longer requires deleting this file by hand.
 
--- Host runs a HiDPI laptop panel at scale 1.25.  This one is NOT optional: at 1280x800 that
--- gives a cramped 1024x640 logical desktop and puts the CPU compositor's coordinate space on a
--- fractional scale it does not handle cleanly.  Re-declaring the empty-output rule replaces it.
+local softpipe = os.getenv("GALLIUM_DRIVER") == "softpipe"
+
+-- Host runs a HiDPI laptop panel at scale 1.25.  Kept at 1 on BOTH paths deliberately: at this
+-- VM's 1280x800 a 1.25 scale yields a cramped 1024x640 logical desktop, which looks less like the
+-- host rather than more.  To match the host exactly, give the VM a HiDPI-sized mode first and
+-- then raise this to 1.25 -- resolution has to come before scale, not after.
 hl.monitor({
     output   = "",
     mode     = "preferred",
@@ -33,61 +35,59 @@ hl.monitor({
     scale    = 1
 })
 
-hl.config({
-    decoration = {
-        -- Host: blur { enabled = true, size = 10, passes = 3, xray = true, ... }
-        -- Note the host config ALREADY disables window blur itself -- rules.lua:4-7 carries a
-        -- catch-all `no_blur = true` for every window, so upstream blur only ever applied to
-        -- layer surfaces (their bar/sidebars/overview).  Since this guest composites no layer
-        -- surfaces at all, blur is doubly a no-op here.  Kept off so that enabling the GPU path
-        -- does not suddenly hand softpipe three full-screen gaussian passes per frame.
-        blur = {
-            enabled = false
+if softpipe then
+    hl.config({
+        decoration = {
+            -- Host: blur { enabled = true, size = 10, passes = 3, xray = true, ... }
+            -- Note the host config ALREADY disables window blur itself -- rules.lua:4-7 carries a
+            -- catch-all `no_blur = true` for every window, so upstream blur only ever applied to
+            -- layer surfaces (their bar/sidebars/overview).  Three full-screen gaussian passes
+            -- per frame on a reference rasteriser is not a tradeoff worth offering.
+            blur = {
+                enabled = false
+            },
+
+            -- Host: shadow { enabled = true, range = 20, render_power = 10 }.  Unlike blur this
+            -- is per-window and NOT disabled by their rules, so it is the one that actually bites
+            -- with a software rasteriser behind it.
+            shadow = {
+                enabled = false
+            }
+
+            -- Deliberately NOT overridden even here -- geometry and colour are free on either
+            -- path, and they are what carries the host's look:
+            --   rounding = 18, rounding_power = 2.5
+            --   dim_inactive = true, dim_strength = 0.05, dim_special = 0.2
+            --   general.gaps_in/out/workspaces, border_size
+            --   colors.lua's active/inactive border and background_color (which override the
+            --   values in general.lua, because colors.lua is require()d after it)
         },
 
-        -- Host: shadow { enabled = true, range = 20, render_power = 10 }.  Unlike blur this is
-        -- per-window and not disabled by their rules, so it is the one that would actually bite
-        -- on the GPU path with a software rasteriser behind it.
-        shadow = {
+        -- Host has animations enabled with a full bezier set.  Every animated frame is a full
+        -- recomposite; on softpipe a window open would crawl through its curve.  The curves and
+        -- the 13 per-leaf animation definitions from general.lua are still parsed and kept --
+        -- only playback is off, so on the GPU path the host's exact motion returns untouched.
+        animations = {
             enabled = false
         }
+    })
+end
 
-        -- Deliberately NOT overridden -- geometry and colour, free on either path, and they are
-        -- what carries the host's look if the GL path is ever enabled:
-        --   rounding = 18, rounding_power = 2.5
-        --   dim_inactive = true, dim_strength = 0.05, dim_special = 0.2
-        --   general.gaps_in/out/workspaces, border_size
-        --   colors.lua's active/inactive border and background_color (which override the values
-        --   in general.lua, because colors.lua is require()d after it)
-    },
-
-    -- Host has animations enabled with a full bezier set.  Every animated frame is a full
-    -- recomposite; on softpipe a window open would crawl through its curve.  The curves and the
-    -- 13 per-leaf animation definitions from general.lua are still parsed and kept -- only
-    -- playback is off, so deleting this one block restores the host's exact motion.
-    animations = {
-        enabled = false
-    },
-
-    -- Now that HOS_SCENE_RENDER is exported again, Monitor.cpp:2169 stops hardcoding software
-    -- cursors and the decision reaches config for the first time.  Make it the right one here.
-    --
-    -- The host leaves cursor:no_hardware_cursors at its default 2 ("auto"), which resolves to
-    -- FALSE on this VM (case 2 is nvidia+mgpu/VRR; this renders on softpipe).  That makes
-    -- Hyprland attempt a HARDWARE cursor on every pointer update, which cannot work here: the
-    -- kernel fails DRM_NR_MODE_CURSOR/CURSOR2 with EINVAL on purpose so the compositor
-    -- composites the pointer itself.  The attempt is not free -- attemptHardwareCursor() runs a
-    -- whole RENDER_MODE_FULL_FAKE pass before drmModeSetCursor fails and it falls back to the
-    -- software cursor anyway.  It is also the source of the "legacy drm: cursor null failed" spam.
-    --
-    -- Forcing 1 (software cursors) skips that dead end and routes motion through
-    -- damageIfSoftware(), so the pointer tracks properly instead of moving at the damage-driven
-    -- fallback rate.  use_cpu_buffer = 0 is belt-and-braces if this is ever set back to 2.
+-- UNCONDITIONAL: this one is a kernel property, not a renderer property.
+--
+-- The kernel fails DRM_NR_MODE_CURSOR/CURSOR2 with EINVAL on purpose so the compositor
+-- composites the pointer itself -- true on the virgl path as much as on softpipe.  The host
+-- leaves cursor:no_hardware_cursors at its default 2 ("auto"), which resolves to FALSE here
+-- (case 2 is nvidia+mgpu/VRR), so Hyprland would attempt a HARDWARE cursor on every pointer
+-- update.  That attempt is not free: attemptHardwareCursor() runs a whole RENDER_MODE_FULL_FAKE
+-- pass before drmModeSetCursor fails and it falls back to the software cursor anyway.  It is
+-- also the source of the "legacy drm: cursor null failed" spam in the boot log.
+--
+-- Forcing 1 skips that dead end and routes motion through damageIfSoftware(), so the pointer
+-- tracks properly instead of moving at the damage-driven fallback rate.
+hl.config({
     cursor = {
         no_hardware_cursors = 1,
         use_cpu_buffer      = 0
     }
 })
-
--- On real GPU hardware (virtio-gpu with virgl), delete this file: the host's own values then
--- apply unchanged, and the GL path will actually render them.

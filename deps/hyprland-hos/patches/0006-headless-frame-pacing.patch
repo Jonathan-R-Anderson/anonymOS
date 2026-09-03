@@ -18,12 +18,12 @@
  
          friend class CHeadlessBackend;
      };
-@@ -114,6 +124,8 @@
+@@ -114,7 +124,8 @@
          void dispatchTimers();
          void updateTimerFD();
          void addTimer(std::chrono::steady_clock::time_point when, std::function<void(void)> what);
 +        void scheduleOutputs(IOutput::scheduleFrameReason reason);
-+
+ 
          // EpinAnonymOS G3: kernel evdev mouse → aquamarine pointer bridge.
          Hyprutils::OS::CFileDescriptor                    mouseFD;
          Hyprutils::Memory::CSharedPointer<CHeadlessPointer> pointer;

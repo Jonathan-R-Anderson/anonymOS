@@ -1,7 +1,0 @@
-[qemu-run] KVM acceleration enabled
-[qemu-run] using QEMU emulator version 10.2.4
-[qemu-run] HEADLESS=1: no window; read serial.log
-[qemu-run] booting ./hos-install.iso
-[qemu-run] NET=virtio: virtio-net + user-net (guest 10.0.2.15, gw 10.0.2.2) -- the Proxmox
-[qemu-run]             default NIC model; frames dumped to net.pcap
-[qemu-run] host-WiFi bridge ON via COM2 (/home/bruns/Documents/anonymOS/wifibr.sock); bridge log wifi-host-bridge.log (WIFI=0 to disable)

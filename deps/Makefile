@@ -87,21 +87,27 @@ mutter: gtk-stack cxxrt musl
 # per missing library, discovered one at a time.
 #
 # Reconcile stamp against artifact here instead: if the archive is missing, drop the
-# stale stamp and rebuild that target.  Costs 14 file tests when everything is present.
+# stale stamp and rebuild that target.  Costs 15 file tests when everything is present.
 #
-# Format: <archive under gtk-stack/sysroot/lib>:<phony target in deps/mutter>
+# Ordered <artifact under gtk-stack/sysroot>:<phony target in deps/mutter>.  Paths are
+# not all archives: xtrans ships transport sources that libX11 #includes directly, and
+# only its two .h files were ever committed -- so key it on one of the missing .c files.
+# Order matters: a dependency is listed before what needs it, so one pass suffices.
 HYPRLAND_SYSROOT_LIBS := \
-	libXau.a:libxau           libXdmcp.a:libxdmcp     libxcb.a:libxcb \
-	libX11.a:libx11           libXext.a:libxext       libXfixes.a:libxfixes \
-	libXrender.a:libxrender   libXcursor.a:libxcursor libmtdev.a:mtdev \
-	liblcms2.a:lcms2          libevdev.a:libevdev     libudev.a:libudev-zero \
-	libseat.a:libseat         libinput.a:libinput
+	include/X11/Xtrans/transport.c:xtrans \
+	lib/libXau.a:libxau              lib/libXdmcp.a:libxdmcp \
+	lib/libxcb.a:libxcb              lib/libX11.a:libx11 \
+	lib/libXext.a:libxext            lib/libXfixes.a:libxfixes \
+	lib/libXrender.a:libxrender      lib/libXcursor.a:libxcursor \
+	lib/libmtdev.a:mtdev             lib/liblcms2.a:lcms2 \
+	lib/libevdev.a:libevdev          lib/libudev.a:libudev-zero \
+	lib/libseat.a:libseat            lib/libinput.a:libinput
 
 hyprland-sysroot-libs:
 	@for pair in $(HYPRLAND_SYSROOT_LIBS); do \
-		lib=$${pair%%:*}; tgt=$${pair##*:}; \
-		if [ ! -f gtk-stack/sysroot/lib/$$lib ]; then \
-			echo "[deps] $$lib absent -> mutter/stamps/$$tgt.done is stale; rebuilding '$$tgt'"; \
+		art=$${pair%%:*}; tgt=$${pair##*:}; \
+		if [ ! -e gtk-stack/sysroot/$$art ]; then \
+			echo "[deps] $$art absent -> mutter/stamps/$$tgt.done is stale; rebuilding '$$tgt'"; \
 			rm -f mutter/stamps/$$tgt.done; \
 			$(MAKE) $(MAKE_BUILD_FLAGS) -C mutter $$tgt || exit 1; \
 		fi; \

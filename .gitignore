@@ -81,3 +81,8 @@ deps/calamares/downloads/
 deps/calamares/sysroot/
 deps/calamares/stamps/
 cd/esp-image
+
+# deps/hyprland/src/layout/target/ is upstream Hyprland SOURCE, not a Rust build dir.
+# The unanchored `target/` rule above was silently excluding 6 tracked-worthy .cpp/.hpp
+# files, which made Hyprland unbuildable from a clean checkout.
+!deps/hyprland/src/layout/target/

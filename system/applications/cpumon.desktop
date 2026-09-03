@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=CPU Monitor
+Exec=/wl-sysmon --view=cpu
+Icon=monitor
+Categories=System;Monitor;

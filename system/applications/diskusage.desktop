@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Disk Usage
+Exec=/wl-sysmon --view=disk
+Icon=drive
+Categories=System;Monitor;FileTools;

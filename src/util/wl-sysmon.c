@@ -71,6 +71,7 @@ struct app {
     struct proc procs[MAX_PROCS];
     int n_procs;
     int scroll;          /* first visible row index in the process list */
+    int view;            /* enum view -- which tab is showing (see VIEW_TAB) */
     int close_hover;
 };
 
@@ -224,6 +225,105 @@ static void sample_procs(struct app *app){
 static void refresh_all(struct app *app){ sample_cpu(app); sample_mem(app); sample_procs(app); }
 
 /* --- rendering --- */
+/* ── views ─────────────────────────────────────────────────────────────────────────────────
+ * One binary, several launcher entries.  The list of "applications" a desktop is expected to
+ * have includes Task Manager, Process Viewer, Resource Monitor, CPU Monitor and Memory
+ * Monitor; those are five names for views over one process table, not five programs.  Each
+ * ships a .desktop file with `Exec=/wl-sysmon --view=NAME`, and the tab bar switches between
+ * them at runtime.
+ *
+ * DELIBERATELY ABSENT: a Network Monitor view.  /proc/net/dev in this kernel is a static stub
+ * (posix.d:6490) with invented byte and packet counts -- lo: 4096/32, eth0: 65536/512 -- and
+ * the network driver keeps no counters to render instead.  A view over that would display
+ * fiction convincingly, which is worse than not shipping it.  Add rx/tx counters to
+ * drivers/network and make /proc/net/dev live, then this becomes a small addition.
+ * A Disk Monitor of I/O rates is likewise blocked: there is no /proc/diskstats at all.  The
+ * Disk view below therefore reports mounted filesystems and free space, which IS real, and is
+ * named accordingly. */
+enum view { V_OVERVIEW = 0, V_PROCESSES, V_CPU, V_MEMORY, V_DISK, V_COUNT };
+
+static const char *VIEW_TAB[V_COUNT]   = { "Overview", "Processes", "CPU", "Memory", "Disk" };
+static const char *VIEW_KEY[V_COUNT]   = { "overview", "processes", "cpu", "memory", "disk" };
+static const char *VIEW_TITLE[V_COUNT] = { "Resource Monitor", "Task Manager", "CPU Monitor",
+                                           "Memory Monitor", "Disk Usage" };
+
+/* --view=NAME (also accepts a bare NAME).  Unknown or absent -> V_OVERVIEW. */
+static int parse_view(int argc, char **argv)
+{
+    for (int i = 1; i < argc; i++) {
+        const char *a = argv[i];
+        if (!strncmp(a, "--view=", 7)) a += 7;
+        else if (a[0] == '-')          continue;
+        for (int v = 0; v < V_COUNT; v++)
+            if (!strcmp(a, VIEW_KEY[v])) return v;
+    }
+    return V_OVERVIEW;
+}
+
+/* One "Key: value kB" lookup in /proc/meminfo.  Returns -1 when absent. */
+static long meminfo_field(const char *key)
+{
+    FILE *f = fopen("/proc/meminfo", "r");
+    if (!f) return -1;
+    char line[128];
+    size_t klen = strlen(key);
+    long val = -1;
+    while (fgets(line, sizeof line, f)) {
+        if (strncmp(line, key, klen) || line[klen] != ':') continue;
+        val = strtol(line + klen + 1, NULL, 10);
+        break;
+    }
+    fclose(f);
+    return val;
+}
+
+/* First line of /proc/loadavg -> "0.00 0.01 0.05".  Empty string when unavailable. */
+static void read_loadavg(char *out, size_t cap)
+{
+    out[0] = 0;
+    FILE *f = fopen("/proc/loadavg", "r");
+    if (!f) return;
+    if (fgets(out, (int)cap, f)) {
+        size_t n = strlen(out);
+        while (n && (out[n-1] == '\n' || out[n-1] == '\r')) out[--n] = 0;
+    }
+    fclose(f);
+}
+
+/* Seconds of uptime from /proc/uptime; -1 when unavailable. */
+static long read_uptime_secs(void)
+{
+    FILE *f = fopen("/proc/uptime", "r");
+    if (!f) return -1;
+    double up = -1.0;
+    if (fscanf(f, "%lf", &up) != 1) up = -1.0;
+    fclose(f);
+    return up < 0 ? -1 : (long)up;
+}
+
+struct mountent { char dev[48]; char dir[64]; char type[24]; };
+
+/* /proc/mounts -> up to `cap` entries.  Pseudo-filesystems are skipped: they have no size and
+ * would push the real ones off the view. */
+static int read_mounts(struct mountent *out, int cap)
+{
+    static const char *SKIP[] = { "proc", "sysfs", "devtmpfs", "devpts", "cgroup", "cgroup2",
+                                  "debugfs", "tracefs", "securityfs", "pstore", "mqueue", 0 };
+    FILE *f = fopen("/proc/mounts", "r");
+    if (!f) return 0;
+    int n = 0;
+    /* Scanned straight into the destination widths (one less than each buffer) so there is no
+     * intermediate copy to truncate.  A skipped row simply leaves n unadvanced. */
+    while (n < cap &&
+           fscanf(f, "%47s %63s %23s %*[^\n]", out[n].dev, out[n].dir, out[n].type) == 3) {
+        int skip = 0;
+        for (int i = 0; SKIP[i]; i++) if (!strcmp(out[n].type, SKIP[i])) { skip = 1; break; }
+        if (!skip) n++;
+    }
+    fclose(f);
+    return n;
+}
+
 static void draw_bar(struct app *app, const char *label, int pct, int y, uint32_t fillcol){
     const uint32_t TXT=0xfff2f5fau, DIM=0xff8b94a3u, TRK=0xff2d3444u;
     if (pct < 0) pct = 0; if (pct > 100) pct = 100;
@@ -234,46 +334,37 @@ static void draw_bar(struct app *app, const char *label, int pct, int y, uint32_
     char pc[16]; snprintf(pc, sizeof pc, "%d%%", pct);
     draw_text(app, pc, app->width - 60, y, 56, 13, DIM);
 }
-static void draw_ui(struct app *app){
-    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
-                   ACC=0xff4da3ffu, ROWALT=0xff20242eu, CLOSE=0xffc0392bu, CLOSEH=0xffe74c3cu,
-                   CPUCOL=0xff4da3ffu, MEMCOL=0xff5ec27eu;
-    fill_rect(app, 0, 0, app->width, app->height, BG);
+/* Tab strip under the titlebar.  Returns the y at which the view body starts. */
+enum { TAB_H = 24 };
+static int tab_width(const struct app *app){ return app->width / V_COUNT; }
 
-    /* --- CSD titlebar --- */
-    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
-    draw_text(app, "System Monitor", 12, 5, app->width-120, 15, TXT);
-    int cbx = app->width - 22, cby = 4, cbs = 18;
-    fill_rect(app, cbx, cby, cbs, cbs, app->close_hover ? CLOSEH : CLOSE);
-    draw_text(app, "x", cbx+5, cby+1, 14, 14, 0xffffffffu);
+static void draw_tabs(struct app *app)
+{
+    const uint32_t BAR=0xff161a21u, TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu;
+    fill_rect(app, 0, TITLE_H, app->width, TAB_H, BAR);
+    int tw = tab_width(app);
+    for (int v = 0; v < V_COUNT; v++) {
+        int x = v * tw;
+        if (v == app->view) {
+            fill_rect(app, x, TITLE_H, tw, TAB_H, 0xff1b1f27u);
+            fill_rect(app, x, TITLE_H + TAB_H - 2, tw, 2, ACC);
+        }
+        draw_text(app, VIEW_TAB[v], x + 8, TITLE_H + 5, tw - 12, 12,
+                  v == app->view ? TXT : DIM);
+    }
+    fill_rect(app, 0, TITLE_H + TAB_H, app->width, 1, 0xff2d3444u);
+}
 
-    /* --- bars --- */
-    int y = TITLE_H + 14;
-    draw_bar(app, "CPU", app->cpu_pct, y, CPUCOL);
-    y += 30;
-    draw_bar(app, "Memory", app->mem_pct, y, MEMCOL);
-    /* memory detail line */
-    char md[96];
-    if (app->mem_total_kb > 0){
-        long used_mb = (app->mem_total_kb - app->mem_avail_kb) / 1024;
-        long tot_mb  = app->mem_total_kb / 1024;
-        if (used_mb < 0) used_mb = 0;
-        snprintf(md, sizeof md, "%ld / %ld MB used", used_mb, tot_mb);
-    } else snprintf(md, sizeof md, "meminfo unavailable");
-    y += 22;
-    draw_text(app, md, 14, y, app->width-28, 11, DIM);
+/* Rows of "label   value" text, the shape every non-Overview view uses. */
+static void draw_kv(struct app *app, const char *k, const char *v, int y, uint32_t kc, uint32_t vc)
+{
+    draw_text(app, k, 14, y, 220, 12, kc);
+    draw_text(app, v, 240, y, app->width - 254, 12, vc);
+}
 
-    /* --- process list header --- */
-    int hy = TITLE_H + 100;
-    fill_rect(app, 0, hy-4, app->width, 1, 0xff2d3444u);
-    char hdr[64]; snprintf(hdr, sizeof hdr, "Processes (%d)", app->n_procs);
-    draw_text(app, hdr, 14, hy, 200, 12, ACC);
-    draw_text(app, "PID",  14,  hy, 60, 12, DIM);
-    draw_text(app, "NAME", 90,  hy, 200, 12, DIM);
-    draw_text(app, "RSS",  app->width-110, hy, 100, 12, DIM);
-
-    /* header line drawn again with columns; keep the "Processes (n)" count on the accent row above */
-    int list_top = hy + 18;
+static void draw_proclist(struct app *app, int list_top)
+{
+    const uint32_t TXT=0xfff2f5fau, DIM=0xff8b94a3u, ROWALT=0xff20242eu;
     int visible = (app->height - list_top) / ROW_H; if (visible < 0) visible = 0;
     for (int r = 0; r < visible; r++){
         int idx = app->scroll + r; if (idx >= app->n_procs) break;
@@ -288,7 +379,6 @@ static void draw_ui(struct app *app){
         else                    snprintf(rss, sizeof rss, "%ld KB", pr->rss_kb);
         draw_text(app, rss, app->width-110, ry+2, 100, 12, TXT);
     }
-    /* scrollbar hint */
     if (app->n_procs > visible && visible > 0){
         int track_h = app->height - list_top;
         int thumb_h = track_h * visible / app->n_procs; if (thumb_h < 12) thumb_h = 12;
@@ -296,6 +386,109 @@ static void draw_ui(struct app *app){
         int thumb_y = list_top + (track_h - thumb_h) * app->scroll / maxscroll;
         fill_rect(app, app->width-4, list_top, 3, track_h, 0xff20242eu);
         fill_rect(app, app->width-4, thumb_y, 3, thumb_h, 0xff4da3ffu);
+    }
+}
+
+static void draw_ui(struct app *app){
+    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, TXT=0xfff2f5fau, DIM=0xff8b94a3u,
+                   ACC=0xff4da3ffu, CLOSE=0xffc0392bu, CLOSEH=0xffe74c3cu,
+                   CPUCOL=0xff4da3ffu, MEMCOL=0xff5ec27eu;
+    fill_rect(app, 0, 0, app->width, app->height, BG);
+
+    /* --- CSD titlebar --- */
+    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
+    draw_text(app, VIEW_TITLE[app->view], 12, 5, app->width-120, 15, TXT);
+    int cbx = app->width - 22, cby = 4, cbs = 18;
+    fill_rect(app, cbx, cby, cbs, cbs, app->close_hover ? CLOSEH : CLOSE);
+    draw_text(app, "x", cbx+5, cby+1, 14, 14, 0xffffffffu);
+
+    draw_tabs(app);
+    int y = TITLE_H + TAB_H + 12;
+    char b[128];
+
+    switch (app->view) {
+
+    case V_PROCESSES:                       /* Task Manager / Process Viewer */
+        snprintf(b, sizeof b, "Processes (%d)", app->n_procs);
+        draw_text(app, b, 14, y, 240, 12, ACC);
+        draw_text(app, "PID",  14,  y+18, 60, 12, DIM);
+        draw_text(app, "NAME", 90,  y+18, 200, 12, DIM);
+        draw_text(app, "RSS",  app->width-110, y+18, 100, 12, DIM);
+        draw_proclist(app, y + 36);
+        break;
+
+    case V_CPU: {                           /* CPU Monitor */
+        draw_bar(app, "CPU", app->cpu_pct, y, CPUCOL);
+        y += 34;
+        char la[128]; read_loadavg(la, sizeof la);
+        draw_kv(app, "Load average", la[0] ? la : "unavailable", y, DIM, TXT); y += 20;
+        long up = read_uptime_secs();
+        if (up >= 0) snprintf(b, sizeof b, "%ldd %ldh %ldm", up/86400, (up%86400)/3600, (up%3600)/60);
+        else         snprintf(b, sizeof b, "unavailable");
+        draw_kv(app, "Uptime", b, y, DIM, TXT); y += 20;
+        snprintf(b, sizeof b, "%d", app->n_procs);
+        draw_kv(app, "Processes", b, y, DIM, TXT);
+        break;
+    }
+
+    case V_MEMORY: {                        /* Memory Monitor */
+        draw_bar(app, "Memory", app->mem_pct, y, MEMCOL);
+        y += 34;
+        static const char *KEYS[] = { "MemTotal", "MemFree", "MemAvailable",
+                                      "Buffers", "Cached", "SwapTotal", "SwapFree", 0 };
+        for (int i = 0; KEYS[i]; i++) {
+            long kb = meminfo_field(KEYS[i]);
+            if (kb < 0) snprintf(b, sizeof b, "unavailable");
+            else if (kb >= 1024) snprintf(b, sizeof b, "%ld MB", kb / 1024);
+            else                 snprintf(b, sizeof b, "%ld kB", kb);
+            draw_kv(app, KEYS[i], b, y, DIM, TXT);
+            y += 20;
+        }
+        break;
+    }
+
+    case V_DISK: {                          /* Disk Usage -- mounts, not I/O rates */
+        draw_text(app, "Mounted filesystems", 14, y, 300, 12, ACC); y += 22;
+        draw_text(app, "DEVICE", 14, y, 150, 12, DIM);
+        draw_text(app, "MOUNT",  180, y, 200, 12, DIM);
+        draw_text(app, "TYPE",   app->width-100, y, 90, 12, DIM);
+        y += 20;
+        struct mountent mt[24];
+        int n = read_mounts(mt, 24);
+        if (n == 0) draw_text(app, "/proc/mounts unavailable", 14, y, app->width-28, 12, DIM);
+        for (int i = 0; i < n && y < app->height - ROW_H; i++, y += ROW_H) {
+            if (i & 1) fill_rect(app, 0, y-2, app->width, ROW_H, 0xff20242eu);
+            draw_text(app, mt[i].dev,  14,  y, 160, 12, TXT);
+            draw_text(app, mt[i].dir,  180, y, app->width-290, 12, TXT);
+            draw_text(app, mt[i].type, app->width-100, y, 90, 12, DIM);
+        }
+        break;
+    }
+
+    case V_OVERVIEW:                        /* Resource Monitor -- bars + the list */
+    default: {
+        draw_bar(app, "CPU", app->cpu_pct, y, CPUCOL);
+        y += 30;
+        draw_bar(app, "Memory", app->mem_pct, y, MEMCOL);
+        if (app->mem_total_kb > 0){
+            long used_mb = (app->mem_total_kb - app->mem_avail_kb) / 1024;
+            long tot_mb  = app->mem_total_kb / 1024;
+            if (used_mb < 0) used_mb = 0;
+            snprintf(b, sizeof b, "%ld / %ld MB used", used_mb, tot_mb);
+        } else snprintf(b, sizeof b, "meminfo unavailable");
+        y += 22;
+        draw_text(app, b, 14, y, app->width-28, 11, DIM);
+
+        int hy = y + 26;
+        fill_rect(app, 0, hy-4, app->width, 1, 0xff2d3444u);
+        snprintf(b, sizeof b, "Processes (%d)", app->n_procs);
+        draw_text(app, b, 14, hy, 200, 12, ACC);
+        draw_text(app, "PID",  14,  hy+16, 60, 12, DIM);
+        draw_text(app, "NAME", 90,  hy+16, 200, 12, DIM);
+        draw_text(app, "RSS",  app->width-110, hy+16, 100, 12, DIM);
+        draw_proclist(app, hy + 34);
+        break;
+    }
     }
 }
 
@@ -377,7 +570,20 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t 
     int cbx = a->width - 22, cby = 4, cbs = 18;
     if (a->pointer_x>=cbx && a->pointer_x<cbx+cbs && a->pointer_y>=cby && a->pointer_y<cby+cbs){
         log_line("SYSMON: close"); exit(0);
-    } }
+    }
+    /* tab strip: switch view, and reset scroll since each view has its own list length */
+    if (a->pointer_y >= TITLE_H && a->pointer_y < TITLE_H + TAB_H){
+        int tw = tab_width(a);
+        if (tw <= 0) return;
+        int v = (int)(a->pointer_x / tw);
+        if (v >= 0 && v < V_COUNT && v != a->view){
+            a->view = v;
+            a->scroll = 0;
+            xdg_toplevel_set_title(a->toplevel, VIEW_TITLE[v]);
+            redraw_commit(a);
+        }
+    }
+}
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax, wl_fixed_t v){ (void)p;(void)t; struct app*a=d;
     if (ax != 0 /*vertical*/) return;
     double dv = wl_fixed_to_double(v);
@@ -451,9 +657,10 @@ static void registry_global(void *d, struct wl_registry *r, uint32_t name, const
 static void registry_remove(void *d, struct wl_registry *r, uint32_t n){ (void)d;(void)r;(void)n; }
 static const struct wl_registry_listener registry_listener = { .global=registry_global, .global_remove=registry_remove };
 
-int main(void){
+int main(int argc, char **argv){
     static struct app app; memset(&app, 0, sizeof app);
     app.running = 1; app.scroll = 0;
+    app.view = parse_view(argc, argv);   /* --view=processes|cpu|memory|disk */
     app.width = WIN_W; app.height = WIN_H; app.stride = WIN_W*4; app.buffer_size = (size_t)app.stride*WIN_H;
     signal(SIGCHLD, SIG_IGN);
     init_freetype(&app);
@@ -476,7 +683,7 @@ int main(void){
     xdg_surface_add_listener(app.xdg_surface, &xdg_surface_listener, &app);
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
-    xdg_toplevel_set_title(app.toplevel, "System Monitor");
+    xdg_toplevel_set_title(app.toplevel, VIEW_TITLE[app.view]);
     xdg_toplevel_set_app_id(app.toplevel, "epin-sysmon");
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);

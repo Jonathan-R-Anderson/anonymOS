@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Memory Monitor
+Exec=/wl-sysmon --view=memory
+Icon=monitor
+Categories=System;Monitor;

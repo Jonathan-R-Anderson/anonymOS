@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Process Viewer
+Exec=/wl-sysmon --view=processes
+Icon=monitor
+Categories=System;Monitor;

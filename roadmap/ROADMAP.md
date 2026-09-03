@@ -19,7 +19,7 @@ until this is done, because a broken desktop invalidates every measurement.
 | # | Item | Source | Effort |
 |---|---|---|---|
 | 0.1 | Boot current `main`. Confirm no `COMPOSITOR DIED`, `[dm] wl-domain-manager launched`, `[assets] /apps.blob unpacked` | — | minutes |
-| 0.2 | Confirm the launcher shows 15 tiles incl. **Software**, and each tile launches | GUI A6 | minutes |
+| 0.2 | Confirm the launcher shows 20 tiles incl. **Software**, **Task Manager**, **CPU Monitor**, and that each launches (arg-bearing Exec lines included) | GUI A6 | minutes |
 | 0.3 | Boot once with `GPU=1` — confirm virgl, not softpipe, and that host blur/shadow/animations return | — | minutes |
 
 ---
@@ -32,7 +32,7 @@ work is reach and polish, not new subsystems.
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
-| 1.1 | **`wl-sysmon` tabs** — Task Manager, Process Viewer, Resource/Memory/CPU/Disk/Network Monitor | 7 of the 124 apps from one process table. Best value per hour in the whole document | APPS B1 | S |
+| 1.1 | **`wl-sysmon` tabs** — ✅ DONE. Task Manager, Process Viewer, System Monitor, CPU, Memory, Disk Usage — 6 launcher entries, one binary, via `--view=`. **Network Monitor NOT shipped**: `/proc/net/dev` is a static stub (posix.d:6490) and the driver keeps no counters, so a view over it would display fiction. Unblock by adding rx/tx counters to `drivers/network`. Disk I/O rates likewise need a `/proc/diskstats` that does not exist — the Disk view reports mounts and is named accordingly | APPS B1 | S |
 | 1.2 | **Persistent storage** — installed system survives reboot | "Installation" is meaningless without it. Gates any judgement of daily usability | SHELL A5 | M |
 | 1.3 | **Full busybox applet set** | A terminal without a userland is a demo. Cheap and unblocks shell work | SHELL A1 | S |
 | 1.4 | **`wl-quicksettings` panels** — Display, Keyboard, Mouse, Touchpad, Date/Time, Power, Appearance | The Settings tile now points here; it must be worth opening. Closes GUI G18 and QUICKSETTINGS Q0/Q1 at the same time | APPS B2 · GUI G18 · QUICKSETTINGS | M |

@@ -379,13 +379,21 @@ static void redraw_commit(struct app *app){
 
 /* --- launch a program, then exit the overview --- */
 static void launch_and_exit(struct app *app, const char *exec){
-    char m[128]; snprintf(m, sizeof m, "OVERVIEW: launch '%s'", exec); log_line(m);
+    char m[192]; snprintf(m, sizeof m, "OVERVIEW: launch '%s'", exec); log_line(m);
     pid_t pid = fork();
     if (pid == 0){
         for (int fd = 3; fd < 64; fd++) close(fd);   /* don't leak the Wayland socket into the child */
         setsid();
-        char *argv[] = { (char*)exec, NULL };
-        execve(exec, argv, environ);
+        /* .desktop Exec= lines carry arguments -- "/wl-sysmon --view=cpu" is one binary serving
+         * several launcher entries -- so split on spaces.  execve()ing the whole string as a
+         * path would fail ENOENT the moment any entry took an argument. */
+        char buf[256];
+        snprintf(buf, sizeof buf, "%s", exec);
+        char *argv[16];
+        int n = 0;
+        for (char *t = strtok(buf, " "); t && n < 15; t = strtok(NULL, " ")) argv[n++] = t;
+        argv[n] = NULL;
+        if (n) execve(argv[0], argv, environ);
         _exit(127);
     }
     (void)app;
@@ -462,7 +470,7 @@ static void registry_remove(void *d, struct wl_registry *r, uint32_t n){ (void)d
 static const struct wl_registry_listener registry_listener = { .global=registry_global, .global_remove=registry_remove };
 
 int main(void){
-    load_apps();                     /* /usr/share/applications/*.desktop, else BUILTIN_APPS */
+    load_apps();                     /* .desktop files under /usr/share/applications, else BUILTIN_APPS */
     static struct app app; memset(&app, 0, sizeof app);
     app.running = 1; app.hover = -1;
     app.width = WIN_W; app.height = WIN_H; app.stride = WIN_W*4; app.buffer_size = (size_t)app.stride*WIN_H;

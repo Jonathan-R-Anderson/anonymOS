@@ -532,6 +532,12 @@ $(STAMP_DIR)/aquamarine-extract: $(DL_DIR)/aquamarine-$(AQUAMARINE_REV).tar.gz
 	# GUI roadmap G8: deterministic headless frame pacing and bounded repaint watchdog.
 	patch -p1 --forward -d $(BUILD_DIR)/aquamarine \
 		< $(CURDIR)/patches/0006-headless-frame-pacing.patch || true
+	# EGL context creation: fall back to a minimal attribute list.  Both of aquamarine's existing
+	# attempts share attrsNoVer, which keeps every optional attribute (priority, robustness,
+	# KHR_context_flush_control, EGL_CONTEXT_OPENGL_DEBUG), so one rejected attribute fails BOTH
+	# and the compositor gets no renderer -- a black screen with a live cursor.
+	patch -p1 --forward -d $(BUILD_DIR)/aquamarine \
+		< $(CURDIR)/patches/0007-egl-context-minimal-fallback.patch || true
 	@# Every patch above ends in `|| true` so re-extraction stays idempotent -- but that
 	@# also swallows GENUINE rejects.  A rejected hunk then surfaces ~90 objects later as a
 	@# bogus compile error far from its cause (0006 hunk #2 stopped applying when 0004 began

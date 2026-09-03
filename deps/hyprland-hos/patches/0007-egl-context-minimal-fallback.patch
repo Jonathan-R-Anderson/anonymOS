@@ -1,0 +1,28 @@
+--- a/src/backend/drm/Renderer.cpp
++++ b/src/backend/drm/Renderer.cpp
+@@ -501,6 +501,25 @@
+ 
+         egl.context = eglCreateContext(egl.display, EGL_NO_CONFIG_KHR, EGL_NO_CONTEXT, attrs.data());
+         if (egl.context == EGL_NO_CONTEXT) {
++            // EpinAnonymOS: both attempts above share attrsNoVer, which still carries every
++            // OPTIONAL attribute -- priority, robustness, KHR_context_flush_control and
++            // EGL_CONTEXT_OPENGL_DEBUG (pushed unconditionally a few lines up).  If a driver
++            // rejects one of those, BOTH attempts fail with EGL_BAD_ATTRIBUTE and dropping the
++            // version changes nothing, so the compositor ends up with no renderer at all and
++            // paints a black screen.  Observed on this guest's kms_swrast/softpipe after a Mesa
++            // rebuild: "eglCreateContext failed with both GLES 3.2 and GLES 3.0", then "no RBO
++            // could be obtained" and "renderer: couldn't beginRender()!" forever.
++            // Last resort: ask for nothing but the version.
++            backend->log(AQ_LOG_ERROR, "CDRMRenderer: retrying GLES 3.0 with a minimal attribute list");
++            std::vector<EGLint> minimal;
++            minimal.push_back(EGL_CONTEXT_MAJOR_VERSION);
++            minimal.push_back(3);
++            minimal.push_back(EGL_CONTEXT_MINOR_VERSION);
++            minimal.push_back(0);
++            minimal.push_back(EGL_NONE);
++            egl.context = eglCreateContext(egl.display, EGL_NO_CONFIG_KHR, EGL_NO_CONTEXT, minimal.data());
++        }
++        if (egl.context == EGL_NO_CONTEXT) {
+             backend->log(AQ_LOG_ERROR, "CDRMRenderer: Can't create renderer, eglCreateContext failed with both GLES 3.2 and GLES 3.0");
+             return;
+         }

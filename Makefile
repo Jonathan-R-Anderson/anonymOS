@@ -1229,6 +1229,20 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		echo "Weston not built — run: make deps-weston (staying on Hyprland)"; \
 	fi
 
+	@# The Hyprland top bar is staged ~90 lines up under `if [ "$(WESTON)" != "1" ]`, but the
+	@# compositor is chosen by HYPRLAND=1 / the /epin-hyprland.conf marker.  Those two switches
+	@# disagree the moment Weston is built: WESTON defaults to 1, so staging takes the Weston
+	@# branch, which ships every wl-* utility EXCEPT the wlr-layer-shell bar (Weston has its own
+	@# panel and cannot use it).  Hyprland then boots with `[exec] not found: wl-layer-bar` and no
+	@# top bar at all -- which is what happened once the dependency work built Weston as a
+	@# side effect.  Stage it whenever Hyprland is the selected compositor, deduped against the
+	@# entry the other branch may already have written.
+	@if [ -n "$(HYPRLAND)" ] && [ -f $(WLLAYERBAR_BIN) ] && ! grep -q 'boot():/wl-layer-bar' cd/boot/limine/limine.conf; then \
+		cp $(WLLAYERBAR_BIN) cd/wl-layer-bar; \
+		printf '\n    module_path: boot():/wl-layer-bar\n' >> cd/boot/limine/limine.conf; \
+		echo "Included wl-layer-bar (Hyprland top bar; the WESTON=1 staging branch omits it)"; \
+	fi
+
 	@# GUI A6 — the launcher's app grid comes from .desktop files, not a hardcoded C array.
 	@# Staged unconditionally: wl-overview runs on Weston as well as Hyprland, and without this
 	@# blob it silently falls back to its BUILTIN_APPS list.

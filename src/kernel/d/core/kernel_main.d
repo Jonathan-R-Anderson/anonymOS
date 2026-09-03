@@ -4697,7 +4697,17 @@ void d_kernel_main() {
         for (int i = 0; i < g_module_count && initPhys == 0; i++) {
             auto rec  = cast(multiboot_module_t*)(recs + i * 128);
             auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
-            if (cstrContainsK(name, "Hyprland") || cstrContainsK(name, "hyprland")) {
+            // Basename-EXACT, not substring.  "/epin-hyprland.conf" also contains
+            // "hyprland", and it sorts ahead of "/Hyprland" in the module list, so a
+            // substring match selected the 32-byte TEXT marker as init:
+            //     [dkernel] init = Hyprland module
+            //     [dkernel] init phys=... size=0000000000000020   <- 32 bytes, not 38 MB
+            //     [elf] bad magic / [dkernel] ELF load failed
+            // and the machine came up with no desktop at all.  That marker exists purely to
+            // CHOOSE Hyprland (staged by `HYPRLAND=1 make iso`), so the substring match made
+            // the flag defeat itself -- HYPRLAND=1 was strictly worse than not passing it.
+            const(char)* hlBase = cstrBasenameK(name);
+            if (cstrEqK(hlBase, "Hyprland") || cstrEqK(hlBase, "hyprland")) {
                 initPhys = cast(ulong)rec.mod_start;
                 initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
                 initExecName = cstrBasenameK(name);

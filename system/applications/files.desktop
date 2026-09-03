@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Files
+Exec=/wl-files
+Icon=folder
+Categories=System;FileTools;

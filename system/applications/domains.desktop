@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Domains
+Exec=/wl-domain-manager
+Icon=security
+Categories=Settings;Security;

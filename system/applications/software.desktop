@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Software
+Exec=/store-app
+Icon=package
+Categories=System;PackageManager;

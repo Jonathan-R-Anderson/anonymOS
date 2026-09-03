@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Exec=/wl-quicksettings
+Icon=preferences
+Categories=Settings;

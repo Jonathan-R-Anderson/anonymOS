@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Exec=/hos-wifiterm
+Icon=terminal
+Categories=System;TerminalEmulator;

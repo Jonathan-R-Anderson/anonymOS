@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Calendar
+Exec=/wl-calendar
+Icon=calendar
+Categories=Office;Calendar;

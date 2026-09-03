@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Screenshot
+Exec=/wl-screenshot
+Icon=camera
+Categories=Graphics;

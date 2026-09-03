@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Calculator
+Exec=/wl-calc
+Icon=calc
+Categories=Utility;Calculator;

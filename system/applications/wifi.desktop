@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Wi-Fi
+Exec=/wl-wifi-menu
+Icon=network
+Categories=Settings;Network;

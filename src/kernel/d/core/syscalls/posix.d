@@ -5512,6 +5512,15 @@ private void rtUnpackAssets() {
         rtUnpackAssetBlob("/assets.blob\0".ptr);
     }
 
+    // GUI A6: .desktop entries -> /usr/share/applications, which wl-overview scans to build its
+    // app grid.  Unpacked with the other assets rather than gated on a compositor, since the
+    // launcher runs on both.  An absent blob is fine -- wl-overview falls back to BUILTIN_APPS.
+    //
+    // Deliberately AFTER the legacy assets.blob check above: that check is `g_assetFiles ==
+    // before`, so unpacking this first would make a fonts/icons-less image look like it had
+    // assets and suppress the fallback.
+    rtUnpackAssetBlob("/apps.blob\0".ptr);
+
     // Z8: zsh's autoloadable function + completion tree (compinit, compaudit, _<cmd>
     // completions, add-zsh-hook, promptinit, vcs_info, zle widgets) flattened at zsh's
     // compiled-in default $fpath (/system/shell/zsh/share/zsh/5.9/functions) so

@@ -10,6 +10,7 @@
  * Wayland scaffolding (registry / seat / xdg / persistent double-buffered wl_shm / FreeType text / evdev
  * keymap / full v5 pointer listener) is copied VERBATIM from the proven wl-wifi-menu client.
  */
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -42,15 +43,27 @@ enum { WIN_W = 920, WIN_H = 620,
        ICON = 96, GRID_Y = 116,
        MAX_APPS = 32 };
 
-/* app list: LABEL -> EXEC path (each tile gets a cycled accent colour) */
+/* app list: LABEL -> EXEC path (each tile gets a cycled accent colour)
+ *
+ * The grid is populated at startup from the .desktop files in /usr/share/applications (unpacked from
+ * apps.blob into the rtfs overlay).  Adding an application is therefore a matter of shipping
+ * a .desktop file, not editing and recompiling this launcher -- which is what the array below
+ * used to require, and why /store-app (the Software Center, i.e. the only way to install
+ * anything) was absent from the desktop despite shipping in every ISO.
+ *
+ * BUILTIN_APPS is the fallback used when that directory is missing or empty, so the launcher
+ * still comes up on an image built without apps.blob.  Keep it in sync-ish, but the .desktop
+ * files are the source of truth. */
 struct appentry { const char *label; const char *exec; };
-static const struct appentry APPS[] = {
+static const struct appentry BUILTIN_APPS[] = {
     { "Files",          "/wl-files" },
     /* /hos-wifiterm = wl-term with EPIN_SHELL=light (zsh -f -i), software (wl_shm) rendered — works on
      * the FW13 Pixman desktop.  /gl-term is GLES2/EGL and FAILS without a GPU; a full login-zsh wl-term
      * fork-storms.  (GL terminal is still on SUPER+Y for the virgl/GPU desktop.) */
     { "Terminal",       "/hos-wifiterm" },
-    { "Settings",       "/wl-domain-manager" },
+    { "Software",       "/store-app" },
+    { "Settings",       "/wl-quicksettings" },
+    { "Domains",        "/wl-domain-manager" },
     { "Logs",           "/wl-logview" },
     { "Wi-Fi",          "/wl-wifi-menu" },
     { "Calculator",     "/wl-calc" },
@@ -62,7 +75,63 @@ static const struct appentry APPS[] = {
     { "Text Editor",    "/wl-editor" },
     { "Screenshot",     "/wl-screenshot" },
 };
-enum { N_APPS = (int)(sizeof(APPS)/sizeof(APPS[0])) };
+enum { N_BUILTIN = (int)(sizeof(BUILTIN_APPS)/sizeof(BUILTIN_APPS[0])) };
+
+/* Populated by load_apps(); indexes into these are what the grid draws and launches. */
+static struct appentry APPS[MAX_APPS];
+static int             N_APPS = 0;
+static char            APP_STRINGS[MAX_APPS * 2][128];   /* backing store for parsed strings */
+
+#define APPDIR "/usr/share/applications"
+
+/* Pull "Name=" and "Exec=" out of one .desktop file.  Deliberately minimal: no locale
+ * variants, no field codes (%U/%f), no Type/NoDisplay handling -- these are our own files,
+ * not arbitrary freedesktop ones.  Returns 1 when both keys were found. */
+static int parse_desktop(const char *path, char *name, char *exec, size_t cap)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char line[256];
+    name[0] = exec[0] = 0;
+    while (fgets(line, sizeof line, f)) {
+        size_t n = strlen(line);
+        while (n && (line[n-1] == '\n' || line[n-1] == '\r')) line[--n] = 0;
+        if (!strncmp(line, "Name=", 5) && !name[0]) { strncpy(name, line + 5, cap - 1); name[cap-1] = 0; }
+        else if (!strncmp(line, "Exec=", 5) && !exec[0]) { strncpy(exec, line + 5, cap - 1); exec[cap-1] = 0; }
+    }
+    fclose(f);
+    return name[0] && exec[0];
+}
+
+static int cmp_entry(const void *a, const void *b)
+{
+    return strcmp(((const struct appentry *)a)->label, ((const struct appentry *)b)->label);
+}
+
+static void load_apps(void)
+{
+    DIR *d = opendir(APPDIR);
+    if (d) {
+        struct dirent *e;
+        while ((e = readdir(d)) && N_APPS < MAX_APPS) {
+            size_t l = strlen(e->d_name);
+            if (l < 9 || strcmp(e->d_name + l - 8, ".desktop")) continue;
+            char path[256];
+            snprintf(path, sizeof path, "%s/%s", APPDIR, e->d_name);
+            char *nm = APP_STRINGS[N_APPS * 2], *ex = APP_STRINGS[N_APPS * 2 + 1];
+            if (!parse_desktop(path, nm, ex, 128)) continue;
+            APPS[N_APPS].label = nm;
+            APPS[N_APPS].exec  = ex;
+            N_APPS++;
+        }
+        closedir(d);
+        /* readdir order is the overlay's insertion order, which is not meaningful to a user. */
+        if (N_APPS > 1) qsort(APPS, (size_t)N_APPS, sizeof APPS[0], cmp_entry);
+    }
+    if (N_APPS == 0) {                       /* no apps.blob in this image -- use the fallback */
+        for (int i = 0; i < N_BUILTIN && i < MAX_APPS; i++) APPS[N_APPS++] = BUILTIN_APPS[i];
+    }
+}
 
 /* distinct accent colours cycled across the tiles */
 static const uint32_t PALETTE[] = {
@@ -393,6 +462,7 @@ static void registry_remove(void *d, struct wl_registry *r, uint32_t n){ (void)d
 static const struct wl_registry_listener registry_listener = { .global=registry_global, .global_remove=registry_remove };
 
 int main(void){
+    load_apps();                     /* /usr/share/applications/*.desktop, else BUILTIN_APPS */
     static struct app app; memset(&app, 0, sizeof app);
     app.running = 1; app.hover = -1;
     app.width = WIN_W; app.height = WIN_H; app.stride = WIN_W*4; app.buffer_size = (size_t)app.stride*WIN_H;

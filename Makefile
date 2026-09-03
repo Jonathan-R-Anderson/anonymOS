@@ -207,6 +207,8 @@ veracrypt-efi:
 	+$(MAKE) -C deps/veracrypt efi
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt
 HYPRCFG_SRC  := system/hypr
+APPS_SRC     := system/applications
+APPS_BLOB    := build/apps.blob
 HYPRCFG_BLOB := build/hyprcfg.blob
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
@@ -1225,6 +1227,18 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		fi; \
 	elif [ "$(WESTON)" = "1" ]; then \
 		echo "Weston not built — run: make deps-weston (staying on Hyprland)"; \
+	fi
+
+	@# GUI A6 — the launcher's app grid comes from .desktop files, not a hardcoded C array.
+	@# Staged unconditionally: wl-overview runs on Weston as well as Hyprland, and without this
+	@# blob it silently falls back to its BUILTIN_APPS list.
+	@if [ -d $(APPS_SRC) ]; then \
+		python3 scripts/pack-hyprcfg.py $(APPS_SRC) $(APPS_BLOB) usr/share/applications >/dev/null; \
+	fi
+	@if [ -f $(APPS_BLOB) ]; then \
+		cp $(APPS_BLOB) cd/apps.blob; \
+		printf '\n    module_path: boot():/apps.blob\n' >> cd/boot/limine/limine.conf; \
+		echo "Included apps.blob ($$(ls $(APPS_SRC) | wc -l) .desktop entries -> /usr/share/applications)"; \
 	fi
 
 	python3 scripts/build-boot-integrity-manifest.py cd $(BOOT_INTEGRITY_MANIFEST) \

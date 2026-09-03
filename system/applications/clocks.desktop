@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Clocks
+Exec=/wl-clocks
+Icon=clock
+Categories=Utility;Clock;

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=System Monitor
+Exec=/wl-sysmon
+Icon=monitor
+Categories=System;Monitor;

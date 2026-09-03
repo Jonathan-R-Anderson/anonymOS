@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Text Editor
+Exec=/wl-editor
+Icon=text-editor
+Categories=Utility;TextEditor;

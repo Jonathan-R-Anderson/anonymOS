@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Logs
+Exec=/wl-logview
+Icon=log
+Categories=System;Monitor;

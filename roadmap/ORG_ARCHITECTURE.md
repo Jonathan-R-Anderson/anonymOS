@@ -177,17 +177,6 @@ the critical path (P5/P6 and P3.3/P10.2). No threat is left unassigned.
 
 ## Acceptance (Phase 1 tasks)
 
-- **1.1 ✅** — taxonomy {StrongOwn, StrongRef, Weak, Cap, Observer} ratified with per-kind
-  life/security/cycle rules; **all 20 concrete edges (E1–E20) in the current tree
-  classified** (table above) — superset of the roadmap's 9-row table, extended to the
-  objects added by OO-P7–P12.
-- **1.2 ✅** — ownership / capability-propagation / security-inheritance / corruption-
-  recovery models reduced to **checkable predicates** I1–I8 with the exact enforcement
-  point and current status of each.
-- **1.3 ✅** — threat model T1–T10 (incl. cycle-leak DoS, label-escalation via ref edges,
-  validator-as-oracle) each mapped to invariant(s) + mitigating phase + current status;
-  coverage verified (no unassigned threat).
-
 **Distributed specifics (refs as `{nodeId,objId,epoch}`, weak+leased cross-node edges)**
 are deliberately deferred to **ORG-P11** per the roadmap's own risk note ("over-design;
 mitigate by deferring distributed specifics").

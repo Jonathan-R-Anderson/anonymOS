@@ -21,15 +21,8 @@ of the same idea: detect hardware → get the right Linux driver+firmware into t
 
 | Area | State | Notes |
 |---|---|---|
-| Native net stack | ✅ e1000 + ARP/IPv4/TCP/UDP/DHCP/DNS/HTTP(S) in `src/kernel/d/network/` | wired-only; RX unproven on real HW; **independent of LKL** |
-| LKL PCI bridge | ✅ drives NVMe/USB/GPU on real HW (`src/lkl/lkl-boot.c`, `0x4100`) | INTx-polled IRQs, DMA map via op5, direct-map big BARs via op8 |
 | LKL wireless | ❌ `# CONFIG_WIRELESS is not set` | no cfg80211/mac80211/driver |
 | LKL firmware | ❌ `# CONFIG_FW_LOADER is not set` | can't load `.ucode`/`.bin` blobs |
-| PCI survey | ✅ `drivers/pci.d` scan + **new `wifiSurvey()`** (W0) | prints class-0x02 devices + driver/firmware hint to the panel |
-| Package repo | ✅ `core/pkgrepo.d` (cap-gated, per-domain, signed) | no firmware entries yet |
-| Installer | ✅ `src/util/wl-installer.c` — has a **disabled** "Wi-Fi" network option | writes `/install.json`; no firmware bundling |
-| Signing/trust | ✅ `core/template_bundle.d` (HMAC), `core/boot_integrity.d` | reuse for signed driver/firmware provenance |
-
 ---
 
 ## Architecture decisions (resolve before Phase W1)
@@ -65,12 +58,6 @@ of the same idea: detect hardware → get the right Linux driver+firmware into t
 ---
 
 ## Phases
-
-### W0 — Hardware survey — ✅ DONE (this session)
-`wifiSurvey()` (`drivers/pci.d`) walks PCI class 0x02, prints `vid:did WiFi/wired bdf=… →
-<vendor> <driver + firmware>` straight to the framebuffer (visible on the serial-less
-laptop, before the desktop presents). **Reflash + photograph the `[wifi-survey]` line to ID
-the FW13's chip** — that fixes D2's driver + which firmware W2 fetches.
 
 ### W1 — LKL wireless rebuild
 Config fragment ready: **`src/lkl/wifi-lkl.config`** (Model A, all common WLAN drivers +

@@ -60,37 +60,6 @@ comes up on the 1080 (VBE) → the software desktop renders; AHCI finds the SATA
 establishes the baseline + flushes real-HW boot quirks (memory map, ACPI, framebuffer mode). **Input
 won't work yet** (no PS/2; that's the LKL track). The user runs this; report back.
 
-## L1 — Build LKL (`liblkl.a`) — the feasibility gate  ✅ **DONE (2026-06-26)**
-Cloned `github.com/lkl/linux`, `make -C tools/lkl` (deps flex+bison+elfutils, no-sudo via conda env
-`lkl`). Built `liblkl.a` (351 MB) + `liblkl.so` + headers (`~/lkl-build/linux/tools/lkl/`). **Verified:
-`./tests/boot` boots `Linux version 6.12.0+` inside the library** (irqs/timers/memory/console/`Run
-/init`), and the `lkl_sys_*` interface works (`getpid()=1`, `creat()=0`) — the call-in path EpinAnonymOS
-will use. **★ De-risk: L3 has a defined interface.** LKL ships `lkl_pci_ops` (config rd/wr, MMIO, IRQ,
-DMA-map) and **`lib/vfio_pci.c` is a working reference implementation** (Linux VFIO uABI) — so L3 is
-"implement `lkl_pci_ops` for EpinAnonymOS," not an open research problem. `lkl_pci` core probes already.
-
-## L2 — Boot LKL inside EpinAnonymOS  ✅ **DONE (2026-06-26, commit 06d115387)**
-**The Linux kernel (6.12) boots inside EpinAnonymOS:** serial shows `Linux version 6.12.0+ …musl`,
-`LKL up inside EpinAnonymOS. getpid()=1`, `lkl_sys_openat=0`, `LKL halted cleanly`. Built musl (musl-gcc
-cross, `lkl.h` +`<sys/types.h>`, non-PIE static). Two fixes beyond the embedder: a **custom timer host-op**
-(thread that sleeps + calls the kernel timer cb, replacing LKL's POSIX-timer/`rt_sigtimedwait` clock), and
-a **real `nanosleep` in the kernel** (it was a no-op; now parks the task via the poll/epoll park + PIT-tick
-wake — benefits every program). Details below + in `src/lkl/`.
-
-**Approach (decided in L2): userspace LKL**, not in-kernel. LKL's default POSIX host-ops
-(`lib/posix-host.c`) use ordinary Linux syscalls (mmap, clone/futex for pthreads, clock_gettime) — which
-EpinAnonymOS's Linux personality already provides (it runs threaded musl: Weston/Mesa). So **no custom
-`lkl_host_operations` are needed** — run an LKL binary on the Linux personality, and later give it
-hardware via a kernel `/dev/vfio` (LKL's existing `vfio_pci` backend → L3).
-- **Embedder ✅ (`src/lkl/lkl-boot.c`):** `lkl_init(&lkl_host_ops)` → `lkl_start_kernel("mem=32M …")` →
-  `lkl_sys_*`. **Validated on the host** (boots `Linux version 6.12.0+`, `getpid()=1`,
-  `lkl_sys_openat`/`write` work). Built **static** with `-Wl,--whole-archive liblkl.a`; **stripped = 13 MB**
-  (from 147 MB) — stageable on EpinAnonymOS.
-- **Next (on-target):** stage the 13 MB static binary on EpinAnonymOS (boot module or grow the AHCI disk),
-  run it, capture how far LKL boots. **Verify:** "Linux version …" on the *EpinAnonymOS* serial. Failures
-  reveal the Linux-syscall gaps in the personality that LKL needs — fill those (the real L2 work is making
-  EpinAnonymOS's Linux ABI complete enough to host LKL, not writing host-ops).
-
 ## L3 — The hardware bridge: a CUSTOM `lkl_dev_pci_ops` backend (the core)  *(scoped 2026-06-26)*
 **Decision: a custom backend, NOT VFIO.** LKL's PCI backend contract is the small `struct
 lkl_dev_pci_ops` (lib/vfio_pci.c): `.add` / `.remove` / `.read`,`.write` (PCI **config** space) /
@@ -109,17 +78,6 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
 4. **IRQ forward** (device IRQ → `lkl_trigger_irq`) — the ONLY hard one (EpinAnonymOS polls, no kernel IRQ
    handling, [[weston-perf-profiling]]); **deferred** — prove with a polled driver first.
 **Incremental:**
-- **L3a ✅ DONE (commit ad1273c88): LKL ENUMERATES real PCI hardware via the backend.** Kernel syscall
-  `EPIN_SYS_LKL_PCI=0x4100` (config read/write/scan over `pciConfigRead32`/`scanPCIDevices`); `lkl-boot.c`
-  custom `lkl_dev_pci_ops` (`.add` scans, `.read`/`.write`→syscall) as `ops.pci_ops`, cmdline `lkl_pci=epin`.
-  Serial: `epin_pci: device 00:01.1 vendor/device=0x70108086` + `pci 0000:00:00.0:` (LKL read its BARs).
-- **L3b ✅ DONE — a real Linux driver does MMIO+DMA through the bridge.** LKL's NVMe driver fully
-  initializes the controller via EpinAnonymOS. Serial-verified register trace: reads **CAP=0x0f0107ff** +
-  **VS=0x10400 (NVMe 1.4.0)** (op3 MMIO read), DMA-maps the admin CQ/SQ (`map_page → phys 0x2ec7000 /
-  0x2ec8000`, op5 virt→phys), writes **ASQ/ACQ** = those phys addrs + **AQA**, then **CC.EN=1** to enable
-  the controller (op4 MMIO write) — zero QEMU guest-errors (the BAR accesses are valid). The probe then
-  waits on the Identify *completion* = an IRQ → **L3c**. NVMe = the conflict-free device (LKL has `nvme`;
-  EpinAnonymOS uses AHCI). Run: `LKL_NVME=1 ./qemu-run.sh` (or a direct headless `-device nvme`).
   - **Kernel (0x4100 syscall):** op3 = MMIO read at phys (`*(shared*)(phys + hhdm_offset)`),
     op4 = MMIO write at phys, op5 = virt→phys (`addrspace.activeVirtToPhys`, the calling task's page table).
   - **Backend (`lkl-boot.c`):** `.resource_alloc(dev, size, idx)` reads BAR[idx] from config → the BAR phys,
@@ -136,13 +94,6 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
   - **DMA contiguity caveat:** the device DMAs to guest-phys; LKL's buffers are EpinAnonymOS userspace
     pages — but observed admin CQ/SQ got *consecutive* phys (0x2ec7000/0x2ec8000), so LKL RAM is roughly
     contiguous. A single large contiguous DMA may still need a contiguous allocation.
-- **L3c ✅ IRQ forward DONE (polled INTx → `lkl_trigger_irq`; commit ca4afbb96).** LKL has no MSI/MSI-X
-  (`pci.c` only does `lkl_get_free_irq` + `irq_init`), so the device uses a legacy INTx pin. EpinAnonymOS
-  polls (no kernel-mode interrupt delivery), so `.irq_init` spawns a thread that polls the device's **PCI
-  Status register (cfg 0x06 bit 3 = Interrupt Status)** and raises the Linux IRQ via `lkl_trigger_irq`,
-  with a ~4ms periodic safety trigger. **RESULT: LKL's nvme admin Identify COMPLETES** (`nvme nvme0: 1/0/0
-  default/read/poll queues` + namespace identify + `Abort status: 0x0`) — a real Linux driver now
-  initializes a device AND completes admin commands through the bridge, where before it hung forever.
   - **KNOWN REMAINING (diagnosed, low-priority):** an I/O-queue READ (QID 1, opcode 0x2, 4096B) times out
     at ~30s. Doorbell instrumentation pinned it: of 31 doorbell writes, **ALL are admin queue** (0x1000/
     0x1004) and **ZERO are the I/O queue** (0x1008/0x100c) — so the read is queued in blk-mq but **never
@@ -248,18 +199,6 @@ PCI). LKL **has** an MMU option (`config MMU` in `arch/lkl/Kconfig`), so it's po
 **substantial prerequisite, not an increment**: LKL gains real virtual memory, which changes the model the
 DMA bridge relies on (`.map_page`/op5 today = the host-chunk linear offset; with an LKL MMU the page-table
 walk changes) and **risks the proven NOMMU L3/L5**. So L6 is its own phase:
-- **L6.0 ✅ DONE (commit d7803181d): LKL MMU works through the bridge.** Enabled `CONFIG_MMU`+`DRM`+
-  `DRM_BOCHS`+`TTM` in the LKL build; **TTM needed a 1-line patch** (`ttm_module.c`: guard the x86-only
-  `boot_cpu_data.x86` line with `CONFIG_LKL`, like UML's `CONFIG_UML` guard). The MMU host-op (`shmem_init`/
-  `shmem_mmap`, which back LKL "physical" memory with a host shm it mmaps at kernel-VAs) was overridden in
-  lkl-boot.c to use a **memfd** (EpinAnonymOS has no `shm_open`/`/dev/shm`) with **`MAP_FIXED`** (LKL remaps
-  pages; `MAP_FIXED_NOREPLACE` → `BUG_ON(res!=va)` panic). **The bridge DMA SURVIVES the MMU** — the
-  shmem-mmap'd pages are real host mappings so `op5` virt→phys still resolves; **USB still fully enumerates +
-  creates input devices under MMU** (verified). Build needs `make -k` (the unused `lib/hijack` glibc-isms).
-- **L6.1 ✅ DONE — bochs-drm fully PROBES the GPU through the bridge and creates `/dev/dri/card0`.** Serial
-  proof: `epin_pci: BAR0 DIRECT phys=0xfd000000 -> va=0x700000000000`, then `[drm] Found bochs VGA, ID 0xb0c5`,
-  `[drm] Initialized bochs-drm 1.0.0 ... on minor 0`, `[drm] fb0: bochs-drmdrmfb frame buffer device`. The fix
-  was **DIRECT-mapping the framebuffer** (option a), in three coordinated edits:
   - **Bridge `op8`** (`posix.d` `linux_sys_epin_lkl_pci`): cap-gated; maps a granted BAR's phys straight into
     the calling LKL task's address space (`map_page_hhdm` + `PTE_CD`, `owned=false` — device MMIO, never freed)
     at a fresh `g_nextMmapAddr` VA, returns the VA. Mirrors the kernel's own FD_DRM mmap (phys→user-VA).
@@ -271,13 +210,6 @@ walk changes) and **risks the proven NOMMU L3/L5**. So L6 is its own phase:
     ★ TRAP fixed: `register_iomem`'s free-slot search was `!ops`, but a direct region also has `ops==NULL`
     (marked by `host_va`) — so the register BAR collided with the framebuffer's slot/token → `readw(mmio+0x500)`
     read garbage → `[drm] *ERROR* ID mismatch`. Fix: free slot needs `!ops && !host_va`.
-- **L6.2 ✅ DONE — pixels from the LKL GPU are ON SCREEN.** `lkl-boot` runs an in-LKL KMS client
-  (`epin_kms_draw`): opens `/dev/dri/card0`, `SET_MASTER` → `GETRESOURCES` (1 crtc, 1 connector) →
-  `GETCONNECTOR` (mode **1280×800**) → `CREATE_DUMB` + `ADDFB` → `SETCRTC` (modeset, scanout enabled), then
-  paints a color-bar test pattern. **VERIFIED by QMP screendump of the bochs-display: it changed from
-  640×480 / 2 colors (blank) to 1280×800 / 8 colors (the bars)** — the resolution change proves the LKL's
-  bochs-drm did the modeset; the colors prove it's scanning out (`roadmap/assets/l6.2-lkl-gpu-pattern.png`).
-  Two non-obvious fixes were needed:
   - ★ **The "/init crash" was really an op8 STACK COLLISION.** op8 mapped the 16MB framebuffer at
     `g_nextMmapAddr` = `0x700000000000`, which is exactly where the lkl-boot **main-thread stack** lives
     (`rsp ~0x7000000ff450`, ~1MB in) → the 16MB mapping overwrote the boot thread's return frame → `rip=0`

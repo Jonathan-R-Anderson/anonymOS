@@ -1007,44 +1007,11 @@ desktop-shell gate + one persistent `system.installed` flag, so it can land earl
 finishes.
 
 ## Build status (live)
-- **§D1 qtbase ✅ DONE + verified.** `deps/qt-stack` cross-builds **static Qt 6.4.2** with musl-clang
   + libc++, reusing the gtk-stack sysroot for shared prereqs. `qtbase` configures clean and builds
   **[1013/1013], 0 errors** → `libQt6{Core,Gui,Widgets,Network,Concurrent,Xml,PrintSupport}.a` +
   platform-support libs in `sysroot`. The plan's dominant risk (does Qt build here at all?) is
   retired. Config keys that mattered: bundled md4c/b2 (`-DINPUT_libmd4c=qt`), and
   `-DINPUT_opengl=no -DFEATURE_egl=OFF` (raster + `wl_shm`, Widgets-only — D1.5).
-- **§D1 qtwayland ✅ DONE (host-toolchain blocker resolved).** `make -C deps/qt-stack qtwayland`
-  cross-builds the **static `qwayland` platform plugin**: `sysroot/lib/libQt6WaylandClient.a` (2.1 MB),
-  `sysroot/plugins/platforms/libqwayland-generic.a` (the QPA plugin for `Q_IMPORT_PLUGIN`), the shell
-  integrations (`xdg-shell`/`wl-shell`/`ivi-shell`/`qt-shell`/`fullscreen-shell-v1`), the `bradient`
-  client-side-decoration plugin, and the `Qt6WaylandClient` CMake package. **The two-stage host
-  toolchain (D1.1) is now a real, self-contained target:** `make -C deps/qt-stack host-qt` builds a
-  **native** host Qt (host qtbase + host qtwayland) into `deps/qt-stack/host-qt`, providing
-  `moc/rcc/uic/syncqt` **and** `qtwaylandscanner` (+ its `Qt6WaylandScannerTools` CMake export) — so
-  the cross build imports `Qt6::qtwaylandscanner` from there instead of Debian's `/usr` Qt (which ships
-  no scanner + no private headers). The whole cross stack now uses `host-qt` as `QT_HOST_PATH`, fully
-  decoupled from Debian. ★★ TRAPS (all fixed in the Makefile):
-  (1) **`CMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON`** on the host build — Qt 6.4.2 + CMake ≥ 3.28 otherwise
-  dies promoting `Threads::Threads` to `IMPORTED_GLOBAL` from `src/corelib` (cross-directory scope is
-  forbidden); the flag makes `find_package` create targets global inline so Qt's manual promotion is
-  skipped. The cross qtbase dodges this via its toolchain-file scoping; the native host build needs it.
-  (2) **`-DFEATURE_xkbcommon=OFF` on the host build** — Ubuntu's system `xkbcommon-keysyms.h` (1.6.0)
-  predates the `XKB_KEY_dead_*` keysyms Qt 6.4.2 references, so `qxkbcommon.cpp` won't compile on the
-  host; a tool-only host Qt needs no keyboard, and the cross build gets real xkbcommon (1.7.0, with
-  those keysyms) from `deps/gtk-stack/sysroot`.
-  (3) **Cross qtbase MUST be rebuilt against `host-qt`, not Debian** — the cross qtbase *bakes*
-  `initial_qt_host_path[_cmake_dir]` into `sysroot/lib/cmake/Qt6/Qt6Dependencies.cmake`, and cross
-  qtwayland reads them. If they point at Debian, `find_package(Qt6HostInfo)` resolves Debian's
-  `QT6_HOST_INFO_LIBEXECDIR=lib/qt6/libexec`, so syncqt is sought at `host-qt/lib/qt6/libexec/syncqt.pl`
-  (doesn't exist; ours is `host-qt/libexec/syncqt.pl`) → "Can't open perl script … syncqt.pl". Building
-  cross qtbase against `host-qt` bakes the correct `./libexec`.
-  (4) **`unpack` now wipes the `-build` dir too** — a stale Qt CMake build dir caches
-  `QT_HOST_PATH`/`QT_HOST_PATH_CMAKE_DIR`, so reconfiguring with changed `-D` flags left a *split*
-  host-path state (`QT_HOST_PATH=host-qt` but `_CMAKE_DIR=/usr`). A clean build dir per configure
-  prevents it.
-  **Remaining for roadmap-order step (1):** runtime proof — a static qtbase+qwayland "hello world"
-  rendered on Weston (boot the live ISO). The build artifacts are all present; only the on-Weston
-  validation is left.
 - **§D3 build infrastructure ◑ BEGUN.** The Calamares cross-build tree exists:
   `deps/calamares/Makefile` (CMake cross via the shared `deps/qt-stack/qt-cross.cmake`, now with a
   `CALAMARES_SYSROOT` in its find path) builds Calamares' C++ deps + the installer ELF into
@@ -1089,59 +1056,12 @@ finishes.
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
   it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +
   the partition page driving the §D2(b) engine. Phase-1 analysis: `installer/ARCHITECTURE.md`.
-- **§E VeraCrypt decoy/hidden-OS encryption: E0–E5 ✅ DONE (E4c rootfs + E6/E7 remain).** An *optional*
-  Phase-5 step. `deps/VeraCrypt` is vendored (`b3d6c9fbf`). **E1 crypto core built + KAT-validated**
-  (`make veracrypt` → `libvc_crypto.a`; AES-256 + SHA-512 NIST vectors). **E2a header engine +
-  deniability proven** (`vcheader.c`; `header-test` 8/8 — decoy/hidden headers each open with only
-  their own password, wrong rejected, magic encrypted). **E2b kernel native-D header DONE**: real
-  in-kernel AES-256 + SHA-512 (`drivers/veracrypt_crypto.d`, replaces the old `core/stubs.d` stubs;
-  boot `[vc-crypto] KAT PASS`) + `veracrypt_impl.d` rewritten to the spec, **byte-identical to the
-  `vcheader.c` reference** (`vc-parity` cross-check: kernel header == reference + opens). **E3
-  encrypted layout DONE**: the kernel writes the three-header decoy/hidden scheme + XTS data to a
-  spare disk, host `vc-layout` validates 8/8 (each header opens with only its password, deniability
-  holds, decoy data decrypts). **E4a volume data engine DONE**: multi-sector XTS (per-sector data
-  units) + random free-fill, host `vc-volume` validates (16/16 sectors decrypt; free-fill 7.975
-  bits/byte entropy). **E4b DONE** (real 3-partition GPT, header at boundary) + **E4c cap-gating DONE**
-  (one-shot block-write capability). **E5 DONE — the EFI pre-boot loader works end-to-end in real
-  firmware (OVMF)**: a real PE32+ `.efi` (clang PE target, no gnu-efi), self-contained EFI crypto,
-  block-IO header reads, decoy/hidden/reject routing, an interactive masked password prompt (validated
-  via QMP keystrokes), and `LoadImage`/`StartImage` **chain-load** to the next stage. The installer now
-  stages `esp-hidden-image`, encrypts the decoy Linux and hidden EpinAnonymOS payloads into the target
-  disk, discovers the encrypted GPT layout from EFI, and no longer requires the default
-  `decoy-password` to recognize an installed disk. Remaining: replacing the current stage2 handoff stub
-  with the real decoy/hidden OS bootloader, the optional installer page (E6), and the deniability
-  security review (E7).
 - **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An
   *optional* step: publish a Merkle root of the `/system` hashes to a (yet-to-be-written) zkSync Era
   smart contract and verify it at boot. **Gated on the 🚧 network stack (RX) + a Wi-Fi path** (F1),
   which is its hard prerequisite. Carries real, documented tensions: the public-hash fingerprint vs
   the OS's anonymity goals, update-key custody, and RPC trust (F7). Contract source will live in
   `installer/contracts/` (`zksolc`, ABI in-repo).
-- **§G Perlin-noise decoy activity generator: ENGINE + RENDERER ✅ DONE (G2/G3); G1/G4–G6 remain.**
-  `deps/decoy/decoy.{c,h}` (`make decoy`) — the universe as a pure function `U(seed, subsystem,
-  hour-window)`: integer/fixed-point coherent noise (no float → cross-arch deterministic), a shared
-  activity-intensity field driving all 8 subsystems, and heavy-tailed bursty event placement. Portable
-  C, no libc — reused by the kernel decoy view (G) and the §H2 Linux program. Tests PASS: **same
-  password → byte-identical universe; different/1-char-typo password → different; bursty (Fano 1.76);
-  subsystems correlated (r 0.77); 10-years-out is deterministic + O(window).**
-  **G3.3 realism renderer DONE** (`decoy_render.{c,h}`, `make -C deps/decoy render`): turns events into
-  believable `/var/log`-style lines (sshd/systemd/cron/sudo/auditd/NetworkManager + a civil-date stamp),
-  deterministic + password-keyed; a week renders ~700 plausible lines with realistic quiet/busy
-  variation — the visible payoff + exactly what §H2 writes to disk.
-  **G2.2 honey-hashed typo-tolerant boot matcher DONE** (`deps/decoy/g2/dm.{c,h}`, `make -C deps/decoy
-  g2`): the boot-required gate tying §G to §E. Exact verifiers (no fuzzy data on disk); typo tolerance
-  by fuzzing the *input* (caps-lock/first-char/transposition/extra-char corrections) against them; a
-  typo near a decoy boots that decoy's **identical** universe (seed snapped to canonical); unrelated
-  passwords + far-off typos are rejected; honey/chaff verifiers hide the decoy count (10/10 test).
-  Remaining: the seed-anchored virtual clock + event schema + object-view integration (G1/G4),
-  per-subsystem renderers, and snapshot/distributed (G6). The full
-  design (logs/procs/users/services/net/security/audit/object-access for the §E decoy; **boot-required**
-  via the honey-hashed typo-tolerant matcher; the seed-anchored virtual clock + no-float-noise
-  prerequisites) is in the §G analysis section above.
-- **§H Linux decoy OS + concealed activity synthesis: H1 + H2 ✅ DONE; H3–H5 remain.** The decoy OS is a
-  *real Linux distro* (most believable); §G's fake history is produced *inside* it by a concealed program.
-  **H1 — the decoy distro BUILT** (`deps/decoy-os/`, `make decoy-os`): downloads a real Alpine 3.19
-  minirootfs, customizes it into a lived-in workstation (hostname, a real user + home + `.bash_history`
   + notes, an apk package `world`), and **seeds a year of deterministic, password-keyed fake `/var/log`
   history via §H2** → `make image` produces `decoy.ext4`, staged in the installer ISO as
   `decoy-linux.ext4`, for the installer to encrypt into the decoy system partition (E4c).
@@ -1158,42 +1078,6 @@ finishes.
   the recommended primary is **hide-in-plain-sight** (disguise as an ordinary daemon), with kernel-hiding
   only as defense-in-depth if it provably evades anti-rootkit tooling. Plausible-deniability/anti-coercion
   on the user's own decoy (VeraCrypt-Hidden-OS threat model). Builds on §E + §G.
-- **§D6 native installer UI ✅ IMPLEMENTED — now a full Ubuntu-like guided wizard**
-  (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client). It walks the entire §Phase-5
-  sequence — **Welcome · Language · Keyboard · Time zone · Network · Disk · Filesystem · Encryption ·
-  (Decoy) · Boot integrity · Account · Identities · Summary · Install** — with a left step rail that
-  tracks progress, scrollable single-choice option lists (16 locales, 12 keymaps, 18 time zones,
-  network mode, 3 filesystems, boot-integrity mode) navigable by mouse wheel **and** arrow keys, a
-  toggleable identity-profile page (Personal/Work/Banking/Research/Disposable/Anonymous), and an
-  Account page (name · computer name · username · password · confirm) with live validation that gates
-  the Continue button (required fields + password match). The **Disk page enumerates real targets**
-  from `/config/disks.json` (kernel CFG_DISKS render) and falls back to "Automatic" when none are
-  present. *Try Live* closes the installer; *Install Now* serialises **every** choice (locale,
-  keymap, timezone, network, filesystem, target disk, boot-integrity, identities, encryption +
-  passwords, account, decoy account) into `install.json`, writes `/tmp/install.json`, sends
-  `config <json>` then `install [idx]` to `/config/install.action`, and tracks
-  `/config/install.progress` with a progress bar + slideshow. The kernel persists the non-secret
-  declarative fields into the installed ESP's `/install.json` and first boot logs them. Remaining
-  vs. the full Calamares vision: manual/custom partitioning UI, acting on locale/keymap/timezone at
-  runtime, materialising identity profiles as first-boot objects, and the zkSync deploy flow (§F,
-  network-gated). Builds clean: `make build/wl-installer`, `make -C src/kernel/d`, `make kernel.elf`.
-- **§D4.2 / D4.3 / D4.4 ✅ DONE — installer AUTO-LAUNCHES on a live boot and self-removes once
-  installed (verified both ways, 0 faults).** No key combo: on a live boot the installer **appears
-  automatically, front-and-centre**. Mechanics in `deps/weston-14.0.0/desktop-shell/shell.c`:
-  `epin_load_config` checks `access("/install.json")` once (the install marker = the one declarative
-  file Calamares writes, Phase 7; presence = "installed") and recognises two LIVE-MEDIA-ONLY
-  directives, **`autostart-live`** and `bind-live`, which are honoured while live and **skipped once
-  installed**. `autostart-live` entries launch on a **+3000 ms `wl_event_loop` timer** so they map
-  *after* the desktop and come up as the focused, on-top window (fixes the earlier occlusion behind
-  the maximized Domain Manager). `src/desktop.conf` now has `autostart-live = /calamares` (no
-  keybind). Verified in VBox (x2APIC on): live boot → `install state = live`, `scheduled 1 live-only
-  autostart … (+3000ms, on top)`, installer renders on top with no input; with `/install.json`
-  present → `install state = INSTALLED (live-only entries HIDDEN)`, **nothing scheduled, no installer**
-  — gone on this and every future startup. Current kernel surfaces now also expose the richer signal:
-  `/config/system.json` includes `"installed": true|false`, and `/system/state/installed` renders
-  `true`/`false` from the installed `/install.json` boot module. The desktop gate still uses
-  `access("/install.json")`, so switching it to the richer signal is a small follow-up, not a
-  behavior blocker.
 - **§D4 remaining:** persistent object-store backing for `system.installed` and desktop-shell
   consumption of `/system/state/installed` instead of raw `/install.json` access. The native installer
   creates the marker by persisting `/install.json` into the installed ESP; Calamares still needs to

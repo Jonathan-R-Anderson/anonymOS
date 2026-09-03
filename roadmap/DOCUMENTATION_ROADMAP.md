@@ -13,35 +13,6 @@ always the code — when a doc and the code disagree, the code wins; fix the doc
 
 ---
 
-## D1 — Syscall / ABI reference · ✅ [docs/SYSCALL_ABI.md](../docs/SYSCALL_ABI.md) · P: High · E: 3
-
-The Linux x86-64 syscall ABI the kernel emulates (160 syscalls), the dispatch model,
-the per-syscall behaviour + EpinAnonymOS-specific quirks, and the **native** object
-ABI (`HOS_SYS_QUERY = 0x4000`). Dispatcher: `kernel_main.d:dispatchSyscall`.
-
-## D1b — Native object ABI (design spec) · ✅ [docs/NATIVE_OBJECT_ABI.md](../docs/NATIVE_OBJECT_ABI.md) · P: High · E: 4
-
-The object-oriented, capability-based native ABI — the *other* personality. Full
-category-by-category spec (process/thread/object/cap/IPC/VM/FS/namespace/device/sync/
-net/identity/time/crypto/debug/sysinfo/power/module/service/package/observability) with
-prototypes, errors, security, examples; the **access-control model** (§3: native shell
-only, Linux denied `ENOSYS`, native introspects Linux); the AI-friendly mapping; and the
-N0–N7 implementation roadmap. **N0 (the access gate) is implemented** — per-task native
-personality on `/hos-sh` exec, `HOS_SYS_QUERY` gated, verified both ways.
-
-## D2 — Filesystem reference · ✅ [docs/FILESYSTEM.md](../docs/FILESYSTEM.md) · P: High · E: 3
-
-The layered VFS: the writable RT ramfs (`g_rt`), the static synthetic table (`g_vfs`:
-`/proc`,`/sys`,`/etc`,`/dev`), boot modules, the native object filesystem (F0–F5:
-`/objects`,`/system`,`/config`,`/state`,`/compat`), and the persisted on-disk object
-store (AHCI). The exact `sys_open` resolution order. Mostly in `core/syscalls/posix.d`.
-
-## D3 — Namespacing reference · ✅ [docs/NAMESPACING.md](../docs/NAMESPACING.md) · P: High · E: 2
-
-Per-process `Namespace` objects (longest-prefix bindings + rights, gating every
-absolute open) and the per-identity object-tree view (`idns`) layered on top. How
-fork/clone inherit, how restricted namespaces deny. `core/namespace.d`, `core/idns.d`.
-
 ## D4 — Identity & capability model · ☐ docs/IDENTITY_AND_CAPABILITIES.md · P: High · E: 3 · deps: D3
 
 The security spine: identity domains (System/Personal/Work/Banking/Development/

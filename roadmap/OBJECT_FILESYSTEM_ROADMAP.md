@@ -25,8 +25,6 @@ already synthetic views — so this is a re-rooting + a few new views, not a rew
 | `/state` | `g_rt` writable ramfs (`/run`,`/var`,`/tmp`) | exists, re-root |
 | `/system` (immutable) | Generation + StoreObject (IMMUTABLE_ROOTLESS) | primitives exist, no view |
 | `/config/*.json` | `g_identities`/`g_svcs`/`g_users` tables | generate declarative views |
-| `/objects/apps/<app>/manifest.json + storage/` | on-disk object store (objstore.d) | ✅ persisted (F4) |
-
 Principles (grounded): everything is an object; capabilities, not global perms;
 immutable system base; user/app state separate from system; **compat paths are views**;
 declarative config; logs/cache/secrets/runtime separated; identities/namespaces are
@@ -53,144 +51,6 @@ Make the object-OS tree appear at `/` without disturbing the working Linux FS.
 - *Verify:* `ls /` shows the native tree; `ls /compat/linux/bin` + `cat /compat/linux/
   bin/<applet>` work; `/bin/ls` still execs; the shell + busybox are unchanged.
 
-## F1 — `/objects` live views (generated, read-mostly) · ✅ DONE (2026-06-09) · P: High · E: 3 · R: med · deps: F0
-
-The real native model: a synthetic object tree over the kernel's live tables.
-
-- `/objects/<kind>/` directories — `processes` (= reframed `/proc`), `identities`,
-  `services`, `namespaces`, `users` — each enumerating live objects.
-  - **Implemented:** `objfsEnum`/`objfsRead`/`objfsKindId` in core/hoscall.d render the
-    live `g_identities`/`g_svcs`/`g_users` (+ object) tables; posix.d `sys_open` resolves
-    `/objects/<kind>/<obj>` to a generated metadata file (`SYNTHDIR_OBJ_BASE` getdents for
-    `/objects/<kind>`, kind list `identities/services/namespaces/users` as DT_DIR for
-    `/objects`). `/objects/processes` is an RT dir-symlink onto `/proc`, **plus** a
-    `sys_open` prefix-rewrite `/objects/processes/… → /proc/…` so per-pid paths reach the
-    procfs handler (the symlink alone only covers the final component / synthetic `/proc`).
-- Each object renders as a metadata file: `type`, `name`, `objId`, plus kind-specific
-  fields (identities: `trust`, `ceiling`, `state`, `disposable`, `namespace`,
-  `policyEpoch`; users: `uid/gid/rights`). Per-field dirs + `capabilities/`,
-  `relationships/` are F5.
-- *Verified (GUI):* `ls /objects` → `identities namespaces processes services users`;
-  `ls /objects/identities` → the 7 domains; `cat /objects/identities/System` →
-  `type=Identity name=System trust=100 ceiling=0x7ffff state=active …`;
-  `ls /objects/processes` → live pids (clean, no errors); `cat /objects/processes/<pid>/
-  comm` → the process name; `/bin/ls` + rtfs selftest 11/11 unaffected.
-
-## F2 — `/config` declarative views · ✅ DONE (read-only render, 2026-06-09) · P: Med · E: 3 · R: med · deps: F1
-
-System configuration as declarative data generated from (and applied back to) the
-kernel object tables.
-
-- **DONE:** generated `/config/{system,identities,users,services}.json` rendered from
-  `g_identities`/`g_svcs`/`g_users` + the object table (`system.json` = kernel/model +
-  object/identity/namespace/service counts). Read = **live render** (verified: the object
-  count changed between two reads). core/hoscall.d `configfsId`/`configfsEnum`/
-  `configfsRender` (JSON via the UB text builder, `jstr` for names, hex strings for
-  rights/ceilings); posix.d `configfsParse` + a `sys_open` branch renders into
-  `g_configBuf` (8 KB) as an `FD_FILE`; getdents over the `/config` RT dir
-  (`g_configDirIdx`) lists the four documents. **Read-only:** a write-open returns EROFS
-  (verified `echo x > /config/system.json` → "Read-only file system", no shadowing RT
-  file created — the EROFS guard precedes the RT-create path).
-- **F2.2 remaining (writable):** make the mutable docs writable via the
-  **signed-policy-transaction** path (the identity `policyEpoch` mechanism) — parse the
-  edited JSON, apply to the object (epoch bumped, audited).
-- **F2.3 remaining (`/etc` view):** make `/etc` a generated view derived from `/config`
-  (replacing the static `g_vfs` `/etc/*`); add a `permissions.json` doc.
-- *Verified:* `ls /config` lists the four docs; `cat /config/identities.json` reflects the
-  live 7 domains (name/objId/trust/ceiling/state/disposable/namespace/policyEpoch);
-  `cat /config/system.json` live counts; write → EROFS; `/bin/ls` + rtfs selftest 11/11
-  unaffected.
-
-## F3 — `/system` immutable base · ✅ DONE (read-only view, 2026-06-09) · P: Med · E: 3 · R: med · deps: IMMUTABLE_ROOTLESS
-
-A read-only view over the content-addressed Generation / StoreObject objects.
-
-- **DONE:** `/system/current` is the active deployment (a synthetic dir of the running
-  **base components = the boot modules**), `/system/generations` lists every captured
-  Generation (active marked), `/system/current/generation` renders the active
-  Generation's metadata (number/objId/parent/components/status/immutable). Each component
-  `/system/current/<name>` renders `type=Component name kind size phys immutable=true`,
-  `kind` ∈ {kernel,server,interface,data} by name (`.so`→interface, `.blob`/`.conf`→data,
-  `kernel.elf`→kernel, else server). **Writes denied:** any create/write anywhere under
-  `/system` returns EROFS (broad subtree guard, *before* the RT-create path).
-  - core/hoscall.d `sysGenMeta`/`sysGenList` (over `g_gens`/`g_activeGen`); posix.d
-    `sysfsParse` + a `sys_open` branch (renders into `g_sysBuf` 4 KB), `sysComponentEnum`/
-    `sysComponentMeta` (over the boot-module table), `SYNTHDIR_SYSCUR` getdents for
-    `/system/current`, `g_systemDirIdx` getdents for `/system`.
-  - *Truthful limits:* the boot **generation captures 0 store entries** (`components=0`),
-    so the component view uses the live boot modules (the de-facto running base), not the
-    Generation's entry list; `kernel.elf` is loaded by Limine (not a module) so no
-    `kind=kernel` entry appears. mkdir/unlink/rename under `/system` aren't yet
-    EROFS-guarded (only open-create/write is) — a hardening refinement.
-- *Verified (GUI):* `ls /system` → `current generations`; `ls /system/current` → the base
-  components + `generation`; `cat /system/current/generation` (number=1 objId=38 active);
-  `cat /system/current/weston` (kind=server size=100432); `cat /system/generations`
-  (`gen1 … [active]`); `echo x > /system/current/weston` → "Read-only file system";
-  `/bin/ls` + rtfs selftest 11/11 unaffected.
-
-## F4 — Persisted object store (the north star) · ✅ DONE (MVP, 2026-06-09) · P: High · E: 5 · R: high · deps: F1, SHELL A5 (disk)
-
-Back `/objects` with real storage so objects + their data survive reboot.
-
-- **A5 disk layer DONE** (commit f7582294e): the dormant AHCI driver was fixed for
-  EpinAnonymOS's HHDM (no low identity map) — phys for DMA, `phys+hhdm_offset` for CPU,
-  `GHC.AE` enabled; `drivers/block/disk.d` gives polled `diskRead/WriteSectors` over a
-  64 KiB DMA bounce buffer. QEMU attaches a 32 MiB raw SATA disk on an AHCI controller.
-  Verified: `[disk] selftest PASS` + marker durably in `hos-disk.img`.
-- **DONE — own object-store FS + apps as first-class objects:** `core/objstore.d` is a
-  custom on-disk store (superblock @ LBA0 + 64-entry app directory @ LBA1–32 + sequential
-  blob region @ LBA64+). Apps persist as `/objects/apps/<app>/{manifest.json,
-  permissions.json, identity-binding.json, executable, storage/data}` (posix.d
-  `appsfsParse` + sys_open blob reads into `g_appsBuf` + 3-level getdents:
-  SYNTHDIR_APPS/APP_BASE/STOR_BASE). `/objects/store` reports the live store + a
-  `bootCount`. A sample `hello` app is seeded on first boot; per-app `storage/` is its
-  private area.
-- *Verified (two QEMU boots, same disk):* boot 1 = `[objstore] formatting`, `ls /objects/
-  apps`→`hello`, `cat /objects/store`→`boots=1`, `storage/data`→`boots=1`; **boot 2 = NO
-  reformat**, `boots=2`, `storage/data`→`boots=2`, `manifest.json` intact — the app object
-  + its manifest/capabilities/identity + storage all survived reboot (the on-disk boot
-  counter climbing across separate QEMU processes proves real persistence).
-- **F4.2 DONE — cap-gated launch (2026-06-09):** `/objects/apps/<app>/executable` is a real
-  ELF stored on disk (the `store-app` image, seeded at format). `execve` of that path is
-  intercepted in `execveTask` (kernel_main.d) and **cap-gated**: the app's declared rights
-  must be ⊆ the launching task's identity ceiling. Grant → `objstoreLoadExec` reads the
-  blob into a DMA buffer and it runs like a boot module; exceed the ceiling → EPERM + audit.
-  *Verified:* `hello` (rights 0x3 ⊆ System 0x7ffff) → "store-app: launched … with my
-  declared capabilities"; `rogue` (rights 0x100000 ⊄ 0x7ffff) → "Operation not permitted"
-  (`[objstore] launch DENIED … declared=0x100000 ceiling=0x7ffff`); and the launch still
-  works after reboot (the executable blob persists).
-- **F4.3 remaining:** make `storage/` user-writable via the shell (a writable synthetic FD
-  → `objstoreStorageWrite` on close); content-address object bodies via StoreObject (dedup)
-  + free-space reclamation/uninstall; an `ipc/` endpoint dir.
-
-## F5 — Capabilities + relationships as first-class FS · ✅ DONE (read views, 2026-06-09) · P: Med · E: 3 · R: med · deps: F1
-
-Expose the cap/relationship graph the kernel already maintains as filesystem objects.
-
-- **DONE — objects are now directories of fields.** Each `/objects/<kind>/<obj>` is a
-  directory (realising F1's intended "directory of metadata files") containing:
-  `meta` (the F1 metadata), `capabilities` (the rights it holds, **decoded into named
-  bits**), `relationships` (its graph edges). core/hoscall.d `objfsFieldId`/`objfsField`
-  (+ `capDecode` over the 19 `CAP_RIGHT_*` bit names); posix.d `objfsParseDeep` resolves
-  `/objects/<kind>/<obj>/<field>`, the object is a synthetic dir (`SYNTHDIR_OBJ_ENTRY`,
-  getdents → meta/capabilities/relationships; objects now enumerate as DT_DIR).
-  - capabilities: identity→`rightsCeiling`, service→`rights`, user→admin `rights`.
-  - relationships: identity→namespace/objRoot/template/trust/devices/policyEpoch;
-    service→owner/endpoint/version/generation; user→uid/gid.
-- *Verified (GUI):* `ls /objects/identities/System` → `capabilities meta relationships`;
-  `cat …/System/capabilities` → `rights=0x7ffff` + all 19 named rights; `cat …/Untrusted/
-  capabilities` → `rights=0x503ff` (**attenuated** — no `admin-*` bits, a strict subset of
-  System), demonstrating the cap graph; `cat …/System/relationships`
-  (namespace=42/objRoot=56/trust=100); `cat …/System/meta` = the old flat metadata;
-  `/bin/ls` + rtfs selftest 11/11 unaffected.
-- **F5.2 remaining (mutation):** native shell `cap`/`obj` grant/attenuate operating on
-  these fields, cap-gated on the identity ceiling (a denied grant that exceeds the ceiling
-  fails + audits — the write side of the cap graph); per-process `capabilities` (over the
-  task cap table, through the `/objects/processes` view); IPC-peer edges in
-  `relationships`.
-
----
-
 ## Compatibility mapping (the "fake views")
 
 - `/bin /sbin /usr /lib` ↔ `/compat/linux/...` (symlinks; F0).
@@ -199,19 +59,6 @@ Expose the cap/relationship graph the kernel already maintains as filesystem obj
 - `/var /run /tmp` ↔ `/state` (F0).
 
 ## Milestones
-
-- **M-F0 Native root.** ✅ `ls /` is the object-OS tree; Linux still runs via `/compat`.
-- **M-F1 Live object FS.** ✅ Browse `/objects/*` reflecting live kernel state.
-- **M-F2 Declarative config.** ✅ (read-only) `/config/*.json` generated from the object
-  tables; writable + `/etc`-from-`/config` are F2.2/F2.3.
-- **M-F3 Immutable system.** ✅ `/system` read-only Generation + base-component view
-  (EROFS on write).
-- **M-F4 Persisted objects.** ✅ (MVP) AHCI SATA disk + on-disk object store; the `hello`
-  app object (manifest + caps + identity + `storage/`) survives reboot (north star reached;
-  launch + writable storage + dedup are F4.2).
-- **M-F5 Capability FS.** ✅ (read) Each object is a dir with `meta`/`capabilities`/
-  `relationships`; the live cap graph (with attenuation) is browsable. Mutation via the
-  native shell is F5.2.
 
 Order: F0 ✅ → F1 ✅ → F2 ✅ → F3 ✅ → F4 ✅ (A5 disk + on-disk object store) → F5 ✅
 (read views). Remaining: F2.2/F2.3 (writable config + /etc view), F4.3 (writable storage +

@@ -23,11 +23,6 @@ requires only a signing key, a zkSync transaction, and any node willing to seed 
 server anywhere.
 
 ## Progress at a glance (updated 2026-07-12)
-- ✅ **U0** — version identity + boot proof — DONE + QEMU-verified.
-- ◑ **U1** — A/B slots + rollback: **U1-A** (boot-state machine, verbs, selftests) ✅ verified
-  headless; **U1-B** (A/B GPT + dual-slot install + boot-state init) ✅ verified on raw disk;
-  **U1-C** (slot-arbiter EFI) BUILT (PE32+) — 2 documented OVMF boot-chain blockers remain
-  (arbiter bypass; pre-existing NVMe-BAR-high HHDM fault). See U1 STATUS.
 - ◑ **U4** — `contracts/UpdateRegistry.sol` (permissionless) WRITTEN + consolidated with
   `DhtBootstrapRegistry.sol` + `BootIntegrityRegistry.sol` into top-level `contracts/`;
   deploy + in-kernel reader + wallet flow pending.
@@ -39,19 +34,8 @@ server anywhere.
 
 | Area | State | Notes |
 |---|---|---|
-| Install engine | ✅ `drivers/veracrypt_impl.d` — batched GPT+ESP streaming to AHCI/**NVMe**, progress contract (-1/0/1..1000), capability-gated writes (`install_cap.d`), install logging | E2E-verified in QEMU incl. Hidden OS (2026-07-11); THE staging engine for slot writes |
-| GPT layout | ✅ `core/diskpart.d` — builds/writes/validates GPT (plain + Hidden OS encrypted layout) | A/B = a second ESP entry + a state region; all ours to change |
-| Own EFI stages | ✅ `preboot.efi` / `stage2.efi` (veracrypt-efi, Hidden OS password gate) | proof we can ship a first-stage boot chooser (slot arbiter) |
-| zkSync anchoring | ✅ `core/boot_integrity.d` — SHA256 boot-module merkle vs **`BootIntegrityRegistry.sol`** read via in-kernel HTTPS JSON-RPC (`eth_call`); publisher side = `scripts/compile-boot-integrity-contract.sh` + `zksync-wallet-vue` blob | the on-chain read/write pattern for the release registry is ALREADY PROVEN |
-| Signed bundles + rollback | ✅ DM12 `core/template_bundle.d` — export/sign/verify, tamper reject, publisher trust, generation/rollback epochs | pattern to reuse; but HMAC (symmetric) — release signing needs **Ed25519** |
-| Crypto | ✅ `core/crypto.d` — SHA256, HMAC, X25519, HKDF, ChaCha20-Poly1305 | ❌ no Ed25519 yet (needed: publisher signatures verifiable by everyone) |
-| Package repo | ✅ DM7 `core/pkgrepo.d` (cap-gated, per-domain) | later rides the same pipeline for per-package updates |
 | Native net stack | ◑ e1000+ARP proven (N0/N1); TCP RX host-blocked in QEMU (N2); in-kernel HTTPS exists (used by boot_integrity, `NET=1`) | one of two transports |
-| LKL net path | ✅ the path that works on the FW13 today: LKL WiFi + userspace sockets via the nshim (`wpa`, `udhcpc` lease, `scp` upload all proven) | userspace daemons (i2p, updater) should ride THIS |
 | I2P + DHT plan | 📋 `NETWORK_AND_MARKETPLACE_ROADMAP.md` Part B (M0 SAM bridge, M2 Kademlia over I2P datagrams) — **planned, not built** | SHARED infrastructure: build once, serve marketplace + updates |
-| Update GUI surface | ✅ `wl-installer` wizard scaffold, Settings app, `store-app`, quicksettings | the user-visible layer (build it alongside — DM lesson) |
-| Test loop | ✅ headless QEMU NVMe install repro + QMP wizard driving (see memory `installer-nvme-target`) | extend to upgrade/rollback cycles |
-
 ---
 
 
@@ -169,52 +153,6 @@ server anywhere.
 Each milestone ends with a **proof at the init site** (klog line / Logs-app filter) and a
 QEMU verification recipe — same discipline as the installer work.
 
-## U0 — System version identity (tiny, do first) — ✅ DONE + VERIFIED (2026-07-12)
-Built: `core/sysversion.d` (monotonic `SYSTEM_VERSION`, channel, boot slot); `/config/system.json`
-gained version/versionString/channel/slot. Boot proof confirmed in QEMU:
-`[update] system version=0x1 (0.1.0) channel=stable slot=A`.
-
-`/config/system.json` gains `version` (build-embedded, monotonic integer + human string),
-`channel` (`stable`), `slot` (`A`/`B`), `bootCount`. Build stamps the version into the
-kernel + into `esp-image` at ISO/bundle build time.
-**Verify:** boot proof line `[update] system version=… channel=stable slot=A`; visible in
-Settings → About.
-
-## U1 — A/B slots + boot-state + automatic rollback (LOCAL; no network, no crypto) — ◑ MOSTLY DONE (U1-A/B ✅ verified; U1-C built, 2 boot-chain blockers — see STATUS below)
-1. `diskpart.d`: GPT v2 layout — ESP-A + ESP-B + 1-sector boot-state (magic, seq, CRC,
-   `trydSlot`, `triesLeft`, `bootOkSlot`). Installer writes both slots (B = copy of A).
-2. **Slot-arbiter EFI**: read/decrement state, chainload A or B; flip on exhaustion.
-3. Kernel health gate: `boot-ok` written only after the boot proofs pass + the desktop
-   compositor is up (reuse the `[freeze]`/watchdog instrumentation to define "healthy").
-4. `/config/update.action` verbs: `stage <slot>` (dev: copy running image), `switch`,
-   `rollback`, `status` → `/config/update.status` JSON.
-**Verify (QEMU NVMe loop):** install → `switch` → reboots into B (klog says slot=B) →
-corrupt B's kernel via a dev verb → reboot → arbiter falls back to A after N tries →
-`[update] AUTO-ROLLBACK to A` in klog. This milestone alone ends "a bad flash bricks it".
-
-**STATUS 2026-07-12 — mostly built + verified; OVMF end-to-end boot has 2 open blockers:**
-- ✅ U1-A boot-state machine (`core/bootstate.d` @ LBA 34, `core/sysupdate.d` verbs
-  switch/rollback/boot-ok/status/init-state, `/config/update.action`+`.status`) — PASS
-  headless (`[bootstate] selftest PASS`, `[update] engine selftest PASS`).
-- ✅ U1-B A/B GPT + dual-slot install (`diskpart.d gptWriteABToDisk`; `veracrypt_impl.d`
-  streams slot-A→slot-B→ESP-boot then `bootStateInit(SLOT_A)`) — VERIFIED on the raw disk
-  (`sgdisk`: p1 8 MiB EF00 arbiter, p2/p3 320 MiB 0700 slots; LBA 34 = `EUBS` try=A ok=A
-  tries=3 active=A). `mk-install-iso.sh` builds `esp-boot.img` (arbiter as BOOTX64.EFI),
-  staged as module `esp-boot-image`; `boot/arbiter/` builds `arbiter.efi` (PE32+).
-- ⛔ **BLOCKER 1 (arbiter bypass):** OVMF boots `\EFI\BOOT\BOOTX64.EFI` from the first FAT
-  partition it enumerates; the SLOTS also carry limine at that path, so a slot's limine
-  runs directly and the arbiter never executes. FIX: the slots must not expose the fallback
-  path — put the **arbiter at `\EFI\BOOT\BOOTX64.EFI` in every partition** (it reads the
-  shared LBA-34 state and redirects), and relocate each slot's limine to
-  `\EFI\anonymos\limine\BOOTX64.EFI` (arbiter's `LIMINE_PATH`). Robust against OVMF's
-  partition-pick. (Needs a slot-flavored esp-image + limine-relocation check.)
-- ⛔ **BLOCKER 2 (pre-existing, not A/B-specific): NVMe BAR-high fault under UEFI.** OVMF
-  maps the NVMe BAR0 at phys `0x800000000` (8 GiB); the kernel HHDM doesn't cover it →
-  page fault in `nvme.d` at first boot. The `-cdrom`/BIOS path placed the BAR low
-  (`0xfebb0000`), so booting an *installed* disk under UEFI is the first time it's hit —
-  this ALSO blocks installed-system boot on the FW13 regardless of A/B. FIX: map the NVMe
-  BAR region on demand (same class as the AHCI HHDM fix) instead of assuming HHDM coverage.
-
 ## U2 — Signed update bundle (`.hosupd`) + kernel-verified staging
 1. `crypto.d`: **Ed25519** verify (+ host-side signing tool `scripts/sign-update.py`).
 2. Bundle = `manifest.json` (channel, version, prevVersion, chunk list w/ SHA256s,
@@ -233,20 +171,6 @@ version → `[update] FAIL: rollback` refusal.
 `/config/update.progress`, log tail from `/run/updater.log` (ilog pattern). USB stick with
 a `.hosupd` = fully offline upgrade path (and the fallback story forever).
 **Verify:** QMP-driven GUI upgrade + rollback in QEMU; logs in Logs app filter `update`.
-
-## U4 — zkSync `UpdateRegistry` anchor (network read; publishing tools) — ◑ CONTRACT DONE (`contracts/UpdateRegistry.sol` written + consolidated; deploy/reader/wallet pending)
-1. **`contracts/UpdateRegistry.sol` (DONE — written + consolidated):** permissionless
-   `(publisher, channel) → {version, artifactRoot, manifestSigHash, revoked}` with the
-   "creator deploys once, anyone publishes/validates" model (D4). Remaining: deploy it to
-   zkSync testnet from the creator key; add `publish`/`revoke` flows to the zksync-wallet
-   blob (reuses the boot-integrity wallet plumbing).
-2. Factor `boot_integrity.d`'s JSON-RPC `eth_call` reader into `core/zkanchor.d`; the
-   updater calls `validate(creatorAddr, channel, minVersion, artifactRoot)` (free view),
-   with N-of-M endpoint agreement on the head.
-3. Offline behavior explicit: no chain ⇒ signature + local monotonicity only (log says so).
-**Verify:** publish v(N+1) on zkSync testnet → node refuses a signed v(N+2) NOT anchored,
-refuses anchored-but-old vN, accepts anchored v(N+1); a SECOND publisher key writes its
-own channel without touching the creator's. All cases klog-proven.
 
 ## U5 — I2P transport (shared with marketplace M0/M1)
 - **U5a**: SAM v3 client (userspace, LKL socket path): persistent destination, STREAM

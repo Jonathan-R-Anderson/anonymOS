@@ -69,92 +69,6 @@ Go from the curated 117 applets to the full useful set (~300–400).
 - *Verify:* a smoke script in the terminal exercises one applet per category; record any
   applet that aborts with `ENOSYS <n>` → feeds A4.
 
-## A2 — Harden the runtime ramfs into a real tmpfs · ✅ DONE · deps: —
-
-**Done (posix.d).** `rtEnsureCap` frees old pages on grow (was a leak) + tracks
-`g_rtBytes` against a 64 MB `RT_MAX_BYTES` cap; `rtFreeData` releases pages on
-unlink/overwrite/rename. Added `RT_LNK` symlinks (symlink/symlinkat create,
-readlink/readlinkat, lstat S_IFLNK, getdents DT_LNK, `sys_open` follows a leading
-symlink chain). chmod/chown/fchmod/fchown persist mode/uid/gid on RT nodes and
-`fileObjStat` reports them; boot modules report 0755. `RT_MAX_NODES` 1024 → 8192.
-Verified by the `[rtfs] selftest` (11/11).
-
-`g_rt` is a "minimal tmpfs"; make it production-grade so coreutils round-trip.
-
-- Fix the grow-leak in `rtEnsureCap` (currently leaks the old buffer) — realloc/copy+free
-  or a page list; track and cap total tmpfs bytes (wire to the Domain Manager memory/disk
-  control — see [[desktop-autostart-client]] / IDENTITY_DOMAIN).
-- Raise/parametrise limits: node count, name length, per-file size.
-- Add symlinks (`RT_LNK` kind) + `symlinkat`/`readlinkat` over `g_rt`; hardlinks optional.
-- Persist real `mode`/`uid`/`gid`/`mtime` and honour `chmod`/`chown`/`utimensat` (today
-  `chmod` is a no-op and `stat` synthesises owner).
-- *Verify:* `cp -a` a tree, `find`, `tar -c | tar -x`, `chmod`+`stat`, symlink + `readlink`
-  all round-trip; node/byte caps enforced.
-
-## A3 — Populate a realistic root filesystem · ✅ DONE · deps: A2
-
-**Done (posix.d rtInit).** Seeds `/bin /sbin /usr/{bin,sbin} /usr/local/bin /lib
-/lib64 /opt /mnt /root /var/log` and creates `/bin/<applet> -> /busybox` for all 381
-applets (`rtSeedBinSymlinks`); wl-term sets `PATH`/`HOME`/`TERM`. `/etc`,`/proc`,`/sys`,
-`/dev` stay synthetic (served by g_vfs/device shims). Verified: `ls /` shows the FHS
-tree, `ls /bin` the command set, `which`/`readlink /bin/ls` resolve, exec-follow works.
-
-Today `ls /` is nearly empty. Give the shell a real FHS tree.
-
-- Seed an FHS layout (`/bin /sbin /usr/bin /etc /home/user /root /tmp /var /dev`), either
-  in `rtInit` or — cleaner and scalable — by unpacking a **cpio initramfs** boot module at
-  startup.
-- Install busybox as `/bin/busybox` + an applet symlink per command (`/bin/ls` → busybox,
-  …) so `ls /bin` shows the command set and `PATH` resolution + `which` work.
-- Provide `/etc` defaults (`profile`, `passwd`, `group`, `hostname`) and a writable
-  `/home/user` as the shell's cwd.
-- *Verify:* `ls -la /bin`, `which ls`, `cd /home/user && pwd`, `echo $PATH`, ash
-  tab-completion resolve real entries.
-
-## A4 — Fill the termios / signal / syscall gaps · ✅ DONE (raw mode + ^C) · deps: A3
-
-**The shell is now fully interactive** (commit Track A A4). Three kernel fixes:
-- **wait4 process-group semantics** (`wait4Task`): treat `waitPid <= 0` (0 / -pgid) as
-  "any child" — busybox ash's job control uses `waitpid(0)`/`waitpid(-pgid)`, which
-  previously matched nothing and wedged the shell after its first forking command; plus
-  ECHILD when no child exists so the reap loop ends.
-- **wait4 transparent blocking** (case 61/114): rewind RIP + reschedule instead of a
-  spurious EINTR.
-- **execve `/proc/self/exe` + symlink + argv** (`execveTask`): busybox standalone
-  re-execs `/proc/self/exe` (then PATH) with `argv[0]=<applet>`; now we track each
-  task's binary (so `/proc/self/exe` → busybox, inherited on fork), follow RT symlinks
-  (`/bin/cat` → `/busybox`), and snapshot+pass the caller's real argv.
-
-**Verified:** multi-command prompts return; `cat`/`grep`/`head`/`date`/`wc` run with
-arguments; **pipes work** (`echo hello | grep ell` → `hello`); no desktop regression.
-
-**Raw mode + signals (commit Track A A4 finish):**
-- **termios raw mode already worked** — the PTY ioctl (`ptyIoctl`) stores the full
-  termios into the per-pty state, and the line discipline honours `ICANON`/`ECHO`. So
-  `vi` enters raw mode and renders (confirmed). The earlier "TCSETS stores nothing" note
-  was about the *generic non-PTY* tty handler.
-- **^C / ^\ signals** (`ptyInputByte` ISIG → `deliverSignalToGroup`): per-task pgid +
-  signal-disposition side arrays; ^C/^\ terminate the foreground command (default
-  disposition) while sparing the shell / apps that catch SIGINT; the run loop applies
-  the pending signal from the victim's own context. Foreground group = the tcsetpgrp
-  group, else the last task to read the slave (ash doesn't drive tcsetpgrp here).
-  Verified: `cat` interrupted by ^C → code 130 + fresh prompt; shell survives.
-  *Gotcha:* `getpgid`/`getpgrp` must stay at the constant `1` — real pgids break ash's
-  `getpgrp()==tcgetpgrp()` check and the shell never prompts.
-
-**`/proc/<pid>` for ps/top (DONE):** /proc enumerates one dir entry per live task; each
-`/proc/<pid>/{stat,status,cmdline,comm}` is synthesised from the task table. Also fixed
-two busybox-side gaps: disabled `FEATURE_SHOW_THREADS` (procps_scan otherwise skips any
-pid lacking `/proc/<pid>/task/<tid>/`), and made `sys_open` resolve **relative** paths
-against the cwd (top `chdir`s into `/proc` then opens `"stat"`). Verified: `ls /proc`,
-`cat /proc/10/stat`, and `ps` + `top -bn1` all list the live processes with PID/PPID/
-USER/STAT/VSZ/%CPU/COMMAND.
-
-Remaining (low-value, not blocking):
-- **SIGWINCH / ^Z** need real user-handler invocation (sigreturn frames) — SIGWINCH's
-  default action is *ignore* and SIGTSTP's is *stop*, so they can't use the
-  terminate-only delivery path. `fstatfs`(138) still ENOSYS.
-
 ## A5 — Persistent disk-backed storage (optional) · P: Med · E: 4 · R: high · deps: A2
 
 Make files survive reboot; backs the Domain Manager "disk operations" control.
@@ -253,34 +167,6 @@ Bevy/wgpu-supported GPU, Wayland, fontconfig, a Rust toolchain, and a PTY-hosted
 Heavy — lay groundwork in order; the GPU step is the real gate and overlaps
 [[DESKTOP_RESPONSIVENESS_ROADMAP]] R8.
 
-## C1 — Solid PTY + terminal semantics · ✅ DONE · deps: — (shared with A4)
-
-**Done.** The pty now has real raw mode + `^C`/`^\` signal generation (landed in A4)
-and wl-term sets the window size explicitly via `TIOCSWINSZ` (this commit). A
-full-screen app (vi) runs on it; any emulator that hosts a shell on the slave and
-drives the master will get correct semantics. Remaining nicety: `SIGWINCH` on live
-resize (wl-term is fixed-size today) — needs real signal-handler delivery.
-
-
-
-Any emulator hosts a shell on a PTY; make ours robust.
-
-- Real termios (raw mode, echo, winsize, signals, flow control) on `/dev/ptmx`+`/dev/pts`;
-  ratty drives the master, the shell runs on the slave.
-- *Verify:* a headless VT loop (read master / echo) hosts busybox **and** `-sh` correctly;
-  `TIOCSWINSZ` propagates `SIGWINCH`.
-
-> **STATUS (C2-C5 = the remaining ratty lift, not started):** C1 (the terminal
-> substrate) is done. The rest is a large multi-day effort and is **gated on two big
-> prerequisites**: (1) **no Rust toolchain is installed** — rustc/cargo must be added
-> and a static musl target + sysroot configured (mirroring deps/busybox/deps/musl);
-> (2) **ratty is GPU-rendered** (wgpu + Bevy + Ratatui + Parley/Vello) and the OS has
-> only the software Pixman path, so it needs a wgpu-capable GPU backend = the
-> [[DESKTOP_RESPONSIVENESS_ROADMAP]] **R8** work (software Vulkan/lavapipe or
-> virtio-gpu). Until both exist, ratty itself can't run. A useful intermediate
-> milestone before the GPU work is a **Rust hello-world Wayland client** (C2) and a
-> **CPU-only Ratatui demo** (C3) to prove the Rust+Wayland path.
-
 ## C2 — Rust toolchain targeting EpinAnonymOS · ⬜ not started (no rustc on host) · deps: A3
 
 - Bring up `rustc` + `cargo` cross-compiling to the musl/Linux-compat target (x86_64,
@@ -319,15 +205,8 @@ Any emulator hosts a shell on a PTY; make ours robust.
 
 ## Milestones
 
-- **M-A — Linux complete.** ✅ *Reached* (A1–A4 done): the full 381-applet busybox
-  command set on a real, hardened FHS filesystem; a fully interactive shell —
-  multi-command, arguments, pipelines (`echo … | grep …`), raw-mode apps (`vi`), and
-  `^C`/`^\` job interrupt all work. Remaining polish: `/proc/<pid>` for `top`/`ps`,
-  SIGWINCH/^Z, and optional disk persistence (A5).
 - **M-B — Native shell.** B0–B4: `-sh` drives objects/caps/namespaces/identity/services,
   domain-scoped from the Domain Manager.
-- **M-C1 — Terminal substrate.** ✅ C1 (+A4): a robust PTY (raw mode, ^C, winsize)
-  hosts any shell or emulator; vi runs.
 - **M-C — Rust + GPU.** ⬜ C2–C4: Rust toolchain and a wgpu/Bevy frame run on the OS.
   Blocked on installing Rust + the GPU stack (R8).
 - **M-ratty — Desktop terminal.** ⬜ C5: ratty is a working terminal on EpinAnonymOS.

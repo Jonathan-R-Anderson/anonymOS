@@ -1537,6 +1537,18 @@ private void spawnWaylandClients() {
         // synthesized config never actually spawns, so launch it here via the proven kernel autostart.
         // Safe on Weston too: wl-layer-bar exits cleanly (returns 1) when no zwlr_layer_shell is offered.
         spawnWaylandProgram("wl-layer-bar\0".ptr, "[bar]\0".ptr);
+        // Domain Manager, present on the desktop at boot.  Hyprland ONLY -- this whole
+        // autostart is gated on g_guiClientAutostartEnabled = initIsHyprland, and Weston
+        // keeps taking its list from /desktop.conf (where `autostart = /wl-domain-manager`
+        // is deliberately commented out; there it is SUPER+D only).
+        //
+        // Moved here from custom/execs.lua's hl.exec_cmd("/wl-domain-manager").  That did
+        // work -- it came up as tid 6 and spoke real Wayland -- but it fired on
+        // hyprland.start, i.e. BEFORE the compositor had settled, and logged nothing, so
+        // the only way to answer "is the domain manager running?" was to grep trace lines
+        // for a tid name.  This path waits for /run/user/1000/wayland-0 plus
+        // GUI_CLIENT_SETTLE_TICKS, and prints the tid like every other client.
+        spawnWaylandProgram("wl-domain-manager\0".ptr, "[dm]\0".ptr);
         spawnWaylandProgram("wl-cairo-demo\0".ptr, "[g11]\0".ptr);
     }
     if (mode == 4)

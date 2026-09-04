@@ -504,7 +504,7 @@ xkeyboard-config: $(STAMPS)/xkeyboard-config.done
 
 # ── 11. Mesa (EGL + softpipe software renderer — no LLVM) ────────────────
 # softpipe is the CPU-based Gallium driver; requires no GPU and no LLVM.
-$(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) $(HOST_WL_SCANNER_PC) $(SYSROOT_USR_WL_PROTOCOLS) $(SELF)/Makefile | $(MESON_CROSS) cxxrt-ready
+$(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) $(HOST_WL_SCANNER_PC) $(SYSROOT_USR_WL_PROTOCOLS) $(SELF)/Makefile $(wildcard $(SELF)/patches/*.patch) | $(MESON_CROSS) cxxrt-ready
 	@echo "[11/13] Mesa $(MESA_VER)"
 	test -f $(DLDIR)/mesa-$(MESA_VER).tar.xz || \
 	    wget -q -O $(DLDIR)/mesa-$(MESA_VER).tar.xz $(MESA_URL)
@@ -538,6 +538,20 @@ $(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) 
 	# (GL_RENDERER=virgl) instead of failing EGL_NOT_INITIALIZED on the gbm platform.
 	cd $(BLDDIR)/mesa-$(MESA_VER) && \
 	    patch -p1 < $(SELF)/patches/mesa-virgl-minimal-sysfs.patch
+	# Softpipe NULL-transfer guard.  pipe_get_tile_rgba() and its three siblings in
+	# u_tile.c take a `struct pipe_transfer *pt` and dereference pt->box immediately,
+	# with no NULL check.  Five call sites can reach them (sp_find_cached_tile,
+	# sp_find_cached_tile_tex, st_CopyTexSubImage, copy_to_staging_dest,
+	# util_probe_rect_rgba_multi), and a failed transfer-map leaves pt NULL.  On this
+	# guest that killed the compositor every boot:
+	#     fatal PF tid=0 cr2=0x14 rip=<kms_swrast_dri.so+0x63AAD1>
+	#     = pipe_get_tile_rgba+0x11, `mov 0x14(%rdi),%ebp` = pt->box.width
+	# Hyprland's main thread died; a sibling thread kept the existing surfaces on screen,
+	# so the desktop LOOKED alive while every newly-mapped window hung forever -- which is
+	# why the installer, wl-overview and wl-logview never appeared.
+	# Skipping the tile loses at most one tile of content; faulting loses the session.
+	cd $(BLDDIR)/mesa-$(MESA_VER) && \
+	    patch -p1 < $(SELF)/patches/mesa-u-tile-null-transfer.patch
 	cd $(BLDDIR)/mesa-$(MESA_VER) && \
 	    $(MESON_SETUP) build \
 	        -Dgallium-drivers=swrast,virgl \

@@ -1,0 +1,34 @@
+--- a/src/gallium/auxiliary/util/u_tile.c
++++ b/src/gallium/auxiliary/util/u_tile.c
+@@ -52,6 +52,7 @@
+                   unsigned w, unsigned h,
+                   void *dst, int dst_stride)
+ {
++   if (!pt) return;   /* EpinAnonymOS: NULL transfer -> skip, do not fault */
+    if (dst_stride == 0)
+       dst_stride = util_format_get_stride(pt->resource->format, w);
+ 
+@@ -72,6 +73,7 @@
+                   unsigned w, unsigned h,
+                   const void *src, int src_stride)
+ {
++   if (!pt) return;   /* EpinAnonymOS: NULL transfer -> skip, do not fault */
+    enum pipe_format format = pt->resource->format;
+ 
+    if (src_stride == 0)
+@@ -362,6 +364,7 @@
+                    unsigned x, unsigned y, unsigned w, unsigned h,
+                    enum pipe_format format, const void *p)
+ {
++   if (!pt) return;   /* EpinAnonymOS: NULL transfer -> skip, do not fault */
+    unsigned src_stride = w * 4;
+ 
+    if (u_clip_tile(x, y, &w, &h, &pt->box))
+@@ -386,6 +389,7 @@
+                    enum pipe_format format,
+                    void *dst)
+ {
++   if (!pt) return;   /* EpinAnonymOS: NULL transfer -> skip, do not fault */
+    unsigned dst_stride = w * 4;
+    void *packed;
+ 

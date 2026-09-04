@@ -270,6 +270,9 @@ public void dumpCurrentTaskUserStack() @nogc nothrow {
 __gshared ulong g_fwdLastMs = 0;
 __gshared uint  g_fwdWakes = 0;
 
+// Expanded when THIS file is compiled -- see the note at the klog(BUILD_STAMP.ptr) call.
+private enum string BUILD_STAMP = "[build] kernel compiled " ~ __DATE__ ~ " " ~ __TIME__ ~ "\n\0";
+
 // PERF: presentProfStats() is the one measurement that splits a frame's cost into the
 // kernel-side present (the scanout blit) and the compositor's own render time -- exactly
 // what decides where a slow desktop gets fixed.  Its only call site was gated on
@@ -4529,6 +4532,19 @@ private void procFb(const(char)* label, const(char)* name) {
 
 void d_kernel_main() {
     klog("[dkernel] EpinAnonymOS D kernel starting\n");
+    // BUILD STAMP.  __DATE__/__TIME__ are expanded when THIS FILE is compiled, so the line
+    // below dates the kernel binary, not the ISO or the boot.  It exists because "the change
+    // is committed, the ISO is newer than the commit, and the behaviour did not change" has
+    // now cost four debugging rounds in a row -- each one spent re-deriving from behaviour
+    // whether a build actually picked the edit up.  One grep answers that now:
+    //     grep -a '\[build\]' serial.log
+    // If the stamp predates the edit you are testing, stop reading the log: the kernel in
+    // that ISO is stale.  Rebuild with `make -C src/kernel/d clean` first, because `make iso`
+    // reaches the D sub-make through the phony refresh-d-kernel and a stale object there is
+    // invisible from the top level.
+    // NB: klog takes const(char)*, and a `~` concatenation is a string, not a literal, so it
+    // needs the explicit "\0".ptr idiom used elsewhere in this tree -- not a bare literal.
+    klog(BUILD_STAMP.ptr);
     klog("[dkernel] framebuffer log off for fast boot; faults re-enable it\n");
     console_set_framebuffer_enabled(false);
     bootProgress("boot");

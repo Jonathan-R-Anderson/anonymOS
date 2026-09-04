@@ -52,12 +52,33 @@ if softpipe then
             -- with a software rasteriser behind it.
             shadow = {
                 enabled = false
-            }
+            },
 
-            -- Deliberately NOT overridden even here -- geometry and colour are free on either
-            -- path, and they are what carries the host's look:
-            --   rounding = 18, rounding_power = 2.5
-            --   dim_inactive = true, dim_strength = 0.05, dim_special = 0.2
+            -- 2026-09-04: rounding and dim_inactive are now overridden here too.  The note
+            -- this replaces claimed "geometry and colour are free on either path".  Colour is;
+            -- ROUNDING IS NOT.  Hyprland implements rounded corners as a per-fragment SDF in
+            -- the window shader, and rounding_power = 2.5 (anything other than 2) evaluates a
+            -- pow() for EVERY pixel of EVERY window, every frame.  dim_inactive adds a further
+            -- full-window pass on top.  On the GPU path those cost nothing measurable; on Mesa
+            -- softpipe -- which this image runs WITHOUT LLVM, so llvmpipe's JIT is not there
+            -- either (deps/mutter/Makefile:561 builds -Dgallium-drivers=swrast,virgl and its
+            -- own comment says "no LLVM") -- every fragment is executed interpreted, on the
+            -- compositor's own thread.
+            --
+            -- Measured, from a full boot's serial.log: the desktop presented 66 frames while
+            -- the freeze probe reported 40 stalled seconds -- about ONE FRAME PER SECOND, with
+            -- flipQ incrementing by exactly 1 per stall episode.  The freeze probe's CMP= field
+            -- read `w0 p0 f0` on every one of those stalls: Hyprland was neither poll-parked
+            -- nor futex-parked but RUNNABLE the whole time, i.e. burning a second of CPU per
+            -- frame rather than waiting on anything.  That is what the user sees as windows
+            -- "disappearing": a desktop that repaints slower than once a second.
+            --
+            -- rounding = 0 also makes rounding_power moot, so the pow() disappears entirely.
+            rounding      = 0,
+            dim_inactive  = false
+
+            -- Still deliberately NOT overridden -- these are genuinely free, and they are what
+            -- carries the host's look:
             --   general.gaps_in/out/workspaces, border_size
             --   colors.lua's active/inactive border and background_color (which override the
             --   values in general.lua, because colors.lua is require()d after it)

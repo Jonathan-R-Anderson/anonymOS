@@ -269,6 +269,21 @@ public void dumpCurrentTaskUserStack() @nogc nothrow {
 // waiter re-checks the futex word and re-waits).  No-op while the desktop presents normally.
 __gshared ulong g_fwdLastMs = 0;
 __gshared uint  g_fwdWakes = 0;
+
+// PERF: presentProfStats() is the one measurement that splits a frame's cost into the
+// kernel-side present (the scanout blit) and the compositor's own render time -- exactly
+// what decides where a slow desktop gets fixed.  Its only call site was gated on
+// (g_objReconcileCtr & 0x3FFF) == 0, which does not fire in a desktop boot: a full serial
+// log of a Hyprland session contains ZERO "[present]" lines.  Drive it off the wall clock
+// instead so the numbers exist whether or not the reconcile counter ever lands on 0.
+__gshared ulong g_presProfLastMs = 0;
+private void presentProfTick() {
+    if (g_lastPresentMs == 0) return;                  // desktop not up yet — nothing to profile
+    const ulong now = pitMs();
+    if (now - g_presProfLastMs < 5000) return;         // one rolling 5 s window per line
+    g_presProfLastMs = now;
+    presentProfStats();                                // NB: prints AND resets the interval counters
+}
 private void freezeWatchdog() {
     if (g_lastPresentMs == 0) return;                    // desktop not up yet
     const ulong now = pitMs();
@@ -4194,6 +4209,7 @@ private void kernelLoop() {
         // EVERY exit path from here to the userspace run, and the end of the body, must release it.
         bklAcquire(&g_bkl);
         freezeProbeKlog();     // freeze diagnostic → /run/klog (filter "freeze"): who hogs the core during a stall
+        presentProfTick();     // PERF: per-frame cost split (kernel blit vs compositor render), every 5 s
         freezeWatchdog();      // LOST-WAKEUP RECOVERY: un-park stalled sleepers so the compositor resumes
         maybeReapZombies();    // free leaked task slots (crash-loop zombies) so new apps/installer can spawn
         maybeSpawnWaylandClient();

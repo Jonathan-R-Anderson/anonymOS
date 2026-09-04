@@ -12130,6 +12130,10 @@ private enum ulong DRM_CLIENT_CAP_ATOMIC           = 3;
 private enum uint DRM_MODE_PAGE_FLIP_EVENT = 0x01;
 private enum uint DRM_MODE_PAGE_FLIP_ASYNC = 0x02;
 
+// Cursor ioctl flags (struct drm_mode_cursor.flags).
+private enum uint DRM_MODE_CURSOR_BO   = 0x01;
+private enum uint DRM_MODE_CURSOR_MOVE = 0x02;
+
 // DRM event types delivered by read() on the card fd (struct drm_event.type).
 private enum uint DRM_EVENT_VBLANK        = 0x01;
 private enum uint DRM_EVENT_FLIP_COMPLETE = 0x02;
@@ -14164,9 +14168,28 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     // these so Weston marks the cursor "broken" and composites it through the
     // Pixman renderer into the primary framebuffer instead (which we do present),
     // making the pointer actually visible.
+    // struct drm_mode_cursor { u32 flags; u32 crtc_id; s32 x; s32 y;
+    //                          u32 width; u32 height; u32 handle; }   (CURSOR2 appends hot_x/hot_y)
+    //
+    // There is no hardware cursor plane here — the compositor composites the pointer
+    // itself (Hyprland runs with cursor:no_hardware_cursors = 1, see system/hypr/custom/
+    // general.lua).  A SET with a real handle therefore still fails, and that failure is
+    // what keeps the software-cursor path selected; do not "fix" it.
+    //
+    // The DISABLE (handle == 0) must SUCCEED though.  aquamarine issues one on EVERY
+    // commit — Legacy.cpp's `else if (drmModeSetCursor(fd, crtc->id, 0, 0, 0))` arm, taken
+    // whenever there is no cursor FB — and logs an ERROR line when it fails.  That is the
+    // sole source of the 525 "legacy drm: cursor null failed" lines in a single boot, one
+    // per frame, each a synchronous serial write on the compositor's own thread.  Reporting
+    // success for "disable a cursor that does not exist" is both truthful and silent.  The
+    // return value of that arm is not used for control flow, so nothing else changes.
     case DRM_NR_MODE_CURSOR:
-    case DRM_NR_MODE_CURSOR2:
+    case DRM_NR_MODE_CURSOR2: {
+        const uint curFlags = userRead!uint(arg + 0);
+        if ((curFlags & DRM_MODE_CURSOR_BO) && userRead!uint(arg + 24) == 0)
+            return 0;                      // disable: nothing to turn off, and it worked
         return negErrno(EINVAL);
+    }
 
     case DRM_NR_MODE_ATOMIC:
         dispOp("atomic->EINVAL (legacy fallback expected) ", 0);

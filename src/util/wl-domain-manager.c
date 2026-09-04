@@ -1624,11 +1624,22 @@ int main(void)
     // popovers/dialogs), which is exactly the right classification for a settings window:
     // it keeps its designed size and stops being collateral damage when a new window opens.
     xdg_toplevel_set_min_size(app.toplevel, DEFAULT_WIDTH, DEFAULT_HEIGHT);
-    // NOT set_max_size: with min == max, XWaylandManager.cpp:140-142 classifies the toplevel
-    // as a fixed-size dialog and FLOATS it -- which also poisoned dwindle prediction for every
-    // client mapped afterwards (a floating candidate has no dwindle node, so
-    // predictSizeForNewTarget returns nullopt -> a 0x0 initial configure for them too).
-    // Keeping only set_min_size lets it tile while still refusing to be crushed.
+    // KEEP set_max_size.  Removing it (cd7d378b3c) to stop this window floating was wrong:
+    // min == max is what makes Hyprland classify it as a fixed-size dialog and float it, and
+    // that is the CORRECT classification here -- the layout above is fixed-pixel and does not
+    // reflow, so tiling it reproduces the regression documented immediately above (observed
+    // 562x181, "reads as the Domain Manager crashed").
+    //
+    // The justification for removing it was that a floating window has no dwindle node, so
+    // predictSizeForNewTarget returns nullopt and later clients inherit a 0x0 initial
+    // configure.  That cascade is real in the abstract but does not fire here: this window
+    // maps AFTER the tiled clients, so it never poisons their prediction.  And it is moot now
+    // that wl-cairo-demo and wl-installer honour post-map configures, which is where the tile
+    // actually arrives.
+    //
+    // If this window is ever genuinely wanted tiled, the layout has to reflow first; a
+    // rule-level minsize in system/hypr/custom/rules.lua would then be the lever, not this.
+    xdg_toplevel_set_max_size(app.toplevel, DEFAULT_WIDTH, DEFAULT_HEIGHT);
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

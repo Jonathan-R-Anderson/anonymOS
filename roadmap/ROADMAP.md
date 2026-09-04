@@ -21,6 +21,7 @@ until this is done, because a broken desktop invalidates every measurement.
 | 0.1 | Boot current `main`. Confirm no `COMPOSITOR DIED`, `[dm] wl-domain-manager launched`, `[assets] /apps.blob unpacked` | — | minutes |
 | 0.2 | Confirm the launcher shows 20 tiles incl. **Software**, **Task Manager**, **CPU Monitor**, and that each launches (arg-bearing Exec lines included) | GUI A6 | minutes |
 | 0.3 | Boot once with `GPU=1` — confirm virgl, not softpipe, and that host blur/shadow/animations return | — | minutes |
+| 0.4 | **KNOWN CRASH — compositor main thread dies, desktop survives on a sibling thread.** Root-caused 2026-09-03, NOT yet fixed | — | see below |
 
 ---
 
@@ -139,3 +140,43 @@ Two stale claims in the roadmaps will mislead whoever reads them next:
 - **`DESKTOP_TILING_PLAN` §A** (the `/wl-quicksettings` popover bug) is in
   `clients/desktop-shell.c` — the **Weston** panel. It does not affect Hyprland, where
   `wl-overview` spawns via its own `launch_and_exit()`. Only relevant if Weston is revived.
+
+---
+
+## Known crash — softpipe NULL transfer (Tier 0.4)
+
+`COMPOSITOR DIED t=0 code=11`, `cr2=0x14`. Present since the start of this work and
+**still unfixed**; the desktop keeps rendering only because a sibling Hyprland thread
+(tid 4) survives the main thread (tid 0).
+
+Root-caused by disassembling the shipped `kms_swrast_dri.so` at the faulting offset:
+
+```
+fault offset  = rip - mmap base = 0x63AAD1   (identical across two builds at different bases)
+symbol        = pipe_get_tile_rgba + 0x11
+instruction   = mov 0x14(%rdi),%ebp
+```
+
+`%rdi` is the first argument, `struct pipe_transfer *` — it is **NULL**. This is softpipe's
+tile cache sampling a texture whose resource could not be mapped: a transfer-map that failed
+and whose result is never checked.
+
+**It is not the invalid-texture path.** `a564a31c58`'s guards are compiled in (the string
+`attempted to draw invalid texture` appears 3× in the ISO) and **never fire** (0× in the boot
+log), so `tex->ok()` is always true. The `HOS_SCENE_RENDER` reasoning in `exports.d` is
+therefore incomplete — the texture is valid; the *resource behind it* cannot be CPU-mapped.
+
+Supporting evidence from the same boot: `createEGLImage failed` = 0 and `rb:` = 0, so the
+dmabuf → EGLImage import **succeeds**, `needsCPUCopy()` is false, `m_hosCPUFrame` is false and
+the full GL scene runs — over 3 `[prime] … CPU-alias` buffers.
+
+Note that toggling `HOS_SCENE_RENDER` does **not** avoid this: `m_hosCPUFrame` requires
+`!HOS_SCENE_RENDER` **and** `needsCPUCopy()`, and the latter is false. With it off you would
+get unallocated textures, the `ok()` guard would return early, and the result is an empty
+desktop rather than a working CPU-composited one.
+
+Candidate fixes, none yet attempted:
+1. Make PRIME-imported buffers mappable by softpipe (kernel side) so the transfer succeeds.
+2. Guard the tile-cache call site in Mesa so a NULL transfer skips the tile instead of
+   faulting — converts a crash into a rendering artefact. Needs a Mesa rebuild.
+3. Stop Hyprland sampling the scanout/imported buffer on the software path.

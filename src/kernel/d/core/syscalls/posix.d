@@ -12530,9 +12530,17 @@ public void freezeProbeKlog() @nogc nothrow {
         if(top[0]<0||c>g_freezeSchedHist[top[0]]){top[2]=top[1];top[1]=top[0];top[0]=i;}
         else if(top[1]<0||c>g_freezeSchedHist[top[1]]){top[2]=top[1];top[1]=i;}
         else if(top[2]<0||c>g_freezeSchedHist[top[2]]){top[2]=i;} }
+    // flipQ vs flipRd during the stall is the decisive measurement: aquamarine refuses to
+    // commit while it believes a page-flip is pending, and it clears that belief ONLY when it
+    // reads the completion off the card fd.  If flipQ > flipRd here, completions are being
+    // queued and never read (compositor side); if they are equal, the wedge is NOT a lost
+    // completion and the 35 "Cannot commit when a page-flip is awaiting" have another source.
     klog("[freeze] stalled "); klog_dec((now-g_lastPresentMs)/1000);
     klog("s cur="); klog_dec(g_current_task_id); klog(":");
     { const(char)* p=g_taskExecName[cast(int)g_current_task_id]; klog(p !is null ? p : "?".ptr); }
+    klog(" flipQ="); klog_dec(g_flipQueued);
+    klog(" flipRd="); klog_dec(g_flipRead);
+    klog(" flipDrop="); klog_dec(g_flipDropped);
     klog(" HOG:");
     for(int r=0;r<3;r++){ if(top[r]<0)break; klog(" "); klog_dec(top[r]); klog(":");
         const(char)* p=g_taskExecName[top[r]]; klog(p !is null ? p : "?".ptr); klog("="); klog_dec(g_freezeSchedHist[top[r]]); }

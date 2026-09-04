@@ -1624,7 +1624,11 @@ int main(void)
     // popovers/dialogs), which is exactly the right classification for a settings window:
     // it keeps its designed size and stops being collateral damage when a new window opens.
     xdg_toplevel_set_min_size(app.toplevel, DEFAULT_WIDTH, DEFAULT_HEIGHT);
-    xdg_toplevel_set_max_size(app.toplevel, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+    // NOT set_max_size: with min == max, XWaylandManager.cpp:140-142 classifies the toplevel
+    // as a fixed-size dialog and FLOATS it -- which also poisoned dwindle prediction for every
+    // client mapped afterwards (a floating candidate has no dwindle node, so
+    // predictSizeForNewTarget returns nullopt -> a 0x0 initial configure for them too).
+    // Keeping only set_min_size lets it tile while still refusing to be crushed.
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

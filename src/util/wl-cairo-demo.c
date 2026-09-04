@@ -487,21 +487,55 @@ static const struct wl_callback_listener frame_listener = {
     .done = frame_done,
 };
 
+/* Rebuild the shm buffer at a new size.  Mirrors wl-domain-manager's resize_buffer().
+ *
+ * create_buffer_once() deliberately allocates ONE memfd for the process life -- creating a
+ * fresh memfd per FRAME exhausted the kernel's small memfd pool and froze the desktop.  A
+ * resize is not per-frame though; it happens when the layout changes, so reallocating here is
+ * bounded and safe, which is exactly what wl-domain-manager already does. */
+static int resize_buffer(struct app *app, int width, int height)
+{
+    if (width <= 0 || height <= 0) return 0;
+    if (app->buffer && width == app->width && height == app->height) return 0;
+    if (app->buffer) { wl_buffer_destroy(app->buffer); app->buffer = NULL; }
+    if (app->pixels && app->pixels != MAP_FAILED) munmap(app->pixels, app->buffer_size);
+    app->pixels = NULL;
+    return create_shm_buffer(app, width, height);
+}
+
 static void xdg_surface_configure(void *data, struct xdg_surface *surface,
                                   uint32_t serial)
 {
     struct app *app = data;
     xdg_surface_ack_configure(surface, serial);
-    if (app->committed)
-        return;
 
-    int width = DEFAULT_WIDTH;
-    int height = DEFAULT_HEIGHT;
-    if (app->pending_width > 0 && app->pending_width < width)
-        width = app->pending_width;
-    if (app->pending_height > 0 && app->pending_height < height)
-        height = app->pending_height;
-    if (create_shm_buffer(app, width, height) < 0) {
+    /* Take the compositor's size WHENEVER it gives one.  This used to be a shrink-only
+     * clamp -- `width = DEFAULT_WIDTH; if (pending < width) width = pending;` -- so the
+     * window could never grow beyond its compiled default no matter what Hyprland asked
+     * for.  A tile of 1268x788 produced exactly the same commit as a configure of 0x0,
+     * which is why every window rendered at its default inside a much larger tile and got
+     * scaled. */
+    int want_w = app->pending_width  > 0 ? app->pending_width  : DEFAULT_WIDTH;
+    int want_h = app->pending_height > 0 ? app->pending_height : DEFAULT_HEIGHT;
+
+    /* Post-map configures used to be acked and DISCARDED (`if (app->committed) return;`).
+     * The first, pre-map configure is legitimately 0x0 -- the compositor asking the client
+     * to pick a size -- and the real tile geometry only arrives AFTER the window maps.
+     * Dropping it meant the tile was acked and then ignored, so Hyprland recorded the
+     * acked size while the buffer stayed small. */
+    if (app->committed) {
+        if (want_w == app->width && want_h == app->height) return;
+        if (resize_buffer(app, want_w, want_h) < 0) { log_line("G11CAIRO: resize failed"); return; }
+        wl_surface_attach(app->surface, app->buffer, 0, 0);
+        wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
+        wl_surface_commit(app->surface);
+        wl_display_flush(app->display);
+        printf("G11CAIRO: resized wl_shm window %dx%d\n", app->width, app->height);
+        fflush(stdout);
+        return;
+    }
+
+    if (create_shm_buffer(app, want_w, want_h) < 0) {
         app->running = 0;
         return;
     }
@@ -517,8 +551,7 @@ static void xdg_surface_configure(void *data, struct xdg_surface *surface,
     wl_display_flush(app->display);
     app->committed = 1;
     app->sync_after_commit = 1;
-    printf("G11CAIRO: committed Cairo/FreeType wl_shm window %dx%d -- G11 COMMIT\n",
-           app->width, app->height);
+    printf("G11CAIRO: committed wl_shm window %dx%d -- COMMIT\n", app->width, app->height);
     fflush(stdout);
 }
 

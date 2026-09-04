@@ -1553,6 +1553,28 @@ private void spawnWaylandClients() {
     }
     if (mode == 4)
         spawnWaylandProgram("wl-files\0".ptr, "[g17]\0".ptr);
+
+    // INSTALLER D4.1/D4.3 — on LIVE INSTALL MEDIA the installer is the front window at boot.
+    //
+    // /desktop.conf already declares `autostart-live = /calamares` for exactly this, but that
+    // directive is parsed ONLY by Weston's desktop shell
+    // (deps/weston-14.0.0/desktop-shell/shell.c) -- the sole implementation in the tree.  Under
+    // Hyprland that shell never runs, so nothing read the directive and the installer simply
+    // never appeared.  Same shape as the wl-layer-bar and wl-domain-manager gaps: the behaviour
+    // lived on the Weston path only.
+    //
+    // Gate: bootHasInstallPayload() is the same live-media test kernel_main.d:4556 uses to skip
+    // the disk-writing boot proofs.  An INSTALLED system boots from disk without the esp-image
+    // module, so it does not re-offer the installer -- which is what `autostart-live` means.
+    //
+    // Spawned LAST so it maps on top of the bar and the domain manager, per D4.1's "it maps on
+    // top of the desktop and is the front window".  Staged as the module basename `calamares`
+    // (Makefile:1027 copies build/wl-installer to cd/calamares).
+    {
+        import drivers.veracrypt_impl : bootHasInstallPayload;
+        if (bootHasInstallPayload())
+            spawnWaylandProgram("calamares\0".ptr, "[inst]\0".ptr);
+    }
 }
 
 private void maybeSpawnWaylandClient() {

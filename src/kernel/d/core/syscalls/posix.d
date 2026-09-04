@@ -13265,11 +13265,34 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
         p += 20;
     }
     g_hosWinCount = count;
-    // Logged only a few times at startup — drmSetHosWindows runs every frame, so a
-    // per-call klog would flood the serial UART and stall the compositor under KVM.
-    static uint g_hosWinLogN = 0;
-    if (g_hosWinLogN < 3) {
-        klog("[g5] set windows count="); klog_hex(count); klog("\n");
+    // Log the window SET whenever it CHANGES -- count or the first window's geometry --
+    // rather than a fixed number of times at startup.  drmSetHosWindows runs every frame,
+    // so a per-call klog floods the serial UART and stalls the compositor under KVM; but
+    // logging only the first 3 calls meant the record showed boot state and nothing after,
+    // which is why "is Hyprland laying out 6 windows or 1, and at what geometry" could not
+    // be answered from a boot log.  Change-triggered logging costs a few lines per session
+    // and answers it directly.  Bounded so a thrashing layout cannot flood the UART either.
+    static uint g_hosWinLogN     = 0;
+    static uint g_hosWinPrevN    = 0xffffffffu;
+    static int  g_hosWinPrevW    = -1;
+    static int  g_hosWinPrevH    = -1;
+    const int hosW0 = count > 0 ? g_hosWins[0].w : -1;
+    const int hosH0 = count > 0 ? g_hosWins[0].h : -1;
+    if (g_hosWinLogN < 40 &&
+        (count != g_hosWinPrevN || hosW0 != g_hosWinPrevW || hosH0 != g_hosWinPrevH)) {
+        g_hosWinPrevN = count;
+        g_hosWinPrevW = hosW0;
+        g_hosWinPrevH = hosH0;
+        klog("[g5] windows="); klog_hex(count);
+        foreach (i; 0 .. count) {
+            klog(" ["); klog_hex(i); klog("] ");
+            klog_hex(cast(ulong)cast(uint)g_hosWins[i].w); klog("x");
+            klog_hex(cast(ulong)cast(uint)g_hosWins[i].h); klog("+");
+            klog_hex(cast(ulong)cast(uint)g_hosWins[i].x); klog("+");
+            klog_hex(cast(ulong)cast(uint)g_hosWins[i].y);
+            klog(" pid="); klog_hex(g_hosWins[i].pid);
+        }
+        klog("\n");
         g_hosWinLogN++;
     }
     // Paint the borders now as well as on present: Hyprland's frame/present cadence

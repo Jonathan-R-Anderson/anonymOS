@@ -20,7 +20,7 @@ until this is done, because a broken desktop invalidates every measurement.
 |---|---|---|---|
 | 0.1 | Boot current `main`. Confirm no `COMPOSITOR DIED`, `[dm] wl-domain-manager launched`, `[assets] /apps.blob unpacked` | — | minutes |
 | 0.2 | Confirm the launcher shows 20 tiles incl. **Software**, **Task Manager**, **CPU Monitor**, and that each launches (arg-bearing Exec lines included) | GUI A6 | minutes |
-| 0.3 | Boot once with `GPU=1` — confirm virgl, not softpipe, and that host blur/shadow/animations return | — | minutes |
+| 0.3 | ~~Boot with `GPU=1`~~ — **DO NOT.** `GPU=1` selects `gtk,gl=on`, which qemu-run.sh itself warns "gives a BLACK SCREEN on many hosts (the GL display path does not present the firmware-VGA framebuffer the desktop renders to)". Confirmed here. Use `GPU=1 HEADLESS=1` and read serial.log to exercise virgl | — | — |
 | 0.4 | **KNOWN CRASH — compositor main thread dies, desktop survives on a sibling thread.** Root-caused 2026-09-03, NOT yet fixed | — | see below |
 
 ---
@@ -38,7 +38,7 @@ work is reach and polish, not new subsystems.
 | 1.3 | ~~Full busybox applet set~~ — **ALREADY DONE**, my listing was stale. `deps/busybox/Makefile:37` builds from `defconfig`, and SHELL A1 records 117 → 381 applets. The DONE marker sat in the section body, not the header, so the roadmap cleanup did not strip it | SHELL A1 | — |
 | 1.4 | **`wl-quicksettings`** — ◑ PARTIAL. Date & Time row added (real); the fake volume slider removed and the battery row made truthful; "Settings" button renamed "Domains" to match the launcher. **Still blocked:** Keyboard, Mouse, Touchpad and Appearance panels have no backend to change anything — they would be fake controls, so they are not shipped. Needs an input/theme config path first | APPS B2 · GUI G18 · QUICKSETTINGS | M |
 | 1.5 | **`wl-domain-manager` views** — User Manager, Service Manager, Startup Applications | Adjacent views on objects the kernel already exposes and proves at boot | APPS B3 | S |
-| 1.6 | **`wl-files` / `wl-editor` extensions** — File Search, Disk Usage, Hex/Code editing | Rounds out the core four apps a person actually uses | APPS B5, B6 | M |
+| 1.6 | **`wl-files`** — ◑ PARTIAL. Real per-file sizes (`stat`) and real free space (`statvfs`) in the status bar; the hardcoded "identity: system domain: trusted" text removed. **File Search not done:** wl-files has no `wl_keyboard` listener at all, so typing needs the whole xkb path added first. Hex/Code editing in `wl-editor` untouched | APPS B5, B6 | M |
 
 **Exit criterion:** a person can install anonymOS, reboot into it, and do a day's basic work
 without the serial console.

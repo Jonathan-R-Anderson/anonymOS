@@ -18,6 +18,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/syscall.h>
 #include <time.h>
 #include <unistd.h>
@@ -47,6 +48,7 @@ struct entry {
     char name[256];
     int  is_dir;
     int  is_up;
+    long long size;      /* bytes, from stat(); -1 when unknown */
 };
 
 struct place {
@@ -274,6 +276,17 @@ static int entry_cmp(const void *a, const void *b)
     return strcasecmp(ea->name, eb->name);
 }
 
+/* Human-readable byte count.  Directories and unstattable entries get an empty string rather
+ * than a zero, so the column never asserts a size it does not know. */
+static void human_size(char *out, size_t cap, long long b)
+{
+    if (b < 0)              { out[0] = 0; return; }
+    if (b < 1024)             snprintf(out, cap, "%lld B", b);
+    else if (b < 1024LL*1024) snprintf(out, cap, "%.1f KB", (double)b / 1024.0);
+    else if (b < 1024LL*1024*1024) snprintf(out, cap, "%.1f MB", (double)b / (1024.0*1024.0));
+    else                      snprintf(out, cap, "%.1f GB", (double)b / (1024.0*1024.0*1024.0));
+}
+
 static void read_dir(struct app *app)
 {
     app->n_entries = 0;
@@ -285,6 +298,7 @@ static void read_dir(struct app *app)
         snprintf(e->name, sizeof(e->name), "..");
         e->is_dir = 1;
         e->is_up = 1;
+        e->size = -1;
     }
 
     DIR *d = opendir(app->cwd);
@@ -293,23 +307,26 @@ static void read_dir(struct app *app)
         while ((de = readdir(d)) != NULL && app->n_entries < MAX_ENTRIES) {
             if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
                 continue;
+            /* stat() unconditionally now: the size column needs it, and it also settles is_dir
+             * without trusting d_type (which is DT_UNKNOWN on several filesystems here). */
+            char p[512];
+            struct stat st;
+            int have = 0;
+            path_join(p, sizeof(p), app->cwd, de->d_name);
+            if (stat(p, &st) == 0)
+                have = 1;
             int is_dir = 0;
+            if (have)
+                is_dir = S_ISDIR(st.st_mode) ? 1 : 0;
 #ifdef DT_DIR
-            if (de->d_type == DT_DIR)
+            else if (de->d_type == DT_DIR)
                 is_dir = 1;
-            else if (de->d_type == DT_UNKNOWN)
 #endif
-            {
-                char p[512];
-                struct stat st;
-                path_join(p, sizeof(p), app->cwd, de->d_name);
-                if (stat(p, &st) == 0)
-                    is_dir = S_ISDIR(st.st_mode) ? 1 : 0;
-            }
             struct entry *e = &app->entries[app->n_entries++];
             snprintf(e->name, sizeof(e->name), "%s", de->d_name);
             e->is_dir = is_dir;
             e->is_up = 0;
+            e->size = (have && !is_dir) ? (long long)st.st_size : -1;
         }
         closedir(d);
     }
@@ -509,10 +526,25 @@ static void draw_files(struct app *app)
         struct entry *e = &app->entries[idx];
         int ry = TOOLBAR_H + r * ROW_H;
         uint32_t col = (idx == app->sel) ? 0xffffffffu : (e->is_dir ? 0xff1c2530u : 0xff39424eu);
-        draw_text(app, e->name, x0 + 42, ry + 8, listw - 60, 13, col);
+        draw_text(app, e->name, x0 + 42, ry + 8, listw - 150, 13, col);
+        char szbuf[32];
+        human_size(szbuf, sizeof szbuf, e->size);
+        if (szbuf[0])
+            draw_text(app, szbuf, x0 + listw - 96, ry + 8, 88, 12, col);
     }
     char status[160];
-    snprintf(status, sizeof(status), "%d items   identity: system   domain: trusted", app->n_entries);
+    /* Free space is real (statvfs on the current directory).  The identity/domain text that used
+     * to sit here was hardcoded "system"/"trusted" regardless of the actual domain, so it is gone
+     * rather than left asserting something this client never queried. */
+    struct statvfs vfs;
+    char freebuf[64];
+    if (statvfs(app->cwd, &vfs) == 0 && vfs.f_blocks > 0) {
+        char f[32], t[32];
+        human_size(f, sizeof f, (long long)vfs.f_bavail * (long long)vfs.f_frsize);
+        human_size(t, sizeof t, (long long)vfs.f_blocks * (long long)vfs.f_frsize);
+        snprintf(freebuf, sizeof freebuf, "   %s free of %s", f, t);
+    } else freebuf[0] = 0;
+    snprintf(status, sizeof(status), "%d items%s", app->n_entries, freebuf);
     draw_text(app, status, 28, app->height - STATUS_H + 6, app->width - 40, 11, 0xff48515du);
 
     // window-control buttons (minimize / maximize / close) at the top-right.

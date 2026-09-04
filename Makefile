@@ -1229,6 +1229,16 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		echo "Weston not built — run: make deps-weston (staying on Hyprland)"; \
 	fi
 
+	@# /desktop.conf drives autostart on BOTH compositors now (the kernel parses it — see
+	@# desktopAutostartAt in syscalls/posix.d), but it was staged only inside the Weston branch
+	@# above.  Without Weston built it was absent from the image entirely, so the Hyprland
+	@# autostart would silently find nothing — the same shape as the wl-layer-bar gap below.
+	@if [ -f src/desktop.conf ] && ! grep -q 'boot():/desktop.conf' cd/boot/limine/limine.conf; then \
+		cp src/desktop.conf cd/desktop.conf; \
+		printf '\n    module_path: boot():/desktop.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /desktop.conf (autostart directives; the WESTON branch omits it)"; \
+	fi
+
 	@# The Hyprland top bar is staged ~90 lines up under `if [ "$(WESTON)" != "1" ]`, but the
 	@# compositor is chosen by HYPRLAND=1 / the /epin-hyprland.conf marker.  Those two switches
 	@# disagree the moment Weston is built: WESTON defaults to 1, so staging takes the Weston

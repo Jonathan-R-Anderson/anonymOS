@@ -4133,6 +4133,101 @@ public int guiAutostartMode() {
     return 2;
 }
 
+// ── /desktop.conf autostart, for the Hyprland path ───────────────────────────────────────
+//
+// /desktop.conf carries `autostart = X` and `autostart-live = X`, but the ONLY parser for
+// them in the tree is Weston's desktop shell (deps/weston-14.0.0/desktop-shell/shell.c).
+// Under Hyprland that shell never runs, so the file was dead configuration: it looked like
+// it configured the running desktop and did not.  These read it for the kernel's own
+// autostart (kernel_main.d spawnWaylandClients), which is what drives clients on Hyprland.
+//
+// Only the autostart directives are handled here.  `bind = ...` is deliberately NOT parsed:
+// the kernel cannot install compositor keybindings, and Hyprland already binds the same apps
+// itself in system/hypr/custom/keybinds.lua.  `background = ...` is likewise the compositor's.
+__gshared char[8192] g_desktopConfBuf;   // desktop.conf is ~4.8 KB and mostly comments;
+                                         // 2048 silently truncated it BEFORE the
+                                         // autostart-live directive at byte ~2344
+
+private const(char)[] desktopConfigContent() {
+    ulong phys = 0;
+    ulong size = 0;
+    if (!findBootModule("/desktop.conf\0".ptr, phys, size))
+        return null;
+    ulong n = size;
+    if (size >= g_desktopConfBuf.length)
+        klog("[desktop.conf] WARNING: file larger than the parse buffer — directives past the cut are IGNORED\n");
+    if (n >= g_desktopConfBuf.length)
+        n = g_desktopConfBuf.length - 1;
+    if (n > 0)
+        bootModuleRead(phys, size, 0, g_desktopConfBuf.ptr, n);
+    g_desktopConfBuf[cast(size_t)n] = '\0';
+    return g_desktopConfBuf[0 .. cast(size_t)n];
+}
+
+// Copy the `index`-th autostart value into dst (NUL-terminated, leading '/' stripped so it is
+// a boot-module basename, which is what spawnWaylandProgram takes).  Returns false when the
+// index is past the last matching entry.
+//
+// live=false matches `autostart`, live=true matches `autostart-live`.  The two must not be
+// confused: an `autostart` scan has to reject `autostart-live` lines, hence the explicit
+// check that the character after the key is not '-'.
+public bool desktopAutostartAt(bool live, int index, char* dst, ulong cap) {
+    if (dst is null || cap == 0) return false;
+    const(char)[] cfg = desktopConfigContent();
+    if (cfg.length == 0) return false;
+
+    static immutable string KEY = "autostart";
+    int seen = 0;
+    size_t i = 0;
+    while (i < cfg.length) {
+        size_t ls = i;
+        while (i < cfg.length && cfg[i] != '\n') i++;
+        size_t le = i;                      // [ls, le) is one line
+        if (i < cfg.length) i++;            // step over '\n'
+
+        size_t p = ls;
+        while (p < le && (cfg[p] == ' ' || cfg[p] == '\t')) p++;
+        if (p < le && cfg[p] == '#') continue;               // comment line
+
+        // key
+        size_t k = 0;
+        while (k < KEY.length && p + k < le && cfg[p + k] == KEY[k]) k++;
+        if (k != KEY.length) continue;
+        size_t q = p + KEY.length;
+        if (live) {
+            static immutable string SUF = "-live";
+            size_t s = 0;
+            while (s < SUF.length && q + s < le && cfg[q + s] == SUF[s]) s++;
+            if (s != SUF.length) continue;
+            q += SUF.length;
+        } else {
+            if (q < le && cfg[q] == '-') continue;           // this is autostart-live
+        }
+
+        while (q < le && (cfg[q] == ' ' || cfg[q] == '\t')) q++;
+        if (q >= le || cfg[q] != '=') continue;
+        q++;
+        while (q < le && (cfg[q] == ' ' || cfg[q] == '\t')) q++;
+
+        // value ends at whitespace, '#', or end of line
+        size_t vs = q;
+        while (q < le && cfg[q] != ' ' && cfg[q] != '\t' && cfg[q] != '#' && cfg[q] != '\r') q++;
+        size_t ve = q;
+        if (ve <= vs) continue;                              // `autostart =` with no value
+        if (cfg[vs] == '/') vs++;                            // module basename, not a path
+        if (ve <= vs) continue;
+
+        if (seen++ != index) continue;
+
+        ulong n = cast(ulong)(ve - vs);
+        if (n > cap - 1) n = cap - 1;
+        foreach (j; 0 .. cast(size_t)n) dst[j] = cfg[vs + j];
+        dst[cast(size_t)n] = '\0';
+        return true;
+    }
+    return false;
+}
+
 private void displayAppendFormat(ref uint p, uint max) {
     if (g_fb is null) {
         displayAppendStr(p, max, "unavailable");

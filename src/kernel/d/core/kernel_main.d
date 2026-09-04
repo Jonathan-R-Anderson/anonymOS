@@ -1554,26 +1554,38 @@ private void spawnWaylandClients() {
     if (mode == 4)
         spawnWaylandProgram("wl-files\0".ptr, "[g17]\0".ptr);
 
-    // INSTALLER D4.1/D4.3 — on LIVE INSTALL MEDIA the installer is the front window at boot.
+    // /desktop.conf autostart — the Hyprland path now honours it.
     //
-    // /desktop.conf already declares `autostart-live = /calamares` for exactly this, but that
-    // directive is parsed ONLY by Weston's desktop shell
-    // (deps/weston-14.0.0/desktop-shell/shell.c) -- the sole implementation in the tree.  Under
-    // Hyprland that shell never runs, so nothing read the directive and the installer simply
-    // never appeared.  Same shape as the wl-layer-bar and wl-domain-manager gaps: the behaviour
-    // lived on the Weston path only.
+    // The file declares `autostart = X` and `autostart-live = X`, but its ONLY parser in the
+    // tree was Weston's desktop shell (deps/weston-14.0.0/desktop-shell/shell.c), which does
+    // not run under Hyprland.  So the file was dead configuration on this path: it looked like
+    // it configured the running desktop and did not -- which is why the installer never popped
+    // up, and why `autostart = /wl-overview` / `/wl-logview` did nothing either.
     //
-    // Gate: bootHasInstallPayload() is the same live-media test kernel_main.d:4556 uses to skip
-    // the disk-writing boot proofs.  An INSTALLED system boots from disk without the esp-image
-    // module, so it does not re-offer the installer -- which is what `autostart-live` means.
+    // `-live` entries run only on live install media, matching the file's own statement that
+    // they are "LIVE-MEDIA ONLY ... and SKIPS them once it is [installed]".  The test is
+    // bootHasInstallPayload(), the same one kernel_main.d:4556 uses to skip disk-writing boot
+    // proofs; an installed system boots without the esp-image module.
     //
-    // Spawned LAST so it maps on top of the bar and the domain manager, per D4.1's "it maps on
-    // top of the desktop and is the front window".  Staged as the module basename `calamares`
-    // (Makefile:1027 copies build/wl-installer to cd/calamares).
+    // Ordered after the built-ins so an autostart maps above the bar, and `-live` last so the
+    // installer is the front window (D4.1).  `bind =` is deliberately NOT handled: the kernel
+    // cannot install compositor keybindings, and Hyprland binds the same apps itself in
+    // system/hypr/custom/keybinds.lua.
     {
+        import core.syscalls.posix : desktopAutostartAt;
         import drivers.veracrypt_impl : bootHasInstallPayload;
-        if (bootHasInstallPayload())
-            spawnWaylandProgram("calamares\0".ptr, "[inst]\0".ptr);
+        enum int AUTOSTART_MAX = 16;         // bounded: a malformed conf must not spawn forever
+        char[128] abuf;
+        for (int i = 0; i < AUTOSTART_MAX; i++) {
+            if (!desktopAutostartAt(false, i, abuf.ptr, abuf.length)) break;
+            spawnWaylandProgram(abuf.ptr, "[auto]\0".ptr);
+        }
+        if (bootHasInstallPayload()) {
+            for (int i = 0; i < AUTOSTART_MAX; i++) {
+                if (!desktopAutostartAt(true, i, abuf.ptr, abuf.length)) break;
+                spawnWaylandProgram(abuf.ptr, "[inst]\0".ptr);
+            }
+        }
     }
 }
 

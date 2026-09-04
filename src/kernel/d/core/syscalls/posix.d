@@ -12354,6 +12354,7 @@ private void cursorRepaintAfterPresent() @nogc nothrow {
 // Interval counters are reset each stats dump; totals persist.  Two rdtsc reads
 // per present (~tens of cycles) — negligible vs the present itself.
 __gshared ulong g_presTotal;        // cumulative presents
+__gshared ulong g_presStatsLastPitMs;  // pitMs at the previous presentProfStats() call (wall-clock fps)
 __gshared ulong g_presN;            // presents this interval
 __gshared ulong g_presCostCyc;      // sum of full present cycles (blit+borders+cursor)
 __gshared ulong g_presCostMax;      // max full present cycles this interval
@@ -12692,6 +12693,26 @@ public void presentProfStats() @nogc nothrow {
     klog(" tfdArm="); klog_dec(g_tfdArm);
     klog(" tfdReady="); klog_dec(g_tfdReady);
     klog(" tfdRead="); klog_dec(g_tfdRead);
+
+    // WALL-CLOCK frame rate, computed from the PIT alone.
+    //
+    // The fps/frame_us fields below are derived from `cpms` (cycles per ms), calibrated once
+    // against rdtsc at the first present.  That calibration is NOT stable in this VM: across a
+    // single boot it read 13331978 -> 9501029 -> 7322338 -> 6267753 -> 5636254, drifting 2.4x,
+    // which made frame_us report ~1.7 s per frame while the cumulative present counter said the
+    // desktop was actually presenting 265 times in ~170 s (~1.56 fps, a 0.64 s gap).  The
+    // stall counter agreed with the counter and not with frame_us: at a true 1.7 s gap the
+    // 1.5 s freeze watchdog would fire on nearly every frame, and it fired twice.
+    //
+    // So report a rate that needs no TSC at all: frames this interval over the PIT milliseconds
+    // this interval.  Scaled x100 because klog_dec prints integers (156 = 1.56 fps).
+    const ulong nowPit = pitMs();
+    const ulong wallMs = (g_presStatsLastPitMs != 0 && nowPit > g_presStatsLastPitMs)
+                       ? (nowPit - g_presStatsLastPitMs) : 0;
+    g_presStatsLastPitMs = nowPit;
+    klog(" wall_ms="); klog_dec(wallMs);
+    klog(" fps_x100="); klog_dec(wallMs != 0 ? (g_presN * 100000UL) / wallMs : 0UL);
+
     if (g_presN == 0) { klog(" (idle: no frames this interval)\n"); return; }
 
     // cycles<->ms calibration over the whole run (clean PIT ms).

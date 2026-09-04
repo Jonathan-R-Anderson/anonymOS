@@ -280,12 +280,48 @@ private enum string BUILD_STAMP = "[build] kernel compiled " ~ __DATE__ ~ " " ~ 
 // log of a Hyprland session contains ZERO "[present]" lines.  Drive it off the wall clock
 // instead so the numbers exist whether or not the reconcile counter ever lands on 0.
 __gshared ulong g_presProfLastMs = 0;
+
+// Is the compositor BUSY or merely IDLE between frames?  present_share_permil already proves the
+// kernel blit is ~2 ms of a ~1100 ms frame, so the missing second is in userspace -- but "burning
+// a second compositing" and "asleep waiting for a client to damage something" look identical from
+// the present timestamps alone, and they need opposite fixes.  So sample the presenter's own run
+// state on every main-loop pass and report the parked fraction alongside the frame time:
+//
+//   cmp_park_permil ~= 0    -> render-bound: the compositor is computing the whole time, and the
+//                             cost is per-frame work (overdraw / texture upload / fragment cost).
+//   cmp_park_permil -> 1000 -> damage-bound: the desktop is idle and simply repaints when a client
+//                             asks it to, so the frame rate is a CLIENT redraw cadence, not a
+//                             compositor limit, and chasing render cost would be wasted effort.
+//
+// g_presenterTid is set by presentAccount(), so it names the task that actually reaches the
+// scanout -- no guessing which of the several "Hyprland" tasks is the compositor's main thread.
+__gshared ulong g_cmpParkSamples = 0;
+__gshared ulong g_cmpRunSamples  = 0;
+private void presentProfSample() @nogc nothrow {
+    const int ct = g_presenterTid;
+    if (ct < 0 || ct >= MAX_TASKS) return;
+    if (!g_tasks[ct].active || g_tasks[ct].exited) return;
+    if (g_tasks[ct].waiting || g_pollBlocked[ct]) ++g_cmpParkSamples;
+    else                                          ++g_cmpRunSamples;
+}
+
 private void presentProfTick() {
     if (g_lastPresentMs == 0) return;                  // desktop not up yet — nothing to profile
+    presentProfSample();                               // every pass: parked-vs-running duty cycle
     const ulong now = pitMs();
     if (now - g_presProfLastMs < 5000) return;         // one rolling 5 s window per line
     g_presProfLastMs = now;
     presentProfStats();                                // NB: prints AND resets the interval counters
+
+    const ulong tot = g_cmpParkSamples + g_cmpRunSamples;
+    klog("[cmpduty] parked_permil=");
+    klog_dec(tot ? (g_cmpParkSamples * 1000) / tot : 0);
+    klog(" parked="); klog_dec(g_cmpParkSamples);
+    klog(" running="); klog_dec(g_cmpRunSamples);
+    klog(" tid="); klog_dec(cast(ulong)g_presenterTid);
+    klog("\n");
+    g_cmpParkSamples = 0;
+    g_cmpRunSamples  = 0;
 }
 private void freezeWatchdog() {
     if (g_lastPresentMs == 0) return;                    // desktop not up yet

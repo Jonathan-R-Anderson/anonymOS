@@ -12541,6 +12541,30 @@ public void freezeProbeKlog() @nogc nothrow {
     klog(" flipQ="); klog_dec(g_flipQueued);
     klog(" flipRd="); klog_dec(g_flipRead);
     klog(" flipDrop="); klog_dec(g_flipDropped);
+    // The presenting task's PARK STATE -- the last unknown.  flipQ is exactly one ahead of
+    // flipRd for the whole stall and the stall ends the instant flipRd catches up, so the
+    // completion is queued and simply not read for 1-4s.  fdReadable() handles FD_DRM
+    // correctly for poll, select AND epoll_pwait, and the HOG counts show Hyprland is being
+    // scheduled thousands of times per stalled second.  So: is the presenter parked on poll
+    // (readiness is lying), parked on a futex (waiting on its own thread, never reaching
+    // epoll), or runnable and simply not reading the fd?  The HUD computes this already;
+    // logging it is what turns the next boot into an answer instead of another inference.
+    {
+        import core.kernel_main : g_pollBlocked, g_pollDeadline, g_futexWaitActive, g_futexWaitDeadline;
+        import core.task : g_tasks;
+        const int cp = g_presenterTid;
+        klog(" CMP=");
+        if (cp < 0 || cp >= MAX_TASKS) klog("none");
+        else {
+            klog_dec(cast(ulong)cp); klog(":");
+            { const(char)* pn = g_taskExecName[cp]; klog(pn !is null ? pn : "?".ptr); }
+            klog(" w"); klog_dec(g_tasks[cp].waiting ? 1UL : 0UL);
+            klog(" p"); klog_dec(g_pollBlocked[cp] ? 1UL : 0UL);
+            if (g_pollBlocked[cp]) { klog("(dl="); klog_dec(g_pollDeadline[cp]); klog(")"); }
+            klog(" f"); klog_dec(g_futexWaitActive[cp] ? 1UL : 0UL);
+            if (g_futexWaitActive[cp]) { klog("(dl="); klog_dec(g_futexWaitDeadline[cp]); klog(")"); }
+        }
+    }
     klog(" HOG:");
     for(int r=0;r<3;r++){ if(top[r]<0)break; klog(" "); klog_dec(top[r]); klog(":");
         const(char)* p=g_taskExecName[top[r]]; klog(p !is null ? p : "?".ptr); klog("="); klog_dec(g_freezeSchedHist[top[r]]); }

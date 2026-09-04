@@ -1,0 +1,15 @@
+--- a/src/gallium/drivers/softpipe/sp_texture.c
++++ b/src/gallium/drivers/softpipe/sp_texture.c
+@@ -457,6 +457,12 @@
+ softpipe_transfer_unmap(struct pipe_context *pipe,
+                         struct pipe_transfer *transfer)
+ {
++   /* EpinAnonymOS: callers can pass a NULL transfer when pipe_texture_map() failed --
++    * sp_tile_cache.c:179 did exactly that.  assert(transfer->resource) below compiles out
++    * under NDEBUG, so the next line faulted on `mov (%rsi),%r14`, cr2=0.  Nothing mapped,
++    * nothing to unmap. */
++   if (!transfer)
++      return;
+    struct softpipe_resource *spr;
+ 
+    assert(transfer->resource);

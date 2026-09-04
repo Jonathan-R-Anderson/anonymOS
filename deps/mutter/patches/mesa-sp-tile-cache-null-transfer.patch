@@ -1,6 +1,19 @@
 --- a/src/gallium/drivers/softpipe/sp_tile_cache.c
 +++ b/src/gallium/drivers/softpipe/sp_tile_cache.c
-@@ -340,6 +340,11 @@
+@@ -176,7 +176,11 @@
+          return;
+ 
+       for (i = 0; i < tc->num_maps; i++) {
+-         pipe->texture_unmap(pipe, tc->transfer[i]);
++         /* EpinAnonymOS: the sibling loop at :151 checks this and this one did not, so a
++          * failed pipe_texture_map() (which leaves the slot NULL) reached
++          * softpipe_transfer_unmap and faulted on `mov (%rsi),%r14` at +0x7, cr2=0. */
++         if (tc->transfer[i])
++            pipe->texture_unmap(pipe, tc->transfer[i]);
+          tc->transfer[i] = NULL;
+          tc->transfer_map[i] = NULL;
+       }
+@@ -340,6 +344,11 @@
  sp_tile_cache_flush_clear(struct softpipe_tile_cache *tc, int layer)
  {
     struct pipe_transfer *pt = tc->transfer[layer];
@@ -12,7 +25,7 @@
     const uint w = tc->transfer[layer]->box.width;
     const uint h = tc->transfer[layer]->box.height;
     uint x, y;
-@@ -523,6 +528,14 @@
+@@ -523,6 +532,14 @@
  
        layer = tc->tile_addrs[pos].bits.layer;
        pt = tc->transfer[layer];

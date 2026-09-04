@@ -555,6 +555,8 @@ $(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) 
 	cd $(BLDDIR)/mesa-$(MESA_VER) && \
 	    patch -p1 < $(SELF)/patches/mesa-sp-tile-cache-null-transfer.patch
 	cd $(BLDDIR)/mesa-$(MESA_VER) && \
+	    patch -p1 < $(SELF)/patches/mesa-sp-texture-null-unmap.patch
+	cd $(BLDDIR)/mesa-$(MESA_VER) && \
 	    $(MESON_SETUP) build \
 	        -Dgallium-drivers=swrast,virgl \
 	        -Dvulkan-drivers= \

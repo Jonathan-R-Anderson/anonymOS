@@ -1,0 +1,29 @@
+--- a/src/gallium/drivers/softpipe/sp_tile_cache.c
++++ b/src/gallium/drivers/softpipe/sp_tile_cache.c
+@@ -340,6 +340,11 @@
+ sp_tile_cache_flush_clear(struct softpipe_tile_cache *tc, int layer)
+ {
+    struct pipe_transfer *pt = tc->transfer[layer];
++   /* EpinAnonymOS: pipe_texture_map() leaves tc->transfer[i] NULL when the map fails, and
++    * the next two lines dereference it unconditionally (box.width at +0x14, box.height at
++    * +0x18) -- the exact fault that killed the compositor.  Nothing to flush: bail. */
++   if (!pt)
++      return;
+    const uint w = tc->transfer[layer]->box.width;
+    const uint h = tc->transfer[layer]->box.height;
+    uint x, y;
+@@ -523,6 +528,14 @@
+ 
+       layer = tc->tile_addrs[pos].bits.layer;
+       pt = tc->transfer[layer];
++      /* EpinAnonymOS: same NULL transfer, reached via the assert(pt->resource) path below,
++       * which compiles out under NDEBUG.  Hand back the freshly allocated tile rather than
++       * faulting; keep last_tile consistent with what we return. */
++      if (!pt) {
++         tc->last_tile = tile;
++         tc->last_tile_addr = addr;
++         return tile;
++      }
+       assert(pt->resource);
+ 
+       if (is_clear_flag_set(tc->clear_flags, addr, tc->clear_flags_size)) {

@@ -12652,6 +12652,7 @@ public void presentProfStats() @nogc nothrow {
     klog("[present] total="); klog_dec(g_presTotal);
     klog(" flipQ="); klog_dec(g_flipQueued);
     klog(" flipRd="); klog_dec(g_flipRead);
+    klog(" flipDrop="); klog_dec(g_flipDropped);
     klog(" tfdArm="); klog_dec(g_tfdArm);
     klog(" tfdReady="); klog_dec(g_tfdReady);
     klog(" tfdRead="); klog_dec(g_tfdRead);
@@ -12708,9 +12709,30 @@ __gshared uint g_drmFlipSeq;
 __gshared ulong g_flipQueued, g_flipRead;   // R2: flip-complete events queued vs read
 __gshared ulong g_tfdArm, g_tfdReady, g_tfdRead;  // R2: timerfd armed / became-ready / read
 
+__gshared ulong g_flipDropped;   // completions discarded because the queue was full
+
 private void drmQueueFlipEvent(int fd, ulong userData) @nogc nothrow {
     uint next = (g_drmEvHead + 1) % DRM_EVENT_QUEUE_MAX;
-    if (next == g_drmEvTail) return;   // queue full → drop (compositor will recover)
+    if (next == g_drmEvTail) {
+        // Queue full.  This used to drop the NEW event with the note "compositor will
+        // recover" -- it does not.  aquamarine sets isPageFlipPending when the flip is
+        // issued and clears it ONLY when it reads the completion back off the card fd
+        // (Legacy.cpp), so a dropped completion wedges that output permanently: every
+        // later commit is refused with
+        //     ERR from aquamarine: drm: Cannot commit when a page-flip is awaiting
+        // which appears 31 times in a single boot, and shows up as a desktop that
+        // glitches and stops updating.
+        //
+        // Drop the OLDEST instead.  The newest completion is the one the compositor is
+        // actually blocked on, so it must always be delivered; a stale one is what can
+        // safely be lost.
+        g_drmEvTail = (g_drmEvTail + 1) % DRM_EVENT_QUEUE_MAX;
+        ++g_flipDropped;
+        if (g_flipDropped <= 3) {
+            klog("[drm] flip-event queue full; dropped the oldest completion (n=");
+            klog_dec(g_flipDropped); klog(")\n");
+        }
+    }
     g_drmEvents[g_drmEvHead].userData = userData;
     g_drmEvents[g_drmEvHead].seq      = ++g_drmFlipSeq;
     g_drmEvents[g_drmEvHead].crtcId   = 1;

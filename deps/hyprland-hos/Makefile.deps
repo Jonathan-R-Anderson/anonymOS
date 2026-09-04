@@ -504,7 +504,14 @@ $(DL_DIR)/aquamarine-$(AQUAMARINE_REV).tar.gz:
 	@mkdir -p $(DL_DIR)
 	curl -L -o $@ https://github.com/hyprwm/aquamarine/archive/$(AQUAMARINE_REV).tar.gz
 
-$(STAMP_DIR)/aquamarine-extract: $(DL_DIR)/aquamarine-$(AQUAMARINE_REV).tar.gz
+# The patch files are PREREQUISITES, not just inputs to the recipe.  Without them here, adding or
+# editing a patch leaves this stamp valid, so the tree is never re-extracted, the new patch is
+# never applied, and the build silently produces the OLD binary -- which is exactly how patch 0007
+# (the EGL minimal-attribute fallback) was written, committed, built and shipped without ever
+# reaching the compositor.  Same committed-stamp-outlives-its-artifact trap as the sysroot
+# archives; here the stale marker hides a source change rather than a missing file.
+$(STAMP_DIR)/aquamarine-extract: $(DL_DIR)/aquamarine-$(AQUAMARINE_REV).tar.gz \
+                                 $(wildcard $(CURDIR)/patches/0*.patch)
 	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
 	rm -rf $(BUILD_DIR)/aquamarine
 	mkdir -p $(BUILD_DIR)/aquamarine

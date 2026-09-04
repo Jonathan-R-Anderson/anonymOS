@@ -51,8 +51,9 @@ else
   fi
 fi
 
-# A5/F4 persistence: a 32 MiB raw SATA disk on an AHCI controller backs the object
-# store across reboots (created on first run; kept out of git via .gitignore).
+# A5/F4 persistence + install target: a raw SATA disk on an AHCI controller backs the object
+# store across reboots AND is what "Install to Disk" writes to (created on first run; kept
+# out of git via .gitignore).  Size is DISK_SIZE below -- it must fit the install payloads.
 DISK_IMG="hos-disk.img"
 
 # Which ISO to boot.  Order: first positional arg, then $ISO, then the ISO the build
@@ -71,9 +72,36 @@ if [ ! -f "$ISO" ]; then
   exit 1
 fi
 echo "[qemu-run] booting $ISO"
+# Disk size.  The old default was 32M, sized for the object store alone -- and it is FAR too
+# small to install onto, which is why "Install to Disk" failed.  The installer's own numbers,
+# from veracrypt_impl.d:1252-1255 and the staged payload sizes:
+#
+#   esp-image        320 MiB  = 655360 sectors
+#   esp-boot-image     8 MiB  =  16384 sectors
+#   decoy-linux.ext4 256 MiB  = 524288 sectors
+#
+#   plain A/B install:  2048 + 16384 + 2*655360 + 2048 + 64 = 1331264 sectors = 650 MiB
+#   hidden/decoy:       adds sysSectors = max(0x20000, 524288+4096) = 258 MiB for the outer
+#                       (decoy) volume, on top of the ESPs -- roughly 1 GiB before slack.
+#
+# 4G raw is SPARSE: it costs only what is actually written, so this is close to free on disk
+# while leaving room for both install modes and the object store.
+DISK_SIZE="${DISK_SIZE:-4G}"
 if [ ! -f "$DISK_IMG" ]; then
-  qemu-img create -f raw "$DISK_IMG" 32M >/dev/null 2>&1 || dd if=/dev/zero of="$DISK_IMG" bs=1M count=32 status=none
-  echo "[qemu-run] created $DISK_IMG (32M) for persistent object store"
+  qemu-img create -f raw "$DISK_IMG" "$DISK_SIZE" >/dev/null 2>&1 \
+    || dd if=/dev/zero of="$DISK_IMG" bs=1M count=4096 status=none
+  echo "[qemu-run] created $DISK_IMG ($DISK_SIZE, sparse) — install target + object store"
+else
+  # An existing image from before this change is 32M and cannot be installed onto.  Say so
+  # loudly rather than letting the install fail deep inside with "target disk too small".
+  cur=$(stat -c %s "$DISK_IMG" 2>/dev/null || echo 0)
+  if [ "$cur" -lt 1073741824 ]; then
+    echo "[qemu-run] WARNING: $DISK_IMG is $((cur / 1024 / 1024))M — too small to install onto."
+    echo "[qemu-run]          The installer needs ~650M (plain) or ~1G (hidden/decoy) and will"
+    echo "[qemu-run]          fail with '[install] FAIL: target disk too small'."
+    echo "[qemu-run]          Grow it (non-destructive):  qemu-img resize -f raw $DISK_IMG $DISK_SIZE"
+    echo "[qemu-run]          Or start fresh:             rm -f $DISK_IMG"
+  fi
 fi
 
 # L3b LKL bring-up: a conflict-free NVMe device for LKL to drive (EpinAnonymOS uses AHCI and

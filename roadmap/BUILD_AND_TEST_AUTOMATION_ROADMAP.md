@@ -22,8 +22,16 @@ unchanged, and 20 minutes go into diagnosing a stale binary.
 | A2 | ✅ DONE — **Build manifest baked into the ISO + printed at boot** — git HEAD, dirty flag, and the mtime of `kernel.elf` | Turns "which build is this?" into one `grep`. Must come from the *build*, not from a compiler macro | S |
 | A3 | ✅ DONE (16 scripts) — **Repair the stale `qemu-*-verify.sh` scripts** — they reference `hos.iso`; the artifact is `hos-install.iso` | 13 scripts that cannot run as written | S |
 | A4 | ✅ DONE — **`make verify`** — run A1 against a default marker set | Makes it the default habit, not a thing to remember | S |
+| A5 | ✅ DONE — **`qemu-run.sh` warns on a stale ISO at boot time** — two independent tests: a tracked source newer than the image, and the build manifest naming a commit that is not HEAD | A1–A4 all have to be *remembered*. This is the one check that cannot be skipped by accident, because it sits in the command actually used to boot. A **warning**, not a refusal: booting an older image deliberately (bisecting, comparing against known-good) is legitimate. `ISO_CHECK=0` silences it | S |
 
-**Exit criterion:** it is impossible to boot a stale ISO without being told.
+**Exit criterion: ✅ MET.** Booting a stale ISO now prints a loud banner from `qemu-run.sh`
+itself; `make verify` checks on demand; `scripts/boot-test.sh` refuses outright. Verified by
+running the check against the current genuinely-stale image, against `ISO_CHECK=0`, and in a
+directory with no ISO at all.
+
+**Remaining, and it needs a build:** A2's manifest has never actually been generated, because no
+build has run since it was added. The first `make iso` proves it — after which `make verify`
+should print `built from <sha> (== HEAD)` rather than falling back to the mtime heuristic.
 
 ---
 

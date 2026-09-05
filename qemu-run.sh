@@ -1,4 +1,39 @@
 #!/usr/bin/env bash
+
+# ── Staleness check (BUILD_AND_TEST_AUTOMATION_ROADMAP track A) ────────────────────────────
+#
+# Track A's exit criterion is "it is impossible to boot a stale ISO without being told", and
+# THIS is the moment of truth — every other check has to be remembered, this one cannot be
+# skipped by accident.  A single session lost roughly four debugging rounds to booting an image
+# that predated the change under test and then reasoning hard about the resulting log.
+#
+# Deliberately a WARNING, not a refusal: booting an older image on purpose (bisecting, or
+# comparing against a known-good build) is legitimate.  Set ISO_CHECK=0 to silence it.
+if [ "${ISO_CHECK:-1}" = "1" ] && [ -f hos-install.iso ]; then
+  _stale=""
+  # (a) the image predates a tracked source edit
+  if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+    _newest="$(git ls-files -z -- 'src/*' 'system/*' 2>/dev/null | xargs -0 -r ls -t 2>/dev/null | head -1)"
+    [ -n "${_newest:-}" ] && [ "$_newest" -nt hos-install.iso ] && _stale="$_newest is newer than the ISO"
+    # (b) the build manifest names a commit that is not HEAD (stronger, exact — needs a build
+    #     produced after the manifest landed; absent on older images, which is not an error)
+    _mc="$(grep -ao 'HOSBUILD commit=[0-9a-f]*' hos-install.iso 2>/dev/null | head -1)"
+    _mc="${_mc#HOSBUILD commit=}"
+    _head="$(git rev-parse HEAD 2>/dev/null || echo '')"
+    if [ -n "$_mc" ] && [ -n "$_head" ] && [ "$_mc" != "$_head" ]; then
+      _stale="image was built from ${_mc:0:12}, HEAD is ${_head:0:12}"
+    fi
+  fi
+  if [ -n "$_stale" ]; then
+    echo "[qemu-run] ############################################################"
+    echo "[qemu-run] WARNING: THIS ISO MAY BE STALE — $_stale"
+    echo "[qemu-run]          Anything you conclude from serial.log may describe an OLDER build."
+    echo "[qemu-run]          Rebuild:  make -C src/kernel/d clean && HYPRLAND=1 make iso"
+    echo "[qemu-run]          Check:    make verify        Silence: ISO_CHECK=0"
+    echo "[qemu-run] ############################################################"
+  fi
+fi
+
 # Use KVM hardware acceleration when the host exposes /dev/kvm. Without it QEMU
 # falls back to TCG pure software emulation, which runs the (already software-
 # rendered) desktop ~10-100x slower — the dominant cause of a sluggish cursor and

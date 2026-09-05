@@ -11978,9 +11978,17 @@ public void epollDumpAll() @nogc nothrow {
         auto sock = fileSocket(f);
         if (sock is null || sock.state != LocalSocketState.listener) continue;
         size_t pend = (sock.pendingTail + localSocketPendingCapacity - sock.pendingHead) % localSocketPendingCapacity;
-        if (pend == 0) continue;
+        // Print EVERY listener, not only those with a backlog.  The `pend == 0` filter that used
+        // to be here made "no listener exists" and "the listener is idle" print identically --
+        // nothing at all -- which sent the ROADMAP 2.3 investigation down a blind alley about
+        // clients connecting to the wrong socket.  A listener with zero pending is the single
+        // most useful thing to see here: it says the connection was taken, not left queued.
         klog("  listener fd="); klog_dec(cast(ulong)fd);
-        klog(" pendingAccepts="); klog_dec(pend); klog("\n");
+        klog(" pendingAccepts="); klog_dec(pend);
+        klog(" path=");
+        if (sock.pathLength == 0) klog("(unnamed)");
+        else foreach (i; 0 .. sock.pathLength) { char[2] s; s[0] = sock.path[i]; s[1] = 0; klog(s.ptr); }
+        klog("\n");
     }
 }
 

@@ -29,7 +29,7 @@ built for musl in `deps/gtk-stack/sysroot`, and `gtk-hello` already runs.
 | 2.2 | ◑ **Syscall audit** — *measured 2026-09-05, see below.* Of the 14 probed, **only the 4 inotify calls are missing**; eventfd, eventfd2, signalfd, signalfd4, timerfd_create, memfd_create, ppoll, epoll_create1, dup3 and pipe2 are all implemented. Remaining work is **implementing inotify**, not surveying | Record what is missing once, rather than discovering it one crash at a time | APPS A3 · syscalls | M |
 | 2.3 | ◑ **One real upstream GTK app end-to-end** — `gtk3-widget-factory` and `gtk3-demo` now build from the upstream tree and are staged + bound (`SUPER+SHIFT+W` / `+G`). widget-factory **launches and gets deep into GTK startup but never maps a window** — see below. No need for `gnome-calculator`; the gate is now a debugging problem, not a packaging one | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
 | 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
-| 2.6 | **Stage C1** — `/proc` readers: Hardware Info, System Info, USB/PCI, Sensors, Battery, Routes | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
+| 2.6 | ◑ **Stage C1** — the *data* is now real (see below). The **apps** are blocked: `GRAPHICAL_APPLICATIONS_ROADMAP` defines C1 as "cross-build an existing GTK app, not write an app" and gates it on A4 — i.e. on 2.3 | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion:** an upstream GTK application, not written for this OS, runs on the desktop.
 
@@ -119,6 +119,33 @@ protocol trace answers in one boot which request or event the conversation stops
 autostart on a listener at `wayland-0`. Hyprland probes `wayland-0`, gets ECONNREFUSED, and binds
 `wayland-1` — so that listener never appears and the gate could never open. Both that gate and the
 hardcoded `WAYLAND_DISPLAY=wayland-0` now probe for the socket that actually exists.
+
+### 2.6 status — the data is real, the apps are gated on 2.3 — 2026-09-05
+
+Worth stating plainly: **C1 as written cannot be finished before 2.3.**
+`GRAPHICAL_APPLICATIONS_ROADMAP` defines it as *"cross-build an existing GTK app, not write an
+app"* and gates it on A4. GTK apps do not map windows here, so the app half is blocked.
+
+What *is* done is everything those apps would read. Verified on a real boot through the
+`open`/`read` path (`[proc]` proof lines):
+
+| file | before | now |
+|---|---|---|
+| `/proc/cpuinfo` | hardcoded `GenuineIntel`, `cpu MHz: 2000.000`, 1 CPU | CPUID vendor + brand, count from `g_smpCpuCount` — reports `QEMU Virtual CPU version 2.5+` |
+| `/proc/bus/pci/devices` | **did not exist** (ENOENT) | walks bus 0 via `pciConfigRead32`; first entry reads `8086:1237`, the 440FX host bridge |
+| `/proc/meminfo`, `stat`, `loadavg`, `uptime`, `diskstats`, `net/dev` | constants | real (2.1) |
+| `/proc/net/route` | — | already dynamic |
+
+`wl-sysmon` already reads `loadavg`, `meminfo`, `mounts`, `stat` and `uptime`, so it went from
+displaying an invented 512 MB to the machine's actual memory with no change to the app.
+
+**Deliberately still absent rather than faked:** `cpu MHz` (no core-frequency measurement exists —
+the old 2000.000 was invented), PCI BAR *sizes* (probing them means writing all-ones into a live
+device's BAR), and Sensors/Battery, which need ACPI the kernel does not have.
+
+**If 2.3 stays blocked**, the useful fallback is to surface this data through the native `wl-*`
+clients, which do map — that delivers C1's outcome without its method. Flagged as a deviation from
+the roadmap's stated approach, not slipped in as if it were the same thing.
 
 ### 2.2 audit result — 2026-09-05
 

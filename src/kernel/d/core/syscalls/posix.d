@@ -5060,6 +5060,37 @@ public void fsPersistTick(ulong nowMs) @nogc nothrow {
 // Deliberately a real file created through the same rtCreate/rtEnsureCap path a user's editor
 // would use, not a synthetic entry: a proof that exercises a private path proves nothing about
 // the one that matters.
+// ROADMAP 2.1: prove the /proc files that now report real data are actually READABLE by an app.
+// Deliberately goes through linux_sys_open/read/close rather than calling procDynamicSynth
+// directly -- the synth returning good bytes proves nothing if open() never routes to it, and
+// that routing (dynamic synth ahead of the static table) is the part that can silently regress.
+public void procSelfTest() @nogc nothrow {
+    static immutable string[6] paths = [
+        "/proc/meminfo\0", "/proc/stat\0", "/proc/loadavg\0",
+        "/proc/diskstats\0", "/proc/uptime\0", "/proc/net/dev\0"
+    ];
+    foreach (p; paths) {
+        const long fd = linux_sys_open(cast(ulong)p.ptr, O_RDONLY, 0);
+        if (fd < 0) {
+            klog("[proc] PROOF FAIL open "); klog(p.ptr);
+            klog(" err="); klog_dec(cast(ulong)(-fd)); klog("\n");
+            continue;
+        }
+        char[192] buf;
+        const long n = linux_sys_read(cast(ulong)fd, cast(ulong)buf.ptr, buf.length - 1);
+        linux_sys_close(cast(ulong)fd);
+        if (n <= 0) {
+            klog("[proc] PROOF FAIL read "); klog(p.ptr); klog(" n=0\n");
+            continue;
+        }
+        // First line only -- enough to show the numbers are real without flooding the log.
+        size_t cut = 0;
+        while (cut < cast(size_t)n && buf[cut] != '\n') ++cut;
+        buf[cut] = 0;
+        klog("[proc] "); klog(p.ptr); klog(" -> "); klog(buf.ptr); klog("\n");
+    }
+}
+
 public void fsPersistSelfTest() @nogc nothrow {
     import core.objstore : objstoreMounted, objstoreBootCount;
     if (!objstoreMounted()) return;

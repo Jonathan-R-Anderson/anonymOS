@@ -4786,6 +4786,7 @@ void d_kernel_main() {
     fsPersistInitRoots();  // ROADMAP 1.2: read `persist =` from /desktop.conf
     fsPersistLoad();
     fsPersistSelfTest();   // ROADMAP 1.2: prove the round trip across reboots
+    procSelfTest();        // ROADMAP 2.1: prove /proc reports real data through the open/read path
     bootProgress("store");
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer

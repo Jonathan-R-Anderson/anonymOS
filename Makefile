@@ -225,6 +225,10 @@ ICON_BLOB     := $(ASSET_BLOBS_DIR)/icons.blob
 CURSOR_BLOB   := $(ASSET_BLOBS_DIR)/cursors.blob
 WALLPAPER_BLOB := $(ASSET_BLOBS_DIR)/wallpapers.blob
 THEME_BLOB    := $(ASSET_BLOBS_DIR)/themes.blob
+# Catch-all for assets category_for() does not recognise (e.g. glib-2.0/schemas/gschemas.compiled).
+# Without this blob such files are packed only into the aggregate assets.blob, which the kernel
+# unpacks solely as a fallback -- so they ship in the ISO but never reach a running guest.
+MISC_BLOB     := $(ASSET_BLOBS_DIR)/misc.blob
 ZKSYNC_WALLET_STATIC := deps/zksync-wallet-vue/src/static/boot-integrity
 ZKSYNC_WALLET_BLOB := build/zksync-wallet.blob
 BOOT_INTEGRITY_CONTRACT := contracts/BootIntegrityRegistry.sol
@@ -1165,12 +1169,14 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 			cp $(CURSOR_BLOB) cd/cursors.blob; \
 			cp $(WALLPAPER_BLOB) cd/wallpapers.blob; \
 			cp $(THEME_BLOB) cd/themes.blob; \
+			cp $(MISC_BLOB) cd/misc.blob; \
 			printf '\n    module_path: boot():/fonts.blob\n' >> cd/boot/limine/limine.conf; \
 			printf '    module_path: boot():/icons.blob\n' >> cd/boot/limine/limine.conf; \
 			printf '    module_path: boot():/cursors.blob\n' >> cd/boot/limine/limine.conf; \
 			printf '    module_path: boot():/wallpapers.blob\n' >> cd/boot/limine/limine.conf; \
 			printf '    module_path: boot():/themes.blob\n' >> cd/boot/limine/limine.conf; \
-			echo "Included GUI asset category blobs (fonts/icons/cursors/wallpapers/themes)"; \
+			printf '    module_path: boot():/misc.blob\n' >> cd/boot/limine/limine.conf; \
+			echo "Included GUI asset category blobs (fonts/icons/cursors/wallpapers/themes/misc)"; \
 		fi; \
 		if [ "$(WESTON)" != "1" ]; then \
 			cp $(WLLAYERBAR_BIN)   cd/wl-layer-bar; \

@@ -6007,6 +6007,12 @@ private void rtUnpackAssets() {
     rtUnpackAssetBlob("/cursors.blob\0".ptr);
     rtUnpackAssetBlob("/wallpapers.blob\0".ptr);
     rtUnpackAssetBlob("/themes.blob\0".ptr);
+    // Catch-all for assets the packer's category_for() does not recognise, e.g.
+    // glib-2.0/schemas/gschemas.compiled.  Those went only into the aggregate
+    // assets.blob, which the fallback below never reaches while any named blob
+    // yields files — so they shipped in the ISO yet never appeared in rtfs, and
+    // GLib warned that its default schema source did not exist at every launch.
+    rtUnpackAssetBlob("/misc.blob\0".ptr);
 
     // Legacy fallback for older ISO layouts.
     if (g_assetFiles == before) {

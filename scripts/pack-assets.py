@@ -23,7 +23,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-CATEGORY_BLOBS = ("fonts", "icons", "cursors", "wallpapers", "themes")
+# "misc" is the catch-all for anything category_for() does not recognise, and it must have a blob
+# of its own.  Without one, such an asset was staged into build/assets, reported as "Included ..."
+# by the build, and packed into the aggregate assets.blob -- so it was demonstrably present in the
+# ISO -- yet reached no running guest: the kernel unpacks the named category blobs and falls back
+# to assets.blob only when those yield nothing, which never happens.  gschemas.compiled was lost
+# exactly this way, and every future uncategorised asset would have been too.
+CATEGORY_BLOBS = ("fonts", "icons", "cursors", "wallpapers", "themes", "misc")
 FORBIDDEN_RE = re.compile(
     r"\b(apple|macos|mac\s+os|san\s+francisco|sf\s+pro|sf\s+compact|"
     r"cupertino|proprietary)\b",

@@ -104,9 +104,34 @@ variable for a keybinding-launched app**:
   **there is no `/bin/sh` on this system** at all.
 - `system/hypr/custom/env.lua` is an empty stub and the Lua config exposes no env API.
 
-**So the next step is a small launcher binary** — the `hos-*-launch` pattern already used for dbus,
-NetworkManager and sshd — that sets `WAYLAND_DEBUG=1` and `exec`s the GTK client. With that, the
-protocol trace answers in one boot which request or event the conversation stops at.
+**The launcher was built (`hos-wl-trace`, `SUPER+SHIFT+J`) and the trace still could not be
+captured.** Eight build/boot cycles, each failing for a *different* environment reason. The
+failures are the useful part, because each is a real property of this system that was not written
+down anywhere:
+
+1. **Keybinding commands cannot take arguments.** Every binding that works is a single word. A
+   command with arguments is routed through a shell; there is no `/bin/sh`, so it execs an empty
+   program name (`[exec] not found: /bin/`). This is also why `SUPER+B` has never worked — and why
+   swapping its `sh -c` for `/busybox sh -c` does **not** fix it.
+2. **`busybox-dyn` is not in the ISO** despite having a `module_path` line; its staging block never
+   runs. `/busybox` is the one that exists.
+3. **A Hyprland-forked child inherits no console.** The launcher exec'd its target correctly
+   (gtk-hello appeared as 22 tasks) while not one of its own log lines, written to fd 2 just
+   before the exec, reached `serial.log`. Anything a client prints — including a protocol trace —
+   is written and discarded. Fixed in the launcher by `dup2`-ing `/dev/console` onto fd 1/2.
+4. **`setenv()` in the launcher does not reach the array `execv` passes.** Proven by having it
+   print its own `environ` immediately after setting the variable: it listed nothing at all, not
+   even what it had just set.
+5. **Capability denials were silent for every task except init.** The `[fdcap] deny-cap`
+   diagnostic was gated on `task == 0`. With that widened, `gtk-hello` shows denials —
+   `fd=1`/`fd=2`, `want=0x10` = `CAP_RIGHT_IOCTL`, i.e. `isatty()`. Benign in itself (writes are
+   not denied), but it means **a client can be refused things and nobody is told**.
+
+**Recommended next tactic: instrument the kernel, not the guest.** Every attempt so far has failed
+on some property of the guest environment — no shell, no console, no env propagation. The kernel
+sits in the middle of the socket and has none of those problems: logging wayland wire traffic
+(object id, opcode, length) in the AF_UNIX send/recv path for the GTK client's fd would show where
+the conversation stops, without depending on the client's environment at all.
 
 **Real bugs found while building the harness** (all fixed, none related to 2.3):
 

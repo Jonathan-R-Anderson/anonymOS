@@ -2249,22 +2249,6 @@ private void maybeSyncNtp() {
         klog("[ntp] giving up; clock stays at uptime-since-boot\n");
 }
 
-// Calibration: how fast does pitMs() actually advance against real time?  A 170 s soak saw it
-// reach roughly 6 s, i.e. about 1/30 of wall clock, which would make CLOCK_MONOTONIC, every
-// pitMs-based timeout and the NTP-set wall clock all wrong by the same factor.  Logging a
-// heartbeat at a fixed pitMs interval turns that into a measurement: count the lines over a soak
-// of known duration and the ratio falls straight out.
-private __gshared ulong g_pitHbNext = 0;
-private __gshared int   g_pitHbN    = 0;
-private void maybePitHeartbeat() {
-    if (g_pitHbN >= 60) return;
-    const ulong now = pitMs();
-    if (now < g_pitHbNext) return;
-    g_pitHbNext = now + 5000;
-    ++g_pitHbN;
-    klog("[pitcal] pitMs="); klog_dec(now); klog("\n");
-}
-
 private __gshared bool g_procTested = false;
 private void maybeProcSelfTest() {
     if (g_procTested) return;
@@ -4430,7 +4414,6 @@ private void kernelLoop() {
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
         maybeProcSelfTest();   // ROADMAP 2.1: prove /proc once real time and load have accrued
         maybeSyncNtp();        // NTP: set the wall clock from pool.ntp.org, with retries
-        maybePitHeartbeat();   // calibration: is pitMs() anywhere near real milliseconds?
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)
         maybeSpawnWpa();            // M5: launch wpa_supplicant (D-Bus) just before NM

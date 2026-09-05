@@ -123,13 +123,18 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
   for `hos-dbus-launch` returned six hits while the binary was not staged at all — the hits were
   the kernel's own spawn call naming the program. Grep for the `module_path:` line, or list the
   staged tree. (Grepping for a new *string literal* is still valid — see `make verify` above.)
-- **"The clock must be running slow" is usually a scheduling bug, not a slow clock.** A timer that
-  never fired twice looked exactly like `pitMs()` advancing at 1/30 of real time, and was nearly
-  recorded here as that. Measuring it (a `[pitcal]` heartbeat at a fixed `pitMs` interval, counted
-  against a soak of known length) showed `pitMs` passing 40 000 inside ~120 s — at least a third
-  of wall clock, not a thirtieth. The real fault was a re-arming deadline: the retry round pushed
-  its own next-attempt time forward before ever sending, so it re-gated on the deadline it had
-  just moved. **Measure the clock before concluding anything about it.**
+- **`pitMs()` is 1:1 with real time once the system is up.** Measured 2026-09-05 against three
+  independent NTP server timestamps in one soak: Δ`pitMs` 4000 ↔ 4 s, and Δ`pitMs` 60000 ↔ 60 s.
+  A clock set by SNTP held to within 1 second over a full minute. (Wall time *before* the periodic
+  loop starts ticking is not counted — a 150 s soak reached `pitMs` 75000 because the ISO spends
+  the first ~75 s in firmware and kernel init, so don't read boot-relative `pitMs` as uptime.)
+- **"The clock must be running slow" is usually a scheduling bug, not a slow clock.** A re-sync
+  timer that never fired twice looked exactly like `pitMs` advancing at 1/30 of real time, and was
+  nearly written into this file as that. The real fault was a re-arming deadline: the retry round
+  pushed its own next-attempt time forward before ever sending, so the following pass re-gated on
+  the deadline it had just moved. **Measure the clock before concluding anything about it** — a
+  heartbeat at a fixed `pitMs` interval, counted against a soak of known length, settles it in one
+  run.
 - **`scripts/boot-test.sh` kills QEMU the moment every `require` marker has appeared** — `TIMEOUT`
   is a ceiling, not a duration. Anything that needs the guest to keep running (a periodic timer, a
   re-sync, a soak) will never be observed through it. Run `qemu-run.sh` directly for those.

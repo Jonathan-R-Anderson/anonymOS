@@ -69,11 +69,33 @@ So the real shape is: widget-factory sends a Wayland request and waits for a rep
 comes, while Hyprland sits idle with `flipQ == flipRd` (nothing pending). **Two processes each
 waiting on the other** — a lost wakeup or a request never dispatched, not a CPU shortage.
 
-**Next diagnostic:** `gtk-hello` is now bound to `SUPER+SHIFT+H` as a control — same toolkit, same
-musl link, tiny app. Launch both in one boot. If gtk-hello maps and widget-factory does not, the
-difference is the application rather than the GTK stack, and the next place to look is whether
-Hyprland is polling the second client's fd at all (`epollDumpAll()` exists for exactly this
-question and is currently never called).
+**The control fails identically.** `gtk-hello` was bound to `SUPER+SHIFT+H` and launched in the
+same boot: it also never maps (`windows=` stays 1 after 120 s). So it is **not** the application,
+and not application weight — it is something common to GTK clients here. That also means the
+roadmap's long-standing "`gtk-hello` already runs" is **not true in this configuration** and should
+not be relied on as evidence the toolkit works end-to-end.
+
+**Two further theories tested and killed, both by direct observation:**
+
+- *"Clients are pointed at the wrong wayland socket."* An `[conn]` log of every AF_UNIX connect
+  settles it: `gtk-hello` connects to `/run/user/1000/wayland-1` and **succeeds** — the very same
+  socket `calamares` and `wl-layer-bar` use, both of which map fine.
+- *"The compositor never accepts them."* It does. gtk-hello's main task then runs an active
+  `sendmsg`/`recvmsg` conversation on that fd and **receives replies**.
+
+**So the failure is at the protocol level, after a working connection** — a GTK client talks to
+Hyprland, gets answers, and still never gets a mapped toplevel, while a Qt client (calamares) and a
+layer-shell client (`wl-layer-bar`) on the identical socket both do.
+
+**Where to look next:** what GTK's Wayland backend waits for that the others do not — the
+`xdg_wm_base` / `wl_seat` / `wl_shm` globals in the registry, or the first `xdg_surface.configure`
+round trip. Dumping the registry Hyprland advertises, and whether an `xdg_surface.configure` is
+ever sent to these clients, is the next cheap step.
+
+**Found on the way (real, unrelated to 2.3):** `maybeSpawnWaylandClient()` gated the kernel's GUI
+autostart on a listener at `wayland-0`. Hyprland probes `wayland-0`, gets ECONNREFUSED, and binds
+`wayland-1` — so that listener never appears and the gate could never open. Both that gate and the
+hardcoded `WAYLAND_DISPLAY=wayland-0` now probe for the socket that actually exists.
 
 ### 2.2 audit result — 2026-09-05
 

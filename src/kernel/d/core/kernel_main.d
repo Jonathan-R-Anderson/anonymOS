@@ -4730,6 +4730,7 @@ void d_kernel_main() {
     objstoreMount(appImg, appImgLen);
     // ROADMAP 1.2: restore /home from the store, immediately after it mounts and before any
     // userspace runs, so a shell or app started later sees the files it saw last boot.
+    fsPersistInitRoots();  // ROADMAP 1.2: read `persist =` from /desktop.conf
     fsPersistLoad();
     fsPersistSelfTest();   // ROADMAP 1.2: prove the round trip across reboots
     bootProgress("store");

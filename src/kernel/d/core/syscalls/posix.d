@@ -2250,7 +2250,7 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         // ROADMAP 1.2: note that the persisted subtree changed.  Checked here, at the one place
         // file bytes actually change, rather than trusting callers to remember.  rtUnderHome()
         // walks parent pointers, which is a handful of hops -- the tree is shallow.
-        if (rtUnderHome(idx)) g_fsDirty = true;
+        if (rtUnderPersistRoot(idx)) g_fsDirty = true;
         return cast(ssize_t)count;
     }
 
@@ -4232,6 +4232,107 @@ public bool desktopAutostartAt(bool live, int index, char* dst, ulong cap) {
     return false;
 }
 
+// ── ROADMAP 1.2: which paths persist, from /desktop.conf ─────────────────────────────────────
+//
+// Read the Nth `persist = /path` directive.  Same shape as desktopAutostartAt() above, and the
+// same file, because /desktop.conf is already the one place the kernel reads desktop policy
+// from and adding a second config file would just be a second thing to keep in sync.
+//
+// Why this is configurable at all rather than hardcoded to /home: what deserves to survive a
+// reboot is a POLICY question, not a kernel one.  /home is the obvious default, but a given
+// install may want /root, or /var/lib for a service's state, or nothing at all on a deliberately
+// amnesiac machine -- which for a deniable OS is a legitimate configuration, not an edge case.
+//
+// What must NOT be listed is anything the boot modules regenerate (/usr, /lib, /sbin, busybox,
+// the xkb data, the zsh functions): a persisted copy would SHADOW an updated system file after
+// an upgrade, which fails silently and is very hard to diagnose.  Stated here because the
+// config file is where someone will be tempted to add exactly that.
+public bool desktopPersistPathAt(int index, char* dst, ulong cap) {
+    if (dst is null || cap == 0) return false;
+    const(char)[] cfg = desktopConfigContent();
+    if (cfg.length == 0) return false;
+
+    static immutable string KEY = "persist";
+    int seen = 0;
+    size_t i = 0;
+    while (i < cfg.length) {
+        size_t ls = i;
+        while (i < cfg.length && cfg[i] != '\n') i++;
+        size_t le = i;
+        if (i < cfg.length) i++;
+
+        size_t p = ls;
+        while (p < le && (cfg[p] == ' ' || cfg[p] == '\t')) p++;
+        if (p < le && cfg[p] == '#') continue;
+
+        size_t k = 0;
+        while (k < KEY.length && p + k < le && cfg[p + k] == KEY[k]) k++;
+        if (k != KEY.length) continue;
+        size_t q = p + KEY.length;
+
+        while (q < le && (cfg[q] == ' ' || cfg[q] == '\t')) q++;
+        if (q >= le || cfg[q] != '=') continue;
+        q++;
+        while (q < le && (cfg[q] == ' ' || cfg[q] == '\t')) q++;
+
+        size_t vs = q, ve = le;
+        while (ve > vs && (cfg[ve-1] == ' ' || cfg[ve-1] == '\t' || cfg[ve-1] == '\r')) ve--;
+        // strip a trailing comment
+        foreach (j; vs .. ve) if (cfg[j] == '#') { ve = j; break; }
+        while (ve > vs && (cfg[ve-1] == ' ' || cfg[ve-1] == '\t')) ve--;
+        if (ve <= vs || cfg[vs] != '/') continue;            // must be an absolute path
+
+        if (seen++ != index) continue;
+        ulong n = cast(ulong)(ve - vs);
+        if (n > cap - 1) n = cap - 1;
+        foreach (j; 0 .. cast(size_t)n) dst[j] = cfg[vs + j];
+        dst[cast(size_t)n] = '\0';
+        return true;
+    }
+    return false;
+}
+
+// The resolved persist set, filled once at boot from /desktop.conf.  Node indices rather than
+// strings so the write path's dirty check is a pointer walk, not a string compare per write.
+enum int PERSIST_MAX = 8;
+__gshared int[PERSIST_MAX] g_persistRoots;
+__gshared int g_persistRootCount = 0;
+__gshared char[PERSIST_MAX][64] g_persistPaths;   // kept for the save walk's path prefix
+
+// Resolve the configured paths to RT nodes, creating them if absent.  Defaults to /home when
+// the config names none, so an image with no `persist =` line behaves as it did before.
+public void fsPersistInitRoots() @nogc nothrow {
+    g_persistRootCount = 0;
+    char[128] buf;
+    for (int i = 0; i < PERSIST_MAX; i++) {
+        if (!desktopPersistPathAt(i, buf.ptr, buf.length)) break;
+        rtMkdirPath(buf.ptr, 0x1ED, 0, 0);                   // 0755; no-op when it exists
+        int par; const(char)* lf; size_t lfl;
+        const int idx = rtResolve(buf.ptr, par, lf, lfl);
+        if (idx <= 0 || g_rt[idx].kind != RT_DIR) continue;
+        uint n = 0; while (buf[n] && n < 63) n++;
+        foreach (j; 0 .. n) g_persistPaths[g_persistRootCount][j] = buf[j];
+        g_persistPaths[g_persistRootCount][n] = 0;
+        g_persistRoots[g_persistRootCount++] = idx;
+    }
+    if (g_persistRootCount == 0) {
+        // No directive: keep the previous behaviour rather than silently persisting nothing.
+        rtMkdirPath("/home\0".ptr, 0x1ED, 0, 0);
+        int par; const(char)* lf; size_t lfl;
+        const int idx = rtResolve("/home\0".ptr, par, lf, lfl);
+        if (idx > 0) {
+            immutable string H = "/home";
+            foreach (j; 0 .. H.length) g_persistPaths[0][j] = H[j];
+            g_persistPaths[0][H.length] = 0;
+            g_persistRoots[0] = idx;
+            g_persistRootCount = 1;
+        }
+    }
+    klog("[fsp] persisting "); klog_dec(cast(ulong)g_persistRootCount); klog(" path(s):");
+    foreach (i; 0 .. g_persistRootCount) { klog(" "); klog(g_persistPaths[i].ptr); }
+    klog("\n");
+}
+
 private void displayAppendFormat(ref uint p, uint max) {
     if (g_fb is null) {
         displayAppendStr(p, max, "unavailable");
@@ -4758,18 +4859,14 @@ __gshared bool  g_fsDirty = false;
 __gshared ulong g_fsLastSaveMs = 0;
 private enum ulong FS_AUTOSAVE_MS = 30_000;
 
-// Is node `idx` inside /home?  Walks parent pointers to the root; the tree is shallow, and this
-// runs only on writes, so the cost is a few comparisons.
-private bool rtUnderHome(int idx) @nogc nothrow {
+// Is node `idx` inside any CONFIGURED persist root?  Walks parent pointers, comparing node
+// indices against the resolved root set -- so the check is a handful of integer compares per
+// write, with no string work, however many roots are configured.
+private bool rtUnderPersistRoot(int idx) @nogc nothrow {
     int guard = 0;
     for (int n = idx; n > 0 && guard < 64; ++guard) {
-        const int p = g_rt[n].parent;
-        if (p == 0) {   // child of root: /home is the only name that matters
-            return g_rt[n].nameLen == 4 &&
-                   g_rt[n].name[0] == 'h' && g_rt[n].name[1] == 'o' &&
-                   g_rt[n].name[2] == 'm' && g_rt[n].name[3] == 'e';
-        }
-        n = p;
+        foreach (r; 0 .. g_persistRootCount) if (g_persistRoots[r] == n) return true;
+        n = g_rt[n].parent;
     }
     return false;
 }
@@ -4880,9 +4977,7 @@ public void fsPersistSave() @nogc nothrow {
     import core.objstore : objstoreMounted, objstoreSaveBlob;
     if (!objstoreMounted()) return;
 
-    int hpar; const(char)* hleaf; size_t hleafLen;
-    const int idx = rtResolve("/home\0".ptr, hpar, hleaf, hleafLen);
-    if (idx < 0 || g_rt[idx].kind != RT_DIR) return;
+    if (g_persistRootCount == 0) return;
 
     static __gshared ubyte[FSP_MAX] buf;
     static __gshared char[512] path;
@@ -4890,13 +4985,18 @@ public void fsPersistSave() @nogc nothrow {
     const uint magic = FSP_MAGIC;
     if (!fspPut(buf.ptr, off, &magic, 4)) return;
 
-    // Seed the walk with "/home" -- fspWalk appends "/name" per level, so starting at 0 would
-    // serialise a child as "/x" instead of "/home/x" and restore it at the ROOT.  Caught by the
-    // two-boot test: the data crossed the reboot ("restored 1 files") but the proof could not
-    // find it, because it had been recreated one directory too high.
-    path[0]='/'; path[1]='h'; path[2]='o'; path[3]='m'; path[4]='e';
-    if (!fspWalk(idx, path.ptr, 5, buf.ptr, off))
-        klog("[fsp] /home larger than the persist cap — saved what fitted\n");
+    // Seed each walk with its ROOT PATH.  fspWalk appends "/name" per level, so starting at 0
+    // would serialise a child as "/x" instead of "/home/x" and restore it at the ROOT -- caught
+    // by the two-boot test, where the data crossed the reboot but the proof could not find it
+    // because it had been recreated one directory too high.
+    foreach (r; 0 .. g_persistRootCount) {
+        uint pl = 0;
+        while (g_persistPaths[r][pl] && pl < 63) { path[pl] = g_persistPaths[r][pl]; pl++; }
+        if (!fspWalk(g_persistRoots[r], path.ptr, pl, buf.ptr, off)) {
+            klog("[fsp] persist set larger than the cap - saved what fitted\n");
+            break;
+        }
+    }
 
     const ushort term = 0;
     fspPut(buf.ptr, off, &term, 2);
@@ -11015,7 +11115,7 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     }
     rtFreeData(g_rt[idx]);                           // release payload/link pages (no leak)
     // ROADMAP 1.2: a deletion changes the persisted subtree just as much as a write.
-    if (rtUnderHome(idx)) g_fsDirty = true;
+    if (rtUnderPersistRoot(idx)) g_fsDirty = true;
     g_rt[idx].kind   = RT_FREE;
     g_rt[idx].parent = -1;
     return 0;

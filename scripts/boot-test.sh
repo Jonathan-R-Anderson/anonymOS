@@ -73,14 +73,29 @@ echo "boot-test: suite=$SUITE  timeout=${TIMEOUT}s  require=${#REQ[@]} forbid=${
 
 # ── boot ──────────────────────────────────────────────────────────────────────────────────
 rm -f "$SERIAL"
+RUNLOG="${TMPDIR:-/tmp}/boot-test-qemu.$$.log"
+
+# NET is passed through ONLY when the caller sets it, never defaulted.
+#
+# It used to default to virtio, which made qemu-run.sh request SLIRP user-networking -- and a
+# QEMU built locally for virgl may well not have that compiled in:
+#     qemu-system-x86_64: -netdev user,id=net0: network backend 'user' is not compiled into
+#     this binary
+# QEMU then exits instantly, no serial.log is ever created, and the harness sits polling for
+# markers that cannot arrive until it times out.  Networking is not needed to boot the desktop,
+# so the default is now "whatever qemu-run.sh does on its own".
+#
+# And qemu-run.sh's own output goes to a LOG, not /dev/null.  Swallowing it is what hid the
+# error above through several rounds of "why is there no serial.log?".
 # setsid + kill(-pgid): qemu-run.sh exec's nothing, it launches qemu as its last command, so
 # killing the script alone would orphan QEMU and the next run would fight it for the disk.
-setsid env HEADLESS=1 MEM="${MEM:-2048}" NET="${NET:-virtio}" ./qemu-run.sh >/dev/null 2>&1 &
+setsid env HEADLESS=1 MEM="${MEM:-2048}" ${NET:+NET="$NET"} ./qemu-run.sh >"$RUNLOG" 2>&1 &
 RUNNER=$!
 cleanup() {
     kill -- -"$RUNNER" 2>/dev/null || kill "$RUNNER" 2>/dev/null || true
     wait "$RUNNER" 2>/dev/null || true
     rm -f "$CLEAN"
+    # RUNLOG is deliberately KEPT on failure — it is the only record of why QEMU refused to start.
 }
 trap cleanup EXIT INT TERM
 
@@ -107,7 +122,10 @@ strip_log
 cleanup_ran=0
 
 if [ ! -s "$CLEAN" ]; then
-    echo "boot-test: FAIL — serial.log is empty; the guest produced no output" >&2
+    echo "boot-test: FAIL — serial.log is empty or absent; the guest produced no output" >&2
+    echo "boot-test: qemu-run.sh said:" >&2
+    sed 's/^/    | /' "$RUNLOG" 2>/dev/null | tail -15 >&2
+    echo "boot-test: (full runner output: $RUNLOG)" >&2
     exit 2
 fi
 

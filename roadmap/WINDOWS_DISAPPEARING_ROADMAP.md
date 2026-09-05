@@ -1,155 +1,205 @@
 # Windows Disappearing — Investigation Roadmap
 
-**Status: OPEN.** Windows render once when they map, then vanish permanently. The coloured
-per-window identity borders stay on screen. Not flickering — stable, gone.
+**Status: ROOT CAUSE OF THE VISIBLE SYMPTOM FOUND AND FIXED (unverified on hardware).
+The underlying present-stall that triggers it is still OPEN.**
+
+Windows render once when they map, then vanish while the coloured identity borders remain.
 
 This file records what has been measured, what was tried, and what did **not** work, so the next
-attempt does not re-run a dead end. Several confident diagnoses in this investigation were wrong;
-they are kept below rather than deleted, because knowing a theory is dead is the useful part.
+attempt does not re-run a dead end. Several confident diagnoses here were wrong; they are kept
+rather than deleted, because knowing a theory is dead is the useful part.
+
+A 36-agent adversarial investigation ran on 2026-09-04 (31 findings, 5 survived refutation,
+26 refuted). Its results are folded in below and marked **[MA]**.
 
 ---
 
-## 1. Current symptom
+## 1. The symptom, and why it looks the way it does
 
 | | |
 |---|---|
-| Windows | render correctly on first map, then disappear permanently |
-| Borders | remain visible (they are drawn by the **kernel**, not the compositor) |
-| Flicker | none any more — earlier boots flickered, now it is a single permanent loss |
-| Windows still mapped? | **yes** — `[g5] windows=` holds at 5 for the whole session |
-| Client exits / crashes | **none** — no `COMPOSITOR DIED`, no faults, no exits |
-| Presents in last boot | **60 total** for the whole session |
+| Windows | render correctly on first map, then disappear |
+| Borders | remain visible — drawn by the **kernel**, not the compositor |
+| Windows still mapped? | **yes** — `[g5] windows=` holds at 5, byte-identical rectangles across the whole failure **[MA]** |
+| Client exits / crashes | **none** |
+| Presents in the last boot | 60 total |
 
-Why the borders survive: `hosDrawIdentityBorders()` (`src/kernel/d/core/syscalls/posix.d`) is
-called from `drmPresentFb()`, from `drmPresentToFramebuffer()`, **and directly from
-`drmSetHosWindows()`** (the `HOS_WINDOWS` ioctl, nr `0xf1`), whose own comment says it paints
-"even without a fresh present blit". So borders are repainted on window-list changes independent
-of the compositor. Their presence proves nothing about the compositor.
+Borders survive because `hosDrawIdentityBorders()` is called from `drmSetHosWindows()` (the
+`HOS_WINDOWS` ioctl) as well as from the present path — deliberately, "even without a fresh
+present blit". It paints only a 4 px ring (`HOS_BORDER_PX = 4`), never a fill, so it cannot
+itself erase window interiors.
 
 ---
 
-## 2. Attempts, in order
+## 2. ✅ ROOT CAUSE OF THE VISIBLE SYMPTOM — the kernel's own freeze HUD eats the desktop
+
+`freezeProbeRepaint()` (`posix.d`) paints **seven bands** via
+`fb_draw_hud_row(0/16/32/48/64/80/96, …)`. That helper fills **98·8 = 784 px × 16 rows with
+solid black (`0x00000000`)** before drawing its text, and its own comment says it goes
+"straight to g_fb, **bypassing** the text console + the `g_desktopClaimedFb` gate, so it stays
+readable on the desktop".
+
+So it stamps **784 × 112 px of black over the top-left of the live desktop**, and:
+
+* it is driven from `framebufferMoveCursor`, so it re-fires **on every mouse movement**;
+* it triggers on any present-stall over 1.5 s;
+* **nothing ever repairs those bands**, because the only thing that would is a present, and
+  presenting is exactly what has stopped.
+
+The tiled windows start at `y = 44`, so the bands at 48/64/80/96 land directly on window
+content and stay. That reads as "the windows disappeared" while the borders — repainted
+independently by `drmSetHosWindows()` — remain.
+
+This resolves the contradiction that blocked the whole investigation. Multiple verifiers
+correctly argued that a compositor which merely *stops presenting* would leave the last good
+frame frozen **with** its windows, so "it stopped rendering" could not explain windows
+vanishing. They were right: the erasure is not done by the compositor at all. It is done by
+the kernel's own debug overlay, from the mouse IRQ, after presenting stops.
+
+**Fix applied:** `g_freezeHudEnabled`, default `false`, gating `freezeProbeRepaint()` — the same
+pattern as `g_wifiDebugHud`. The serial-side `freezeProbeKlog()` is untouched, so all the
+diagnostics this investigation relies on still work. Set the flag to `true` when actually
+chasing a hard freeze on real hardware, which is what the overlay was written for.
+
+**Still unverified on hardware** — needs a boot to confirm the windows now stay visible (frozen,
+but visible) when a stall happens.
+
+---
+
+## 3. Still open — why presenting stalls at all
+
+The overlay explains the *erasure*, not the *stall*. Constrained sharply by **[MA]**:
+
+* **The dead zone is ~17 s (s6.txt:2766–5763).** In it Hyprland issues **ZERO DRM ioctls** —
+  no `PAGE_FLIP`, no `HOS_WINDOWS`, no `MAP_DUMB`, no `MODE_CURSOR`, no `[g5]`. Its only
+  syscalls are ~949 `TIOCGWINSZ` (the aquamarine logger writing to stdout) and 8 `sendmsg`.
+  **The failure is upstream of the commit, not a rejected commit.**
+* **Hyprland performs ZERO `recvmsg` for the entire dead zone** — no client message reaches it
+  for 17 s. Verifiers argue this is an *effect*: no render → no frame callbacks → nothing for
+  clients to send.
+* The last `renderMonitor` before the stop reported `needsFrame=false forceFull=0
+  damageChanged=false`. The early-out at `Renderer.cpp:2043` is on **`needsFrame`**, not on
+  damage — so damage never gets consulted.
+* `Cannot commit when a page-flip is awaiting` fires under `connector->isPageFlipPending`
+  (`aq DRM.cpp:1999`), and **`CDRMOutput::scheduleFrame` (`DRM.cpp:2287-2297`) returns early on
+  that same flag**, so once it is set and never cleared, no further frame event is ever emitted.
+  That is a permanent wedge by construction. *Verifiers disagreed on whether it is actually set
+  during this boot's dead zone — one found the error burst at 2838-2853 to be a duplicated
+  replay of earlier events, another read it as live. Unresolved.*
+* **Ordering hazard, real but unproven as the cause:** the kernel queues the flip completion
+  **synchronously inside** the `PAGE_FLIP` ioctl (`drmQueueFlipEvent`), i.e. the flip completes
+  *before* the ioctl returns — real hardware completes at vblank, strictly after. aquamarine
+  sets `isPageFlipPending = true` *after* `drmModePageFlip` returns. aquamarine's only escape
+  from a stale pending flip is gated on `NEEDS_RECONFIG` (`DRM.cpp:1987`), which never fires in
+  steady state.
+
+---
+
+## 4. Attempts, in order
 
 | # | Change | Commit | Outcome |
 |---|---|---|---|
-| 1 | `rounding = 0`, `dim_inactive = false` on the softpipe path | `5a818b018b` | **Helped.** Freeze events 40 → 18; longest stall 6s → 2s; stalls ≥3s: 12 → 0. Rounded corners are a per-fragment SDF and `rounding_power = 2.5` evaluates a `pow()` per pixel per window per frame |
-| 2 | DRM cursor-disable ioctl returns success instead of `EINVAL` | `5a818b018b` | **Worked, cosmetic.** 437 `legacy drm: cursor null failed` per boot → 0. Removed a per-frame synchronous serial write; did not change the bug |
-| 3 | `presentProfStats()` driven off a 5s wall clock | `5a818b018b` | **Instrumentation.** Its only call site was gated on `(g_objReconcileCtr & 0x3FFF) == 0`, which never fires in a desktop boot — a full Hyprland log had **zero** `[present]` lines |
-| 4 | Build stamp via `__DATE__`/`__TIME__` klog'd at boot | `2761c9199f` | **FAILED — do not retry.** Printed an identical `18:09:00` from two ISOs built 13 min apart whose kernels demonstrably differed. The build is reproducible (`SOURCE_DATE_EPOCH`), so those macros are frozen |
-| 5 | `[cmpduty]` — sample the presenter's parked-vs-running state | `e192d03a98` | **Instrumentation, worked.** See §3 |
-| 6 | Calibration-free `wall_ms` / `fps_x100` | `dc980b369e` | **Instrumentation, worked.** Needed because `cpms` drifts (see §4) |
-| 7 | `wl-logview`: diff against last presented frame, skip commit when identical, damage only changed rows | `7bca29b9fc` | **Worked as designed, and made the bug worse/visible.** It had been force-committing full-surface damage once a second, which was masking the underlying fault by forcing a full repaint every tick |
-| 8 | `debug:damage_tracking = 1` (DAMAGE_TRACKING_MONITOR) | `cf19ac6783` | **DID NOT FIX.** Confirmed present in the booted ISO (`grep -ac "damage_tracking = 1" hos-install.iso` = 3). Windows still vanish. The "partial damage leaves stale swapchain buffers" theory is therefore **not sufficient, and may be wrong entirely** |
+| 1 | `rounding = 0`, `dim_inactive = false` on softpipe | `5a818b018b` | **Helped.** Freezes 40 → 18; longest 6s → 2s; ≥3s stalls 12 → 0. `rounding_power = 2.5` evaluates a `pow()` per pixel per window per frame |
+| 2 | DRM cursor-disable ioctl returns success not `EINVAL` | `5a818b018b` | **Worked, cosmetic.** 437 `cursor null failed` → 0 |
+| 3 | `presentProfStats()` on a 5 s wall clock | `5a818b018b` | **Instrumentation.** Its only call site was gated on a counter that never fires in a desktop boot |
+| 4 | Build stamp via `__DATE__`/`__TIME__` | `2761c9199f` | **FAILED — do not retry.** Identical `18:09:00` from two ISOs 13 min apart with demonstrably different kernels; the build is reproducible (`SOURCE_DATE_EPOCH`) so those macros are frozen |
+| 5 | `[cmpduty]` parked-vs-running sampler | `e192d03a98` | **Instrumentation, worked** — though see §5 for how it was misread |
+| 6 | Calibration-free `wall_ms` / `fps_x100` | `dc980b369e` | **Instrumentation, worked** |
+| 7 | `wl-logview` diff-and-skip commit | `7bca29b9fc` | **Correct on its own merits.** It had been force-committing full-surface damage every second, masking the fault |
+| 8 | `debug:damage_tracking = 1` | `cf19ac6783` | **DID NOT FIX.** Confirmed in the booted ISO (3 hits). The stale-swapchain theory is dead |
+| 9 | `g_freezeHudEnabled = false` — gate the freeze HUD | *this change* | **Expected to fix the visible symptom.** Unverified on hardware |
 
 ---
 
-## 3. Measurements that are trustworthy
+## 5. Traps — measurement and build errors that cost real time
 
-Taken from real boots, with the instrumentation above.
-
-* **The kernel present path is exonerated.** `present_share_permil` = **1–3‰**. The kernel's
-  scanout blit is ~2 ms of a ~1100 ms frame. `present_us` barely moves between the fast phase
-  (1821 µs at 33 fps) and the slow one (2465 µs at 0 fps). Nothing on the kernel side of the DRM
-  boundary explains the missing time.
-* **The collapse is a cliff, not a slope.** 33–34 fps with **two** windows mapped; 0–1 fps with
-  **four**. The two extra windows are the ones that *float* rather than tile (they set
-  `min == max` size, so Hyprland classifies them as fixed-size dialogs): `1000x700 +140` and
-  `1180x680 +50` sit on top of `629x750 +6` and `629x750 +645`, which tile cleanly. That is
-  2.45 Mpx of window content over a 1.02 Mpx screen — 2.4× overdraw, which does **not** explain
-  a 34× collapse.
-* **The compositor is busy early, then asleep.** `[cmpduty] parked_permil` reads `0–12` while
-  windows are loading (compositor computing, not blocked) and `949` afterwards (idle). It stops
-  presenting; it is not stuck in a spin.
-* **Hyprland forces a few full frames and then stops.** `HOSDBG renderMonitor` prints
-  `forceFull=5` at startup and `forceFull=0` thereafter. Windows are present during the forced
-  full frames. This correlation is real but attempt #8 shows it is not the whole story.
-* **Hyprland presents ONLY via legacy `PAGE_FLIP` (nr `0xb0`).** The custom `HOS_PRESENT` ioctl
-  (nr `0xf0`) is called **0** times. A "stall" therefore means literally no page-flip ioctl.
-
----
-
-## 4. Traps — measurement and build errors that cost real time
-
-* **`cpms` drifts 2.4× within one boot** (`13331978 → 9501029 → 7322338 → 6267753 → 5636254`).
-  The `fps` and `frame_us` fields in `[present]` are derived from it and are **unreliable**. They
-  reported `frame_us ≈ 1,700,000` (1 frame/1.7 s) while the cumulative counter in the same lines
-  showed 265 presents in ~170 s (**1.56 fps**, a 0.64 s gap). The stall counter agreed with the
-  counter, not with `frame_us`. Reading `frame_us` as "a second of render per frame" produced a
-  wrong "render-bound" diagnosis. **Use `fps_x100`.**
-* **Verifying a change reached the ISO:** grep the ISO for a **string literal** only the new code
-  has — `grep -ac "cmpduty" hos-install.iso`. Costs nothing, needs no kernel change.
-  * C/D **comments do not survive compilation** — grepping for one always returns 0 and proves
-    nothing. This mistake was made twice.
-  * The `__DATE__`/`__TIME__` build stamp does **not** work (see attempt #4).
-* **Check commit time against ISO mtime before blaming the build.** `make iso` takes minutes; a
-  commit made while a build is already running will not be in it. One "phantom build bug" was
-  exactly this: commit 19:20:51, ISO 19:24:37, build started ~19:18.
-* **`make iso` DOES rebuild the D kernel.** `hos-install.iso: stage-iso-tree` and
-  `stage-iso-tree: kernel.elf`, with `build/libkernel_d.a: refresh-d-kernel` phony so the D
-  sub-make is always entered. An earlier claim that it only packages a prebuilt tree was wrong
-  in this respect. To force a full kernel rebuild anyway: `make -C src/kernel/d clean`.
-* **`serial.log` contains NUL bytes** — plain `grep` reports "binary file matches". Use `grep -a`,
-  or `tr -d '\000' < serial.log | sed 's/\x1b\[[0-9;]*m//g'`.
-* **Do not boot with `GPU=1`.** `qemu-run.sh`'s own comment warns `gtk,gl=on` "gives a BLACK
-  SCREEN on many hosts". Confirmed here. Use `GPU=1 HEADLESS=1` and read the log instead.
+* **[MA] EVERY Hyprland/aquamarine log line appears TWICE in `serial.log`.** 964 `G8 frame N
+  begin` lines but the counter only reaches 489; 475 frame numbers appear exactly 2×. The
+  duplication is **bursty, not adjacent** — s6.txt:2854-2886 is a verbatim replay of lines
+  2739-2843. **All Hyprland-side counts in earlier analysis were doubled**, and replayed error
+  bursts can look like live events at the replay line number. Real counts: 489 frames, 16
+  `Cannot commit`, ~6 `Cannot enter surface`.
+* **[MA] `parked_permil = 949` was NOT the stop point.** That sample (s6.txt:2635) sits inside a
+  stall that **recovered** (`CLEARED` at 2669, flips at 2668-2765). During the real dead zone the
+  compositor reads **508/556/558** — roughly half running. Any theory built on "the compositor
+  went to sleep" is testing against the wrong sample.
+* **[MA] The `G8` / headless output is a red herring.** `G8 frame N begin` is
+  `CHeadlessOutput::emitFrame` — a *different backend* from the DRM output doing the page flips.
+  It **never committed once all session** (zero `G8 frame N present`). The whole healthy render
+  period ran with no `G8` lines at all.
+* **`cpms` drifts 2.4× within one boot**, so the `fps` and `frame_us` fields of `[present]` are
+  unreliable. They reported ~1.7 s/frame while the cumulative counter showed 1.56 fps. **Use
+  `fps_x100`.**
+* **Verifying a change reached the ISO:** grep the image for a **string literal** only the new
+  code has — `grep -ac "cmpduty" hos-install.iso`. Comments do **not** survive compilation, so
+  grepping for one always returns 0 and proves nothing (this mistake was made twice).
+* **Check commit time against ISO mtime before blaming the build.** One "phantom build bug" was
+  a commit at 19:20:51 landing after a build that started ~19:18 and finished 19:24:37.
+* **`make iso` DOES rebuild the D kernel** (`stage-iso-tree: kernel.elf`, and
+  `build/libkernel_d.a: refresh-d-kernel` is phony). An earlier claim otherwise was wrong.
+  Force a full rebuild with `make -C src/kernel/d clean`.
+* **`serial.log` contains NUL bytes** — use `grep -a`, or
+  `tr -d '\000' < serial.log | sed 's/\x1b\[[0-9;]*m//g'`.
+* **Do not boot with `GPU=1`** — `qemu-run.sh` warns it "gives a BLACK SCREEN on many hosts".
 
 ---
 
-## 5. Ruled out — do not re-investigate without new evidence
+## 6. Ruled out — do not re-investigate without new evidence
 
 * **Flip-event ring overflow** — `flipDrop=0` in every sample.
-* **Lost wakeups / parked pollers** — the freeze watchdog re-wakes them; `CMP=... w0 p0 f0`
-  shows the compositor runnable, not parked, during stalls.
-* **`FD_DRM` readiness** — handled correctly in `poll`, `select` **and** `epoll_pwait`
-  (`fdReadableImpl` → `drmEventPending`); `epoll_wait`/`epoll_pwait` (232/281) are in the
-  dispatcher's park list in `kernel_main.d`.
+* **Lost wakeups / poll readiness** — `FD_DRM` is handled correctly in `poll`, `select` **and**
+  `epoll_pwait`; 232/281 are in the dispatcher's park list. **[MA]** 15 watchdog re-wakes in the
+  dead zone restored nothing, because a spurious wake cannot set `needsFrame` nor clear
+  `isPageFlipPending`.
 * **A spinning task starving the compositor** — `hos-sshd-launch` was wrongly blamed; it made
-  exactly one syscall. `HOG` is a scheduling histogram, not CPU time.
-* **Memory pressure** — no OOM/alloc-failure lines; GEM buffers stable (3 created, 2 destroyed);
-  swapchain steady at length 3.
-* **Client crashes or exits** — none, in any boot exhibiting the bug.
-* **Lost page-flip completions** — in 39 of 47 stalls `flipQ == flipRd`, i.e. nothing outstanding.
-  (The 8 lagging cases are a separate, smaller effect.)
+  one syscall. `HOG` is a scheduling histogram, not CPU time.
+* **Memory pressure** — no OOM lines; GEM stable (3 created / 2 destroyed); swapchain length 3.
+* **Client crashes, exits, or buffer invalidation** — **[MA]** "no client action can invalidate,
+  unmap or un-attach what Hyprland reads."
+* **[MA] `fb_id` reuse and direct scanout** — both explicitly refuted. Do not spend more effort
+  on `fb_id` caching or `attemptDirectScanout`.
+* **[MA] The HOS CPU compositor path** — `m_hosCPUFrame` is **false** this boot, so
+  `hosComposeShmWindows`, the panel, the dock and the G16 titlebars never run. The full GL scene
+  build runs instead. Any hypothesis resting on `needsCPUCopy()` or the clear-only shortcut is
+  off the table.
+* **[MA] Window geometry changes** — the `[g5]` line before the last present is byte-identical to
+  one 3000 lines later. Nothing moved, resized, changed z-order or unmapped.
+* **[MA] The timerfd "390× spin"** — the counters are process-global (fed by ~8 event loops), and
+  `tfdRead` tracks `tfdArm` ~1:1, which is a healthy timer. The headless frame loop is clamped to
+  a 33 ms floor by `0006-headless-frame-pacing.patch`.
 
 ---
 
-## 6. Open leads, ranked
+## 7. Latent bugs found along the way (real, not the cause)
 
-1. **`fb_id → GEM handle → physAddr` mapping.** aquamarine rotates a **3-deep** swapchain, so
-   three different framebuffer objects are page-flipped in turn. If `drmAddFb`/`findDrmFb`
-   mis-maps an `fb_id`, or caches a stale `physAddr`, the kernel would blit a buffer Hyprland has
-   stopped drawing into — which looks exactly like "the image froze on an old frame". *Untested.*
-2. **Direct scanout.** `attemptDirectScanout()` / `canAttemptDirectScanoutFast()` in aquamarine
-   can hand a **client** buffer straight to the display. If that happens and the client later
-   destroys or reallocates the buffer, the scanned-out image would be stale or blank. *Untested.*
-3. **`HOS_SCENE_RENDER` gating.** The kernel exports `HOS_SCENE_RENDER=1` unconditionally for
-   Hyprland (`exports.d` ~line 1100). The HOS opt-outs are split across **two** predicates —
-   that env var (`GLTexture.cpp` skip allocate, `SurfaceState.cpp` skip client texture upload,
-   `Monitor.cpp` force software cursors) and `needsCPUCopy()` (`GLRenderer.cpp` `m_hosCPUFrame`,
-   `hosComposeShmWindows`). A combination that skips **texture upload** while still building the
-   scene would render background + borders and no window contents. *This matches the symptom
-   closely and is the strongest lead.*
-4. **Client buffer lifecycle.** `resize_buffer()` (added to `wl-installer.c` and
-   `wl-cairo-demo.c`) destroys the `wl_buffer` and `munmap`s its shm before creating a new one.
-   Check it cannot destroy a buffer the compositor is currently displaying, or leave a mapped
-   surface with nothing attached. Likewise `wl-logview`'s new early-return commit path.
-5. **Flip-completion ordering.** The kernel queues the completion **synchronously inside** the
-   `PAGE_FLIP` ioctl (`drmQueueFlipEvent`), i.e. the flip completes *before* the ioctl returns —
-   real hardware completes at vblank, strictly after. aquamarine sets `isPageFlipPending = true`
-   *after* `drmModePageFlip` returns. Whether that ordering can wedge a connector permanently is
-   unresolved; aquamarine's only escape hatch for a stale pending flip is gated on
-   `NEEDS_RECONFIG` (`DRM.cpp:1987`), which never fires in steady state.
+Worth fixing on their own merits; none explains this symptom.
+
+* `DrmFb` takes **no reference** on its GEM buffer, and `GEM_CLOSE`/`DESTROY_DUMB` free the
+  `GemBuf` unconditionally — scanout survives only because `objRelease` never frees the pages.
+* `drmPresentFb` **never validates** that the bound framebuffer's backing is large enough for
+  `pitch * height`, so a CPU-alias FB can read past the end of its buffer.
+* `wl-cairo-demo` `munmap()`s a `malloc()`'d pointer on every resize.
+* `wl-cairo-demo` leaks one `wl_buffer` + one memfd per redraw — the exact pattern its own
+  comment says froze the desktop before.
+* Every window client acks an `xdg_surface.configure` and can then return **without attaching** a
+  buffer (protocol violation).
+* `wl-layer-bar` drops a repaint under buffer back-pressure with no retry.
+* `SSurfaceState::updateFrom` unconditionally NULLs `m_current.texture` on every buffer commit.
 
 ---
 
-## 7. Dead theories (kept so they are not retried)
+## 8. Dead theories (kept so they are not retried)
 
-* **"Rounded corners are the whole cause."** They were a real cost (attempt #1 more than halved
-  the freezes) but not the cause of the disappearance.
-* **"The compositor renders at 1 fps because it is render-bound."** Derived from the broken
-  `frame_us`; contradicted by the raw present counter and the stall counter. See §4.
-* **"Partial damage leaves stale swapchain buffers."** Attempt #8 set `damage_tracking = 1`,
-  which forces whole-monitor damage (`Renderer.cpp:2217`); confirmed in the ISO; did not fix it.
+* **"Rounded corners are the whole cause."** A real cost (attempt #1 more than halved the
+  freezes) but not the disappearance.
+* **"The compositor is render-bound at 1 fps."** Derived from the broken `frame_us`; contradicted
+  by the raw present counter and the stall counter.
+* **"Partial damage leaves stale swapchain buffers."** Attempt #8 forced whole-monitor damage;
+  confirmed in the ISO; did not fix it.
 * **"A lost flip completion wedges the connector."** `flipQ == flipRd` in 39/47 stalls.
-* **"`wl-logview` committing every second is the bug."** It was masking the fault, not causing
-  it. Fixing it (attempt #7) was still correct on its own merits.
+* **"`wl-logview` committing every second is the bug."** It was masking the fault, not causing it.
+* **"The compositor went to sleep."** **[MA]** — wrong `[cmpduty]` sample; it is ~50% running in
+  the dead zone.
+* **"A compositor that stops presenting cannot erase windows, so something must be rendering a
+  windowless frame."** Correct reasoning, wrong conclusion: the eraser is the kernel's own freeze
+  HUD (§2), not a rendered frame.

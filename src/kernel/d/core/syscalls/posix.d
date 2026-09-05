@@ -12419,9 +12419,31 @@ public void freezeSchedSample(int tid) @nogc nothrow {
     if ((++g_freezeSchedSamples & 0x3FFF) == 0)      // decay every 16384 → recent-weighted
         for (int i = 0; i < MAX_TASKS; i++) g_freezeSchedHist[i] >>= 1;
 }
+// OFF BY DEFAULT since 2026-09-04 — this overlay was eating the user's desktop.
+//
+// freezeProbeRepaint() paints SEVEN bands via fb_draw_hud_row(0/16/32/48/64/80/96), and that
+// helper fills 98*8 = 784 px x 16 rows with solid black (0x00000000) before drawing its text,
+// deliberately "bypassing the text console + the g_desktopClaimedFb gate, so it stays readable
+// on the desktop" (arch/x86_64/bootstrap.d).  So it stamps 784x112 of black over the top-left
+// of the live desktop.
+//
+// That is fine for its original purpose — diagnosing a Weston hard-freeze on real hardware,
+// where the screen is dead anyway and the only way to see anything is to draw over it.  It is
+// NOT fine as a default: it is driven from framebufferMoveCursor, i.e. it re-fires on every
+// mouse movement, and it triggers on any present-stall over 1.5 s.  Once presenting stops
+// nothing ever repaints those bands, because the only thing that would is a present.  The
+// tiled windows in this desktop start at y=44, so the bands at 48/64/80/96 land directly on
+// window content and stay there — which reads as "the windows disappeared".  The identity
+// borders survive because drmSetHosWindows() repaints them independently of presents.
+//
+// Gated the same way as the WiFi/MSI/LKL debug HUDs (see g_wifiDebugHud): set it to true to
+// get the freeze diagnostic back when actually chasing a hard freeze on hardware.
+public __gshared bool g_freezeHudEnabled = false;
+
 public void freezeProbeRepaint() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
     import arch.x86_64.bootstrap : fb_draw_hud_row, g_fb;
+    if (!g_freezeHudEnabled) return;                                        // never paint over the desktop
     if (!g_desktopClaimedFb || g_fb is null || g_lastPresentMs == 0) return;
     const ulong now = pitMs();
     if (now < g_lastPresentMs || (now - g_lastPresentMs) < 1500) return;   // presenting fine → don't draw

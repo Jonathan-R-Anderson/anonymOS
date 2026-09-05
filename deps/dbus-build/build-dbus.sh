@@ -1,6 +1,11 @@
 #!/bin/bash
 # M0: build a REAL dbus-daemon + libdbus-1 for the EpinAnonymOS musl target.
 set -e
+# Every long command below is piped to `tail`, and a pipeline's exit status is the LAST command's.
+# Without pipefail, set -e never saw configure or make fail: the script ran to the end and printed
+# "=== RESULT ===" having built nothing.  That is how this stayed broken without anyone noticing --
+# the build appeared to succeed every single time.
+set -o pipefail
 # Derive the project root from this script rather than hardcoding it.  This read
 # ROOT=/home/bruns/Documents/EpinAnonymOS, a path that stopped existing when the project was
 # renamed to anonymOS -- so every invocation failed at the first path and dbus was silently
@@ -26,11 +31,24 @@ export ac_cv_have_abstract_sockets=yes
 export ac_cv_func_posix_getpwnam_r=yes
 export cross_compiling=yes
 
-cd "$SRC"
-[ -f Makefile ] && make distclean >/dev/null 2>&1 || true
+# dbus turns maintainer mode on by default, so any timestamp skew makes `make` re-run autoreconf.
+# This box has no autoconf-archive, so that regeneration left AX_CHECK_ENABLE_DEBUG unexpanded and
+# configure died with a shell syntax error at line 4566.  The corruption is written into the tree,
+# so distclean cannot undo it -- only re-extracting can.  Detect it and start clean.
+TARBALL=$ROOT/deps/dbus-build/dbus-1.14.10.tar.xz
+if [ -f "$SRC/configure" ] && ! grep -q '^AX_CHECK_ENABLE_DEBUG' "$SRC/configure"; then
+  cd "$SRC"
+  [ -f Makefile ] && make distclean >/dev/null 2>&1 || true
+else
+  echo "=== source tree absent or configure corrupt; re-extracting from the tarball ==="
+  rm -rf "$SRC"
+  tar xJf "$TARBALL" -C "$ROOT/deps/dbus-build"
+  cd "$SRC"
+fi
 
 ./configure \
   --host=x86_64-pc-linux-musl \
+  --disable-maintainer-mode \
   --build="$(gcc -dumpmachine)" \
   --prefix="$PREFIX" \
   --exec-prefix="$PREFIX" \

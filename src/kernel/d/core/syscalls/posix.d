@@ -4840,7 +4840,7 @@ public void fsPersistLoad() @nogc nothrow {
         if (lastSlash > 0) {
             const char save = p[lastSlash];
             p[lastSlash] = 0;
-            rtMkdirPath(p.ptr, M0755, 0, 0);
+            rtMkdirPath(p.ptr, 0x1ED, 0, 0);   // 0755 — M0755 is scoped to rtInit(), so spell it
             p[lastSlash] = save;
         }
         int fpar; const(char)* fleaf; size_t fleafLen;

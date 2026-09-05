@@ -76,7 +76,20 @@ private extern(C) void ntpOnPacket(int sockfd, const(ubyte)* data, size_t len,
     }
 
     g_replySeen = true;
-    ntpSetRealtime(secs1900 - NTP_TO_UNIX_EPOCH);
+    const ulong serverSec = secs1900 - NTP_TO_UNIX_EPOCH;
+
+    // On a re-sync, report how far the local clock had drifted before correcting it.  This is the
+    // only direct measure of how badly pitMs() tracks real time -- it advances well behind wall
+    // clock on this kernel, and ntpNowSec() extrapolates from it between syncs, so the error is
+    // worth seeing rather than silently papering over.
+    if (g_synced) {
+        const ulong before = ntpNowSec();
+        klog("[ntp] resync: local clock was ");
+        if (serverSec >= before) { klog_dec(serverSec - before); klog(" s SLOW\n"); }
+        else                     { klog_dec(before - serverSec); klog(" s FAST\n"); }
+    }
+
+    ntpSetRealtime(serverSec);
     klog("[ntp] clock set: unix="); klog_dec(ntpNowSec());
     klog(" from "); klog_dec(src.bytes[0]); klog(".");
     klog_dec(src.bytes[1]); klog("."); klog_dec(src.bytes[2]); klog(".");

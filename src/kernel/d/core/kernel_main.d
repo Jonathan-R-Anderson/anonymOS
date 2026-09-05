@@ -2210,15 +2210,31 @@ private __gshared ulong g_dbusTestDeadlineMs = 0;
 private __gshared bool  g_netConfigured  = false;
 private __gshared ulong g_ntpNextTryMs   = 0;
 private __gshared int   g_ntpAttempts    = 0;
+private __gshared ulong g_ntpResyncAtMs  = 0;
 enum int   NTP_MAX_ATTEMPTS = 6;
 // Thresholds are deliberately small: pitMs() advances well behind wall time on this kernel, so a
 // "20 s" retry never came round twice in a 200 s boot.  Anything gating on pitMs must be sized
 // against that, not against real seconds.
 enum ulong NTP_FIRST_TRY_MS = 1_500;    // let the link settle after the lease
 enum ulong NTP_RETRY_MS     = 4_000;
+// Re-sync interval, in pitMs which runs behind wall clock -- so the real gap between corrections
+// is longer than this number suggests.  Sized to bound drift, not to be precise.
+enum ulong NTP_RESYNC_MS    = 60_000;
 private void maybeSyncNtp() {
     import network.ntp : ntpRequest, ntpSynced, ntpResetForRetry, ntpHaveServer;
-    if (!g_netConfigured || ntpSynced() || !ntpHaveServer()) return;
+    if (!g_netConfigured || !ntpHaveServer()) return;
+
+    // Re-sync periodically rather than setting the clock once.  ntpNowSec() extrapolates from
+    // pitMs() between syncs, and pitMs() does not track real time well here, so a clock set once
+    // at boot would drift away for as long as the machine stayed up.  Each re-sync corrects it
+    // exactly and reports the error it found, which is also how that drift gets measured.
+    if (ntpSynced()) {
+        if (pitMs() < g_ntpResyncAtMs) return;
+        g_ntpResyncAtMs = pitMs() + NTP_RESYNC_MS;
+        g_ntpAttempts   = 0;
+        g_ntpNextTryMs  = 0;
+        ntpResetForRetry();
+    }
     if (g_ntpAttempts >= NTP_MAX_ATTEMPTS) return;
     const ulong now = pitMs();
     if (g_ntpNextTryMs == 0) g_ntpNextTryMs = now + NTP_FIRST_TRY_MS;
@@ -2229,6 +2245,7 @@ private void maybeSyncNtp() {
     klog("/"); klog_dec(cast(ulong)NTP_MAX_ATTEMPTS);
     klog(" at pitMs="); klog_dec(now); klog("\n");
     ntpResetForRetry();
+    if (g_ntpResyncAtMs == 0) g_ntpResyncAtMs = pitMs() + NTP_RESYNC_MS;
     if (!ntpRequest() && g_ntpAttempts >= NTP_MAX_ATTEMPTS)
         klog("[ntp] giving up; clock stays at uptime-since-boot\n");
 }

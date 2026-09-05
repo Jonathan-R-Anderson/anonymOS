@@ -2219,7 +2219,7 @@ enum ulong NTP_FIRST_TRY_MS = 1_500;    // let the link settle after the lease
 enum ulong NTP_RETRY_MS     = 4_000;
 // Re-sync interval, in pitMs which runs behind wall clock -- so the real gap between corrections
 // is longer than this number suggests.  Sized to bound drift, not to be precise.
-enum ulong NTP_RESYNC_MS    = 60_000;
+enum ulong NTP_RESYNC_MS    = 5_000;
 private void maybeSyncNtp() {
     import network.ntp : ntpRequest, ntpSynced, ntpResetForRetry, ntpHaveServer;
     if (!g_netConfigured || !ntpHaveServer()) return;

@@ -31,6 +31,11 @@ hl.bind("SUPER + SHIFT + G", hl.dsp.exec_cmd("/gtk3-demo"),           { descript
 -- app.  If it maps a window and widget-factory does not, the difference is the application, not
 -- the GTK stack underneath it.
 hl.bind("SUPER + SHIFT + H", hl.dsp.exec_cmd("/gtk-hello"),           { description = "gtk-hello (GTK control)" })
+-- ROADMAP 2.3: the same client under libwayland's protocol trace.  A launcher binary rather than
+-- an env prefix, because Hyprland execs directly (no shell, and no /bin/sh exists) and the
+-- kernel's env block does not reach a process Hyprland forked.
+hl.bind("SUPER + SHIFT + J", hl.dsp.exec_cmd("/hos-wl-trace /gtk-hello"),
+        { description = "gtk-hello + wayland protocol trace" })
 
 -- Toggle the kernel-spawned top bar by touching the flag file it polls.  Runs through
 -- /busybox: there is no /bin/sh here, so the previous plain "sh -c" silently did nothing

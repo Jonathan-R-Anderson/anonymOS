@@ -142,6 +142,9 @@ NSHIM_SO := build/libnshim.so
 NETTEST_BIN := build/hos-nettest
 NETLAUNCH_BIN := build/hos-netlaunch
 DBUSLAUNCH_BIN := build/hos-dbus-launch
+# ROADMAP 2.3: runs a Wayland client under WAYLAND_DEBUG=1.  Needed because neither the kernel env
+# block nor a shell wrapper can set a variable for a keybinding-launched app (see the source).
+WLTRACE_BIN   := build/hos-wl-trace
 SSHDLAUNCH_BIN := build/hos-sshd-launch        # SSH-in: AF_UNIX->dropbear -i launcher
 DROPBEAR_SERVER_BIN := deps/dropbear/install/bin/dropbear   # SSH-in: the SSH server (inetd mode)
 DBUSTEST_BIN := build/hos-dbus-test
@@ -560,6 +563,10 @@ $(DBUSLAUNCH_BIN): src/util/hos-dbus-launch.c
 	@echo "==== Building hos-dbus-launch (M0 static launcher for the persistent system bus) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-dbus-launch.c
 
+$(WLTRACE_BIN): src/util/hos-wl-trace.c
+	@echo "==== Building hos-wl-trace (ROADMAP 2.3 wayland protocol trace launcher) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/hos-wl-trace.c
+
 $(SSHDLAUNCH_BIN): src/util/hos-sshd-launch.c
 	@echo "==== Building hos-sshd-launch (SSH-in: AF_UNIX -> dropbear -i per connection) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-sshd-launch.c
@@ -742,7 +749,7 @@ $(BSDTAR_BIN):
 $(GPGV_BIN):
 	$(MAKE) -C deps/gnupg
 
-stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -1072,6 +1079,14 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		cp $(GTK_DEMO_BIN) cd/gtk3-demo; \
 		printf '    module_path: boot():/gtk3-demo\n' >> cd/boot/limine/limine.conf; \
 		echo "Included gtk3-demo (ROADMAP 2.3 upstream GTK app)"; \
+	fi
+	@# ROADMAP 2.3: the only way to set WAYLAND_DEBUG for a keybinding-launched client.
+	@if [ -f $(WLTRACE_BIN) ]; then \
+		cp $(WLTRACE_BIN) cd/hos-wl-trace; \
+		printf '    module_path: boot():/hos-wl-trace\n' >> cd/boot/limine/limine.conf; \
+		echo "Included hos-wl-trace (ROADMAP 2.3 wayland protocol trace launcher)"; \
+	else \
+		echo "hos-wl-trace missing — $(WLTRACE_BIN) not built"; \
 	fi
 	@if [ -f $(GTK_HELLO_BIN) ]; then \
 		cp $(GTK_HELLO_BIN) cd/gtk-hello; \

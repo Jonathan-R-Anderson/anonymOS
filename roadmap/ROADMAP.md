@@ -87,10 +87,33 @@ not be relied on as evidence the toolkit works end-to-end.
 Hyprland, gets answers, and still never gets a mapped toplevel, while a Qt client (calamares) and a
 layer-shell client (`wl-layer-bar`) on the identical socket both do.
 
-**Where to look next:** what GTK's Wayland backend waits for that the others do not — the
-`xdg_wm_base` / `wl_seat` / `wl_shm` globals in the registry, or the first `xdg_surface.configure`
-round trip. Dumping the registry Hyprland advertises, and whether an `xdg_surface.configure` is
-ever sent to these clients, is the next cheap step.
+**A non-GTK client launched the same way works fine.** `wl-calendar`, bound to `SUPER+C`, launched
+post-boot through the identical keybinding path onto the identical socket, maps in **6 seconds**
+(`windows` 1 → 2). This closes the last alternative explanation: it is not the launch path, not
+post-boot spawning, not the socket, not the compositor, not load. **It is specific to GTK clients.**
+
+**Blocked on tooling, not on ideas.** The obvious next move is `WAYLAND_DEBUG=1`, which makes
+libwayland print every request and event, and there is currently **no way to set an environment
+variable for a keybinding-launched app**:
+
+- Putting it in the kernel's env block (`exports.d`) produces nothing — a keybinding launch is
+  Hyprland forking a child, so the child inherits *Hyprland's* environment, not the one the kernel
+  builds for programs it execs itself. (This also explains why `gtk-hello` picked up the correct
+  `wayland-1` socket while the kernel block still said `wayland-0`: it was never reading it.)
+- Wrapping in a shell fails because **Hyprland execs the command directly, with no shell**, and
+  **there is no `/bin/sh` on this system** at all.
+- `system/hypr/custom/env.lua` is an empty stub and the Lua config exposes no env API.
+
+**So the next step is a small launcher binary** — the `hos-*-launch` pattern already used for dbus,
+NetworkManager and sshd — that sets `WAYLAND_DEBUG=1` and `exec`s the GTK client. With that, the
+protocol trace answers in one boot which request or event the conversation stops at.
+
+**Real bugs found while building the harness** (all fixed, none related to 2.3):
+
+- **`SUPER+B` (top-bar toggle) has never worked.** It uses `sh -c`, and there is no `/bin/sh` —
+  it fails silently as `[exec] not found: /usr/bin/sh`, because nothing surfaces an exec failure.
+- **`busybox-dyn` is not in the ISO.** The Makefile has a `module_path` line for it, but its
+  staging block does not run: the image has 0 occurrences against 5 for `busybox`.
 
 **Found on the way (real, unrelated to 2.3):** `maybeSpawnWaylandClient()` gated the kernel's GUI
 autostart on a listener at `wayland-0`. Hyprland probes `wayland-0`, gets ECONNREFUSED, and binds

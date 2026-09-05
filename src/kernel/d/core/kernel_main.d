@@ -4731,6 +4731,7 @@ void d_kernel_main() {
     // ROADMAP 1.2: restore /home from the store, immediately after it mounts and before any
     // userspace runs, so a shell or app started later sees the files it saw last boot.
     fsPersistLoad();
+    fsPersistSelfTest();   // ROADMAP 1.2: prove the round trip across reboots
     bootProgress("store");
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer

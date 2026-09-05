@@ -4783,6 +4783,59 @@ public void fsPersistTick(ulong nowMs) @nogc nothrow {
     fsPersistSave();
 }
 
+// ROADMAP 1.2 PROOF: does a file written to /home actually survive a reboot?
+//
+// Mirrors objstore's bootCount trick.  On the first boot after the store is formatted there is
+// no marker, so this writes one.  On every later boot it reads the marker back and prints the
+// boot number it was written on -- a number that keeps climbing across reboots is the proof
+// that the save/serialise/disk/restore round trip works, and it cannot be faked by anything
+// still resident in RAM, because RAM is gone.
+//
+// Deliberately a real file created through the same rtCreate/rtEnsureCap path a user's editor
+// would use, not a synthetic entry: a proof that exercises a private path proves nothing about
+// the one that matters.
+public void fsPersistSelfTest() @nogc nothrow {
+    import core.objstore : objstoreMounted, objstoreBootCount;
+    if (!objstoreMounted()) return;
+
+    enum string MARK = "/home/.persist-proof\0";
+    int par; const(char)* leaf; size_t leafLen;
+    const int idx = rtResolve(MARK.ptr, par, leaf, leafLen);
+
+    if (idx > 0 && g_rt[idx].kind == RT_REG && g_rt[idx].size >= 5) {
+        klog("[fsp] PROOF: /home survived — marker says boot ");
+        foreach (i; 0 .. g_rt[idx].size) {
+            const char c = cast(char)g_rt[idx].data[i];
+            if (c >= '0' && c <= '9') { char[2] s; s[0] = c; s[1] = 0; klog(s.ptr); }
+        }
+        klog(", now boot "); klog_dec(objstoreBootCount()); klog("\n");
+    } else {
+        klog("[fsp] PROOF: no marker yet — writing one (first boot on this store)\n");
+    }
+
+    // (Re)write the marker with the current boot number, so the NEXT boot can compare.
+    rtMkdirPath("/home\0".ptr, 0x1ED, 0, 0);
+    int p2; const(char)* l2; size_t ll2;
+    int m = rtResolve(MARK.ptr, p2, l2, ll2);
+    if (m < 0 && p2 >= 0 && l2 !is null)
+        m = rtCreate(p2, l2, ll2, RT_REG, 0x1A4, 0, 0);       // 0644
+    if (m >= 0) {
+        char[24] buf;
+        uint n = 0;
+        buf[n++] = 'b'; buf[n++] = 'o'; buf[n++] = 'o'; buf[n++] = 't'; buf[n++] = ' ';
+        ulong v = objstoreBootCount();
+        char[20] d; int dn = 0;
+        if (v == 0) d[dn++] = '0';
+        while (v && dn < 20) { d[dn++] = cast(char)('0' + (v % 10)); v /= 10; }
+        while (dn > 0) buf[n++] = d[--dn];
+        if (rtEnsureCap(g_rt[m], n)) {
+            foreach (i; 0 .. n) g_rt[m].data[i] = cast(ubyte)buf[i];
+            g_rt[m].size = n;
+            g_fsDirty = true;          // ensure the autosave/reboot flush picks it up
+        }
+    }
+}
+
 private enum uint FSP_MAGIC = 0x48534650;   // "HSFP"
 private enum uint FSP_MAX   = 1 << 20;      // 1 MiB cap on a session's /home
 

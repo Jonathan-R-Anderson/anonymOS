@@ -4282,6 +4282,7 @@ private void kernelLoop() {
         bklAcquire(&g_bkl);
         freezeProbeKlog();     // freeze diagnostic → /run/klog (filter "freeze"): who hogs the core during a stall
         presentProfTick();     // PERF: per-frame cost split (kernel blit vs compositor render), every 5 s
+        fsPersistTick(pitMs());// ROADMAP 1.2: flush /home if it changed, at most every 30 s
         freezeWatchdog();      // LOST-WAKEUP RECOVERY: un-park stalled sleepers so the compositor resumes
         maybeReapZombies();    // free leaked task slots (crash-loop zombies) so new apps/installer can spawn
         maybeSpawnWaylandClient();

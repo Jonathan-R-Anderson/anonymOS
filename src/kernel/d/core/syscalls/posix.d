@@ -2247,6 +2247,10 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         f.offset += count;
         if (cast(uint)f.offset > g_rt[idx].size) g_rt[idx].size = cast(uint)f.offset;
         f.fileSize = g_rt[idx].size;
+        // ROADMAP 1.2: note that the persisted subtree changed.  Checked here, at the one place
+        // file bytes actually change, rather than trusting callers to remember.  rtUnderHome()
+        // walks parent pointers, which is a handful of hops -- the tree is shallow.
+        if (rtUnderHome(idx)) g_fsDirty = true;
         return cast(ssize_t)count;
     }
 
@@ -4740,6 +4744,44 @@ private void rtMkdirPath(const(char)* path, ushort mode, uint uid, uint gid) {
 // acceptable for now, and noted rather than hidden.
 __gshared uint  g_fsPersistBytes = 0;    // bytes written by the last save (0 = nothing yet)
 __gshared bool  g_fsPersistLoaded = false;
+
+// AUTOSAVE.  Saving only from linux_sys_reboot() means an unclean power-off -- a crash, a host
+// kill, pulling the plug -- loses the whole session, which is the failure mode people actually
+// hit.  Saving on every write is the other extreme: a full subtree serialise per write() would
+// be absurd.
+//
+// So: a dirty flag set at the one place file bytes change, and a flush no more often than
+// FS_AUTOSAVE_MS.  An idle desktop writes nothing and costs nothing; a busy one pays one
+// serialise per interval no matter how many writes it made.  The worst case is losing the last
+// FS_AUTOSAVE_MS of work rather than everything since boot.
+__gshared bool  g_fsDirty = false;
+__gshared ulong g_fsLastSaveMs = 0;
+private enum ulong FS_AUTOSAVE_MS = 30_000;
+
+// Is node `idx` inside /home?  Walks parent pointers to the root; the tree is shallow, and this
+// runs only on writes, so the cost is a few comparisons.
+private bool rtUnderHome(int idx) @nogc nothrow {
+    int guard = 0;
+    for (int n = idx; n > 0 && guard < 64; ++guard) {
+        const int p = g_rt[n].parent;
+        if (p == 0) {   // child of root: /home is the only name that matters
+            return g_rt[n].nameLen == 4 &&
+                   g_rt[n].name[0] == 'h' && g_rt[n].name[1] == 'o' &&
+                   g_rt[n].name[2] == 'm' && g_rt[n].name[3] == 'e';
+        }
+        n = p;
+    }
+    return false;
+}
+
+// Called from the kernel main loop.  Cheap when nothing changed.
+public void fsPersistTick(ulong nowMs) @nogc nothrow {
+    if (!g_fsDirty) return;
+    if (g_fsLastSaveMs != 0 && (nowMs - g_fsLastSaveMs) < FS_AUTOSAVE_MS) return;
+    g_fsLastSaveMs = nowMs;
+    g_fsDirty = false;
+    fsPersistSave();
+}
 
 private enum uint FSP_MAGIC = 0x48534650;   // "HSFP"
 private enum uint FSP_MAX   = 1 << 20;      // 1 MiB cap on a session's /home
@@ -10914,6 +10956,8 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
         return negErrno(EISDIR);
     }
     rtFreeData(g_rt[idx]);                           // release payload/link pages (no leak)
+    // ROADMAP 1.2: a deletion changes the persisted subtree just as much as a write.
+    if (rtUnderHome(idx)) g_fsDirty = true;
     g_rt[idx].kind   = RT_FREE;
     g_rt[idx].parent = -1;
     return 0;

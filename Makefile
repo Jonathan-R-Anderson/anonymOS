@@ -1145,6 +1145,20 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		if [ -d $(ASSET_SRC_DIR) ]; then \
 			rm -rf $(ASSET_BLOBS_DIR); \
 			mkdir -p $(ASSET_BLOBS_DIR); \
+			: "ROADMAP 2.3/2.4: GSettings schemas.  gtk-hello searches six paths for"; \
+			: "gschemas.compiled and finds none, and GLib then warns 'GSettings default"; \
+			: "schema source does not exist'.  The file IS built --"; \
+			: "deps/gtk-stack/sysroot/share/glib-2.0/schemas/gschemas.compiled -- it was"; \
+			: "simply never staged.  Many GTK apps hard-fail without it rather than"; \
+			: "degrading, so this is a prerequisite for running any real one."; \
+			if [ -f deps/gtk-stack/sysroot/share/glib-2.0/schemas/gschemas.compiled ]; then \
+				mkdir -p $(ASSET_SRC_DIR)/glib-2.0/schemas; \
+				cp deps/gtk-stack/sysroot/share/glib-2.0/schemas/gschemas.compiled \
+				   $(ASSET_SRC_DIR)/glib-2.0/schemas/gschemas.compiled; \
+				echo "Included glib-2.0/schemas/gschemas.compiled (GSettings)"; \
+			else \
+				echo "WARNING: gschemas.compiled not built — GTK apps will warn and some will fail"; \
+			fi; \
 			python3 scripts/pack-assets.py $(ASSET_SRC_DIR) $(ASSET_BLOB) usr/share --category-dir $(ASSET_BLOBS_DIR); \
 			cp $(FONT_BLOB) cd/fonts.blob; \
 			cp $(ICON_BLOB) cd/icons.blob; \

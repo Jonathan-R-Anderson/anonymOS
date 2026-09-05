@@ -2200,19 +2200,23 @@ private void maybeSpawnDbus() {
 // M0 smoke test: run a real dbus-send GetId client once, after the bus is up, to prove EXTERNAL auth
 // (SO_PEERCRED over native AF_UNIX) works.  Separate one-shot so we depend on neither fork nor a long nap.
 private __gshared bool g_dbusTestStarted = false;
-private __gshared int  g_dbusTestDelay   = 0;
+private __gshared ulong g_dbusTestDeadlineMs = 0;
 private void maybeSpawnDbusTest() {
     if (g_dbusTestStarted) return;
     if (!g_dbusStarted) return;         // launch the daemon first
-    // Wait for the bus to be *accepting*, not for a tick count to elapse.  The previous fixed
-    // 40-tick delay was a guess, and it lost the race: dbus-send ran, got ECONNREFUSED from
-    // /run/dbus/system_bus_socket, and the daemon only finished binding well afterwards.
-    ++g_dbusTestDelay;
+    // Wait for the bus to be *accepting*, not for time to elapse.  The original fixed 40-tick
+    // delay was a guess and lost the race: dbus-send ran, got ECONNREFUSED, and the daemon only
+    // finished binding long afterwards.
+    //
+    // The bound is wall-clock, not a poll count.  This runs in the main scheduler loop, so a poll
+    // count measures nothing physical -- a 400-poll bound expired while the daemon was still
+    // starting up, which is exactly how the first attempt at this fix still fired too early.
+    if (g_dbusTestDeadlineMs == 0) g_dbusTestDeadlineMs = pitMs() + 60_000;
     if (!unixListenerReady("/run/dbus/system_bus_socket\0".ptr))
     {
         // Bounded, so a daemon that never binds cannot wedge this poll forever.
-        if (g_dbusTestDelay < 400) return;
-        klog("[dbus] bus never began listening; running the test anyway to surface the error\n");
+        if (pitMs() < g_dbusTestDeadlineMs) return;
+        klog("[dbus] bus still not listening after 60s; running the test anyway to surface the error\n");
     }
     g_dbusTestStarted = true;
     klog("[dbus] M0: launching hos-dbus-test -> dbus-send GetId (EXTERNAL-auth round-trip)\n");

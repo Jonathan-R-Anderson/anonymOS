@@ -33,13 +33,17 @@ hl.bind("SUPER + SHIFT + G", hl.dsp.exec_cmd("/gtk3-demo"),           { descript
 hl.bind("SUPER + SHIFT + H", hl.dsp.exec_cmd("/gtk-hello"),           { description = "gtk-hello (GTK control)" })
 -- ROADMAP 2.3: the same client under libwayland's protocol trace.  A launcher binary rather than
 -- an env prefix, because Hyprland execs directly (no shell, and no /bin/sh exists) and the
--- kernel's env block does not reach a process Hyprland forked.
-hl.bind("SUPER + SHIFT + J", hl.dsp.exec_cmd("/hos-wl-trace /gtk-hello"),
+-- kernel's env block does not reach a process Hyprland forked.  Takes NO argument: a keybinding
+-- whose command has arguments is routed through a shell, and with no /bin/sh present that execs an
+-- empty program name ("[exec] not found: /bin/").  Only single-word commands work here.
+hl.bind("SUPER + SHIFT + J", hl.dsp.exec_cmd("/hos-wl-trace"),
         { description = "gtk-hello + wayland protocol trace" })
 
--- Toggle the kernel-spawned top bar by touching the flag file it polls.  Runs through
--- /busybox: there is no /bin/sh here, so the previous plain "sh -c" silently did nothing
--- ("[exec] not found: /usr/bin/sh"), meaning this bind has never worked.
+-- Toggle the kernel-spawned top bar by touching the flag file it polls.
+-- STILL BROKEN, and the /busybox swap above does not fix it: a keybinding command with arguments
+-- is routed through a shell, and there is no /bin/sh, so it execs an empty program name.  Only
+-- single-word commands run here.  This needs the same treatment as hos-wl-trace -- a small
+-- launcher binary that does the toggle itself -- rather than a shell one-liner.
 hl.bind("SUPER + B", hl.dsp.exec_cmd("/busybox sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\""),
         { description = "Toggle top bar" })
 

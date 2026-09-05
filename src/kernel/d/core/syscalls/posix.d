@@ -12692,23 +12692,40 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     // Sampling the SOURCE of this very blit separates them with certainty instead of argument.
     // 64 pixels on an 8x8 grid, logged only when the verdict CHANGES, so a healthy desktop
     // costs one line and never spams.
+    // COUNT DISTINCT COLOURS, not "pixels that are not pure black".
+    //
+    // The first version of this probe counted non-black pixels and reported "showing content"
+    // on a frame that was visibly blank.  It was wrong, and wrong in a way that nearly sent the
+    // whole investigation down a false path: the desktop background is 0x1e2430 (a dark
+    // blue-grey, set by `background` in desktop.conf), which is NOT zero.  A frame containing
+    // only the wallpaper and no windows at all therefore scored a perfect lit=64/64.
+    //
+    // Distinct colours is the property that actually separates the two states, and it is the
+    // same measure scripts/screen-check.sh uses on the far side of the display: a desktop with
+    // windows shows many, a background-only frame shows one or two.
     {
-        uint lit = 0;
+        uint[64] seen = void;
+        uint distinct = 0;
         foreach (sy; 0 .. 8) {
             const size_t ry = (cast(size_t)sy * copyH) / 8;
             foreach (sx; 0 .. 8) {
                 const size_t rx = (cast(size_t)sx * copyW) / 8;
-                const uint px = *cast(const(uint)*)(src + ry * cast(size_t)fb.pitch + rx * 4);
-                if ((px & 0x00FFFFFFu) != 0) ++lit;
+                const uint px = *cast(const(uint)*)(src + ry * cast(size_t)fb.pitch + rx * 4)
+                                & 0x00FFFFFFu;
+                bool dup = false;
+                foreach (k; 0 .. distinct) if (seen[k] == px) { dup = true; break; }
+                if (!dup && distinct < 64) seen[distinct++] = px;
             }
         }
-        // Bucket to 0 / 1-15 / 16-63 / 64 so ordinary frame-to-frame variation is not "a change".
-        const uint bucket = (lit == 0) ? 0u : (lit < 16 ? 1u : (lit < 64 ? 2u : 3u));
+        // 1 colour = a flat fill (blank).  2-3 = wallpaper plus a stray.  4+ = real content.
+        const uint bucket = (distinct <= 1) ? 0u : (distinct <= 3 ? 1u : 2u);
         if (bucket != g_srcLitBucket) {
             g_srcLitBucket = bucket;
             klog("[srcpx] blit source is ");
-            if (lit == 0) klog("ENTIRELY BLACK"); else klog("showing content");
-            klog(" (lit="); klog_dec(lit); klog("/64 fb=");
+            if (bucket == 0)      klog("A FLAT FILL (no windows rendered)");
+            else if (bucket == 1) klog("NEARLY FLAT (wallpaper only?)");
+            else                  klog("showing real content");
+            klog(" (distinct="); klog_dec(distinct); klog("/64 fb=");
             klog_dec(fb.fbId); klog(" phys=0x"); klog_hex(fb.physAddr);
             // The COPIED REGION, not the screen.  copyW/copyH are min(fb, g_fb), so if the
             // compositor's framebuffer ever reports smaller dimensions the blit covers only a

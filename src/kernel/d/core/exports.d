@@ -31,6 +31,42 @@ import core.globals;
 import core.utils;
 import core.console : console_force_framebuffer_log;
 
+// WAYLAND_DISPLAY was hardcoded to "wayland-0" for every program this kernel execs.  The
+// compositor does not necessarily land there: libwayland's wl_display_add_socket_auto() takes the
+// first FREE name, and Hyprland here binds /run/user/1000/wayland-1.  An epollDumpAll listing
+// showed the only wayland listeners were fds 29 and 30, both on wayland-1, and nothing at all on
+// wayland-0 -- so every GUI client was being pointed at a socket with no compositor behind it.
+//
+// That is why ROADMAP 2.3 stalled: gtk-hello and gtk3-widget-factory alike would connect, send a
+// request, and then block in poll(-1) forever with no reply, never mapping a window, while
+// Hyprland sat idle because nothing ever reached it.
+//
+// Probe for the socket that actually has a listener instead of asserting one.
+private __gshared char[40] g_wlDisplayEnv;
+private const(char)* waylandDisplayEnv() @nogc nothrow
+{
+    import core.syscalls.posix : unixListenerReady;
+    static immutable string SOCK = "/run/user/1000/wayland-";
+    static immutable string KEY  = "WAYLAND_DISPLAY=wayland-";
+    char[48] path;
+    foreach (n; 0 .. 10)
+    {
+        size_t i = 0;
+        foreach (c; SOCK) path[i++] = c;
+        path[i++] = cast(char)('0' + n);
+        path[i]   = 0;
+        if (!unixListenerReady(path.ptr)) continue;
+        size_t j = 0;
+        foreach (c; KEY) g_wlDisplayEnv[j++] = c;
+        g_wlDisplayEnv[j++] = cast(char)('0' + n);
+        g_wlDisplayEnv[j]   = 0;
+        return g_wlDisplayEnv.ptr;
+    }
+    // Nothing listening yet — a program spawned this early cannot connect either way, so keep the
+    // historical default rather than inventing a number.
+    return "WAYLAND_DISPLAY=wayland-0\0".ptr;
+}
+
 void trap0();
 void trap1();
 void trap2();
@@ -1020,7 +1056,7 @@ ulong linux_seed_initial_stack(
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor,
                                     "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "WAYLAND_DISPLAY=wayland-0\0".ptr);
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, waylandDisplayEnv());
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_WIDTH=1280\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;

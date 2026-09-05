@@ -1676,9 +1676,26 @@ private void spawnWaylandClients() {
     }
 }
 
+// True once ANY /run/user/1000/wayland-N has a live listener.  Callers used to hardcode wayland-0.
+private bool anyWaylandListenerReady() {
+    static immutable string SOCK = "/run/user/1000/wayland-";
+    char[48] path;
+    foreach (n; 0 .. 10) {
+        size_t i = 0;
+        foreach (c; SOCK) path[i++] = c;
+        path[i++] = cast(char)('0' + n);
+        path[i]   = 0;
+        if (unixListenerReady(path.ptr)) return true;
+    }
+    return false;
+}
+
 private void maybeSpawnWaylandClient() {
     if (!g_guiClientAutostartEnabled || g_guiClientStarted) return;
-    if (!unixSocketListenerReady("/run/user/1000/wayland-0\0".ptr)) return;
+    // Wait for whichever wayland-N the compositor actually bound, not for wayland-0 specifically.
+    // Hyprland binds wayland-1 here (libwayland takes the first free name), so this gate was
+    // waiting on a socket that never appears.
+    if (!anyWaylandListenerReady()) return;
 
     ulong now = get_ticks();
     if (!g_guiClientListenerSeen) {

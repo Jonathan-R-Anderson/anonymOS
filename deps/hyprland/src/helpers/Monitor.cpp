@@ -2578,13 +2578,35 @@ bool CMonitorState::updateSwapchain() {
         return true;
     }
 
-    if (OPTIONS.format == m_owner->m_drmFormat && OPTIONS.scanout && OPTIONS.length == 3 && OPTIONS.size == MODE->pixelSize)
+    // EpinAnonymOS: SINGLE-BUFFER SWAPCHAIN (was 3).
+    //
+    // Measured on this guest: only ONE of the rotating scanout buffers was ever rendered into.
+    // The kernel probe that samples the source of every blit and counts distinct colours read
+    //     fb=1 phys=0x1ee0d000  distinct=18/64   <- windows
+    //     fb=2 phys=0x1f1f7000  distinct= 2/64   <- still the startup wallpaper
+    // stably, every frame.  aquamarine's CSwapchain::next() unconditionally rotates
+    // (lastAcquired = (lastAcquired + 1) % length) and reports age = length, so every other
+    // page-flip presented a buffer that had never received the windows.  That is the
+    // "windows disappear, borders remain" bug: alternate frames were a stale picture, and the
+    // kernel-drawn identity borders were stamped over the top of it afterwards.
+    //
+    // One buffer is CORRECT here, not merely a workaround.  Multi-buffering exists so the
+    // display never scans out a half-drawn frame, but this guest has no scanout from these
+    // buffers at all: drmPresentFb() memcpy's the buffer into the real framebuffer and only
+    // THEN queues the page-flip completion the compositor waits on, so the copy is always
+    // finished before the compositor is told it may draw again.  There is no window in which a
+    // buffer being read can be overwritten, and hence nothing to double-buffer against.
+    //
+    // It also makes damage tracking honest: with length 1 the buffer age is 1, i.e. "this
+    // buffer holds the previous frame", which is exactly the assumption partial re-rendering
+    // needs.  With length 3 the age was 3 and the contents were three frames stale.
+    if (OPTIONS.format == m_owner->m_drmFormat && OPTIONS.scanout && OPTIONS.length == 1 && OPTIONS.size == MODE->pixelSize)
         return true;
 
     auto options    = OPTIONS;
     options.format  = m_owner->m_drmFormat;
     options.scanout = true;
-    options.length  = 3;
+    options.length  = 1;   // see the note above: single-buffer is correct on this present path
     options.size    = MODE->pixelSize;
     return m_owner->m_output->swapchain->reconfigure(options);
 }

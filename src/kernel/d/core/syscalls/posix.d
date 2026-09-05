@@ -2862,6 +2862,15 @@ private bool subEq(const(char)* sub, size_t subLen, string lit) {
 private void pbStr(ref size_t pos, const(char)* s) {
     while (*s != 0 && pos < g_procBuf.length - 1) g_procBuf[pos++] = *s++;
 }
+// Zero-padded 8-digit lowercase hex, which is the field format /proc/bus/pci/devices uses.
+// Consumers parse it by fixed width, so the padding is part of the contract, not cosmetic.
+private void pbHex32(ref size_t pos, uint v) {
+    static immutable string HEX = "0123456789abcdef";
+    foreach_reverse (i; 0 .. 8) {
+        if (pos >= g_procBuf.length - 1) return;
+        g_procBuf[pos++] = HEX[(v >> (i * 4)) & 0xF];
+    }
+}
 private void pbNum(ref size_t pos, long n) {
     if (n < 0) { if (pos < g_procBuf.length - 1) g_procBuf[pos++] = '-'; n = -n; }
     char[24] tmp = void; int ti = 0;
@@ -3060,6 +3069,41 @@ private size_t procDynamicSynth(const(char)* path) {
             // No MHz line: this kernel does not measure core frequency, and the 2000.000 the old
             // table printed was invented.  Omitting it is better than restating that guess.
             pbStr(pos, "\n".ptr);
+        }
+        g_procBuf[pos] = 0;
+        return pos;
+    }
+
+    // ROADMAP 2.6: /proc/bus/pci/devices, which did not exist, so a PCI Device Manager had
+    // nothing to read even though the kernel has enumerated the bus all along via
+    // pciConfigRead32.  Linux's format is one tab-separated line per function:
+    //   bus<<8|devfn, vendor<<16|device, irq, then 7 BARs and 7 sizes, then the driver name.
+    // Only bus 0 is walked: this is a flat virtual machine topology with no bridges, and
+    // recursing into buses that do not exist would invent entries.
+    if (cstrEq(path, "/proc/bus/pci/devices")) {
+        import drivers.pci : pciConfigRead32;
+        foreach (slot; 0 .. 32) {
+            foreach (func; 0 .. 8) {
+                const uint id = pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func, 0x00);
+                const ushort vendor = cast(ushort)(id & 0xFFFF);
+                if (vendor == 0xFFFF || vendor == 0) continue;   // no function here
+                const ushort device = cast(ushort)(id >> 16);
+                const uint irqPin   = pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func, 0x3C);
+                const uint devfn    = (cast(uint)slot << 3) | cast(uint)func;
+                pbHex32(pos, devfn);                 pbStr(pos, "\t".ptr);
+                pbHex32(pos, (cast(uint)vendor << 16) | device); pbStr(pos, "\t".ptr);
+                pbHex32(pos, irqPin & 0xFF);         pbStr(pos, "\t".ptr);
+                foreach (bar; 0 .. 6) {
+                    pbHex32(pos, pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func,
+                                                 cast(ubyte)(0x10 + bar * 4)));
+                    pbStr(pos, "\t".ptr);
+                }
+                // Expansion ROM base, then the seven size fields.  Sizes require writing all-ones
+                // to each BAR and reading back the mask, which would disturb a live device, so
+                // they are reported as zero rather than probed.
+                pbStr(pos, "0\t0\t0\t0\t0\t0\t0\t0\n".ptr);
+                if (pos > g_procBuf.length - 256) break;
+            }
         }
         g_procBuf[pos] = 0;
         return pos;
@@ -5145,9 +5189,10 @@ public void fsPersistTick(ulong nowMs) @nogc nothrow {
 // directly -- the synth returning good bytes proves nothing if open() never routes to it, and
 // that routing (dynamic synth ahead of the static table) is the part that can silently regress.
 public void procSelfTest() @nogc nothrow {
-    static immutable string[7] paths = [
+    static immutable string[8] paths = [
         "/proc/meminfo\0", "/proc/stat\0", "/proc/loadavg\0",
-        "/proc/diskstats\0", "/proc/uptime\0", "/proc/net/dev\0", "/proc/cpuinfo\0"
+        "/proc/diskstats\0", "/proc/uptime\0", "/proc/net/dev\0", "/proc/cpuinfo\0",
+        "/proc/bus/pci/devices\0"
     ];
     foreach (p; paths) {
         const long fd = linux_sys_open(cast(ulong)p.ptr, O_RDONLY, 0);
@@ -6404,9 +6449,6 @@ private immutable VFEntry[] g_vfs = [
     { "/proc/filesystems",       "nodev\tproc\nnodev\tsysfs\nnodev\ttmpfs\nnodev\tdevtmpfs\n"          },
     { "/proc/mounts",            "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"               },
     { "/proc/swaps",             "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"                  },
-    // Existence marker only: open() is served by procDynamicSynth above, which runs first and
-    // reports the real counters.  Without a row here stat()/access() would still say ENOENT.
-    { "/proc/diskstats",         ""                                                                    },
     { "/proc/meminfo",           "MemTotal:        524288 kB\nMemFree:         262144 kB\n"            },
     { "/proc/cpuinfo",           "processor\t: 0\nvendor_id\t: GenuineIntel\ncpu MHz\t\t: 2000.000\n" },
     { "/proc/loadavg",           "0.00 0.00 0.00 1/1 1\n"                                             },
@@ -6415,6 +6457,7 @@ private immutable VFEntry[] g_vfs = [
     // Existence marker only.  open() is served by procDynamicSynth, which runs first and reports
     // the real counters; without a row here stat()/access() would still answer ENOENT.
     { "/proc/diskstats",         ""                                                                    },
+    { "/proc/bus/pci/devices",   ""                                                                    },
     { "/proc/self/status",       "Name:\tinit\nState:\tS\nTgid:\t1\nPid:\t1\nPPid:\t0\n" ~
                                  "Uid:\t0\t0\t0\t0\nGid:\t0\t0\t0\t0\n" ~
                                  "VmRSS:\t4096 kB\nVmPeak:\t8192 kB\n"                                },

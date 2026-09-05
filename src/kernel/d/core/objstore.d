@@ -6,9 +6,12 @@
 // permissions, an identity binding, and a private writable `storage` blob — the
 // only area an app may mutate, separate from the immutable system base (F3).
 //
-// On-disk layout (sector = 512B):
+// On-disk layout (sector = 512B).  These are all RELATIVE to g_baseLba — see the
+// "where the store lives on the disk" note below; on a raw disk the base is 0, on an
+// installed (GPT) system the whole layout is offset into the pre-partition gap.
 //   LBA 0        superblock (magic, version, appCount, bootCount, nextFreeLba)
 //   LBA 1..32    app directory  (ObjAppEntry, 256B each → 2/sector, 64 entries)
+//   LBA 33..48   domain directory (DomainEntry, 256B each, 32 entries)  [DM5]
 //   LBA 64..     blob region (manifest / permissions / executable / storage),
 //                allocated sequentially, sector-granular.
 //
@@ -80,9 +83,52 @@ __gshared ObjAppEntry[MAX_APPS] g_apps;
 __gshared DomainEntry[DOM_MAX_PERSIST] g_domEntries;   // DOMAIN_MANAGER DM5
 __gshared ubyte[STAGE_BYTES] g_stage;     // scratch for blob read/write
 
+// ── ROADMAP 1.2: where the store lives on the disk ────────────────────────────────────────
+//
+// Every LBA in this module (DIR_LBA, DOM_DIR_LBA, BLOB_LBA_BASE, and every ObjAppEntry.*Lba
+// written to disk) is RELATIVE to g_baseLba.  On a raw, unpartitioned disk g_baseLba is 0 and
+// nothing changes.  On a GPT-partitioned disk -- i.e. an INSTALLED EpinAnonymOS -- the store
+// moves into the pre-partition gap instead of refusing to mount at all.
+//
+// Why the gap is safe.  A GPT disk's opening sectors are fixed by the spec and by what this
+// project's own installer lays down (diskpart.d):
+//     LBA 0        protective MBR
+//     LBA 1        GPT header
+//     LBA 2..33    the 128-entry partition array (ENTRY_SECTORS = 32)
+//     LBA 34       boot-state sector (core.bootstate.BOOTSTATE_LBA)
+//     LBA 35..2047 UNUSED -- diskpart.d's align2048() starts the first partition at 2048
+//     LBA 2048+    partitions (ESP, slots, decoy/outer volumes)
+// So writing inside [GPT_GAP_FIRST, GPT_GAP_END) touches neither the bootloader, nor the
+// partition table, nor any partition's contents.  That is the whole reason the previous code
+// refused: it wrote the superblock at absolute LBA 0 and would have destroyed the GPT.
+//
+// The cost is size: the gap is ~1 MiB, so this persists the app + domain DIRECTORIES and their
+// small blobs, not a general filesystem.  g_endLba makes that a hard wall rather than silent
+// corruption of partition 1 -- allocBlob() now fails instead of walking past the end.
+enum ulong GPT_GAP_FIRST = 40;      // 34 is bootstate; 35..39 left as slack
+enum ulong GPT_GAP_END   = 2048;    // exclusive -- diskpart.d align2048() puts partition 0 here
+
+__gshared ulong g_baseLba = 0;      // absolute LBA of this store's relative sector 0
+__gshared ulong g_endLba  = 0;      // first absolute LBA the store may NOT touch (0 = unbounded)
+
 public bool objstoreMounted() { return g_mounted; }
 public ulong objstoreBootCount() { return g_super.bootCount; }
 public uint  objstoreAppCount() { return g_super.appCount; }
+public ulong objstoreBaseLba() { return g_baseLba; }
+
+// All store I/O goes through these two.  They translate relative -> absolute and enforce the
+// upper wall, so no code path in this module can write outside its region even if a length or a
+// persisted LBA is wrong.
+private bool stRead(ulong rel, uint count, void* dst) {
+    const ulong a = g_baseLba + rel;
+    if (g_endLba != 0 && (a + count) > g_endLba) return false;
+    return diskReadSectors(a, count, dst);
+}
+private bool stWrite(ulong rel, uint count, const(void)* src) {
+    const ulong a = g_baseLba + rel;
+    if (g_endLba != 0 && (a + count) > g_endLba) return false;
+    return diskWriteSectors(a, count, src);
+}
 
 private uint sectorsFor(uint bytes) { return (bytes + SECTOR - 1) / SECTOR; }
 
@@ -93,29 +139,37 @@ private bool magicOk() {
 
 // Persist the superblock (LBA 0) and the directory (LBA 1..32).
 private bool flushMeta() {
-    if (!diskWriteSectors(0, 1, &g_super)) return false;
+    if (!stWrite(0, 1, &g_super)) return false;
     // app directory: MAX_APPS*256 bytes = 16 KiB = 32 sectors
-    if (!diskWriteSectors(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr)) return false;
+    if (!stWrite(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr)) return false;
     // DM5 domain directory: DOM_MAX_PERSIST*256 = 8 KiB = 16 sectors
-    return diskWriteSectors(DOM_DIR_LBA, sectorsFor(DOM_MAX_PERSIST * DomainEntry.sizeof), g_domEntries.ptr);
+    return stWrite(DOM_DIR_LBA, sectorsFor(DOM_MAX_PERSIST * DomainEntry.sizeof), g_domEntries.ptr);
 }
 
-// Allocate a blob region of `len` bytes; returns its LBA (0 on failure).
+// Allocate a blob region of `len` bytes; returns its relative LBA, or 0 = OUT OF ROOM.
+//
+// This used to bump nextFreeLba unconditionally, which was survivable only because the store
+// owned an entire raw disk.  Inside the ~1 MiB GPT gap an unbounded allocator would hand out
+// LBAs past GPT_GAP_END and the first write would land in partition 0 (the ESP).  Refusing is
+// the only safe answer, so callers MUST check for 0 -- and writeBlob() refuses lba 0 as a second
+// line of defence, since relative 0 is the superblock.
 private ulong allocBlob(uint len, uint reserveSectors = 0) {
     uint sec = sectorsFor(len);
     if (reserveSectors > sec) sec = reserveSectors;
     const ulong lba = g_super.nextFreeLba;
+    if (g_endLba != 0 && (g_baseLba + lba + sec) > g_endLba) return 0;   // store region full
     g_super.nextFreeLba += sec;
     return lba;
 }
 
 // Write `len` bytes to a blob at `lba` (zero-pads the trailing sector).
 private bool writeBlob(ulong lba, const(void)* data, uint len) {
+    if (lba < BLOB_LBA_BASE) return false;   // 0 = allocation failed; never scribble on metadata
     if (len > STAGE_BYTES) return false;
     const uint sec = sectorsFor(len);
     memset(g_stage.ptr, 0, sec * SECTOR);
     if (len) memcpy(g_stage.ptr, data, len);
-    return diskWriteSectors(lba, sec, g_stage.ptr);
+    return stWrite(lba, sec, g_stage.ptr);
 }
 
 // Read up to `cap` bytes of a blob (`len` bytes) at `lba` into `dst`; returns count.
@@ -124,7 +178,7 @@ public int objstoreReadBlob(ulong lba, uint len, ubyte* dst, uint cap) {
     uint want = len < cap ? len : cap;
     const uint sec = sectorsFor(want);
     if (sec * SECTOR > STAGE_BYTES) return 0;
-    if (!diskReadSectors(lba, sec, g_stage.ptr)) return 0;
+    if (!stRead(lba, sec, g_stage.ptr)) return 0;
     memcpy(dst, g_stage.ptr, want);
     return cast(int)want;
 }
@@ -160,6 +214,16 @@ public bool objstoreInstallApp(const(char)[] name, const(char)[] identity, uint 
     e.storageLen = cast(uint)storage0.length;
     e.storageCap = 8;                          // reserve 8 sectors (4 KiB) for storage
     e.storageLba = allocBlob(e.storageLen, 8);
+
+    // allocBlob returns 0 when the store region is full (see its note).  Bail BEFORE any write:
+    // the entry is not yet published, and nextFreeLba only moved for the allocations that did
+    // succeed, so a full store simply refuses new apps instead of corrupting the ones it has.
+    // execLba is legitimately 0 when there is no executable, hence the execLen guard.
+    if (e.manifestLba == 0 || e.permsLba == 0 || e.storageLba == 0 ||
+        (e.execLen != 0 && e.execLba == 0)) {
+        klog("[objstore] store region full — app not installed\n");
+        return false;
+    }
 
     if (!writeBlob(e.manifestLba, manifest.ptr, e.manifestLen)) return false;
     if (!writeBlob(e.permsLba, perms.ptr, e.permsLen)) return false;
@@ -284,7 +348,7 @@ public bool objstoreLoadExec(int idx, ulong* physOut, ulong* sizeOut) {
         if (g_execVirt is null) return false;
     }
     const uint sec = sectorsFor(e.execLen);
-    if (!diskReadSectors(e.execLba, sec, g_execVirt)) return false;
+    if (!stRead(e.execLba, sec, g_execVirt)) return false;
     *physOut = cast(ulong)g_execPhys;
     *sizeOut = cast(ulong)e.execLen;
     return true;
@@ -309,19 +373,32 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
         }
     }
 
-    // Never claim a GPT-partitioned disk.  On an INSTALLED EpinAnonymOS system the first disk's
-    // LBA0 is the boot GPT; formatting a raw object store over it would wipe the bootloader.
-    // Such a disk → store stays unmounted (in-memory), so the installed OS boots again.
+    // ROADMAP 1.2 — persistence on an INSTALLED system.
+    //
+    // This used to refuse a GPT-partitioned disk outright and fall back to an in-memory store,
+    // with the note "formatting a raw object store over it would wipe the bootloader".  That was
+    // the right call for the code as written (the superblock went to absolute LBA 0, straight
+    // over the protective MBR) but it meant persistence could NEVER work on an installed system,
+    // which is precisely what roadmap 1.2 asks for: an installed OS whose state survives reboot.
+    //
+    // A GPT disk is not out of bounds, only its first 34 sectors and its partitions are.  The
+    // gap between the partition array and the first partition is unused by the spec and by this
+    // project's own installer, so the store relocates there instead of refusing.  Everything in
+    // this module addresses sectors relative to g_baseLba, and g_endLba is a hard wall.
     {
         import drivers.block.disk : diskFirstSectorIsGpt;
         if (diskFirstSectorIsGpt()) {
-            klog("[objstore] disk is GPT-partitioned (installed system) — store stays in-memory\n");
-            g_mounted = false;
-            return;
+            g_baseLba = GPT_GAP_FIRST;
+            g_endLba  = GPT_GAP_END;
+            klog("[objstore] installed system (GPT) — store relocated to the pre-partition gap, LBA 0x");
+            klog_hex(GPT_GAP_FIRST); klog("..0x"); klog_hex(GPT_GAP_END - 1); klog("\n");
+        } else {
+            g_baseLba = 0;      // raw disk: the store owns the whole device, as before
+            g_endLba  = 0;
         }
     }
 
-    if (!diskReadSectors(0, 1, &g_super)) { klog("[objstore] superblock read failed\n"); return; }
+    if (!stRead(0, 1, &g_super)) { klog("[objstore] superblock read failed\n"); return; }
     g_mounted = true;
 
     if (!magicOk()) {
@@ -339,10 +416,10 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
         seedSampleApp(sampleExec, sampleExecLen);
     } else {
         // load the app directory
-        diskReadSectors(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr);
+        stRead(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr);
         // DM5: load the domain directory (v2+); an old v1 disk has none → start empty
         if (g_super.version_ >= 2 && g_super.domainCount <= DOM_MAX_PERSIST) {
-            diskReadSectors(DOM_DIR_LBA, sectorsFor(DOM_MAX_PERSIST * DomainEntry.sizeof), g_domEntries.ptr);
+            stRead(DOM_DIR_LBA, sectorsFor(DOM_MAX_PERSIST * DomainEntry.sizeof), g_domEntries.ptr);
         } else {
             memset(g_domEntries.ptr, 0, DOM_MAX_PERSIST * DomainEntry.sizeof);
             g_super.domainCount = 0;

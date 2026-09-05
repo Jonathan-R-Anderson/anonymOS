@@ -28,7 +28,11 @@ forbid   COMPOSITOR DIED
 
 # ── the domain manager reaches the desktop.  Explicitly requested to run at boot, and it
 #    stopped launching once already when init selection regressed.
-require  [dm] wl-domain-manager launched
+# wl-domain-manager is deliberately NOT launched on live media: the installer is meant to be the
+# only window at boot, so the live path autostarts it instead of the normal program list.  This
+# suite boots the live ISO, so requiring the domain manager asserted the opposite of the intended
+# behaviour and failed every run.  Assert the live-media contract instead.
+require  [gui] live media — installer only
 
 # ── the app catalogue unpacked.  The launcher shows hardcoded fallbacks if this is missing,
 #    which looks fine on screen and is wrong.

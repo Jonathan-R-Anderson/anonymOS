@@ -2204,7 +2204,16 @@ private __gshared int  g_dbusTestDelay   = 0;
 private void maybeSpawnDbusTest() {
     if (g_dbusTestStarted) return;
     if (!g_dbusStarted) return;         // launch the daemon first
-    if (g_dbusTestDelay++ < 40) return; // give dbus-daemon time to create its listening socket
+    // Wait for the bus to be *accepting*, not for a tick count to elapse.  The previous fixed
+    // 40-tick delay was a guess, and it lost the race: dbus-send ran, got ECONNREFUSED from
+    // /run/dbus/system_bus_socket, and the daemon only finished binding well afterwards.
+    ++g_dbusTestDelay;
+    if (!unixListenerReady("/run/dbus/system_bus_socket\0".ptr))
+    {
+        // Bounded, so a daemon that never binds cannot wedge this poll forever.
+        if (g_dbusTestDelay < 400) return;
+        klog("[dbus] bus never began listening; running the test anyway to surface the error\n");
+    }
     g_dbusTestStarted = true;
     klog("[dbus] M0: launching hos-dbus-test -> dbus-send GetId (EXTERNAL-auth round-trip)\n");
     spawnWaylandProgram("hos-dbus-test\0".ptr, "[dbust]\0".ptr);

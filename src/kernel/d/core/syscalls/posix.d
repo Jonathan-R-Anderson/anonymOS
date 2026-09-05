@@ -1310,6 +1310,26 @@ private bool unixAddrEqualsLiteral(const(sockaddr_un)* addr, size_t len, string 
     return true;
 }
 
+// True once some task holds an AF_UNIX socket in the listener state bound to `path`.
+// Lets a caller wait on the fact it actually cares about -- the socket is accepting --
+// instead of counting ticks and hoping.  Used to sequence dbus clients behind the daemon.
+public bool unixListenerReady(const(char)* path) @nogc nothrow
+{
+    if (path is null) return false;
+    size_t len = 0;
+    while (path[len] != 0 && len < 108) ++len;
+    if (len == 0) return false;
+    foreach (ref sock; g_localSockets)
+    {
+        if (!sock.inUse || sock.state != LocalSocketState.listener) continue;
+        if (sock.pathLength != len) continue;
+        size_t i = 0;
+        while (i < len && sock.path[i] == path[i]) ++i;
+        if (i == len) return true;
+    }
+    return false;
+}
+
 private bool unixPathInUse(const(sockaddr_un)* addr, size_t len)
 {
     foreach (ref sock; g_localSockets)

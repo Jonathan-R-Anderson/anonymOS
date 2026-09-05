@@ -13402,10 +13402,28 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
         klog("\n");
         g_hosWinLogN++;
     }
-    // Paint the borders now as well as on present: Hyprland's frame/present cadence
-    // is sparse after a window maps, but it still reports windows each render, so
-    // drawing here guarantees the border appears even without a fresh present blit.
-    hosDrawIdentityBorders();
+    // DELIBERATELY NO hosDrawIdentityBorders() HERE.  (2026-09-05)
+    //
+    // This used to paint the borders immediately, reasoning that "Hyprland's frame/present
+    // cadence is sparse after a window maps, but it still reports windows each render, so
+    // drawing here guarantees the border appears even without a fresh present blit."  The
+    // guarantee is real and so is the damage: painting outside a present writes into a
+    // framebuffer that NOTHING will clean up, because the only thing that repaints the desktop
+    // IS a present.
+    //
+    // A screenshot of the running desktop (the first taken in this project) shows the result:
+    // five bright border rectangles for about three visible windows, offset and oversized
+    // against the real window positions -- stale rects from earlier layouts, accumulated
+    // because each call drew new borders and never erased the old ones.  That is also the other
+    // half of "the borders remain while the windows disappear": the borders were not surviving,
+    // they were being re-drawn from here at coordinates the compositor had already moved on
+    // from.  Same failure as the freeze HUD fixed earlier the same day.
+    //
+    // Borders are still painted on EVERY present, by drmPresentFb() and drmPresentToFramebuffer()
+    // -- and there it is correct, because the full-screen blit immediately before wipes the
+    // previous frame's borders away first.  The cost of dropping this call is that a border
+    // appears one present later than it used to; the benefit is that it appears in the right
+    // place. A window-list change is itself damage, so a present follows shortly.
     return 0;
 }
 

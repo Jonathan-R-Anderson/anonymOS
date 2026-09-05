@@ -52,7 +52,18 @@ int main(int argc, char **argv)
      * libraries a dynamically linked GTK client pulls in.  Same reasoning as hos-dbus-launch. */
     setenv("LD_LIBRARY_PATH", "/", 1);
 
-    logline("[wltrace] WAYLAND_DEBUG=1");
+    /* DIAGNOSTIC: is WAYLAND_DEBUG actually reaching the child?  Two runs have now set it and
+     * seen no protocol output, and the two candidate explanations -- setenv not landing in the
+     * array execv passes, versus the kernel rebuilding the environment at execve and discarding
+     * it -- are indistinguishable from outside.  Print what THIS process is about to pass, then
+     * let the child print what it actually received.
+     * Remove once 2.3 is understood. */
+    extern char **environ;
+    logline("[wltrace] env this process will pass:");
+    for (char **e = environ; e && *e; ++e) {
+        if (strncmp(*e, "WAYLAND", 7) == 0 || strncmp(*e, "LD_LIBRARY", 10) == 0) logline(*e);
+    }
+
     logline("[wltrace] exec:");
     logline(prog);
 

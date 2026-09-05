@@ -2850,6 +2850,53 @@ private void pbNum(ref size_t pos, long n) {
     while (ti > 0 && pos < g_procBuf.length - 1) g_procBuf[pos++] = tmp[--ti];
 }
 
+
+// ── ROADMAP 2.1: /proc entries that must report REALITY ──────────────────────────────────────
+//
+// These were entries in the static table above, returning invented constants:
+//     /proc/net/dev   "lo: 4096 32 ... eth0: 65536 512 ..."
+//     /proc/uptime    "0.00 0.00"
+// A monitor reading those presents them to the user as fact, which is worse than the file
+// being absent -- an absent file shows an error, a fabricated one shows a plausible lie.  This
+// is exactly why roadmap 1.1 refused to ship wl-sysmon's Network Monitor view.
+//
+// Returns the length written to g_procBuf, or 0 when `path` is not one of these.
+private size_t procDynamicSynth(const(char)* path) {
+    size_t pos = 0;
+
+    if (cstrEq(path, "/proc/net/dev")) {
+        import drivers.network.network : netRxFrames, netRxBytes, netTxFrames, netTxBytes, netTxErrs;
+        pbStr(pos, "Inter-|   Receive                                                |  Transmit\n".ptr);
+        pbStr(pos, " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n".ptr);
+        // lo: this kernel has no loopback device, so report it idle rather than inventing
+        // traffic for it.  Zero is true; 4096 was not.
+        pbStr(pos, "    lo: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n".ptr);
+        pbStr(pos, "  eth0: ");
+        pbNum(pos, cast(long)netRxBytes());   pbStr(pos, " ".ptr);
+        pbNum(pos, cast(long)netRxFrames());  pbStr(pos, " 0 0 0 0 0 0 ".ptr);
+        pbNum(pos, cast(long)netTxBytes());   pbStr(pos, " ".ptr);
+        pbNum(pos, cast(long)netTxFrames());  pbStr(pos, " ".ptr);
+        pbNum(pos, cast(long)netTxErrs());    pbStr(pos, " 0 0 0 0 0\n".ptr);
+        g_procBuf[pos] = 0;
+        return pos;
+    }
+
+    if (cstrEq(path, "/proc/uptime")) {
+        // Seconds since boot, from the PIT.  The second field is idle time, which this kernel
+        // does not track per-CPU; report it equal to uptime rather than inventing a split.
+        const ulong ms = pitMs();
+        pbNum(pos, cast(long)(ms / 1000)); pbStr(pos, ".".ptr);
+        const ulong cs = (ms % 1000) / 10;
+        if (cs < 10) pbStr(pos, "0".ptr);
+        pbNum(pos, cast(long)cs);
+        pbStr(pos, " ".ptr);
+        pbNum(pos, cast(long)(ms / 1000)); pbStr(pos, ".00\n".ptr);
+        g_procBuf[pos] = 0;
+        return pos;
+    }
+
+    return 0;
+}
 // Build /proc/<pid>/<sub> into g_procBuf; returns length, or 0 if pid/sub unhandled.
 private size_t procSynth(int pid, const(char)* sub, size_t subLen) {
     const int tid = taskIdFromLinuxPid(pid);
@@ -3115,6 +3162,20 @@ public int sys_open(const(char)* path, int flags) {
     // prefixes (isVirtualDirectoryPath), which would otherwise serve a real file
     // like /sys/class/drm/card0/uevent as an empty 0-byte directory — udev-zero
     // then reads no DEVNAME and Weston rejects "card0 is not a KMS device".
+    // ROADMAP 2.1: /proc entries that must report reality (net/dev, uptime).  Before the
+    // static table below, which still carries their invented placeholders.
+    {
+        const size_t dlen = procDynamicSynth(path);
+        if (dlen > 0) {
+            g_fdTable[fd].type     = FileType.FD_FILE;
+            g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+            g_fdTable[fd].offset   = 0;
+            g_fdTable[fd].backend  = cast(void*)g_procBuf.ptr;
+            g_fdTable[fd].fileSize = dlen;
+            return publishActiveFdReturn(fd);
+        }
+    }
+
     // A4: dynamic /proc/<pid>/<file> (stat/status/cmdline/comm) for ps/top.  Must run
     // before the synthetic-directory shim so the file isn't mistaken for a directory.
     {

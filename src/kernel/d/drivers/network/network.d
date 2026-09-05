@@ -165,17 +165,23 @@ export extern(C) void getMacAddress(ubyte* outMac) @nogc nothrow {
 /// Send raw Ethernet frame
 export extern(C) bool sendEthFrame(const(ubyte)* data, size_t len) @nogc nothrow {
     if (!g_networkAvailable || data is null || len == 0) return false;
-    
+
+    bool ok;
     switch (g_netDevice.type) {
         case NetworkDeviceType.E1000:
-            return e1000Send(data, len);
+            ok = e1000Send(data, len); break;
         case NetworkDeviceType.RTL8139:
-            return rtl8139Send(data, len);
+            ok = rtl8139Send(data, len); break;
         case NetworkDeviceType.VirtIO:
-            return virtioSend(data, len);
+            ok = virtioSend(data, len); break;
         default:
             return false;
     }
+    // ROADMAP 2.1: real counters for /proc/net/dev.  Counted at the one dispatcher every
+    // transmit passes through, rather than in each device path, so a new NIC driver gets
+    // accounting for free instead of being silently missing from it.
+    if (ok) { ++g_netTxFrames; g_netTxBytes += len; } else { ++g_netTxErrs; }
+    return ok;
 }
 
 /// Receive raw Ethernet frame
@@ -189,7 +195,7 @@ export extern(C) int receiveEthFrame(ubyte* buffer, size_t maxLen) @nogc nothrow
         case NetworkDeviceType.VirtIO:  r = virtioReceive(buffer, maxLen); break;
         default: r = -1;
     }
-    if (r >= 14) { ++g_netRxFrames; g_netRxLastEtherType = (cast(ulong)buffer[12] << 8) | buffer[13]; }
+    if (r >= 14) { ++g_netRxFrames; g_netRxBytes += cast(ulong)r; g_netRxLastEtherType = (cast(ulong)buffer[12] << 8) | buffer[13]; }
     return r;
 }
 
@@ -259,6 +265,18 @@ private __gshared E1000RxDesc* g_rxDescriptors;
 private __gshared E1000TxDesc* g_txDescriptors;
 private __gshared uint g_rxCurrent = 0;
 private __gshared uint g_txCurrent = 0;
+// ROADMAP 2.1: byte and TX counters so /proc/net/dev reports what actually happened.  It
+// used to be a static table of invented numbers (lo: 4096/32, eth0: 65536/512), which any
+// monitor reading it would present to the user as fact.
+private __gshared ulong g_netRxBytes  = 0;
+private __gshared ulong g_netTxFrames = 0;
+private __gshared ulong g_netTxBytes  = 0;
+private __gshared ulong g_netTxErrs   = 0;
+public ulong netRxFrames() @nogc nothrow { return g_netRxFrames; }
+public ulong netRxBytes()  @nogc nothrow { return g_netRxBytes; }
+public ulong netTxFrames() @nogc nothrow { return g_netTxFrames; }
+public ulong netTxBytes()  @nogc nothrow { return g_netTxBytes; }
+public ulong netTxErrs()   @nogc nothrow { return g_netTxErrs; }
 private __gshared ulong g_netRxFrames = 0;   // N0: count inbound frames the driver has delivered
 private __gshared ulong g_netRxLastEtherType = 0;  // N0: ethertype of the most recent frame (verify)
 export extern(C) ulong getNetRxFrames() @nogc nothrow { return g_netRxFrames; }

@@ -17,7 +17,7 @@
 module core.diskpart;
 
 import core.io : klog, klog_hex;
-import drivers.block.disk : diskFindTarget, diskReadSectorsOn, diskWriteSectorsOn;
+import drivers.block.disk : diskFindTarget, diskReadSectorsOn, diskWriteSectorsOn, diskReadSectors;
 
 @nogc nothrow:
 
@@ -64,14 +64,17 @@ struct GptPart {
     bool  valid;
 }
 
-// Read partition entry `index` (0-based) from the primary GPT on disk `diskIdx`.
-public GptPart gptReadPartition(int diskIdx, uint index) {
+// Read partition entry `index` (0-based) from the primary GPT on the PRIMARY disk -- the same
+// device diskReadSectors()/diskWriteSectors() use, which is the one the object store lives on.
+// NOT diskFindTarget(): that deliberately SKIPS the data port to find a separate install
+// target, so on a single-disk machine it returns -1 and the tail lookup silently never ran.
+public GptPart gptReadPartition(uint index) {
     GptPart p;
     p.valid = false;
     if (index >= GPT_ENTRIES) return p;
 
     ubyte[SECTOR] hdr = void;
-    if (!diskReadSectorsOn(diskIdx, 1, 1, hdr.ptr)) return p;      // LBA 1 = GPT header
+    if (!diskReadSectors(1, 1, hdr.ptr)) return p;                  // LBA 1 = GPT header
     foreach (i; 0 .. 8) if (hdr[i] != GPT_SIG[i]) return p;        // "EFI PART"
 
     const ulong entryLba   = get64(hdr.ptr, 72);
@@ -85,7 +88,7 @@ public GptPart gptReadPartition(int diskIdx, uint index) {
     const uint  off       = (index % perSector) * entSize;
 
     ubyte[SECTOR] buf = void;
-    if (!diskReadSectorsOn(diskIdx, lba, 1, buf.ptr)) return p;
+    if (!diskReadSectors(lba, 1, buf.ptr)) return p;
 
     // An all-zero type GUID means the slot is unused.
     bool anySet = false;
@@ -103,11 +106,11 @@ public GptPart gptReadPartition(int diskIdx, uint index) {
 // area is appended after the slots, so "last" identifies it without needing a private type
 // GUID -- and a private GUID would be a deniability liability on a disk whose whole design
 // is to look ordinary.
-public GptPart gptLastPartition(int diskIdx) {
+public GptPart gptLastPartition() {
     GptPart best;
     best.valid = false;
     foreach (i; 0 .. GPT_ENTRIES) {
-        auto e = gptReadPartition(diskIdx, i);
+        auto e = gptReadPartition(i);
         if (!e.valid) continue;
         if (!best.valid || e.last > best.last) best = e;
     }
@@ -116,10 +119,10 @@ public GptPart gptLastPartition(int diskIdx) {
 
 // Free space after the last partition, as an inclusive [first,last] LBA range.
 // Returns valid=false when the disk is not GPT, or the tail is too small to be worth using.
-public GptPart gptTailFreeSpace(int diskIdx, ulong diskSectors, ulong minSectors) {
+public GptPart gptTailFreeSpace(ulong diskSectors, ulong minSectors) {
     GptPart r;
     r.valid = false;
-    auto lastPart = gptLastPartition(diskIdx);
+    auto lastPart = gptLastPartition();
     if (!lastPart.valid) return r;
 
     // The backup GPT lives in the final 1 + ENTRY_SECTORS sectors; never touch it.

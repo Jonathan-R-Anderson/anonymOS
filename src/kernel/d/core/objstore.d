@@ -471,19 +471,21 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
     // project's own installer, so the store relocates there instead of refusing.  Everything in
     // this module addresses sectors relative to g_baseLba, and g_endLba is a hard wall.
     {
-        import drivers.block.disk : diskFirstSectorIsGpt, diskFindTarget;
+        import drivers.block.disk : diskFirstSectorIsGpt, diskSectors;
         import core.diskpart : gptTailFreeSpace;
         if (diskFirstSectorIsGpt()) {
             // PREFERRED: the unallocated tail after the last partition.  The A/B layout uses
             // ESP-boot + slot-A + slot-B ~= 650 MiB, so a 4 GiB target leaves ~3.3 GiB free
             // past slot-B -- room for an actual filesystem, where the pre-partition gap below
             // is ~1 MiB and only ever held the directories.
-            ulong total = 0;
-            const int di = diskFindTarget(total);
+            // diskSectors() is the PRIMARY disk -- the one this store reads and writes.
+            // diskFindTarget() is not: it skips the data port to find a separate install
+            // target, so on a single-disk machine it returns -1 and this never ran.
+            const ulong total = diskSectors();
             bool placed = false;
-            if (di >= 0 && total > 0) {
+            if (total > 0) {
                 // Require 64 MiB before bothering; a sliver is not worth the extra code path.
-                auto tail = gptTailFreeSpace(di, total, 131072);
+                auto tail = gptTailFreeSpace(total, 131072);
                 if (tail.valid) {
                     g_baseLba = tail.first;
                     g_endLba  = tail.last + 1;         // exclusive

@@ -27,6 +27,10 @@ hl.bind("SUPER + SHIFT + A", hl.dsp.exec_cmd("/store-app"),         { descriptio
 -- widget-factory exercises most of the widget set, CSS theming and icon lookup in one process.
 hl.bind("SUPER + SHIFT + W", hl.dsp.exec_cmd("/gtk3-widget-factory"), { description = "GTK widget factory (upstream)" })
 hl.bind("SUPER + SHIFT + G", hl.dsp.exec_cmd("/gtk3-demo"),           { description = "GTK demo (upstream)" })
+-- gtk-hello is the CONTROL for the 2.3 investigation: same toolkit, same musl link, but a tiny
+-- app.  If it maps a window and widget-factory does not, the difference is the application, not
+-- the GTK stack underneath it.
+hl.bind("SUPER + SHIFT + H", hl.dsp.exec_cmd("/gtk-hello"),           { description = "gtk-hello (GTK control)" })
 
 -- Toggle the kernel-spawned top bar by touching the flag file it polls.
 hl.bind("SUPER + B", hl.dsp.exec_cmd("sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\""),

@@ -51,15 +51,29 @@ the second time waiting a full 4 minutes):
 - Throughout, the compositor stalls: `[freeze] stalled 6s…29s` with `flipQ`/`flipRd` frozen and
   `HOG: <tid>:gtk3-widget-factory`.
 
-**Leading hypothesis: this is the missing preemptive scheduler (3.4 / 3.5), not a GTK fault.** The
-freeze watchdog names widget-factory as the hog while presentation is frozen, which is what a
-CPU-bound client does to a cooperatively-scheduled system. `gtk-hello` is far lighter and does not
-expose it. If that is right, **the Tier 2 gate is blocked by a Tier 3 item**, which inverts the
-intended order and is worth settling before more Stage C estimating.
+**It is NOT the missing preemptive scheduler.** That was the first hypothesis, from the freeze
+watchdog naming widget-factory as the hog while presentation was frozen. Reading the log properly
+killed it, and the two pieces of evidence are worth keeping because both look like starvation and
+neither is:
 
-**Next diagnostic, cheapest first:** bind `gtk-hello` too and launch both in one boot. If gtk-hello
-maps and widget-factory does not, the difference is load, not toolkit — which would confirm the
-scheduler and rule out the GTK stack.
+- **After the cursor load, widget-factory issues 2 `recvmsg` and 1 `sendmsg` and then nothing.**
+  It is not CPU-bound; it is *blocked*.
+- **The `HOG:` figures are near-identical across every task** — `15:gtk3-widget-factory=619
+  0:Hyprland=618 2:dbus-daemon=618`. That counter is close to uniform, so "HOG" names the top
+  three of a near-flat distribution. **It is not evidence that anything is hogging.**
+
+The cursor enumeration is also innocent: 88 opens, 88 *distinct* names, each exactly once — a
+normal one-time theme load, not a livelock.
+
+So the real shape is: widget-factory sends a Wayland request and waits for a reply that never
+comes, while Hyprland sits idle with `flipQ == flipRd` (nothing pending). **Two processes each
+waiting on the other** — a lost wakeup or a request never dispatched, not a CPU shortage.
+
+**Next diagnostic:** `gtk-hello` is now bound to `SUPER+SHIFT+H` as a control — same toolkit, same
+musl link, tiny app. Launch both in one boot. If gtk-hello maps and widget-factory does not, the
+difference is the application rather than the GTK stack, and the next place to look is whether
+Hyprland is polling the second client's fd at all (`epollDumpAll()` exists for exactly this
+question and is currently never called).
 
 ### 2.2 audit result — 2026-09-05
 

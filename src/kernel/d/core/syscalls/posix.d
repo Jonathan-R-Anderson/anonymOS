@@ -5163,9 +5163,12 @@ public void procSelfTest() @nogc nothrow {
             klog("[proc] PROOF FAIL read "); klog(p.ptr); klog(" n=0\n");
             continue;
         }
-        // First line only -- enough to show the numbers are real without flooding the log.
-        size_t cut = 0;
-        while (cut < cast(size_t)n && buf[cut] != '\n') ++cut;
+        // First ~110 bytes with newlines folded to " | ".  One line was too little: /proc/cpuinfo
+        // opens with "processor: 0", which is identical whether the vendor and model beneath it
+        // are real or the invented placeholders they replaced.
+        size_t cut = cast(size_t)n;
+        if (cut > 110) cut = 110;
+        foreach (i; 0 .. cut) if (buf[i] == '\n' || buf[i] == '\t') buf[i] = ' ';
         buf[cut] = 0;
         klog("[proc] "); klog(p.ptr); klog(" -> "); klog(buf.ptr); klog("\n");
     }

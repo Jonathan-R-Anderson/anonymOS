@@ -9601,14 +9601,67 @@ public long linux_sys_connect(ulong sockfd, ulong addr, ulong addrlen) {
     return r;
 }
 
+// ROADMAP 2.3: decode the Wayland wire protocol in the kernel, in the middle of the socket.
+//
+// Every attempt to trace from inside the guest failed on a property of the environment -- there is
+// no /bin/sh, a keybinding command cannot take arguments, a Hyprland-forked child inherits no
+// console so its output is discarded, and setenv() does not reach the array execv passes.  The
+// kernel has none of those problems: it already sees every byte.
+//
+// Wire format is fixed: [u32 object id][u16 opcode][u16 size], size including the 8-byte header.
+// Object 1 is always wl_display, and the first object a client makes is normally wl_registry.
+// Logging id/opcode/size for the GTK client is enough to see which request goes unanswered.
+private __gshared int g_wlWireN = 0;
+private bool taskIsGtkClient() @nogc nothrow {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    const(char)* n = g_taskExecName[tid];
+    if (n is null) return false;
+    // "gtk-hello", "gtk3-demo", "gtk3-widget-factory" all share this prefix.
+    return n[0] == 'g' && n[1] == 't' && n[2] == 'k';
+}
+private void wlWireTrace(const(char)* dir, msghdr* m, long n) @nogc nothrow {
+    if (g_wlWireN >= 120 || m is null || n <= 0) return;
+    if (!taskIsGtkClient()) return;
+    if (m.msg_iov is null || m.msg_iovlen == 0) return;
+    const(ubyte)* p = cast(const(ubyte)*)m.msg_iov[0].iov_base;
+    if (p is null) return;
+    size_t avail = m.msg_iov[0].iov_len;
+    if (cast(size_t)n < avail) avail = cast(size_t)n;
+    // Walk as many complete messages as this buffer holds -- libwayland batches several per
+    // sendmsg, and only seeing the first would misreport where a burst ends.
+    size_t off = 0;
+    while (off + 8 <= avail && g_wlWireN < 120) {
+        const uint  objId  = *cast(const(uint)*)(p + off);
+        const ushort op    = *cast(const(ushort)*)(p + off + 4);
+        const ushort sz    = *cast(const(ushort)*)(p + off + 6);
+        if (sz < 8) break;                       // malformed; stop rather than loop forever
+        ++g_wlWireN;
+        klog("[wl] "); klog(dir);
+        klog(" obj="); klog_dec(objId);
+        klog(" op="); klog_dec(op);
+        klog(" sz="); klog_dec(sz);
+        hangTraceWho();
+        klog("\n");
+        off += sz;
+    }
+}
+
 public long linux_sys_sendmsg(ulong sockfd, ulong msg, ulong flags) {
     hangTrace2("sendmsg fd,flags", sockfd, flags);
-    return cast(long)sys_sendmsg(cast(int)sockfd, cast(msghdr*)msg, cast(int)flags);
+    const long r = cast(long)sys_sendmsg(cast(int)sockfd, cast(msghdr*)msg, cast(int)flags);
+    // Decoded from the caller's buffer, which is intact either way, so a short write still shows
+    // what was attempted.
+    wlWireTrace("->", cast(msghdr*)msg, r);
+    return r;
 }
 
 public long linux_sys_recvmsg(ulong sockfd, ulong msg, ulong flags) {
     hangTrace2("recvmsg fd,flags", sockfd, flags);
-    return cast(long)sys_recvmsg(cast(int)sockfd, cast(msghdr*)msg, cast(int)flags);
+    const long r = cast(long)sys_recvmsg(cast(int)sockfd, cast(msghdr*)msg, cast(int)flags);
+    // AFTER the call: on receive the buffer is only filled by it.
+    wlWireTrace("<-", cast(msghdr*)msg, r);
+    return r;
 }
 
 public long linux_sys_sendto(ulong sockfd, ulong buf, ulong len, ulong flags, ulong dest_addr, ulong addrlen) {

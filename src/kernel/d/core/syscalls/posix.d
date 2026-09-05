@@ -4712,6 +4712,151 @@ private void rtMkdirPath(const(char)* path, ushort mode, uint uid, uint gid) {
     rtCreate(parent, leaf, leafLen, RT_DIR, mode, uid, gid);
 }
 
+// ── ROADMAP 1.2: persist /home across reboots ────────────────────────────────────────────────
+//
+// g_rt is a RAM filesystem: everything in it is rebuilt from boot modules on every boot, so a
+// file a user creates is gone at the next power cycle.  That makes "install anonymOS and reboot
+// into it" meaningless, which is exactly what roadmap 1.2 is about.
+//
+// SCOPE: /home ONLY, deliberately.  The rest of the tree -- /usr, /lib, /sbin, busybox, the xkb
+// data, the ~1018 zsh functions -- is regenerated from boot modules every boot.  Persisting it
+// would waste the store, and worse, a persisted copy would SHADOW an updated system file after
+// an upgrade, which is a silent and very confusing failure.  User data is the part that cannot
+// be regenerated, so it is the part worth keeping.
+//
+// FORMAT: a flat sequence of records, each
+//     u16 pathLen | u16 mode | u32 size | path bytes | data bytes
+// terminated by pathLen == 0.  Flat rather than tree-shaped because directories are recreated
+// implicitly by rtMkdirPath() on the path prefix during load, so no ordering guarantees or
+// parent pointers need to survive.  Paths are absolute and start with "/home/".
+//
+// WHERE: the object store's blob region, which since the GPT-reader work lives in the disk's
+// free tail (~3.3 GiB on a 4 GiB target) rather than the old ~1 MiB pre-partition gap.
+//
+// WHEN: saved from linux_sys_reboot() before the machine goes down, and loaded once at boot
+// after the RT tree is built.  A periodic autosave is deliberately NOT here: writing the whole
+// subtree on a timer costs a full serialise per tick, and the reboot path is the moment that
+// actually matters.  The gap that leaves is an unclean power-off, which loses the session --
+// acceptable for now, and noted rather than hidden.
+__gshared uint  g_fsPersistBytes = 0;    // bytes written by the last save (0 = nothing yet)
+__gshared bool  g_fsPersistLoaded = false;
+
+private enum uint FSP_MAGIC = 0x48534650;   // "HSFP"
+private enum uint FSP_MAX   = 1 << 20;      // 1 MiB cap on a session's /home
+
+// Append `n` bytes to buf[] at *off, growing nothing: returns false if it would overflow.
+private bool fspPut(ubyte* buf, ref uint off, const(void)* src, uint n) {
+    if (off + n > FSP_MAX) return false;
+    auto s = cast(const(ubyte)*)src;
+    foreach (i; 0 .. n) buf[off + i] = s[i];
+    off += n;
+    return true;
+}
+
+// Walk the subtree rooted at `node`, appending a record per regular file.
+private bool fspWalk(int node, char* path, uint pathLen, ubyte* buf, ref uint off) {
+    for (int i = 1; i < RT_MAX_NODES; ++i) {
+        if (g_rt[i].kind == RT_FREE || g_rt[i].parent != node) continue;
+        const uint nl = g_rt[i].nameLen;
+        if (pathLen + 1 + nl >= 480) continue;              // path too deep; skip rather than truncate
+        uint pl = pathLen;
+        path[pl++] = '/';
+        foreach (k; 0 .. nl) path[pl++] = g_rt[i].name[k];
+
+        if (g_rt[i].kind == RT_DIR) {
+            if (!fspWalk(i, path, pl, buf, off)) return false;
+        } else if (g_rt[i].kind == RT_REG) {
+            const ushort plen = cast(ushort)pl;
+            const ushort mode = g_rt[i].mode;
+            const uint   sz   = g_rt[i].size;
+            if (off + 8 + pl + sz > FSP_MAX) return false;   // out of room: stop cleanly
+            if (!fspPut(buf, off, &plen, 2)) return false;
+            if (!fspPut(buf, off, &mode, 2)) return false;
+            if (!fspPut(buf, off, &sz,   4)) return false;
+            if (!fspPut(buf, off, path,  pl)) return false;
+            if (sz && g_rt[i].data !is null && !fspPut(buf, off, g_rt[i].data, sz)) return false;
+        }
+    }
+    return true;
+}
+
+// Serialise /home into the object store.  Safe to call when there is no disk: it just returns.
+public void fsPersistSave() @nogc nothrow {
+    import core.objstore : objstoreMounted, objstoreSaveBlob;
+    if (!objstoreMounted()) return;
+
+    int hpar; const(char)* hleaf; size_t hleafLen;
+    const int idx = rtResolve("/home\0".ptr, hpar, hleaf, hleafLen);
+    if (idx < 0 || g_rt[idx].kind != RT_DIR) return;
+
+    static __gshared ubyte[FSP_MAX] buf;
+    static __gshared char[512] path;
+    uint off = 0;
+    const uint magic = FSP_MAGIC;
+    if (!fspPut(buf.ptr, off, &magic, 4)) return;
+
+    if (!fspWalk(idx, path.ptr, 0, buf.ptr, off))
+        klog("[fsp] /home larger than the persist cap — saved what fitted\n");
+
+    const ushort term = 0;
+    fspPut(buf.ptr, off, &term, 2);
+
+    if (objstoreSaveBlob(buf.ptr, off)) {
+        g_fsPersistBytes = off;
+        klog("[fsp] saved /home ("); klog_dec(off); klog(" bytes)\n");
+    } else {
+        klog("[fsp] SAVE FAILED — /home will not survive this reboot\n");
+    }
+}
+
+// Restore /home from the object store.  Called once at boot, after the RT tree exists.
+public void fsPersistLoad() @nogc nothrow {
+    import core.objstore : objstoreMounted, objstoreLoadBlob;
+    if (g_fsPersistLoaded || !objstoreMounted()) return;
+    g_fsPersistLoaded = true;
+
+    static __gshared ubyte[FSP_MAX] buf;
+    const uint got = objstoreLoadBlob(buf.ptr, FSP_MAX);
+    if (got < 6) return;
+    if (*cast(uint*)buf.ptr != FSP_MAGIC) return;
+
+    uint off = 4, files = 0;
+    while (off + 8 <= got) {
+        const ushort plen = *cast(ushort*)(buf.ptr + off);
+        if (plen == 0) break;                                // terminator
+        const ushort mode = *cast(ushort*)(buf.ptr + off + 2);
+        const uint   sz   = *cast(uint*)  (buf.ptr + off + 4);
+        off += 8;
+        if (off + plen + sz > got || plen >= 480) break;      // truncated/corrupt: stop
+
+        static __gshared char[512] p;
+        foreach (i; 0 .. plen) p[i] = cast(char)buf[off + i];
+        p[plen] = 0;
+        off += plen;
+
+        // Recreate the parent chain, then the file itself.
+        int lastSlash = -1;
+        foreach (i; 0 .. plen) if (p[i] == '/') lastSlash = i;
+        if (lastSlash > 0) {
+            const char save = p[lastSlash];
+            p[lastSlash] = 0;
+            rtMkdirPath(p.ptr, M0755, 0, 0);
+            p[lastSlash] = save;
+        }
+        int fpar; const(char)* fleaf; size_t fleafLen;
+        int fidx = rtResolve(p.ptr, fpar, fleaf, fleafLen);
+        if (fidx < 0 && fpar >= 0 && fleaf !is null)
+            fidx = rtCreate(fpar, fleaf, fleafLen, RT_REG, mode, 0, 0);
+        if (fidx >= 0 && sz > 0 && rtEnsureCap(g_rt[fidx], sz)) {
+            foreach (i; 0 .. sz) g_rt[fidx].data[i] = buf[off + i];
+            g_rt[fidx].size = sz;
+        }
+        off += sz;
+        ++files;
+    }
+    klog("[fsp] restored /home ("); klog_dec(files); klog(" files)\n");
+}
+
 // Track A A3: the full busybox applet set (deps/busybox/busybox.config / `busybox
 // --list`).  Each becomes /bin/<name> -> /busybox so `ls /bin`, `which`, and PATH
 // resolution see the real command set; busybox dispatches on argv[0]'s basename.
@@ -11917,6 +12062,11 @@ private enum uint LINUX_REBOOT_CMD_CAD_OFF   = 0x00000000;
 public long linux_sys_reboot(ulong magic1, ulong magic2, ulong cmd, ulong arg) {
     if (!adminRequire(CAP_RIGHT_ADMIN_REBOOT)) return negErrno(EPERM);
     if (cast(uint)magic1 != LINUX_REBOOT_MAGIC1) return negErrno(EINVAL);
+    // ROADMAP 1.2: last chance to make /home survive.  Done here rather than on a timer
+    // because a periodic autosave costs a full serialise per tick, and this is the moment
+    // that actually matters.  The gap that leaves is an unclean power-off, which loses the
+    // session -- acceptable for now, and stated rather than hidden.
+    fsPersistSave();
     if (cmd == LINUX_REBOOT_CMD_POWER_OFF || cmd == LINUX_REBOOT_CMD_HALT) {
         // QEMU ACPI power-off: outw(0x2000, 0x604)
         asm @nogc nothrow {

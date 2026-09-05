@@ -42,7 +42,14 @@ struct ObjSuper {
     ulong   bootCount;
     ulong   nextFreeLba;
     uint    domainCount;        // DOMAIN_MANAGER DM5: persisted domains in the domain directory
-    ubyte[SECTOR - 36] _pad;
+    // ROADMAP 1.2: one large blob holding the serialised /home subtree.  Kept in the superblock
+    // rather than the app directory because it is not an app -- it is the filesystem snapshot,
+    // written once per reboot and read once per boot.  v3 adds these; a v2 disk is upgraded in
+    // place on mount (the fields read back as zero, which means "no snapshot yet").
+    ulong   fsBlobLba;          // relative LBA of the snapshot (0 = none)
+    uint    fsBlobLen;          // bytes actually stored
+    uint    fsBlobCap;          // sectors reserved, so a growing /home does not have to move
+    ubyte[SECTOR - 52] _pad;
 }
 static assert(ObjSuper.sizeof == SECTOR);
 
@@ -170,6 +177,67 @@ private bool writeBlob(ulong lba, const(void)* data, uint len) {
     memset(g_stage.ptr, 0, sec * SECTOR);
     if (len) memcpy(g_stage.ptr, data, len);
     return stWrite(lba, sec, g_stage.ptr);
+}
+
+// ── ROADMAP 1.2: the filesystem snapshot blob ────────────────────────────────
+//
+// writeBlob()/objstoreReadBlob() both stage through g_stage, which is 64 KiB, so neither can
+// carry a /home image.  These two stream straight to and from the disk in STAGE_BYTES chunks
+// instead, with no single allocation proportional to the payload.
+//
+// The region is reserved ONCE and reused: a snapshot is rewritten on every reboot, and
+// reallocating each time would walk nextFreeLba up the disk until the store filled with dead
+// copies of previous boots.  fsBlobCap is that reservation in sectors.
+public bool objstoreSaveBlob(const(void)* data, uint len) {
+    if (!g_mounted || data is null) return false;
+    const uint need = sectorsFor(len);
+
+    if (g_super.fsBlobLba == 0 || need > g_super.fsBlobCap) {
+        // First save, or the snapshot outgrew its reservation.  Reserve with headroom so
+        // ordinary growth does not trigger a second allocation every boot.
+        const uint want = need + (need / 2) + 16;
+        const ulong lba = allocBlob(0, want);
+        if (lba == 0) { klog("[objstore] no room for the /home snapshot\n"); return false; }
+        g_super.fsBlobLba = lba;
+        g_super.fsBlobCap = want;
+    }
+
+    auto src = cast(const(ubyte)*)data;
+    uint done = 0;
+    ulong lba = g_super.fsBlobLba;
+    while (done < len) {
+        uint chunk = len - done;
+        if (chunk > STAGE_BYTES) chunk = STAGE_BYTES;
+        const uint sec = sectorsFor(chunk);
+        memset(g_stage.ptr, 0, sec * SECTOR);        // zero-pad the trailing sector
+        memcpy(g_stage.ptr, src + done, chunk);
+        if (!stWrite(lba, sec, g_stage.ptr)) return false;
+        lba  += sec;
+        done += chunk;
+    }
+    g_super.fsBlobLen = len;
+    return flushMeta();
+}
+
+// Read the snapshot back into `dst`; returns the byte count (0 = none stored).
+public uint objstoreLoadBlob(ubyte* dst, uint cap) {
+    if (!g_mounted || dst is null) return 0;
+    if (g_super.fsBlobLba == 0 || g_super.fsBlobLen == 0) return 0;
+    uint want = g_super.fsBlobLen;
+    if (want > cap) want = cap;
+
+    uint done = 0;
+    ulong lba = g_super.fsBlobLba;
+    while (done < want) {
+        uint chunk = want - done;
+        if (chunk > STAGE_BYTES) chunk = STAGE_BYTES;
+        const uint sec = sectorsFor(chunk);
+        if (!stRead(lba, sec, g_stage.ptr)) return done;
+        memcpy(dst + done, g_stage.ptr, chunk);
+        lba  += sec;
+        done += chunk;
+    }
+    return done;
 }
 
 // Read up to `cap` bytes of a blob (`len` bytes) at `lba` into `dst`; returns count.
@@ -429,7 +497,7 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
         klog("[objstore] formatting new object store\n");
         memset(&g_super, 0, ObjSuper.sizeof);
         foreach (i; 0 .. 8) g_super.magic[i] = OBJ_MAGIC[i];
-        g_super.version_ = 2;                  // DM5: v2 adds the domain directory
+        g_super.version_ = 3;                  // v2 = domain directory (DM5); v3 = /home snapshot (1.2)
         g_super.appCount = 0;
         g_super.bootCount = 0;
         g_super.domainCount = 0;
@@ -448,6 +516,17 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
             memset(g_domEntries.ptr, 0, DOM_MAX_PERSIST * DomainEntry.sizeof);
             g_super.domainCount = 0;
             g_super.version_ = 2;
+        }
+        // ROADMAP 1.2: v3 adds the /home snapshot fields.  A v2 disk predates them, and the
+        // bytes they now occupy were _pad -- which format() zeroed -- so they read back as 0,
+        // meaning "no snapshot yet".  Upgrading is therefore just relabelling the version; the
+        // first fsPersistSave() allocates the region.  Do NOT reformat: that would discard the
+        // app and domain directories a v2 disk legitimately holds.
+        if (g_super.version_ < 3) {
+            g_super.fsBlobLba = 0;
+            g_super.fsBlobLen = 0;
+            g_super.fsBlobCap = 0;
+            g_super.version_  = 3;
         }
     }
 

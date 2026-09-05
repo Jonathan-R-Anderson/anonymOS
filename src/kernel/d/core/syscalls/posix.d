@@ -6727,14 +6727,23 @@ private immutable VFEntry[] g_vfs = [
       "MAJOR=13\nMINOR=64\nDEVNAME=input/event0\n" ~
       "ID_INPUT=1\nID_INPUT_KEYBOARD=1\nID_SEAT=seat0\n" ~
       "EV=3\nKEY=ffffffffffffffff fffffffffffffffe\n" },
-    // Absolute pointer (the QEMU usb-tablet model): EV_SYN|EV_KEY|EV_ABS (EV=b)
-    // + ABS_X|ABS_Y (ABS=3) + BTN_LEFT (0x110 → word4 bit16 = 0x10000).  Feeding
-    // Weston an absolute position makes its pointer track the kernel-drawn cursor
-    // exactly (no acceleration drift), so clicks land where the cursor is shown.
+    // RELATIVE pointer (a plain PS/2 mouse): EV_SYN|EV_KEY|EV_REL (EV=7)
+    // + REL_X|REL_Y (REL=3) + BTN_LEFT (0x110 → word4 bit16 = 0x10000).
+    //
+    // This advertised an ABSOLUTE pointer (EV=b, ABS=3, the QEMU usb-tablet model) because
+    // feeding Weston an absolute position made its pointer track the kernel-drawn cursor with
+    // no acceleration drift.  Under Hyprland that path delivers no clicks at all: the
+    // compositor reads every event the kernel queues (mouseEnq=64 mouseRead=64, exactly 1:1)
+    // and libinput accepts the device ("New device Virtual Mouse: 1-2"), yet a click aimed at
+    // the Activities close button -- with the cursor visibly on it -- did nothing.  libinput's
+    // handling of an absolute pointing device that is neither touchscreen nor tablet is the
+    // weak point; EV_REL is the shape every pointer stack handles without special-casing.
+    // Keep these bits and kernel_main.d's input_enqueue in agreement -- libudev-zero derives
+    // ID_INPUT_MOUSE from them, and libinput classifies the device from that tag.
     { "/sys/class/input/event1/uevent",
       "MAJOR=13\nMINOR=65\nDEVNAME=input/event1\n" ~
       "ID_INPUT=1\nID_INPUT_MOUSE=1\nID_SEAT=seat0\n" ~
-      "EV=b\nKEY=10000 0 0 0 0\nABS=3\n" },
+      "EV=7\nKEY=10000 0 0 0 0\nREL=3\n" },
 
     // ── libseat / seatd (session/seat management) ─────────────────────────
     { "/run/seatd.sock", "" },

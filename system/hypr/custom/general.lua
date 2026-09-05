@@ -155,3 +155,29 @@ hl.config({
         damage_tracking = 1
     }
 })
+
+-- UNCONDITIONAL: pointer acceleration OFF, so the compositor's pointer tracks the KERNEL's
+-- cursor 1:1.
+--
+-- Two pointers exist in this guest.  The kernel draws its own cursor straight into the
+-- framebuffer (cursorSetPos/cursorPaint) so motion stays snappy even when the compositor is
+-- busy, and the compositor maintains its own pointer from the evdev stream.  Clicks land where
+-- the COMPOSITOR thinks the pointer is, but the user aims with the one the KERNEL draws, so any
+-- divergence between them makes clicks miss what they are pointing at.
+--
+-- The kernel used to avoid that by reporting EV_ABS absolute positions, which no acceleration
+-- curve can distort.  That stopped working under Hyprland (clicks reached no client at all --
+-- see the note in syscalls/posix.d), so it now reports EV_REL deltas like an ordinary mouse.
+-- Relative deltas DO go through libinput's pointer-acceleration filter, which would make the
+-- two cursors drift apart the moment the user moves quickly.
+--
+-- flat + sensitivity 0 is libinput's identity transform: one device unit is one pixel, always.
+-- That restores the property the absolute path was chosen for, without needing an absolute
+-- device that libinput handles poorly.
+hl.config({
+    input = {
+        accel_profile      = "flat",
+        sensitivity        = 0,
+        force_no_accel     = true
+    }
+})

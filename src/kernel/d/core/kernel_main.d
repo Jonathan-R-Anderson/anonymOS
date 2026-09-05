@@ -2827,12 +2827,28 @@ private void ps2FeedMouseByte(ubyte b) @nogc nothrow {
 
     bool any = false;
     if (dx != 0 || dy != 0) {
-        // Accumulate raw deltas into an absolute on-screen position, stamp the
-        // kernel cursor there immediately (snappy), and report the SAME absolute
-        // position to Weston so its pointer stays exactly aligned.
+        // Stamp the kernel cursor at the accumulated absolute position (snappy, drawn by us),
+        // and report RELATIVE deltas to userspace.
+        //
+        // This used to report EV_ABS with the absolute position, chosen so Weston's pointer
+        // tracked the kernel-drawn cursor exactly with no acceleration drift.  Under Hyprland
+        // that path delivers nothing: measured, the compositor reads every event we queue
+        // (mouseEnq=64 mouseRead=64, an exact 1:1) and libinput accepts the device
+        // ("libinput: New device Virtual Mouse: 1-2"), yet clicks reach no client -- a click
+        // aimed at the Activities close button, with the cursor visibly on it, did nothing.
+        //
+        // libinput's support for an ABSOLUTE pointing device that is neither a touchscreen nor
+        // a tablet is the weak point: EV_REL with REL_X/REL_Y is the shape every pointer stack
+        // handles without special-casing.  The kernel already receives relative deltas from the
+        // PS/2 packet, so this reports what the hardware actually said and keeps the absolute
+        // accumulation purely for drawing our own cursor.
+        //
+        // The drift the old comment worried about is real and is handled in config: Hyprland's
+        // input:accel_profile = flat with sensitivity 0 applies no acceleration, so one device
+        // unit stays one pixel and the compositor's pointer tracks the kernel cursor 1:1.
         cursorSetPos(cursorGetX() + dx, cursorGetY() + dy);
-        input_enqueue(false, EV_ABS, ABS_X, cursorGetX());
-        input_enqueue(false, EV_ABS, ABS_Y, cursorGetY());
+        input_enqueue(false, EV_REL, REL_X, dx);
+        input_enqueue(false, EV_REL, REL_Y, dy);
         any = true;
     }
 

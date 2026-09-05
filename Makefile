@@ -1309,7 +1309,7 @@ hos-install.iso: stage-iso-tree veracrypt-efi arbiter-efi
 # Build-loop trust + automated boot testing
 # (roadmap/BUILD_AND_TEST_AUTOMATION_ROADMAP.md tracks A and B)
 # =========================================================
-.PHONY: verify test
+.PHONY: verify test sync
 
 # `make verify` — assert the change under test is actually IN hos-install.iso before booting it.
 # Greps the image for string literals that survive compilation.  Comments do NOT survive, and a
@@ -1370,3 +1370,11 @@ clean:
 		hos-install.iso \
 		esp.img \
 		kernel.elf
+
+# `make sync` — push HEAD to GitHub and to the build server, then report where everything is.
+# The three copies drift silently, and a build server that is behind bakes a manifest naming a
+# commit that does not describe the image it produced.
+#   make sync              push everywhere
+#   make sync ARGS=--status   report only
+sync:
+	@scripts/sync-all.sh $(ARGS)

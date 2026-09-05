@@ -988,11 +988,15 @@ public bool fdRequireCap(ulong fd, uint rights) {
         return false;
     }
     if (!requireCap(cast(int)g_current_task_id, cast(uint)ifd, rights)) {
-        if (g_current_task_id == 0 && g_fdCapDiagN < 12) {
+        // Was gated on task 0, so a denial for ANY other process was silent -- and ROADMAP 2.3 is
+        // exactly a case of "some process is not getting what it asks for and says nothing".
+        // Report every task, still bounded, and name who was denied.
+        if (g_fdCapDiagN < 40) {
             ++g_fdCapDiagN;
             klog("[fdcap] deny-cap fd="); klog_dec(cast(ulong)ifd);
             klog(" type="); klog_dec(g_fdTable is null ? 999UL : cast(ulong)g_fdTable[ifd].type);
             klog(" want="); klog_hex(cast(ulong)rights);
+            hangTraceWho();
             klog("\n");
         }
         return false;

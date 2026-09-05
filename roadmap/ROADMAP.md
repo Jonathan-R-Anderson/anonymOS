@@ -12,27 +12,8 @@ this project's history came from deep platform work landing while the desktop co
 ---
 
 
-## Tier 1 — ✅ COMPLETE (2026-09-05)
-
-**Exit criterion met:** a person can install anonymOS to a disk and reboot into it. Confirmed
-working on VirtualBox (UEFI + SATA/AHCI, `scripts/vbox-install-test.sh`), with the installer
-driven from the desktop and the installed system booting afterwards.
-
-Delivered: `wl-sysmon` tabs (1.1), persistent storage (1.2 — the object store in the disk's free
-tail plus `persist =` subtrees in `/desktop.conf`, proven across reboots on an installer-written
-disk), the busybox applet set (1.3), the domain manager's Users/Services/Startup views (1.5), and
-`wl-files` File Search (1.6).
-
-**Carried forward, not done:** `wl-quicksettings`' Keyboard / Mouse / Touchpad / Appearance
-panels (was 1.4). They are blocked on an input and theme configuration backend that does not
-exist, and shipping them without one would mean four panels of controls that change nothing.
-Tracked in Tier 3 as a desktop-quality item, which is what it actually is.
-
-**Known platform gap found while confirming this:** the kernel has AHCI and NVMe block drivers
-and no VirtIO. Proxmox defaults to VirtIO SCSI, so an install there fails with "no disk to
-install to". Either configure SATA, or add a virtio-blk driver — the latter is the honest fix
-and is listed in Tier 5.
-
+**Tier 1 — installable OS — ✅ complete 2026-09-05.** Removed; see git history. Its two
+carried-forward items live on as 3.0b (`wl-quicksettings` panels) and 5.0 (virtio-blk).
 
 ---
 
@@ -45,41 +26,12 @@ built for musl in `deps/gtk-stack/sysroot`, and `gtk-hello` already runs.
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
 | 2.1 | **`/compat/linux` + `/proc` + `/sys` + `/etc`** | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
-| 2.2 | **Syscall audit** — inotify, eventfd, signalfd, timerfd, memfd_create, ppoll | Record what is missing once, rather than discovering it one crash at a time | APPS A3 · syscalls | M |
+| 2.2 | **Syscall audit** — inotify, eventfd, signalfd, timerfd, memfd_create, ppoll. **`inotify_init1` confirmed ENOSYS** (`dbus-daemon` logs "Cannot initialize inotify: Function not implemented" and degrades to not watching its config) | Record what is missing once, rather than discovering it one crash at a time | APPS A3 · syscalls | M |
 | 2.3 | **One real upstream GTK app end-to-end** (suggest `gnome-calculator`) | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
 | 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
-| 2.5 | ✅ **D-Bus system bus** — DONE 2026-09-05 | A real upstream `dbus-daemon` 1.14.10 serves the bus; `dbus-send --system GetId` completes a round-trip in 33 ms, proving EXTERNAL auth over `SO_PEERCRED`. | APPS A7 | S |
 | 2.6 | **Stage C1** — `/proc` readers: Hardware Info, System Info, USB/PCI, Sensors, Battery, Routes | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion:** an upstream GTK application, not written for this OS, runs on the desktop.
-
-### Notes from 2.5 (D-Bus), 2026-09-05
-
-Four separate faults, none of which announced itself. Worth recording because each one
-*reported success* and the damage only showed up much later:
-
-- `deps/dbus-build/build-dbus.sh` still had `ROOT=/home/bruns/Documents/EpinAnonymOS`, a path
-  that died when the project was renamed. dbus had therefore never built at all. The Makefile
-  gates its staging on `install/bin/dbus-daemon` existing, so it silently emitted no
-  `module_path` line and the kernel could not load the launcher.
-- Grepping the ISO for `hos-dbus-launch` found six hits and *looked* like proof it was staged.
-  It was not — the kernel binary names the program in a spawn call. **Grepping an image for a
-  filename proves nothing about whether that file is in it.**
-- The build script piped everything to `tail`, and a pipeline's status is the last command's, so
-  `set -e` never saw a failure. Now `set -o pipefail`.
-- `gschemas.compiled` was staged, logged as "Included", and genuinely present in the ISO, yet
-  never reached the guest: `pack-assets.py` sorted it into category `misc`, which had no blob,
-  and the kernel reads the aggregate `assets.blob` only as a fallback that never triggers. Fixed
-  generally with a `misc.blob` rather than special-casing glib.
-
-Also: waiting a fixed number of scheduler polls for a daemon to be ready is not a timeout —
-it measures nothing physical. Both a 40-poll and a 400-poll guess fired early. The gate now
-waits on `unixListenerReady()` (is the socket actually in the listener state?) bounded by
-`pitMs()` wall clock.
-
-**Feeds 2.2:** `dbus-daemon` logs `Cannot initialize inotify: Function not implemented`. It
-degrades gracefully — it just stops watching its config for changes — but this is a confirmed
-missing syscall for the audit, found without having to go looking.
 
 ---
 
@@ -161,6 +113,28 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
 - **Counting anything in `serial.log`:** every Hyprland/aquamarine line appears **twice** (bursty
   replay, not adjacent duplication). Kernel lines appear once. Halve compositor-side counts.
 - **`serial.log` contains NUL bytes** — plain `grep` says "binary file matches". Use `grep -a`.
+- **`make all` builds Weston, not Hyprland.** `Makefile:172` has `WESTON ?= 1`, and that staging
+  step overrides Hyprland as init. The symptom is not a build error but a boot that looks like a
+  severe regression: `tests/desktop-smoke.txt` requires `init = Hyprland module`, `[bar]
+  wl-layer-bar launched` and `[g5] windows=`, and against a Weston ISO all three are ABSENT.
+  **Build `make WESTON=0 all`**; on a surprise failure check `grep -a 'init = ' serial.log` before
+  suspecting your own change.
+- **Grepping an ISO for a *filename* proves nothing about whether that file is in it.** Searching
+  for `hos-dbus-launch` returned six hits while the binary was not staged at all — the hits were
+  the kernel's own spawn call naming the program. Grep for the `module_path:` line, or list the
+  staged tree. (Grepping for a new *string literal* is still valid — see `make verify` above.)
+- **A fixed poll count is not a timeout.** Anything polled from the main scheduler loop runs at no
+  defined wall rate, so "wait N polls for the daemon" measures nothing physical. Both a 40-poll
+  and a 400-poll wait for the D-Bus socket fired early. Wait on the condition itself and bound it
+  with `pitMs()`.
+- **A build step that reports success can still have built nothing.** `build-dbus.sh` piped every
+  command to `tail`, and a pipeline's exit status is the last command's, so `set -e` never saw
+  configure or make fail and the script printed its "RESULT" banner regardless. Any wrapper script
+  here that pipes to `tail`/`head` needs `set -o pipefail`.
+- **Staged, logged, and present in the ISO still does not mean the guest can open it.** Assets
+  only reach the runtime overlay through a *category blob* the kernel unpacks; `pack-assets.py`
+  sorts unknown paths into `misc`, and the aggregate `assets.blob` is a fallback that never fires
+  while any named blob yields files. Confirm with `grep -a '\[assets\].*unpacked' serial.log`.
 
 Two stale claims in the roadmaps will mislead whoever reads them next:
 

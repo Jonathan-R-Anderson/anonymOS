@@ -83,14 +83,35 @@ private extern(C) void ntpOnPacket(int sockfd, const(ubyte)* data, size_t len,
     klog_dec(src.bytes[3]); klog("\n");
 }
 
-/// Resolve pool.ntp.org and send one SNTP request.  Returns false if the name could not be
-/// resolved or the packet could not be sent; the reply arrives asynchronously via ntpOnPacket.
-public bool ntpRequest(const(char)* host, uint dnsTimeoutMs) {
-    IPv4Address server;
-    if (!dnsResolve(host, &server, dnsTimeoutMs)) {
+// The resolved pool.ntp.org address, looked up once during the boot network probe rather than
+// from the scheduler loop.  dnsResolve() busy-waits while pumping the stack, which is tolerable
+// during boot but not on the loop that drives the whole desktop -- and resolving there failed
+// anyway while the identical call for example.com succeeded moments earlier in the probe.
+private __gshared IPv4Address g_server;
+private __gshared bool        g_haveServer = false;
+
+public bool ntpHaveServer() { return g_haveServer; }
+
+/// Resolve `host` and remember it. Call from the boot network probe, where DNS is known good.
+public bool ntpResolveServer(const(char)* host, uint dnsTimeoutMs) {
+    IPv4Address a;
+    if (!dnsResolve(host, &a, dnsTimeoutMs)) {
         klog("[ntp] DNS lookup failed for "); klog(host); klog("\n");
         return false;
     }
+    g_server = a;
+    g_haveServer = true;
+    klog("[ntp] server "); klog(host); klog(" -> ");
+    klog_dec(a.bytes[0]); klog("."); klog_dec(a.bytes[1]); klog(".");
+    klog_dec(a.bytes[2]); klog("."); klog_dec(a.bytes[3]); klog("\n");
+    return true;
+}
+
+/// Send one SNTP request to the address ntpResolveServer() found.  Non-blocking: the reply
+/// arrives asynchronously via ntpOnPacket.
+public bool ntpRequest() {
+    if (!g_haveServer) return false;
+    IPv4Address server = g_server;
 
     if (g_sock < 0) {
         g_sock = udpSocket();
@@ -112,9 +133,9 @@ public bool ntpRequest(const(char)* host, uint dnsTimeoutMs) {
         klog("[ntp] send failed\n");
         return false;
     }
-    klog("[ntp] request sent to "); klog(host); klog(" (");
+    klog("[ntp] request sent to ");
     klog_dec(server.bytes[0]); klog("."); klog_dec(server.bytes[1]); klog(".");
-    klog_dec(server.bytes[2]); klog("."); klog_dec(server.bytes[3]); klog(")\n");
+    klog_dec(server.bytes[2]); klog("."); klog_dec(server.bytes[3]); klog("\n");
     return true;
 }
 

@@ -2211,11 +2211,14 @@ private __gshared bool  g_netConfigured  = false;
 private __gshared ulong g_ntpNextTryMs   = 0;
 private __gshared int   g_ntpAttempts    = 0;
 enum int   NTP_MAX_ATTEMPTS = 6;
-enum ulong NTP_FIRST_TRY_MS = 6_000;    // let the link settle after the lease
-enum ulong NTP_RETRY_MS     = 20_000;
+// Thresholds are deliberately small: pitMs() advances well behind wall time on this kernel, so a
+// "20 s" retry never came round twice in a 200 s boot.  Anything gating on pitMs must be sized
+// against that, not against real seconds.
+enum ulong NTP_FIRST_TRY_MS = 1_500;    // let the link settle after the lease
+enum ulong NTP_RETRY_MS     = 4_000;
 private void maybeSyncNtp() {
-    import network.ntp : ntpRequest, ntpSynced, ntpResetForRetry;
-    if (!g_netConfigured || ntpSynced()) return;
+    import network.ntp : ntpRequest, ntpSynced, ntpResetForRetry, ntpHaveServer;
+    if (!g_netConfigured || ntpSynced() || !ntpHaveServer()) return;
     if (g_ntpAttempts >= NTP_MAX_ATTEMPTS) return;
     const ulong now = pitMs();
     if (g_ntpNextTryMs == 0) g_ntpNextTryMs = now + NTP_FIRST_TRY_MS;
@@ -2223,18 +2226,17 @@ private void maybeSyncNtp() {
     g_ntpNextTryMs = now + NTP_RETRY_MS;
     ++g_ntpAttempts;
     klog("[ntp] sync attempt "); klog_dec(cast(ulong)g_ntpAttempts);
-    klog("/"); klog_dec(cast(ulong)NTP_MAX_ATTEMPTS); klog("\n");
+    klog("/"); klog_dec(cast(ulong)NTP_MAX_ATTEMPTS);
+    klog(" at pitMs="); klog_dec(now); klog("\n");
     ntpResetForRetry();
-    // A 2 s DNS budget: pool.ntp.org resolves quickly or not at all on this stack, and a longer
-    // wait here stalls the scheduler loop this runs on.
-    if (!ntpRequest("pool.ntp.org\0".ptr, 2000) && g_ntpAttempts >= NTP_MAX_ATTEMPTS)
+    if (!ntpRequest() && g_ntpAttempts >= NTP_MAX_ATTEMPTS)
         klog("[ntp] giving up; clock stays at uptime-since-boot\n");
 }
 
 private __gshared bool g_procTested = false;
 private void maybeProcSelfTest() {
     if (g_procTested) return;
-    if (pitMs() < 20_000) return;
+    if (pitMs() < 4_000) return;
     g_procTested = true;
     procSelfTest();
 }
@@ -4267,6 +4269,15 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
         klog("[net] DNS resolve(example.com) ");
         klog(dns ? "OK — INTERNET REACHABLE, ip=0x" : "FAILED (no internet route) ip=0x");
         klog_hex(dipv); klog("\n");
+
+        // Resolve the time server HERE, in the same proven-good context as the probe above,
+        // rather than from the scheduler loop.  dnsResolve() busy-waits while pumping the stack:
+        // acceptable during boot, not on the loop that drives the desktop -- and the loop-side
+        // lookup failed outright while this identical call for example.com had just succeeded.
+        if (dns) {
+            import network.ntp : ntpResolveServer;
+            ntpResolveServer("pool.ntp.org".ptr, 4000);
+        }
     }
 
     if (!deepProbe) {

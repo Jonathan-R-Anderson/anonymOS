@@ -2881,6 +2881,62 @@ private void pbNum(ref size_t pos, long n) {
 // is exactly why roadmap 1.1 refused to ship wl-sysmon's Network Monitor view.
 //
 // Returns the length written to g_procBuf, or 0 when `path` is not one of these.
+// CPUID leaf 0: the 12-character vendor string arrives split across EBX, EDX, ECX in that order.
+private void cpuVendorString(ref char[13] outv) @nogc nothrow {
+    uint b, d, c;
+    asm @nogc nothrow {
+        push RBX;
+        mov EAX, 0;
+        cpuid;
+        mov b, EBX; mov d, EDX; mov c, ECX;
+        pop RBX;
+    }
+    void put(size_t at, uint reg) {
+        outv[at + 0] = cast(char)(reg        & 0xFF);
+        outv[at + 1] = cast(char)((reg >> 8) & 0xFF);
+        outv[at + 2] = cast(char)((reg >> 16)& 0xFF);
+        outv[at + 3] = cast(char)((reg >> 24)& 0xFF);
+    }
+    put(0, b); put(4, d); put(8, c);
+    outv[12] = 0;
+}
+
+// CPUID leaves 0x80000002..4: the 48-character brand string, 16 bytes per leaf.  Leaf 0x80000000
+// reports the highest extended leaf supported; below 0x80000004 the brand is simply unavailable
+// and the caller falls back rather than printing whatever happens to be in the registers.
+private bool cpuBrandString(ref char[49] outb) @nogc nothrow {
+    uint maxExt;
+    asm @nogc nothrow {
+        push RBX;
+        mov EAX, 0x80000000;
+        cpuid;
+        mov maxExt, EAX;
+        pop RBX;
+    }
+    if (maxExt < 0x80000004) { outb[0] = 0; return false; }
+    size_t at = 0;
+    foreach (leaf; 0x80000002 .. 0x80000005) {
+        uint a, b, c, d;
+        const uint lf = cast(uint)leaf;
+        asm @nogc nothrow {
+            push RBX;
+            mov EAX, lf;
+            cpuid;
+            mov a, EAX; mov b, EBX; mov c, ECX; mov d, EDX;
+            pop RBX;
+        }
+        void put(uint reg) {
+            outb[at++] = cast(char)(reg        & 0xFF);
+            outb[at++] = cast(char)((reg >> 8) & 0xFF);
+            outb[at++] = cast(char)((reg >> 16)& 0xFF);
+            outb[at++] = cast(char)((reg >> 24)& 0xFF);
+        }
+        put(a); put(b); put(c); put(d);
+    }
+    outb[48] = 0;
+    return true;
+}
+
 private size_t procDynamicSynth(const(char)* path) {
     size_t pos = 0;
 
@@ -2982,6 +3038,30 @@ private size_t procDynamicSynth(const(char)* path) {
         // An empty diskstats is legitimate (no disk bound yet) but a 0-length synth would fall
         // through to the static table and then to ENOENT, so emit a header-only newline instead.
         if (pos == 0) { pbStr(pos, "\n".ptr); g_procBuf[pos] = 0; }
+        return pos;
+    }
+
+    // ROADMAP 2.6: real /proc/cpuinfo.  The static table served a single hardcoded
+    // "processor: 0 / GenuineIntel / 2000.000 MHz" on every machine, so a Hardware Information or
+    // System Information view reported one imaginary CPU no matter what it was running on.
+    // Vendor and brand come from CPUID; the processor count from the SMP bring-up's own tally.
+    if (cstrEq(path, "/proc/cpuinfo")) {
+        import core.kmain : g_smpCpuCount;
+        char[13] vendor; char[49] brand;
+        cpuVendorString(vendor);
+        const bool haveBrand = cpuBrandString(brand);
+        const uint n = g_smpCpuCount == 0 ? 1 : g_smpCpuCount;
+        foreach (i; 0 .. n) {
+            pbStr(pos, "processor\t: ".ptr); pbNum(pos, cast(long)i); pbStr(pos, "\n".ptr);
+            pbStr(pos, "vendor_id\t: ".ptr); pbStr(pos, vendor.ptr); pbStr(pos, "\n".ptr);
+            pbStr(pos, "model name\t: ".ptr);
+            pbStr(pos, haveBrand ? brand.ptr : "x86-64".ptr);
+            pbStr(pos, "\n".ptr);
+            // No MHz line: this kernel does not measure core frequency, and the 2000.000 the old
+            // table printed was invented.  Omitting it is better than restating that guess.
+            pbStr(pos, "\n".ptr);
+        }
+        g_procBuf[pos] = 0;
         return pos;
     }
 
@@ -5065,9 +5145,9 @@ public void fsPersistTick(ulong nowMs) @nogc nothrow {
 // directly -- the synth returning good bytes proves nothing if open() never routes to it, and
 // that routing (dynamic synth ahead of the static table) is the part that can silently regress.
 public void procSelfTest() @nogc nothrow {
-    static immutable string[6] paths = [
+    static immutable string[7] paths = [
         "/proc/meminfo\0", "/proc/stat\0", "/proc/loadavg\0",
-        "/proc/diskstats\0", "/proc/uptime\0", "/proc/net/dev\0"
+        "/proc/diskstats\0", "/proc/uptime\0", "/proc/net/dev\0", "/proc/cpuinfo\0"
     ];
     foreach (p; paths) {
         const long fd = linux_sys_open(cast(ulong)p.ptr, O_RDONLY, 0);

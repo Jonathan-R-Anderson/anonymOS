@@ -27,11 +27,39 @@ built for musl in `deps/gtk-stack/sysroot`, and `gtk-hello` already runs.
 |---|---|---|---|---|
 | 2.1 | **`/compat/linux` + `/proc` + `/sys` + `/etc`** | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
 | 2.2 | ◑ **Syscall audit** — *measured 2026-09-05, see below.* Of the 14 probed, **only the 4 inotify calls are missing**; eventfd, eventfd2, signalfd, signalfd4, timerfd_create, memfd_create, ppoll, epoll_create1, dup3 and pipe2 are all implemented. Remaining work is **implementing inotify**, not surveying | Record what is missing once, rather than discovering it one crash at a time | APPS A3 · syscalls | M |
-| 2.3 | **One real upstream GTK app end-to-end** (suggest `gnome-calculator`) | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
+| 2.3 | ◑ **One real upstream GTK app end-to-end** — `gtk3-widget-factory` and `gtk3-demo` now build from the upstream tree and are staged + bound (`SUPER+SHIFT+W` / `+G`). widget-factory **launches and gets deep into GTK startup but never maps a window** — see below. No need for `gnome-calculator`; the gate is now a debugging problem, not a packaging one | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
 | 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
 | 2.6 | **Stage C1** — `/proc` readers: Hardware Info, System Info, USB/PCI, Sensors, Battery, Routes | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion:** an upstream GTK application, not written for this OS, runs on the desktop.
+
+### 2.3 status — upstream GTK app launches but never maps — 2026-09-05
+
+`-Ddemos=true` was added to the gtk-stack build, so GTK's own `gtk3-widget-factory` (22.6 MB),
+`gtk3-demo`, `gtk3-icon-browser` and `gtk3-demo-application` now build against musl exactly as
+`gtk-hello` does. widget-factory is staged as a boot module and bound to `SUPER+SHIFT+W`.
+
+**What happens when it is launched** (driven through the real keybinding via the HMP monitor, twice,
+the second time waiting a full 4 minutes):
+
+- It execs and runs — three tasks appear, doing `poll`/`sendmsg` on Wayland fds.
+- It gets **deep into GTK startup**: reads `/usr/share/glib-2.0/schemas/gschemas.compiled` (so the
+  `misc.blob` fix is doing its job), loads gio modules, then enumerates the cursor theme, opening
+  dozens of hashed names under `/usr/share/icons/Epin/cursors/`.
+- **No `Gtk-WARNING`, no `Gtk-CRITICAL`, no assertion, no crash, no exit.**
+- **`[g5] windows=` never leaves 1.** It never maps a toplevel.
+- Throughout, the compositor stalls: `[freeze] stalled 6s…29s` with `flipQ`/`flipRd` frozen and
+  `HOG: <tid>:gtk3-widget-factory`.
+
+**Leading hypothesis: this is the missing preemptive scheduler (3.4 / 3.5), not a GTK fault.** The
+freeze watchdog names widget-factory as the hog while presentation is frozen, which is what a
+CPU-bound client does to a cooperatively-scheduled system. `gtk-hello` is far lighter and does not
+expose it. If that is right, **the Tier 2 gate is blocked by a Tier 3 item**, which inverts the
+intended order and is worth settling before more Stage C estimating.
+
+**Next diagnostic, cheapest first:** bind `gtk-hello` too and launch both in one boot. If gtk-hello
+maps and widget-factory does not, the difference is load, not toolkit — which would confirm the
+scheduler and rule out the GTK stack.
 
 ### 2.2 audit result — 2026-09-05
 

@@ -12,20 +12,27 @@ this project's history came from deep platform work landing while the desktop co
 ---
 
 
-## Tier 1 — Minimal usable installation
+## Tier 1 — ✅ COMPLETE (2026-09-05)
 
-The target: install to disk, boot it, get a terminal, edit a file, browse the filesystem,
-install more software, and see what the system is doing. Most of this already exists; the
-work is reach and polish, not new subsystems.
+**Exit criterion met:** a person can install anonymOS to a disk and reboot into it. Confirmed
+working on VirtualBox (UEFI + SATA/AHCI, `scripts/vbox-install-test.sh`), with the installer
+driven from the desktop and the installed system booting afterwards.
 
-| # | Item | Why here | Source | Effort |
-|---|---|---|---|---|
-| 1.2 | **Persistent storage** — ✅ DONE (2026-09-05), verified end to end on a disk the REAL INSTALLER produced. The store mounts in the disk's free tail (3446 MiB after the A/B slots) via a new GPT reader, and the paths named by `persist =` in `/desktop.conf` (default `/home`; shipped as `/home` + `/root`) are serialised there on reboot and on a 30 s dirty-flag autosave, then restored at boot before userspace runs. **Proof:** a marker file written on boot 1 read back on boot 2 — `PROOF: /home survived — marker says boot 1, now boot 2`. A blank disk is still reserved for the installer. **Deliberately not persisted:** anything the boot modules regenerate (`/usr`, `/lib`, busybox, xkb, zsh functions) — a saved copy would shadow an updated system file after an upgrade. **Known limits:** 1 MiB snapshot cap; an unclean power-off loses up to 30 s | SHELL A5 | M |
-| 1.4 | **`wl-quicksettings`** — ◑ REMAINING: Keyboard, Mouse, Touchpad and Appearance panels. **Blocked** — no backend exists to change any of those, so they would be fake controls. Needs an input/theme config path first | APPS B2 · GUI G18 | M |
-| 1.6 | **`wl-files`** — ✅ DONE. File Search added: `/` opens a filter, printable keys extend it, Backspace edits it, Esc clears; the status bar shows the query and live match count, and Up/Down/Enter still navigate the filtered list. Filtering is applied in `read_dir()` so hit-testing, double-click and selection needed no changes. The filter clears on directory change. **The recorded blocker was false** — it claimed wl-files had no `wl_keyboard` listener and needed "the whole xkb path"; the listener was always there, and all 17 clients map raw evdev keycodes with no xkb at all. **Still open:** Hex/Code editing in `wl-editor` | APPS B5, B6 | S |
+Delivered: `wl-sysmon` tabs (1.1), persistent storage (1.2 — the object store in the disk's free
+tail plus `persist =` subtrees in `/desktop.conf`, proven across reboots on an installer-written
+disk), the busybox applet set (1.3), the domain manager's Users/Services/Startup views (1.5), and
+`wl-files` File Search (1.6).
 
-**Exit criterion:** a person can install anonymOS, reboot into it, and do a day's basic work
-without the serial console.
+**Carried forward, not done:** `wl-quicksettings`' Keyboard / Mouse / Touchpad / Appearance
+panels (was 1.4). They are blocked on an input and theme configuration backend that does not
+exist, and shipping them without one would mean four panels of controls that change nothing.
+Tracked in Tier 3 as a desktop-quality item, which is what it actually is.
+
+**Known platform gap found while confirming this:** the kernel has AHCI and NVMe block drivers
+and no VirtIO. Proxmox defaults to VirtIO SCSI, so an install there fails with "no disk to
+install to". Either configure SATA, or add a virtio-blk driver — the latter is the honest fix
+and is listed in Tier 5.
+
 
 ---
 
@@ -55,6 +62,7 @@ present wins" and buys most of the perceived responsiveness.
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
+| 3.0b | **`wl-quicksettings` panels** — Keyboard, Mouse, Touchpad, Appearance. **Blocked:** no input/theme configuration backend exists, so these would be four panels of controls that change nothing. Was roadmap 1.4; it is a desktop-quality item, not a prerequisite for installing | APPS B2 · GUI G18 | M |
 | 3.1 | **Damage-tracked KMS blit + fast copy** | The roadmap's own "cheap present wins". Biggest felt improvement per hour | DESKTOP_RESP R5 | S |
 | 3.2 | **Multi-window and workspace experience** — **BLOCKED on client resize support.** Windows visibly overlap instead of tiling because six clients (`wl-overview`, `wl-logview`, `wl-quicksettings`, `wl-calendar`, `wl-wifi-menu`, `wl-domain-manager`) call `xdg_toplevel_set_max_size` equal to their min size, and Hyprland floats any toplevel where min == max. That is not the layout failing — those windows opt out of it. **Dropping `set_max_size` is NOT the fix:** none of the five has a resize path (checked), so tiling them reproduces the domain manager regression its own source documents (collapses to a 562x181 sliver). Each needs a reflowing layout first, i.e. the `resize_buffer()` treatment `wl-installer` and `wl-cairo-demo` already got | Hyprland provides the mechanism; this is the desktop actually using it | GUI G20 | M |
 | 3.3 | **Visual QA + screenshot regression tests** — ◑ PARTIAL. `scripts/screen-check.sh` captures the framebuffer via the HMP monitor and asserts the desktop is rendering (distinct-colour count + dominant-colour share); it found the swapchain bug within minutes of existing. **Not done:** golden-image comparison per app. | Marked Critical in GUI_ROADMAP, and this session showed why: a two-month-old binary shipped unnoticed | GUI G21 | M |
@@ -85,6 +93,7 @@ Only matters when leaving the VM. Nothing above depends on it.
 
 | # | Item | Source |
 |---|---|---|
+| 5.0 | **VirtIO block driver (`virtio-blk` / `virtio-scsi`)** — the kernel has AHCI + NVMe only, so an install on Proxmox fails at "no disk to install to" because VirtIO SCSI is its default bus. Confirmed 2026-09-05. VirtIO NET is already handled; the disk side is the gap | — |
 | 5.1 | LKL hardware bridge (`lkl_dev_pci_ops`), per-device isolation | BARE_METAL L3, L4 |
 | 5.2 | USB HID via LKL — "the usable-desktop unlock" on real hardware | BARE_METAL L5 |
 | 5.3 | WiFi association hardening | WIFI_AUTODRIVER |

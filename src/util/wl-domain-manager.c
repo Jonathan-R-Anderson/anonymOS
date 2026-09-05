@@ -65,7 +65,7 @@ enum {
     DOMHDR_H  = 36,                             // domain name + status row (right pane)
     TABBAR_H  = 32,
     TAB_Y     = BODY_Y + DOMHDR_H + TABBAR_H,   // tab content start
-    N_TABS    = 7,
+    N_TABS    = 10,   // ROADMAP 1.5 added Users, Services, Startup (system-scoped)
 };
 
 // --- option tables --------------------------------------------------------
@@ -161,6 +161,30 @@ struct gpkg { char name[32]; char ver[12]; int sizeKb; unsigned reqCaps; };
 #define MAX_TMPL 8
 struct gtemplate { char name[32]; char publisher[24]; char ver[16]; };
 
+// ROADMAP 1.5 (APPS B3) — three SYSTEM-scoped views: Users, Services, Startup.
+//
+// Every one of these reads a live kernel table; none of them invents data.  That matters here
+// because the roadmap has twice had to delete fake UI from this project (the Quick Settings
+// volume slider with no audio backend; the old "Startup" tab in THIS file, which drew a
+// hardcoded "Terminal (gl-term)" string and a "(planned)" note and could not do anything).
+//
+//   Users    <- /config/users.json     rendered from g_users  by hoscall.d CFG_USERS
+//   Services <- /config/services.json  rendered from g_svcs   by hoscall.d CFG_SERVICES
+//   Startup  <- /desktop.conf          the boot module the kernel itself parses for autostart
+//
+// /desktop.conf is a boot MODULE rather than a file on a mounted filesystem, but sys_open()
+// falls through to findBootModule(), so open("/desktop.conf") works from a client exactly like
+// a regular file.  It is the same text the kernel reads in desktopAutostartAt(), so this view
+// shows what will actually be launched, not a second copy that could drift out of step.
+#define MAX_SYSUSERS 24
+struct gsysuser { char name[32]; unsigned uid, gid, rights; };
+
+#define MAX_SYSSVCS 32
+struct gsyssvc { char name[40]; char state[12]; unsigned rights, ver; };
+
+#define MAX_STARTUP 24
+struct gstartup { char cmd[96]; int live; };   // live = an `autostart-live` (install-media only) entry
+
 struct app {
     struct wl_display *display;
     struct wl_registry *registry;
@@ -204,6 +228,12 @@ struct app {
     unsigned pkg_mask[MAX_DOMS];   // per-domain installed bitmask over the catalog
     struct gtemplate templates[MAX_TMPL];  // DM12: the local signed-template registry
     int  n_templates;
+    struct gsysuser sysusers[MAX_SYSUSERS];  // ROADMAP 1.5: Users tab    (/config/users.json)
+    int  n_sysusers;
+    struct gsyssvc  syssvcs[MAX_SYSSVCS];    // ROADMAP 1.5: Services tab (/config/services.json)
+    int  n_syssvcs;
+    struct gstartup startup[MAX_STARTUP];    // ROADMAP 1.5: Startup tab  (/desktop.conf)
+    int  n_startup;
     // Applications tab: indices into DMAPPS whose binary actually exists, so the list never
     // offers a launch that can only fail with "[exec] not found".
     int  avail[16];
@@ -350,7 +380,8 @@ static void ctl_cycle(struct dconf *c, int i, int dir)
 // ── DM10.7 tabbed-layout labels + geometry (shared by the draw + click passes) ──────────────
 #define N_TOOL 6
 static const char *TOOL_LABEL[N_TOOL] = { "+ New", "Clone", "Import", "Marketplace", "Logs", "Run Shell" };
-static const char *TAB_LABEL[N_TABS]  = { "Overview","Filesystem","Packages","Network","Permissions","Applications","Appearance" };
+static const char *TAB_LABEL[N_TABS]  = { "Overview","Filesystem","Packages","Network","Permissions","Applications","Appearance",
+                                          "Users","Services","Startup" };
 enum { TAB_W = (DEFAULT_WIDTH - LIST_W) / N_TABS };   // fixed tab column width
 
 #define N_LIFE 6
@@ -626,6 +657,109 @@ static void load_templates(struct app *app)
     }
     free(json);
     printf("DOMAINMGR: loaded %d templates from /config/templates.json\n", app->n_templates); fflush(stdout);
+}
+
+// ── ROADMAP 1.5 loaders ───────────────────────────────────────────────────────────────────
+// Same shape as load_packages() above: slurp, NUL-terminate, walk "name" to "name" and pull
+// fields out of each record with j_field().  The kernel writes one flat array per file, so the
+// record boundary IS the next "name" key; the last record ends at the end of the buffer.
+
+static void load_sysusers(struct app *app)
+{
+    app->n_sysusers = 0;
+    unsigned char *buf; size_t sz;
+    if (load_file("/config/users.json", &buf, &sz) < 0 || sz == 0) return;
+    char *json = malloc(sz + 1);
+    if (!json) { free(buf); return; }
+    memcpy(json, buf, sz); json[sz] = 0; free(buf);
+
+    const char *p = json;
+    while (app->n_sysusers < MAX_SYSUSERS) {
+        const char *nm = strstr(p, "\"name\"");
+        if (!nm) break;
+        const char *e = strstr(nm + 6, "\"name\"");
+        if (!e) e = json + sz;
+        struct gsysuser *g = &app->sysusers[app->n_sysusers];
+        memset(g, 0, sizeof(*g));
+        j_field(nm, e, "name", g->name, sizeof(g->name));
+        char num[24];
+        if (j_field(nm, e, "uid",    num, sizeof(num))) g->uid    = (unsigned)strtoul(num, NULL, 10);
+        if (j_field(nm, e, "gid",    num, sizeof(num))) g->gid    = (unsigned)strtoul(num, NULL, 10);
+        if (j_field(nm, e, "rights", num, sizeof(num))) g->rights = (unsigned)strtoul(num, NULL, 16);
+        if (g->name[0]) app->n_sysusers++;
+        p = e;
+    }
+    free(json);
+    printf("DOMAINMGR: loaded %d users from /config/users.json\n", app->n_sysusers); fflush(stdout);
+}
+
+static void load_syssvcs(struct app *app)
+{
+    app->n_syssvcs = 0;
+    unsigned char *buf; size_t sz;
+    if (load_file("/config/services.json", &buf, &sz) < 0 || sz == 0) return;
+    char *json = malloc(sz + 1);
+    if (!json) { free(buf); return; }
+    memcpy(json, buf, sz); json[sz] = 0; free(buf);
+
+    const char *p = json;
+    while (app->n_syssvcs < MAX_SYSSVCS) {
+        const char *nm = strstr(p, "\"name\"");
+        if (!nm) break;
+        const char *e = strstr(nm + 6, "\"name\"");
+        if (!e) e = json + sz;
+        struct gsyssvc *g = &app->syssvcs[app->n_syssvcs];
+        memset(g, 0, sizeof(*g));
+        j_field(nm, e, "name",  g->name,  sizeof(g->name));
+        j_field(nm, e, "state", g->state, sizeof(g->state));
+        char num[24];
+        if (j_field(nm, e, "rights",  num, sizeof(num))) g->rights = (unsigned)strtoul(num, NULL, 16);
+        if (j_field(nm, e, "version", num, sizeof(num))) g->ver    = (unsigned)strtoul(num, NULL, 10);
+        if (g->name[0]) app->n_syssvcs++;
+        p = e;
+    }
+    free(json);
+    printf("DOMAINMGR: loaded %d services from /config/services.json\n", app->n_syssvcs); fflush(stdout);
+}
+
+// /desktop.conf is `key = value` lines with '#' comments.  Only the two autostart forms are
+// read here; `autostart-live` is flagged because it runs on install media ONLY, and showing it
+// identically to a permanent entry would misrepresent what an installed system does at boot.
+static void load_startup(struct app *app)
+{
+    app->n_startup = 0;
+    unsigned char *buf; size_t sz;
+    if (load_file("/desktop.conf", &buf, &sz) < 0 || sz == 0) return;
+    char *txt = malloc(sz + 1);
+    if (!txt) { free(buf); return; }
+    memcpy(txt, buf, sz); txt[sz] = 0; free(buf);
+
+    for (char *line = strtok(txt, "\n"); line && app->n_startup < MAX_STARTUP;
+         line = strtok(NULL, "\n")) {
+        while (*line == ' ' || *line == '\t') line++;
+        if (*line == '#' || *line == 0) continue;
+        int live, klen;
+        if      (!strncmp(line, "autostart-live", 14)) { live = 1; klen = 14; }
+        else if (!strncmp(line, "autostart",       9)) { live = 0; klen =  9; }
+        else continue;
+        /* Reject `autostartfoo = x`: the key must end here, at space/tab or the '='. */
+        if (line[klen] != ' ' && line[klen] != '\t' && line[klen] != '=') continue;
+        const char *eq = strchr(line + klen, '=');
+        if (!eq) continue;
+        eq++;
+        while (*eq == ' ' || *eq == '\t') eq++;
+        struct gstartup *g = &app->startup[app->n_startup];
+        memset(g, 0, sizeof(*g));
+        g->live = live;
+        snprintf(g->cmd, sizeof(g->cmd), "%s", eq);
+        char *hash = strchr(g->cmd, '#');            /* drop a trailing comment ... */
+        if (hash) *hash = 0;
+        for (char *t = g->cmd + strlen(g->cmd);      /* ... then any trailing whitespace */
+             t > g->cmd && (t[-1]==' '||t[-1]=='\t'||t[-1]=='\r'); t--) t[-1] = 0;
+        if (g->cmd[0]) app->n_startup++;
+    }
+    free(txt);
+    printf("DOMAINMGR: loaded %d startup entries from /desktop.conf\n", app->n_startup); fflush(stdout);
 }
 
 // Resolve a template objId to its domain name (for display).
@@ -1006,6 +1140,82 @@ static void tab_appearance(struct app *app, cairo_t *cr) {
     }
 }
 
+// ── ROADMAP 1.5 — SYSTEM-scoped tabs ──────────────────────────────────────────────────────
+// These three describe the machine, not the selected domain, so each states that in its header
+// rather than letting the domain name above the tab bar imply otherwise.  Text-only (the
+// cr == NULL pass): they are read-only reports, so there is nothing to draw a button for.
+// Making them mutable means a kernel write path (users/services are object tables behind
+// capability checks, and /desktop.conf is a read-only boot module), which is a separate job --
+// showing a control that silently does nothing is exactly the fake UI this file has already
+// had to delete once.
+
+static void tab_users(struct app *app, cairo_t *cr) {
+    if (cr) return;
+    draw_text(app, "System users — from /config/users.json, the kernel's live User object table",
+              LABEL_X, TAB_Y+10, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+    draw_text(app, "Name",   LABEL_X+10,  TAB_Y+38, 200, 12, 0xffb7c1d0u);
+    draw_text(app, "UID",    LABEL_X+230, TAB_Y+38,  60, 12, 0xffb7c1d0u);
+    draw_text(app, "GID",    LABEL_X+300, TAB_Y+38,  60, 12, 0xffb7c1d0u);
+    draw_text(app, "Rights", LABEL_X+370, TAB_Y+38, 120, 12, 0xffb7c1d0u);
+    for (int i = 0; i < app->n_sysusers; i++) {
+        const struct gsysuser *u = &app->sysusers[i];
+        int y = TAB_Y + 60 + i * 20;
+        if (y > app->height - FOOTER_H - 30) break;
+        char n[24];
+        draw_text(app, u->name, LABEL_X+10, y, 210, 13, 0xfff2f5fau);
+        snprintf(n,sizeof(n),"%u",u->uid);    draw_text(app,n,LABEL_X+230,y,60,13,0xff97a1b0u);
+        snprintf(n,sizeof(n),"%u",u->gid);    draw_text(app,n,LABEL_X+300,y,60,13,0xff97a1b0u);
+        snprintf(n,sizeof(n),"0x%X",u->rights);draw_text(app,n,LABEL_X+370,y,120,13,0xff97a1b0u);
+    }
+    if (app->n_sysusers == 0)
+        draw_text(app, "(no users — /config/users.json is empty or unreadable)",
+                  LABEL_X+10, TAB_Y+60, 460, 13, 0xff8d97a6u);
+}
+
+static void tab_services(struct app *app, cairo_t *cr) {
+    if (cr) return;
+    draw_text(app, "System services — from /config/services.json, the kernel's live Service table",
+              LABEL_X, TAB_Y+10, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+    draw_text(app, "Name",    LABEL_X+10,  TAB_Y+38, 240, 12, 0xffb7c1d0u);
+    draw_text(app, "State",   LABEL_X+270, TAB_Y+38,  90, 12, 0xffb7c1d0u);
+    draw_text(app, "Version", LABEL_X+370, TAB_Y+38,  70, 12, 0xffb7c1d0u);
+    draw_text(app, "Rights",  LABEL_X+450, TAB_Y+38, 120, 12, 0xffb7c1d0u);
+    for (int i = 0; i < app->n_syssvcs; i++) {
+        const struct gsyssvc *s = &app->syssvcs[i];
+        int y = TAB_Y + 60 + i * 20;
+        if (y > app->height - FOOTER_H - 30) break;
+        char n[24];
+        int started = !strcmp(s->state, "started");   /* hoscall.d CFG_SERVICES: "started" | "stopped" */
+        draw_text(app, s->name, LABEL_X+10, y, 250, 13, 0xfff2f5fau);
+        draw_text(app, s->state[0] ? s->state : "?", LABEL_X+270, y, 90, 13,
+                  started ? 0xff7fd18cu : 0xffd18c7fu);
+        snprintf(n,sizeof(n),"v%u",s->ver);      draw_text(app,n,LABEL_X+370,y,70,13,0xff97a1b0u);
+        snprintf(n,sizeof(n),"0x%X",s->rights);  draw_text(app,n,LABEL_X+450,y,120,13,0xff97a1b0u);
+    }
+    if (app->n_syssvcs == 0)
+        draw_text(app, "(no services registered — /config/services.json is empty)",
+                  LABEL_X+10, TAB_Y+60, 460, 13, 0xff8d97a6u);
+}
+
+static void tab_startup(struct app *app, cairo_t *cr) {
+    if (cr) return;
+    draw_text(app, "Startup applications — from /desktop.conf, the file the kernel itself parses at boot",
+              LABEL_X, TAB_Y+10, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+    for (int i = 0; i < app->n_startup; i++) {
+        const struct gstartup *s = &app->startup[i];
+        int y = TAB_Y + 44 + i * 20;
+        if (y > app->height - FOOTER_H - 30) break;
+        draw_text(app, s->cmd, LABEL_X+10, y, 420, 13, 0xfff2f5fau);
+        draw_text(app, s->live ? "install media only" : "every boot",
+                  LABEL_X+440, y, 200, 12, s->live ? 0xffd1b87fu : 0xff97a1b0u);
+    }
+    if (app->n_startup == 0)
+        draw_text(app, "(nothing autostarts — no `autostart =` lines in /desktop.conf)",
+                  LABEL_X+10, TAB_Y+44, 480, 13, 0xff8d97a6u);
+    draw_text(app, "Read-only: /desktop.conf is a boot module, so editing it needs a rebuild of the image.",
+              LABEL_X, app->height-FOOTER_H-40, 620, 11, 0xff5b6675u);
+}
+
 static void draw_tab(struct app *app, cairo_t *cr) {
     switch (app->tab) {
         case 0: tab_overview(app,cr);    break;
@@ -1015,6 +1225,9 @@ static void draw_tab(struct app *app, cairo_t *cr) {
         case 4: tab_permissions(app,cr); break;
         case 5: tab_applications(app,cr); break;
         case 6: tab_appearance(app,cr);  break;
+        case 7: tab_users(app,cr);       break;   // ROADMAP 1.5
+        case 8: tab_services(app,cr);    break;   // ROADMAP 1.5
+        case 9: tab_startup(app,cr);     break;   // ROADMAP 1.5
     }
 }
 
@@ -1337,7 +1550,17 @@ static void handle_click(struct app *app)
     { int by = BODY_Y + DOMHDR_H;
       if (y >= by && y < by + TABBAR_H) {
           for (int i = 0; i < N_TABS; i++) { int bx,ty,bw,bh; tab_rect(i,&bx,&ty,&bw,&bh);
-              if (x>=bx && x<bx+bw) { app->tab = i; redraw_commit(app, "tab"); return; } }
+              if (x>=bx && x<bx+bw) {
+                  app->tab = i;
+                  // ROADMAP 1.5: refresh the system views when they are SELECTED rather than on
+                  // a timer.  Services start and stop at runtime, but live_refresh() only fires
+                  // when /config/domains.json changes, so a poll would be the only alternative --
+                  // and a client that re-reads and re-commits every second is precisely what made
+                  // the compositor repaint the whole screen continuously (see wl-logview).
+                  if (i == 7) load_sysusers(app);
+                  else if (i == 8) load_syssvcs(app);
+                  else if (i == 9) load_startup(app);
+                  redraw_commit(app, "tab"); return; } }
           return;
       } }
 
@@ -1592,6 +1815,9 @@ int main(void)
     load_packages(&app);             // DM10.7: the software repository (Packages tab)
     load_apps(&app);                 // Applications tab: which app binaries are actually present
     load_templates(&app);            // DM12: the local signed-template registry (Appearance tab)
+    load_sysusers(&app);             // ROADMAP 1.5: Users tab    (/config/users.json)
+    load_syssvcs(&app);              // ROADMAP 1.5: Services tab (/config/services.json)
+    load_startup(&app);              // ROADMAP 1.5: Startup tab  (/desktop.conf)
     app.last_hash = domains_hash();  // DM10.6: baseline for live-update change detection
     refresh_fs_view(&app);   // DM10.2: the first selected domain's RuntimeView
     domain_ctl_selftest(&app); // DM10.3: prove the control-write path (ping) at startup

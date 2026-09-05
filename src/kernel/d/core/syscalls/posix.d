@@ -12807,6 +12807,16 @@ public void presentProfStats() @nogc nothrow {
     klog(" tfdArm="); klog_dec(g_tfdArm);
     klog(" tfdReady="); klog_dec(g_tfdReady);
     klog(" tfdRead="); klog_dec(g_tfdRead);
+    // Input plumbing, surfaced here because inputStats() is gated behind a reconcile counter
+    // that never fires in a desktop boot.  Clicks do not reach clients while the kernel
+    // demonstrably enqueues BTN_LEFT ([btn] probe), so the open question is whether the
+    // compositor ever READS them.  enq counts events the kernel queued; read counts events it
+    // handed to userspace.  read stuck near 0 while enq climbs = the compositor is not draining
+    // the evdev fd, and no amount of compositor-side input config will help.
+    klog(" mouseEnq="); klog_dec(g_inMouseEnq);
+    klog(" mouseRead="); klog_dec(g_inMouseRead);
+    klog(" kbdEnq="); klog_dec(g_inKbdEnq);
+    klog(" kbdRead="); klog_dec(g_inKbdRead);
 
     // WALL-CLOCK frame rate, computed from the PIT alone.
     //

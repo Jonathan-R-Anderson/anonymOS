@@ -12263,7 +12263,15 @@ public long linux_sys_signalfd4(ulong fd, ulong m, ulong sz, ulong f) {
     if (cast(long)fd >= 0) return cast(long)fd;
     return linux_sys_eventfd2(0, f);
 }
+// ROADMAP 2.2: inotify is not implemented.  dbus-daemon logs "Cannot initialize inotify: Function
+// not implemented" and degrades to not watching its config, which is the graceful path; other
+// callers may not be so forgiving.  The three stubs exist so each syscall number routes to its
+// OWN handler -- previously nr 254 (inotify_add_watch) ran inotify_init and nr 253 was unrouted,
+// which is invisible while everything returns ENOSYS and becomes a silent wrong-call the moment
+// any one of them is implemented.
 public long linux_sys_inotify_init1(ulong f) { return negErrno(ENOSYS); }
+public long linux_sys_inotify_add_watch(ulong fd, ulong path, ulong mask) { return negErrno(ENOSYS); }
+public long linux_sys_inotify_rm_watch(ulong fd, ulong wd) { return negErrno(ENOSYS); }
 
 // --- prctl / scheduling ---
 public long linux_sys_prctl(ulong opt, ulong a2, ulong a3, ulong a4, ulong a5) { return 0; }

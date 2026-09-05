@@ -2249,6 +2249,58 @@ private void maybeSyncNtp() {
         klog("[ntp] giving up; clock stays at uptime-since-boot\n");
 }
 
+// ROADMAP 2.2: the syscall audit.  Its whole point is to record what is missing ONCE, instead of
+// finding out one app crash at a time.
+//
+// It probes through dispatchLinuxSyscall rather than reading the switch statement, because being
+// routed and being implemented are different things: inotify_init1 has a case arm AND returns
+// ENOSYS from a stub, so a static reading of the table would have called it present.  Grepping
+// for "case <nr>:" answers the wrong question.
+//
+// Arguments are chosen to fail cheaply and harmlessly -- a bad fd, a null pointer, a zero size --
+// so the probe distinguishes "not implemented" (ENOSYS) from "implemented, rejected these args"
+// (EBADF/EINVAL/EFAULT), which is the distinction that matters.  Anything that could create a
+// real object, block, or touch the filesystem is deliberately not probed.
+private struct SyscallProbe { ulong nr; const(char)* name; ulong a, b, c; }
+private __gshared bool g_syscallAudited = false;
+private void maybeSyscallAudit() {
+    if (g_syscallAudited) return;
+    if (pitMs() < 5_000) return;      // after the desktop is up, so the report sits with the rest
+    g_syscallAudited = true;
+
+    static immutable SyscallProbe[14] probes = [
+        { 253, "inotify_init\0".ptr,      0, 0, 0 },
+        { 294, "inotify_init1\0".ptr,     0, 0, 0 },
+        { 254, "inotify_add_watch\0".ptr, 0xFFFF_FFFF, 0, 0 },
+        { 255, "inotify_rm_watch\0".ptr,  0xFFFF_FFFF, 0, 0 },
+        { 284, "eventfd\0".ptr,           0, 0, 0 },
+        { 290, "eventfd2\0".ptr,          0, 0, 0 },
+        { 282, "signalfd\0".ptr,          0xFFFF_FFFF, 0, 0 },
+        { 289, "signalfd4\0".ptr,         0xFFFF_FFFF, 0, 0 },
+        { 283, "timerfd_create\0".ptr,    0, 0, 0 },
+        { 319, "memfd_create\0".ptr,      0, 0, 0 },
+        { 271, "ppoll\0".ptr,             0, 0, 0 },
+        { 291, "epoll_create1\0".ptr,     0, 0, 0 },
+        { 292, "dup3\0".ptr,              0xFFFF_FFFF, 0xFFFF_FFFF, 0 },
+        { 293, "pipe2\0".ptr,             0, 0, 0 },
+    ];
+
+    klog("[audit] ROADMAP 2.2 syscall audit — probing through the real dispatcher\n");
+    int missing = 0;
+    foreach (ref p; probes) {
+        const long r = dispatchLinuxSyscall(p.nr, p.a, p.b, p.c, 0, 0, 0);
+        klog("[audit] ");
+        klog(p.name);
+        klog(" nr="); klog_dec(p.nr);
+        // ENOSYS is private to posix.d, so the value is spelled out here.
+        if (r == -38) { klog(" MISSING (ENOSYS)\n"); ++missing; }
+        else if (r < 0)   { klog(" present (errno "); klog_dec(cast(ulong)(-r)); klog(")\n"); }
+        else              { klog(" present (ok, ret="); klog_dec(cast(ulong)r); klog(")\n"); }
+    }
+    klog("[audit] missing: "); klog_dec(cast(ulong)missing);
+    klog(" of "); klog_dec(cast(ulong)probes.length); klog("\n");
+}
+
 private __gshared bool g_procTested = false;
 private void maybeProcSelfTest() {
     if (g_procTested) return;
@@ -4118,7 +4170,14 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 232: return linux_sys_epoll_pwait(a, b, c, d, 0, 0);  // epoll_wait
         case 233: return linux_sys_epoll_ctl(a, b, c, d);          // was mis-routed to epoll_create!
         case 234: return linux_sys_tgkill(a, b, c);
-        case 254: return linux_sys_inotify_init();
+        // x86_64: 253 = inotify_init, 254 = inotify_add_watch, 255 = inotify_rm_watch.
+        // 254 used to route to inotify_init() and 253 was not routed at all -- the same mis-map
+        // that case 233 above carries a note about.  Harmless only while every one of these is a
+        // stub; the moment inotify is implemented, inotify_add_watch(fd, path, mask) would have
+        // silently run inotify_init instead.
+        case 253: return linux_sys_inotify_init();
+        case 254: return linux_sys_inotify_add_watch(a, b, c);
+        case 255: return linux_sys_inotify_rm_watch(a, b);
         case 257: return linux_sys_openat(a, b, c, d);
         case 258: return linux_sys_mkdirat(a, b, c);
         case 260: return linux_sys_fchownat(a, b, c, d, e);
@@ -4413,6 +4472,7 @@ private void kernelLoop() {
         maybeSpawnSshd();      // SSH-in: start the dropbear launcher for remote access
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
         maybeProcSelfTest();   // ROADMAP 2.1: prove /proc once real time and load have accrued
+        maybeSyscallAudit();   // ROADMAP 2.2: record which syscalls are missing, once
         maybeSyncNtp();        // NTP: set the wall clock from pool.ntp.org, with retries
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)

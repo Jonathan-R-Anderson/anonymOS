@@ -1058,14 +1058,6 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, waylandDisplayEnv());
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    // ROADMAP 2.3 DIAGNOSTIC (temporary): libwayland prints every protocol message sent and
-    // received when this is set.  GTK clients here connect to the right socket, exchange
-    // messages and still never map a toplevel, while wl-calendar on the identical path maps in
-    // six seconds -- so the question is which request or event the conversation stops at, and
-    // this is the only thing that answers it directly rather than by inference.
-    // REMOVE once 2.3 is understood: it is very noisy and applies to every client.
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "WAYLAND_DEBUG=1\0".ptr);
-    if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_WIDTH=1280\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_HEIGHT=800\0".ptr);

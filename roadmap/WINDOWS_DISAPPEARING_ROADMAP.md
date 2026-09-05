@@ -3,7 +3,40 @@
 **Status: ⚠️ REOPENED (2026-09-05). Two contributing faults are fixed and verified; the core bug
 is NOT, and is now reproducible on demand.**
 
-## 0. REPRODUCTION (new — this is the important part)
+## 0. ROOT CAUSE (2026-09-05) — only ONE of the two scanout buffers is ever rendered into
+
+Measured by the `[srcpx]` probe, which samples the actual source of each blit and counts
+DISTINCT colours in an 8×8 grid:
+
+```
+fb=1  phys=0x1ee0d000   distinct=18/64   <- windows rendered here
+fb=2  phys=0x1f1f7000   distinct= 2/64   <- only ever wallpaper
+```
+
+Stable across every present sampled (85, 86, 88, 89 …), not intermittent. aquamarine
+page-flips **alternately** between the two, so **every other frame presents a stale buffer**.
+`fb=2` still holds the startup frame — wallpaper only, captured before any window mapped —
+which is exactly why it reads as 2 distinct colours.
+
+That is the whole symptom: alternating good/blank frames read as flicker, and whenever the last
+flip lands on `fb=2` the desktop sits blank with the kernel-drawn borders stamped on top.
+
+**Ruled out along the way, each with evidence:**
+* the blit is not shrinking — `copy=1280x800 fbdim=1280x800 scr=1280x800` at the blank frame;
+* the compositor is not wedged, asleep or starved — presents climb, `flipQ == flipRd`,
+  `parked_permil=0` with ~81k running samples;
+* `debug:damage_tracking = 1` **is** applied — `luaConfigValueName()` maps `:` to `.`, so the
+  nested Lua `debug = { damage_tracking = 1 }` resolves correctly. It did not fix this.
+
+**Next step:** find why `fb=2` is never rendered into. Either Hyprland's EGL surface is bound to
+a single buffer while aquamarine rotates two, or the kernel hands out two `fb_id`s that the
+compositor believes are one. Forcing the swapchain to length 1 would mask it and is a legitimate
+configuration here (the present path is a CPU blit, so there is no tearing concern), but the
+mapping should be understood first.
+
+---
+
+## 0b. REPRODUCTION
 
 ```bash
 # on the build server

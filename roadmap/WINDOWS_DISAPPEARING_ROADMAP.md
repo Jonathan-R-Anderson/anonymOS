@@ -1,6 +1,51 @@
 # Windows Disappearing — Investigation Roadmap
 
-**Status: ✅ RESOLVED (2026-09-05, verified on the build server).**
+**Status: ⚠️ REOPENED (2026-09-05). Two contributing faults are fixed and verified; the core bug
+is NOT, and is now reproducible on demand.**
+
+## 0. REPRODUCTION (new — this is the important part)
+
+```bash
+# on the build server
+setsid env HEADLESS=1 MEM=2048 ./qemu-run.sh &     # wait for [g5] windows=
+printf 'sendkey meta_l-c\n' | nc -N -U mon.sock    # SUPER+C -> /wl-calendar
+sleep 12; printf 'sendkey meta_l-c\n' | nc -N -U mon.sock
+sleep 18; OUT=/tmp/after.png ./scripts/screen-check.sh
+```
+
+Window count goes 4 → 8 and the desktop goes **black except for the identity borders** — the
+user's exact report, on camera. Measured by `screen-check.sh`:
+
+| | colours | dominant colour |
+|---|---|---|
+| before launch | 4338 | 33.9% |
+| after launch  | **232** | **91.2%** |
+
+**The compositor is NOT wedged, and NOT idle.** During the black screen:
+
+```
+[present] total=  74 -> 78 -> 81 -> 83     presenting, still climbing
+flipQ=75 flipRd=75                         every completion read
+[cmpduty] parked_permil=0 running=81137    100% RUNNING
+62x "drm: Cannot commit when a page-flip is awaiting"
+```
+
+So it is **actively rendering and presenting BLACK frames**, at full CPU. Every theory that
+requires the compositor to be stuck, asleep, or starved is dead. The `Cannot commit` errors are
+real but cannot be the whole story, because presents demonstrably continue through them.
+
+That the identity borders still appear is now *evidence*, not mystery: since `fea612d05d` they
+are drawn **only** on the present path, so their presence proves presents are happening. What is
+black is the compositor's own output.
+
+**Input works.** SUPER+C launched `/wl-calendar` (tasks 13 and 15, both speaking Wayland), so
+input → keybind → spawn → map → render is intact end to end.
+
+---
+
+## What IS fixed (verified, keep)
+
+
 
 It was **two** faults that compounded, and neither was a compositor bug:
 

@@ -1,7 +1,13 @@
 #!/bin/bash
 # M0: build a REAL dbus-daemon + libdbus-1 for the EpinAnonymOS musl target.
 set -e
-ROOT=/home/bruns/Documents/EpinAnonymOS
+# Derive the project root from this script rather than hardcoding it.  This read
+# ROOT=/home/bruns/Documents/EpinAnonymOS, a path that stopped existing when the project was
+# renamed to anonymOS -- so every invocation failed at the first path and dbus was silently
+# never built.  install/bin stayed empty, the Makefile stage block (which tests for
+# install/bin/dbus-daemon) never ran, no module_path line was emitted, and the kernel then
+# reported "hos-dbus-launch spawn failed" at every boot.
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 MUSL=$ROOT/deps/musl/install
 SYSROOT=$ROOT/deps/gtk-stack/sysroot
 CC=$MUSL/bin/musl-clang

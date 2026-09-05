@@ -9621,7 +9621,7 @@ private bool taskIsGtkClient() @nogc nothrow {
     return n[0] == 'g' && n[1] == 't' && n[2] == 'k';
 }
 private void wlWireTrace(const(char)* dir, msghdr* m, long n) @nogc nothrow {
-    if (g_wlWireN >= 120 || m is null || n <= 0) return;
+    if (g_wlWireN >= 900 || m is null || n <= 0) return;
     if (!taskIsGtkClient()) return;
     if (m.msg_iov is null || m.msg_iovlen == 0) return;
     const(ubyte)* p = cast(const(ubyte)*)m.msg_iov[0].iov_base;
@@ -9631,7 +9631,7 @@ private void wlWireTrace(const(char)* dir, msghdr* m, long n) @nogc nothrow {
     // Walk as many complete messages as this buffer holds -- libwayland batches several per
     // sendmsg, and only seeing the first would misreport where a burst ends.
     size_t off = 0;
-    while (off + 8 <= avail && g_wlWireN < 120) {
+    while (off + 8 <= avail && g_wlWireN < 900) {
         const uint  objId  = *cast(const(uint)*)(p + off);
         const ushort op    = *cast(const(ushort)*)(p + off + 4);
         const ushort sz    = *cast(const(ushort)*)(p + off + 6);

@@ -1058,6 +1058,16 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, waylandDisplayEnv());
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // ROADMAP 2.3 DIAGNOSTIC (temporary): libwayland's protocol trace.
+    // It has to live HERE, not in the hos-wl-trace launcher, because the child's environment comes
+    // from this block -- the launcher's setenv() does not reach the array its execv passes, proven
+    // by having it print its own environ immediately beforehand and get back nothing at all, not
+    // even the variable it had just set.  The launcher is still needed, but only for the other
+    // half: it redirects fd 1/2 to /dev/console, without which this output is written and
+    // discarded (a Hyprland-forked child inherits no console).  Neither half works alone.
+    // REMOVE once 2.3 is understood -- it is noisy and applies to every client.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "WAYLAND_DEBUG=1\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_WIDTH=1280\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_HEIGHT=800\0".ptr);

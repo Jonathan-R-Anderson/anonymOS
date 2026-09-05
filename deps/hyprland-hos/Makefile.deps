@@ -357,6 +357,29 @@ $(STAMP_DIR)/hwdata-build: $(STAMP_DIR)/hwdata-extract
 	@mkdir -p $(STAMP_DIR)
 	cd $(BUILD_DIR)/hwdata && ./configure --prefix=$(SYSROOT) --datadir=$(SYSROOT)/share
 	cd $(BUILD_DIR)/hwdata && make install
+	@# hwdata's own install landed only oui.txt and iab.txt -- pnp.ids, pci.ids and usb.ids were
+	@# missing from the sysroot even though all five sit in the build tree and its Makefile lists
+	@# them in IDFILES.  The stamp was touched regardless, so the build believed hwdata was done
+	@# and the gap only surfaced much later as
+	@#   libdisplay-info-0.2.0/meson.build:22:11: ERROR: File .../share/hwdata/pnp.ids does not exist
+	@# Copy them explicitly rather than trusting that install target.
+	@mkdir -p $(SYSROOT)/share/hwdata
+	@for f in pnp.ids pci.ids usb.ids oui.txt iab.txt; do \
+	    if [ -f $(BUILD_DIR)/hwdata/$$f ]; then \
+	        cp -f $(BUILD_DIR)/hwdata/$$f $(SYSROOT)/share/hwdata/$$f; \
+	    else \
+	        echo "[hwdata] WARNING: $$f missing from the build tree"; \
+	    fi; \
+	done
+	@# Make hwdata.pc relocatable.  configure bakes an absolute prefix, and this .pc is committed,
+	@# so a checkout built on one machine hands the other machine's path to every consumer: the
+	@# Docker build (sysroot at /build/deps/...) was told pkgdatadir=/home/<user>/.../deps/... and
+	@# failed looking for a file outside the container.  ${pcfiledir} is resolved by pkg-config
+	@# relative to the .pc file itself, so it is correct wherever the tree is checked out.
+	@# (It installs under share/pkgconfig, not lib/pkgconfig.)
+	@if [ -f $(SYSROOT)/share/pkgconfig/hwdata.pc ]; then \
+	    sed -i 's|^prefix=.*|prefix=$${pcfiledir}/../..|' $(SYSROOT)/share/pkgconfig/hwdata.pc; \
+	fi
 	# hwdata ships only a pkg-config file; aquamarine does find_package(hwdata)
 	# and, when found, reads pnp.ids' dir from hwdata.pc's pkgdatadir. Provide a
 	# minimal CMake config so that (correct) branch wins over the host fallback.

@@ -9446,8 +9446,29 @@ public long linux_sys_accept(ulong sockfd, ulong addr, ulong addrlen) {
     return cast(long)sys_accept(cast(int)sockfd, cast(sockaddr*)addr, cast(uint*)addrlen);
 }
 
+// ROADMAP 2.3 diagnostic: log what each AF_UNIX connect actually targets and what it returns.
+// Every theory about why GTK clients never map has turned on *which socket they reach*, and until
+// now that was inferred from env vars and listener dumps rather than observed. Capped so a
+// chatty client cannot flood the log.
+private __gshared int g_connLogN = 0;
 public long linux_sys_connect(ulong sockfd, ulong addr, ulong addrlen) {
-    return cast(long)sys_connect(cast(int)sockfd, cast(const(sockaddr)*)addr, cast(uint)addrlen);
+    const long r = cast(long)sys_connect(cast(int)sockfd, cast(const(sockaddr)*)addr, cast(uint)addrlen);
+    if (g_connLogN < 40 && addr != 0) {
+        auto un = cast(const(sockaddr_un)*)addr;
+        if (un.sun_family == AF_UNIX && un.sun_path[0] != 0) {
+            ++g_connLogN;
+            klog("[conn] fd="); klog_dec(sockfd);
+            klog(" -> ");
+            foreach (i; 0 .. 108) {
+                if (un.sun_path[i] == 0) break;
+                char[2] s; s[0] = un.sun_path[i]; s[1] = 0; klog(s.ptr);
+            }
+            klog(r < 0 ? " FAILED err=" : " ok=");
+            klog_dec(cast(ulong)(r < 0 ? -r : r));
+            hangTraceWho(); klog("\n");
+        }
+    }
+    return r;
 }
 
 public long linux_sys_sendmsg(ulong sockfd, ulong msg, ulong flags) {

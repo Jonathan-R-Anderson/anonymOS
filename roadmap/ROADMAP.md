@@ -48,10 +48,38 @@ built for musl in `deps/gtk-stack/sysroot`, and `gtk-hello` already runs.
 | 2.2 | **Syscall audit** — inotify, eventfd, signalfd, timerfd, memfd_create, ppoll | Record what is missing once, rather than discovering it one crash at a time | APPS A3 · syscalls | M |
 | 2.3 | **One real upstream GTK app end-to-end** (suggest `gnome-calculator`) | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
 | 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
-| 2.5 | **D-Bus session bus** | Some GTK apps hard-fail without it; establish which | APPS A7 | S |
+| 2.5 | ✅ **D-Bus system bus** — DONE 2026-09-05 | A real upstream `dbus-daemon` 1.14.10 serves the bus; `dbus-send --system GetId` completes a round-trip in 33 ms, proving EXTERNAL auth over `SO_PEERCRED`. | APPS A7 | S |
 | 2.6 | **Stage C1** — `/proc` readers: Hardware Info, System Info, USB/PCI, Sensors, Battery, Routes | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion:** an upstream GTK application, not written for this OS, runs on the desktop.
+
+### Notes from 2.5 (D-Bus), 2026-09-05
+
+Four separate faults, none of which announced itself. Worth recording because each one
+*reported success* and the damage only showed up much later:
+
+- `deps/dbus-build/build-dbus.sh` still had `ROOT=/home/bruns/Documents/EpinAnonymOS`, a path
+  that died when the project was renamed. dbus had therefore never built at all. The Makefile
+  gates its staging on `install/bin/dbus-daemon` existing, so it silently emitted no
+  `module_path` line and the kernel could not load the launcher.
+- Grepping the ISO for `hos-dbus-launch` found six hits and *looked* like proof it was staged.
+  It was not — the kernel binary names the program in a spawn call. **Grepping an image for a
+  filename proves nothing about whether that file is in it.**
+- The build script piped everything to `tail`, and a pipeline's status is the last command's, so
+  `set -e` never saw a failure. Now `set -o pipefail`.
+- `gschemas.compiled` was staged, logged as "Included", and genuinely present in the ISO, yet
+  never reached the guest: `pack-assets.py` sorted it into category `misc`, which had no blob,
+  and the kernel reads the aggregate `assets.blob` only as a fallback that never triggers. Fixed
+  generally with a `misc.blob` rather than special-casing glib.
+
+Also: waiting a fixed number of scheduler polls for a daemon to be ready is not a timeout —
+it measures nothing physical. Both a 40-poll and a 400-poll guess fired early. The gate now
+waits on `unixListenerReady()` (is the socket actually in the listener state?) bounded by
+`pitMs()` wall clock.
+
+**Feeds 2.2:** `dbus-daemon` logs `Cannot initialize inotify: Function not implemented`. It
+degrades gracefully — it just stops watching its config for changes — but this is a confirmed
+missing syscall for the audit, found without having to go looking.
 
 ---
 

@@ -112,3 +112,46 @@ hl.config({
         use_cpu_buffer      = 0
     }
 })
+
+-- UNCONDITIONAL: a CORRECTNESS setting, not an aesthetic or renderer one, so it is not gated
+-- on softpipe.  It changes only how much of a frame is redrawn, never how the result looks.
+--
+-- THE BUG IT FIXES: "the window borders all load, but the windows themselves disappear after
+-- they initially load."
+--
+-- Hyprland's default is 2 (= DAMAGE_TRACKING_FULL, ConfigValues.cpp:622), which redraws only
+-- the damaged sub-region of the frame.  That is only correct if the renderer can tell what the
+-- buffer it is drawing into already contains -- and aquamarine hands it a swapchain of THREE
+-- rotating buffers ("Swapchain: Reconfigured ... XR24 of length 3"), so the undamaged parts of
+-- the frame have to be inherited from a buffer that is two frames stale.  Whatever this stack
+-- reports for buffer age, the inheritance does not hold here: the region outside the damage
+-- comes back without the window content in it.
+--
+-- The boot log shows the transition exactly.  Renderer.cpp forces a few full frames at startup
+-- and then stops:
+--     HOSDBG renderMonitor #1   ... forceFull=5
+--     HOSDBG renderMonitor #61  ... forceFull=0
+--     HOSDBG renderMonitor #121 ... forceFull=0
+-- Windows are present for the forced full frames and vanish once forceFull hits 0 and partial
+-- rendering takes over -- i.e. they "disappear after they initially load".  The borders survive
+-- because they are NOT drawn by the compositor at all: drmSetHosWindows() in posix.d paints them
+-- straight into the framebuffer whenever the window list changes, deliberately "even without a
+-- fresh present blit".  So the borders are kernel-drawn and stay; the contents are
+-- compositor-drawn and go.
+--
+-- Mode 1 (= DAMAGE_TRACKING_MONITOR) is the right setting rather than 0:
+--   * Renderer.cpp:2217 -- NONE *or* MONITOR adds the whole monitor to the frame damage, so a
+--     rendered frame is always complete and the stale-buffer inheritance never applies.
+--   * Renderer.cpp:321  -- the "nothing changed, skip this frame" early-out is taken for every
+--     mode EXCEPT NONE, so mode 1 still renders NOTHING while the desktop is idle.
+-- Mode 0 would also fix the corruption but would redraw unconditionally, forever, which is the
+-- opposite of what is wanted here.
+--
+-- Net effect: no redraw at all unless something is actually damaged, and a whole correct frame
+-- when there is.  The finer-grained "redraw only the damaged rectangle" is given up deliberately
+-- -- it is the exact path that loses the window contents on this stack.
+hl.config({
+    debug = {
+        damage_tracking = 1
+    }
+})

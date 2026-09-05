@@ -11,21 +11,6 @@ this project's history came from deep platform work landing while the desktop co
 
 ---
 
-## Tier 0 — ✅ DONE (2026-09-05). Superseded by automated testing.
-
-Every item here was "boot it and confirm X by reading the log". That is now `make test`:
-`scripts/boot-test.sh` boots headless and asserts 11 facts unattended, `make verify` proves the
-ISO contains the change under test, and `scripts/screen-check.sh` proves the desktop is actually
-rendering rather than blank. See [BUILD_AND_TEST_AUTOMATION_ROADMAP.md](BUILD_AND_TEST_AUTOMATION_ROADMAP.md).
-
-The one item worth carrying forward: **do not boot with `GPU=1`** — it selects `gtk,gl=on`,
-which `qemu-run.sh` itself warns "gives a BLACK SCREEN on many hosts". Use `GPU=1 HEADLESS=1`.
-
-The Tier 0.4 softpipe NULL-transfer crash is **fixed** (three Mesa patches in
-`deps/mutter/patches/mesa-*-null-transfer.patch`); `forbid COMPOSITOR DIED` is asserted on every
-`make test` run so it cannot silently return.
-
----
 
 ## Tier 1 — Minimal usable installation
 
@@ -35,12 +20,9 @@ work is reach and polish, not new subsystems.
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
-| 1.1 | **`wl-sysmon` tabs** — ✅ DONE. Task Manager, Process Viewer, System Monitor, CPU, Memory, Disk Usage — 6 launcher entries, one binary, via `--view=`. **Network Monitor NOT shipped**: `/proc/net/dev` is a static stub (posix.d:6490) and the driver keeps no counters, so a view over it would display fiction. Unblock by adding rx/tx counters to `drivers/network`. Disk I/O rates likewise need a `/proc/diskstats` that does not exist — the Disk view reports mounts and is named accordingly | APPS B1 | S |
-| 1.2 | **Persistent storage** — ◑ PARTIAL. The object store (`objstore.d`) now mounts on an INSTALLED (GPT) system instead of refusing. It previously wrote its superblock at absolute LBA 0 and so declined any GPT disk to avoid destroying the bootloader — meaning persistence could never work on an installed system, exactly what this item asks for. All store LBAs are now relative to `g_baseLba`, and on a GPT disk the store relocates into the pre-partition gap (LBA 40..2047: after `BOOTSTATE_LBA`=34, before `align2048()` puts partition 0 at 2048), with `g_endLba` as a hard wall and a bounded `allocBlob`. **Persists: app + domain directories and their small blobs (~1 MiB of gap). Does NOT persist the general filesystem** — `g_rt` is still RAM-only, so a full tree needs a real FS (ext2 or a log-structured FS) on a partition. **Unverified:** the install ISO keeps the store in-memory on purpose (disk is the install target), so this path only executes on an installed system — `bootCount` climbing across reboots is the proof to look for | SHELL A5 | M |
-| 1.3 | ~~Full busybox applet set~~ — **ALREADY DONE**, my listing was stale. `deps/busybox/Makefile:37` builds from `defconfig`, and SHELL A1 records 117 → 381 applets. The DONE marker sat in the section body, not the header, so the roadmap cleanup did not strip it | SHELL A1 | — |
-| 1.4 | **`wl-quicksettings`** — ◑ PARTIAL. Date & Time row added (real); the fake volume slider removed and the battery row made truthful; "Settings" button renamed "Domains" to match the launcher. **Still blocked:** Keyboard, Mouse, Touchpad and Appearance panels have no backend to change anything — they would be fake controls, so they are not shipped. Needs an input/theme config path first | APPS B2 · GUI G18 · QUICKSETTINGS | M |
-| 1.5 | **`wl-domain-manager` views** — ✅ DONE (read-only). Three system-scoped tabs added: **Users** (`/config/users.json`), **Services** (`/config/services.json` — name, started/stopped, version, rights), **Startup** (`/desktop.conf`, distinguishing `autostart` from install-media-only `autostart-live`). All three read live kernel tables; none fabricates data. **Deliberately read-only:** users and services are object tables behind capability checks and `/desktop.conf` is a boot module, so editing needs a kernel write path — shipping buttons that silently do nothing is the failure this roadmap already corrected twice (the fake volume slider; the old hardcoded "Startup" stub in this same file). A previous note here claimed this was unbuildable for lack of a data source; that was wrong — `hoscall.d` `CFG_USERS`/`CFG_SERVICES` render both tables as JSON | APPS B3 | S |
-| 1.6 | **`wl-files`** — ◑ PARTIAL. Real per-file sizes (`stat`) and real free space (`statvfs`) in the status bar; the hardcoded "identity: system domain: trusted" text removed. **File Search not done:** wl-files has no `wl_keyboard` listener at all, so typing needs the whole xkb path added first. Hex/Code editing in `wl-editor` untouched | APPS B5, B6 | M |
+| 1.2 | **Persistent storage** — ◑ REMAINING: only the object store persists (app + domain directories, ~1 MiB of the GPT pre-partition gap). `g_rt` — the general filesystem — is still RAM-only, so a real FS (ext2 or log-structured) on a partition is the outstanding work. Also **unverified**: the install ISO keeps the store in memory by design, so the disk-backed path only runs on an installed system; `bootCount` climbing across reboots is the proof to look for | SHELL A5 | M |
+| 1.4 | **`wl-quicksettings`** — ◑ REMAINING: Keyboard, Mouse, Touchpad and Appearance panels. **Blocked** — no backend exists to change any of those, so they would be fake controls. Needs an input/theme config path first | APPS B2 · GUI G18 | M |
+| 1.6 | **`wl-files`** — ◑ REMAINING: File Search. **Blocked** — wl-files has no `wl_keyboard` listener at all, so typing needs the xkb path added first. Hex/Code editing in `wl-editor` also untouched | APPS B5, B6 | M |
 
 **Exit criterion:** a person can install anonymOS, reboot into it, and do a day's basic work
 without the serial console.
@@ -76,7 +58,6 @@ present wins" and buys most of the perceived responsiveness.
 | 3.1 | **Damage-tracked KMS blit + fast copy** | The roadmap's own "cheap present wins". Biggest felt improvement per hour | DESKTOP_RESP R5 | S |
 | 3.2 | **Multi-window and workspace experience** — **BLOCKED on client resize support.** Windows visibly overlap instead of tiling because six clients (`wl-overview`, `wl-logview`, `wl-quicksettings`, `wl-calendar`, `wl-wifi-menu`, `wl-domain-manager`) call `xdg_toplevel_set_max_size` equal to their min size, and Hyprland floats any toplevel where min == max. That is not the layout failing — those windows opt out of it. **Dropping `set_max_size` is NOT the fix:** none of the five has a resize path (checked), so tiling them reproduces the domain manager regression its own source documents (collapses to a 562x181 sliver). Each needs a reflowing layout first, i.e. the `resize_buffer()` treatment `wl-installer` and `wl-cairo-demo` already got | Hyprland provides the mechanism; this is the desktop actually using it | GUI G20 | M |
 | 3.3 | **Visual QA + screenshot regression tests** — ◑ PARTIAL. `scripts/screen-check.sh` captures the framebuffer via the HMP monitor and asserts the desktop is rendering (distinct-colour count + dominant-colour share); it found the swapchain bug within minutes of existing. **Not done:** golden-image comparison per app. | Marked Critical in GUI_ROADMAP, and this session showed why: a two-month-old binary shipped unnoticed | GUI G21 | M |
-| 3.0 | **Pointer input** — ✅ DONE (2026-09-05). Clicks reached no client: the pointer advertised `EV_ABS`/`ABS_X`/`ABS_Y` and reported absolute positions (chosen so Weston tracked the kernel cursor without accel drift). libinput accepted the device and the compositor read every event — `mouseEnq=64 mouseRead=64`, exact 1:1 — but never turned absolute motion from a non-tablet, non-touchscreen device into client pointer events. Now reports `EV_REL` deltas (what the PS/2 packet actually contains) with `accel_profile = flat`, `sensitivity = 0` so the compositor pointer still tracks the kernel cursor 1:1. Verified: a click on the Activities close button closed it (windows 5 → 4) | — | — | S |
 | 3.4 | **Kernel-mode interrupt handling** | Real fix for input latency, but a genuine kernel change | DESKTOP_RESP R4 | L |
 | 3.5 | **Preemptive scheduling** | Depends on 3.4 | DESKTOP_RESP R6 | L |
 | 3.6 | **quickshell (Qt6/QML) port** | The only route to true host parity — the host's bar, sidebars, overview and launcher are all one `qs` process. Needs 2.x and a working GL path | APPS E6 | XL |
@@ -130,6 +111,19 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
 ---
 
 ## Corrections to carry forward
+
+- **Do not boot with `GPU=1`.** It selects `gtk,gl=on`, which `qemu-run.sh`'s own comment warns
+  "gives a BLACK SCREEN on many hosts (the GL display path does not present the firmware-VGA
+  framebuffer the desktop renders to)". Confirmed here. To exercise virgl use `GPU=1 HEADLESS=1`
+  and read `serial.log`.
+- **Verifying a build reached the ISO:** `make verify`. It greps the image for string literals
+  and compares the baked-in build manifest against `git HEAD`. Two other approaches were tried
+  and both failed — C/D **comments do not survive compilation**, and a `__DATE__`/`__TIME__`
+  build stamp is frozen by this project's reproducible build (two ISOs 13 minutes apart, with
+  demonstrably different kernels, both stamped `18:09:00`).
+- **Counting anything in `serial.log`:** every Hyprland/aquamarine line appears **twice** (bursty
+  replay, not adjacent duplication). Kernel lines appear once. Halve compositor-side counts.
+- **`serial.log` contains NUL bytes** — plain `grep` says "binary file matches". Use `grep -a`.
 
 Two stale claims in the roadmaps will mislead whoever reads them next:
 

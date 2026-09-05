@@ -434,13 +434,25 @@ public bool objstoreLoadExec(int idx, ulong* physOut, ulong* sizeOut) {
 public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0) {
     if (!diskReady()) { klog("[objstore] no disk — /objects/apps stays empty\n"); return; }
 
-    // INSTALLER §D: on an INSTALL image (the esp-image payload is present), don't claim any
+    // INSTALLER §D: on an INSTALL image (the esp-image payload is present), don't claim a BLANK
     // disk — leave it free as the install target, so a single-disk machine can install onto its
-    // only disk without the live store racing/clobbering the write.  Store stays in-memory.
+    // only disk without the live store racing/clobbering the write.
+    //
+    // NARROWED (roadmap 1.2): only when the disk is actually blank.  The rationale above is
+    // about a free install TARGET, and a disk that already carries a GPT is not one — it is an
+    // installed system that happens to be booted from live media.  Refusing there had two
+    // costs: an installed system booted from the ISO silently lost its persistence, and the
+    // disk-backed path became untestable, because the install ISO is the only image this
+    // project builds, so the store never mounted in anything anyone could run.
+    //
+    // The store only ever writes inside the free tail after the last partition (or, failing
+    // that, the unused pre-partition gap), so mounting on a partitioned disk cannot damage a
+    // subsequent reinstall: the installer rewrites the partitions it owns regardless.
     {
         import drivers.veracrypt_impl : bootHasInstallPayload;
-        if (bootHasInstallPayload()) {
-            klog("[objstore] INSTALL image — store stays in-memory (disk is a free install target)\n");
+        import drivers.block.disk : diskFirstSectorIsGpt;
+        if (bootHasInstallPayload() && !diskFirstSectorIsGpt()) {
+            klog("[objstore] INSTALL image + blank disk — store stays in-memory (free install target)\n");
             g_mounted = false;
             return;
         }

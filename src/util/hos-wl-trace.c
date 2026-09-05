@@ -23,12 +23,26 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 static void logline(const char *s){ (void)!write(2, s, strlen(s)); (void)!write(2, "\n", 1); }
 
 int main(int argc, char **argv)
 {
     const char *prog = (argc > 1) ? argv[1] : "/gtk-hello";
+
+    /* Point stdout and stderr at the console BEFORE anything else.  A process Hyprland forked
+     * does not inherit a console on fd 1/2 -- an earlier run of this launcher exec'd its target
+     * correctly (gtk-hello appeared as 22 tasks) while not one of its own log lines, written to
+     * fd 2 before the exec, reached serial.log.  Since WAYLAND_DEBUG output goes to stderr, the
+     * whole point of this program is lost without the redirect: the trace would be written and
+     * discarded, looking exactly like the variable never having been set. */
+    int con = open("/dev/console", O_WRONLY);
+    if (con >= 0) {
+        dup2(con, 1);
+        dup2(con, 2);
+        if (con > 2) close(con);
+    }
 
     /* 1 rather than "client" or "server": libwayland treats any non-empty value as on, and the
      * client is the only side running under this launcher. */

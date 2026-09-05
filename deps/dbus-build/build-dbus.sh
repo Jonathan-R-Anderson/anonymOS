@@ -25,7 +25,18 @@ export CFLAGS="-O2 -fPIC -isystem $CLANG_RES/include -I$SYSROOT/include -I$MUSL/
 export LDFLAGS="-Wl,--allow-multiple-definition -no-pie -L$SYSROOT/lib -L$MUSL/lib"
 # expat lives in the gtk-stack sysroot (static .a + header); feed dbus directly, bypass pkg-config.
 export EXPAT_CFLAGS="-I$SYSROOT/include"
-export EXPAT_LIBS="-L$SYSROOT/lib -lexpat"
+# Name the archive by path rather than -lexpat.  There is a libexpat.la beside it declaring
+# dlname='' (static only), and libtool resolving -lexpat through that .la is how expat went missing
+# from the dbus-daemon link line: upstream puts $(EXPAT_LIBS) in the LIBADD of the *convenience*
+# archive libdbus-daemon-internal.la, and those deps were not propagated to the program link, so
+# every XML_* symbol came out undefined.  A plain path is passed straight through as a file.
+export EXPAT_LIBS="$SYSROOT/lib/libexpat.a"
+# Belt and braces: $(LIBS) is the LAST argument of the program link rule, which is exactly where a
+# static archive has to sit to satisfy the objects before it.  configure.ac saves and restores LIBS
+# around its own expat probe, so a value exported here survives into the generated Makefiles.
+# libdbus-1.so also gets this, harmlessly -- it references no XML_* symbol, so ld pulls in no
+# member of the archive and the fact that libexpat.a is non-PIC never comes up.
+export LIBS="$SYSROOT/lib/libexpat.a"
 # musl supports Linux abstract sockets + these; skip the AC_TRY_RUN probes (cross = can't run target).
 export ac_cv_have_abstract_sockets=yes
 export ac_cv_func_posix_getpwnam_r=yes
@@ -74,7 +85,10 @@ fi
   2>&1 | tail -25
 
 echo "=== configure done, building ==="
-make -j"$(nproc)" 2>&1 | tail -20
+# Untruncated, and V=1 so the link commands are visible.  The previous `| tail -20` discarded the
+# failing link line itself and kept only ld's undefined-symbol list, which showed the missing
+# XML_* symbols but not which libraries had actually been passed.
+make -j"$(nproc)" V=1 2>&1
 echo "=== build done, installing to $PREFIX ==="
 make install 2>&1 | tail -8
 echo "=== RESULT ==="

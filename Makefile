@@ -161,6 +161,11 @@ STORE_APP_BIN := build/store-app
 ZSH_BIN := deps/zsh/zsh           # Z1: real upstream zsh (built by deps/zsh/Makefile, Z0)
 DISPLAYINFO_BIN := build/display-info
 GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
+# ROADMAP 2.3: GTK's OWN demo applications, built from the upstream tree with -Ddemos=true.
+# Unlike gtk-hello these were not written for this OS, which is precisely what 2.3 asks for.
+GTK_DEMO_DIR  := deps/gtk-stack/build/gtk+-3.24.43/_build/demos
+GTK_WIDGETFAC_BIN := $(GTK_DEMO_DIR)/widget-factory/gtk3-widget-factory
+GTK_DEMO_BIN      := $(GTK_DEMO_DIR)/gtk-demo/gtk3-demo
 HYPRLAND_BIN := deps/hyprland/Hyprland
 DECOY_IMAGE := deps/decoy-os/build/decoy.ext4
 PREBOOT_EFI := deps/veracrypt/build/preboot.efi
@@ -1054,6 +1059,20 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 	   echo "Included hos-term (R1: Rust CPU/SHM terminal)"; \
 	 else echo "Skipping hos-term (R1: $(RUSTC) not found)"; fi
 
+	@# ROADMAP 2.3: upstream GTK's own demo applications.  gtk-hello proves the toolkit links
+	@# and opens a window, but we wrote it; these are unmodified upstream application code.
+	@if [ -f $(GTK_WIDGETFAC_BIN) ]; then \
+		cp $(GTK_WIDGETFAC_BIN) cd/gtk3-widget-factory; \
+		printf '\n    module_path: boot():/gtk3-widget-factory\n' >> cd/boot/limine/limine.conf; \
+		echo "Included gtk3-widget-factory (ROADMAP 2.3 upstream GTK app)"; \
+	else \
+		echo "gtk3-widget-factory missing — run: make -C deps/gtk-stack gtk3"; \
+	fi
+	@if [ -f $(GTK_DEMO_BIN) ]; then \
+		cp $(GTK_DEMO_BIN) cd/gtk3-demo; \
+		printf '    module_path: boot():/gtk3-demo\n' >> cd/boot/limine/limine.conf; \
+		echo "Included gtk3-demo (ROADMAP 2.3 upstream GTK app)"; \
+	fi
 	@if [ -f $(GTK_HELLO_BIN) ]; then \
 		cp $(GTK_HELLO_BIN) cd/gtk-hello; \
 		printf '\n    module_path: boot():/gtk-hello\n' >> cd/boot/limine/limine.conf; \

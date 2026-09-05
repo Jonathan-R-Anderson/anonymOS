@@ -22,6 +22,12 @@ hl.bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("/wl-sysmon"),         { descriptio
 hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("/wl-screenshot"),     { description = "Screenshot" })
 hl.bind("SUPER + SHIFT + A", hl.dsp.exec_cmd("/store-app"),         { description = "App store" })
 
+-- ROADMAP 2.3: upstream GTK's own demos, unmodified.  The point of binding them is that they are
+-- NOT ours -- gtk-hello was written for this OS and so proves only that the toolkit links, while
+-- widget-factory exercises most of the widget set, CSS theming and icon lookup in one process.
+hl.bind("SUPER + SHIFT + W", hl.dsp.exec_cmd("/gtk3-widget-factory"), { description = "GTK widget factory (upstream)" })
+hl.bind("SUPER + SHIFT + G", hl.dsp.exec_cmd("/gtk3-demo"),           { description = "GTK demo (upstream)" })
+
 -- Toggle the kernel-spawned top bar by touching the flag file it polls.
 hl.bind("SUPER + B", hl.dsp.exec_cmd("sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\""),
         { description = "Toggle top bar" })

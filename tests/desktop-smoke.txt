@@ -15,9 +15,16 @@ require  [dkernel] init = Hyprland module
 #    three patches to fix and would silently return if the patches were ever dropped.
 forbid   COMPOSITOR DIED
 
-# ── the desktop actually presented.  Not "the compositor started" — that was true in boots
-#    where nothing ever reached the screen.  FIRST PRESENT is written by drmPresentFb.
-require  -> display CLAIMED
+# ── the desktop actually presented ────────────────────────────────────────────────────────
+# NOT "-> display CLAIMED".  That string is real, but drmPresentFb emits it with
+# console_framebuffer_write() — it is painted on the SCREEN, not written to the serial port,
+# so it can never appear in serial.log and asserting it always fails.  (Found by this suite's
+# first real run: everything else passed and only this "failed".)
+#
+# `[present] total=` is the serial-visible equivalent: presentProfStats() returns early unless
+# g_lastPresentMs != 0, which only presentAccount() sets, and only drmPresentFb() calls that.
+# So the assertion below is exactly "a real present happened", and it is counted rather than
+# merely required.
 
 # ── the domain manager reaches the desktop.  Explicitly requested to run at boot, and it
 #    stopped launching once already when init selection regressed.

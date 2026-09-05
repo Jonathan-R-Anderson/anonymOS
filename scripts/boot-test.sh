@@ -72,6 +72,19 @@ done < "$SUITE"
 echo "boot-test: suite=$SUITE  timeout=${TIMEOUT}s  require=${#REQ[@]} forbid=${#FORBID[@]}"
 
 # ── boot ──────────────────────────────────────────────────────────────────────────────────
+# A previous QEMU still holding hos-disk.img makes the new one exit instantly with
+#     -device ide-hd,...: Failed to get "write" lock.  Is another process using the image?
+# and the harness would then poll a serial.log that never grows.  Fail fast and say so.
+#
+# NB: `pkill -x qemu-system-x86_64` does NOT work — the kernel truncates comm to 15 chars, so
+# the name never matches and the stale process silently survives.  Match the full cmdline.
+if [ -f "$ROOT/hos-disk.img" ] && command -v fuser >/dev/null 2>&1 \
+   && fuser "$ROOT/hos-disk.img" >/dev/null 2>&1; then
+    echo "boot-test: hos-disk.img is locked by another process — a previous QEMU is still running." >&2
+    echo "boot-test: clear it with:  pkill -f 'qemu-system-x86_64 -boot'" >&2
+    exit 2
+fi
+
 rm -f "$SERIAL"
 RUNLOG="${TMPDIR:-/tmp}/boot-test-qemu.$$.log"
 
@@ -100,7 +113,16 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 strip_log() { tr -d '\000' < "$SERIAL" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' > "$CLEAN"; }
-count_in()  { grep -acF -- "$1" "$CLEAN" 2>/dev/null || echo 0; }
+
+# `grep -c` PRINTS a count and EXITS 1 when that count is zero.  So the obvious
+#     grep -acF ... || echo 0
+# emits "0" twice on no-match, and every arithmetic test on the result then dies with
+# "integer expression expected".  Capture stdout, ignore the exit status, default if empty.
+count_in() {
+    local n
+    n="$(grep -acF -- "$1" "$CLEAN" 2>/dev/null)" || true
+    printf '%s' "${n:-0}"
+}
 
 deadline=$(( $(date +%s) + TIMEOUT ))
 settled=1

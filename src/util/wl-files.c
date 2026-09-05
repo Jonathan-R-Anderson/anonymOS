@@ -111,6 +111,20 @@ struct app {
     int  place_sel;
     double last_click_t;
     int    last_click_row;
+
+    /* APPS B5 — File Search.  Filtering happens at LOAD time (read_dir skips non-matching
+     * names) rather than through a separate index array, so every existing consumer of
+     * entries[]/n_entries -- the draw loop, hit-testing, double-click, keyboard selection --
+     * keeps working untouched.  A filter-index indirection would have required changing all
+     * of them, for no visible benefit at 512 entries.
+     *
+     * The roadmap recorded this item as blocked on "wl-files has no wl_keyboard listener at
+     * all, so typing needs the whole xkb path added first".  That was wrong on both counts:
+     * the listener has always been here (kb_key already drives Up/Down/Enter/Backspace), and
+     * no client in this tree uses xkb -- all 17 map raw evdev keycodes directly. */
+    char search[64];
+    int  search_len;
+    int  searching;      /* 1 = typing a filter; keys go to the box, not to navigation */
 };
 
 static void log_line(const char *s)
@@ -287,6 +301,43 @@ static void human_size(char *out, size_t cap, long long b)
     else                      snprintf(out, cap, "%.1f GB", (double)b / (1024.0*1024.0*1024.0));
 }
 
+/* Case-insensitive substring test for the File Search filter.  Written out rather than using
+ * strcasestr(), which is a GNU extension and not in musl's default namespace here. */
+static int name_matches(const char *name, const char *needle)
+{
+    if (!needle[0])
+        return 1;
+    for (const char *h = name; *h; h++) {
+        const char *a = h, *b = needle;
+        while (*a && *b) {
+            int ca = (*a >= 'A' && *a <= 'Z') ? *a + 32 : *a;
+            int cb = (*b >= 'A' && *b <= 'Z') ? *b + 32 : *b;
+            if (ca != cb)
+                break;
+            a++; b++;
+        }
+        if (!*b)
+            return 1;
+    }
+    return 0;
+}
+
+/* Raw evdev keycode -> ASCII, for the search box.  Same table as wl-logview's filter entry;
+ * no xkb involved, which is how every client in this tree reads the keyboard. */
+static char files_keycode_ascii(uint32_t k)
+{
+    static const char row1[] = "1234567890-=";   /* keycodes  2..13 */
+    static const char row2[] = "qwertyuiop[]";   /* keycodes 16..27 */
+    static const char row3[] = "asdfghjkl;'";    /* keycodes 30..40 */
+    static const char row4[] = "zxcvbnm,./";     /* keycodes 44..53 */
+    if (k >= 2  && k <= 13) return row1[k - 2];
+    if (k >= 16 && k <= 27) return row2[k - 16];
+    if (k >= 30 && k <= 40) return row3[k - 30];
+    if (k >= 44 && k <= 53) return row4[k - 44];
+    if (k == 57) return ' ';
+    return 0;
+}
+
 static void read_dir(struct app *app)
 {
     app->n_entries = 0;
@@ -322,6 +373,12 @@ static void read_dir(struct app *app)
             else if (de->d_type == DT_DIR)
                 is_dir = 1;
 #endif
+            /* File Search: skip names that do not contain the filter, case-insensitively.
+             * ".." is added before this loop and is deliberately never filtered out, so there
+             * is always a way back up even when the filter matches nothing. */
+            if (app->search_len > 0 && !name_matches(de->d_name, app->search))
+                continue;
+
             struct entry *e = &app->entries[app->n_entries++];
             snprintf(e->name, sizeof(e->name), "%s", de->d_name);
             e->is_dir = is_dir;
@@ -340,6 +397,11 @@ static void navigate(struct app *app, const char *path)
 {
     if (!path || !path[0])
         return;
+    /* A filter belongs to the directory it was typed in.  Carrying it into a new one hides
+     * most of the destination for no reason the user asked for. */
+    app->searching = 0;
+    app->search_len = 0;
+    app->search[0] = 0;
     snprintf(app->cwd, sizeof(app->cwd), "%s", path);
     read_dir(app);
 }
@@ -348,6 +410,9 @@ static void go_up(struct app *app)
 {
     if (strcmp(app->cwd, "/") == 0)
         return;
+    app->searching = 0;
+    app->search_len = 0;
+    app->search[0] = 0;
     char *slash = strrchr(app->cwd, '/');
     if (!slash)
         return;
@@ -544,8 +609,19 @@ static void draw_files(struct app *app)
         human_size(t, sizeof t, (long long)vfs.f_blocks * (long long)vfs.f_frsize);
         snprintf(freebuf, sizeof freebuf, "   %s free of %s", f, t);
     } else freebuf[0] = 0;
-    snprintf(status, sizeof(status), "%d items%s", app->n_entries, freebuf);
-    draw_text(app, status, 28, app->height - STATUS_H + 6, app->width - 40, 11, 0xff48515du);
+    /* File Search state lives in the status bar rather than a floating box: this window has no
+     * resize path (see roadmap 3.2), so anything that changes the layout risks the fixed-pixel
+     * collapse the domain manager documents.  A status line costs no geometry.
+     * The filter is applied in read_dir(), so n_entries is already the MATCH count. */
+    if (app->searching)
+        snprintf(status, sizeof(status), "Search: %s_   %d match%s   (Esc clears)",
+                 app->search, app->n_entries,
+                 app->n_entries == 1 ? "" : "es");
+    else
+        snprintf(status, sizeof(status), "%d items%s   —   press / to search",
+                 app->n_entries, freebuf);
+    draw_text(app, status, 28, app->height - STATUS_H + 6, app->width - 40, 11,
+              app->searching ? 0xff2a6fd6u : 0xff48515du);
 
     // window-control buttons (minimize / maximize / close) at the top-right.
     wl_deco_draw(app->pixels, app->width, app->width, app->height, 0xff7a828fu);
@@ -899,6 +975,51 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
     if (state != WL_KEYBOARD_KEY_STATE_PRESSED)
         return;
     int vis = list_visible_rows(app);
+
+    /* ── APPS B5: File Search ──────────────────────────────────────────────────────────────
+     * '/' starts a filter, printable keys extend it, Backspace shortens it, Esc clears it.
+     * Each change re-reads the directory, which is where the filter is applied, so the list,
+     * hit-testing and selection all stay consistent with no extra bookkeeping.
+     *
+     * Navigation keys keep working while searching -- Up/Down/Enter still move and open --
+     * because a search that forces you to stop typing to pick a result is worse than one
+     * that does not.  Only Backspace changes meaning: it edits the query rather than going
+     * up a directory, which is what a text field has to do to be usable at all. */
+    if (key == 53 && !app->searching) {          /* '/' opens the search box */
+        app->searching = 1;
+        app->search_len = 0;
+        app->search[0] = 0;
+        redraw_commit(app, "search-open");
+        return;
+    }
+    if (app->searching) {
+        if (key == 1) {                          /* Esc: cancel, restore the full listing */
+            app->searching = 0;
+            app->search_len = 0;
+            app->search[0] = 0;
+            read_dir(app);
+            redraw_commit(app, "search-cancel");
+            return;
+        }
+        if (key == 14) {                         /* Backspace edits the query, not the path */
+            if (app->search_len > 0) {
+                app->search[--app->search_len] = 0;
+                read_dir(app);
+                redraw_commit(app, "search-edit");
+            }
+            return;
+        }
+        char c = files_keycode_ascii(key);
+        if (c && app->search_len < (int)sizeof(app->search) - 1) {
+            app->search[app->search_len++] = c;
+            app->search[app->search_len] = 0;
+            read_dir(app);
+            redraw_commit(app, "search-edit");
+            return;
+        }
+        /* fall through: Up/Down/Enter still navigate the filtered list */
+    }
+
     // Linux evdev keycodes: Up=103, Down=108, Enter=28, Backspace=14.
     if (key == 108 && app->sel < app->n_entries - 1)
         app->sel++;

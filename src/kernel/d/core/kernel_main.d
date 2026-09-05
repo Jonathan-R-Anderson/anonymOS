@@ -2754,6 +2754,7 @@ private __gshared int      g_mouse_idx = 0;
 // press without an intervening release as a protocol error, so we diff state and
 // emit a button event only when it actually changes (GUI roadmap G3).
 private __gshared ubyte g_mouse_prevButtons = 0;
+private __gshared uint  g_btnLogN = 0;   // bounded [btn] probe: are button packets reaching us?
 
 // Decode ONE PS/2 aux (mouse) byte, accumulating 3-byte packets.  Shared by the
 // IRQ12 handler and the PIT-tick poll so packet framing stays consistent.
@@ -2838,6 +2839,16 @@ private void ps2FeedMouseByte(ubyte b) @nogc nothrow {
     // Button state — emit only the bits that changed since the last packet.
     ubyte cur     = cast(ubyte)(status & 0x07);
     ubyte changed = cast(ubyte)(cur ^ g_mouse_prevButtons);
+    // Probe: does a physical button press reach the kernel at all?  Clicks demonstrably do not
+    // reach clients while keyboard input does, and that could break in three different places --
+    // the PS/2 packet never arriving, the event never being enqueued, or the compositor never
+    // reading it.  This settles the first two.  Bounded so a real session cannot flood the log.
+    if (changed != 0 && g_btnLogN < 12) {
+        ++g_btnLogN;
+        klog("[btn] state=0x"); klog_hex(cur);
+        klog(" changed=0x"); klog_hex(changed);
+        klog(" (L="); klog_dec((cur & 0x01) ? 1 : 0); klog(")\n");
+    }
     if (changed & 0x01) { input_enqueue(false, EV_KEY, BTN_LEFT,   (cur & 0x01) ? 1 : 0); any = true; }
     if (changed & 0x02) { input_enqueue(false, EV_KEY, BTN_RIGHT,  (cur & 0x02) ? 1 : 0); any = true; }
     if (changed & 0x04) { input_enqueue(false, EV_KEY, BTN_MIDDLE, (cur & 0x04) ? 1 : 0); any = true; }

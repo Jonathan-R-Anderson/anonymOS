@@ -2201,6 +2201,43 @@ private void maybeSpawnDbus() {
 // (SO_PEERCRED over native AF_UNIX) works.  Separate one-shot so we depend on neither fork nor a long nap.
 private __gshared bool g_dbusTestStarted = false;
 private __gshared ulong g_dbusTestDeadlineMs = 0;
+// ROADMAP 2.1: run the /proc proof once, 20 s in.  Run at store-mount it reported
+// "cpu  0 0 0 0 ..." and "uptime 0.00" -- both correct at that instant and both useless as
+// evidence, because no time had passed and the idle task did not exist yet.
+// Automatic time from pool.ntp.org.  Retried rather than attempted once: at the moment the lease
+// lands the link is often not yet passing traffic, and a single failed lookup would leave the
+// clock at 1970 for the rest of the session.
+private __gshared bool  g_netConfigured  = false;
+private __gshared ulong g_ntpNextTryMs   = 0;
+private __gshared int   g_ntpAttempts    = 0;
+enum int   NTP_MAX_ATTEMPTS = 6;
+enum ulong NTP_FIRST_TRY_MS = 6_000;    // let the link settle after the lease
+enum ulong NTP_RETRY_MS     = 20_000;
+private void maybeSyncNtp() {
+    import network.ntp : ntpRequest, ntpSynced, ntpResetForRetry;
+    if (!g_netConfigured || ntpSynced()) return;
+    if (g_ntpAttempts >= NTP_MAX_ATTEMPTS) return;
+    const ulong now = pitMs();
+    if (g_ntpNextTryMs == 0) g_ntpNextTryMs = now + NTP_FIRST_TRY_MS;
+    if (now < g_ntpNextTryMs) return;
+    g_ntpNextTryMs = now + NTP_RETRY_MS;
+    ++g_ntpAttempts;
+    klog("[ntp] sync attempt "); klog_dec(cast(ulong)g_ntpAttempts);
+    klog("/"); klog_dec(cast(ulong)NTP_MAX_ATTEMPTS); klog("\n");
+    ntpResetForRetry();
+    // A 2 s DNS budget: pool.ntp.org resolves quickly or not at all on this stack, and a longer
+    // wait here stalls the scheduler loop this runs on.
+    if (!ntpRequest("pool.ntp.org\0".ptr, 2000) && g_ntpAttempts >= NTP_MAX_ATTEMPTS)
+        klog("[ntp] giving up; clock stays at uptime-since-boot\n");
+}
+
+private __gshared bool g_procTested = false;
+private void maybeProcSelfTest() {
+    if (g_procTested) return;
+    if (pitMs() < 20_000) return;
+    g_procTested = true;
+    procSelfTest();
+}
 private void maybeSpawnDbusTest() {
     if (g_dbusTestStarted) return;
     if (!g_dbusStarted) return;         // launch the daemon first
@@ -4171,6 +4208,10 @@ private void networkSelfTest(bool deepProbe) @nogc nothrow {
     setGateway(&gw);
     setNetmask(&nm);
     setDNSServer(&dns4);
+    // NTP needs a resolver and a route, both of which exist only from here on.  The sync itself
+    // runs from the periodic loop rather than inline: a DNS lookup for pool.ntp.org can block for
+    // seconds or fail outright, and boot must not wait on the clock.
+    g_netConfigured = true;
 
     const ulong ipv = (cast(ulong)ip.bytes[0] << 24) | (cast(ulong)ip.bytes[1] << 16)
                     | (cast(ulong)ip.bytes[2] << 8)  | ip.bytes[3];
@@ -4344,6 +4385,8 @@ private void kernelLoop() {
         maybeSpawnDbus();      // M0: start the real system dbus-daemon (persistent bus)
         maybeSpawnSshd();      // SSH-in: start the dropbear launcher for remote access
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
+        maybeProcSelfTest();   // ROADMAP 2.1: prove /proc once real time and load have accrued
+        maybeSyncNtp();        // NTP: set the wall clock from pool.ntp.org, with retries
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)
         maybeSpawnWpa();            // M5: launch wpa_supplicant (D-Bus) just before NM
@@ -4786,7 +4829,9 @@ void d_kernel_main() {
     fsPersistInitRoots();  // ROADMAP 1.2: read `persist =` from /desktop.conf
     fsPersistLoad();
     fsPersistSelfTest();   // ROADMAP 1.2: prove the round trip across reboots
-    procSelfTest();        // ROADMAP 2.1: prove /proc reports real data through the open/read path
+    // procSelfTest() deliberately does NOT run here: at store-mount the PIT has barely ticked and
+    // the idle task does not exist yet, so /proc/stat and /proc/uptime correctly read zero and the
+    // proof shows nothing.  It runs from the periodic loop once the desktop is up instead.
     bootProgress("store");
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer

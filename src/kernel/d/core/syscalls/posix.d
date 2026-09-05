@@ -8656,6 +8656,9 @@ public long sys_getrandom(void* buf, size_t buflen, uint flags) {
     return cast(long)buflen;
 }
 
+enum int CLOCK_REALTIME  = 0;   // wall clock, settable — what SNTP establishes
+enum int CLOCK_MONOTONIC = 1;   // since boot, never steps
+
 public int sys_clock_gettime(int clk_id, timespec* tp) {
     if (tp == null) return negErrno(14); // EFAULT
     
@@ -8663,6 +8666,22 @@ public int sys_clock_gettime(int clk_id, timespec* tp) {
     // increments on every read (a fake clock that runs at the call rate, breaking
     // Weston's frame pacing).  Must match the page-flip-complete timestamp clock.
     ulong ticks = pitMs();
+
+    // CLOCK_REALTIME must be wall-clock, not uptime.  This used to ignore clk_id entirely and
+    // hand every caller seconds-since-boot, so userspace believed it was January 1970 -- which
+    // is why file timestamps, TLS validity checks and any clock display were all wrong.  Once
+    // SNTP has set the clock, offset the same PIT reading by the epoch base it established.
+    // Before that it still reports uptime: no sync means no better answer exists, and inventing
+    // a plausible date would be worse than an obviously wrong one.
+    if (clk_id == CLOCK_REALTIME) {
+        import network.ntp : ntpSynced, ntpNowSec;
+        if (ntpSynced()) {
+            tp.tv_sec  = cast(long)ntpNowSec();
+            tp.tv_nsec = cast(long)((ticks % 1000) * 1000000);
+            return 0;
+        }
+    }
+
     tp.tv_sec = cast(long)(ticks / 1000);
     tp.tv_nsec = cast(long)((ticks % 1000) * 1000000);
 
@@ -10516,7 +10535,17 @@ private struct linux_timeval   { long tv_sec; long tv_usec; }
 private struct linux_timezone  { int tz_minuteswest; int tz_dsttime; }
 
 public long linux_sys_gettimeofday(ulong tv, ulong tz) {
-    if (tv) { auto t = cast(linux_timeval*)tv;  t.tv_sec = 0; t.tv_usec = 0; }
+    // Was a hardcoded zero, i.e. 1970-01-01T00:00:00Z on every call -- the other half of why
+    // userspace had no idea what year it was.  Report the SNTP-established wall clock when one
+    // exists, and fall back to uptime (not zero) when it does not, so at least the value moves.
+    import network.ntp : ntpSynced, ntpNowSec;
+    if (tv) {
+        auto t = cast(linux_timeval*)tv;
+        const ulong ms = pitMs();
+        t.tv_sec  = ntpSynced() ? cast(long)ntpNowSec() : cast(long)(ms / 1000);
+        t.tv_usec = cast(long)((ms % 1000) * 1000);
+    }
+    // No timezone database exists, so UTC is the honest answer rather than a guessed offset.
     if (tz) { auto z = cast(linux_timezone*)tz; z.tz_minuteswest = 0; z.tz_dsttime = 0; }
     return 0;
 }

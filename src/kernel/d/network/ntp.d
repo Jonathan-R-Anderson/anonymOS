@@ -1,0 +1,125 @@
+// SNTP (RFC 4330) client — sets the system wall clock from pool.ntp.org.
+//
+// Until this existed, clock_gettime() ignored its clk_id and answered every caller with
+// milliseconds since boot, so CLOCK_REALTIME reported January 1970 and every file timestamp,
+// TLS certificate check and clock applet was wrong by fifty-odd years.
+//
+// SNTP is deliberately the whole of it: a 48-byte request, one 48-byte reply, and the only field
+// that matters is the server's transmit timestamp.  No drift discipline, no peer selection, no
+// dispersion tracking — those belong to full NTP, and a kernel that has just learned the year
+// does not need them to be correct.
+module network.ntp;
+
+import network.types;
+import network.udp   : udpSocket, udpBind, udpSend, udpSetCallback, udpClose;
+import network.dns   : dnsResolve;
+import core.ticks    : pitMs;
+
+@nogc nothrow:
+
+extern(C) void klog(const(char)* s);
+extern(C) void klog_dec(ulong v);
+
+// NTP counts seconds from 1900-01-01; Unix counts from 1970-01-01.  The gap is 70 years plus the
+// 17 leap days in between: 2_208_988_800 seconds.  Getting this constant wrong is the classic way
+// to land 70 years off, so it is spelled out rather than pasted as a magic number.
+enum ulong NTP_TO_UNIX_EPOCH = 2_208_988_800UL;
+
+enum ushort NTP_PORT      = 123;
+enum ushort NTP_LOCALPORT = 12300;   // fixed local port; this kernel has no ephemeral allocator
+
+// The wall clock, as a Unix-epoch second count that corresponds to g_realtimeAtMs on the PIT.
+// Reading the time is then base + (pitMs() - atMs)/1000, so the clock keeps advancing between
+// syncs and a later sync simply re-bases it.
+private __gshared ulong g_realtimeBaseSec = 0;
+private __gshared ulong g_realtimeAtMs    = 0;
+private __gshared bool  g_synced          = false;
+
+/// True once a server reply has set the clock.  Callers that must not report a fabricated
+/// wall-clock time (rather than an obviously-wrong one) can check this first.
+public bool ntpSynced() { return g_synced; }
+
+/// Current wall-clock time in Unix epoch seconds, or 0 if never synced.
+public ulong ntpNowSec() {
+    if (!g_synced) return 0;
+    const ulong now = pitMs();
+    const ulong elapsed = (now >= g_realtimeAtMs) ? (now - g_realtimeAtMs) : 0;
+    return g_realtimeBaseSec + elapsed / 1000;
+}
+
+/// Set the clock directly. Used by the SNTP reply path, and available for a future RTC read.
+public void ntpSetRealtime(ulong unixSec) {
+    g_realtimeBaseSec = unixSec;
+    g_realtimeAtMs    = pitMs();
+    g_synced          = true;
+}
+
+private __gshared int  g_sock      = -1;
+private __gshared bool g_replySeen = false;
+
+// One reply is all SNTP needs.  Bytes 40..47 are the server's transmit timestamp: 32 bits of
+// seconds since 1900 followed by a 32-bit binary fraction, both big-endian.  The fraction is
+// dropped -- sub-second accuracy is meaningless against this kernel's 1 ms PIT.
+private extern(C) void ntpOnPacket(int sockfd, const(ubyte)* data, size_t len,
+                                   const ref IPv4Address src, ushort srcPort) {
+    if (g_replySeen || data is null || len < 48) return;
+
+    // Leap indicator 3 means "clock not synchronised" -- the server is telling us not to trust it.
+    const ubyte li = cast(ubyte)((data[0] >> 6) & 0x3);
+    if (li == 3) { klog("[ntp] server reports itself unsynchronised; ignoring reply\n"); return; }
+
+    ulong secs1900 = 0;
+    foreach (i; 40 .. 44) secs1900 = (secs1900 << 8) | data[i];
+    if (secs1900 <= NTP_TO_UNIX_EPOCH) {
+        klog("[ntp] reply timestamp precedes the Unix epoch; ignoring\n");
+        return;
+    }
+
+    g_replySeen = true;
+    ntpSetRealtime(secs1900 - NTP_TO_UNIX_EPOCH);
+    klog("[ntp] clock set: unix="); klog_dec(ntpNowSec());
+    klog(" from "); klog_dec(src.bytes[0]); klog(".");
+    klog_dec(src.bytes[1]); klog("."); klog_dec(src.bytes[2]); klog(".");
+    klog_dec(src.bytes[3]); klog("\n");
+}
+
+/// Resolve pool.ntp.org and send one SNTP request.  Returns false if the name could not be
+/// resolved or the packet could not be sent; the reply arrives asynchronously via ntpOnPacket.
+public bool ntpRequest(const(char)* host, uint dnsTimeoutMs) {
+    IPv4Address server;
+    if (!dnsResolve(host, &server, dnsTimeoutMs)) {
+        klog("[ntp] DNS lookup failed for "); klog(host); klog("\n");
+        return false;
+    }
+
+    if (g_sock < 0) {
+        g_sock = udpSocket();
+        if (g_sock < 0) { klog("[ntp] no UDP socket available\n"); return false; }
+        if (!udpBind(g_sock, NTP_LOCALPORT)) {
+            klog("[ntp] bind to local port failed\n");
+            udpClose(g_sock); g_sock = -1; return false;
+        }
+        udpSetCallback(g_sock, &ntpOnPacket);
+    }
+
+    // A client request is 48 zero bytes apart from the first: LI=0, VN=4, Mode=3 (client).
+    // Servers ignore every other field in a client packet, so leaving them zero is correct
+    // rather than lazy.
+    ubyte[48] pkt = 0;
+    pkt[0] = 0x23;
+
+    if (!udpSend(g_sock, server, NTP_PORT, pkt.ptr, pkt.length)) {
+        klog("[ntp] send failed\n");
+        return false;
+    }
+    klog("[ntp] request sent to "); klog(host); klog(" (");
+    klog_dec(server.bytes[0]); klog("."); klog_dec(server.bytes[1]); klog(".");
+    klog_dec(server.bytes[2]); klog("."); klog_dec(server.bytes[3]); klog(")\n");
+    return true;
+}
+
+/// True once a request has been sent and is awaiting its reply.
+public bool ntpAwaitingReply() { return g_sock >= 0 && !g_replySeen; }
+
+/// Allow a later attempt after a failed or lost exchange.
+public void ntpResetForRetry() { g_replySeen = false; }

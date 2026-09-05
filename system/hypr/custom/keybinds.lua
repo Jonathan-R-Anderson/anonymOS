@@ -31,16 +31,21 @@ hl.bind("SUPER + SHIFT + G", hl.dsp.exec_cmd("/gtk3-demo"),           { descript
 -- app.  If it maps a window and widget-factory does not, the difference is the application, not
 -- the GTK stack underneath it.
 hl.bind("SUPER + SHIFT + H", hl.dsp.exec_cmd("/gtk-hello"),           { description = "gtk-hello (GTK control)" })
--- ROADMAP 2.3 diagnostic: same client with libwayland's protocol tracing on.  Setting
+-- ROADMAP 2.3 diagnostic: same client with libwayland's protocol tracing on.  Uses /busybox-dyn
+-- because there is NO /bin/sh on this system -- a plain "sh -c" gives "[exec] not found: /usr/bin/sh"
+-- and the command silently never runs.  (The SUPER+B bar-toggle bind has the same latent bug.)
+-- Setting
 -- WAYLAND_DEBUG in the kernel's env block does NOT reach these apps -- a keybinding launch is
 -- Hyprland forking a child, so the child inherits Hyprland's environment, not the one the kernel
 -- builds for programs it execs itself.  (That also explains why gtk-hello picked up the correct
 -- wayland-1 socket from Hyprland while the kernel block still said wayland-0.)
-hl.bind("SUPER + SHIFT + J", hl.dsp.exec_cmd("sh -c \"WAYLAND_DEBUG=1 exec /gtk-hello\""),
+hl.bind("SUPER + SHIFT + J", hl.dsp.exec_cmd("/busybox-dyn sh -c \"WAYLAND_DEBUG=1 exec /gtk-hello\""),
         { description = "gtk-hello with wayland protocol trace" })
 
--- Toggle the kernel-spawned top bar by touching the flag file it polls.
-hl.bind("SUPER + B", hl.dsp.exec_cmd("sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\""),
+-- Toggle the kernel-spawned top bar by touching the flag file it polls.  Runs through
+-- /busybox-dyn: there is no /bin/sh here, so the previous plain "sh -c" silently did nothing
+-- ("[exec] not found: /usr/bin/sh"), meaning this bind has never worked.
+hl.bind("SUPER + B", hl.dsp.exec_cmd("/busybox-dyn sh -c \"[ -e /run/hos-bar.hidden ] && rm -f /run/hos-bar.hidden || : > /run/hos-bar.hidden\""),
         { description = "Toggle top bar" })
 
 -- Kept from the host's own custom/keybinds.lua.

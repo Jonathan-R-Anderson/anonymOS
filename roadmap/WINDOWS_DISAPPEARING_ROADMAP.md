@@ -1,6 +1,11 @@
 # Windows Disappearing — Investigation Roadmap
 
-**Status: ⚠️ REOPENED (2026-09-05). Two contributing faults are fixed and verified; the core bug
+**Status: ✅ FIXED (2026-09-05) — swapchain length 3 → 1. Verified: a 3-minute soak that
+previously blanked at t=60s now holds 4400+ colours across all 8 samples (`blank=0`), and the
+`[srcpx]` probe shows a single buffer with no alternation. Screenshot confirms the full desktop
+rendering, including a Calendar launched by SUPER+C.
+
+**Previously: ⚠️ REOPENED (2026-09-05). Two contributing faults are fixed and verified; the core bug
 is NOT, and is now reproducible on demand.**
 
 ## 0. ROOT CAUSE (2026-09-05) — only ONE of the two scanout buffers is ever rendered into

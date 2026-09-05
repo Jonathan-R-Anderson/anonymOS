@@ -4890,7 +4890,12 @@ public void fsPersistSave() @nogc nothrow {
     const uint magic = FSP_MAGIC;
     if (!fspPut(buf.ptr, off, &magic, 4)) return;
 
-    if (!fspWalk(idx, path.ptr, 0, buf.ptr, off))
+    // Seed the walk with "/home" -- fspWalk appends "/name" per level, so starting at 0 would
+    // serialise a child as "/x" instead of "/home/x" and restore it at the ROOT.  Caught by the
+    // two-boot test: the data crossed the reboot ("restored 1 files") but the proof could not
+    // find it, because it had been recreated one directory too high.
+    path[0]='/'; path[1]='h'; path[2]='o'; path[3]='m'; path[4]='e';
+    if (!fspWalk(idx, path.ptr, 5, buf.ptr, off))
         klog("[fsp] /home larger than the persist cap — saved what fitted\n");
 
     const ushort term = 0;

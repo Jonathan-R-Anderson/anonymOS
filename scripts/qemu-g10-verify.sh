@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 if [ "${G10_REBUILD:-0}" = "1" ]; then
-    make -j1 hos.iso
+    make -j1 hos-install.iso
 fi
 
 python3 - "$ROOT" <<'PY'
@@ -118,7 +118,7 @@ SERIAL="$ROOT/serial.log"
 rm -f "$SERIAL"
 
 qemu-system-x86_64 \
-  -boot d -cdrom hos.iso -m 512 \
+  -boot d -cdrom hos-install.iso -m 512 \
   -no-reboot -no-shutdown \
   -cpu qemu64,-smap,-smep \
   -display none \

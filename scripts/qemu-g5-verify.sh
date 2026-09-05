@@ -14,7 +14,7 @@ SERIAL="$ROOT/serial.log"
 rm -f "$SERIAL"
 
 qemu-system-x86_64 \
-  -boot d -cdrom hos.iso -m 512 \
+  -boot d -cdrom hos-install.iso -m 512 \
   -no-reboot -no-shutdown \
   -cpu qemu64,-smap,-smep \
   -display none \

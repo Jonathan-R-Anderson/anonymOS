@@ -1,5 +1,19 @@
 module core.exports;
 
+// Which Mesa software rasteriser the compositor is told to use.
+//
+// "softpipe" is Mesa's reference rasteriser: correct, always built, and it INTERPRETS every
+// fragment.  "llvmpipe" JITs the same shaders to x86-64 and is typically 10-30x faster.  On a
+// guest with no GPU that difference is the whole graphics ceiling.
+//
+// It MUST match how Mesa was built.  deps/mutter/Makefile builds -Dllvm=disabled by default,
+// and Mesa's `swrast` gallium driver only contains llvmpipe when LLVM is enabled — so naming a
+// driver that is not in kms_swrast_dri.so makes screen creation fail and eglInitialize return
+// EGL_FALSE, i.e. no renderer at all.  Change this ONLY together with LLVMPIPE=1.
+//   softpipe  — default, always correct
+//   llvmpipe  — requires deps built with LLVMPIPE=1 (see BUILD_AND_TEST_AUTOMATION_ROADMAP C)
+__gshared immutable(char)* g_galliumDriver = "GALLIUM_DRIVER=softpipe\0".ptr;
+
 import memory.mm;
 import arch.x86_64.arch;
 import core.io;
@@ -1138,7 +1152,16 @@ ulong linux_seed_initial_stack(
     // creation fail and eglInitialize return EGL_FALSE.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LIBGL_ALWAYS_SOFTWARE=1\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "GALLIUM_DRIVER=softpipe\0".ptr);
+    // BUILD_AND_TEST_AUTOMATION_ROADMAP track C: g_galliumDriver selects between the two
+    // software rasterisers Mesa can contain.  It stays "softpipe" unless Mesa was built with
+    // LLVMPIPE=1 (deps/mutter/Makefile), because selecting a driver that is not in the binary
+    // makes screen creation fail and eglInitialize return EGL_FALSE — exactly what the note
+    // above warns about.  llvmpipe JITs shaders instead of interpreting them and is typically
+    // 10-30x faster, which on this GPU-less guest is the entire graphics ceiling.
+    //
+    // Kept as a variable rather than a compile-time swap so a bad llvmpipe boot is recoverable
+    // by flipping one value, and so softpipe — which is always built — remains the default.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, g_galliumDriver);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     // Force GBM's *software* path (gbm_dri->software=true). Without this, our
     // MESA_LOADER_DRIVER_OVERRIDE=kms_swrast makes GBM's HARDWARE path succeed and

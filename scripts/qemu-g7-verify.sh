@@ -15,7 +15,7 @@ EXPECT_FORCE="${DISPLAY_FORCE_MODE:-0}"
 if [ "${G7_REBUILD:-0}" = "1" ]; then
     make -j1 DISPLAY_WIDTH="$EXPECT_W" DISPLAY_HEIGHT="$EXPECT_H" \
         DISPLAY_SCALE="$EXPECT_SCALE" DISPLAY_REFRESH="$EXPECT_REFRESH" \
-        DISPLAY_FORCE_MODE="$EXPECT_FORCE" hos.iso
+        DISPLAY_FORCE_MODE="$EXPECT_FORCE" hos-install.iso
 fi
 
 SERIAL="$ROOT/serial.log"
@@ -24,7 +24,7 @@ SHOT="/tmp/epin-g7-${EXPECT_W}x${EXPECT_H}.ppm"
 rm -f "$SERIAL" "$MON" "$SHOT"
 
 qemu-system-x86_64 \
-  -boot d -cdrom hos.iso -m 512 \
+  -boot d -cdrom hos-install.iso -m 512 \
   -no-reboot -no-shutdown \
   -cpu qemu64,-smap,-smep \
   -display none \

@@ -9,11 +9,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 if [ "${G16_REBUILD:-1}" = "1" ]; then
-    # G16 touches the kernel (rounded identity border). `make hos.iso` does not
+    # G16 touches the kernel (rounded identity border). `make hos-install.iso` does not
     # recompile the D kernel on its own, so refresh it explicitly first.
     make -j1 -C src/kernel/d
     make -j1 kernel.elf
-    make -j1 GUI_AUTOSTART=cairo hos.iso
+    make -j1 GUI_AUTOSTART=cairo hos-install.iso
 fi
 
 SERIAL="$ROOT/serial.log"
@@ -22,7 +22,7 @@ SHOT="/tmp/epin-g16.ppm"
 rm -f "$SERIAL" "$MON" "$SHOT"
 
 qemu-system-x86_64 \
-  -boot d -cdrom hos.iso -m "${G16_MEM:-768}" \
+  -boot d -cdrom hos-install.iso -m "${G16_MEM:-768}" \
   -no-reboot -no-shutdown \
   -cpu qemu64,-smap,-smep \
   -display none \

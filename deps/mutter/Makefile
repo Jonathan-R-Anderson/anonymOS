@@ -502,9 +502,78 @@ $(STAMPS)/xkeyboard-config.done: | $(STAMPS) $(DLDIR) $(BLDDIR) $(MESON_CROSS)
 
 xkeyboard-config: $(STAMPS)/xkeyboard-config.done
 
-# ── 11. Mesa (EGL + softpipe software renderer — no LLVM) ────────────────
+# ── llvmpipe support (BUILD_AND_TEST_AUTOMATION_ROADMAP track C) ─────────────
+#
+# OFF BY DEFAULT.  `LLVMPIPE=1` opts in; every existing build is byte-identical without it.
+#
+# In Mesa the `swrast` gallium driver builds softpipe ALWAYS and llvmpipe ONLY when LLVM is
+# enabled, so -Dgallium-drivers does not change — the whole switch is -Dllvm=enabled/disabled.
+# softpipe therefore remains built as the fallback, and GALLIUM_DRIVER picks between them at
+# runtime (exports.d).  A bad llvmpipe boot is one environment variable away from recovery.
+#
+# Why it matters: softpipe is Mesa's reference rasteriser and interprets every fragment.
+# llvmpipe JITs the same shaders to x86-64 and is typically 10-30x faster on the same CPU.
+# This guest has no GPU, so that is the entire graphics ceiling.
+#
+# STATUS: UNVERIFIED.  The LLVM cross-build below has never been run to completion here, and
+# LLVM is by a wide margin the largest dependency in this tree.  Treat `LLVMPIPE=1` as an
+# experiment, not a supported configuration, until it has booted once.
+ifeq ($(LLVMPIPE),1)
+MESA_LLVM_ARG := -Dllvm=enabled -Dshared-llvm=disabled
+MESA_LLVM_DEP := $(STAMPS)/llvm.done
+else
+MESA_LLVM_ARG := -Dllvm=disabled
+MESA_LLVM_DEP :=
+endif
+
+LLVM_VER := 17.0.6
+LLVM_URL := https://github.com/llvm/llvm-project/releases/download/llvmorg-$(LLVM_VER)/llvm-project-$(LLVM_VER).src.tar.xz
+
+# Cross-building LLVM needs a NATIVE llvm-tblgen first: tblgen is a build-time code generator,
+# so a target-arch binary cannot be executed by the build host.  This is the standard two-stage
+# dance (-DLLVM_TABLEGEN=<native tblgen>), and it is the step most likely to need adjustment.
+$(STAMPS)/llvm.done:
+	@echo "[llvm] $(LLVM_VER) — target libs for llvmpipe (LLVMPIPE=1)"
+	@echo "[llvm] NOTE: this is a multi-GB, multi-hour build and is UNVERIFIED in this tree."
+	test -f $(DLDIR)/llvm-project-$(LLVM_VER).src.tar.xz || \
+	    wget -q -O $(DLDIR)/llvm-project-$(LLVM_VER).src.tar.xz $(LLVM_URL)
+	rm -rf $(BLDDIR)/llvm-project-$(LLVM_VER).src
+	cd $(BLDDIR) && tar xf $(DLDIR)/llvm-project-$(LLVM_VER).src.tar.xz
+	@# stage 1: native tblgen only (host arch, host libs) — nothing else is built
+	cmake -S $(BLDDIR)/llvm-project-$(LLVM_VER).src/llvm -B $(BLDDIR)/llvm-native \
+	    -DCMAKE_BUILD_TYPE=Release \
+	    -DLLVM_TARGETS_TO_BUILD=X86 \
+	    -DLLVM_BUILD_TOOLS=OFF -DLLVM_INCLUDE_TESTS=OFF \
+	    -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF
+	cmake --build $(BLDDIR)/llvm-native --target llvm-tblgen -j$(shell nproc)
+	@# stage 2: the real cross build, static, X86 only, no tools/tests/docs
+	cmake -S $(BLDDIR)/llvm-project-$(LLVM_VER).src/llvm -B $(BLDDIR)/llvm-target \
+	    -DCMAKE_BUILD_TYPE=Release \
+	    -DCMAKE_INSTALL_PREFIX=$(SYSROOT) \
+	    -DCMAKE_SYSTEM_NAME=Linux \
+	    -DCMAKE_C_COMPILER=$(CC) -DCMAKE_CXX_COMPILER=$(CXX) \
+	    -DLLVM_TABLEGEN=$(BLDDIR)/llvm-native/bin/llvm-tblgen \
+	    -DLLVM_TARGETS_TO_BUILD=X86 \
+	    -DLLVM_TARGET_ARCH=X86 \
+	    -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-linux-musl \
+	    -DLLVM_HOST_TRIPLE=x86_64-linux-musl \
+	    -DLLVM_ENABLE_PROJECTS= \
+	    -DLLVM_ENABLE_RTTI=ON \
+	    -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_LIBXML2=OFF \
+	    -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF \
+	    -DLLVM_ENABLE_LIBEDIT=OFF -DLLVM_ENABLE_LIBPFM=OFF \
+	    -DLLVM_BUILD_TOOLS=OFF -DLLVM_INCLUDE_TOOLS=ON \
+	    -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF \
+	    -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_DOCS=OFF \
+	    -DLLVM_BUILD_LLVM_DYLIB=OFF -DLLVM_LINK_LLVM_DYLIB=OFF \
+	    -DBUILD_SHARED_LIBS=OFF
+	cmake --build $(BLDDIR)/llvm-target -j$(shell nproc)
+	cmake --install $(BLDDIR)/llvm-target
+	@mkdir -p $(STAMPS) && touch $@
+
+# ── 11. Mesa (EGL + softpipe software renderer; llvmpipe when LLVMPIPE=1) ────
 # softpipe is the CPU-based Gallium driver; requires no GPU and no LLVM.
-$(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) $(HOST_WL_SCANNER_PC) $(SYSROOT_USR_WL_PROTOCOLS) $(SELF)/Makefile $(wildcard $(SELF)/patches/*.patch) | $(MESON_CROSS) cxxrt-ready
+$(STAMPS)/mesa.done: $(MESA_LLVM_DEP) $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) $(HOST_WL_SCANNER_PC) $(SYSROOT_USR_WL_PROTOCOLS) $(SELF)/Makefile $(wildcard $(SELF)/patches/*.patch) | $(MESON_CROSS) cxxrt-ready
 	@echo "[11/13] Mesa $(MESA_VER)"
 	test -f $(DLDIR)/mesa-$(MESA_VER).tar.xz || \
 	    wget -q -O $(DLDIR)/mesa-$(MESA_VER).tar.xz $(MESA_URL)
@@ -561,7 +630,7 @@ $(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) 
 	        -Dgallium-drivers=swrast,virgl \
 	        -Dvulkan-drivers= \
 	        -Dzstd=disabled \
-	        -Dllvm=disabled \
+	        $(MESA_LLVM_ARG) \
 	        -Dplatforms=wayland \
 	        -Degl=enabled \
 	        -Dgles1=disabled \

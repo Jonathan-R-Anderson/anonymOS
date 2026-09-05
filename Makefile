@@ -1239,6 +1239,19 @@ stage-iso-tree: kernel.elf $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $
 		echo "Included /desktop.conf (autostart directives; the WESTON branch omits it)"; \
 	fi
 
+	@# BUILD MANIFEST (roadmap/BUILD_AND_TEST_AUTOMATION_ROADMAP.md A2).  Staged as plain text
+	@# so `grep -a` on the ISO answers "which commit is this image?" without booting it.
+	@# It is written by the BUILD, deliberately, because the two compiler-side alternatives both
+	@# failed: comments are stripped at compile time, and __DATE__/__TIME__ are frozen by this
+	@# build's reproducible-build epoch (two ISOs 13 minutes apart both stamped 18:09:00).
+	@# scripts/iso-verify.sh --commit reads this back and compares it to git HEAD.
+	@{ printf 'HOSBUILD commit=%s\n' "$$(git rev-parse HEAD 2>/dev/null || echo unknown)"; \
+	   if [ -n "$$(git status --porcelain 2>/dev/null)" ]; \
+	     then echo 'HOSBUILD dirty=yes'; else echo 'HOSBUILD dirty=no'; fi; \
+	   printf 'HOSBUILD staged=%s\n' "$$(date -u '+%Y-%m-%dT%H:%M:%SZ')"; \
+	 } > cd/build-manifest.txt
+	@echo "Included /build-manifest.txt ($$(sed -n '1p' cd/build-manifest.txt))"
+
 	@# The Hyprland top bar is staged ~90 lines up under `if [ "$(WESTON)" != "1" ]`, but the
 	@# compositor is chosen by HYPRLAND=1 / the /epin-hyprland.conf marker.  Those two switches
 	@# disagree the moment Weston is built: WESTON defaults to 1, so staging takes the Weston
@@ -1291,6 +1304,27 @@ arbiter-efi:
 
 hos-install.iso: stage-iso-tree veracrypt-efi arbiter-efi
 	scripts/mk-install-iso.sh
+
+# =========================================================
+# Build-loop trust + automated boot testing
+# (roadmap/BUILD_AND_TEST_AUTOMATION_ROADMAP.md tracks A and B)
+# =========================================================
+.PHONY: verify test
+
+# `make verify` — assert the change under test is actually IN hos-install.iso before booting it.
+# Greps the image for string literals that survive compilation.  Comments do NOT survive, and a
+# __DATE__ build stamp is frozen by this build's SOURCE_DATE_EPOCH — both were tried and failed.
+#   make verify                        default marker set
+#   make verify MARKERS='foo bar'      specific markers
+verify:
+	@scripts/iso-verify.sh $(MARKERS)
+
+# `make test` — boot headless and assert facts about serial.log; no human reads a log.
+#   make test                          tests/desktop-smoke.txt
+#   make test SUITE=tests/other.txt
+#   make test TIMEOUT=240
+test:
+	@TIMEOUT=$(TIMEOUT) scripts/boot-test.sh $(SUITE)
 
 # =========================================================
 # Legacy: Haskell userspace programs (optional, not part of main build)

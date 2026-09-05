@@ -20,7 +20,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 if [ "${G15_REBUILD:-1}" = "1" ]; then
-    make -j1 GUI_AUTOSTART=cairo GUI_LAUNCHER_DEMO=1 hos.iso
+    make -j1 GUI_AUTOSTART=cairo GUI_LAUNCHER_DEMO=1 hos-install.iso
 fi
 
 SERIAL="$ROOT/serial.log"
@@ -29,7 +29,7 @@ SHOT="/tmp/epin-g15.ppm"
 rm -f "$SERIAL" "$MON" "$SHOT"
 
 qemu-system-x86_64 \
-  -boot d -cdrom hos.iso -m "${G15_MEM:-768}" \
+  -boot d -cdrom hos-install.iso -m "${G15_MEM:-768}" \
   -no-reboot -no-shutdown \
   -cpu qemu64,-smap,-smep \
   -display none \

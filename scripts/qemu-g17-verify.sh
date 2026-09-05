@@ -10,10 +10,10 @@ cd "$ROOT"
 
 if [ "${G17_REBUILD:-1}" = "1" ]; then
     # G17 includes a kernel getdents64 ABI fix; refresh the kernel explicitly
-    # since `make hos.iso` does not recompile the D kernel on its own.
+    # since `make hos-install.iso` does not recompile the D kernel on its own.
     make -j1 -C src/kernel/d
     make -j1 kernel.elf
-    make -j1 GUI_AUTOSTART=files hos.iso
+    make -j1 GUI_AUTOSTART=files hos-install.iso
 fi
 
 SERIAL="$ROOT/serial.log"
@@ -22,7 +22,7 @@ SHOT="/tmp/epin-g17.ppm"
 rm -f "$SERIAL" "$MON" "$SHOT"
 
 qemu-system-x86_64 \
-  -boot d -cdrom hos.iso -m "${G17_MEM:-768}" \
+  -boot d -cdrom hos-install.iso -m "${G17_MEM:-768}" \
   -no-reboot -no-shutdown \
   -cpu qemu64,-smap,-smep \
   -display none \

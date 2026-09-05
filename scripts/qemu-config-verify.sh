@@ -22,9 +22,9 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-ISO="${HOS_ISO:-$ROOT/hos.iso}"
+ISO="${HOS_ISO:-$ROOT/hos-install.iso}"
 if [ ! -f "$ISO" ]; then
-  echo "config-verify: $ISO not found — build it first: make hos.iso (needs Docker/Linux)" >&2
+  echo "config-verify: $ISO not found — build it first: make hos-install.iso (needs Docker/Linux)" >&2
   exit 2
 fi
 

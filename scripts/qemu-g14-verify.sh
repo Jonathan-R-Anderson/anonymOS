@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 if [ "${G14_REBUILD:-1}" = "1" ]; then
-    make -j1 GUI_AUTOSTART=cairo hos.iso
+    make -j1 GUI_AUTOSTART=cairo hos-install.iso
 fi
 
 SERIAL="$ROOT/serial.log"
@@ -18,7 +18,7 @@ SHOT="/tmp/epin-g14.ppm"
 rm -f "$SERIAL" "$MON" "$SHOT"
 
 qemu-system-x86_64 \
-  -boot d -cdrom hos.iso -m "${G14_MEM:-512}" \
+  -boot d -cdrom hos-install.iso -m "${G14_MEM:-512}" \
   -no-reboot -no-shutdown \
   -cpu qemu64,-smap,-smep \
   -display none \

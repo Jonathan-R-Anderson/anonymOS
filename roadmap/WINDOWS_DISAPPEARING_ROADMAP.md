@@ -1,7 +1,36 @@
 # Windows Disappearing — Investigation Roadmap
 
-**Status: ROOT CAUSE OF THE VISIBLE SYMPTOM FOUND AND FIXED (unverified on hardware).
-The underlying present-stall that triggers it is still OPEN.**
+**Status: ✅ RESOLVED (2026-09-05, verified on the build server).**
+
+It was **two** faults that compounded, and neither was a compositor bug:
+
+1. **The erasure** — the kernel's own freeze HUD painted 784×112 of solid black over the live
+   desktop from the mouse IRQ, and nothing ever repaired it because repainting requires a
+   present, which is exactly what had stopped. §2.
+2. **The "stall"** — the freeze probe treated *"no present for 1.5 s"* as a fault. An idle
+   desktop legitimately does not present. That produced 81–133 bogus stall episodes per boot,
+   **each of which triggered (1)**. §3.
+
+The desktop was never wedged. Injecting real mouse motion through the QEMU monitor moved the
+present counter **70 → 72** and issued a fresh page flip; between inputs it sits at
+`parked_permil=999`, asleep by choice. That is the damage work behaving correctly.
+
+Automated smoke test after both fixes — `boot-test: PASS`, all 11 assertions green:
+
+```
+  ok  forbid   FREEZE                            absent
+  ok  forbid   legacy drm: cursor null failed    absent    (was 437/boot)
+  ok  forbid   COMPOSITOR DIED                   absent
+  ok  require  [dkernel] init = Hyprland module  1x
+  ok  require  [g5] windows=                     19x
+  ok  require  [bar] wl-layer-bar launched       1x
+  freeze stalled: 6   (was 133 — the 6 are real, during startup before it settles)
+```
+
+**What remains is throughput, not correctness:** when the desktop *does* draw, softpipe
+interprets every fragment. That is Track C (llvmpipe) in
+[BUILD_AND_TEST_AUTOMATION_ROADMAP.md](BUILD_AND_TEST_AUTOMATION_ROADMAP.md), not a bug in this
+file. The §6 open leads below are kept only in case a genuine wedge reappears.
 
 Windows render once when they map, then vanish while the coloured identity borders remain.
 
@@ -61,8 +90,20 @@ pattern as `g_wifiDebugHud`. The serial-side `freezeProbeKlog()` is untouched, s
 diagnostics this investigation relies on still work. Set the flag to `true` when actually
 chasing a hard freeze on real hardware, which is what the overlay was written for.
 
-**Still unverified on hardware** — needs a boot to confirm the windows now stay visible (frozen,
-but visible) when a stall happens.
+**✅ VERIFIED ON HARDWARE (2026-09-04, build server, automated smoke test).** A full rebuild from
+`e0c421c32b` booted headless under `scripts/boot-test.sh`:
+
+```
+  ok    forbid   FREEZE                            absent
+  ok    forbid   legacy drm: cursor null failed    absent      (was 437 per boot)
+  ok    forbid   COMPOSITOR DIED                   absent
+  ok    require  [dkernel] init = Hyprland module  1x
+  ok    require  [g5] windows=0000000000000005     6x          (5 windows mapped)
+  ok    atleast  [present] total=                  19 >= 3
+```
+
+The freeze HUD no longer paints over the desktop, and the per-frame cursor error is gone. The
+compositor starts, maps all five windows, and presents.
 
 ---
 

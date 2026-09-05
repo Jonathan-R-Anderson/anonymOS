@@ -47,7 +47,12 @@ The failure mode: every check is a human booting a VM and reading a 5,000-line l
 | B4 | ✅ DONE — **Regression assertions for bugs already fixed** — `cursor null failed` = 0, no `COMPOSITOR DIED`, freeze HUD silent, present count above floor | These regressed or hid twice already | S |
 | B5 | *(later)* **Screenshot capture + compare** via the QMP monitor | Roadmap 3.3 marks visual QA Critical; a two-month-old binary once shipped unnoticed | M |
 
-**Exit criterion:** `make test` gives a pass/fail verdict on a boot with no human reading a log.
+**Exit criterion: ✅ MET (2026-09-05).** `make test` returns `boot-test: PASS` / `TEST_EXIT=0` on
+a real headless boot of the build server, asserting 11 facts with no human reading a log. Its
+first real runs found three bugs in the harness itself (a `NET=virtio` default that killed QEMU
+on a virgl build with SLIRP compiled out, `/dev/null` swallowing that error, and the `grep -c`
+double-output trap) and two in its own suite (`-> display CLAIMED` is written to the framebuffer
+not serial so it could never pass; an exact window count that varies 4-vs-5 between boots).
 
 ---
 

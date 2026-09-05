@@ -12710,6 +12710,16 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
             if (lit == 0) klog("ENTIRELY BLACK"); else klog("showing content");
             klog(" (lit="); klog_dec(lit); klog("/64 fb=");
             klog_dec(fb.fbId); klog(" phys=0x"); klog_hex(fb.physAddr);
+            // The COPIED REGION, not the screen.  copyW/copyH are min(fb, g_fb), so if the
+            // compositor's framebuffer ever reports smaller dimensions the blit covers only a
+            // corner and everything outside it keeps whatever was there before -- which reads
+            // as "the desktop went black but the borders are still drawn", because the borders
+            // are stamped afterwards over the WHOLE screen.  The probe samples inside the
+            // copied region, so it would still say "showing content" while most of the screen
+            // is stale.  Print the region to catch exactly that.
+            klog(" copy="); klog_dec(copyW); klog("x"); klog_dec(copyH);
+            klog(" fbdim="); klog_dec(fb.width); klog("x"); klog_dec(fb.height);
+            klog(" scr="); klog_dec(cast(uint)g_fb.width); klog("x"); klog_dec(cast(uint)g_fb.height);
             klog(" present#"); klog_dec(g_presTotal); klog(")\n");
         }
     }

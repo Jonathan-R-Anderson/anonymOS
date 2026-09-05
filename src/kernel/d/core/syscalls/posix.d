@@ -12802,6 +12802,12 @@ public void freezeSchedSample(int tid) @nogc nothrow {
 // get the freeze diagnostic back when actually chasing a hard freeze on hardware.
 public __gshared bool g_freezeHudEnabled = false;
 
+// Master switch for the on-screen debug overlays (log-egress rows, network status).  OFF by
+// default: these paint over the live desktop on every present, and everything they report is
+// already in serial.log.  Set true when bringing up hardware where the panel is the only
+// output you have.
+public __gshared bool g_desktopHudEnabled = false;
+
 public void freezeProbeRepaint() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
     import arch.x86_64.bootstrap : fb_draw_hud_row, g_fb;
@@ -13123,11 +13129,20 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     g_desktopClaimedFb = true;   // the compositor now presents — no more kernel fb drawing
     // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
     cursorRepaintAfterPresent();
-    // Log-egress status — ALWAYS on (ungated): the user needs to SEE whether the debug log reached
-    // its destination.  scp uploads (LOG UPLOAD row) and the USB-stick fallback (USB LOG row) are
-    // re-stamped every present so they persist over the desktop.
-    logupStatusRepaint();
-    usblogStatusRepaint();
+    // Log-egress status.  NO LONGER ALWAYS ON (2026-09-05).
+    //
+    // The note this replaces argued "the user needs to SEE whether the debug log reached its
+    // destination", and re-stamped these rows over the desktop on every present.  That is a
+    // developer's need, not the user's, and the cost was permanent bands of debug text on top
+    // of their screen -- the same mistake as the freeze HUD and the network HUD.  All three
+    // wrote where only a present can repaint, so they were also the last thing left on screen
+    // whenever presenting stopped.
+    //
+    // Gated together behind g_desktopHudEnabled.  Everything they showed is in serial.log.
+    if (g_desktopHudEnabled) {
+        logupStatusRepaint();
+        usblogStatusRepaint();
+    }
     // Network status — ALWAYS on (ungated), for the same reason the log-egress rows above are:
     // the user needs to SEE whether the LAN came up.  It deliberately does NOT live in the
     // g_wifiDebugHud block below, because that flag is false and nothing ever sets it true, so

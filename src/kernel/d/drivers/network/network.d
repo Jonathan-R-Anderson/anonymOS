@@ -566,7 +566,12 @@ private void enablePCIBusMastering(PCIDevice* dev) @nogc nothrow {
 enum int NET_HUD_MAX = 6;
 __gshared char[80][NET_HUD_MAX] g_netHud;
 __gshared int  g_netHudN = 0;
-__gshared bool g_netHudEnabled = true;
+// OFF BY DEFAULT since 2026-09-05.  This painted a black band with green text over the
+// top-left of the live desktop on EVERY present ("NET: NO NIC FOUND - check the VM network
+// device"), which is a debugging aid sitting permanently on top of the user's screen.  The
+// information is still in serial.log, where a diagnostic belongs.  Set true when actually
+// bringing up a NIC and you need it visible on the panel.
+__gshared bool g_netHudEnabled = false;
 
 private void nhStr(ref char[80] b, ref int n, const(char)* s) @nogc nothrow {
     while (*s != 0 && n < 79) b[n++] = *s++;

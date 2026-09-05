@@ -1608,8 +1608,17 @@ private void spawnWaylandClients() {
         // the only way to answer "is the domain manager running?" was to grep trace lines
         // for a tid name.  This path waits for /run/user/1000/wayland-0 plus
         // GUI_CLIENT_SETTLE_TICKS, and prints the tid like every other client.
-        spawnWaylandProgram("wl-domain-manager\0".ptr, "[dm]\0".ptr);
-        spawnWaylandProgram("wl-cairo-demo\0".ptr, "[g11]\0".ptr);
+        // ...but NOT on live media, where the installer is meant to be the only window.  The
+        // bar above is a layer surface and covers nothing, so it stays; these are real windows
+        // and would sit on top of the installer.  Both remain on their keybindings (SUPER+D for
+        // the domain manager), so this hides them at boot rather than removing them.
+        {
+            import drivers.veracrypt_impl : bootHasInstallPayload;
+            if (!bootHasInstallPayload()) {
+                spawnWaylandProgram("wl-domain-manager\0".ptr, "[dm]\0".ptr);
+                spawnWaylandProgram("wl-cairo-demo\0".ptr, "[g11]\0".ptr);
+            }
+        }
     }
     if (mode == 4)
         spawnWaylandProgram("wl-files\0".ptr, "[g17]\0".ptr);
@@ -1631,16 +1640,34 @@ private void spawnWaylandClients() {
     // installer is the front window (D4.1).  `bind =` is deliberately NOT handled: the kernel
     // cannot install compositor keybindings, and Hyprland binds the same apps itself in
     // system/hypr/custom/keybinds.lua.
+    // ON LIVE MEDIA THE INSTALLER IS THE ONLY WINDOW.
+    //
+    // Both lists used to run on install media, so the installer opened behind the Activities
+    // grid, the log viewer and the domain manager -- the first thing a new user saw was three
+    // windows they did not ask for, with the one that matters buried underneath.
+    //
+    // Live media has exactly one job.  So `-live` entries run INSTEAD of the ordinary autostart
+    // list there, not in addition to it, and the desktop's own built-in windows are skipped too.
+    // The top bar stays: it is a layer surface rather than a window, it does not cover anything,
+    // and it is where the clock and status live.
+    //
+    // Nothing is lost, because every one of those apps still has its keybinding from
+    // /desktop.conf (SUPER+A activities, SUPER+D domains, SUPER+ALT+L logs, and the rest) --
+    // they are one keystroke away rather than in the way.
     {
         import core.syscalls.posix : desktopAutostartAt;
         import drivers.veracrypt_impl : bootHasInstallPayload;
         enum int AUTOSTART_MAX = 16;         // bounded: a malformed conf must not spawn forever
         char[128] abuf;
-        for (int i = 0; i < AUTOSTART_MAX; i++) {
-            if (!desktopAutostartAt(false, i, abuf.ptr, abuf.length)) break;
-            spawnWaylandProgram(abuf.ptr, "[auto]\0".ptr);
-        }
-        if (bootHasInstallPayload()) {
+        const bool liveMedia = bootHasInstallPayload();
+
+        if (!liveMedia) {
+            for (int i = 0; i < AUTOSTART_MAX; i++) {
+                if (!desktopAutostartAt(false, i, abuf.ptr, abuf.length)) break;
+                spawnWaylandProgram(abuf.ptr, "[auto]\0".ptr);
+            }
+        } else {
+            klog("[gui] live media — installer only; everything else is on its keybinding\n");
             for (int i = 0; i < AUTOSTART_MAX; i++) {
                 if (!desktopAutostartAt(true, i, abuf.ptr, abuf.length)) break;
                 spawnWaylandProgram(abuf.ptr, "[inst]\0".ptr);

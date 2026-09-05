@@ -232,6 +232,33 @@ void free_phys_pages(ulong addr, size_t n) {
 }
 
 
+// Real physical-memory accounting for /proc/meminfo.  Everything here is already tracked; it
+// simply had no reader, so /proc/meminfo served a hardcoded "MemTotal: 524288 kB" and every
+// monitor-type app displayed the same invented 512 MB regardless of the machine.
+//
+// totalBytes = every USABLE region the bootloader reported.
+// freeBytes  = the unbumped tail of the region the cursor currently sits in, plus every whole
+//              region it has not reached yet, plus the pages sitting in the reuse free list.
+// The cursor walks regions in order and never returns, so regions below it are spent.
+void memStats(out ulong totalBytes, out ulong freeBytes) {
+    totalBytes = 0;
+    freeBytes  = 0;
+    if (mmap_resp is null) return;
+    for (size_t i = 0; i < mmap_resp.entry_count; i++) {
+        limine_memmap_entry* entry = mmap_resp.entries[i];
+        if (entry.type != LIMINE_MEMMAP_USABLE) continue;
+        const ulong start = (entry.base + 0xFFF) & ~0xFFF;
+        const ulong end   = entry.base + entry.length;
+        if (end <= start) continue;
+        totalBytes += end - start;
+        if (g_next_phys_alloc >= end) continue;               // wholly consumed
+        freeBytes += (g_next_phys_alloc <= start) ? (end - start)   // not reached yet
+                                                  : (end - g_next_phys_alloc);
+    }
+    freeBytes += cast(ulong)g_free_count * 4096;              // returned pages, reusable
+    if (freeBytes > totalBytes) freeBytes = totalBytes;
+}
+
 void init_mm(limine_memmap_response* r) {
     klog("init_mm: starting\n");
     mmap_resp = r;

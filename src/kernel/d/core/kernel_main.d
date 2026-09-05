@@ -127,7 +127,7 @@ import core.configboot : configBootApply; // DECLARITIVE_MODEL_ROADMAP §4: veri
 import core.install_config : installConfigApply; // INSTALLER: first-boot install.json apply
 import display.splash : splashRun;        // native boot splash (particle network + boot log)
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
-import core.ticks : increment_ticks, get_ticks, pitMs;
+import core.ticks : increment_ticks, get_ticks, pitMs, cpuAccountTick;
 import core.random;
 
 extern (C) @nogc nothrow:
@@ -4483,6 +4483,9 @@ private void kernelLoop() {
                 if ((++g_tickDiv) >= TICK_DIV) {
                     g_tickDiv = 0;
                     increment_ticks();   // 1000 Hz monotonic ms
+                    // Sample who was running for /proc/stat.  g_idleTid is -1 before the idle
+                    // task exists, which never equals a valid task id, so early ticks count busy.
+                    cpuAccountTick(g_idleTid >= 0 && g_current_task_id == cast(ulong)g_idleTid);
                     // SMP_ROADMAP S4.4d: surface the AP task's parallel getpid progress from HERE.
                     if (g_apSyscallCount != 0 && (++g_apPitLogCtr % 2000) == 0) {
                         if (g_apActivatedIdx != 0) sendApIpi(apActivatedLapicId(), 0x40);

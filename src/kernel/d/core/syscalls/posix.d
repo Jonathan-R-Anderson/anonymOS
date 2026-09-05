@@ -2902,15 +2902,102 @@ private size_t procDynamicSynth(const(char)* path) {
     }
 
     if (cstrEq(path, "/proc/uptime")) {
-        // Seconds since boot, from the PIT.  The second field is idle time, which this kernel
-        // does not track per-CPU; report it equal to uptime rather than inventing a split.
+        // Seconds since boot, from the PIT.  The second field is idle time, now measured at the
+        // 1000 Hz tick rather than reported equal to uptime as it once was.
+        import core.ticks : cpuIdleJiffies;
         const ulong ms = pitMs();
         pbNum(pos, cast(long)(ms / 1000)); pbStr(pos, ".".ptr);
         const ulong cs = (ms % 1000) / 10;
         if (cs < 10) pbStr(pos, "0".ptr);
         pbNum(pos, cast(long)cs);
         pbStr(pos, " ".ptr);
-        pbNum(pos, cast(long)(ms / 1000)); pbStr(pos, ".00\n".ptr);
+        const ulong idleMs = cpuIdleJiffies();
+        pbNum(pos, cast(long)(idleMs / 1000)); pbStr(pos, ".".ptr);
+        const ulong ics = (idleMs % 1000) / 10;
+        if (ics < 10) pbStr(pos, "0".ptr);
+        pbNum(pos, cast(long)ics); pbStr(pos, "\n".ptr);
+        g_procBuf[pos] = 0;
+        return pos;
+    }
+
+    // Real physical memory, replacing a hardcoded "MemTotal: 524288 kB" that reported the same
+    // invented 512 MB on every machine.  Only the fields a monitor actually reads are emitted;
+    // inventing Buffers/Cached/Slab numbers would be worse than omitting them.
+    if (cstrEq(path, "/proc/meminfo")) {
+        import memory.mm : memStats;
+        ulong totalB, freeB;
+        memStats(totalB, freeB);
+        pbStr(pos, "MemTotal:       ".ptr); pbNum(pos, cast(long)(totalB / 1024)); pbStr(pos, " kB\n".ptr);
+        pbStr(pos, "MemFree:        ".ptr); pbNum(pos, cast(long)(freeB  / 1024)); pbStr(pos, " kB\n".ptr);
+        // No page cache or reclaimable slab exists here, so available == free is the truth.
+        pbStr(pos, "MemAvailable:   ".ptr); pbNum(pos, cast(long)(freeB  / 1024)); pbStr(pos, " kB\n".ptr);
+        pbStr(pos, "Buffers:               0 kB\nCached:                0 kB\n".ptr);
+        pbStr(pos, "SwapTotal:             0 kB\nSwapFree:              0 kB\n".ptr);
+        g_procBuf[pos] = 0;
+        return pos;
+    }
+
+    // CPU time in USER_HZ.  Monitors read this twice and divide the deltas, so the constant
+    // "cpu  0 0 0 0 0 0 0 0 0 0" it used to serve made every one of them report 0% forever.
+    // The PIT runs at 1000 Hz and USER_HZ is 100, so jiffies convert by 10.  Only user and idle
+    // are populated: this kernel does not separate user from system time, and splitting the busy
+    // count across both columns would double-report it.
+    if (cstrEq(path, "/proc/stat")) {
+        import core.ticks : cpuIdleJiffies, cpuBusyJiffies;
+        const long busy = cast(long)(cpuBusyJiffies() / 10);
+        const long idle = cast(long)(cpuIdleJiffies() / 10);
+        pbStr(pos, "cpu  ".ptr);
+        pbNum(pos, busy); pbStr(pos, " 0 0 ".ptr); pbNum(pos, idle);
+        pbStr(pos, " 0 0 0 0 0 0\ncpu0 ".ptr);
+        pbNum(pos, busy); pbStr(pos, " 0 0 ".ptr); pbNum(pos, idle);
+        pbStr(pos, " 0 0 0 0 0 0\n".ptr);
+        pbStr(pos, "ctxt 0\nbtime 0\nprocesses ".ptr);
+        long procs = 0;
+        foreach (i; 0 .. MAX_TASKS) if (g_tasks[i].active) ++procs;
+        pbNum(pos, procs);
+        pbStr(pos, "\nprocs_running ".ptr);
+        long running = 0;
+        foreach (i; 0 .. MAX_TASKS) if (g_tasks[i].active && !g_tasks[i].exited && !g_tasks[i].waiting) ++running;
+        pbNum(pos, running);
+        pbStr(pos, "\nprocs_blocked 0\n".ptr);
+        g_procBuf[pos] = 0;
+        return pos;
+    }
+
+    // /proc/diskstats did not exist at all, so anything asking about disk activity got ENOENT.
+    // Field order is the documented 14: major minor name, then reads/merges/sectors/ms,
+    // writes/merges/sectors/ms, in-flight, io_ms, weighted_io_ms.  The millisecond columns stay
+    // zero because no per-request timing is kept; the counts and sector totals are real.
+    if (cstrEq(path, "/proc/diskstats")) {
+        import drivers.block.disk : diskReady, diskIoReads, diskIoWrites,
+                                    diskIoReadSectors, diskIoWriteSectors;
+        if (diskReady()) {
+            pbStr(pos, "   8       0 sda ".ptr);
+            pbNum(pos, cast(long)diskIoReads());        pbStr(pos, " 0 ".ptr);
+            pbNum(pos, cast(long)diskIoReadSectors());  pbStr(pos, " 0 ".ptr);
+            pbNum(pos, cast(long)diskIoWrites());       pbStr(pos, " 0 ".ptr);
+            pbNum(pos, cast(long)diskIoWriteSectors()); pbStr(pos, " 0 0 0 0\n".ptr);
+        }
+        g_procBuf[pos] = 0;
+        // An empty diskstats is legitimate (no disk bound yet) but a 0-length synth would fall
+        // through to the static table and then to ENOENT, so emit a header-only newline instead.
+        if (pos == 0) { pbStr(pos, "\n".ptr); g_procBuf[pos] = 0; }
+        return pos;
+    }
+
+    // Real task counts.  The three load figures stay 0.00: this kernel keeps no run-queue length
+    // average, and fabricating one would be a number no measurement backs.
+    if (cstrEq(path, "/proc/loadavg")) {
+        long running = 0, total = 0;
+        foreach (i; 0 .. MAX_TASKS) {
+            if (!g_tasks[i].active) continue;
+            ++total;
+            if (!g_tasks[i].exited && !g_tasks[i].waiting) ++running;
+        }
+        if (running < 1) running = 1;
+        pbStr(pos, "0.00 0.00 0.00 ".ptr);
+        pbNum(pos, running); pbStr(pos, "/".ptr); pbNum(pos, total);
+        pbStr(pos, " ".ptr); pbNum(pos, total); pbStr(pos, "\n".ptr);
         g_procBuf[pos] = 0;
         return pos;
     }
@@ -3182,8 +3269,9 @@ public int sys_open(const(char)* path, int flags) {
     // prefixes (isVirtualDirectoryPath), which would otherwise serve a real file
     // like /sys/class/drm/card0/uevent as an empty 0-byte directory — udev-zero
     // then reads no DEVNAME and Weston rejects "card0 is not a KMS device".
-    // ROADMAP 2.1: /proc entries that must report reality (net/dev, uptime).  Before the
-    // static table below, which still carries their invented placeholders.
+    // ROADMAP 2.1: /proc entries that must report reality -- net/dev, uptime, meminfo, stat,
+    // loadavg, diskstats.  Runs BEFORE the static table below, which still carries the invented
+    // placeholders those files used to serve (a fixed 512 MB, all-zero CPU counters, load 0.00).
     {
         const size_t dlen = procDynamicSynth(path);
         if (dlen > 0) {
@@ -6202,11 +6290,17 @@ private immutable VFEntry[] g_vfs = [
     { "/proc/filesystems",       "nodev\tproc\nnodev\tsysfs\nnodev\ttmpfs\nnodev\tdevtmpfs\n"          },
     { "/proc/mounts",            "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"               },
     { "/proc/swaps",             "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"                  },
+    // Existence marker only: open() is served by procDynamicSynth above, which runs first and
+    // reports the real counters.  Without a row here stat()/access() would still say ENOENT.
+    { "/proc/diskstats",         ""                                                                    },
     { "/proc/meminfo",           "MemTotal:        524288 kB\nMemFree:         262144 kB\n"            },
     { "/proc/cpuinfo",           "processor\t: 0\nvendor_id\t: GenuineIntel\ncpu MHz\t\t: 2000.000\n" },
     { "/proc/loadavg",           "0.00 0.00 0.00 1/1 1\n"                                             },
     { "/proc/stat",              "cpu  0 0 0 0 0 0 0 0 0 0\n"                                         },
     { "/proc/devices",           "Character devices:\n  5 /dev/tty\n  1 mem\n"                         },
+    // Existence marker only.  open() is served by procDynamicSynth, which runs first and reports
+    // the real counters; without a row here stat()/access() would still answer ENOENT.
+    { "/proc/diskstats",         ""                                                                    },
     { "/proc/self/status",       "Name:\tinit\nState:\tS\nTgid:\t1\nPid:\t1\nPPid:\t0\n" ~
                                  "Uid:\t0\t0\t0\t0\nGid:\t0\t0\t0\t0\n" ~
                                  "VmRSS:\t4096 kB\nVmPeak:\t8192 kB\n"                                },

@@ -29,6 +29,19 @@ private __gshared size_t g_bouncePhys = 0;
 private __gshared ulong  g_diskSectors = 0;
 
 public bool diskReady() { return g_diskReady; }
+
+// I/O totals for /proc/diskstats, which did not exist at all before ROADMAP 2.1 — a monitor
+// asking for disk activity got ENOENT.  Counted here because diskReadSectors/diskWriteSectors
+// are the single chokepoints every backend goes through, so AHCI and NVMe are both covered
+// without touching either driver.
+private __gshared ulong g_ioReads;
+private __gshared ulong g_ioWrites;
+private __gshared ulong g_ioReadSectors;
+private __gshared ulong g_ioWriteSectors;
+public ulong diskIoReads()        { return g_ioReads;        }
+public ulong diskIoWrites()       { return g_ioWrites;       }
+public ulong diskIoReadSectors()  { return g_ioReadSectors;  }
+public ulong diskIoWriteSectors() { return g_ioWriteSectors; }
 public ulong diskSectors() { return g_diskSectors; }
 
 public void diskInit()
@@ -209,6 +222,7 @@ public bool diskReadSectors(ulong lba, uint count, void* dst)
     if (!g_diskReady || count == 0)
         return false;
 
+    ++g_ioReads; g_ioReadSectors += count;
     final switch (g_backend)
     {
         case DiskBackend.ahci:
@@ -227,6 +241,7 @@ public bool diskWriteSectors(ulong lba, uint count, const(void)* src)
     if (!g_diskReady || count == 0)
         return false;
 
+    ++g_ioWrites; g_ioWriteSectors += count;
     final switch (g_backend)
     {
         case DiskBackend.ahci:

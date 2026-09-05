@@ -26,12 +26,40 @@ built for musl in `deps/gtk-stack/sysroot`, and `gtk-hello` already runs.
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
 | 2.1 | **`/compat/linux` + `/proc` + `/sys` + `/etc`** | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
-| 2.2 | **Syscall audit** — inotify, eventfd, signalfd, timerfd, memfd_create, ppoll. **`inotify_init1` confirmed ENOSYS** (`dbus-daemon` logs "Cannot initialize inotify: Function not implemented" and degrades to not watching its config) | Record what is missing once, rather than discovering it one crash at a time | APPS A3 · syscalls | M |
+| 2.2 | ◑ **Syscall audit** — *measured 2026-09-05, see below.* Of the 14 probed, **only the 4 inotify calls are missing**; eventfd, eventfd2, signalfd, signalfd4, timerfd_create, memfd_create, ppoll, epoll_create1, dup3 and pipe2 are all implemented. Remaining work is **implementing inotify**, not surveying | Record what is missing once, rather than discovering it one crash at a time | APPS A3 · syscalls | M |
 | 2.3 | **One real upstream GTK app end-to-end** (suggest `gnome-calculator`) | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
 | 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
 | 2.6 | **Stage C1** — `/proc` readers: Hardware Info, System Info, USB/PCI, Sensors, Battery, Routes | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion:** an upstream GTK application, not written for this OS, runs on the desktop.
+
+### 2.2 audit result — 2026-09-05
+
+`maybeSyscallAudit()` probes each candidate **through `dispatchLinuxSyscall`** at boot and prints
+`[audit]` lines. It probes rather than reads the switch table because *routed* and *implemented*
+are different things: `inotify_init1` has a case arm **and** returns ENOSYS from a stub, so
+grepping `case <nr>:` would have scored it present.
+
+| syscall | nr | result |
+|---|---|---|
+| `inotify_init` / `_init1` / `_add_watch` / `_rm_watch` | 253, 294, 254, 255 | **MISSING (ENOSYS)** |
+| `eventfd`, `eventfd2`, `timerfd_create`, `memfd_create`, `epoll_create1` | 284, 290, 283, 319, 291 | present — returned live fds |
+| `ppoll` | 271 | present |
+| `signalfd`, `signalfd4` | 282, 289 | present |
+| `dup3`, `pipe2` | 292, 293 | present — correctly rejected bad args (EBADF, EFAULT) |
+
+**So the only gap is inotify.** `dbus-daemon` degrades gracefully (stops watching its config);
+GTK/GIO file monitoring is the caller that will care.
+
+Two follow-ups this turned up:
+
+- **`nr 254` routed to `inotify_init()` and `nr 253` was not routed at all.** Invisible while every
+  inotify call is an ENOSYS stub, and a silently wrong call the moment one is implemented — the
+  same fault `case 233` carries a "was mis-routed to `epoll_create`" note about. Each number now
+  has its own handler. **Worth sweeping the rest of the table for this pattern.**
+- **`signalfd` accepted `0xFFFF_FFFF` as a descriptor and echoed it back** instead of returning
+  EBADF. Found by accident — the probe should have sign-extended `-1` to 64 bits. Unconfirmed as a
+  defect, but it should reject a descriptor that high.
 
 ---
 

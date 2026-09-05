@@ -2275,8 +2275,12 @@ private void maybeSyscallAudit() {
         { 255, "inotify_rm_watch\0".ptr,  0xFFFF_FFFF, 0, 0 },
         { 284, "eventfd\0".ptr,           0, 0, 0 },
         { 290, "eventfd2\0".ptr,          0, 0, 0 },
-        { 282, "signalfd\0".ptr,          0xFFFF_FFFF, 0, 0 },
-        { 289, "signalfd4\0".ptr,         0xFFFF_FFFF, 0, 0 },
+        // -1 has to be sign-extended to 64 bits.  Passing 0xFFFF_FFFF reaches the kernel as a
+        // positive 4294967295, and signalfd echoed that straight back as though it were a valid
+        // descriptor instead of rejecting it -- which made the audit read "ret=4294967295" and
+        // told us nothing.  The echo is worth chasing separately; it is not what this asks.
+        { 282, "signalfd\0".ptr,          ulong.max, 0, 0 },
+        { 289, "signalfd4\0".ptr,         ulong.max, 0, 0 },
         { 283, "timerfd_create\0".ptr,    0, 0, 0 },
         { 319, "memfd_create\0".ptr,      0, 0, 0 },
         { 271, "ppoll\0".ptr,             0, 0, 0 },
@@ -2295,7 +2299,14 @@ private void maybeSyscallAudit() {
         // ENOSYS is private to posix.d, so the value is spelled out here.
         if (r == -38) { klog(" MISSING (ENOSYS)\n"); ++missing; }
         else if (r < 0)   { klog(" present (errno "); klog_dec(cast(ulong)(-r)); klog(")\n"); }
-        else              { klog(" present (ok, ret="); klog_dec(cast(ulong)r); klog(")\n"); }
+        else {
+            klog(" present (ok, ret="); klog_dec(cast(ulong)r); klog(")\n");
+            // Several of these DO create a real object -- eventfd, timerfd_create, memfd_create
+            // and epoll_create1 each returned a live descriptor.  An audit that leaks five fds
+            // every boot is a worse bug than the one it reports, so hand them straight back.
+            // (Probes given deliberately-bad arguments return an errno and allocate nothing.)
+            linux_sys_close(cast(ulong)r);
+        }
     }
     klog("[audit] missing: "); klog_dec(cast(ulong)missing);
     klog(" of "); klog_dec(cast(ulong)probes.length); klog("\n");

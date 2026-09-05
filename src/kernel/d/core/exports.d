@@ -1006,6 +1006,20 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "DESKTOP_SESSION=hyprland\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // ROADMAP 2.5: tell GTK where the bus is.  Without DBUS_SESSION_BUS_ADDRESS a GLib app
+    // tries to AUTOLAUNCH one -- which is why gtk-hello's log shows it hunting for
+    // dbus-update-activation-environment across five paths -- and many GTK applications abort
+    // rather than degrade when that fails.
+    //
+    // Pointed at the SYSTEM bus socket that hos-dbus-launch actually creates
+    // (/run/dbus/system_bus_socket), not a separate per-user session bus.  This guest has one
+    // user, one seat and one session, so a second daemon would add a process and a socket to
+    // maintain and isolate nothing.  Stated plainly because the variable NAME implies a
+    // distinction that does not exist here; if per-user isolation ever matters, this is the
+    // line to split.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor,
+                                    "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "WAYLAND_DISPLAY=wayland-0\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_WIDTH=1280\0".ptr);

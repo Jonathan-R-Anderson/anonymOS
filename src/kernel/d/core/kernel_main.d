@@ -2181,7 +2181,17 @@ private void maybeSpawnSshd() {
 
 private void maybeSpawnDbus() {
     if (g_dbusStarted) return;
-    if (useDirectWifi()) return;   // direct-wpa needs no dbus (NM/agent/nmcli skipped; weston uses builtin seatd); dbus-daemon otherwise spins ~1000/s starving the compositor -> freezes
+    // ROADMAP 2.5.  The `if (useDirectWifi()) return;` that used to sit here skipped the bus
+    // ENTIRELY on the default boot path, reasoning that "direct-wpa needs no dbus" -- true of
+    // NETWORK MANAGEMENT, and the reason it was written, but it conflated "networking does not
+    // need a bus" with "nothing does".  GTK applications need one whatever the network is
+    // doing: gtk-hello's own boot log shows it hunting for
+    // dbus-update-activation-environment across five paths and finding none, and many GTK apps
+    // abort rather than degrade when they cannot reach a session bus.
+    //
+    // The bus is pure local AF_UNIX IPC with no dependency on the LKL or the net-provider shim
+    // (as this file's own comment above says), so starting it costs nothing on the direct-wpa
+    // path -- it simply has no NetworkManager clients there.
     if (g_dbusDelay++ < 40) return;   // let the desktop settle first
     g_dbusStarted = true;
     klog("[dbus] M0: launching hos-dbus-launch -> dbus-daemon (persistent system bus)\n");

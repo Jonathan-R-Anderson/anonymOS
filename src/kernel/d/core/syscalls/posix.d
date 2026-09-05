@@ -12354,6 +12354,7 @@ private void cursorRepaintAfterPresent() @nogc nothrow {
 // Interval counters are reset each stats dump; totals persist.  Two rdtsc reads
 // per present (~tens of cycles) — negligible vs the present itself.
 __gshared ulong g_presTotal;        // cumulative presents
+__gshared uint  g_srcLitBucket = 999;   // [srcpx] last reported lit-pixel bucket (999 = never)
 __gshared ulong g_presStatsLastPitMs;  // pitMs at the previous presentProfStats() call (wall-clock fps)
 __gshared ulong g_presN;            // presents this interval
 __gshared ulong g_presCostCyc;      // sum of full present cycles (blit+borders+cursor)
@@ -12677,6 +12678,42 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
 
     auto src = cast(const(ubyte)*)(fb.physAddr + hhdm_offset);
     auto dst = cast(ubyte*)g_fb.address;
+
+    // Is the COMPOSITOR producing black, or are we scanning out the wrong buffer?
+    //
+    // The desktop goes black-but-for-the-borders after a couple of apps launch, while the
+    // compositor is measurably healthy: presents keep climbing, flipQ == flipRd, and cmpduty
+    // reads parked_permil=0 with ~81k running samples.  So it is rendering and presenting at
+    // full tilt and the result is black.  Two very different causes fit that:
+    //   (a) Hyprland really is drawing an empty scene -- the bug is above the DRM boundary;
+    //   (b) Hyprland draws correctly but we blit the WRONG buffer -- fb_id -> GEM handle ->
+    //       physAddr mis-maps, or a swapchain reconfigure recycled a slot (DRMFB_MAX is 16,
+    //       and every new window adds buffers).
+    // Sampling the SOURCE of this very blit separates them with certainty instead of argument.
+    // 64 pixels on an 8x8 grid, logged only when the verdict CHANGES, so a healthy desktop
+    // costs one line and never spams.
+    {
+        uint lit = 0;
+        foreach (sy; 0 .. 8) {
+            const size_t ry = (cast(size_t)sy * copyH) / 8;
+            foreach (sx; 0 .. 8) {
+                const size_t rx = (cast(size_t)sx * copyW) / 8;
+                const uint px = *cast(const(uint)*)(src + ry * cast(size_t)fb.pitch + rx * 4);
+                if ((px & 0x00FFFFFFu) != 0) ++lit;
+            }
+        }
+        // Bucket to 0 / 1-15 / 16-63 / 64 so ordinary frame-to-frame variation is not "a change".
+        const uint bucket = (lit == 0) ? 0u : (lit < 16 ? 1u : (lit < 64 ? 2u : 3u));
+        if (bucket != g_srcLitBucket) {
+            g_srcLitBucket = bucket;
+            klog("[srcpx] blit source is ");
+            if (lit == 0) klog("ENTIRELY BLACK"); else klog("showing content");
+            klog(" (lit="); klog_dec(lit); klog("/64 fb=");
+            klog_dec(fb.fbId); klog(" phys=0x"); klog_hex(fb.physAddr);
+            klog(" present#"); klog_dec(g_presTotal); klog(")\n");
+        }
+    }
+
     foreach (row; 0 .. copyH) {
         memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
                src + cast(size_t)row * cast(size_t)fb.pitch,

@@ -123,6 +123,15 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
   for `hos-dbus-launch` returned six hits while the binary was not staged at all — the hits were
   the kernel's own spawn call naming the program. Grep for the `module_path:` line, or list the
   staged tree. (Grepping for a new *string literal* is still valid — see `make verify` above.)
+- **`pitMs()` runs well behind wall clock — do not size timeouts against it as if it were real
+  seconds.** Observed 2026-09-05: a 20-second NTP retry came round exactly once in a 200-second
+  boot, and a `/proc` proof gated at `pitMs() >= 20_000` never fired at all. Anything gating on
+  `pitMs` needs thresholds sized against *that* clock. It also means `CLOCK_REALTIME` drifts
+  between NTP syncs, which is why the SNTP client re-syncs periodically and logs the error each
+  correction finds rather than setting the clock once at boot.
+- **`scripts/boot-test.sh` kills QEMU the moment every `require` marker has appeared** — `TIMEOUT`
+  is a ceiling, not a duration. Anything that needs the guest to keep running (a periodic timer, a
+  re-sync, a soak) will never be observed through it. Run `qemu-run.sh` directly for those.
 - **A fixed poll count is not a timeout.** Anything polled from the main scheduler loop runs at no
   defined wall rate, so "wait N polls for the daemon" measures nothing physical. Both a 40-poll
   and a 400-poll wait for the D-Bus socket fired early. Wait on the condition itself and bound it

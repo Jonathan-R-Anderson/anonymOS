@@ -55,6 +55,13 @@ forbid   [elf] bad magic
 # proves the desktop survived past its first frame rather than presenting once and wedging.
 atleast  3  [present] total=
 
-# ── windows actually mapped.  [g5] windows= is the kernel's window-rect ioctl trace; it
-#    reaching 5 means the autostarted clients mapped and Hyprland reported their geometry.
-require  [g5] windows=0000000000000005
+# ── windows actually mapped ───────────────────────────────────────────────────────────────
+# NOT an exact window count.  This used to assert `windows=0000000000000005`, which passed on
+# one boot and would have failed the next: a later run mapped only FOUR.  The count depends on
+# client startup timing, so an equality test on it is a coin toss that reports as a regression.
+#
+# Assert the things that are actually deterministic instead: that the compositor reported
+# window geometry at all (the HOS_WINDOWS ioctl fired), and that the two clients which are
+# supposed to be up at boot really launched.  Those fail only when something is genuinely wrong.
+require  [g5] windows=
+require  [bar] wl-layer-bar launched

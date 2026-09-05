@@ -12536,11 +12536,39 @@ public void freezeProbeRepaint() @nogc nothrow {
 // filter /run/klog for "freeze" and see the culprit, without needing the (dead) keyboard mid-freeze.
 __gshared ulong g_freezeKlogLastMs = 0;
 __gshared bool  g_freezeWasStalled = false;
+// Is the desktop IDLE-BY-CHOICE rather than stalled?
+//
+// "No present for 1.5 s" is not by itself a fault.  Once the clients stop damaging anything —
+// which is the whole point of the damage work — a correct compositor parks in poll and draws
+// nothing until something happens.  Measured on the build server: with no input at all the
+// desktop settles at parked_permil=999 (asleep 99.9% of samples), and injecting mouse motion
+// through the QEMU monitor moves the present counter 70 -> 72 and issues a fresh page flip.
+// It is asleep, not wedged.  Reporting that as a stall produced 81 bogus "[freeze] stalled"
+// episodes in a single boot and re-woke every poller once a second for nothing.
+//
+// Two conditions together mean idle rather than stuck:
+//   * the presenting task is poll-parked — it chose to wait, it is not spinning or dead; and
+//   * flipQ == flipRd — no page-flip completion is sitting unread, so nothing is outstanding.
+// A genuine lost wakeup shows the second condition failing (an event queued and never read),
+// which is exactly the LAGGING case the flip counters were added to catch.
+public bool desktopIsIdle() @nogc nothrow {
+    import core.kernel_main : g_pollBlocked;
+    import core.task : g_tasks;
+    const int c = g_presenterTid;
+    if (c < 0 || c >= MAX_TASKS) return false;
+    if (!g_tasks[c].active || g_tasks[c].exited) return false;
+    if (!g_pollBlocked[c]) return false;              // running, so not idle-by-choice
+    return g_flipQueued == g_flipRead;                // nothing outstanding to wake it for
+}
+
 public void freezeProbeKlog() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
     if (!g_desktopClaimedFb || g_lastPresentMs == 0) return;
     const ulong now = pitMs();
-    const bool stalled = (now >= g_lastPresentMs) && (now - g_lastPresentMs >= 1500);
+    // An idle desktop is not a stalled one — see desktopIsIdle().  Suppressed here rather than
+    // in the caller so both the log and the watchdog below share one definition.
+    const bool stalled = (now >= g_lastPresentMs) && (now - g_lastPresentMs >= 1500)
+                         && !desktopIsIdle();
     if (!stalled) {
         if (g_freezeWasStalled) {
             g_freezeWasStalled = false;

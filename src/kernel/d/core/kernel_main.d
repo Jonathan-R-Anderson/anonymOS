@@ -329,6 +329,12 @@ private void freezeWatchdog() {
     if (now < g_lastPresentMs) return;
     const ulong stall = now - g_lastPresentMs;
     if (stall < 2000) { g_fwdWakes = 0; return; }        // presenting fine (or brief hiccup)
+    // An IDLE desktop is not a lost wakeup.  Once clients stop damaging anything the compositor
+    // parks in poll on purpose and presents nothing; re-waking it every second achieves nothing
+    // and floods the log (81 bogus stall episodes in one boot).  desktopIsIdle() distinguishes
+    // "parked with nothing outstanding" from "parked with a completion it never read", and only
+    // the latter is the lost-wakeup this watchdog exists to recover from.
+    if (desktopIsIdle()) { g_fwdWakes = 0; return; }
     if (now - g_fwdLastMs < 1000) return;                // retry at most 1/s while stalled
     g_fwdLastMs = now;
     ++g_fwdWakes;

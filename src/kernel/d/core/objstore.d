@@ -46,10 +46,15 @@ struct ObjSuper {
     // rather than the app directory because it is not an app -- it is the filesystem snapshot,
     // written once per reboot and read once per boot.  v3 adds these; a v2 disk is upgraded in
     // place on mount (the fields read back as zero, which means "no snapshot yet").
-    ulong   fsBlobLba;          // relative LBA of the snapshot (0 = none)
-    uint    fsBlobLen;          // bytes actually stored
+    // domainCount ends at offset 36, and a ulong wants 8-byte alignment, so the compiler would
+    // insert 4 invisible bytes here and the struct would be 520 -- caught by the static assert
+    // below.  Spell the gap out instead: an on-disk layout must never depend on what the
+    // compiler chooses to pad.
+    uint    _rsv0;              // explicit alignment filler (offset 36..39)
+    ulong   fsBlobLba;          // relative LBA of the snapshot (0 = none)   offset 40
+    uint    fsBlobLen;          // bytes actually stored                     offset 48
     uint    fsBlobCap;          // sectors reserved, so a growing /home does not have to move
-    ubyte[SECTOR - 52] _pad;
+    ubyte[SECTOR - 56] _pad;
 }
 static assert(ObjSuper.sizeof == SECTOR);
 

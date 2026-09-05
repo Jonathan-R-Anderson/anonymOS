@@ -2312,6 +2312,26 @@ private void maybeSyscallAudit() {
     klog(" of "); klog_dec(cast(ulong)probes.length); klog("\n");
 }
 
+// ROADMAP 2.3: both GTK clients (gtk-hello and gtk3-widget-factory) connect, sendmsg, then block
+// in poll(nfds=1, timeout=-1) forever without ever mapping a window, while Hyprland sits idle with
+// flipQ == flipRd.  Each is waiting on the other, so the question is whether the compositor is
+// actually watching the new client's fd.  epollDumpAll() was written to answer exactly that and
+// has never been called.  Dump periodically rather than once: the client is launched by hand from
+// a keybinding, so a single fixed-time dump would almost certainly miss it.
+private __gshared ulong g_epDumpNext = 0;
+private __gshared int   g_epDumpN    = 0;
+private void maybeEpollDump() {
+    if (g_epDumpN >= 6) return;
+    const ulong now = pitMs();
+    if (now < 20_000) return;              // let the desktop finish coming up first
+    if (now < g_epDumpNext) return;
+    g_epDumpNext = now + 30_000;
+    ++g_epDumpN;
+    klog("[epdump] #"); klog_dec(cast(ulong)g_epDumpN);
+    klog(" at pitMs="); klog_dec(now); klog("\n");
+    epollDumpAll();
+}
+
 private __gshared bool g_procTested = false;
 private void maybeProcSelfTest() {
     if (g_procTested) return;
@@ -4484,6 +4504,7 @@ private void kernelLoop() {
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
         maybeProcSelfTest();   // ROADMAP 2.1: prove /proc once real time and load have accrued
         maybeSyscallAudit();   // ROADMAP 2.2: record which syscalls are missing, once
+        maybeEpollDump();      // ROADMAP 2.3: is the compositor watching the new client fd?
         maybeSyncNtp();        // NTP: set the wall clock from pool.ntp.org, with retries
         maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         //maybeSpawnNetLaunch(); // H3: standalone wpa (superseded by NM, which drives wpa itself at M5)

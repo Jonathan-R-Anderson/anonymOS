@@ -5,7 +5,7 @@
 # Original author: Sergey Udaltsov <svu@gnome.org>, 2007.
 #
 # Include the base sequences too (for other layouts):
-include "/home/bruns/Documents/HanonymOS/deps/gtk-stack/sysroot/share/X11/locale/en_US.UTF-8/Compose"
+include "/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/X11/locale/en_US.UTF-8/Compose"
 #
 # Group I
 #

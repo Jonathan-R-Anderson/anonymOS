@@ -1,7 +1,7 @@
-prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 
-dridriverdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/dri
+dridriverdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib/dri
 
 Name: dri
 Description: Direct Rendering Infrastructure

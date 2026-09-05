@@ -1,4 +1,4 @@
-prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 
 Name: cairo-pdf

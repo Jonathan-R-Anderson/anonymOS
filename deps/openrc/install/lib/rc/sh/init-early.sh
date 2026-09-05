@@ -10,11 +10,11 @@
 #    except according to the terms contained in the LICENSE file.
 
 : ${CONSOLE:=/dev/console}
-: ${RC_LIBEXECDIR:=/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc}
+: ${RC_LIBEXECDIR:=/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc}
 
 service_present()
 {
-	local p="etc/runlevels/$1/$2"
+	local p="/home/bruns/Documents/anonymOS/deps/openrc/install/etc/runlevels/$1/$2"
 	# fail if the file doesn't exist
 	[ ! -e "$p" ] && return 1
 	# succeed if $RC_SYS empty, can't check further, assume script will run

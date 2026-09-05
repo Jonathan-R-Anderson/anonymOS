@@ -4,8 +4,8 @@
 
 
 # Configuration directories and files
-SourceDirectory: /home/bruns/Documents/EpinAnonymOS/deps/hyprland
-BuildDirectory: /home/bruns/Documents/EpinAnonymOS/deps/hyprland/build-hanonymos
+SourceDirectory: /home/bruns/Documents/anonymOS/deps/hyprland
+BuildDirectory: /home/bruns/Documents/anonymOS/deps/hyprland/build-hanonymos
 
 # Where to place the cost data store
 CostDataFile: 
@@ -27,8 +27,8 @@ SubmitInactivityTimeout:
 NightlyStartTime: 00:00:00 EDT
 
 # Commands for the build/test/submit cycle
-ConfigureCommand: "/home/bruns/Documents/EpinAnonymOS/deps/.host-tools/lib/python3.13/site-packages/cmake/data/bin/cmake" "/home/bruns/Documents/EpinAnonymOS/deps/hyprland"
-MakeCommand: /home/bruns/Documents/EpinAnonymOS/deps/.host-tools/lib/python3.13/site-packages/cmake/data/bin/cmake --build . --config "${CTEST_CONFIGURATION_TYPE}"
+ConfigureCommand: "/home/bruns/miniconda3/lib/python3.13/site-packages/cmake/data/bin/cmake" "/home/bruns/Documents/anonymOS/deps/hyprland"
+MakeCommand: /home/bruns/miniconda3/lib/python3.13/site-packages/cmake/data/bin/cmake --build . --config "${CTEST_CONFIGURATION_TYPE}"
 DefaultCTestConfigurationType: Release
 
 # version control
@@ -45,7 +45,7 @@ SVNOptions:
 SVNUpdateOptions: 
 
 # Git options
-GITCommand: /usr/bin/git
+GITCommand: 
 GITInitSubmodules: 
 GITUpdateOptions: 
 GITUpdateCustom: 
@@ -63,7 +63,7 @@ UpdateOptions:
 UpdateType: 
 
 # Compiler info
-Compiler: /home/bruns/Documents/EpinAnonymOS/deps/musl/install/bin/musl-clang++
+Compiler: /home/bruns/Documents/anonymOS/deps/musl/install/bin/musl-clang++
 CompilerVersion: 18.1.3
 
 # Dynamic analysis (MemCheck)

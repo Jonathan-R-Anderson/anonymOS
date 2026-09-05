@@ -4,9 +4,9 @@
 # Released under the 2-clause BSD license.
 
 . "$RC_LIBEXECDIR"/sh/functions.sh
-[ -r "etc/rc.conf" ] && . "etc/rc.conf"
-if [ -d "etc/rc.conf.d" ]; then
-	for _f in "etc"/rc.conf.d/*.conf; do
+[ -r "/home/bruns/Documents/anonymOS/deps/openrc/install/etc/rc.conf" ] && . "/home/bruns/Documents/anonymOS/deps/openrc/install/etc/rc.conf"
+if [ -d "/home/bruns/Documents/anonymOS/deps/openrc/install/etc/rc.conf.d" ]; then
+	for _f in "/home/bruns/Documents/anonymOS/deps/openrc/install/etc"/rc.conf.d/*.conf; do
 		[ -e "$_f" ] && . "$_f"
 	done
 fi

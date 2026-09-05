@@ -38,4 +38,4 @@ dlopen=''
 dlpreopen=''
 
 # Directory that this library needs to be installed in:
-libdir='/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib'
+libdir='/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib'

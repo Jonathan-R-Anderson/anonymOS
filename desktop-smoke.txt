@@ -1,0 +1,60 @@
+# Desktop smoke test — the default suite for scripts/boot-test.sh
+#
+# Every assertion here corresponds to something that actually broke, shipped stale, or was
+# misdiagnosed during development.  A marker is only useful if it is a string LITERAL the guest
+# really emits; grep the sources for it before adding one.
+#
+# COUNTING CAVEAT: every Hyprland/aquamarine line appears TWICE in serial.log (bursty replay).
+# Kernel-emitted lines appear once.  Prefer require/forbid over exact counts on compositor lines.
+
+# ── the kernel came up and reached userspace ──────────────────────────────────────────────
+require  [dkernel] EpinAnonymOS D kernel starting
+require  [dkernel] init = Hyprland module
+
+# ── the compositor is alive.  "COMPOSITOR DIED" was the Mesa NULL-transfer crash; it took
+#    three patches to fix and would silently return if the patches were ever dropped.
+forbid   COMPOSITOR DIED
+
+# ── the desktop actually presented ────────────────────────────────────────────────────────
+# NOT "-> display CLAIMED".  That string is real, but drmPresentFb emits it with
+# console_framebuffer_write() — it is painted on the SCREEN, not written to the serial port,
+# so it can never appear in serial.log and asserting it always fails.  (Found by this suite's
+# first real run: everything else passed and only this "failed".)
+#
+# `[present] total=` is the serial-visible equivalent: presentProfStats() returns early unless
+# g_lastPresentMs != 0, which only presentAccount() sets, and only drmPresentFb() calls that.
+# So the assertion below is exactly "a real present happened", and it is counted rather than
+# merely required.
+
+# ── the domain manager reaches the desktop.  Explicitly requested to run at boot, and it
+#    stopped launching once already when init selection regressed.
+require  [dm] wl-domain-manager launched
+
+# ── the app catalogue unpacked.  The launcher shows hardcoded fallbacks if this is missing,
+#    which looks fine on screen and is wrong.
+require  /apps.blob
+
+# ── REGRESSIONS FIXED — these must stay fixed ─────────────────────────────────────────────
+
+# The DRM cursor-disable ioctl returning EINVAL made aquamarine log an error EVERY FRAME:
+# 437 synchronous serial writes per boot on the compositor's own thread.  Fixed by returning
+# success for the disable case (handle == 0).  Zero is the whole point.
+forbid   legacy drm: cursor null failed
+
+# The freeze HUD painted 784x112 of solid black over the live desktop from the mouse IRQ and
+# never repaired it — this is what "the windows disappeared" actually was.  Now gated behind
+# g_freezeHudEnabled (default false).  The klog probe below is the serial-only half and stays.
+forbid   FREEZE
+
+# The init-selection bug: a 32-byte marker file matched the substring "hyprland" and was
+# selected as init, which failed with a bad ELF magic.  Fixed with basename-exact matching.
+forbid   [elf] bad magic
+
+# ── the desktop kept presenting, not just once ────────────────────────────────────────────
+# presentProfStats() prints [present] every 5s once the desktop is up.  Requiring several
+# proves the desktop survived past its first frame rather than presenting once and wedging.
+atleast  3  [present] total=
+
+# ── windows actually mapped.  [g5] windows= is the kernel's window-rect ioctl trace; it
+#    reaching 5 means the autostarted clients mapped and Hyprland reported their geometry.
+require  [g5] windows=0000000000000005

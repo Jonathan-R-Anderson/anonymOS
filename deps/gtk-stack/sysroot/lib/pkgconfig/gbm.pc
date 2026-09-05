@@ -1,8 +1,8 @@
-prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
-gbmbackendspath=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/gbm
+gbmbackendspath=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib/gbm
 
 Name: gbm
 Description: Mesa gbm library

@@ -1,11 +1,1 @@
-prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-udevdir=${prefix}/lib/udev
-
-Name: udev
-Description: HanonymOS udev metadata shim for libudev-zero
-Version: 251
-Libs:
-Cflags:
+libudev.pc

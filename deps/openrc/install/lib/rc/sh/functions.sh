@@ -60,8 +60,8 @@ _sanitize_path()
 	local IFS=":" p= path=
 	for p in $PATH; do
 		case "$p" in
-			/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/bin|/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sbin);;
-			/home/bruns/Documents/HanonymOS/deps/openrc/install/bin|/home/bruns/Documents/HanonymOS/deps/openrc/install/sbin|/usr/bin|/usr/sbin);;
+			/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/bin|/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sbin);;
+			/home/bruns/Documents/anonymOS/deps/openrc/install/bin|/home/bruns/Documents/anonymOS/deps/openrc/install/sbin|/usr/bin|/usr/sbin);;
 			/usr/bin|/usr/sbin);;
 			/usr/local/bin|/usr/local/sbin);;
 			*) path="$path${path:+:}$p";;
@@ -79,11 +79,11 @@ if [ -n "$ZSH_VERSION" ]; then
 fi
 
 # Make a sane PATH
-_PREFIX=/home/bruns/Documents/HanonymOS/deps/openrc/install
+_PREFIX=/home/bruns/Documents/anonymOS/deps/openrc/install
 _PKG_PREFIX=/usr
 _LOCAL_PREFIX=/usr/local
 _LOCAL_PREFIX=${_LOCAL_PREFIX:-/usr/local}
-_PATH=/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/bin
+_PATH=/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/bin
 case "$_PREFIX" in
 	"$_PKG_PREFIX"|"$_LOCAL_PREFIX") ;;
 	*) _PATH="$_PATH:$_PREFIX/bin:$_PREFIX/sbin";;

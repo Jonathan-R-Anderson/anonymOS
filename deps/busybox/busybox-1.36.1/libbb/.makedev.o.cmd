@@ -1,4 +1,4 @@
-cmd_libbb/makedev.o := /home/bruns/Documents/EpinAnonymOS/deps/musl/install/bin/musl-clang -Wp,-MD,libbb/.makedev.o.d  -std=gnu99 -Iinclude -Ilibbb  -include include/autoconf.h -D_GNU_SOURCE -DNDEBUG -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -DBB_VER='"1.36.1"' -Wall -Wshadow -Wwrite-strings -Wundef -Wstrict-prototypes -Wunused -Wunused-parameter -Wunused-function -Wunused-value -Wmissing-prototypes -Wmissing-declarations -Wno-format-security -Wdeclaration-after-statement -Wold-style-definition -finline-limit=0 -fno-builtin-strlen -fomit-frame-pointer -ffunction-sections -fdata-sections -funsigned-char -static-libgcc -falign-functions=1 -falign-jumps=1 -falign-labels=1 -falign-loops=1 -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-builtin-printf -Oz -O2 -pipe    -DKBUILD_BASENAME='"makedev"'  -DKBUILD_MODNAME='"makedev"' -c -o libbb/makedev.o libbb/makedev.c
+cmd_libbb/makedev.o := /home/bruns/Documents/anonymOS/deps/musl/install/bin/musl-clang -Wp,-MD,libbb/.makedev.o.d  -std=gnu99 -Iinclude -Ilibbb  -include include/autoconf.h -D_GNU_SOURCE -DNDEBUG -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -DBB_VER='"1.36.1"' -Wall -Wshadow -Wwrite-strings -Wundef -Wstrict-prototypes -Wunused -Wunused-parameter -Wunused-function -Wunused-value -Wmissing-prototypes -Wmissing-declarations -Wno-format-security -Wdeclaration-after-statement -Wold-style-definition -finline-limit=0 -fno-builtin-strlen -fomit-frame-pointer -ffunction-sections -fdata-sections -funsigned-char -static-libgcc -falign-functions=1 -falign-jumps=1 -falign-labels=1 -falign-loops=1 -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-builtin-printf -Oz -O2 -pipe    -DKBUILD_BASENAME='"makedev"'  -DKBUILD_MODNAME='"makedev"' -c -o libbb/makedev.o libbb/makedev.c
 
 deps_libbb/makedev.o := \
   libbb/makedev.c \
@@ -7,18 +7,18 @@ deps_libbb/makedev.o := \
     $(wildcard include/config/big/endian.h) \
     $(wildcard include/config/little/endian.h) \
     $(wildcard include/config/nommu.h) \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/limits.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/limits.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/byteswap.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/endian.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdbool.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/unistd.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/posix.h \
-  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/sysmacros.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/limits.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/features.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/bits/alltypes.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/bits/limits.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/byteswap.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/endian.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/stdbool.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/unistd.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/bits/posix.h \
+  /home/bruns/Documents/anonymOS/deps/musl/install/include/sys/sysmacros.h \
 
 libbb/makedev.o: $(deps_libbb/makedev.o)
 

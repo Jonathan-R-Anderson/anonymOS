@@ -1,4 +1,4 @@
-#!/home/bruns/Documents/HanonymOS/deps/openrc/install/sbin/openrc-run
+#!/home/bruns/Documents/anonymOS/deps/openrc/install/sbin/openrc-run
 # Copyright (c) 2007-2015 The OpenRC Authors.
 # See the Authors file at the top-level directory of this distribution and
 # https://github.com/OpenRC/openrc/blob/HEAD/AUTHORS
@@ -20,11 +20,11 @@ depend()
 start()
 {
 	local h source
-	if read -r h _ 2> /dev/null < etc/hostname; then
-		source="etc/hostname"
+	if read -r h _ 2> /dev/null < /home/bruns/Documents/anonymOS/deps/openrc/install/etc/hostname; then
+		source="/home/bruns/Documents/anonymOS/deps/openrc/install/etc/hostname"
 	elif [ -n "${hostname}" ]; then
 		h=${hostname}
-		source="etc/conf.d/${RC_SVCNAME}"
+		source="/home/bruns/Documents/anonymOS/deps/openrc/install/etc/conf.d/${RC_SVCNAME}"
 	fi
 	if [ -z "$h" ]; then
 		einfo "Using default system hostname"

@@ -33,6 +33,7 @@
 #  define JXL_CMS_DEPRECATED_NO_EXPORT JXL_CMS_NO_EXPORT JXL_CMS_DEPRECATED
 #endif
 
+/* NOLINTNEXTLINE(readability-avoid-unconditional-preprocessor-if) */
 #if 0 /* DEFINE_NO_DEPRECATED */
 #  ifndef JXL_CMS_NO_DEPRECATED
 #    define JXL_CMS_NO_DEPRECATED

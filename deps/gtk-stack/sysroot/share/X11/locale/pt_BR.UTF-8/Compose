@@ -5,7 +5,7 @@
 # Transformed to an include file plus some overrides
 #   by Benno Schulenberg <bensberg@justemail.net>
 # Use the sequences from en_US.UTF-8 as the basis:
-include "/home/bruns/Documents/HanonymOS/deps/gtk-stack/sysroot/share/X11/locale/en_US.UTF-8/Compose"
+include "/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/X11/locale/en_US.UTF-8/Compose"
 # Two nice additions -- maybe add to en_US.UTF8?
 <Multi_key> <quotedbl> <backslash> 	: "〝" U301d	# REVERSED DOUBLE PRIME QUOTATION MARK
 <Multi_key> <quotedbl> <slash>  	: "〞" U301e	# DOUBLE PRIME QUOTATION MARK

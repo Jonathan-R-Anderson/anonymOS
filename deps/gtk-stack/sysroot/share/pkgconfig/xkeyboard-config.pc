@@ -1,6 +1,6 @@
 
-datadir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/share
-xkb_base=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/share/X11/xkb
+datadir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share
+xkb_base=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/X11/xkb
 
 Name: XKeyboardConfig
 Description: X Keyboard configuration data

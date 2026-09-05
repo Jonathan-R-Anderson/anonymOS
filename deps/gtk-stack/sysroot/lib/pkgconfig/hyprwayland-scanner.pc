@@ -1,4 +1,4 @@
-hyprwayland_scanner=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/bin/hyprwayland-scanner
+hyprwayland_scanner=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/bin/hyprwayland-scanner
 
 Name: HyprWayland Scanner
 URL: https://github.com/hyprwm/hyprwayland-scanner

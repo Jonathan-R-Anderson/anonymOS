@@ -22,10 +22,10 @@
 extern "C" {
 #endif
 
-#define RC_PREFIX "/home/bruns/Documents/HanonymOS/deps/openrc/install"
-#define RC_SYSCONFDIR		"etc"
-#define RC_LIBDIR               "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc"
-#define RC_LIBEXECDIR           "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc"
+#define RC_PREFIX "/home/bruns/Documents/anonymOS/deps/openrc/install"
+#define RC_SYSCONFDIR		"/home/bruns/Documents/anonymOS/deps/openrc/install/etc"
+#define RC_LIBDIR               "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc"
+#define RC_LIBEXECDIR           "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc"
 #if defined(PREFIX)
 #define RC_SVCDIR               RC_LIBEXECDIR "/init.d"
 #elif defined(__linux__) || (defined(__FreeBSD_kernel__) && \

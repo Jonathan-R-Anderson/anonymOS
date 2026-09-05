@@ -1,4 +1,4 @@
-#!/home/bruns/Documents/HanonymOS/deps/openrc/install/sbin/openrc-run
+#!/home/bruns/Documents/anonymOS/deps/openrc/install/sbin/openrc-run
 # Copyright (c) 2009-2015 The OpenRC Authors.
 # See the Authors file at the top-level directory of this distribution and
 # https://github.com/OpenRC/openrc/blob/HEAD/AUTHORS
@@ -24,7 +24,7 @@ start()
 {
 	ebegin "Setting the local clock based on last shutdown time"
 	if ! swclock "${swclock_file}" 2> /dev/null; then
-	swclock --warn /home/bruns/Documents/HanonymOS/deps/openrc/install/sbin/openrc-run
+	swclock --warn /home/bruns/Documents/anonymOS/deps/openrc/install/sbin/openrc-run
 	fi
 	eend $?
 }

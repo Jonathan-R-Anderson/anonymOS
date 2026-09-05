@@ -1,9 +1,9 @@
-prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
 Name: xkbcommon
 Description: XKB API common to servers and clients
-Version: 1.7.0
+Version: 1.12.0
 Libs: -L${libdir} -lxkbcommon
 Cflags: -I${includedir}

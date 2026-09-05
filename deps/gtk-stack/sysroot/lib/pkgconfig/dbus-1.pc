@@ -1,5 +1,5 @@
-prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
-exec_prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+exec_prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include
 system_bus_default_address=unix:path=/run/dbus/system_bus_socket

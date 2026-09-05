@@ -11,8 +11,8 @@
 # This file may not be copied, modified, propagated, or distributed
 #    except according to the terms contained in the LICENSE file.
 
-. /home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/functions.sh
-. /home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/rc-functions.sh
+. /home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/functions.sh
+. /home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/rc-functions.sh
 
 config() {
 	[ -n "$*" ] && echo "$RC_SVCNAME config $*" >&3
@@ -55,7 +55,7 @@ depend() {
 
 _done_dirs=
 for _dir in \
-etc/init.d \
+/home/bruns/Documents/anonymOS/deps/openrc/install/etc/init.d \
 /usr/etc/init.d \
 /usr/local/etc/init.d
 do
@@ -113,9 +113,9 @@ do
 			. "$_dir/../conf.d/$RC_SVCNAME"
 		fi
 
-		[ -e etc/rc.conf ] && . etc/rc.conf
-		if [ -d "etc/rc.conf.d" ]; then
-			for _f in "etc"/rc.conf.d/*.conf; do
+		[ -e /home/bruns/Documents/anonymOS/deps/openrc/install/etc/rc.conf ] && . /home/bruns/Documents/anonymOS/deps/openrc/install/etc/rc.conf
+		if [ -d "/home/bruns/Documents/anonymOS/deps/openrc/install/etc/rc.conf.d" ]; then
+			for _f in "/home/bruns/Documents/anonymOS/deps/openrc/install/etc"/rc.conf.d/*.conf; do
 				[ -e "$_f" ] && . "$_f"
 			done
 		fi

@@ -1,1 +1,1 @@
-#define CONFIG_EXTRA_LDFLAGS ""
+#define CONFIG_EXTRA_LDFLAGS "--static"

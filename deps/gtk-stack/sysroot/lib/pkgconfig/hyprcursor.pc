@@ -1,6 +1,6 @@
-prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
-includedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/include
-libdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+includedir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/include
+libdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib
 
 Name: hyprcursor
 URL: https://github.com/hyprwm/hyprcursor

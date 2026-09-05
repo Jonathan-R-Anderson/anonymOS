@@ -17,7 +17,7 @@ old_library='libXi.a'
 inherited_linker_flags=''
 
 # Libraries that this one depends upon.
-dependency_libs=' -L/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib -L/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib /home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/libXext.la /home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/libX11.la -lpthread /home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/libxcb.la /home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/libXau.la /home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/libXdmcp.la'
+dependency_libs=' -L/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib -L/home/bruns/Documents/anonymOS/deps/musl/install/lib /home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib/libXext.la /home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib/libX11.la -lpthread /home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib/libxcb.la /home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib/libXau.la /home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib/libXdmcp.la'
 
 # Names of additional weak libraries provided by this library
 weak_library_names=''
@@ -38,4 +38,4 @@ dlopen=''
 dlpreopen=''
 
 # Directory that this library needs to be installed in:
-libdir='/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib'
+libdir='/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib'

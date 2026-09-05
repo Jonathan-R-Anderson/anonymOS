@@ -7,7 +7,7 @@
  these compose key sequences in locales using the
  fi_FI.UTF-8 compose table.</para>
 
-<para>This compose table includes the non-conflicting entries from: /home/bruns/Documents/HanonymOS/deps/gtk-stack/sysroot/share/X11/locale/en_US.UTF-8/Compose.  Those entries are not shown here - see those charts for the included key sequences.</para>
+<para>This compose table includes the non-conflicting entries from: /home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/X11/locale/en_US.UTF-8/Compose.  Those entries are not shown here - see those charts for the included key sequences.</para>
 <para> Official compose sequences for Finland based on SFS 5966:2019 standard  This compose sequence map implements all the functionality of Annex 3 and Annex 4 of the standard and additionally defines the sequences provided in en_US.UTF-8/Compose. SFS 5966 sequences override any conflicting rules from en_US.UTF-8/Compose.  Annex 1 of the standard is implemented in the keymap symbols/fi  Complete rewrite by Marko Myllynen Original version by Troy Korjuslommi  Use en_US.UTF-8/Compose as the base compose sequence definition set</para>
 <table><title>Compose Key Sequences for fi_FI.UTF-8</title>
 <tgroup cols='2'>

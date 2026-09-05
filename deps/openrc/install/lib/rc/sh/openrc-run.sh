@@ -39,11 +39,11 @@ sourcex()
 	fi
 }
 
-sourcex "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/functions.sh"
-sourcex "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/rc-functions.sh"
+sourcex "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/functions.sh"
+sourcex "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/rc-functions.sh"
 case $RC_SYS in
 	PREFIX|SYSTEMD-NSPAWN) ;;
-	*) sourcex -e "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/rc-cgroup.sh";;
+	*) sourcex -e "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/rc-cgroup.sh";;
 esac
 
 # Support LiveCD foo
@@ -213,9 +213,9 @@ yesno $RC_DEBUG && set -x
 
 # Load configuration settings. First the global ones, then any
 # service-specific settings.
-sourcex -e "etc/rc.conf"
-if [ -d "etc/rc.conf.d" ]; then
-	for _f in "etc"/rc.conf.d/*.conf; do
+sourcex -e "/home/bruns/Documents/anonymOS/deps/openrc/install/etc/rc.conf"
+if [ -d "/home/bruns/Documents/anonymOS/deps/openrc/install/etc/rc.conf.d" ]; then
+	for _f in "/home/bruns/Documents/anonymOS/deps/openrc/install/etc"/rc.conf.d/*.conf; do
 		sourcex -e "$_f"
 	done
 fi
@@ -237,10 +237,10 @@ fi
 unset _conf_d
 
 # load service supervisor functions
-sourcex "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/runit.sh"
-sourcex "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/s6.sh"
-sourcex "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/start-stop-daemon.sh"
-sourcex "/home/bruns/Documents/HanonymOS/deps/openrc/install/lib/rc/sh/supervise-daemon.sh"
+sourcex "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/runit.sh"
+sourcex "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/s6.sh"
+sourcex "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/start-stop-daemon.sh"
+sourcex "/home/bruns/Documents/anonymOS/deps/openrc/install/lib/rc/sh/supervise-daemon.sh"
 
 # Load our script
 sourcex "$RC_SERVICE"

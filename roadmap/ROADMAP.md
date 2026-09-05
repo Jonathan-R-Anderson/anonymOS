@@ -123,12 +123,13 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
   for `hos-dbus-launch` returned six hits while the binary was not staged at all — the hits were
   the kernel's own spawn call naming the program. Grep for the `module_path:` line, or list the
   staged tree. (Grepping for a new *string literal* is still valid — see `make verify` above.)
-- **`pitMs()` runs well behind wall clock — do not size timeouts against it as if it were real
-  seconds.** Observed 2026-09-05: a 20-second NTP retry came round exactly once in a 200-second
-  boot, and a `/proc` proof gated at `pitMs() >= 20_000` never fired at all. Anything gating on
-  `pitMs` needs thresholds sized against *that* clock. It also means `CLOCK_REALTIME` drifts
-  between NTP syncs, which is why the SNTP client re-syncs periodically and logs the error each
-  correction finds rather than setting the clock once at boot.
+- **"The clock must be running slow" is usually a scheduling bug, not a slow clock.** A timer that
+  never fired twice looked exactly like `pitMs()` advancing at 1/30 of real time, and was nearly
+  recorded here as that. Measuring it (a `[pitcal]` heartbeat at a fixed `pitMs` interval, counted
+  against a soak of known length) showed `pitMs` passing 40 000 inside ~120 s — at least a third
+  of wall clock, not a thirtieth. The real fault was a re-arming deadline: the retry round pushed
+  its own next-attempt time forward before ever sending, so it re-gated on the deadline it had
+  just moved. **Measure the clock before concluding anything about it.**
 - **`scripts/boot-test.sh` kills QEMU the moment every `require` marker has appeared** — `TIMEOUT`
   is a ceiling, not a duration. Anything that needs the guest to keep running (a periodic timer, a
   re-sync, a soak) will never be observed through it. Run `qemu-run.sh` directly for those.

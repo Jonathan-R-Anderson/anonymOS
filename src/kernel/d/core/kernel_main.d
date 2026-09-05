@@ -2210,7 +2210,6 @@ private __gshared ulong g_dbusTestDeadlineMs = 0;
 private __gshared bool  g_netConfigured  = false;
 private __gshared ulong g_ntpNextTryMs   = 0;
 private __gshared int   g_ntpAttempts    = 0;
-private __gshared ulong g_ntpResyncAtMs  = 0;
 enum int   NTP_MAX_ATTEMPTS = 6;
 // Thresholds are deliberately small: pitMs() advances well behind wall time on this kernel, so a
 // "20 s" retry never came round twice in a 200 s boot.  Anything gating on pitMs must be sized
@@ -2224,29 +2223,29 @@ private void maybeSyncNtp() {
     import network.ntp : ntpRequest, ntpSynced, ntpResetForRetry, ntpHaveServer;
     if (!g_netConfigured || !ntpHaveServer()) return;
 
-    // Re-sync periodically rather than setting the clock once.  ntpNowSec() extrapolates from
-    // pitMs() between syncs, and pitMs() does not track real time well here, so a clock set once
-    // at boot would drift away for as long as the machine stayed up.  Each re-sync corrects it
-    // exactly and reports the error it found, which is also how that drift gets measured.
-    if (ntpSynced()) {
-        if (pitMs() < g_ntpResyncAtMs) return;
-        g_ntpResyncAtMs = pitMs() + NTP_RESYNC_MS;
-        g_ntpAttempts   = 0;
-        g_ntpNextTryMs  = 0;
-        ntpResetForRetry();
-    }
-    if (g_ntpAttempts >= NTP_MAX_ATTEMPTS) return;
+    // ONE timer, whose interval depends on whether the clock has been set yet: retry briskly
+    // until the first success, then re-sync periodically so the clock cannot drift away for as
+    // long as the machine stays up (ntpNowSec() extrapolates from pitMs between syncs).
+    //
+    // The earlier two-timer version never re-synced at all.  Its resync branch re-armed
+    // g_ntpResyncAtMs and cleared g_ntpNextTryMs, so the first-try delay made it return, and the
+    // next pass re-gated on the deadline it had just pushed forward -- a round that armed itself
+    // and never fired.  That looked exactly like a clock running 30x slow, and very nearly got
+    // diagnosed as one.
     const ulong now = pitMs();
     if (g_ntpNextTryMs == 0) g_ntpNextTryMs = now + NTP_FIRST_TRY_MS;
     if (now < g_ntpNextTryMs) return;
-    g_ntpNextTryMs = now + NTP_RETRY_MS;
-    ++g_ntpAttempts;
-    klog("[ntp] sync attempt "); klog_dec(cast(ulong)g_ntpAttempts);
-    klog("/"); klog_dec(cast(ulong)NTP_MAX_ATTEMPTS);
-    klog(" at pitMs="); klog_dec(now); klog("\n");
+
+    // Bounded only before the first success; after that the periodic re-sync runs indefinitely.
+    if (!ntpSynced() && g_ntpAttempts >= NTP_MAX_ATTEMPTS) return;
+
+    g_ntpNextTryMs = now + (ntpSynced() ? NTP_RESYNC_MS : NTP_RETRY_MS);
+    if (!ntpSynced()) ++g_ntpAttempts;
+
+    klog(ntpSynced() ? "[ntp] resync at pitMs=" : "[ntp] sync attempt at pitMs=");
+    klog_dec(now); klog("\n");
     ntpResetForRetry();
-    if (g_ntpResyncAtMs == 0) g_ntpResyncAtMs = pitMs() + NTP_RESYNC_MS;
-    if (!ntpRequest() && g_ntpAttempts >= NTP_MAX_ATTEMPTS)
+    if (!ntpRequest() && !ntpSynced() && g_ntpAttempts >= NTP_MAX_ATTEMPTS)
         klog("[ntp] giving up; clock stays at uptime-since-boot\n");
 }
 
@@ -2258,10 +2257,10 @@ private void maybeSyncNtp() {
 private __gshared ulong g_pitHbNext = 0;
 private __gshared int   g_pitHbN    = 0;
 private void maybePitHeartbeat() {
-    if (g_pitHbN >= 40) return;
+    if (g_pitHbN >= 60) return;
     const ulong now = pitMs();
     if (now < g_pitHbNext) return;
-    g_pitHbNext = now + 1000;
+    g_pitHbNext = now + 5000;
     ++g_pitHbN;
     klog("[pitcal] pitMs="); klog_dec(now); klog("\n");
 }

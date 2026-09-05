@@ -13411,13 +13411,20 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
     // framebuffer that NOTHING will clean up, because the only thing that repaints the desktop
     // IS a present.
     //
-    // A screenshot of the running desktop (the first taken in this project) shows the result:
-    // five bright border rectangles for about three visible windows, offset and oversized
-    // against the real window positions -- stale rects from earlier layouts, accumulated
-    // because each call drew new borders and never erased the old ones.  That is also the other
-    // half of "the borders remain while the windows disappear": the borders were not surviving,
-    // they were being re-drawn from here at coordinates the compositor had already moved on
-    // from.  Same failure as the freeze HUD fixed earlier the same day.
+    // CORRECTION (same day): the first version of this note claimed the screenshot showed
+    // STALE borders at coordinates the compositor had moved on from.  That was wrong.  Decoding
+    // the [g5] rects from that very boot against the image shows every border is exactly right:
+    //     [0] 629x750 +6+44   [1] 629x750 +645+44   [2] 1000x700 +140+50
+    //     [3] 1180x680 +50+74 [4] 920x620 +180+104
+    // and [4] is precisely the rectangle drawn around the Activities window.  What looks like
+    // misalignment is borders for OCCLUDED windows: every window the compositor reports gets a
+    // border stamped on top of the finished frame, with no z-order handling, so the windows
+    // hidden behind Activities have their borders painted over it.  That is a property of the
+    // G5 feature, not a coordinate bug, and it is tracked separately.
+    //
+    // Dropping the call here is still right on its own merits -- painting into the framebuffer
+    // outside a present is the same anti-pattern as the freeze HUD, and nothing but a present
+    // can undo it -- but it fixed no visible defect.
     //
     // Borders are still painted on EVERY present, by drmPresentFb() and drmPresentToFramebuffer()
     // -- and there it is correct, because the full-screen blit immediately before wipes the

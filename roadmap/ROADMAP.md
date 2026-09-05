@@ -11,17 +11,19 @@ this project's history came from deep platform work landing while the desktop co
 
 ---
 
-## Tier 0 — Verify what is already written but unproven
+## Tier 0 — ✅ DONE (2026-09-05). Superseded by automated testing.
 
-Five commits changed the boot path and none has been booted. Everything below is guesswork
-until this is done, because a broken desktop invalidates every measurement.
+Every item here was "boot it and confirm X by reading the log". That is now `make test`:
+`scripts/boot-test.sh` boots headless and asserts 11 facts unattended, `make verify` proves the
+ISO contains the change under test, and `scripts/screen-check.sh` proves the desktop is actually
+rendering rather than blank. See [BUILD_AND_TEST_AUTOMATION_ROADMAP.md](BUILD_AND_TEST_AUTOMATION_ROADMAP.md).
 
-| # | Item | Source | Effort |
-|---|---|---|---|
-| 0.1 | Boot current `main`. Confirm no `COMPOSITOR DIED`, `[dm] wl-domain-manager launched`, `[assets] /apps.blob unpacked` | — | minutes |
-| 0.2 | Confirm the launcher shows 20 tiles incl. **Software**, **Task Manager**, **CPU Monitor**, and that each launches (arg-bearing Exec lines included) | GUI A6 | minutes |
-| 0.3 | ~~Boot with `GPU=1`~~ — **DO NOT.** `GPU=1` selects `gtk,gl=on`, which qemu-run.sh itself warns "gives a BLACK SCREEN on many hosts (the GL display path does not present the firmware-VGA framebuffer the desktop renders to)". Confirmed here. Use `GPU=1 HEADLESS=1` and read serial.log to exercise virgl | — | — |
-| 0.4 | **KNOWN CRASH — compositor main thread dies, desktop survives on a sibling thread.** Root-caused 2026-09-03, NOT yet fixed | — | see below |
+The one item worth carrying forward: **do not boot with `GPU=1`** — it selects `gtk,gl=on`,
+which `qemu-run.sh` itself warns "gives a BLACK SCREEN on many hosts". Use `GPU=1 HEADLESS=1`.
+
+The Tier 0.4 softpipe NULL-transfer crash is **fixed** (three Mesa patches in
+`deps/mutter/patches/mesa-*-null-transfer.patch`); `forbid COMPOSITOR DIED` is asserted on every
+`make test` run so it cannot silently return.
 
 ---
 
@@ -73,7 +75,7 @@ present wins" and buys most of the perceived responsiveness.
 |---|---|---|---|---|
 | 3.1 | **Damage-tracked KMS blit + fast copy** | The roadmap's own "cheap present wins". Biggest felt improvement per hour | DESKTOP_RESP R5 | S |
 | 3.2 | **Multi-window and workspace experience** | Hyprland provides the mechanism; this is the desktop actually using it | GUI G20 | M |
-| 3.3 | **Visual QA + screenshot regression tests** | Marked Critical in GUI_ROADMAP, and this session showed why: a two-month-old binary shipped unnoticed | GUI G21 | M |
+| 3.3 | **Visual QA + screenshot regression tests** — ◑ PARTIAL. `scripts/screen-check.sh` captures the framebuffer via the HMP monitor and asserts the desktop is rendering (distinct-colour count + dominant-colour share); it found the swapchain bug within minutes of existing. **Not done:** golden-image comparison per app. | Marked Critical in GUI_ROADMAP, and this session showed why: a two-month-old binary shipped unnoticed | GUI G21 | M |
 | 3.4 | **Kernel-mode interrupt handling** | Real fix for input latency, but a genuine kernel change | DESKTOP_RESP R4 | L |
 | 3.5 | **Preemptive scheduling** | Depends on 3.4 | DESKTOP_RESP R6 | L |
 | 3.6 | **quickshell (Qt6/QML) port** | The only route to true host parity — the host's bar, sidebars, overview and launcher are all one `qs` process. Needs 2.x and a working GL path | APPS E6 | XL |
@@ -143,40 +145,3 @@ Two stale claims in the roadmaps will mislead whoever reads them next:
 
 ---
 
-## Known crash — softpipe NULL transfer (Tier 0.4)
-
-`COMPOSITOR DIED t=0 code=11`, `cr2=0x14`. Present since the start of this work and
-**still unfixed**; the desktop keeps rendering only because a sibling Hyprland thread
-(tid 4) survives the main thread (tid 0).
-
-Root-caused by disassembling the shipped `kms_swrast_dri.so` at the faulting offset:
-
-```
-fault offset  = rip - mmap base = 0x63AAD1   (identical across two builds at different bases)
-symbol        = pipe_get_tile_rgba + 0x11
-instruction   = mov 0x14(%rdi),%ebp
-```
-
-`%rdi` is the first argument, `struct pipe_transfer *` — it is **NULL**. This is softpipe's
-tile cache sampling a texture whose resource could not be mapped: a transfer-map that failed
-and whose result is never checked.
-
-**It is not the invalid-texture path.** `a564a31c58`'s guards are compiled in (the string
-`attempted to draw invalid texture` appears 3× in the ISO) and **never fire** (0× in the boot
-log), so `tex->ok()` is always true. The `HOS_SCENE_RENDER` reasoning in `exports.d` is
-therefore incomplete — the texture is valid; the *resource behind it* cannot be CPU-mapped.
-
-Supporting evidence from the same boot: `createEGLImage failed` = 0 and `rb:` = 0, so the
-dmabuf → EGLImage import **succeeds**, `needsCPUCopy()` is false, `m_hosCPUFrame` is false and
-the full GL scene runs — over 3 `[prime] … CPU-alias` buffers.
-
-Note that toggling `HOS_SCENE_RENDER` does **not** avoid this: `m_hosCPUFrame` requires
-`!HOS_SCENE_RENDER` **and** `needsCPUCopy()`, and the latter is false. With it off you would
-get unallocated textures, the `ok()` guard would return early, and the result is an empty
-desktop rather than a working CPU-composited one.
-
-Candidate fixes, none yet attempted:
-1. Make PRIME-imported buffers mappable by softpipe (kernel side) so the transfer succeeds.
-2. Guard the tile-cache call site in Mesa so a NULL transfer skips the tile instead of
-   faulting — converts a crash into a rendering artefact. Needs a Mesa rebuild.
-3. Stop Hyprland sampling the scanout/imported buffer on the software path.

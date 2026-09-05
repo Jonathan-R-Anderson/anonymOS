@@ -773,8 +773,8 @@ $(STAMPS)/gtk3: $(DLDIR)/gtk+-$(GTK3_VER).tar.xz \
 	    -Dintrospection=false \
 	    -Dgtk_doc=false \
 	    -Dman=false \
-	    -Ddemos=false \
-	    -Dexamples=false \
+	    -Ddemos=true \
+	    -Dexamples=true \
 	    -Dtests=false \
 	    -Dinstalled_tests=false \
 	    -Dbuiltin_immodules=backend

@@ -22,7 +22,7 @@ module core.objstore;
 
 import drivers.block.disk : diskReady, diskReadSectors, diskWriteSectors;
 import memory.dma : dma_alloc;
-import core.io : klog, klog_hex;
+import core.io : klog, klog_hex, klog_dec;
 import core.stdc.string : memset, memcpy;
 
 @nogc nothrow:
@@ -386,12 +386,36 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
     // project's own installer, so the store relocates there instead of refusing.  Everything in
     // this module addresses sectors relative to g_baseLba, and g_endLba is a hard wall.
     {
-        import drivers.block.disk : diskFirstSectorIsGpt;
+        import drivers.block.disk : diskFirstSectorIsGpt, diskFindTarget;
+        import core.diskpart : gptTailFreeSpace;
         if (diskFirstSectorIsGpt()) {
-            g_baseLba = GPT_GAP_FIRST;
-            g_endLba  = GPT_GAP_END;
-            klog("[objstore] installed system (GPT) — store relocated to the pre-partition gap, LBA 0x");
-            klog_hex(GPT_GAP_FIRST); klog("..0x"); klog_hex(GPT_GAP_END - 1); klog("\n");
+            // PREFERRED: the unallocated tail after the last partition.  The A/B layout uses
+            // ESP-boot + slot-A + slot-B ~= 650 MiB, so a 4 GiB target leaves ~3.3 GiB free
+            // past slot-B -- room for an actual filesystem, where the pre-partition gap below
+            // is ~1 MiB and only ever held the directories.
+            ulong total = 0;
+            const int di = diskFindTarget(total);
+            bool placed = false;
+            if (di >= 0 && total > 0) {
+                // Require 64 MiB before bothering; a sliver is not worth the extra code path.
+                auto tail = gptTailFreeSpace(di, total, 131072);
+                if (tail.valid) {
+                    g_baseLba = tail.first;
+                    g_endLba  = tail.last + 1;         // exclusive
+                    placed = true;
+                    klog("[objstore] installed system (GPT) — store in the free tail, LBA 0x");
+                    klog_hex(tail.first); klog("..0x"); klog_hex(tail.last);
+                    klog(" ("); klog_dec((tail.last - tail.first + 1) / 2048); klog(" MiB)\n");
+                }
+            }
+            if (!placed) {
+                // FALLBACK: the pre-partition gap (see the note above).  Small, but safe on a
+                // disk whose tail is already occupied.
+                g_baseLba = GPT_GAP_FIRST;
+                g_endLba  = GPT_GAP_END;
+                klog("[objstore] installed system (GPT) — no usable tail; store in the pre-partition gap, LBA 0x");
+                klog_hex(GPT_GAP_FIRST); klog("..0x"); klog_hex(GPT_GAP_END - 1); klog("\n");
+            }
         } else {
             g_baseLba = 0;      // raw disk: the store owns the whole device, as before
             g_endLba  = 0;

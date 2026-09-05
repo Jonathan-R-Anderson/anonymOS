@@ -41,6 +41,100 @@ static immutable ubyte[16] GUID_MS_BASIC_DATA = [
     0xA2,0xA0,0xD0,0xEB, 0xE5,0xB9, 0x33,0x44, 0x87,0xC0, 0x68,0xB6,0xB7,0x26,0x99,0xC7];
 static immutable ubyte[8] GPT_SIG = ['E','F','I',' ','P','A','R','T'];
 
+// ── GPT READER (roadmap 1.2: persistent storage) ─────────────────────────────
+//
+// This module could only BUILD a GPT.  Nothing could read one back, so the kernel's only
+// question about a partitioned disk was "does LBA 0 look like a protective MBR?"
+// (diskFirstSectorIsGpt).  That was enough to REFUSE such a disk and no more, which is why
+// the object store could not persist on an installed system: with no way to find a partition
+// it had nowhere safe to write, and fell back to a ~1 MiB unused gap before the first
+// partition.  1 MiB does not hold a filesystem.
+//
+// The A/B layout allocates ESP-boot (8 MiB) + slot-A + slot-B (320 MiB each) ~= 650 MiB, so a
+// 4 GiB target has ~3.3 GiB unallocated after slot-B.  Reading the table is what makes that
+// space reachable.
+//
+// Deliberately minimal: primary header only, no backup-header fallback and no CRC validation.
+// A corrupt primary is not a case worth silently recovering from here -- callers treat "not
+// found" as "stay in memory", which is the safe outcome.
+struct GptPart {
+    ulong first;          // first LBA (inclusive)
+    ulong last;           // last LBA (inclusive)
+    ubyte[16] typeGuid;
+    bool  valid;
+}
+
+// Read partition entry `index` (0-based) from the primary GPT on disk `diskIdx`.
+public GptPart gptReadPartition(int diskIdx, uint index) {
+    GptPart p;
+    p.valid = false;
+    if (index >= GPT_ENTRIES) return p;
+
+    ubyte[SECTOR] hdr = void;
+    if (!diskReadSectorsOn(diskIdx, 1, 1, hdr.ptr)) return p;      // LBA 1 = GPT header
+    foreach (i; 0 .. 8) if (hdr[i] != GPT_SIG[i]) return p;        // "EFI PART"
+
+    const ulong entryLba   = get64(hdr.ptr, 72);
+    const uint  numEntries = get32(hdr.ptr, 80);
+    const uint  entSize    = get32(hdr.ptr, 84);
+    if (index >= numEntries || entSize < 128 || entSize > SECTOR) return p;
+
+    // One sector holds SECTOR/entSize entries; read only the sector this entry lives in.
+    const uint  perSector = SECTOR / entSize;
+    const ulong lba       = entryLba + (index / perSector);
+    const uint  off       = (index % perSector) * entSize;
+
+    ubyte[SECTOR] buf = void;
+    if (!diskReadSectorsOn(diskIdx, lba, 1, buf.ptr)) return p;
+
+    // An all-zero type GUID means the slot is unused.
+    bool anySet = false;
+    foreach (i; 0 .. 16) { p.typeGuid[i] = buf[off + i]; if (buf[off + i] != 0) anySet = true; }
+    if (!anySet) return p;
+
+    p.first = get64(buf.ptr, off + 32);
+    p.last  = get64(buf.ptr, off + 40);
+    if (p.first == 0 || p.last <= p.first) return p;
+    p.valid = true;
+    return p;
+}
+
+// Find the LAST partition on the disk, i.e. the one ending highest.  The persistent data
+// area is appended after the slots, so "last" identifies it without needing a private type
+// GUID -- and a private GUID would be a deniability liability on a disk whose whole design
+// is to look ordinary.
+public GptPart gptLastPartition(int diskIdx) {
+    GptPart best;
+    best.valid = false;
+    foreach (i; 0 .. GPT_ENTRIES) {
+        auto e = gptReadPartition(diskIdx, i);
+        if (!e.valid) continue;
+        if (!best.valid || e.last > best.last) best = e;
+    }
+    return best;
+}
+
+// Free space after the last partition, as an inclusive [first,last] LBA range.
+// Returns valid=false when the disk is not GPT, or the tail is too small to be worth using.
+public GptPart gptTailFreeSpace(int diskIdx, ulong diskSectors, ulong minSectors) {
+    GptPart r;
+    r.valid = false;
+    auto lastPart = gptLastPartition(diskIdx);
+    if (!lastPart.valid) return r;
+
+    // The backup GPT lives in the final 1 + ENTRY_SECTORS sectors; never touch it.
+    const ulong lastUsable = (diskSectors >= (2 + ENTRY_SECTORS))
+                           ? (diskSectors - 1 - 1 - ENTRY_SECTORS) : 0;
+    const ulong first = align2048(lastPart.last + 1);
+    if (lastUsable <= first) return r;
+    if ((lastUsable - first + 1) < minSectors) return r;
+
+    r.first = first;
+    r.last  = lastUsable;
+    r.valid = true;
+    return r;
+}
+
 // ── little-endian writers/readers ────────────────────────────────────────────
 private void put16(ubyte* b, size_t off, ushort v) {
     b[off] = cast(ubyte)(v); b[off+1] = cast(ubyte)(v >> 8);

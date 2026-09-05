@@ -1,4 +1,4 @@
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+prefix=${pcfiledir}/../..
 datadir=${prefix}/share
 includedir=${prefix}/include
 libdir=${prefix}/lib

@@ -1,11 +1,11 @@
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+prefix=${pcfiledir}/../..
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
-sysconfdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/etc
-localstatedir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/var
-confdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/etc/fonts
-cachedir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/var/cache/fontconfig
+sysconfdir=${pcfiledir}/../../etc
+localstatedir=${pcfiledir}/../../var
+confdir=${pcfiledir}/../../etc/fonts
+cachedir=${pcfiledir}/../../var/cache/fontconfig
 
 Name: Fontconfig
 Description: Font configuration and customization library

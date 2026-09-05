@@ -1,7 +1,7 @@
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
-exec_prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
-libdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib
-includedir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/include
+prefix=${pcfiledir}/../..
+exec_prefix=${pcfiledir}/../..
+libdir=${pcfiledir}/../../lib
+includedir=${pcfiledir}/../../include
 
 Name: libjpeg
 Description: A SIMD-accelerated JPEG codec that provides the libjpeg API

@@ -1,6 +1,6 @@
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+prefix=${pcfiledir}/../..
 
 Name: gsettings-desktop-schemas
 Description: Shared GSettings schemas for the desktop, including helper headers
 Version: 47.1
-Cflags: -I/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/include/gsettings-desktop-schemas
+Cflags: -I${pcfiledir}/../../include/gsettings-desktop-schemas

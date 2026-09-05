@@ -1,1 +1,10 @@
-lua.pc
+prefix=${pcfiledir}/../..
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: Lua
+Description: An Extensible Extension Language
+Version: 5.5.0
+Libs: -L${libdir} -llua -lm
+Cflags: -I${includedir}

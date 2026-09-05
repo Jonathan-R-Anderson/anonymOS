@@ -1,4 +1,4 @@
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+prefix=${pcfiledir}/../..
 datarootdir=${prefix}/share
 pkgdatadir=${pc_sysrootdir}${datarootdir}/hyprland-protocols
 

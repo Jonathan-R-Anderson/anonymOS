@@ -1,5 +1,5 @@
 
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+prefix=${pcfiledir}/../..
 includedir=${prefix}/include
 datarootdir=${prefix}/share
 pkgdatadir=${pc_sysrootdir}${datarootdir}/wayland-protocols

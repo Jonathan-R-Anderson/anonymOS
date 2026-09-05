@@ -1,4 +1,4 @@
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+prefix=${pcfiledir}/../..
 includedir=${prefix}/include
  
 Name: TrapProto

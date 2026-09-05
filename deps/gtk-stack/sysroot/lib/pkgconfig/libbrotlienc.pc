@@ -1,5 +1,5 @@
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
-exec_prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+prefix=${pcfiledir}/../..
+exec_prefix=${pcfiledir}/../..
 libdir=${prefix}/lib
 includedir=${prefix}/include
 

@@ -1,5 +1,5 @@
-includedir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/include
-libdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib
+includedir=${pcfiledir}/../../include
+libdir=${pcfiledir}/../../lib
 
 Name: re2
 Description: RE2 is a fast, safe, thread-friendly regular expression engine.

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: ISC
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
-exec_prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
+prefix=${pcfiledir}/../..
+exec_prefix=${pcfiledir}/../..
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include
 

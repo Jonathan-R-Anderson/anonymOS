@@ -1,6 +1,6 @@
-prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
-includedir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/include
-libdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/lib
+prefix=${pcfiledir}/../..
+includedir=${pcfiledir}/../../include
+libdir=${pcfiledir}/../../lib
 
 Name: hyprgraphics
 URL: https://github.com/hyprwm/hyprgraphics

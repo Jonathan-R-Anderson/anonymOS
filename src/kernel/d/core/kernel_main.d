@@ -2356,6 +2356,7 @@ private void maybeProcSelfTest() {
     g_procTested = true;
     procSelfTest();
     iconDirSelfTest();     // ROADMAP 2.4: can GTK actually LIST a theme directory?
+    packInstallSelfTest(); // ROADMAP 2.4: does a user-installed icon pack actually win?
 }
 private void maybeSpawnDbusTest() {
     if (g_dbusTestStarted) return;

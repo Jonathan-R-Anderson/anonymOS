@@ -3629,6 +3629,26 @@ public int sys_open(const(char)* path, int flags) {
     }
 
     if (isSyntheticDirectoryPath(path) && !pathIsExactVfsFile(path)) {
+        // ROADMAP 2.3: a path that only matched a PREFIX rule, opened without O_DIRECTORY, is a
+        // caller asking for a file that does not exist.  Answer ENOENT rather than fabricating a
+        // directory.
+        //
+        // isVirtualDirectoryPath() matches prefixes like "/etc/gtk-3.0/" and "/usr/share/themes/",
+        // so every leaf beneath one was being reported as a directory.  GTK asked for
+        // .../gtk-3.24/gtk.css and got "Is a directory" instead of "not found" -- and it handles
+        // not-found by falling back to its built-in theme, while a directory it does not handle.
+        // Same for /etc/gtk-3.0/Compose.
+        //
+        // Deliberately narrow, because empty synthetic directories are load-bearing elsewhere:
+        //   - an O_DIRECTORY open still gets its directory (opendir sets it, so readdir on an
+        //     empty /etc/dbus-1 keeps working);
+        //   - the exact base directories -- "/", "/bin", /proc/<pid>, /objects/<kind> and the
+        //     rest -- come from the non-prefix rules above, so they are untouched.
+        // Only "deep path under a prefix, opened as a file" changes.
+        enum int O_DIRECTORY = 0x10000;   // x86_64 0o200000
+        if ((flags & O_DIRECTORY) == 0 && isVirtualDirectoryPath(path)) {
+            return negErrno(ENOENT);
+        }
         if ((flags & 3) != O_RDONLY) {
             return negErrno(EISDIR);
         }

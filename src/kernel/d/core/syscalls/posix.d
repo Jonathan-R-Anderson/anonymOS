@@ -5475,10 +5475,19 @@ public void iconDirSelfTest() @nogc nothrow {
 }
 
 public void procSelfTest() @nogc nothrow {
-    static immutable string[8] paths = [
+    // ROADMAP 2.1: the /sys and /etc entries that now report real data are checked the same way,
+    // and for the same reason the /proc ones are -- a synth returning good bytes proves nothing if
+    // open() never routes to it, and that routing (dynamic synth ahead of the static table) is
+    // exactly what can regress silently.  The vendor file is the interesting one: it should read
+    // the live display controller's id, not the 0x1af4 constant it replaced, and on this VM those
+    // happen to be the same value -- so the proof is that it is READ, and the log line beside it
+    // from /proc/bus/pci/devices is what a reader compares it against.
+    static immutable string[12] paths = [
         "/proc/meminfo\0", "/proc/stat\0", "/proc/loadavg\0",
         "/proc/diskstats\0", "/proc/uptime\0", "/proc/net/dev\0", "/proc/cpuinfo\0",
-        "/proc/bus/pci/devices\0"
+        "/proc/bus/pci/devices\0",
+        "/sys/dev/char/226:0/device/vendor\0", "/sys/dev/char/226:0/device/device\0",
+        "/etc/resolv.conf\0", "/etc/machine-id\0"
     ];
     foreach (p; paths) {
         const long fd = linux_sys_open(cast(ulong)p.ptr, O_RDONLY, 0);

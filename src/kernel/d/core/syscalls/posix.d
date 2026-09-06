@@ -14903,6 +14903,27 @@ private immutable uint[8] HOS_ID_PALETTE = [
 ];
 
 private uint hosIdentityColor(uint pid) @nogc nothrow {
+    // This draws what the kernel logs as an "identity border", and identity.d says outright that
+    // windows "are bordered with the identity's color by the trusted compositor".  It returned
+    // HOS_ID_PALETTE[pid % 8] -- a hash of the PROCESS ID, carrying no identity information at all.
+    // Two windows of the same identity got different colours; one window got a different colour on
+    // the next boot; and a user reading green as "Personal" was reading noise.  In a system whose
+    // premise is that the border tells you which domain owns a window, that indicator was lying.
+    //
+    // Found by accident: implementing inotify shifted pids, the modulo landed on a different entry,
+    // and the 3.3 golden check failed on a border that had no business changing.  The palette
+    // confirms it exactly -- golden 0xFF8FBF5F (index 4) vs captured 0xFF6FA8DC (index 2).
+    //
+    // Now it reports the owning task's real identity colour, so it is stable across boots and
+    // actually means what it claims.  The pid palette remains only as the fallback for a window
+    // whose owner has no identity yet, where a wrong-but-distinct colour beats no border.
+    import core.task : g_tasks, taskIdFromLinuxPid;
+    import core.identity : identityById;
+    const int tid = taskIdFromLinuxPid(cast(int)pid);
+    if (tid >= 0 && tid < MAX_TASKS && g_tasks[tid].identityObjId != 0) {
+        auto r = identityById(g_tasks[tid].identityObjId);
+        if (r !is null && r.color != 0) return r.color;
+    }
     return HOS_ID_PALETTE[pid % HOS_ID_PALETTE.length];
 }
 

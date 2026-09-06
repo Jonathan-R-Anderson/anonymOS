@@ -1160,6 +1160,19 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     if (modPhys == 0) {
         klog("[exec] not found: ");
         klog(path);
+        // TEMPORARY (ROADMAP 3.5): /hog is in the ISO and the module count rose by exactly one
+        // when it was added, so Limine loaded it -- yet this scan does not match it.  Print what
+        // the kernel actually has, rather than reasoning about what it should have.
+        static __gshared int g_execMissDumpN = 0;
+        if (g_execMissDumpN < 2) {
+            ++g_execMissDumpN;
+            klog("  [modules count="); klog_dec(cast(ulong)g_module_count); klog("]");
+            auto recs2 = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count && i < 40; i++) {
+                auto rec2 = cast(multiboot_module_t*)(recs2 + i * 128);
+                klog(" "); klog(cast(const(char)*)(cast(ubyte*)rec2 + 16));
+            }
+        }
         klog("\n");
         procFb("exec-ENOENT", cstrBasenameK(path));  // direct-fb: a missing binary on real HW
         return -2; // ENOENT

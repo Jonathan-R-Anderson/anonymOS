@@ -21,67 +21,54 @@ carried-forward items live on as 3.0b (`wl-quicksettings` panels) and 5.0 (virti
 
 Everything in Tier 3+ and 54 of the 124 apps sit behind this. It is the highest-leverage
 work in the project, and it is *not* speculative: GTK 3 with the Wayland backend is already
-built for musl in `deps/gtk-stack/sysroot`, and GTK clients launch and talk to the compositor.
-They do not yet map a window (2.3).
+built for musl in `deps/gtk-stack/sysroot`, and upstream `gtk3-widget-factory` now runs on the
+desktop -- the exit criterion below is MET.
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
 | 2.1 | ◑ **`/compat/linux` + `/proc` + `/sys` + `/etc`** — `/proc` now reports real data (2026-09-05); `/sys` and `/etc` still largely synthetic | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
 | 2.2 | ◑ **Syscall audit** — done as a survey: **only the 4 inotify calls are missing**. Remaining work is implementing inotify | Record what is missing once, rather than one crash at a time | APPS A3 · syscalls | M |
-| 2.3 | ◑ **One real upstream GTK app end-to-end** — upstream demos build, launch and talk to the compositor; none maps a window yet. Three kernel bugs fixed so far | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
+| 2.3 | ✅ **One real upstream GTK app end-to-end** — DONE 2026-09-05. `gtk3-widget-factory` (upstream, unmodified) maps a window in ~6 s | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
 | 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
-| 2.6 | ◑ **Stage C1** — the `/proc` data is real and verified; the **apps** are gated on 2.3 by definition | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
+| 2.6 | ◑ **Stage C1** — the `/proc` data is real and verified; the apps are now **unblocked** by 2.3 | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion:** an upstream GTK application, not written for this OS, runs on the desktop.
 
-### 2.3 — where it stands (2026-09-05)
+### 2.3 — ✅ COMPLETE (2026-09-05)
 
-Upstream `gtk3-widget-factory`, `gtk3-demo` and our `gtk-hello` all build, launch, and talk to the
-compositor. **None maps a window yet.** Three kernel bugs found and fixed on the way, each hiding
-the next:
+**Upstream `gtk3-widget-factory` runs on the desktop and maps a window in ~6 seconds.** It is GTK's
+own demo application, unmodified, not written for this OS -- the Tier 2 exit criterion. `gtk-hello`
+maps too (`G11 COMMIT`), and neither aborts.
 
-1. **memfd size lost across `SCM_RIGHTS`.** `fstat` reported the per-fd `File.fileSize`, and fd
-   passing hands the receiver a *copy*, so a client that grew its shm pool after passing the fd
-   left the compositor stat-ing the old size. Hyprland answered
-   `wl_shm: "The size of the file is not big enough for the shm pool"` and libwayland tore the
-   connection down. Length now lives on the memfd (`MemFdRec.exactLen`).
-2. **Missing file under a synthetic-dir prefix returned a directory, not ENOENT.** GTK got
-   "Is a directory" for `gtk.css` and `/etc/gtk-3.0/Compose`, which it does not handle; ENOENT it
-   handles by falling back to its built-in theme.
-3. **…which then broke file *creation*** under those prefixes, because the ENOENT check sat above
-   the `O_CREAT` path. `O_CREAT` is now exempt.
+Five bugs, each hiding the next. The last one was the actual killer:
 
-**Current state.** `gtk_hello.c` prints `create window`, builds its widgets, calls
-`gtk_widget_show_all()`, then prints `window shown -- G11 COMMIT`. The first marker appears, the
-second never does — so it stops during widget construction or realize, before GDK creates a
-surface. Consistent with the wire trace: no `wl_compositor.create_surface`, and `xdg_wm_base` never
-bound (GDK binds it lazily at first toplevel). It is a **hang, not slowness** — six minutes, window
-count never moved, process alive. **The compositor is not at fault**: it advertises 70 globals
-including everything GTK needs.
+1. **memfd size lost across `SCM_RIGHTS`** -- `fstat` reported the per-fd `File.fileSize` and fd
+   passing hands over a *copy*, so growing a pool after passing its fd left the compositor seeing
+   a stale size. Hyprland answered `wl_shm: "The size of the file is not big enough for the shm
+   pool"` and libwayland tore the connection down. Length now lives on the memfd.
+2. **Missing file under a synthetic-dir prefix returned a directory, not ENOENT** -- GTK got
+   "Is a directory" for `gtk.css`, which it cannot handle; ENOENT it handles by falling back.
+3. **...which then broke file *creation*** under those prefixes (the ENOENT check preceded the
+   `O_CREAT` path). `O_CREAT` is now exempt.
+4. **`hicolor` shipped empty** -- `Directories=` with nothing behind it. Every theme inherits from
+   hicolor, so the whole icon fallback chain ended nowhere.
+5. **The fallback icon has to be a PNG.** `librsvg` here is a **stub**, so gdk-pixbuf cannot decode
+   an SVG at all -- and every icon in the Epin theme is `scalable/*.svg`. GTK's
+   `gtkiconhelper.c:495` asserts `error == NULL` when a lookup fails *and* `image-missing` is
+   absent, so it did not degrade, it called `abort()`.
 
-**Last logged activity before the stall is fontconfig**, reached via Pango — but that lead is now
-weaker, not stronger. An `[openfail]` log (path + errno for every failed open) shows **no
-fontconfig failure at all**: its cache files, including `<hash>.cache-9.TMP-XXXXXX`, are created
-successfully. The only failures in the whole boot are 19 benign ENOENT probes by Hyprland (`drirc`,
-an optional `libglapi.so.0`, `uevent` files).
+**It was never a hang.** The process aborted; its task-table entry lingering afterwards is what
+made it look alive for six minutes.
 
-So "fontconfig is last in the log" may only mean **`[open]` is the most verbose trace we have** —
-the client could be stalling in something unlogged (a `write`, `rename`, `mmap`, or a futex wait).
+**Bears directly on 2.4:** an SVG-only icon theme is useless while librsvg is a stub. Either build
+real librsvg or ship PNG icons.
 
-**Next:** trace `write`/`rename`/`futex` the same way, rather than assuming the last visible
-syscall is the relevant one — that assumption has already been wrong twice this investigation
-(the `HOG:` counters, and "last traced syscall" being `TIOCGWINSZ` only because writes are
-untraced). **`G11 COMMIT` is the exact success signal.**
+**Tooling kept:** the kernel decodes the Wayland wire protocol (`[wl]` -- object ids resolved to
+interface names, `wl_display.error` payloads, the advertised globals list), logs failed opens
+(`[openfail]`), and can trace every syscall a GTK task makes (`[sc]`). `hos-wl-trace` gives a
+client a console, without which none of its own messages are visible at all.
 
-**Tooling built for this, worth keeping:** the kernel decodes the Wayland wire protocol
-(`[wl]` lines — object ids resolved to interface names via `wl_registry.bind`, `wl_display.error`
-payloads, and the globals list from `wl_registry.global`), and `hos-wl-trace` gives a client a
-console so its own messages are readable at all.
-
-### 2.6 — the `/proc` data is real; the C1 apps are gated on 2.3
-
-`GRAPHICAL_APPLICATIONS_ROADMAP` defines C1 as *"cross-build an existing GTK app, not write an
-app"* and gates it on A4, so the app half cannot finish before 2.3.
+### 2.6 — the `/proc` data is real; the C1 apps are now unblocked
 
 The data every C1 reader consumes is done and verified on a real boot: `/proc/cpuinfo` reports
 CPUID vendor and brand with the SMP CPU count (was a hardcoded 1 CPU at 2000 MHz);
@@ -92,8 +79,7 @@ no change to the app.
 
 Deliberately absent rather than faked: `cpu MHz`, PCI BAR sizes, Sensors/Battery (need ACPI).
 
-If 2.3 stays blocked, the fallback is to surface this through the native `wl-*` clients, which do
-map — C1's outcome without its method, and a deviation from the roadmap worth naming as one.
+With 2.3 now green, C1 is unblocked: cross-build the readers as the roadmap intends.
 
 ### 2.2 — audit result: only inotify is missing
 

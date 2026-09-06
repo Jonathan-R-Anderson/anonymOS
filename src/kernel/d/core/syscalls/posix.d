@@ -12413,6 +12413,10 @@ public void epollDumpAll() @nogc nothrow {
 }
 
 // PERF: dump fdReadable()==true counts by type (the busy-spin source) and reset.
+// ROADMAP 3.5b: readiness of one fd, for wakePollers().  Same predicate epoll_wait itself uses,
+// so a task left parked here would have re-parked immediately anyway.
+public bool fdIsReadable(int fd) @nogc nothrow { return fdReadable(fd); }
+
 public void fdReadableStats() @nogc nothrow {
     klog("[fdrd]");
     bool any = false;

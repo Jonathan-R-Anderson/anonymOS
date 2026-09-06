@@ -354,7 +354,12 @@ private void freezeWatchdog() {
     }
 }
 
+// ROADMAP 3.5b: for a task parked in epoll_wait, the epoll fd it is waiting on; -1 for poll()
+// (whose fd array lives in userspace and cannot be re-checked from the tick).
+__gshared int[MAX_TASKS] g_pollEpfd = -1;
+
 private void wakePollers() @nogc nothrow {
+    import core.syscalls.posix : fdIsReadable;
     // ITIMER_REAL expiry -> pending SIGALRM.  Driven here because wakePollers() already runs on
     // every PIT tick and is the natural place to un-park time-based waiters.
     itimerTick();
@@ -363,8 +368,29 @@ private void wakePollers() @nogc nothrow {
         // RAX; a bare waiting=false returns garbage to the middle of a FUTEX_WAIT and musl
         // spin-retries).  A stale g_pollBlocked can coexist with a futex park (see the
         // g_pollBlocked clear at the futex park site for the main leak fix).
-        if (g_pollBlocked[i] && !g_futexWaitActive[i] && g_tasks[i].active && !g_tasks[i].exited)
+        if (g_pollBlocked[i] && !g_futexWaitActive[i] && g_tasks[i].active && !g_tasks[i].exited) {
+            // ROADMAP 3.5b: do not wake an epoll waiter that has nothing to wake FOR.
+            //
+            // This ran on every PIT tick and un-parked every poller unconditionally, so a task
+            // with nothing ready was woken 1000 times a second, re-ran its scan, found nothing,
+            // and parked again.  Measured on a fully idle desktop: [polltmo] showed seven tasks
+            // at wait=~1000/sec each -- roughly 7000 pointless syscall round-trips a second --
+            // while [fdrd] showed just timerfd=2 actually ready.  Nothing ever stayed parked,
+            // which is also why the freeze probe never saw an idle compositor.
+            //
+            // Only epoll waiters are filtered: for epoll the kernel owns the watch set, so
+            // fdIsReadable(epfd) answers exactly what epoll_wait would.  A poll() waiter keeps
+            // its fd array in userspace, unreadable from here, so it keeps the old behaviour.
+            // Skipping cannot lose a wakeup: this is the same predicate epoll_wait evaluates, so
+            // a task left parked would have found nothing and re-parked on the spot.
+            const int ep = g_pollEpfd[i];
+            if (ep >= 0) {
+                const ulong dl = g_pollDeadline[i];
+                const bool due = (dl != 0 && pitMs() >= dl);
+                if (!due && !fdIsReadable(ep)) continue;   // nothing ready, not yet due: stay asleep
+            }
             g_tasks[i].waiting = false;
+        }
     }
 }
 __gshared int[MAX_TASKS]   g_futexWaitVal;
@@ -3932,6 +3958,10 @@ private void dispatchSyscall(int tid) {
                 } else {
                     g_pollBlocked[tid]  = true;
                     g_pollDeadline[tid] = (tmo < 0) ? 0 : (pitMs() + cast(ulong)tmo);
+                    // ROADMAP 3.5b: remember WHICH epoll instance, so the tick can tell whether
+                    // this task has anything to wake for.  poll() records -1: its fd array is in
+                    // userspace and cannot be re-scanned outside the syscall.
+                    g_pollEpfd[tid] = isEpoll ? cast(int)rdi : -1;
                 }
                 task.waiting = true;                  // park: scheduler skips us
                 task.regs[REG_RIP] -= 2;              // re-run the syscall on wake

@@ -46,6 +46,14 @@ SVG-only pack will silently resolve to nothing.
 
 Usable is not the same as good.
 
+**3.5 preemptive scheduling — resolved by measurement 2026-09-06, no code change.** R6 asks to add
+time-slice preemption because "a task that doesn't yield can monopolize the core". It cannot: the
+APIC tick reaches `scheduleNext()` at 1 kHz and takes a non-yielding ring-3 task off the core in
+~1ms. Four `/hog` tasks (`src/util/hog.c`, never makes a syscall, `SUPER+SHIFT+Y`) confirmed it --
+the desktop kept presenting and repainting throughout. Share is not the limit either: giving the
+compositor a guaranteed alternating turn was measured A/B at **71 vs 70 frames in 75s** and
+reverted. Under load the ceiling is softpipe frame cost, not the scheduler.
+
 **Done and removed 2026-09-06** (see git history): 3.4 kernel-mode interrupt handling (the BSP now
 `sti;hlt`s when idle instead of running a ring-3 PAUSE-spinner; 200/200 halts woken by a
 kernel-handled APIC tick, golden PASS 0 differing pixels), 3.0b `wl-quicksettings` settings panels
@@ -56,7 +64,7 @@ reflow (all five floating clients now tile), 3.3 screenshot regression tests (`m
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
-| 3.5 | **Preemptive scheduling** — 3.4 delivered the substrate. What remains is the hard part: switching stacks from inside an ISR, under the interrupted frame | DESKTOP_RESP R6 | L |
+| 3.5b | **Boot-time present stalls** — found while measuring 3.5: the freeze probe logs `stalled 28s`, `29s`, `30s` with `flipQ` frozen at 124 and `cur=0:Hyprland`, i.e. BEFORE any load exists. Half a minute with no frame presented during startup, unrelated to hogs or scheduling. Not investigated | DESKTOP_RESP | M |
 | 3.6 | **quickshell (Qt6/QML) port** | The only route to true host parity — the host's bar, sidebars, overview and launcher are all one `qs` process. Needs 2.x and a working GL path | APPS E6 | XL |
 
 ---

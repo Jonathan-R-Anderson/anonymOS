@@ -21,297 +21,83 @@ carried-forward items live on as 3.0b (`wl-quicksettings` panels) and 5.0 (virti
 
 Everything in Tier 3+ and 54 of the 124 apps sit behind this. It is the highest-leverage
 work in the project, and it is *not* speculative: GTK 3 with the Wayland backend is already
-built for musl in `deps/gtk-stack/sysroot`, and `gtk-hello` already runs.
+built for musl in `deps/gtk-stack/sysroot`, and GTK clients launch and talk to the compositor.
+They do not yet map a window (2.3).
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
-| 2.1 | **`/compat/linux` + `/proc` + `/sys` + `/etc`** | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
-| 2.2 | ◑ **Syscall audit** — *measured 2026-09-05, see below.* Of the 14 probed, **only the 4 inotify calls are missing**; eventfd, eventfd2, signalfd, signalfd4, timerfd_create, memfd_create, ppoll, epoll_create1, dup3 and pipe2 are all implemented. Remaining work is **implementing inotify**, not surveying | Record what is missing once, rather than discovering it one crash at a time | APPS A3 · syscalls | M |
-| 2.3 | ◑ **One real upstream GTK app end-to-end** — `gtk3-widget-factory` and `gtk3-demo` now build from the upstream tree and are staged + bound (`SUPER+SHIFT+W` / `+G`). widget-factory **launches and gets deep into GTK startup but never maps a window** — see below. No need for `gnome-calculator`; the gate is now a debugging problem, not a packaging one | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
+| 2.1 | ◑ **`/compat/linux` + `/proc` + `/sys` + `/etc`** — `/proc` now reports real data (2026-09-05); `/sys` and `/etc` still largely synthetic | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
+| 2.2 | ◑ **Syscall audit** — done as a survey: **only the 4 inotify calls are missing**. Remaining work is implementing inotify | Record what is missing once, rather than one crash at a time | APPS A3 · syscalls | M |
+| 2.3 | ◑ **One real upstream GTK app end-to-end** — upstream demos build, launch and talk to the compositor; none maps a window yet. Three kernel bugs fixed so far | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
 | 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
-| 2.6 | ◑ **Stage C1** — the *data* is now real (see below). The **apps** are blocked: `GRAPHICAL_APPLICATIONS_ROADMAP` defines C1 as "cross-build an existing GTK app, not write an app" and gates it on A4 — i.e. on 2.3 | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
+| 2.6 | ◑ **Stage C1** — the `/proc` data is real and verified; the **apps** are gated on 2.3 by definition | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion:** an upstream GTK application, not written for this OS, runs on the desktop.
 
-### 2.3 status — upstream GTK app launches but never maps — 2026-09-05
+### 2.3 — where it stands (2026-09-05)
 
-`-Ddemos=true` was added to the gtk-stack build, so GTK's own `gtk3-widget-factory` (22.6 MB),
-`gtk3-demo`, `gtk3-icon-browser` and `gtk3-demo-application` now build against musl exactly as
-`gtk-hello` does. widget-factory is staged as a boot module and bound to `SUPER+SHIFT+W`.
+Upstream `gtk3-widget-factory`, `gtk3-demo` and our `gtk-hello` all build, launch, and talk to the
+compositor. **None maps a window yet.** Three kernel bugs found and fixed on the way, each hiding
+the next:
 
-**What happens when it is launched** (driven through the real keybinding via the HMP monitor, twice,
-the second time waiting a full 4 minutes):
+1. **memfd size lost across `SCM_RIGHTS`.** `fstat` reported the per-fd `File.fileSize`, and fd
+   passing hands the receiver a *copy*, so a client that grew its shm pool after passing the fd
+   left the compositor stat-ing the old size. Hyprland answered
+   `wl_shm: "The size of the file is not big enough for the shm pool"` and libwayland tore the
+   connection down. Length now lives on the memfd (`MemFdRec.exactLen`).
+2. **Missing file under a synthetic-dir prefix returned a directory, not ENOENT.** GTK got
+   "Is a directory" for `gtk.css` and `/etc/gtk-3.0/Compose`, which it does not handle; ENOENT it
+   handles by falling back to its built-in theme.
+3. **…which then broke file *creation*** under those prefixes, because the ENOENT check sat above
+   the `O_CREAT` path. `O_CREAT` is now exempt.
 
-- It execs and runs — three tasks appear, doing `poll`/`sendmsg` on Wayland fds.
-- It gets **deep into GTK startup**: reads `/usr/share/glib-2.0/schemas/gschemas.compiled` (so the
-  `misc.blob` fix is doing its job), loads gio modules, then enumerates the cursor theme, opening
-  dozens of hashed names under `/usr/share/icons/Epin/cursors/`.
-- **No `Gtk-WARNING`, no `Gtk-CRITICAL`, no assertion, no crash, no exit.**
-- **`[g5] windows=` never leaves 1.** It never maps a toplevel.
-- Throughout, the compositor stalls: `[freeze] stalled 6s…29s` with `flipQ`/`flipRd` frozen and
-  `HOG: <tid>:gtk3-widget-factory`.
+**Current state.** `gtk_hello.c` prints `create window`, builds its widgets, calls
+`gtk_widget_show_all()`, then prints `window shown -- G11 COMMIT`. The first marker appears, the
+second never does — so it stops during widget construction or realize, before GDK creates a
+surface. Consistent with the wire trace: no `wl_compositor.create_surface`, and `xdg_wm_base` never
+bound (GDK binds it lazily at first toplevel). It is a **hang, not slowness** — six minutes, window
+count never moved, process alive. **The compositor is not at fault**: it advertises 70 globals
+including everything GTK needs.
 
-**It is NOT the missing preemptive scheduler.** That was the first hypothesis, from the freeze
-watchdog naming widget-factory as the hog while presentation was frozen. Reading the log properly
-killed it, and the two pieces of evidence are worth keeping because both look like starvation and
-neither is:
+**Last activity before the stall is fontconfig**, reached via Pango. Next: confirm whether creating
+`/var/cache/fontconfig/<hash>.cache-9.TMP-XXXXXX` succeeds (an `[openfail]` log now reports errno
+for failed opens); if the cache write is the problem, shipping a prebuilt cache in the assets
+sidesteps it. **`G11 COMMIT` is the exact success signal.**
 
-- **After the cursor load, widget-factory issues 2 `recvmsg` and 1 `sendmsg` and then nothing.**
-  It is not CPU-bound; it is *blocked*.
-- **The `HOG:` figures are near-identical across every task** — `15:gtk3-widget-factory=619
-  0:Hyprland=618 2:dbus-daemon=618`. That counter is close to uniform, so "HOG" names the top
-  three of a near-flat distribution. **It is not evidence that anything is hogging.**
+**Tooling built for this, worth keeping:** the kernel decodes the Wayland wire protocol
+(`[wl]` lines — object ids resolved to interface names via `wl_registry.bind`, `wl_display.error`
+payloads, and the globals list from `wl_registry.global`), and `hos-wl-trace` gives a client a
+console so its own messages are readable at all.
 
-The cursor enumeration is also innocent: 88 opens, 88 *distinct* names, each exactly once — a
-normal one-time theme load, not a livelock.
+### 2.6 — the `/proc` data is real; the C1 apps are gated on 2.3
 
-So the real shape is: widget-factory sends a Wayland request and waits for a reply that never
-comes, while Hyprland sits idle with `flipQ == flipRd` (nothing pending). **Two processes each
-waiting on the other** — a lost wakeup or a request never dispatched, not a CPU shortage.
+`GRAPHICAL_APPLICATIONS_ROADMAP` defines C1 as *"cross-build an existing GTK app, not write an
+app"* and gates it on A4, so the app half cannot finish before 2.3.
 
-**The control fails identically.** `gtk-hello` was bound to `SUPER+SHIFT+H` and launched in the
-same boot: it also never maps (`windows=` stays 1 after 120 s). So it is **not** the application,
-and not application weight — it is something common to GTK clients here. That also means the
-roadmap's long-standing "`gtk-hello` already runs" is **not true in this configuration** and should
-not be relied on as evidence the toolkit works end-to-end.
+The data every C1 reader consumes is done and verified on a real boot: `/proc/cpuinfo` reports
+CPUID vendor and brand with the SMP CPU count (was a hardcoded 1 CPU at 2000 MHz);
+`/proc/bus/pci/devices` exists for the first time (walks bus 0, first entry `8086:1237`); and
+`meminfo`, `stat`, `loadavg`, `uptime`, `diskstats`, `net/dev` are real from 2.1. `wl-sysmon`
+reads five of those already, so it went from an invented 512 MB to the machine's real memory with
+no change to the app.
 
-**Two further theories tested and killed, both by direct observation:**
+Deliberately absent rather than faked: `cpu MHz`, PCI BAR sizes, Sensors/Battery (need ACPI).
 
-- *"Clients are pointed at the wrong wayland socket."* An `[conn]` log of every AF_UNIX connect
-  settles it: `gtk-hello` connects to `/run/user/1000/wayland-1` and **succeeds** — the very same
-  socket `calamares` and `wl-layer-bar` use, both of which map fine.
-- *"The compositor never accepts them."* It does. gtk-hello's main task then runs an active
-  `sendmsg`/`recvmsg` conversation on that fd and **receives replies**.
+If 2.3 stays blocked, the fallback is to surface this through the native `wl-*` clients, which do
+map — C1's outcome without its method, and a deviation from the roadmap worth naming as one.
 
-**So the failure is at the protocol level, after a working connection** — a GTK client talks to
-Hyprland, gets answers, and still never gets a mapped toplevel, while a Qt client (calamares) and a
-layer-shell client (`wl-layer-bar`) on the identical socket both do.
+### 2.2 — audit result: only inotify is missing
 
-**A non-GTK client launched the same way works fine.** `wl-calendar`, bound to `SUPER+C`, launched
-post-boot through the identical keybinding path onto the identical socket, maps in **6 seconds**
-(`windows` 1 → 2). This closes the last alternative explanation: it is not the launch path, not
-post-boot spawning, not the socket, not the compositor, not load. **It is specific to GTK clients.**
+Of the 14 syscalls probed **through the real dispatcher** at boot (`[audit]` lines), only the four
+inotify calls return ENOSYS. `eventfd`, `eventfd2`, `signalfd`, `signalfd4`, `timerfd_create`,
+`memfd_create`, `ppoll`, `epoll_create1`, `dup3` and `pipe2` all work. So 2.2 is no longer a
+survey — the remaining work is **implementing inotify**. GIO's file monitors are the visible
+casualty (`Unable to find default local file monitor type`).
 
-**Blocked on tooling, not on ideas.** The obvious next move is `WAYLAND_DEBUG=1`, which makes
-libwayland print every request and event, and there is currently **no way to set an environment
-variable for a keybinding-launched app**:
-
-- Putting it in the kernel's env block (`exports.d`) produces nothing — a keybinding launch is
-  Hyprland forking a child, so the child inherits *Hyprland's* environment, not the one the kernel
-  builds for programs it execs itself. (This also explains why `gtk-hello` picked up the correct
-  `wayland-1` socket while the kernel block still said `wayland-0`: it was never reading it.)
-- Wrapping in a shell fails because **Hyprland execs the command directly, with no shell**, and
-  **there is no `/bin/sh` on this system** at all.
-- `system/hypr/custom/env.lua` is an empty stub and the Lua config exposes no env API.
-
-**The launcher was built (`hos-wl-trace`, `SUPER+SHIFT+J`) and the trace still could not be
-captured.** Eight build/boot cycles, each failing for a *different* environment reason. The
-failures are the useful part, because each is a real property of this system that was not written
-down anywhere:
-
-1. **Keybinding commands cannot take arguments.** Every binding that works is a single word. A
-   command with arguments is routed through a shell; there is no `/bin/sh`, so it execs an empty
-   program name (`[exec] not found: /bin/`). This is also why `SUPER+B` has never worked — and why
-   swapping its `sh -c` for `/busybox sh -c` does **not** fix it.
-2. **`busybox-dyn` is not in the ISO** despite having a `module_path` line; its staging block never
-   runs. `/busybox` is the one that exists.
-3. **A Hyprland-forked child inherits no console.** The launcher exec'd its target correctly
-   (gtk-hello appeared as 22 tasks) while not one of its own log lines, written to fd 2 just
-   before the exec, reached `serial.log`. Anything a client prints — including a protocol trace —
-   is written and discarded. Fixed in the launcher by `dup2`-ing `/dev/console` onto fd 1/2.
-4. **`setenv()` in the launcher does not reach the array `execv` passes.** Proven by having it
-   print its own `environ` immediately after setting the variable: it listed nothing at all, not
-   even what it had just set.
-5. **Capability denials were silent for every task except init.** The `[fdcap] deny-cap`
-   diagnostic was gated on `task == 0`. With that widened, `gtk-hello` shows denials —
-   `fd=1`/`fd=2`, `want=0x10` = `CAP_RIGHT_IOCTL`, i.e. `isatty()`. Benign in itself (writes are
-   not denied), but it means **a client can be refused things and nobody is told**.
-
-**That tactic worked: instrument the kernel, not the guest.** Decoding the Wayland wire header
-(`[u32 object][u16 opcode][u16 size]`) in the AF_UNIX send/recv path needs nothing from the
-client's environment. The conversation did not trail off — it **ended on a `wl_display.error`**,
-and decoding the payload named the fault outright:
-
-> `wl_shm: "The size of the file is not big enough for the shm pool"`
-
-**FIXED — first root cause.** `fstat` reported `File.fileSize`, which is *per-fd*, and `SCM_RIGHTS`
-hands the receiver a **copy** of the sender's `File`. A client that passed its shm fd and then grew
-the pool left the compositor stat-ing the size as of the hand-off. Hyprland saw a file smaller than
-the declared pool, raised the error, and libwayland tore the connection down — so GTK apps died
-mid-startup, printed nothing (no console), and never mapped. A length belongs to the *object*:
-`MemFdRec.exactLen` is now set on every `ftruncate` path and reported by `fstat` for `FD_MEMFD`.
-
-That also explains the asymmetry that drove the whole investigation: our `wl-*` clients never
-resize a pool after passing its fd, so they were untouched while both GTK apps failed identically.
-
-**Still not mapping — a second blocker behind the first.** Measured after the fix:
-
-| | before | after |
-|---|---|---|
-| `wl_display.error` | 1 (shm) | **0** |
-| wire messages | 125 | 256 |
-| gtk-hello tasks | 22 | 158 |
-| widget-factory tasks | 20 | 231 |
-| windows mapped | 1 | 1 |
-
-The clients now get much further and stop cleanly, waiting on the compositor rather than being
-killed by it. The trace ends on inbound events around objects 19 and 25 with the client sending
-nothing more.
-
-**The decoder now names objects and interfaces** (from `wl_registry.bind`) and lists what the
-compositor advertises (from `wl_registry.global`). With `hos-wl-trace` giving the client a console,
-its own messages are readable for the first time. What that shows:
-
-- **The compositor is fine.** It advertises 70 globals including `xdg_wm_base`, `wl_compositor`,
-  `wl_shm`, `zwlr_layer_shell_v1` and `zwp_linux_dmabuf_v1`. Nothing is missing.
-- **The client reaches its own "create window" marker** and then sends **zero** further Wayland
-  messages. It binds `wl_compositor`, `wl_shm`, `wl_seat`, `wl_output`, `wl_data_device_manager`,
-  `zwp_primary_selection`, `org_kde_kwin_server_dec` — never `xdg_wm_base`, which GDK binds lazily
-  when the first toplevel is created, i.e. it never gets that far.
-- **It hangs rather than dying** — no exit, no crash. Final syscalls are repeated
-  `ioctl(fd=2, 0x5413)` = `TIOCGWINSZ` from two tasks, which is the ioctl the capability layer
-  denies (`want=0x10` = `CAP_RIGHT_IOCTL`). It stops after icon-theme loading.
-
-**Second bug, found here, not yet fixed: a missing file under a synthetic-directory prefix is
-reported as a DIRECTORY instead of ENOENT.** `isVirtualDirectoryPath()` matches on *prefixes*
-(`/etc/gtk-3.0/`, `/usr/share/themes/`, …), so every path beneath one — including leaf files — is
-fabricated as a directory. GTK sees:
-
-```
-Theme parsing error: Failed to import: Error opening file
-  /usr/share/themes/Epin/gtk-3.24/gtk.css: Is a directory
-Failed to parse .../settings.ini: Not a regular file
-Error reading file "/etc/gtk-3.0/Compose": Is a directory
-```
-
-Note the theme genuinely does not exist (the Epin asset ships only `settings.ini` and
-`index.theme`; there is no `gtk.css` anywhere in the tree, and GTK 3.24 looks in `gtk-3.24/` while
-the asset provides `gtk-3.0/`). The correct answer is ENOENT, which GTK handles by falling back to
-its built-in theme. "Is a directory" is a different thing and it does not.
-
-**FIXED — second bug.** A non-`O_DIRECTORY` open of a path that only matched a prefix rule now
-returns ENOENT. Scoped narrowly: `O_DIRECTORY` opens still get their directory (so `opendir` on an
-empty `/etc/dbus-1` is unaffected) and the exact base directories come from the non-prefix rules.
-`boot-test: PASS` afterwards, so nothing that relies on synthetic directories regressed.
-
-The messages are now the right ones — GTK's ordinary fallback path:
-
-```
-Theme parsing error: ... Error opening file .../gtk-3.24/gtk.css: No such file or directory
-Failed to open file "/etc/gtk-3.0/Compose": No such file or directory
-```
-
-**Still hangs — third blocker, now located: fontconfig.** After its own "create window" marker the
-client's last activity is font setup, and then it stops:
-
-```
-[open] /etc/fonts/fonts.conf
-[open] /usr/share/fonts
-[open] /var/cache/fontconfig//3830…cache-9
-[open] /var/cache/fontconfig//3830…cache-9.TMP-lPEcK      <- writing a cache
-```
-
-then nothing but repeated `ioctl(fd=2, TIOCGWINSZ)`, which the capability layer denies. It never
-sends another Wayland message and never binds `xdg_wm_base`. The process stays alive — this is a
-hang, not a crash.
-
-**FIXED — third bug (a regression in the second).** The ENOENT check sat ~200 lines above the rtfs
-`O_CREAT` path, so `open(path, O_CREAT|O_WRONLY)` under one of these prefixes returned ENOENT
-instead of *creating* the file — swapping one failure for another. `O_CREAT` is now exempt.
-Fontconfig visibly got further: it writes several cache files (`3830…TMP-KIEMph`, `TMP-mknHBC`,
-`4c599…TMP-KMFJBi`) where before it managed one.
-
-**Where it hangs, precisely.** `gtk_hello.c` prints two markers:
-
-```c
-g_print("G11GTK: create window -- G11 GTK\n");   // seen
-...   gtk_window_new, gtk_image_new_from_icon_name, labels+markup, entry, button
-gtk_widget_show_all(window);
-g_print("G11GTK: window shown -- G11 COMMIT\n"); // NEVER seen
-```
-
-So it stops inside widget construction or `gtk_widget_show_all`, before GDK ever creates a
-surface — which is consistent with no `wl_compositor.create_surface` on the wire and
-`xdg_wm_base` never being bound (GDK binds it lazily at first toplevel).
-
-**It is a hang, not slowness.** Waited a full **6 minutes** after launch: still `windows=1`. The
-process stays alive.
-
-**Last activity is fontconfig**, reached via Pango during label/markup setup. That is the strongest
-remaining lead.
-
-**Next, in order:** (1) check whether the fontconfig cache write actually completes — does the
-`.TMP-` file get created, written and renamed, or does one of those return an error the library
-retries forever? (2) if it is the cache, the cheap workaround is to ship a prebuilt fontconfig
-cache in the assets so no write is needed at startup; (3) confirm by watching for the
-`G11 COMMIT` marker, which is the exact success signal.
-
-**Real bugs found while building the harness** (all fixed, none related to 2.3):
-
-- **`SUPER+B` (top-bar toggle) has never worked.** It uses `sh -c`, and there is no `/bin/sh` —
-  it fails silently as `[exec] not found: /usr/bin/sh`, because nothing surfaces an exec failure.
-- **`busybox-dyn` is not in the ISO.** The Makefile has a `module_path` line for it, but its
-  staging block does not run: the image has 0 occurrences against 5 for `busybox`.
-
-**Found on the way (real, unrelated to 2.3):** `maybeSpawnWaylandClient()` gated the kernel's GUI
-autostart on a listener at `wayland-0`. Hyprland probes `wayland-0`, gets ECONNREFUSED, and binds
-`wayland-1` — so that listener never appears and the gate could never open. Both that gate and the
-hardcoded `WAYLAND_DISPLAY=wayland-0` now probe for the socket that actually exists.
-
-### 2.6 status — the data is real, the apps are gated on 2.3 — 2026-09-05
-
-Worth stating plainly: **C1 as written cannot be finished before 2.3.**
-`GRAPHICAL_APPLICATIONS_ROADMAP` defines it as *"cross-build an existing GTK app, not write an
-app"* and gates it on A4. GTK apps do not map windows here, so the app half is blocked.
-
-What *is* done is everything those apps would read. Verified on a real boot through the
-`open`/`read` path (`[proc]` proof lines):
-
-| file | before | now |
-|---|---|---|
-| `/proc/cpuinfo` | hardcoded `GenuineIntel`, `cpu MHz: 2000.000`, 1 CPU | CPUID vendor + brand, count from `g_smpCpuCount` — reports `QEMU Virtual CPU version 2.5+` |
-| `/proc/bus/pci/devices` | **did not exist** (ENOENT) | walks bus 0 via `pciConfigRead32`; first entry reads `8086:1237`, the 440FX host bridge |
-| `/proc/meminfo`, `stat`, `loadavg`, `uptime`, `diskstats`, `net/dev` | constants | real (2.1) |
-| `/proc/net/route` | — | already dynamic |
-
-`wl-sysmon` already reads `loadavg`, `meminfo`, `mounts`, `stat` and `uptime`, so it went from
-displaying an invented 512 MB to the machine's actual memory with no change to the app.
-
-**Deliberately still absent rather than faked:** `cpu MHz` (no core-frequency measurement exists —
-the old 2000.000 was invented), PCI BAR *sizes* (probing them means writing all-ones into a live
-device's BAR), and Sensors/Battery, which need ACPI the kernel does not have.
-
-**If 2.3 stays blocked**, the useful fallback is to surface this data through the native `wl-*`
-clients, which do map — that delivers C1's outcome without its method. Flagged as a deviation from
-the roadmap's stated approach, not slipped in as if it were the same thing.
-
-### 2.2 audit result — 2026-09-05
-
-`maybeSyscallAudit()` probes each candidate **through `dispatchLinuxSyscall`** at boot and prints
-`[audit]` lines. It probes rather than reads the switch table because *routed* and *implemented*
-are different things: `inotify_init1` has a case arm **and** returns ENOSYS from a stub, so
-grepping `case <nr>:` would have scored it present.
-
-| syscall | nr | result |
-|---|---|---|
-| `inotify_init` / `_init1` / `_add_watch` / `_rm_watch` | 253, 294, 254, 255 | **MISSING (ENOSYS)** |
-| `eventfd`, `eventfd2`, `timerfd_create`, `memfd_create`, `epoll_create1` | 284, 290, 283, 319, 291 | present — returned live fds |
-| `ppoll` | 271 | present |
-| `signalfd`, `signalfd4` | 282, 289 | present |
-| `dup3`, `pipe2` | 292, 293 | present — correctly rejected bad args (EBADF, EFAULT) |
-
-**So the only gap is inotify.** `dbus-daemon` degrades gracefully (stops watching its config);
-GTK/GIO file monitoring is the caller that will care.
-
-Two follow-ups this turned up:
-
-- **`nr 254` routed to `inotify_init()` and `nr 253` was not routed at all.** Invisible while every
-  inotify call is an ENOSYS stub, and a silently wrong call the moment one is implemented — the
-  same fault `case 233` carries a "was mis-routed to `epoll_create`" note about. Each number now
-  has its own handler. **Worth sweeping the rest of the table for this pattern.**
-- **`signalfd` accepted `0xFFFF_FFFF` as a descriptor and echoed it back** instead of returning
-  EBADF. Found by accident — the probe should have sign-extended `-1` to 64 bits. Unconfirmed as a
-  defect, but it should reject a descriptor that high.
+Probing beats reading the switch table: `inotify_init1` has a `case` arm *and* an ENOSYS stub, so
+grepping `case <nr>:` would have scored it present. Two follow-ups it surfaced: `nr 254` routed to
+`inotify_init()` while `253` was unrouted (fixed; **the rest of the table is worth sweeping for
+this**), and `signalfd` accepts `0xFFFF_FFFF` as a descriptor instead of returning EBADF.
 
 ---
 
@@ -418,6 +204,15 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
 - **`scripts/boot-test.sh` kills QEMU the moment every `require` marker has appeared** — `TIMEOUT`
   is a ceiling, not a duration. Anything that needs the guest to keep running (a periodic timer, a
   re-sync, a soak) will never be observed through it. Run `qemu-run.sh` directly for those.
+- **A keybinding can only launch a single-word command, and there is no `/bin/sh`.** A command with
+  arguments is routed through a shell and execs an empty program name (`[exec] not found: /bin/`).
+  This is why `SUPER+B` (top-bar toggle) has never worked. Anything needing arguments or an
+  environment variable needs a small launcher binary — see `hos-wl-trace`.
+- **A process Hyprland forked inherits no console, so anything it prints is discarded.** This looks
+  exactly like a feature being disabled rather than its output being lost, and invalidated three
+  separate conclusions before it was spotted. `hos-wl-trace` dup2's `/dev/console` onto fd 1/2.
+- **`busybox-dyn` is not in the ISO** despite the Makefile having a `module_path` line for it; its
+  staging block never runs. `/busybox` is the one that exists.
 - **A fixed poll count is not a timeout.** Anything polled from the main scheduler loop runs at no
   defined wall rate, so "wait N polls for the daemon" measures nothing physical. Both a 40-poll
   and a 400-poll wait for the D-Bus socket fired early. Wait on the condition itself and bound it

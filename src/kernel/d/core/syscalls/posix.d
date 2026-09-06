@@ -4004,8 +4004,23 @@ public long linux_sys_open(ulong path, ulong flags, ulong _mode) {
         klog("(null)");
     klog("\n");
 
-    return cast(long)sys_open(cast(const(char)*)path, cast(int)flags);
+    const long r = cast(long)sys_open(cast(const(char)*)path, cast(int)flags);
+    // ROADMAP 2.3: the [open] line above records only the ATTEMPT, so a log full of plausible
+    // paths says nothing about which of them the caller actually got.  Chasing the fontconfig
+    // hang, the question is precisely whether creating <hash>.cache-9.TMP-XXXXXX succeeds.
+    // Bounded; failures only, since successes are already implied by the line above.
+    if (r < 0 && g_openFailN < 60) {
+        ++g_openFailN;
+        klog("[openfail] ");
+        if (p !is null) klog(p); else klog("(null)");
+        klog(" errno="); klog_dec(cast(ulong)(-r));
+        klog(" flags="); klog_hex(flags);
+        hangTraceWho();
+        klog("\n");
+    }
+    return r;
 }
+private __gshared int g_openFailN = 0;
 
 public long linux_sys_close(ulong fd) {
     return cast(long)sys_close(cast(int)fd);

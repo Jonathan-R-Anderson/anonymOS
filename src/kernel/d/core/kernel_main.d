@@ -4099,9 +4099,34 @@ private void dispatchSyscall(int tid) {
 }
 
 // Dispatch to the large posix.d table
+// ROADMAP 2.3 diagnostic support: is the running task a GTK client?  Matched on the exec name so
+// gtk-hello, gtk3-demo and gtk3-widget-factory are all covered without a registration step.
+private __gshared int g_gtkSyscallN = 0;
+private bool gtkTaskNow() {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    const(char)* nm = g_taskExecName[tid];
+    if (nm is null) return false;
+    return nm[0] == 'g' && nm[1] == 't' && nm[2] == 'k';
+}
+
 private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
     if (n == 0x4100) return linux_sys_epin_lkl_pci(a, b, c, d, e);  // L3a: LKL PCI bridge (custom)
+
+    // ROADMAP 2.3 DIAGNOSTIC: log every syscall a GTK task makes, at the single point they all
+    // pass through.  The existing traces cover a hand-picked set (sendmsg, recvmsg, poll, ioctl),
+    // and reading "the last traced call" as "the last call" has now been wrong three times in
+    // this investigation -- the HOG: counters, TIOCGWINSZ, and fontconfig-is-last.  A complete
+    // record of syscall numbers says where it actually stops without any inference.
+    // REMOVE once 2.3 is understood.
+    if (g_gtkSyscallN < 4000 && gtkTaskNow()) {
+        ++g_gtkSyscallN;
+        klog("[sc] "); klog_dec(n);
+        klog(" a="); klog_hex(a);
+        klog(" t="); klog_dec(g_current_task_id);
+        klog("\n");
+    }
 
     long capPrecheck = linuxSyscallCapPrecheck(n, a, b, c, d, e, f);
     if (capPrecheck < 0) return capPrecheck;

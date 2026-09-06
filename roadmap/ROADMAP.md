@@ -28,45 +28,12 @@ desktop -- the exit criterion below is MET.
 |---|---|---|---|---|
 | 2.1 | ◑ **`/compat/linux` + `/proc` + `/sys` + `/etc`** — `/proc` now reports real data (2026-09-05); `/sys` and `/etc` still largely synthetic | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
 | 2.2 | ◑ **Syscall audit** — done as a survey: **only the 4 inotify calls are missing**. Remaining work is implementing inotify | Record what is missing once, rather than one crash at a time | APPS A3 · syscalls | M |
-| 2.3 | ✅ **One real upstream GTK app end-to-end** — DONE 2026-09-05. `gtk3-widget-factory` (upstream, unmodified) maps a window in ~6 s | The gate. Until one runs, every Stage C estimate is speculation | APPS A4 | M |
 | 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
 | 2.6 | ◑ **Stage C1** — the `/proc` data is real and verified; the apps are now **unblocked** by 2.3 | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
-**Exit criterion:** an upstream GTK application, not written for this OS, runs on the desktop.
-
-### 2.3 — ✅ COMPLETE (2026-09-05)
-
-**Upstream `gtk3-widget-factory` runs on the desktop and maps a window in ~6 seconds.** It is GTK's
-own demo application, unmodified, not written for this OS -- the Tier 2 exit criterion. `gtk-hello`
-maps too (`G11 COMMIT`), and neither aborts.
-
-Five bugs, each hiding the next. The last one was the actual killer:
-
-1. **memfd size lost across `SCM_RIGHTS`** -- `fstat` reported the per-fd `File.fileSize` and fd
-   passing hands over a *copy*, so growing a pool after passing its fd left the compositor seeing
-   a stale size. Hyprland answered `wl_shm: "The size of the file is not big enough for the shm
-   pool"` and libwayland tore the connection down. Length now lives on the memfd.
-2. **Missing file under a synthetic-dir prefix returned a directory, not ENOENT** -- GTK got
-   "Is a directory" for `gtk.css`, which it cannot handle; ENOENT it handles by falling back.
-3. **...which then broke file *creation*** under those prefixes (the ENOENT check preceded the
-   `O_CREAT` path). `O_CREAT` is now exempt.
-4. **`hicolor` shipped empty** -- `Directories=` with nothing behind it. Every theme inherits from
-   hicolor, so the whole icon fallback chain ended nowhere.
-5. **The fallback icon has to be a PNG.** `librsvg` here is a **stub**, so gdk-pixbuf cannot decode
-   an SVG at all -- and every icon in the Epin theme is `scalable/*.svg`. GTK's
-   `gtkiconhelper.c:495` asserts `error == NULL` when a lookup fails *and* `image-missing` is
-   absent, so it did not degrade, it called `abort()`.
-
-**It was never a hang.** The process aborted; its task-table entry lingering afterwards is what
-made it look alive for six minutes.
-
-**Bears directly on 2.4:** an SVG-only icon theme is useless while librsvg is a stub. Either build
-real librsvg or ship PNG icons.
-
-**Tooling kept:** the kernel decodes the Wayland wire protocol (`[wl]` -- object ids resolved to
-interface names, `wl_display.error` payloads, the advertised globals list), logs failed opens
-(`[openfail]`), and can trace every syscall a GTK task makes (`[sc]`). `hos-wl-trace` gives a
-client a console, without which none of its own messages are visible at all.
+**Exit criterion — ✅ MET 2026-09-05:** upstream `gtk3-widget-factory` runs on the desktop.
+Detail removed; see git history. One finding survives it: **`librsvg` is a stub, so gdk-pixbuf
+cannot decode SVG at all** — an SVG-only icon theme cannot load. That is 2.4's problem.
 
 ### 2.6 — the `/proc` data is real; the C1 apps are now unblocked
 

@@ -1008,6 +1008,15 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XDG_DATA_DIRS=/usr/share\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // ROADMAP 2.4: the per-user data root, and the install target for icon and theme packs.
+    // GTK searches $XDG_DATA_HOME/icons and $XDG_DATA_HOME/themes, and GLib would default this to
+    // $HOME/.local/share anyway -- but only if HOME is set and the default is never overridden,
+    // and packs installed here have to land somewhere predictable.  Stated explicitly so the
+    // install location is a fact rather than a consequence of two other settings.
+    // It sits under /home, which `persist =` keeps across reboots, so installs survive.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor,
+                                    "XDG_DATA_HOME=/home/user/.local/share\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "FONTCONFIG_PATH=/etc/fonts\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "FONTCONFIG_FILE=/etc/fonts/fonts.conf\0".ptr);

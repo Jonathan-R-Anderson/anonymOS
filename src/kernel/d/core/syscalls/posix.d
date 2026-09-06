@@ -5527,6 +5527,20 @@ private void rtInit() {
     rtMkdirPath("/tmp\0".ptr,           M1777, 0, 0);
     rtMkdirPath("/home\0".ptr,          M0755, 0, 0);
     rtMkdirPath("/home/user\0".ptr,     M0700, 1000, 1000);
+    // ROADMAP 2.4: the install targets for font, icon and theme packs.  They have to exist up
+    // front -- fontconfig lists ~/.local/share/fonts and ~/.fonts in fonts.conf, and GTK scans
+    // $XDG_DATA_HOME/{icons,themes}, but a scanner that finds no directory simply skips it, so
+    // without these an installed pack would be invisible until something else happened to create
+    // the path.  All are under /home, which `persist =` keeps across reboots, so a pack installed
+    // once stays installed.
+    rtMkdirPath("/home/user/.local\0".ptr,              M0700, 1000, 1000);
+    rtMkdirPath("/home/user/.local/share\0".ptr,        M0700, 1000, 1000);
+    rtMkdirPath("/home/user/.local/share/fonts\0".ptr,  M0700, 1000, 1000);
+    rtMkdirPath("/home/user/.local/share/icons\0".ptr,  M0700, 1000, 1000);
+    rtMkdirPath("/home/user/.local/share/themes\0".ptr, M0700, 1000, 1000);
+    rtMkdirPath("/home/user/.fonts\0".ptr,              M0700, 1000, 1000);
+    rtMkdirPath("/home/user/.icons\0".ptr,              M0700, 1000, 1000);
+    rtMkdirPath("/home/user/.themes\0".ptr,             M0700, 1000, 1000);
     {
         auto uname = userDefaultNameContent();
         if (uname.length > 0) {
@@ -7065,6 +7079,13 @@ private immutable VFEntry[] g_vfs = [
       "<fontconfig>\n" ~
       "  <dir>/usr/share/fonts</dir>\n" ~
       "  <dir>/usr/local/share/fonts</dir>\n" ~
+      // ROADMAP 2.4: where an installed font pack goes.  The two directories above are rebuilt
+      // from the asset blobs on every boot, so anything dropped there is gone at the next one.
+      // These live under /home, which `persist =` in /desktop.conf keeps across reboots, so a
+      // font installed here stays installed.  ~/.local/share/fonts is the XDG location and
+      // ~/.fonts the legacy one; both are listed because packs in the wild use either.
+      "  <dir>/home/user/.local/share/fonts</dir>\n" ~
+      "  <dir>/home/user/.fonts</dir>\n" ~
       "  <cachedir>/var/cache/fontconfig</cachedir>\n" ~
       "  <alias><family>sans-serif</family><prefer><family>Noto Sans</family><family>DejaVu Sans</family></prefer></alias>\n" ~
       "  <alias><family>monospace</family><prefer><family>Noto Sans Mono</family><family>DejaVu Sans Mono</family></prefer></alias>\n" ~

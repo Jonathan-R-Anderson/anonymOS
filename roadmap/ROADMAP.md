@@ -28,7 +28,7 @@ desktop -- the exit criterion below is MET.
 |---|---|---|---|---|
 | 2.1 | ◑ **`/compat/linux` + `/proc` + `/sys` + `/etc`** — `/proc` now reports real data (2026-09-05); `/sys` and `/etc` still largely synthetic | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
 | 2.2 | ◑ **Syscall audit** — done as a survey: **only the 4 inotify calls are missing**. Remaining work is implementing inotify | Record what is missing once, rather than one crash at a time | APPS A3 · syscalls | M |
-| 2.4 | ◑ **Font / icon / theme resolution + installable packs** — persistent user pack dirs exist and are scanned by both fontconfig and GTK (verified on hardware). **Blocked on librsvg** for SVG packs | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
+| 2.4 | ◑ **Font / icon / theme resolution + installable packs** — fonts and icons both resolve and render in a GTK app; pack dirs exist, persist and are scanned. Remaining: an end-to-end pack-install test | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
 | 2.6 | ◑ **Stage C1** — the `/proc` data is real and verified; the apps are now **unblocked** by 2.3 | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion — ✅ MET 2026-09-05:** upstream `gtk3-widget-factory` runs on the desktop.
@@ -77,12 +77,17 @@ sizes 16/22/24/32/48/64/128). 42 PNGs ship and reach the guest -- verified in th
 `icons.blob`. `index.theme` is generated so each size gets both a `Directories=` entry and its own
 `[NxN/context]` section, which GTK requires.
 
-**Still not resolving, and this is the open item.** GTK reads
-`/usr/share/icons/Epin/index.theme`, the index is well-formed, the PNGs are present in the guest --
-and GTK never opens one. The icon that appears in a GTK window is its own built-in fallback from
-`gtk.gresource`, not a theme icon. Since GTK discovers theme contents by *listing* directories,
-the next thing to check is **`getdents` on the unpacked asset directories**: if enumeration returns
-nothing, a perfectly good theme looks empty.
+**Icons now resolve.** GTK loads the rasterised theme icons -- `[open]
+/usr/share/icons/Epin/128x128/apps/terminal.png` -- and the terminal icon renders in the GTK
+window where a generic grey placeholder used to be.
+
+The getdents suspicion was **wrong**, and ruling it out mattered: enumeration works fine
+(`Epin/48x48/apps` lists all four PNGs). The real cause was already in the log unacted on -- the
+only theme directories GTK ever listed were `Adwaita/<size>/status`, and the original abort said
+"not present in theme **Adwaita**", while `/etc/gtk-3.0/settings.ini` says `gtk-icon-theme-name=Epin`
+and GTK demonstrably opens that file. **GTK 3 reaches for Adwaita regardless of the setting.**
+Fixed by giving Adwaita a real index that `Inherits=Epin,hicolor` -- an inheriting theme with no
+icons of its own is an ordinary arrangement, and it resolves whichever name GTK settles on.
 
 **Also not done:** an end-to-end test that installs a real pack and confirms an app picks it up.
 The install directories are proven scanned; a pack changing what renders is not.

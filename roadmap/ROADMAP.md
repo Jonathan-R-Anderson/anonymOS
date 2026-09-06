@@ -13,7 +13,7 @@ this project's history came from deep platform work landing while the desktop co
 
 
 **Tier 1 — installable OS — ✅ complete 2026-09-05.** Removed; see git history. Its two
-carried-forward items live on as 3.0b (`wl-quicksettings` panels) and 5.0 (virtio-blk).
+carried-forward items live on as 5.0 (virtio-blk).
 
 ---
 
@@ -46,13 +46,14 @@ SVG-only pack will silently resolve to nothing.
 
 Usable is not the same as good.
 
-**Done and removed 2026-09-06** (see git history): 3.1 damage-tracked KMS blit (8% of scanlines
-written, stores 5.3x faster), 3.2 multi-window reflow (all five floating clients now tile),
-3.3 screenshot regression tests (`make golden`, 0 differing pixels across boots).
+**Done and removed 2026-09-06** (see git history): 3.0b `wl-quicksettings` settings panels
+(Keyboard/Mouse/Touchpad/Appearance, live over Hyprland IPC and persisted under `/home`),
+3.1 damage-tracked KMS blit (8% of scanlines written, stores 5.3x faster), 3.2 multi-window
+reflow (all five floating clients now tile), 3.3 screenshot regression tests (`make golden`,
+0 differing pixels across boots).
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
-| 3.0b | ◑ **`wl-quicksettings` panels** — Keyboard, Mouse, Touchpad, Appearance. **UNBLOCKED 2026-09-06.** UI, keyboard navigation and persistence (`settings.conf` + a generated `settings.lua` under `/home`) are verified by screenshot. The live-apply hop over Hyprland IPC was found broken and fixed (see the correction below); re-verification pending | APPS B2 · GUI G18 | M |
 | 3.4 | **Kernel-mode interrupt handling** | Real fix for input latency, but a genuine kernel change | DESKTOP_RESP R4 | L |
 | 3.5 | **Preemptive scheduling** | Depends on 3.4 | DESKTOP_RESP R6 | L |
 | 3.6 | **quickshell (Qt6/QML) port** | The only route to true host parity — the host's bar, sidebars, overview and launcher are all one `qs` process. Needs 2.x and a working GL path | APPS E6 | XL |
@@ -111,7 +112,9 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
 - **The desktop's configuration backend is Hyprland's IPC socket**, not a config file. Input and
   theme settings live in `system/hypr/custom/*.lua`, baked in at build time, so a running desktop
   could not change them — that is what blocked 3.0b. `hypr_ipc()` in `wl-quicksettings.c` writes a
-  bare command (no framing) to `/run/user/1000/hypr/<sig>/.socket.sock`. Three traps, all paid for:
+  bare command (no framing) to `/run/user/1000/hypr/<sig>/.socket.sock`. The command is
+  **`eval hl.config{...}`, not `keyword`** — keyword only drives the old hyprlang parser, and this
+  desktop's config is Lua (`HyprCtl.cpp:1143`). Three traps, all paid for:
   the kernel does not export `HYPRLAND_INSTANCE_SIGNATURE`, so the code enumerates that directory
   and assumes a single instance; **AF_UNIX reads return `EAGAIN` on an empty socket instead of
   blocking** (`localSocketRead`), so a client MUST poll rather than read once — Hyprland does not

@@ -43,8 +43,8 @@ enum { WIN_W = 320, WIN_H = 536 };
 /* --- layout geometry (shared by the renderer and the hit-tester) --- */
 enum {
     TITLE_H  = 30,
-    CLOSE_X  = WIN_W - 26, CLOSE_Y = 4,  CLOSE_W = 22, CLOSE_H = 22,
-    CARD_X   = 12, CARD_W = WIN_W - 24,
+    CLOSE_Y = 4,  CLOSE_W = 22, CLOSE_H = 22,
+    CARD_X   = 12,
 
     HEADER_Y = 32,  HEADER_H = 76,   /* Q0.2: avatar + user + current domain + identity */
 
@@ -57,6 +57,20 @@ enum {
     LOGOUT_Y = 452, LOGOUT_H = 48,
 
 };
+
+/* ROADMAP 3.2: the two horizontal metrics derive from the CURRENT width.
+ *
+ * They were enum constants baked from WIN_W -- CLOSE_X = WIN_W - 26, CARD_W = WIN_W - 24 -- so at
+ * any other width the close button sat away from the corner and every card stopped short of, or
+ * ran past, the edge.  Worse than the drawing being wrong: hit_region() shares these values, so
+ * the clickable regions would have stayed where the 320px layout put them while the cards moved.
+ *
+ * Macros over the app pointer rather than fields, so there is exactly one definition and the
+ * renderer and hit-tester cannot drift apart.  The VERTICAL stack stays fixed: these are
+ * fixed-height rows, and min_size keeps the window tall enough for all of them.
+ */
+#define CLOSE_X_OF(a) ((a)->width - 26)
+#define CARD_W_OF(a)  ((a)->width - 24)
 
 /* clickable regions returned by hit_region() */
 enum { R_NONE=0, R_CLOSE, R_WIFI, R_SYSTEM, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT };
@@ -81,6 +95,10 @@ struct app {
     unsigned char *font_data;
     size_t font_size, buffer_size;
     int width, height, stride;
+    /* ROADMAP 3.2: the shm mapping (released on resize) and the size the compositor last asked
+     * for, applied on the next xdg_surface.configure. */
+    unsigned char *map_base; size_t map_total;
+    int pending_width, pending_height;
     int font_ready, running;
     double pointer_x, pointer_y;
 
@@ -290,7 +308,7 @@ static void session_action(const char *cmd){
 
 /* --- hit-testing: which region is under (px,py)? --- */
 static void act_btn_rect(int i, int *x, int *y, int *w, int *h){
-    int bw = (CARD_W - 3*8) / 4;            /* four buttons, three 8px gaps */
+    int bw = (CARD_W_OF(app) - 3*8) / 4;            /* four buttons, three 8px gaps */
     *x = CARD_X + i*(bw+8); *y = ACT_Y; *w = bw; *h = ACT_H;
 }
 static int in_rect(double px, double py, int x, int y, int w, int h){
@@ -298,13 +316,13 @@ static int in_rect(double px, double py, int x, int y, int w, int h){
 }
 static int hit_region(struct app *app, double px, double py){
     (void)app;
-    if (in_rect(px,py,CLOSE_X,CLOSE_Y,CLOSE_W,CLOSE_H)) return R_CLOSE;
-    if (in_rect(px,py,CARD_X,WIFI_Y,CARD_W,WIFI_H))     return R_WIFI;
-    if (in_rect(px,py,CARD_X,TOPBAR_Y,CARD_W,TOPBAR_H)) return R_SYSTEM;
+    if (in_rect(px,py,CLOSE_X_OF(app),CLOSE_Y,CLOSE_W,CLOSE_H)) return R_CLOSE;
+    if (in_rect(px,py,CARD_X,WIFI_Y,CARD_W_OF(app),WIFI_H))     return R_WIFI;
+    if (in_rect(px,py,CARD_X,TOPBAR_Y,CARD_W_OF(app),TOPBAR_H)) return R_SYSTEM;
     static const int reg[4] = { R_SETTINGS, R_LOCK, R_RESTART, R_POWER };
     for (int i=0;i<4;i++){ int bx,by,bw,bh; act_btn_rect(i,&bx,&by,&bw,&bh);
         if (in_rect(px,py,bx,by,bw,bh)) return reg[i]; }
-    if (in_rect(px,py,CARD_X,LOGOUT_Y,CARD_W,LOGOUT_H)) return R_LOGOUT;
+    if (in_rect(px,py,CARD_X,LOGOUT_Y,CARD_W_OF(app),LOGOUT_H)) return R_LOGOUT;
     return R_NONE;
 }
 
@@ -330,17 +348,17 @@ static void draw_menu(struct app *app){
     /* --- CSD titlebar --- */
     fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
     draw_text(app, "System", 14, 7, 200, 15, TXT);
-    fill_rect(app, CLOSE_X, CLOSE_Y, CLOSE_W, CLOSE_H, (app->hover==R_CLOSE)?CLOSEC:ROWH);
-    draw_text(app, "x", CLOSE_X+7, CLOSE_Y+3, 16, 14, TXT);
+    fill_rect(app, CLOSE_X_OF(app), CLOSE_Y, CLOSE_W, CLOSE_H, (app->hover==R_CLOSE)?CLOSEC:ROWH);
+    draw_text(app, "x", CLOSE_X_OF(app)+7, CLOSE_Y+3, 16, 14, TXT);
 
     /* --- Q0.2 identity header: avatar + username + current domain + current identity --- */
     {
-        fill_round_rect(app, CARD_X, HEADER_Y, CARD_W, HEADER_H, 14, ROW);
+        fill_round_rect(app, CARD_X, HEADER_Y, CARD_W_OF(app), HEADER_H, 14, ROW);
         int asz = 52, ax = CARD_X+8, ay = HEADER_Y+(HEADER_H-asz)/2;
         fill_round_rect(app, ax, ay, asz, asz, asz/2, ACC);    /* circular avatar */
         char initial[2]; initial[0] = app->user[0] ? (char)(app->user[0] & ~0x20) : 'U'; initial[1] = 0;
         draw_text(app, initial, ax+asz/2-8, ay+asz/2-14, asz, 26, TITLE);
-        int tx = ax + asz + 14, tw = CARD_X+CARD_W - (ax+asz+14) - 10;
+        int tx = ax + asz + 14, tw = CARD_X+CARD_W_OF(app) - (ax+asz+14) - 10;
         draw_text(app, app->user[0] ? app->user : "user", tx, HEADER_Y+12, tw, 16, TXT);
         char dl[80]; snprintf(dl, sizeof dl, "Domain:   %s", app->domain[0]   ? app->domain   : "Personal");
         draw_text(app, dl, tx, HEADER_Y+36, tw, 12, DIM);
@@ -349,11 +367,11 @@ static void draw_menu(struct app *app){
     }
 
     /* --- Wi-Fi row --- */
-    fill_round_rect(app, CARD_X, WIFI_Y, CARD_W, WIFI_H, 12, (app->hover==R_WIFI)?ROWH:ROW);
+    fill_round_rect(app, CARD_X, WIFI_Y, CARD_W_OF(app), WIFI_H, 12, (app->hover==R_WIFI)?ROWH:ROW);
     draw_wifi_glyph(app, CARD_X+14, WIFI_Y+14, app->wifi_connected?ACC:DIM);
     draw_text(app, "Wi-Fi", CARD_X+48, WIFI_Y+9, 160, 15, TXT);
     draw_text(app, app->wifi_connected ? app->active_ssid : "Not connected",
-              CARD_X+48, WIFI_Y+31, CARD_W-64, 12, app->wifi_connected?OK:DIM);
+              CARD_X+48, WIFI_Y+31, CARD_W_OF(app)-64, 12, app->wifi_connected?OK:DIM);
     /* --- Date & time row ---
      *
      * This is where the Volume slider used to be.  That slider was draggable, showed a filled
@@ -362,7 +380,7 @@ static void draw_menu(struct app *app){
      * that looks live and is inert is worse than an absent one, so it is gone rather than greyed
      * out; the row returns when Tier 5 (audio driver + PipeWire) lands, and nothing read the
      * volume key.  A clock is real, needs no backend, and is on the Tier 1 list. */
-    fill_round_rect(app, CARD_X, CLOCK_Y, CARD_W, CLOCK_H, 12, ROW);
+    fill_round_rect(app, CARD_X, CLOCK_Y, CARD_W_OF(app), CLOCK_H, 12, ROW);
     {
         time_t now = time(NULL);
         struct tm tmv, *tmp = localtime_r(&now, &tmv);
@@ -372,12 +390,12 @@ static void draw_menu(struct app *app){
             strftime(date, sizeof date, "%A, %e %B %Y", tmp);
         }
         draw_text(app, hhmm, CARD_X+16, CLOCK_Y+8,  120, 22, TXT);
-        draw_text(app, date, CARD_X+16, CLOCK_Y+36, CARD_W-32, 12, DIM);
+        draw_text(app, date, CARD_X+16, CLOCK_Y+36, CARD_W_OF(app)-32, 12, DIM);
     }
 
 
     /* --- Battery row --- */
-    fill_round_rect(app, CARD_X, BAT_Y, CARD_W, BAT_H, 12, ROW);
+    fill_round_rect(app, CARD_X, BAT_Y, CARD_W_OF(app), BAT_H, 12, ROW);
     draw_battery_glyph(app, CARD_X+14, BAT_Y+16, DIM, OK);
     draw_text(app, "Battery", CARD_X+52, BAT_Y+9, 160, 15, TXT);
     /* QEMU exposes no battery, and there is no ACPI battery backend, so this is a statement
@@ -386,12 +404,12 @@ static void draw_menu(struct app *app){
 
     /* --- Q2.4 System row: live CPU / RAM / IP (click -> /wl-sysmon) --- */
     {
-        fill_round_rect(app, CARD_X, TOPBAR_Y, CARD_W, TOPBAR_H, 12, (app->hover==R_SYSTEM)?ROWH:ROW);
+        fill_round_rect(app, CARD_X, TOPBAR_Y, CARD_W_OF(app), TOPBAR_H, 12, (app->hover==R_SYSTEM)?ROWH:ROW);
         draw_text(app, "System", CARD_X+16, TOPBAR_Y+5, 120, 14, TXT);
         char sl[96];
         snprintf(sl, sizeof sl, "CPU %d%%   RAM %d%%   %s",
                  app->cpu_pct, app->mem_pct, app->ip[0] ? app->ip : "no IP");
-        draw_text(app, sl, CARD_X+16, TOPBAR_Y+24, CARD_W-24, 12, DIM);
+        draw_text(app, sl, CARD_X+16, TOPBAR_Y+24, CARD_W_OF(app)-24, 12, DIM);
     }
 
     /* --- action buttons (Settings / Lock / Restart / Power) --- */
@@ -412,8 +430,8 @@ static void draw_menu(struct app *app){
     }
 
     /* --- Log Out (full width) --- */
-    fill_round_rect(app, CARD_X, LOGOUT_Y, CARD_W, LOGOUT_H, 12, (app->hover==R_LOGOUT)?ROWH:0xff2a3140u);
-    draw_text(app, "Log Out", CARD_X + CARD_W/2 - 26, LOGOUT_Y + 16, CARD_W, 15, TXT);
+    fill_round_rect(app, CARD_X, LOGOUT_Y, CARD_W_OF(app), LOGOUT_H, 12, (app->hover==R_LOGOUT)?ROWH:0xff2a3140u);
+    draw_text(app, "Log Out", CARD_X + CARD_W_OF(app)/2 - 26, LOGOUT_Y + 16, CARD_W_OF(app), 15, TXT);
 }
 
 /* --- double-buffered wl_shm (one memfd, two slices) --- */
@@ -439,6 +457,7 @@ static int create_buffers(struct app *app){
         wl_buffer_add_listener(app->bufs[i].wl, &buffer_listener, app);
         app->bufs[i].busy = 0;
     }
+    app->map_base = base; app->map_total = total;
     wl_shm_pool_destroy(pool); close(fd);
     return 0;
 }
@@ -508,15 +527,42 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+/* ROADMAP 3.2: record the size Hyprland asks for; this used to discard w and h. */
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){
+    struct app*a=d; (void)t; (void)s;
+    if (w > 0) a->pending_width  = w;
+    if (h > 0) a->pending_height = h;
+}
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
 static const struct xdg_toplevel_listener toplevel_listener = {
     .configure=toplevel_configure,.close=toplevel_close,.configure_bounds=toplevel_bounds,.wm_capabilities=toplevel_wmcap };
 
+/* ROADMAP 3.2: rebuild both buffers at a new size.  The horizontal metrics reflow through
+ * CLOSE_X_OF()/CARD_W_OF(); the vertical stack is fixed-height rows and min_size keeps the window
+ * tall enough for all of them. */
+static int resize_buffers(struct app *app, int w, int h){
+    if (w <= 0 || h <= 0) return 0;
+    if (w == app->width && h == app->height && app->bufs[0].wl) return 0;
+    for (int i = 0; i < 2; i++){
+        if (app->bufs[i].wl){ wl_buffer_destroy(app->bufs[i].wl); app->bufs[i].wl = NULL; }
+        app->bufs[i].px = NULL; app->bufs[i].busy = 0;
+    }
+    if (app->map_base && app->map_base != MAP_FAILED) munmap(app->map_base, app->map_total);
+    app->map_base = NULL; app->map_total = 0; app->pixels = NULL;
+    app->width = w; app->height = h; app->stride = w * 4;
+    app->buffer_size = (size_t)app->stride * (size_t)h;
+    return create_buffers(app);
+}
+
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    int ww = a->pending_width  > 0 ? a->pending_width  : a->width;
+    int wh = a->pending_height > 0 ? a->pending_height : a->height;
+    if (ww != a->width || wh != a->height){
+        if (resize_buffers(a, ww, wh) < 0){ log_line("QUICKSET: resize failed"); return; }
+    }
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };
@@ -568,7 +614,7 @@ int main(void){
     /* Float as a fixed-size popover: min==max size makes the tiling WM's
      * epin_is_tileable() return false so this card is left floating. */
     xdg_toplevel_set_min_size(app.toplevel, WIN_W, WIN_H);
-    xdg_toplevel_set_max_size(app.toplevel, WIN_W, WIN_H);
+    /* ROADMAP 3.2: no maximum -- min == max is what made Hyprland float this window. */
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

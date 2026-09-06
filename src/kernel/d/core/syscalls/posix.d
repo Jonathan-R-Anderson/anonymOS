@@ -3112,12 +3112,9 @@ private size_t procDynamicSynth(const(char)* path) {
     // treats a missing id as a hard failure and a wrong-but-plausible id is the lesser harm during
     // bring-up on hardware this kernel has not seen.
     {
-        const bool isVendor    = cstrEq(path, "/sys/dev/char/226:0/device/vendor")
-                              || cstrEq(path, "/sys/dev/char/226:128/device/vendor");
-        const bool isDevice    = cstrEq(path, "/sys/dev/char/226:0/device/device")
-                              || cstrEq(path, "/sys/dev/char/226:128/device/device");
-        const bool isRevision  = cstrEq(path, "/sys/dev/char/226:0/device/revision")
-                              || cstrEq(path, "/sys/dev/char/226:128/device/revision");
+        const bool isVendor   = isDrmDeviceField(path, "/device/vendor");
+        const bool isDevice   = isDrmDeviceField(path, "/device/device");
+        const bool isRevision = isDrmDeviceField(path, "/device/revision");
         if (isVendor || isDevice || isRevision) {
             import drivers.pci : pciConfigRead32;
             ushort gv = 0x1af4, gd = 0x1050; ubyte grev = 0x01;
@@ -3224,12 +3221,9 @@ private size_t procDynamicSynth(const(char)* path) {
     // Subsystem ids come from config offset 0x2C, and the slot name is built from the function
     // actually found rather than the 0000:00:04.0 that was assumed.
     {
-        const bool isUevent = cstrEq(path, "/sys/dev/char/226:0/device/uevent")
-                           || cstrEq(path, "/sys/dev/char/226:128/device/uevent");
-        const bool isSubVen = cstrEq(path, "/sys/dev/char/226:0/device/subsystem_vendor")
-                           || cstrEq(path, "/sys/dev/char/226:128/device/subsystem_vendor");
-        const bool isSubDev = cstrEq(path, "/sys/dev/char/226:0/device/subsystem_device")
-                           || cstrEq(path, "/sys/dev/char/226:128/device/subsystem_device");
+        const bool isUevent = isDrmDeviceField(path, "/device/uevent");
+        const bool isSubVen = isDrmDeviceField(path, "/device/subsystem_vendor");
+        const bool isSubDev = isDrmDeviceField(path, "/device/subsystem_device");
         if (isUevent || isSubVen || isSubDev) {
             import drivers.pci : pciConfigRead32;
             ushort gv = 0x1af4, gd = 0x1050, sv = 0x1af4, sd = 0x1100;
@@ -5558,7 +5552,7 @@ public void procSelfTest() @nogc nothrow {
         "/proc/meminfo\0", "/proc/stat\0", "/proc/loadavg\0",
         "/proc/diskstats\0", "/proc/uptime\0", "/proc/net/dev\0", "/proc/cpuinfo\0",
         "/proc/bus/pci/devices\0",
-        "/sys/dev/char/226:0/device/vendor\0", "/sys/dev/char/226:0/device/device\0",
+        "/sys/class/drm/card0/device/vendor\0", "/sys/class/drm/card0/device/uevent\0",
         "/etc/resolv.conf\0", "/etc/machine-id\0"
     ];
     foreach (p; paths) {
@@ -10859,6 +10853,23 @@ private static immutable string[4] g_devCharEntries = ["226:0", "226:128", "13:6
 private enum ulong SYNTHDIR_NETCLASS = 0x0E7C1A55;
 // ROADMAP 2.1: /sys/bus/pci/devices, enumerated live from PCI config space rather than a constant.
 private enum ulong SYNTHDIR_PCIDEVS  = 0x0E7C1C71;
+// ROADMAP 2.1: the DRM device files exist under TWO path families -- /sys/dev/char/226:N/device/*
+// and /sys/class/drm/{card0,renderD128}/device/* -- with identical content.  The live-PCI handlers
+// matched only the first, which is the family nothing actually opens: the proof run showed the
+// desktop reading /sys/class/drm/card0/device/uevent.  Matching on prefix + suffix covers both
+// without enumerating four paths per field and missing one again.
+private bool cstrEndsWith(const(char)* s, string suffix) @nogc nothrow {
+    if (s is null) return false;
+    size_t n = 0; while (s[n] != 0) ++n;
+    if (n < suffix.length) return false;
+    foreach (i; 0 .. suffix.length) if (s[n - suffix.length + i] != suffix[i]) return false;
+    return true;
+}
+private bool isDrmDeviceField(const(char)* p, string field) @nogc nothrow {
+    if (!cstrEqPrefix(p, "/sys/class/drm/") && !cstrEqPrefix(p, "/sys/dev/char/226:")) return false;
+    return cstrEndsWith(p, field);
+}
+
 private char hexDigitUpper(uint v) @nogc nothrow {
     return cast(char)(v < 10 ? ('0' + v) : ('A' + (v - 10)));
 }

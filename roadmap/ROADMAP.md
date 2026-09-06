@@ -215,11 +215,36 @@ then nothing but repeated `ioctl(fd=2, TIOCGWINSZ)`, which the capability layer 
 sends another Wayland message and never binds `xdg_wm_base`. The process stays alive — this is a
 hang, not a crash.
 
-**Next:** find why the fontconfig cache write does not complete. A related failure is already
-visible earlier in the same log — `Failed to write keyfile to /etc/glib-2.0/settings/keyfile:
-Function not implemented` — so writes to some paths return ENOSYS, and fontconfig writing
-`cache-9.TMP-…` and renaming it into place is exactly that shape. Worth checking whether
-`/var/cache/fontconfig` is writable at all, and what the `.TMP-` create/rename actually returns.
+**FIXED — third bug (a regression in the second).** The ENOENT check sat ~200 lines above the rtfs
+`O_CREAT` path, so `open(path, O_CREAT|O_WRONLY)` under one of these prefixes returned ENOENT
+instead of *creating* the file — swapping one failure for another. `O_CREAT` is now exempt.
+Fontconfig visibly got further: it writes several cache files (`3830…TMP-KIEMph`, `TMP-mknHBC`,
+`4c599…TMP-KMFJBi`) where before it managed one.
+
+**Where it hangs, precisely.** `gtk_hello.c` prints two markers:
+
+```c
+g_print("G11GTK: create window -- G11 GTK\n");   // seen
+...   gtk_window_new, gtk_image_new_from_icon_name, labels+markup, entry, button
+gtk_widget_show_all(window);
+g_print("G11GTK: window shown -- G11 COMMIT\n"); // NEVER seen
+```
+
+So it stops inside widget construction or `gtk_widget_show_all`, before GDK ever creates a
+surface — which is consistent with no `wl_compositor.create_surface` on the wire and
+`xdg_wm_base` never being bound (GDK binds it lazily at first toplevel).
+
+**It is a hang, not slowness.** Waited a full **6 minutes** after launch: still `windows=1`. The
+process stays alive.
+
+**Last activity is fontconfig**, reached via Pango during label/markup setup. That is the strongest
+remaining lead.
+
+**Next, in order:** (1) check whether the fontconfig cache write actually completes — does the
+`.TMP-` file get created, written and renamed, or does one of those return an error the library
+retries forever? (2) if it is the cache, the cheap workaround is to ship a prebuilt fontconfig
+cache in the assets so no write is needed at startup; (3) confirm by watching for the
+`G11 COMMIT` marker, which is the exact success signal.
 
 **Real bugs found while building the harness** (all fixed, none related to 2.3):
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import struct
+import subprocess
 import zlib
 from pathlib import Path
 
@@ -68,6 +69,40 @@ def write_png(path: Path, width: int, height: int, variant: int) -> None:
     data += chunk(b"IDAT", zlib.compress(b"".join(rows), level=9))
     data += chunk(b"IEND", b"")
     path.write_bytes(data)
+
+
+# Sizes GTK asks for.  GTK_ICON_SIZE_MENU is 16, BUTTON 16, DND 32, DIALOG 48.
+RASTER_SIZES = (16, 22, 24, 32, 48, 64, 128)
+
+
+def rasterise(theme: Path, context: str, name: str) -> None:
+    """Render an icon's SVG to PNG at each size GTK asks for.
+
+    This has to happen at BUILD time because the guest cannot do it.  GTK loads SVG through
+    librsvg's gdk-pixbuf loader module, and this stack has neither: librsvg is a stub, and
+    gdk-pixbuf is built `-Dbuiltin_loaders=png` and fully static (libgdk_pixbuf-2.0.a, no .so
+    anywhere), so there is no module system to load a loader into and dlopen does not work in
+    static musl regardless.  Building real librsvg would not change that.
+
+    So every icon this theme ships is unreadable as an SVG.  Rasterising here is what makes the
+    Epin theme render at all -- until now it contained nothing but SVGs and therefore resolved to
+    nothing, which is why gtk_image_new_from_icon_name("terminal", ...) missed and GTK aborted.
+
+    Missing ImageMagick is not fatal: the SVGs are still written, so the build degrades to the
+    previous behaviour rather than failing.
+    """
+    src = theme / "scalable" / context / f"{name}.svg"
+    if shutil.which("convert") is None:
+        print(f"[assets] WARNING: no ImageMagick; {name} stays SVG-only and will not render")
+        return
+    for size in RASTER_SIZES:
+        dst = theme / f"{size}x{size}" / context / f"{name}.png"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["convert", "-background", "none", "-resize", f"{size}x{size}", str(src), str(dst)],
+            check=True,
+            capture_output=True,
+        )
 
 
 def svg_icon(kind: str) -> str:
@@ -131,40 +166,26 @@ def stage_icons(root: Path) -> None:
     (theme / "scalable" / "places").mkdir(parents=True, exist_ok=True)
     (theme / "scalable" / "mimetypes").mkdir(parents=True, exist_ok=True)
     write_text(theme / "LICENSE.txt", GENERATED_LICENSE)
-    write_text(
-        theme / "index.theme",
-        """[Icon Theme]
-Name=Epin
-Comment=Generated Epin desktop icon theme
-Inherits=hicolor
-Directories=scalable/apps,scalable/places,scalable/mimetypes
-
-[scalable/apps]
-Size=128
-Type=Scalable
-MinSize=16
-MaxSize=256
-Context=Applications
-
-[scalable/places]
-Size=128
-Type=Scalable
-MinSize=16
-MaxSize=256
-Context=Places
-
-[scalable/mimetypes]
-Size=128
-Type=Scalable
-MinSize=16
-MaxSize=256
-Context=MimeTypes
-""",
-    )
+    # Built rather than hand-written: every rasterised size needs BOTH an entry in Directories=
+    # and its own [NxN/context] section.  GTK ignores a directory that is not declared in both,
+    # so a hand-maintained list silently loses sizes as RASTER_SIZES changes.
+    contexts = {"apps": "Applications", "places": "Places", "mimetypes": "MimeTypes"}
+    dir_names = [f"scalable/{c}" for c in contexts]
+    dir_names += [f"{s}x{s}/{c}" for c in contexts for s in RASTER_SIZES]
+    idx = ("[Icon Theme]\nName=Epin\nComment=Generated Epin desktop icon theme\n"
+           "Inherits=hicolor\nDirectories=" + ",".join(dir_names) + "\n")
+    for c, ctx in contexts.items():
+        idx += f"\n[scalable/{c}]\nSize=128\nType=Scalable\nMinSize=16\nMaxSize=256\nContext={ctx}\n"
+        for s in RASTER_SIZES:
+            idx += f"\n[{s}x{s}/{c}]\nSize={s}\nType=Fixed\nContext={ctx}\n"
+    write_text(theme / "index.theme", idx)
     for name in ("terminal", "file-manager", "settings", "system-monitor"):
         write_text(theme / "scalable" / "apps" / f"{name}.svg", svg_icon(name))
+        rasterise(theme, "apps", name)
     write_text(theme / "scalable" / "places" / "folder.svg", svg_icon("folder"))
+    rasterise(theme, "places", "folder")
     write_text(theme / "scalable" / "mimetypes" / "text-x-generic.svg", svg_icon("text-x-generic"))
+    rasterise(theme, "mimetypes", "text-x-generic")
 
     default = root / "icons" / "default"
     if default.exists():

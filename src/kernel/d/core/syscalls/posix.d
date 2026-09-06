@@ -112,10 +112,14 @@ enum FileType {
     FD_INSTALL_PROGRESS, // INSTALLER §D: /config/install.progress — reads return 0..1000 permille
     FD_HW_DETECT,        // DRIVERS: /config/hardware.detect — reads return the detected driver codes (PCI)
     FD_FB,               // /dev/fb0 — read the composited framebuffer (screenshot); FBIOGET_VSCREENINFO
-    FD_INOTIFY,          // ROADMAP 2.2: inotify instance (watch list + event queue)
     FD_KLOG,             // /run/klog — live read-only view of the kernel log RAM ring (core.io g_klogRing)
     FD_UPDATE_CTL,       // UPDATE U1: /config/update.action — writes drive the A/B update engine
     FD_UPDATE_STATUS,    // UPDATE U1: /config/update.status — reads return the update-engine JSON
+    // ROADMAP 2.2: inotify instance (watch list + event queue).  APPENDED, never inserted: adding
+    // a member mid-enum renumbers every one after it, and a golden-check failure of exactly 16020
+    // pixels bisected to precisely that -- the window border changed identity colour because some
+    // numeric FileType value elsewhere no longer meant what it used to.  New file types go here.
+    FD_INOTIFY,
 }
 
 struct File {
@@ -3093,6 +3097,62 @@ private size_t procDynamicSynth(const(char)* path) {
     //   bus<<8|devfn, vendor<<16|device, irq, then 7 BARs and 7 sizes, then the driver name.
     // Only bus 0 is walked: this is a flat virtual machine topology with no bridges, and
     // recursing into buses that do not exist would invent entries.
+
+    // ── ROADMAP 2.1: the DRM device's /sys identity, read from the LIVE PCI function ───────────
+    //
+    // These were string constants -- vendor 0x1af4, device 0x1050, slot 0000:00:04.0 -- because
+    // that is QEMU's virtio-gpu.  libdrm's drmProcessPciDevice() reads them to build a drmDevice,
+    // so on any machine whose GPU is not that exact virtio function they described hardware that
+    // was not there, while looking authoritative.
+    //
+    // Now the display controller is located by PCI class 0x03 and its own ids are reported.  In
+    // QEMU that yields the same bytes as before, which is the point: identical where the constants
+    // were right, correct where they were not.  If no display controller answers, the values fall
+    // back to the historical constants rather than reporting an empty device, because the GPU path
+    // treats a missing id as a hard failure and a wrong-but-plausible id is the lesser harm during
+    // bring-up on hardware this kernel has not seen.
+    {
+        const bool isVendor    = cstrEq(path, "/sys/dev/char/226:0/device/vendor")
+                              || cstrEq(path, "/sys/dev/char/226:128/device/vendor");
+        const bool isDevice    = cstrEq(path, "/sys/dev/char/226:0/device/device")
+                              || cstrEq(path, "/sys/dev/char/226:128/device/device");
+        const bool isRevision  = cstrEq(path, "/sys/dev/char/226:0/device/revision")
+                              || cstrEq(path, "/sys/dev/char/226:128/device/revision");
+        if (isVendor || isDevice || isRevision) {
+            import drivers.pci : pciConfigRead32;
+            ushort gv = 0x1af4, gd = 0x1050; ubyte grev = 0x01;
+            bool found = false;
+            foreach (slot; 0 .. 32) {
+                if (found) break;
+                foreach (func; 0 .. 8) {
+                    const uint id = pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func, 0x00);
+                    const ushort vendor = cast(ushort)(id & 0xFFFF);
+                    if (vendor == 0xFFFF || vendor == 0) continue;
+                    const uint cls = pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func, 0x08);
+                    if (((cls >> 24) & 0xFF) != 0x03) continue;   // base class 0x03 = display
+                    gv   = vendor;
+                    gd   = cast(ushort)(id >> 16);
+                    grev = cast(ubyte)(cls & 0xFF);
+                    found = true;
+                    break;
+                }
+            }
+            size_t pos = 0;
+            pbStr(pos, "0x".ptr);
+            if (isRevision) {
+                g_procBuf[pos++] = hexDigitLower((grev >> 4) & 0xF);
+                g_procBuf[pos++] = hexDigitLower(grev & 0xF);
+            } else {
+                const ushort v = isVendor ? gv : gd;
+                foreach_reverse (i; 0 .. 4)
+                    g_procBuf[pos++] = hexDigitLower((v >> (i * 4)) & 0xF);
+            }
+            g_procBuf[pos++] = '\n';
+            g_procBuf[pos] = 0;
+            return pos;
+        }
+    }
+
     if (cstrEq(path, "/proc/bus/pci/devices")) {
         import drivers.pci : pciConfigRead32;
         foreach (slot; 0 .. 32) {

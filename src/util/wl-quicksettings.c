@@ -307,7 +307,8 @@ static void session_action(const char *cmd){
 }
 
 /* --- hit-testing: which region is under (px,py)? --- */
-static void act_btn_rect(int i, int *x, int *y, int *w, int *h){
+/* Takes the app because the button pitch derives from the current card width (ROADMAP 3.2). */
+static void act_btn_rect(struct app *app, int i, int *x, int *y, int *w, int *h){
     int bw = (CARD_W_OF(app) - 3*8) / 4;            /* four buttons, three 8px gaps */
     *x = CARD_X + i*(bw+8); *y = ACT_Y; *w = bw; *h = ACT_H;
 }
@@ -320,7 +321,7 @@ static int hit_region(struct app *app, double px, double py){
     if (in_rect(px,py,CARD_X,WIFI_Y,CARD_W_OF(app),WIFI_H))     return R_WIFI;
     if (in_rect(px,py,CARD_X,TOPBAR_Y,CARD_W_OF(app),TOPBAR_H)) return R_SYSTEM;
     static const int reg[4] = { R_SETTINGS, R_LOCK, R_RESTART, R_POWER };
-    for (int i=0;i<4;i++){ int bx,by,bw,bh; act_btn_rect(i,&bx,&by,&bw,&bh);
+    for (int i=0;i<4;i++){ int bx,by,bw,bh; act_btn_rect(app,i,&bx,&by,&bw,&bh);
         if (in_rect(px,py,bx,by,bw,bh)) return reg[i]; }
     if (in_rect(px,py,CARD_X,LOGOUT_Y,CARD_W_OF(app),LOGOUT_H)) return R_LOGOUT;
     return R_NONE;
@@ -418,7 +419,7 @@ static void draw_menu(struct app *app){
     static const char *labels[4] = { "Domains", "Lock", "Restart", "Power" };
     static const int   reg[4]    = { R_SETTINGS, R_LOCK, R_RESTART, R_POWER };
     for (int i=0;i<4;i++){
-        int bx,by,bw,bh; act_btn_rect(i,&bx,&by,&bw,&bh);
+        int bx,by,bw,bh; act_btn_rect(app,i,&bx,&by,&bw,&bh);
         int hot = (app->hover==reg[i]);
         uint32_t bc = (i==3) ? (hot?DANGER:0xff3a2530u) : (hot?ROWH:0xff2a3140u);
         fill_round_rect(app, bx, by, bw, bh, 10, bc);

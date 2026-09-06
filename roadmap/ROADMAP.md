@@ -23,11 +23,21 @@ carried-forward items live on as 5.0 (virtio-blk).
 Pango text and theme icons. 2.3 (upstream GTK app) and 2.4 (font/icon/theme resolution +
 installable packs) are **complete and removed** — see git history.
 
+**2.1 `/proc` + `/sys` + `/etc` — ✅ complete 2026-09-06.** Entries that describe the MACHINE now read
+live state: `/sys` DRM identity (`vendor`/`device`/`revision`/`uevent`/`subsystem_*`, both path
+families) and `/sys/bus/pci/devices` from the PCI bus; `/etc/machine-id` per-install;
+`/etc/resolv.conf` from the DHCP lease. This corrected a constant wrong on the dev VM itself —
+`/sys` claimed virtio-gpu `1af4:1050` at `0000:00:04.0`, the machine has stdvga `1234:1111` at
+`0000:00:02.0`. Entries that are BROADCAST stay uniform on purpose (`hostname`, `timezone`): they
+are announced to the network, so a per-install value would shrink the anonymity set to one — the
+reasoning is recorded at the constants. Config files (dbus/pipewire/NM) stay constants because that
+is what they are. Not done, and deliberately: `/sys/class/net` (fixed `lo`/`wlan0` — gating it risks
+NetworkManager not finding the device), `/sys/block/*` (absent), DRM `status`/`enabled`/`dpms`.
+
 What remains is real but no longer blocking, so Tier 3 can start:
 
 | # | Item | State | Source |
 |---|---|---|---|
-| 2.1 | ◑ **`/proc` + `/sys` + `/etc`** — `/proc` real. **`/sys` DRM identity now live and self-consistent** (`vendor`/`device`/`revision`/`uevent`/`subsystem_*` from the PCI display function, both path families, golden PASS): this corrected a constant that was **wrong on the dev VM itself** — `/sys` claimed virtio-gpu `1af4:1050` at `0000:00:04.0`; the machine has stdvga `1234:1111` at `0000:00:02.0`. `/sys/bus/pci/devices` enumerates the live bus. **`/etc`**: `machine-id` per-install (was one constant shared by every install), `resolv.conf` from the DHCP lease (was hardcoded 8.8.8.8/1.1.1.1 — every query to Google on a privacy OS). **Left**: `/sys/class/net` fixed `["lo","wlan0"]`; `/sys/class/drm/card0/{status,enabled,dpms}` fixed; `/sys/block/*` absent; `/etc/timezone` fixed `UTC` **though the installer collects one**; `hostname`/`passwd` static. dbus/pipewire/NM configs are correctly static — leave them | APPS A2 · OBJECT_FS F0 |
 | 2.2 | ✅ **inotify — DONE 2026-09-06.** Real watches over the rtfs overlay, keyed on node index; events posted from the three overlay mutation points (create/unlink/write); `read()` returns `struct inotify_event` 4-byte padded; poll/epoll see it via `fdReadable`. Verified 8/8 from userspace (`src/util/inotify-test.c`), and dbus-daemon's "Cannot initialize inotify" is gone. Only the writable overlay generates events — a watch on an image file or synthetic `/proc` succeeds and never fires | APPS A3 |
 | 2.6 | **Stage C1 readers** | The `/proc` data they consume is real and verified; the apps themselves are unbuilt. Unblocked by 2.3 | APPS C1 |
 

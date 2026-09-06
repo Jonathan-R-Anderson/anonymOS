@@ -2406,6 +2406,20 @@ private void maybeProcSelfTest() {
     procSelfTest();
     iconDirSelfTest();     // ROADMAP 2.4: can GTK actually LIST a theme directory?
 }
+// ROADMAP 2.2: run the inotify verification once, early, and only after the overlay is live.
+// Kernel-spawned deliberately: a Hyprland-forked child inherits no console, so its PASS/FAIL lines
+// would be invisible -- the property that cost several rounds in 3.0b.
+__gshared bool g_inotifyTestStarted = false;
+private void maybeSpawnInotifyTest() {
+    import core.syscalls.posix : g_rtInitialized;
+    if (g_inotifyTestStarted) return;
+    if (!g_rtInitialized) return;
+    if (pitMs() < 12_000) return;         // let the desktop finish its own startup churn first
+    g_inotifyTestStarted = true;
+    klog("[inotify] ROADMAP 2.2: launching inotify-test (create/write/delete over a real watch)\n");
+    spawnWaylandProgram("inotify-test\0".ptr, "[inotest]\0".ptr);
+}
+
 private void maybeSpawnDbusTest() {
     if (g_dbusTestStarted) return;
     if (!g_dbusStarted) return;         // launch the daemon first
@@ -4683,6 +4697,7 @@ private void kernelLoop() {
         maybeSpawnDbus();      // M0: start the real system dbus-daemon (persistent bus)
         maybeSpawnSshd();      // SSH-in: start the dropbear launcher for remote access
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
+        maybeSpawnInotifyTest(); // ROADMAP 2.2: prove inotify delivers create/write/delete events
         maybeProcSelfTest();   // ROADMAP 2.1: prove /proc once real time and load have accrued
         maybeSyscallAudit();   // ROADMAP 2.2: record which syscalls are missing, once
         maybeEpollDump();      // ROADMAP 2.3: is the compositor watching the new client fd?

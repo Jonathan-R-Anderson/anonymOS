@@ -13655,6 +13655,12 @@ public void freezeProbeKlog() @nogc nothrow {
     // reads the completion off the card fd.  If flipQ > flipRd here, completions are being
     // queued and never read (compositor side); if they are equal, the wedge is NOT a lost
     // completion and the 35 "Cannot commit when a page-flip is awaiting" have another source.
+    // ROADMAP 3.5b: dump the fd-readiness histogram alongside the stall.  fdReadableStats() exists
+    // for exactly this question -- its own comment calls it "which fd type keeps reporting ready
+    // (busy-spin source)" -- but it is gated on (g_objReconcileCtr & 0x3FFF) == 0, which did not
+    // fire once in a four-minute boot.  A spin diagnostic that never prints during the spin is no
+    // diagnostic; print it when a stall is actually being reported.
+    fdReadableStats();
     klog("[freeze] stalled "); klog_dec((now-g_lastPresentMs)/1000);
     klog("s cur="); klog_dec(g_current_task_id); klog(":");
     { const(char)* p=g_taskExecName[cast(int)g_current_task_id]; klog(p !is null ? p : "?".ptr); }

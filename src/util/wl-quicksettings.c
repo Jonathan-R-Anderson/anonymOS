@@ -256,6 +256,12 @@ static const struct setting_def SETTINGS[S_COUNT] = {
 
 static int g_setval[S_COUNT];
 
+/* Hyprland's answer to the last keyword sent -- "ok", or its error text.  Shown in the footer
+ * because this app is forked by Hyprland and inherits no console, so a reply that is only
+ * logged cannot be read.  It is also the honest thing to surface: the panel should say what the
+ * compositor said, not assume it agreed. */
+static char g_last_ipc[96] = "";
+
 #define SETTINGS_DIR  "/home/user/.config/hos"
 #define SETTINGS_CONF SETTINGS_DIR "/settings.conf"
 #define HYPR_CUSTOM   "/home/user/.config/hypr/custom"
@@ -356,7 +362,10 @@ static int settings_apply_one(int i)
         snprintf(cmd, sizeof cmd, "keyword %s %s", s->keyword, bool_word(g_setval[i]));
     else
         snprintf(cmd, sizeof cmd, "keyword %s %d", s->keyword, g_setval[i]);
-    return hypr_ipc(cmd, NULL, 0);
+    int rc = hypr_ipc(cmd, g_last_ipc, sizeof g_last_ipc);
+    if (!g_last_ipc[0]) snprintf(g_last_ipc, sizeof g_last_ipc, "no reply (socket?)");
+    for (char *p = g_last_ipc; *p; p++) if (*p == '\n') *p = ' ';   /* keep the footer one line */
+    return rc;
 }
 
 static void settings_apply_all(void)
@@ -705,6 +714,11 @@ static void draw_settings(struct app *app){
         else
             snprintf(foot, sizeof foot, "Defaults -- nothing saved yet");
         draw_text(app, foot, CARD_X+2, app->height-20, CARD_W_OF(app), 11, DIM);
+        if (g_last_ipc[0]){
+            char rep[160];
+            snprintf(rep, sizeof rep, "hyprland: %s", g_last_ipc);
+            draw_text(app, rep, CARD_X+2, app->height-34, CARD_W_OF(app), 11, DIM);
+        }
     }
 }
 

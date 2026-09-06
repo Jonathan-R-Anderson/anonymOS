@@ -64,7 +64,7 @@ reflow (all five floating clients now tile), 3.3 screenshot regression tests (`m
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
-| 3.5b | **Boot-time present stalls** — found while measuring 3.5: the freeze probe logs `stalled 28s`, `29s`, `30s` with `flipQ` frozen at 124 and `cur=0:Hyprland`, i.e. BEFORE any load exists. Half a minute with no frame presented during startup, unrelated to hogs or scheduling. Not investigated | DESKTOP_RESP | M |
+| 3.5b | ◑ **Nothing parks on an idle desktop.** The "30s boot stalls" this item was filed for were a FALSE ALARM from the freeze probe — fixed 2026-09-06 (instant park sampling + a "presenting again" message printed when no frame was drawn; measured: 0 real presents, 79 idle-outs). The genuine finding underneath: with nothing to draw, `CMP=0:Hyprland w0 p0 f0` in **79/79** samples and `dbus-daemon`, `hos-sshd-launch` and a 2nd Hyprland thread each sit runnable at ~1000 scheduler selections/sec. All should be blocked in `epoll`. **Not** a lying fd-readiness check — `[fdrd]` shows only `timerfd=2` per stalled second — so the next probe is poll/epoll TIMEOUTS (a 0-timeout caller never parks) | DESKTOP_RESP | M |
 | 3.6 | **quickshell (Qt6/QML) port** | The only route to true host parity — the host's bar, sidebars, overview and launcher are all one `qs` process. Needs 2.x and a working GL path | APPS E6 | XL |
 
 ---

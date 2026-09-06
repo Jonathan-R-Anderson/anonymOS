@@ -12416,6 +12416,7 @@ public void epollDumpAll() @nogc nothrow {
 // ROADMAP 3.5b: readiness of one fd, for wakePollers().  Same predicate epoll_wait itself uses,
 // so a task left parked here would have re-parked immediately anyway.
 public bool fdIsReadable(int fd) @nogc nothrow { return fdReadable(fd); }
+public bool fdIsWritable(int fd) @nogc nothrow { return fdWritable(fd); }
 
 public void fdReadableStats() @nogc nothrow {
     klog("[fdrd]");

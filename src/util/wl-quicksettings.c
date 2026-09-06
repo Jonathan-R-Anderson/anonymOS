@@ -185,10 +185,34 @@ static int hypr_ipc(const char *cmd, char *reply, size_t replycap)
     size_t len = strlen(cmd);
     if (write(fd, cmd, len) != (ssize_t)len) { close(fd); return -1; }
 
+    /* WAIT for the reply -- do not read once and give up.  Two measured reasons, and together
+     * they made every keyword a silent no-op:
+     *
+     *   This kernel's AF_UNIX read returns EAGAIN on an empty socket rather than blocking
+     *   (localSocketRead, syscalls/posix.d), so a single read almost always loses the race.
+     *
+     *   Hyprland does not accept() until its wayland event loop next runs.  It then polls the
+     *   accepted connection for 5s and CLOSES IT WITHOUT REPLYING if nothing is readable
+     *   (HyprCtl.cpp:2243).  A client that has already closed hands it exactly that.
+     *
+     * The kernel log showed the shape of it: 4 connects, 4 accepts -- and no reply, because by
+     * the time Hyprland accepted, this side was long gone. */
     char buf[256];
-    ssize_t n = read(fd, buf, sizeof buf - 1);
+    ssize_t n = -1;
+    for (int tries = 0; tries < 60; tries++) {            /* ~3s, well inside Hyprland's 5s */
+        struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+        int pr = poll(&pfd, 1, 50);
+        if (pr > 0 && (pfd.revents & POLLIN)) {
+            n = read(fd, buf, sizeof buf - 1);
+            if (n >= 0) break;                            /* 0 = closed with no reply */
+        }
+        if (pr < 0 && errno != EINTR) break;
+    }
     close(fd);
-    if (n < 0) return -1;
+    if (n < 0) {
+        if (reply && replycap) snprintf(reply, replycap, "no reply in 3s");
+        return -1;
+    }
     buf[n > 0 ? n : 0] = 0;
     if (reply && replycap) { strncpy(reply, buf, replycap - 1); reply[replycap-1] = 0; }
     /* Hyprland answers "ok" for an accepted keyword; anything else is its error text. */
@@ -363,7 +387,7 @@ static int settings_apply_one(int i)
     else
         snprintf(cmd, sizeof cmd, "keyword %s %d", s->keyword, g_setval[i]);
     int rc = hypr_ipc(cmd, g_last_ipc, sizeof g_last_ipc);
-    if (!g_last_ipc[0]) snprintf(g_last_ipc, sizeof g_last_ipc, "no reply (socket?)");
+    if (!g_last_ipc[0]) snprintf(g_last_ipc, sizeof g_last_ipc, "no socket");
     for (char *p = g_last_ipc; *p; p++) if (*p == '\n') *p = ' ';   /* keep the footer one line */
     return rc;
 }

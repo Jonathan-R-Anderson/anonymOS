@@ -5249,6 +5249,52 @@ public void fsPersistTick(ulong nowMs) @nogc nothrow {
 // Deliberately goes through linux_sys_open/read/close rather than calling procDynamicSynth
 // directly -- the synth returning good bytes proves nothing if open() never routes to it, and
 // that routing (dynamic synth ahead of the static table) is the part that can silently regress.
+// ROADMAP 2.4: can a theme directory be LISTED?  GTK builds its icon index by calling g_dir_open
+// on each directory named in index.theme and walking the entries -- it does not stat candidate
+// filenames.  So a directory that opens fine but enumerates empty makes a perfectly good theme
+// look like it contains no icons, which is exactly the symptom: GTK reads
+// /usr/share/icons/Epin/index.theme, the index is well formed, the PNGs are unpacked into the
+// guest, and GTK never opens one.
+//
+// Goes through open/getdents64 rather than the rtfs helpers, because the question is what a
+// client sees, not what the tree contains.
+public void iconDirSelfTest() @nogc nothrow {
+    static immutable string[3] dirs = [
+        "/usr/share/icons/Epin/48x48/apps\0",
+        "/usr/share/icons/hicolor/48x48/status\0",
+        "/usr/share/icons/Epin/scalable/apps\0",
+    ];
+    enum int O_DIRECTORY = 0x10000;
+    foreach (d; dirs) {
+        const long fd = linux_sys_open(cast(ulong)d.ptr, O_RDONLY | O_DIRECTORY, 0);
+        if (fd < 0) {
+            klog("[icondir] OPEN FAILED "); klog(d.ptr);
+            klog(" err="); klog_dec(cast(ulong)(-fd)); klog("\n");
+            continue;
+        }
+        ubyte[1024] buf;
+        const long n = linux_sys_getdents64(cast(ulong)fd, cast(ulong)buf.ptr, buf.length);
+        klog("[icondir] "); klog(d.ptr);
+        klog(" getdents="); klog_dec(cast(ulong)(n < 0 ? -n : n));
+        if (n < 0) klog(" (ERROR)");
+        klog(" names:");
+        if (n > 0) {
+            // struct linux_dirent64 { u64 ino; s64 off; u16 reclen; u8 type; char name[]; }
+            size_t off = 0;
+            int shown = 0;
+            while (off + 19 < cast(size_t)n && shown < 6) {
+                const ushort reclen = *cast(const(ushort)*)(buf.ptr + off + 16);
+                if (reclen == 0) break;
+                klog(" "); klog(cast(const(char)*)(buf.ptr + off + 19));
+                ++shown;
+                off += reclen;
+            }
+        }
+        klog("\n");
+        linux_sys_close(cast(ulong)fd);
+    }
+}
+
 public void procSelfTest() @nogc nothrow {
     static immutable string[8] paths = [
         "/proc/meminfo\0", "/proc/stat\0", "/proc/loadavg\0",

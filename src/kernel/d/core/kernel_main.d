@@ -2355,6 +2355,7 @@ private void maybeProcSelfTest() {
     if (pitMs() < 4_000) return;
     g_procTested = true;
     procSelfTest();
+    iconDirSelfTest();     // ROADMAP 2.4: can GTK actually LIST a theme directory?
 }
 private void maybeSpawnDbusTest() {
     if (g_dbusTestStarted) return;

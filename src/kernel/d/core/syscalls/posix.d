@@ -13717,6 +13717,31 @@ public __gshared ulong g_presentRowsTotal  = 0;
 public __gshared ulong g_presentBlitCycles = 0;
 public __gshared ulong g_presentStoreCycles = 0;   // the framebuffer writes alone
 
+// DESKTOP_RESP R5, second half: write a scanline with non-temporal stores.
+//
+// movnti writes straight to memory without reading the line first and without keeping it in
+// cache.  For a scanout copy that is the right shape: the data is written once and never read
+// back, so cache residency is pure waste and any read-for-ownership traffic is pure cost.
+//
+// Whether it actually beats memcpy here is an open question rather than an assumption -- the
+// destination is already write-combining, where stores do not take ownership either, so the usual
+// argument for movnti is weaker than on normal memory.  That is why the caller times this.
+private void copyRowNT(ubyte* dst, const(ubyte)* src, size_t n) @nogc nothrow {
+    size_t i = 0;
+    const size_t n8 = n & ~cast(size_t)7;
+    while (i < n8) {
+        const ulong v = *cast(const(ulong)*)(src + i);
+        ubyte* p = dst + i;
+        asm @nogc nothrow {
+            mov RAX, v;
+            mov RDX, p;
+            movnti [RDX], RAX;
+        }
+        i += 8;
+    }
+    for (; i < n; ++i) dst[i] = src[i];
+}
+
 // Row compare, 8 bytes at a time.  Written out rather than calling memcmp because this file
 // imports only memcpy from core.stdc.string, and a 64-bit-wide compare is the point anyway: it
 // has to be decisively cheaper than the MMIO write it is trying to avoid, or the whole scheme
@@ -13878,11 +13903,16 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
         // cost of comparing ~740 unchanged rows to the ~60 that were written, which says nothing
         // about the store instruction -- the thing actually under evaluation here.
         const ulong _tRow = rdtsc();
-        memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
-               src + cast(size_t)row * cast(size_t)fb.pitch,
-               rowBytes);
+        copyRowNT(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
+                  src + cast(size_t)row * cast(size_t)fb.pitch,
+                  rowBytes);
         g_presentStoreCycles += rdtsc() - _tRow;
     }
+
+    // movnti is weakly ordered: without a fence the page flip could be queued before the pixels
+    // have reached memory, showing a torn or stale frame.  One fence per frame, not per row --
+    // ordering only has to hold at the point the frame is handed over.
+    if (rowsCopied != 0) asm @nogc nothrow { sfence; }
 
     // R5 accounting: how much of the screen this present actually wrote, and what the writing
     // cost.  Cycles-per-row is the number that says whether a different store instruction helps;

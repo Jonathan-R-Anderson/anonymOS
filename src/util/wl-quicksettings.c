@@ -668,19 +668,6 @@ int main(void){
     wl_registry_add_listener(app.registry, &registry_listener, &app);
     wl_display_roundtrip(app.display);
     if (!app.compositor || !app.shm || !app.wm_base){ log_line("QSETTINGS: missing globals"); return 1; }
-    /* ROADMAP 3.0b: prove the configuration backend is actually wired to the compositor, once,
-     * at startup.  "getoption" is read-only, so this changes nothing -- it just answers whether
-     * the socket was found and Hyprland replied, which is the part that was missing. */
-    {
-        /* A Hyprland-forked child has no console, so log_line() here goes nowhere (see the
-         * ROADMAP 2.3 notes).  Prove the backend with a setting whose effect is VISIBLE instead
-         * of one whose reply we cannot read: a thicker window border shows up in a screenshot.
-         * TEMPORARY -- replaced by the real controls once this is confirmed. */
-        char rep[160] = {0};
-        int rc = hypr_ipc("keyword general:border_size 8", rep, sizeof rep);
-        log_line(rc == 0 ? "QUICKSET: hypr IPC ok" : "QUICKSET: hypr IPC failed");
-    }
-
     if (create_buffers(&app) < 0){ log_line("QSETTINGS: buffer failed"); return 1; }
 
     app.surface = wl_compositor_create_surface(app.compositor);

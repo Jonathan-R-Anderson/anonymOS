@@ -49,7 +49,7 @@ present wins" and buys most of the perceived responsiveness.
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
-| 3.0b | **`wl-quicksettings` panels** — Keyboard, Mouse, Touchpad, Appearance. **Blocked:** no input/theme configuration backend exists, so these would be four panels of controls that change nothing. Was roadmap 1.4; it is a desktop-quality item, not a prerequisite for installing | APPS B2 · GUI G18 | M |
+| 3.0b | ◑ **`wl-quicksettings` panels** — Keyboard, Mouse, Touchpad, Appearance. **UNBLOCKED 2026-09-06**: the configuration backend now exists and is proven live (see below). Remaining work is the four panels' UI, which is no longer "controls that change nothing" | APPS B2 · GUI G18 | M |
 | 3.1 | ✅ **Damage-tracked KMS blit + fast copy** — DONE 2026-09-05. **8% of scanlines written** (was 100%) and **stores 5.3x faster** (22070 -> 4178 cycles/row). Blit loop 83256 -> 64988 cycles/row; screen pixel-identical, `boot-test: PASS` | The roadmap's own "cheap present wins". Biggest felt improvement per hour | DESKTOP_RESP R5 | S |
 | 3.2 | ✅ **Multi-window and workspace experience** — DONE 2026-09-06. All five clients that opted out of tiling now reflow: `wl-calendar`, `wl-logview`, `wl-wifi-menu`, `wl-overview`, `wl-quicksettings`. Verified: 5 windows tiled simultaneously, no overlap, 0 aborts, 0 resize failures. `wl-domain-manager` still floats **by design** (fixed-pixel layout) | Hyprland provides the mechanism; this is the desktop actually using it | GUI G20 | M |
 | 3.3 | ✅ **Visual QA + screenshot regression tests** — DONE 2026-09-06. `scripts/golden-check.sh` (`make golden`) masks the clock, compares the rest pixel-exactly, and passes with **0 differing pixels across separate boots**; a corrupted golden fails with 180847. One golden recorded (`installer`); more are one `make golden-update GOLDEN=<name>` each | Marked Critical in GUI_ROADMAP, and this session showed why: a two-month-old binary shipped unnoticed | GUI G21 | M |
@@ -107,6 +107,15 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
 ---
 
 ## Corrections to carry forward
+
+- **The desktop's configuration backend is Hyprland's IPC socket**, not a config file. Input and
+  theme settings live in `system/hypr/custom/*.lua`, baked in at build time, so a running desktop
+  could not change them — that is what blocked 3.0b. `hypr_ipc()` in `wl-quicksettings.c` writes a
+  bare command (no framing) to `/run/user/1000/hypr/<sig>/.socket.sock`, which reaches every
+  `keyword input:*` and appearance setting live. Two traps: the kernel does not export
+  `HYPRLAND_INSTANCE_SIGNATURE`, so the code enumerates that directory and assumes a single
+  instance; and a Hyprland-forked child has no console, so the reply is unreadable — verify with a
+  setting whose effect is *visible* (`general:border_size 8` in a screenshot), not one you must read.
 
 - **Do not boot with `GPU=1`.** It selects `gtk,gl=on`, which `qemu-run.sh`'s own comment warns
   "gives a BLACK SCREEN on many hosts (the GL display path does not present the firmware-VGA

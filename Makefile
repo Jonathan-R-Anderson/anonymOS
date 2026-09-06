@@ -53,6 +53,7 @@ all:
 # =========================================================
 
 .PHONY: refresh-d-kernel
+.PHONY: golden golden-update
 refresh-d-kernel:
 	@echo "==== Building D Kernel ===="
 	+$(MAKE) -j1 -C src/kernel/d
@@ -1379,6 +1380,17 @@ verify:
 #   make test TIMEOUT=240
 test:
 	@TIMEOUT=$(TIMEOUT) scripts/boot-test.sh $(SUITE)
+
+# ROADMAP 3.3 / GUI G21.  Compares the guest screen against a recorded golden image.  Needs a
+# RUNNING guest (start one with ./qemu-run.sh), because it screendumps through the HMP monitor.
+#   make golden                 compare against tests/golden/installer.png
+#   make golden GOLDEN=foo      compare against tests/golden/foo.png
+#   make golden-update          re-record the golden from the current screen
+golden:
+	@scripts/golden-check.sh 100 1 57 72 100 131 984 1000or 100 1 57 72 100 131 984 1000GOLDEN),installer)
+
+golden-update:
+	@GOLDEN_UPDATE=1 scripts/golden-check.sh 100 1 57 72 100 131 984 1000or 100 1 57 72 100 131 984 1000GOLDEN),installer)
 
 # =========================================================
 # Legacy: Haskell userspace programs (optional, not part of main build)

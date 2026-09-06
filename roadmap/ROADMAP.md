@@ -127,11 +127,40 @@ down anywhere:
    `fd=1`/`fd=2`, `want=0x10` = `CAP_RIGHT_IOCTL`, i.e. `isatty()`. Benign in itself (writes are
    not denied), but it means **a client can be refused things and nobody is told**.
 
-**Recommended next tactic: instrument the kernel, not the guest.** Every attempt so far has failed
-on some property of the guest environment — no shell, no console, no env propagation. The kernel
-sits in the middle of the socket and has none of those problems: logging wayland wire traffic
-(object id, opcode, length) in the AF_UNIX send/recv path for the GTK client's fd would show where
-the conversation stops, without depending on the client's environment at all.
+**That tactic worked: instrument the kernel, not the guest.** Decoding the Wayland wire header
+(`[u32 object][u16 opcode][u16 size]`) in the AF_UNIX send/recv path needs nothing from the
+client's environment. The conversation did not trail off — it **ended on a `wl_display.error`**,
+and decoding the payload named the fault outright:
+
+> `wl_shm: "The size of the file is not big enough for the shm pool"`
+
+**FIXED — first root cause.** `fstat` reported `File.fileSize`, which is *per-fd*, and `SCM_RIGHTS`
+hands the receiver a **copy** of the sender's `File`. A client that passed its shm fd and then grew
+the pool left the compositor stat-ing the size as of the hand-off. Hyprland saw a file smaller than
+the declared pool, raised the error, and libwayland tore the connection down — so GTK apps died
+mid-startup, printed nothing (no console), and never mapped. A length belongs to the *object*:
+`MemFdRec.exactLen` is now set on every `ftruncate` path and reported by `fstat` for `FD_MEMFD`.
+
+That also explains the asymmetry that drove the whole investigation: our `wl-*` clients never
+resize a pool after passing its fd, so they were untouched while both GTK apps failed identically.
+
+**Still not mapping — a second blocker behind the first.** Measured after the fix:
+
+| | before | after |
+|---|---|---|
+| `wl_display.error` | 1 (shm) | **0** |
+| wire messages | 125 | 256 |
+| gtk-hello tasks | 22 | 158 |
+| widget-factory tasks | 20 | 231 |
+| windows mapped | 1 | 1 |
+
+The clients now get much further and stop cleanly, waiting on the compositor rather than being
+killed by it. The trace ends on inbound events around objects 19 and 25 with the client sending
+nothing more.
+
+**Next:** extend the decoder past the header — resolve object ids to interfaces by tracking
+`wl_registry.bind` and the `new_id` arguments, so the trace names `xdg_surface`/`xdg_toplevel`
+instead of bare numbers, and say which request goes unanswered.
 
 **Real bugs found while building the harness** (all fixed, none related to 2.3):
 

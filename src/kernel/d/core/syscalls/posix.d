@@ -14891,6 +14891,8 @@ __gshared bool g_hosBorderLogged = false;
 
 // A small palette of distinct, unmistakable identity colours (ARGB).  Indexed by
 // the owning process so each client gets a stable border colour.
+// Drawn when the owning task has no identity.  Deliberately one fixed colour, not a pid hash.
+private enum uint HOS_ID_NEUTRAL = 0xFF8FBF5F;
 private immutable uint[8] HOS_ID_PALETTE = [
     0xFF4CC2A8, // teal
     0xFFE0B341, // amber
@@ -14924,7 +14926,19 @@ private uint hosIdentityColor(uint pid) @nogc nothrow {
         auto r = identityById(g_tasks[tid].identityObjId);
         if (r !is null && r.color != 0) return r.color;
     }
-    return HOS_ID_PALETTE[pid % HOS_ID_PALETTE.length];
+    // No identity on the owning task -- which is the NORMAL case today, not an edge one: the
+    // installer, the bar and the desktop apps all run with identityObjId == 0, so this fallback is
+    // what actually gets drawn.  It used to be HOS_ID_PALETTE[pid % 8], and that is why the border
+    // changed colour when unrelated work shifted a pid.
+    //
+    // A neutral, fixed colour instead.  A pid lottery is worse than no signal: it LOOKS like the
+    // identity indicator identity.d promises, so it invites reading a domain off a colour that
+    // encodes nothing.  One colour says "no identity assigned" honestly, and is stable across
+    // boots, which is also what makes the 3.3 golden check meaningful for window chrome.
+    //
+    // The palette stays for when identities are actually stamped on tasks; hosIdentityColor()
+    // returns the real colour above the moment identityObjId is non-zero.
+    return HOS_ID_NEUTRAL;
 }
 
 private void fbFillRow(int x, int y, int w, uint color) @nogc nothrow {

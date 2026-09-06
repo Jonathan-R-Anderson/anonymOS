@@ -28,13 +28,51 @@ desktop -- the exit criterion below is MET.
 |---|---|---|---|---|
 | 2.1 | ◑ **`/compat/linux` + `/proc` + `/sys` + `/etc`** — `/proc` now reports real data (2026-09-05); `/sys` and `/etc` still largely synthetic | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
 | 2.2 | ◑ **Syscall audit** — done as a survey: **only the 4 inotify calls are missing**. Remaining work is implementing inotify | Record what is missing once, rather than one crash at a time | APPS A3 · syscalls | M |
-| 2.4 | **Font / icon / theme resolution inside a GTK process** | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
+| 2.4 | ◑ **Font / icon / theme resolution + installable packs** — persistent user pack dirs exist and are scanned by both fontconfig and GTK (verified on hardware). **Blocked on librsvg** for SVG packs | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
 | 2.6 | ◑ **Stage C1** — the `/proc` data is real and verified; the apps are now **unblocked** by 2.3 | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion — ✅ MET 2026-09-05:** upstream `gtk3-widget-factory` runs on the desktop.
 Detail removed; see git history. One finding survives it: **`librsvg` is a stub, so gdk-pixbuf
 cannot decode SVG at all** — an SVG-only icon theme cannot load. That is 2.4's problem.
 
+
+### 2.4 — installable font / icon / theme packs (2026-09-05)
+
+**Done: packs have a persistent home and both toolkits scan it.** The two font directories
+fontconfig knew about — `/usr/share/fonts`, `/usr/local/share/fonts` — are rebuilt from the asset
+blobs on every boot, so anything installed there vanished at the next one. There was no writable,
+persistent location at all.
+
+`/home` already survives reboots via `persist =` (1.2), so the user data root under it is the
+target. `fonts.conf` now lists `~/.local/share/fonts` and `~/.fonts`; `XDG_DATA_HOME` is exported
+explicitly as `/home/user/.local/share` (GTK reads `$XDG_DATA_HOME/{icons,themes}` from it); and
+all eight directories are created at boot, because a scanner that finds no directory just skips it.
+
+Verified on a real boot — both toolkits scan the new locations:
+
+```
+fontconfig   /home/user/.fonts               /home/user/.local/share/fonts   (+ .uuid)
+GTK          /home/user/.icons               /home/user/.local/share/icons   (+ icon-theme.cache)
+```
+
+Installing needs no new tooling: busybox already has `tar`, `unzip`, `gunzip`, `cp` and `mkdir`, so
+from `wl-term`:
+
+```
+/busybox tar -xzf mypack.tar.gz -C /home/user/.local/share/icons
+```
+
+The procedure is documented in `src/desktop.conf` beside the `persist =` lines, which is where
+someone looking at what survives a reboot will actually find it.
+
+**Blocked, and it limits this item: `librsvg` is a stub**, so gdk-pixbuf cannot decode SVG at all.
+An SVG-only pack resolves to nothing — silently. This is also why the shipped Epin theme
+(all `scalable/*.svg`) has never rendered an icon, and why GTK's `image-missing` fallback had to be
+a PNG. **Either build real librsvg or accept PNG-only packs**; until then the constraint is
+documented rather than hidden.
+
+**Not yet done:** an end-to-end test that installs a real pack and confirms an app picks it up.
+The directories are proven to be scanned; a pack actually changing what renders is not yet proven.
 ### 2.6 — the `/proc` data is real; the C1 apps are now unblocked
 
 The data every C1 reader consumes is done and verified on a real boot: `/proc/cpuinfo` reports

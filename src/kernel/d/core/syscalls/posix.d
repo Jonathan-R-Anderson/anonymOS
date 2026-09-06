@@ -3196,6 +3196,14 @@ private size_t procDynamicSynth(const(char)* path) {
             }
             mid[32] = 0;
             midReady = true;
+            // Prove persistence without printing the identifier.  Logging a machine-id in full to
+            // a serial console would undo the point of making it unique -- the first 8 hex chars
+            // are enough to see that boot 2 loaded what boot 1 generated, and useless as a
+            // fingerprint on their own.
+            klog(loaded ? "[machine-id] loaded from /home/.machine-id, prefix="
+                        : "[machine-id] generated (first boot), prefix=");
+            foreach (i; 0 .. 8) { char[2] c; c[0] = mid[i]; c[1] = 0; klog(c.ptr); }
+            klog("\n");
         }
         size_t mpos = 0;
         foreach (i; 0 .. 32) g_procBuf[mpos++] = mid[i];

@@ -2498,7 +2498,10 @@ private uint openRightsForFlags(int flags) {
 // real bindings: today the answer to "which paths does a confined desktop need" is unknown, and
 // guessing it produces a desktop that fails to start for reasons that look like unrelated bugs.
 private __gshared int g_nsAuditLogN = 0;
+// DISABLED after it faulted the kernel on first boot -- see the note at the call site.
+private __gshared bool g_nsAuditEnabled = false;
 private void nsAuditOpen(int tid, const(char)* path) @nogc nothrow {
+    if (!g_nsAuditEnabled) return;
     if (tid < 0 || tid >= MAX_TASKS) return;
     const uint ans = g_tasks[tid].auditNsObjId;
     if (ans == 0 || g_nsAuditLogN >= 60) return;
@@ -2515,6 +2518,16 @@ private void nsAuditOpen(int tid, const(char)* path) @nogc nothrow {
 private int namespaceCheckOpen(const(char)* path, int flags) {
     if (path is null || path[0] != '/') return 0; // relative paths still use cwd shim
     int tid = cast(int)g_current_task_id;
+    // ROADMAP 4.0b: OFF.  Enabling this faulted the kernel during dbus startup --
+    //   [pf] no region tid=2 va=00007f53f000f000
+    //   KERNEL FAULT trap=10e err=0 rip=ffffffff800c3842 pf=not-present
+    // and the desktop never came up.  The audit ran on every absolute open, before the existing
+    // code had validated anything, and resolved a freshly nsClone()d namespace per spawned task.
+    // Either the clone is not safe to resolve against from this path, or one of the two pointers
+    // it walks is not guaranteed mapped here.  Left in place, disabled, because the IDEA is right
+    // -- confinement has to be observed before it is enforced -- and the next attempt should
+    // collect denials somewhere cheaper than the open hot path, from a copy of the path already
+    // known to be safe to read.
     nsAuditOpen(tid, path);
     if (tid < 0 || tid >= MAX_TASKS) return negErrno(ENOENT);
     objEnsureNamespace(tid);

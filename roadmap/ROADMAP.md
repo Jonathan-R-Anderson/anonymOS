@@ -59,10 +59,19 @@ bound (GDK binds it lazily at first toplevel). It is a **hang, not slowness** �
 count never moved, process alive. **The compositor is not at fault**: it advertises 70 globals
 including everything GTK needs.
 
-**Last activity before the stall is fontconfig**, reached via Pango. Next: confirm whether creating
-`/var/cache/fontconfig/<hash>.cache-9.TMP-XXXXXX` succeeds (an `[openfail]` log now reports errno
-for failed opens); if the cache write is the problem, shipping a prebuilt cache in the assets
-sidesteps it. **`G11 COMMIT` is the exact success signal.**
+**Last logged activity before the stall is fontconfig**, reached via Pango — but that lead is now
+weaker, not stronger. An `[openfail]` log (path + errno for every failed open) shows **no
+fontconfig failure at all**: its cache files, including `<hash>.cache-9.TMP-XXXXXX`, are created
+successfully. The only failures in the whole boot are 19 benign ENOENT probes by Hyprland (`drirc`,
+an optional `libglapi.so.0`, `uevent` files).
+
+So "fontconfig is last in the log" may only mean **`[open]` is the most verbose trace we have** —
+the client could be stalling in something unlogged (a `write`, `rename`, `mmap`, or a futex wait).
+
+**Next:** trace `write`/`rename`/`futex` the same way, rather than assuming the last visible
+syscall is the relevant one — that assumption has already been wrong twice this investigation
+(the `HOG:` counters, and "last traced syscall" being `TIOCGWINSZ` only because writes are
+untraced). **`G11 COMMIT` is the exact success signal.**
 
 **Tooling built for this, worth keeping:** the kernel decodes the Wayland wire protocol
 (`[wl]` lines — object ids resolved to interface names via `wl_registry.bind`, `wl_display.error`

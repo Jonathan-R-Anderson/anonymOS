@@ -46,7 +46,9 @@ SVG-only pack will silently resolve to nothing.
 
 Usable is not the same as good.
 
-**Done and removed 2026-09-06** (see git history): 3.0b `wl-quicksettings` settings panels
+**Done and removed 2026-09-06** (see git history): 3.4 kernel-mode interrupt handling (the BSP now
+`sti;hlt`s when idle instead of running a ring-3 PAUSE-spinner; 200/200 halts woken by a
+kernel-handled APIC tick, golden PASS 0 differing pixels), 3.0b `wl-quicksettings` settings panels
 (Keyboard/Mouse/Touchpad/Appearance, live over Hyprland IPC and persisted under `/home`),
 3.1 damage-tracked KMS blit (8% of scanlines written, stores 5.3x faster), 3.2 multi-window
 reflow (all five floating clients now tile), 3.3 screenshot regression tests (`make golden`,
@@ -54,8 +56,7 @@ reflow (all five floating clients now tile), 3.3 screenshot regression tests (`m
 
 | # | Item | Why here | Source | Effort |
 |---|---|---|---|---|
-| 3.4 | **Kernel-mode interrupt handling** | Real fix for input latency, but a genuine kernel change | DESKTOP_RESP R4 | L |
-| 3.5 | **Preemptive scheduling** | Depends on 3.4 | DESKTOP_RESP R6 | L |
+| 3.5 | **Preemptive scheduling** — 3.4 delivered the substrate. What remains is the hard part: switching stacks from inside an ISR, under the interrupted frame | DESKTOP_RESP R6 | L |
 | 3.6 | **quickshell (Qt6/QML) port** | The only route to true host parity — the host's bar, sidebars, overview and launcher are all one `qs` process. Needs 2.x and a working GL path | APPS E6 | XL |
 
 ---
@@ -109,6 +110,17 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
 
 ## Corrections to carry forward
 
+- **An IRQ taken in the kernel used to be unsurvivable**, and that shaped a lot of this system.
+  `serviceISR` assumes userspace was interrupted: it saves registers into `curUserSpaceState` and
+  returns from `x64SwitchToUserspace`. From kernel mode that corrupts the task's state and unwinds
+  the kernel's stack — so the kernel ran with IF=0, could not `hlt`, and "idle" was a ring-3
+  PAUSE-spinner burning a core. 3.4 fixed it: `serviceIRQ` branches on the iret frame's CS.
+  **A kernel-mode ISR here is a TOP HALF only** — EOI plus the i8042 drain (that buffer is one byte
+  deep) — because it interrupts arbitrary kernel code, so anything walking a shared structure is
+  deferred to `kernelIrqDrainBottomHalf()` under the BKL.
+- **`make golden` compares against a RUNNING guest.** With none up it fails with "no monitor socket";
+  worse, with a *stale* guest still running it silently compares the wrong build. Boot the build
+  under test first, then run `scripts/golden-check.sh installer`.
 - **The desktop's configuration backend is Hyprland's IPC socket**, not a config file. Input and
   theme settings live in `system/hypr/custom/*.lua`, baked in at build time, so a running desktop
   could not change them — that is what blocked 3.0b. `hypr_ipc()` in `wl-quicksettings.c` writes a

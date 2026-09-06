@@ -9454,6 +9454,20 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     return 0;
 }
 
+// TEMPORARY (ROADMAP 3.0b): the quicksettings panel connects to Hyprland's hyprctl socket and
+// the connect succeeds, but the reply read comes back EMPTY and the keyword does not apply.
+// Hyprland serves that socket through wl_event_loop_add_fd -> epoll -> accept4 (HyprCtl.cpp:2221,
+// :2324), so the question that splits the problem in half is whether it ever accept()s at all.
+private __gshared int g_hyprAccLogN = 0;
+private __gshared int g_hyprRdyLogN = 0;
+private bool sockPathHasHypr(const ref LocalSocket s) @nogc nothrow {
+    if (s.pathLength < 5) return false;
+    foreach (i; 0 .. s.pathLength - 4)
+        if (s.path[i] == 'h' && s.path[i+1] == 'y' && s.path[i+2] == 'p' && s.path[i+3] == 'r')
+            return true;
+    return false;
+}
+
 public int sys_accept(int sockfd, sockaddr* addr, uint* addrlen) {
     initFdTable();
     if (sockfd < 0 || sockfd >= 1024) return negErrno(EBADF);
@@ -9463,6 +9477,12 @@ public int sys_accept(int sockfd, sockaddr* addr, uint* addrlen) {
     if (listener.state != LocalSocketState.listener) return negErrno(EINVAL);
 
     const int acceptedId = pendingQueuePop(*listener);
+    if (g_hyprAccLogN < 30 && sockPathHasHypr(*listener)) {
+        ++g_hyprAccLogN;
+        klog("[hyprsock] accept lfd="); klog_dec(sockfd);
+        klog(" popped="); klog_dec(cast(ulong)(acceptedId < 0 ? 0 : 1));
+        hangTraceWho(); klog("\n");
+    }
     if (acceptedId < 0) return negErrno(EAGAIN);
 
     const int fd = allocSocketFd(acceptedId, O_RDWR);
@@ -12311,8 +12331,17 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
         // that would supply the data (e.g. the forked embedded seatd server).
         auto sock = fileSocket(f);
         if (sock is null) return false;
-        if (sock.state == LocalSocketState.listener)
-            return sock.pendingHead != sock.pendingTail;   // a pending accept()
+        if (sock.state == LocalSocketState.listener) {
+            const bool rdy = sock.pendingHead != sock.pendingTail;   // a pending accept()
+            // TEMPORARY (ROADMAP 3.0b): paired with the [hyprsock] accept log.  Together they say
+            // whether Hyprland is told the hyprctl listener is readable and then declines to
+            // accept, or is never told at all.
+            if (rdy && g_hyprRdyLogN < 20 && sockPathHasHypr(*sock)) {
+                ++g_hyprRdyLogN;
+                klog("[hyprsock] poll-ready lfd="); klog_dec(fd); hangTraceWho(); klog("\n");
+            }
+            return rdy;
+        }
         return socketBufferReadable(sock.rx) > 0 || sock.peerClosed
             || sock.state == LocalSocketState.closed;
     }

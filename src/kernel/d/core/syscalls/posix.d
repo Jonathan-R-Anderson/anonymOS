@@ -13714,6 +13714,7 @@ private enum ulong PRESENT_FULL_EVERY = 60;
 // R5 accounting, reported by presentProfStats: how much of the screen we actually wrote.
 public __gshared ulong g_presentRowsCopied = 0;
 public __gshared ulong g_presentRowsTotal  = 0;
+public __gshared ulong g_presentBlitCycles = 0;
 
 // Row compare, 8 bytes at a time.  Written out rather than calling memcmp because this file
 // imports only memcpy from core.stdc.string, and a 64-bit-wide compare is the point anyway: it
@@ -13852,6 +13853,7 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     //   * a periodic full refresh.  Anything else that writes straight to g_fb.address (the
     //     console, a HUD row) makes the shadow disagree with the screen, and this bounds how long
     //     such a disagreement can persist to one interval rather than forever.
+    const ulong _tBlit0 = rdtsc();
     ++g_presentFrameNo;
     const bool fullRefresh = presentShadowEnsure(copyH, rowBytes) == false
                              || (g_presentFrameNo % PRESENT_FULL_EVERY) == 0;
@@ -13876,10 +13878,12 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
                rowBytes);
     }
 
-    // R5 accounting: how much of the screen this present actually wrote.  A static desktop should
-    // settle near zero rows copied; a full redraw equals copyH.
+    // R5 accounting: how much of the screen this present actually wrote, and what the writing
+    // cost.  Cycles-per-row is the number that says whether a different store instruction helps;
+    // rows alone cannot, since the row count changes with what is on screen.
     g_presentRowsCopied += rowsCopied;
     g_presentRowsTotal  += copyH;
+    g_presentBlitCycles += rdtsc() - _tBlit0;
 
     // Real-hardware bring-up: announce the first present (display claimed) while the
     // fb console is still live, so the confirmation lands on the panel right before
@@ -13949,6 +13953,11 @@ public void presentProfStats() @nogc nothrow {
         klog("[present] rows_written=");
         klog_dec((g_presentRowsCopied * 100) / g_presentRowsTotal);
         klog("% of "); klog_dec(g_presentRowsTotal); klog(" scanlines\n");
+        if (g_presentRowsCopied != 0) {
+            klog("[present] blit_cycles_per_row=");
+            klog_dec(g_presentBlitCycles / g_presentRowsCopied);
+            klog("\n");
+        }
     }
     klog("[present] total="); klog_dec(g_presTotal);
     klog(" flipQ="); klog_dec(g_flipQueued);

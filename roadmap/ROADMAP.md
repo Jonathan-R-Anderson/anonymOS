@@ -28,7 +28,7 @@ desktop -- the exit criterion below is MET.
 |---|---|---|---|---|
 | 2.1 | ◑ **`/compat/linux` + `/proc` + `/sys` + `/etc`** — `/proc` now reports real data (2026-09-05); `/sys` and `/etc` still largely synthetic | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
 | 2.2 | ◑ **Syscall audit** — done as a survey: **only the 4 inotify calls are missing**. Remaining work is implementing inotify | Record what is missing once, rather than one crash at a time | APPS A3 · syscalls | M |
-| 2.4 | ◑ **Font / icon / theme resolution + installable packs** — fonts and icons both resolve and render in a GTK app; pack dirs exist, persist and are scanned. Remaining: an end-to-end pack-install test | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
+| 2.4 | ✅ **Font / icon / theme resolution + installable packs** — DONE 2026-09-05. Fonts and icons resolve and render; a user-installed pack demonstrably overrides the system theme | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
 | 2.6 | ◑ **Stage C1** — the `/proc` data is real and verified; the apps are now **unblocked** by 2.3 | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
 
 **Exit criterion — ✅ MET 2026-09-05:** upstream `gtk3-widget-factory` runs on the desktop.
@@ -89,8 +89,20 @@ and GTK demonstrably opens that file. **GTK 3 reaches for Adwaita regardless of 
 Fixed by giving Adwaita a real index that `Inherits=Epin,hicolor` -- an inheriting theme with no
 icons of its own is an ordinary arrangement, and it resolves whichever name GTK settles on.
 
-**Also not done:** an end-to-end test that installs a real pack and confirms an app picks it up.
-The install directories are proven scanned; a pack changing what renders is not.
+**Proven end-to-end.** A pack was installed into `~/.local/share/icons/Adwaita/48x48/apps/` that
+*overrides* an icon the system theme already provides -- the folder image under the name
+`terminal` -- so success could not be a judgement call. gtk-hello asks for `terminal` and rendered
+a **folder**, and the only `terminal.png` GTK opened was the user one:
+
+```
+[open] /home/user/.local/share/icons/Adwaita/48x48/apps/terminal.png
+```
+
+That confirms both halves: user packs are found, and `$XDG_DATA_HOME/icons` takes precedence over
+`/usr/share/icons` -- without the ordering a user install would resolve to nothing.
+
+The test itself was **removed after proving**: it wrote into `/home`, which persists, so leaving it
+in would permanently replace a real user's terminal icon with a folder on every boot.
 ### 2.6 — the `/proc` data is real; the C1 apps are now unblocked
 
 The data every C1 reader consumes is done and verified on a real boot: `/proc/cpuinfo` reports

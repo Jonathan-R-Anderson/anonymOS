@@ -5258,49 +5258,6 @@ public void fsPersistTick(ulong nowMs) @nogc nothrow {
 //
 // Goes through open/getdents64 rather than the rtfs helpers, because the question is what a
 // client sees, not what the tree contains.
-// ROADMAP 2.4: prove a user-installed icon pack is actually picked up.
-//
-// Everything about the install path was verified piecemeal -- the directories exist, persist, and
-// are scanned -- but never end to end: no pack had ever changed what an application renders.
-//
-// The test installs a pack that OVERRIDES an icon the system theme already provides, because that
-// makes success unmistakable instead of a judgement call. It copies the *folder* icon over the
-// name "terminal" in a user-level Adwaita theme. gtk-hello asks for "terminal", so if the user
-// pack wins the window shows a folder; if it does not, it still shows the terminal icon. No
-// ambiguity, and it is visible in a screenshot.
-//
-// It reuses bytes already in the guest rather than embedding a PNG, so what is being tested is the
-// search-and-override path, not this function's ability to synthesise a valid image.
-//
-// $XDG_DATA_HOME/icons must take precedence over /usr/share/icons for a user install to mean
-// anything, so this also checks the search ORDER, not merely that the directory is looked at.
-public void packInstallSelfTest() @nogc nothrow {
-    enum string SRC  = "/usr/share/icons/Epin/48x48/places/folder.png\0";
-    enum string DEST = "home/user/.local/share/icons/Adwaita/48x48/apps/terminal.png";
-    enum string IDX  = "home/user/.local/share/icons/Adwaita/index.theme";
-
-    int par; const(char)* leaf; size_t leafLen;
-    const int si = rtResolve(SRC.ptr, par, leaf, leafLen);
-    if (si <= 0 || g_rt[si].kind != RT_REG || g_rt[si].size == 0) {
-        klog("[pack] source icon missing; cannot run the install test\n");
-        return;
-    }
-
-    rtMkdirPath("/home/user/.local/share/icons/Adwaita\0".ptr,              0x1C0, 1000, 1000);
-    rtMkdirPath("/home/user/.local/share/icons/Adwaita/48x48\0".ptr,        0x1C0, 1000, 1000);
-    rtMkdirPath("/home/user/.local/share/icons/Adwaita/48x48/apps\0".ptr,   0x1C0, 1000, 1000);
-
-    rtAddFile(DEST.ptr, DEST.length, g_rt[si].data, g_rt[si].size);
-    enum string INDEX_BODY =
-        "[Icon Theme]\nName=Adwaita\nInherits=Epin,hicolor\nDirectories=48x48/apps\n" ~
-        "\n[48x48/apps]\nSize=48\nType=Fixed\nContext=Applications\n";
-    rtAddFile(IDX.ptr, IDX.length, cast(const(ubyte)*)INDEX_BODY.ptr, cast(uint)INDEX_BODY.length);
-
-    klog("[pack] installed a user icon pack: folder.png -> Adwaita/48x48/apps/terminal.png ");
-    klog("bytes="); klog_dec(g_rt[si].size); klog("\n");
-    klog("[pack] gtk-hello asks for \"terminal\": a FOLDER icon means the user pack won\n");
-}
-
 public void iconDirSelfTest() @nogc nothrow {
     static immutable string[3] dirs = [
         "/usr/share/icons/Epin/48x48/apps\0",

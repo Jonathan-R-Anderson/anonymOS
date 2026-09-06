@@ -3164,8 +3164,18 @@ private size_t procDynamicSynth(const(char)* path) {
     // system built for deniability that is a fingerprint, not a fidelity gap.
     //
     // So: 16 random bytes on first boot, hex, kept at /home/.machine-id -- under the `persist =
-    // /home` root, so it survives reboots the way a real machine-id must, and travels with the
-    // install rather than the image.  Regenerating it per boot would break the "persistent" half of
+    // /home` root, so it travels with the install rather than the image.
+    //
+    // TWO REGIMES, and both are correct.  fsPersistSave() is a no-op unless objstoreMounted(), so
+    // on LIVE media nothing under /home is written back and a fresh id is generated every boot.
+    // That is the better behaviour there, not a bug: a live session carrying a stable identifier
+    // across boots is precisely the fingerprint this change exists to remove.  On an INSTALLED
+    // system the store is mounted, the file persists, and the id is stable as the spec requires.
+    //
+    // Measured on live media: two boots produced 9381ae02 and 012790f8 -- different, as intended
+    // there.  The installed-system half is NOT verified yet; verifying it needs a real install,
+    // not a live boot, and no amount of waiting for a flush will show it.  Regenerating per boot on
+    // an installed system would break the "persistent" half of
     // the contract; baking it into the image would break the "unique" half.
 
     // ── ROADMAP 2.1: /etc/resolv.conf from the DHCP lease, not hardcoded public resolvers ──────

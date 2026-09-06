@@ -4483,6 +4483,7 @@ private __gshared bool g_syscallTagPrinted = false;
 // 3.5's job and deliberately not attempted: scheduleNext() from an ISR would switch stacks under
 // the interrupted frame.
 __gshared ulong g_kirqCount;      // kernel-mode IRQs taken, by the new path
+__gshared ulong g_kidleHalts;     // times the BSP actually slept instead of spinning
 __gshared ulong g_kirqTicks;      // of those, APIC timer ticks
 __gshared bool  g_kirqTickDue;    // a 1 kHz tick is owed to the bottom half
 __gshared bool  g_kirqWakeDue;    // pollers should be woken at the next safe point
@@ -4691,6 +4692,34 @@ private void kernelLoop() {
                 bklRelease(&g_bkl);
                 continue;
             }
+        }
+
+        // ── ROADMAP 3.4: idle in the KERNEL with sti;hlt, not in a userspace spinner ──
+        //
+        // g_idleTid is a /idle boot module that PAUSE-spins in ring 3, because until now an IRQ
+        // was only safe on the userspace round-trip -- so "doing nothing" meant burning a core to
+        // stay interruptible.  With kernelIRQ in place an interrupt taken here is handled and
+        // iret'd back, so the CPU can actually sleep.
+        //
+        // sti and hlt are adjacent deliberately: sti takes effect only AFTER the following
+        // instruction, so `sti; hlt` cannot lose an interrupt that arrives in between -- the
+        // classic race that halts a machine forever.  The BKL is released first so an AP can run
+        // while the BSP sleeps, and cli restores the invariant the rest of the loop expects: the
+        // kernel runs with interrupts off.
+        if (tid == g_idleTid && !g_kirqTickDue && !g_kirqWakeDue) {
+            bklRelease(&g_bkl);
+            asm @nogc nothrow { sti; hlt; cli; }
+            bklAcquire(&g_bkl);
+            ++g_kidleHalts;
+            if (kernelIrqDrainBottomHalf()) scheduleNext();
+            if (g_kidleHalts == 200) {
+                klog("[kirq] kernel-mode IRQ path live: halts="); klog_dec(g_kidleHalts);
+                klog(" kirq="); klog_dec(g_kirqCount);
+                klog(" ticks="); klog_dec(g_kirqTicks);
+                klog(" -- the CPU now SLEEPS when idle instead of spinning in ring 3\n");
+            }
+            bklRelease(&g_bkl);
+            continue;
         }
 
         physSetActiveUntyped(task.untypedObjId);

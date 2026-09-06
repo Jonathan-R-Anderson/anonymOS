@@ -13,6 +13,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/inotify.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #define DIR  "/home/user/.inotify-test"
 #define FILE DIR "/probe.txt"

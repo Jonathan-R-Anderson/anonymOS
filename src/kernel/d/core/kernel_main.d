@@ -1464,6 +1464,23 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     g_tasks[t].parentId         = 0;
     g_tasks[t].processLeaderTid = t;
     g_tasks[t].userObjId        = g_tasks[0].userObjId;
+    // ROADMAP 4.0: inherit the identity too.
+    //
+    // Every other label at this site is copied from task 0 -- user, namespace, untyped -- and this
+    // one was simply missed, so every kernel-spawned process (the installer, the bar, every desktop
+    // app) ran with identityObjId == 0.  fork() and thread creation both inherit correctly; only
+    // this path did not, and this path is how the entire desktop is started.
+    //
+    // The consequence was not just a blank field.  IDENTITY_DOMAIN opens by stating that every
+    // user-facing process belongs to a named identity and every window is bordered with its colour;
+    // with no identity on any task, the border fell back to a pid hash and the stated invariant was
+    // false for the whole desktop.  Measured: pid=10 tid=9 ident=0.
+    //
+    // System is what task 0 carries, so this makes the invariant TRUE without inventing policy.
+    // Giving user applications a less privileged identity than the kernel's own is a real decision
+    // about which identity a spawned app should get, and it belongs with 4.1's policy engine rather
+    // than being smuggled in here.
+    g_tasks[t].identityObjId    = g_tasks[0].identityObjId;
     g_tasks[t].untypedObjId     = untypedCreateProcess(0);
     if (g_tasks[t].untypedObjId == 0) {
         klog(tag); klog(" no untyped budget for "); klog(prog); klog("\n");

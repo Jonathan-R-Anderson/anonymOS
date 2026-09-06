@@ -3645,8 +3645,16 @@ public int sys_open(const(char)* path, int flags) {
         //   - the exact base directories -- "/", "/bin", /proc/<pid>, /objects/<kind> and the
         //     rest -- come from the non-prefix rules above, so they are untouched.
         // Only "deep path under a prefix, opened as a file" changes.
+        // O_CREAT is exempt: the caller is not asking whether the file exists, it is asking for
+        // the file to be made.  Creation is handled further down (the rtfs O_CREAT path), so
+        // returning ENOENT here would refuse every write of a new file under one of these
+        // prefixes -- which is how fontconfig writes its cache: create
+        // /var/cache/fontconfig/<hash>.cache-9.TMP-XXXXXX, then rename it into place.
+        // Without this exemption the fix would have replaced one failure (EISDIR, from the
+        // fabricated directory) with another (ENOENT), and both stall the same client.
         enum int O_DIRECTORY = 0x10000;   // x86_64 0o200000
-        if ((flags & O_DIRECTORY) == 0 && isVirtualDirectoryPath(path)) {
+        if ((flags & O_DIRECTORY) == 0 && (flags & O_CREAT) == 0
+            && isVirtualDirectoryPath(path)) {
             return negErrno(ENOENT);
         }
         if ((flags & 3) != O_RDONLY) {

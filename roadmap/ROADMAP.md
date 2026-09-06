@@ -85,7 +85,8 @@ Valuable, coherent, and **not** on the path to a usable desktop. Deliberately af
 
 | # | Item | Source |
 |---|---|---|
-| 4.1 | Identity brokers, disposable identities, policy engine (Phases 7–9) | IDENTITY_DOMAIN |
+| 4.0 | ⚠ **Per-process identity is not live — the foundation 4.1 builds on.** IDENTITY_DOMAIN opens by stating "every user-facing process belongs to a named, colored identity, every window is bordered with that identity's color by the trusted compositor" (§ lines 4-5, 56). Neither half holds on the running desktop. **(a)** The border actually drawn is kernel-drawn (`drmSetHosWindows` -> `fbDrawBorder`), not the compositor path (`borderColorFor` -> `window.identityColor`) the document describes — and it used `HOS_ID_PALETTE[pid % 8]`, a pid hash, until 2026-09-06. **(b)** Reading the owning task's real `identityObjId` there is currently INERT: the border does not change, so the lookup falls through — either `taskIdFromLinuxPid(wn.pid)` fails to resolve the compositor-supplied pid, or the task carries no identity. Task 0 is stamped `System` at boot and children inherit, so the ids should exist — the resolution is the suspect. **Blocks 4.1**, which builds brokers and policy on top of per-process identity | IDENTITY_DOMAIN |
+| 4.1 | Identity brokers, disposable identities, policy engine (Phases 7–9) — needs 4.0 | IDENTITY_DOMAIN |
 | 4.2 | Immutable-rootless foundation (Phase 0 invariants) | IMMUTABLE_ROOTLESS |
 | 4.3 | Declarative config compiler (Phases 1–9) | DECLARATIVE_CONFIG_SPEC |
 | 4.4 | Whole-image A/B update unit | SYSTEM_UPDATE D1 |

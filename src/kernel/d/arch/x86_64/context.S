@@ -74,6 +74,13 @@ dbg_sisr_saves:
 	# chain runs on this stack from the top, so the C stack depth never
 	# exceeds one chain's worth of frames regardless of how many events
 	# have been processed.
+	# ROADMAP 3.4: FPU/SSE save area for the kernel-mode IRQ path.  fxsave needs 16-byte
+	# alignment; one area is enough because interrupt gates keep IF clear, so it cannot nest.
+	.align 16
+.global kernelIrqFxArea
+kernelIrqFxArea:
+	.skip 512
+
 .global kernelExecStack
 .global kernelExecStack_top
 kernelExecStack:
@@ -92,6 +99,76 @@ kernelExecStack_top:
 #
 # If from userspace, then we will switch to the Haskell stack, and fake a "return"
 # value for the interrupt number being called.
+# ROADMAP 3.4 -- kernel-mode interrupt handling.
+#
+# serviceISR assumes an interrupt arrived while USERSPACE was running: it saves the register file
+# into curUserSpaceState and jumps to restoreKernelState, i.e. it RETURNS FROM
+# x64SwitchToUserspace.  Taken while the KERNEL is running, that is catastrophic twice over -- it
+# overwrites the current task's saved registers with kernel ones, and it unwinds the kernel's own
+# call stack to the scheduler.  That is precisely why this kernel has always run with IF=0 and
+# cannot hlt: an IRQ was only ever safe on the userspace round-trip.
+#
+# The vector was pushed by the stub, so the CPU's iret frame starts one quad up:
+#   0(%rsp)=vector  8(%rsp)=RIP  0x10(%rsp)=CS  0x18(%rsp)=RFLAGS  0x20(%rsp)=RSP  0x28(%rsp)=SS
+# CS is 0x23 (ring-3 code selector | RPL 3) exactly when userspace was interrupted.
+serviceIRQ:
+	cmpq $0x23, 0x10(%rsp)
+	je serviceISR                  # from userspace: the existing path, unchanged
+	# fall through: from the kernel
+
+# Handle the IRQ here and iret straight back to the interrupted kernel code.
+kernelIRQ:
+	# Full GPR save on the CURRENT kernel stack.  This interrupts arbitrary kernel code, so
+	# callee-saved registers are not enough -- everything must come back untouched.
+	pushq %rax
+	pushq %rcx
+	pushq %rdx
+	pushq %rsi
+	pushq %rdi
+	pushq %r8
+	pushq %r9
+	pushq %r10
+	pushq %r11
+	pushq %rbx
+	pushq %rbp
+	pushq %r12
+	pushq %r13
+	pushq %r14
+	pushq %r15
+
+	# The handler is ordinary compiled D, which may use SSE, so the FPU/SSE file is saved too.
+	# ONE static area suffices: these are INTERRUPT gates (type 0x8E), so IF is clear on entry
+	# and this path cannot nest on itself.
+	movabsq $kernelIrqFxArea, %rax
+	fxsave (%rax)
+
+	movq 120(%rsp), %rdi           # the vector, above the 15 saved GPRs
+	andq $0xFF, %rdi
+	subq $8, %rsp                  # SysV wants RSP 16-aligned at the call
+	call kernelIrqHandler
+	addq $8, %rsp
+
+	movabsq $kernelIrqFxArea, %rax
+	fxrstor (%rax)
+
+	popq %r15
+	popq %r14
+	popq %r13
+	popq %r12
+	popq %rbp
+	popq %rbx
+	popq %r11
+	popq %r10
+	popq %r9
+	popq %r8
+	popq %rdi
+	popq %rsi
+	popq %rdx
+	popq %rcx
+	popq %rax
+	addq $8, %rsp                  # drop the vector the stub pushed
+	iretq
+
 serviceISR:
 	.set SYSCALL_REASON, 1
 	.set TRAP_REASON, 2
@@ -779,54 +856,57 @@ trap31:
 	.global irq13
 	.global irq14
 	.global irq15
+# ROADMAP 3.4: every IRQ stub now enters serviceIRQ, which picks the right path for the mode the
+# CPU was in.  The trap stubs (trap0-trap31) still go straight to serviceISR -- a fault in the
+# kernel is a different problem, already handled there by inKernelFault.
 irq0:
 	pushq $0x80
-	jmp serviceISR
+	jmp serviceIRQ
 irq1:
 	pushq $0x81
-	jmp serviceISR
+	jmp serviceIRQ
 irq2:
 	pushq $0x82
-	jmp serviceISR
+	jmp serviceIRQ
 irq3:
 	pushq $0x83
-	jmp serviceISR
+	jmp serviceIRQ
 irq4:
 	pushq $0x84
-	jmp serviceISR
+	jmp serviceIRQ
 irq5:
 	pushq $0x85
-	jmp serviceISR
+	jmp serviceIRQ
 irq6:
 	pushq $0x86
-	jmp serviceISR
+	jmp serviceIRQ
 irq7:
 	pushq $0x87
-	jmp serviceISR
+	jmp serviceIRQ
 irq8:
 	pushq $0x88
-	jmp serviceISR
+	jmp serviceIRQ
 irq9:
 	pushq $0x89
-	jmp serviceISR
+	jmp serviceIRQ
 irq10:
 	pushq $0x8A
-	jmp serviceISR
+	jmp serviceIRQ
 irq11:
 	pushq $0x8B
-	jmp serviceISR
+	jmp serviceIRQ
 irq12:
 	pushq $0x8C
-	jmp serviceISR
+	jmp serviceIRQ
 irq13:
 	pushq $0x8D
-	jmp serviceISR
+	jmp serviceIRQ
 irq14:
 	pushq $0x8E
-	jmp serviceISR
+	jmp serviceIRQ
 irq15:
 	pushq $0x8F
-	jmp serviceISR
+	jmp serviceIRQ
 
 .section .data
 kernel_panic_msg: .asciz "Kernel Fault"

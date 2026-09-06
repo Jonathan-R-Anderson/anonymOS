@@ -4462,6 +4462,76 @@ private __gshared bool g_loopTagPrinted = false;
 private __gshared bool g_runTagPrinted = false;
 private __gshared bool g_backTagPrinted = false;
 private __gshared bool g_syscallTagPrinted = false;
+
+// ── ROADMAP 3.4: kernel-mode interrupt handling ────────────────────────────────────────────
+//
+// Entered from kernelIRQ in arch/x86_64/context.S when an IRQ arrives while the KERNEL is
+// running, rather than on the userspace round-trip that serviceISR assumes.  Registers and the
+// SSE file are saved by the stub; this returns and the stub iret's back to the interrupted code.
+//
+// TOP HALF ONLY.  It does the work that is self-contained and cannot wait:
+//
+//   * EOI, always -- without it the interrupt controller stops delivering.
+//   * The i8042 drain, because that buffer is ONE byte deep and a PS/2 byte arrives every
+//     ~0.7-1.1ms; deferring it loses bytes and desyncs the 3-byte mouse packets.
+//
+// Everything that walks shared kernel structures -- wakePollers, networkStackPoll, scheduleNext --
+// is DEFERRED to kernelIrqDrainBottomHalf(), which the scheduler loop calls at a point where it
+// holds the BKL and is not itself midway through those structures.  This interrupts arbitrary
+// kernel code, so touching a list the interrupted code was already mutating would be a
+// reentrancy bug that shows up as rare, unreproducible corruption.  Preemption from here is
+// 3.5's job and deliberately not attempted: scheduleNext() from an ISR would switch stacks under
+// the interrupted frame.
+__gshared ulong g_kirqCount;      // kernel-mode IRQs taken, by the new path
+__gshared ulong g_kirqTicks;      // of those, APIC timer ticks
+__gshared bool  g_kirqTickDue;    // a 1 kHz tick is owed to the bottom half
+__gshared bool  g_kirqWakeDue;    // pollers should be woken at the next safe point
+private __gshared uint g_kirqTickDiv;
+
+extern (C) void kernelIrqHandler(ulong vector) @nogc nothrow {
+    const uint irqIdx = cast(uint)(vector & 0x7F);
+    ++g_kirqCount;
+
+    if (irqIdx == 0) {
+        ++g_kirqTicks;
+        ps2PollUnified();                 // 1-byte-deep i8042: drain now or lose the byte
+        lapicEOI();
+        if ((++g_kirqTickDiv) >= TICK_DIV) {
+            g_kirqTickDiv = 0;
+            g_kirqTickDue = true;         // increment_ticks() runs in the bottom half
+        }
+        picEOI(false);                    // harmless when PIC IRQ0 is masked
+    } else if (irqIdx == 1) {
+        handleKbdIRQ();
+        g_kirqWakeDue = true;
+        picEOI(false);
+    } else if (irqIdx == 12) {
+        handleMouseIRQ();
+        g_kirqWakeDue = true;
+        picEOI(true);                     // mouse is on PIC2, needs both EOIs
+    } else {
+        picEOI(irqIdx >= 8);
+    }
+}
+
+// Run the deferred half.  Called from the scheduler loop under the BKL, where the structures
+// below are not mid-mutation.  Returns true if a reschedule is owed.
+bool kernelIrqDrainBottomHalf() @nogc nothrow {
+    bool resched = false;
+    if (g_kirqTickDue) {
+        g_kirqTickDue = false;
+        increment_ticks();
+        cpuAccountTick(g_idleTid >= 0 && g_current_task_id == cast(ulong)g_idleTid);
+        networkStackPoll();
+        resched = true;
+    }
+    if (g_kirqWakeDue || resched) {
+        g_kirqWakeDue = false;
+        wakePollers();
+    }
+    return resched;
+}
+
 private __gshared bool g_irq0TagPrinted = false;
 // The BSP local-APIC timer fires at TICK_HZ so the i8042 (1-byte buffer) is drained
 // fast enough to never lose a PS/2 byte; the clock/scheduler run every TICK_DIV-th

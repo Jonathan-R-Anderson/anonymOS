@@ -3685,6 +3685,8 @@ public int sys_open(const(char)* path, int flags) {
         if (cstrEq(path, "/proc")) g_fdTable[fd].fileSize = SYNTHDIR_PROC;
         // M3: tag /sys/class/net so getdents64 lists lo + wlan0 -> NM discovers the wifi device.
         if (cstrEq(path, "/sys/class/net")) g_fdTable[fd].fileSize = SYNTHDIR_NETCLASS;
+        // ROADMAP 2.1: a real PCI listing, built at getdents time from live config reads.
+        if (cstrEq(path, "/sys/bus/pci/devices")) g_fdTable[fd].fileSize = SYNTHDIR_PCIDEVS;
         // M3: tag NMPLUGINDIR (dead now — wifi is an internal factory, load_factories_from_dir disabled —
         // but harmless; NM never reads this dir).
         if (cstrEq(path, "/usr/lib/NetworkManager/1.44.2")) g_fdTable[fd].fileSize = SYNTHDIR_NMPLUGIN;
@@ -10610,6 +10612,11 @@ private static immutable string[4] g_devCharEntries = ["226:0", "226:128", "13:6
 // M3: tag /sys/class/net so getdents64 lists the interfaces NM's nm-linux-platform enumerates.
 // Without this the dir readdir is empty -> NM sees NO device even though the LKL has wlan0.
 private enum ulong SYNTHDIR_NETCLASS = 0x0E7C1A55;
+// ROADMAP 2.1: /sys/bus/pci/devices, enumerated live from PCI config space rather than a constant.
+private enum ulong SYNTHDIR_PCIDEVS  = 0x0E7C1C71;
+private char hexDigitLower(uint v) @nogc nothrow {
+    return cast(char)(v < 10 ? ('0' + v) : ('a' + (v - 10)));
+}
 private static immutable string[2] g_netClassEntries = ["lo", "wlan0"];
 // M3: NM loads device plugins by readdir'ing NMPLUGINDIR=/usr/lib/NetworkManager/1.44.2.  That dir is a
 // synthetic prefix whose getdents is empty, so NM finds no wifi plugin.  Synthesize the listing (the .so
@@ -10805,6 +10812,46 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
                 f.offset = logical + 1;
             }
             ++logical;
+        }
+        return cast(long)written;
+    }
+
+
+    // ── ROADMAP 2.1: /sys/bus/pci/devices — enumerated from the LIVE bus ───────────────────────
+    //
+    // The rest of the /sys entries this kernel serves are string constants: /sys/class/drm/card0
+    // reports vendor 0x1af4 because that is what QEMU's virtio-gpu is, and would keep reporting it
+    // on hardware that is not virtio at all.  That is the "still largely synthetic" in 2.1, and it
+    // is the kind of wrong that only shows up on the machine you cannot debug.
+    //
+    // This directory is built by reading PCI configuration space at getdents time, the same way
+    // /proc/bus/pci/devices already does, so its contents are whatever the machine actually has.
+    // Names are Linux's canonical DDDD:BB:DD.F form, which is what a caller matches on.
+    if (f.fileSize == SYNTHDIR_PCIDEVS) {
+        import drivers.pci : pciConfigRead32;
+        ulong logical = 2;
+        foreach (slot; 0 .. 32) {
+            foreach (func; 0 .. 8) {
+                const uint id = pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func, 0x00);
+                if (id == 0xFFFF_FFFF || (id & 0xFFFF) == 0xFFFF) continue;
+                if (f.offset <= logical) {
+                    // "0000:00:SS.F" — domain and bus are 0 here; this kernel scans bus 0 only,
+                    // which is stated rather than implied by silently omitting the field.
+                    char[16] nm;
+                    nm[0]='0'; nm[1]='0'; nm[2]='0'; nm[3]='0'; nm[4]=':';
+                    nm[5]='0'; nm[6]='0'; nm[7]=':';
+                    nm[8]  = hexDigitLower((cast(uint)slot >> 4) & 0xF);
+                    nm[9]  = hexDigitLower(cast(uint)slot & 0xF);
+                    nm[10] = '.';
+                    nm[11] = hexDigitLower(cast(uint)func & 0xF);
+                    nm[12] = 0;
+                    if (!writeDirent64(buf, count, &written, logical + 5, cast(long)logical + 1,
+                                       DT_DIR, nm.ptr, 12))
+                        return cast(long)written;
+                    f.offset = logical + 1;
+                }
+                ++logical;
+            }
         }
         return cast(long)written;
     }

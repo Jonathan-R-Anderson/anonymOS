@@ -11629,6 +11629,7 @@ private long pollScanFds(ulong fds, ulong nfds) {
 
 public long linux_sys_poll(ulong fds, ulong nfds, ulong timeout) {
     hangTracePoll("poll nfds,timeout", nfds, timeout);
+    notePollTimeout(timeout, timeout == 0);
     return pollScanFds(fds, nfds);
 }
 // ppoll(fds, nfds, timeout_ts, sigmask, sigsetsize): scan readiness like poll;
@@ -12517,6 +12518,7 @@ public long linux_sys_epoll_ctl(ulong epfd, ulong op, ulong fd, ulong ev_ptr) {
 
 public long linux_sys_epoll_pwait(ulong epfd, ulong evs, ulong maxev, ulong timeout_ms, ulong sigmask, ulong ss) {
     initFdTable();
+    notePollTimeout(timeout_ms, timeout_ms == 0);
     if (!evs || maxev == 0) return negErrno(EFAULT);
     int efd = cast(int)epfd;
     if (efd < 0 || efd >= 1024 || g_fdTable[efd].type != FileType.FD_EPOLL)
@@ -13617,6 +13619,39 @@ __gshared bool g_cmpParkedSeen = false;
 private __gshared ulong g_freezeLastFlipQ = 0;
 public void freezeNotePresenterParked() @nogc nothrow { g_cmpParkedSeen = true; }
 
+// ROADMAP 3.5b: poll/epoll TIMEOUT histogram, per task.
+//
+// The fd-readiness histogram cleared the first suspect -- only "timerfd=2" per stalled second, so
+// nothing is being falsely reported ready.  A caller that passes timeout 0, though, never parks
+// however honest the readiness answer is: it asks, is told "nothing", and immediately asks again.
+// That is indistinguishable from a busy loop and matches exactly what is observed -- three tasks
+// runnable at ~1000 scheduler selections a second with almost no fd ever ready.
+//
+// Bucketed by task so the answer names WHO, not just that it happens.
+__gshared uint[MAX_TASKS] g_pollTmo0;     // timeout == 0: cannot ever park
+__gshared uint[MAX_TASKS] g_pollTmoPos;   // timeout  > 0 (or infinite): can park
+public void notePollTimeout(ulong timeoutMs, bool isZero) @nogc nothrow {
+    const uint t = cast(uint)g_current_task_id;
+    if (t >= MAX_TASKS) return;
+    if (isZero) { if (g_pollTmo0[t]   != uint.max) ++g_pollTmo0[t];   }
+    else        { if (g_pollTmoPos[t] != uint.max) ++g_pollTmoPos[t]; }
+}
+private void pollTimeoutStats() @nogc nothrow {
+    klog("[polltmo]");
+    bool any = false;
+    foreach (i; 0 .. MAX_TASKS) {
+        if (g_pollTmo0[i] == 0 && g_pollTmoPos[i] == 0) continue;
+        any = true;
+        klog(" t"); klog_dec(cast(ulong)i); klog(":");
+        { const(char)* n = g_taskExecName[i]; klog(n !is null ? n : "?".ptr); }
+        klog(" zero="); klog_dec(g_pollTmo0[i]);
+        klog(" wait="); klog_dec(g_pollTmoPos[i]);
+        g_pollTmo0[i] = 0; g_pollTmoPos[i] = 0;
+    }
+    if (!any) klog(" (none)");
+    klog("\n");
+}
+
 public void freezeProbeKlog() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
     if (!g_desktopClaimedFb || g_lastPresentMs == 0) return;
@@ -13661,6 +13696,7 @@ public void freezeProbeKlog() @nogc nothrow {
     // fire once in a four-minute boot.  A spin diagnostic that never prints during the spin is no
     // diagnostic; print it when a stall is actually being reported.
     fdReadableStats();
+    pollTimeoutStats();
     klog("[freeze] stalled "); klog_dec((now-g_lastPresentMs)/1000);
     klog("s cur="); klog_dec(g_current_task_id); klog(":");
     { const(char)* p=g_taskExecName[cast(int)g_current_task_id]; klog(p !is null ? p : "?".ptr); }

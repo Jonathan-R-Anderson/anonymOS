@@ -40,6 +40,13 @@ hl.bind("SUPER + SHIFT + H", hl.dsp.exec_cmd("/gtk-hello"),           { descript
 hl.bind("SUPER + SHIFT + J", hl.dsp.exec_cmd("/hos-wl-trace"),
         { description = "gtk-hello + wayland protocol trace" })
 
+-- ROADMAP 3.5 (DESKTOP_RESP R6): launch a deliberate userspace CPU hog.  R6 asks to verify that
+-- "a deliberate userspace busy-loop no longer freezes the desktop"; press this a few times and
+-- watch whether the bar clock keeps advancing and windows keep repainting.  A test instrument, not
+-- a feature -- and a single-word command, because a keybind with arguments is routed through a
+-- shell and there is no /bin/sh here.
+hl.bind("SUPER + SHIFT + Y", hl.dsp.exec_cmd("/hog"), { description = "Spawn a CPU hog (preemption test)" })
+
 -- Toggle the kernel-spawned top bar by touching the flag file it polls.
 -- STILL BROKEN, and the /busybox swap above does not fix it: a keybinding command with arguments
 -- is routed through a shell, and there is no /bin/sh, so it execs an empty program name.  Only

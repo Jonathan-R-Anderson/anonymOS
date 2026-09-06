@@ -1,15 +1,17 @@
 // idle.c — the scheduler's idle task.
 //
-// The kernel is a cooperative single-core scheduler and has NO kernel-mode IRQ
-// handlers (the IDT only maps CPU exceptions; hardware IRQs are delivered only
-// while a task is in userspace).  So the kernel cannot HLT to idle — *something*
-// must be in userspace for the PIT/keyboard/mouse IRQs to keep firing.
+// LARGELY SUPERSEDED as of ROADMAP 3.4.  The reason this task existed was that the kernel had no
+// kernel-mode IRQ handlers -- hardware IRQs were delivered only while a task was in userspace, so
+// the kernel could not HLT and *something* had to be in ring 3 for the timer/keyboard/mouse IRQs
+// to keep firing.  Burning a core to stay interruptible was the price.
 //
-// When every real task is parked (blocked in poll/epoll), the scheduler runs THIS
-// task instead of repeatedly re-running the parked tasks' (expensive) epoll scans,
-// which otherwise saturate the kernel and starve the compositor.  This task just
-// spins with PAUSE — cheap, no syscalls — so the kernel only re-enters on real
-// interrupts and the compositor gets the core the instant it has work.
+// serviceIRQ/kernelIRQ (arch/x86_64/context.S) removed that constraint: an IRQ taken while the
+// kernel is running is now handled and iret'd back.  The scheduler therefore idles with `sti;hlt`
+// instead of dispatching this task, so in the normal case it is spawned and never runs.
+//
+// It is kept deliberately, as the fallback for any path that still needs a runnable ring-3 task,
+// and because removing it would couple the scheduler's idle handling to the IRQ work landing
+// perfectly on every boot.  If it ever does run, PAUSE keeps it cheap and syscall-free.
 int main(void)
 {
 	for (;;)

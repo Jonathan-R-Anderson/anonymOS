@@ -15244,6 +15244,22 @@ private void hosDrawIdentityBorders() @nogc nothrow {
         klog(" w="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].w);
         klog(" h="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].h);
         klog(" color="); klog_hex(hosIdentityColor(g_hosWins[0].pid));
+        // ROADMAP 4.0: why the border is the colour it is.  Reading the owning task's real
+        // identity here was INERT -- the colour did not move -- so one of these three is the
+        // reason, and guessing between them has already cost several boots.  pid is what the
+        // compositor reported for the window; tid is pid-1 (taskIdFromLinuxPid); ident is that
+        // task's identityObjId, which should be non-zero because task 0 is stamped System at boot
+        // and fork/thread creation inherit it.
+        {
+            import core.task : g_tasks, taskIdFromLinuxPid, MAX_TASKS;
+            const uint wpid = g_hosWins[0].pid;
+            const int wtid = taskIdFromLinuxPid(cast(int)wpid);
+            klog(" pid="); klog_dec(wpid);
+            klog(" tid="); klog_dec(cast(ulong)cast(uint)wtid);
+            klog(" ident=");
+            if (wtid >= 0 && wtid < MAX_TASKS) klog_hex(g_tasks[wtid].identityObjId);
+            else klog("NO-TASK");
+        }
         klog(" -- G5 BORDER\n");
         g_hosBorderLogged = true;
     }

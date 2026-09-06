@@ -2334,6 +2334,7 @@ private void maybeSyscallAudit() {
     g_syscallAudited = true;
 
     static immutable SyscallProbe[14] probes = [
+        // ROADMAP 2.2: implemented 2026-09-06 -- real watches over the rtfs overlay.
         { 253, "inotify_init\0".ptr,      0, 0, 0 },
         { 294, "inotify_init1\0".ptr,     0, 0, 0 },
         { 254, "inotify_add_watch\0".ptr, 0xFFFF_FFFF, 0, 0 },

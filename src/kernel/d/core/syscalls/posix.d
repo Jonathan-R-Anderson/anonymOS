@@ -112,6 +112,7 @@ enum FileType {
     FD_INSTALL_PROGRESS, // INSTALLER §D: /config/install.progress — reads return 0..1000 permille
     FD_HW_DETECT,        // DRIVERS: /config/hardware.detect — reads return the detected driver codes (PCI)
     FD_FB,               // /dev/fb0 — read the composited framebuffer (screenshot); FBIOGET_VSCREENINFO
+    FD_INOTIFY,          // ROADMAP 2.2: inotify instance (watch list + event queue)
     FD_KLOG,             // /run/klog — live read-only view of the kernel log RAM ring (core.io g_klogRing)
     FD_UPDATE_CTL,       // UPDATE U1: /config/update.action — writes drive the A/B update engine
     FD_UPDATE_STATUS,    // UPDATE U1: /config/update.status — reads return the update-engine JSON
@@ -1965,6 +1966,9 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)want;
     }
 
+    if (f.type == FileType.FD_INOTIFY)
+        return inotifyRead(cast(int)cast(size_t)f.backend, _buf, _count);
+
     if (f.type == FileType.FD_SOCKET) {
         return localSocketRead(f, _buf, _count);
     }
@@ -2271,6 +2275,11 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         f.offset += count;
         if (cast(uint)f.offset > g_rt[idx].size) g_rt[idx].size = cast(uint)f.offset;
         f.fileSize = g_rt[idx].size;
+        // ROADMAP 2.2: IN_MODIFY, both to a watch on the file itself and to one on its directory
+        // (GIO monitors the directory and filters by name, so the parent post is the one that
+        // usually matters).
+        inotifyNotify(idx, IN_MODIFY_F, null, 0);
+        inotifyNotify(g_rt[idx].parent, IN_MODIFY_F, g_rt[idx].name.ptr, g_rt[idx].nameLen);
         // ROADMAP 1.2: note that the persisted subtree changed.  Checked here, at the one place
         // file bytes actually change, rather than trusting callers to remember.  rtUnderHome()
         // walks parent pointers, which is a handful of hops -- the tree is shallow.
@@ -4969,6 +4978,10 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     if (len == 0 || len > RT_NAME_MAX) return -1;
     int idx = rtAllocNode();
     if (idx < 0) return -1;
+    // ROADMAP 2.2: IN_CREATE fires on the PARENT directory, which is what a directory watch is.
+    // Hooked here rather than at each caller, because this is the single place a node comes into
+    // existence -- the same reason the persistence flag is set at the one place bytes change.
+    inotifyNotify(parent, IN_CREATE_F, name, len);
     g_rt[idx].kind    = kind;
     g_rt[idx].parent  = parent;
     g_rt[idx].mode    = mode;
@@ -11760,6 +11773,10 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     } else if (g_rt[idx].kind == RT_DIR) {
         return negErrno(EISDIR);
     }
+    // ROADMAP 2.2: IN_DELETE on the parent (the directory watch) and IN_DELETE_SELF on the node
+    // itself, posted BEFORE the node is freed so the name is still readable.
+    inotifyNotify(g_rt[idx].parent, IN_DELETE_F, leaf, leafLen);
+    inotifyNotify(idx, IN_DELETE_SELF_F, null, 0);
     rtFreeData(g_rt[idx]);                           // release payload/link pages (no leak)
     // ROADMAP 1.2: a deletion changes the persisted subtree just as much as a write.
     if (rtUnderPersistRoot(idx)) g_fsDirty = true;
@@ -12326,6 +12343,8 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
         auto pp = getPipe(cast(size_t)pid);
         return pp !is null && pp.head != pp.tail;
     }
+    if (f.type == FileType.FD_INOTIFY)
+        return inotifyHasEvents(cast(int)cast(size_t)f.backend);
     if (f.type == FileType.FD_EVENTFD) {
         int eid = cast(int)cast(size_t)f.backend;
         return eid >= 0 && eid < EVENTFD_MAX && g_eventfd_inUse[eid]
@@ -12702,9 +12721,190 @@ public long linux_sys_signalfd4(ulong fd, ulong m, ulong sz, ulong f) {
 // OWN handler -- previously nr 254 (inotify_add_watch) ran inotify_init and nr 253 was unrouted,
 // which is invisible while everything returns ENOSYS and becomes a silent wrong-call the moment
 // any one of them is implemented.
-public long linux_sys_inotify_init1(ulong f) { return negErrno(ENOSYS); }
-public long linux_sys_inotify_add_watch(ulong fd, ulong path, ulong mask) { return negErrno(ENOSYS); }
-public long linux_sys_inotify_rm_watch(ulong fd, ulong wd) { return negErrno(ENOSYS); }
+
+// ── ROADMAP 2.2: inotify ──────────────────────────────────────────────────────────────────────
+//
+// Real watches over the runtime overlay (rtfs), not a stub.  The 2.2 audit found these were the
+// only four syscalls of fourteen probed that were missing, with GIO file monitors the visible
+// casualty; dbus-daemon logs "Cannot initialize inotify: Function not implemented" and degrades to
+// not watching its config.
+//
+// Watches are keyed on an rtfs NODE INDEX, which is what makes this tractable: the overlay is a
+// flat node array with parent links, so "watch this directory" is one integer and a child event is
+// a match on the parent index.  Nothing outside the overlay can be watched -- image files and the
+// synthetic /proc trees never change -- and that is the honest boundary: a watch on one of those
+// succeeds and simply never fires, exactly as a watch on an unchanging file should.
+private enum int INOTIFY_MAX_INST    = 8;
+private enum int INOTIFY_MAX_WATCH   = 32;
+private enum int INOTIFY_MAX_EVENTS  = 64;
+private enum int INOTIFY_NAME_MAX    = 48;
+
+// The subset of the mask the overlay can actually generate.  Anything else a caller asks for is
+// accepted and stored, so a mask round-trips, but will not fire.
+private enum uint IN_MODIFY_F      = 0x0000_0002;
+private enum uint IN_ATTRIB_F      = 0x0000_0004;
+private enum uint IN_CLOSE_WRITE_F = 0x0000_0008;
+private enum uint IN_CREATE_F      = 0x0000_0100;
+private enum uint IN_DELETE_F      = 0x0000_0200;
+private enum uint IN_DELETE_SELF_F = 0x0000_0400;
+private enum uint IN_IGNORED_F     = 0x0000_8000;
+
+private struct InotifyWatch {
+    bool  inUse;
+    int   wd;          // watch descriptor handed to userspace (unique per instance)
+    int   rtNode;      // rtfs node index being watched
+    uint  mask;
+}
+private struct InotifyEvent {
+    int    wd;
+    uint   mask;
+    ubyte  nameLen;                    // 0 = event on the watched node itself
+    char[INOTIFY_NAME_MAX] name;
+}
+private struct InotifyInst {
+    bool inUse;
+    int  nextWd;
+    InotifyWatch[INOTIFY_MAX_WATCH] watches;
+    InotifyEvent[INOTIFY_MAX_EVENTS] q;
+    int  qHead, qTail;                 // ring; head == tail means empty
+}
+__gshared InotifyInst[INOTIFY_MAX_INST] g_inotify;
+
+private int inotifyAlloc() @nogc nothrow {
+    foreach (i; 0 .. INOTIFY_MAX_INST)
+        if (!g_inotify[i].inUse) {
+            g_inotify[i] = InotifyInst.init;
+            g_inotify[i].inUse = true;
+            g_inotify[i].nextWd = 1;
+            return i;
+        }
+    return -1;
+}
+public void inotifyRelease(int id) @nogc nothrow {
+    if (id >= 0 && id < INOTIFY_MAX_INST) g_inotify[id] = InotifyInst.init;
+}
+private bool inotifyQueueFull(ref InotifyInst inst) @nogc nothrow {
+    return ((inst.qTail + 1) % INOTIFY_MAX_EVENTS) == inst.qHead;
+}
+
+// Post an event for `rtNode`.  `name` is the affected CHILD for directory watches, null for an
+// event on the watched node itself.  Called from the three places the overlay mutates, so a caller
+// cannot forget: creation, unlink, and the single write path.
+public void inotifyNotify(int rtNode, uint mask, const(char)* name, size_t nameLen) @nogc nothrow {
+    if (rtNode < 0) return;
+    foreach (i; 0 .. INOTIFY_MAX_INST) {
+        if (!g_inotify[i].inUse) continue;
+        foreach (w; 0 .. INOTIFY_MAX_WATCH) {
+            auto wp = &g_inotify[i].watches[w];
+            if (!wp.inUse || wp.rtNode != rtNode || (wp.mask & mask) == 0) continue;
+            if (inotifyQueueFull(g_inotify[i])) break;      // drop, like Linux under overflow
+            auto ev = &g_inotify[i].q[g_inotify[i].qTail];
+            ev.wd = wp.wd;
+            ev.mask = mask;
+            ev.nameLen = 0;
+            if (name !is null && nameLen > 0) {
+                size_t n = nameLen < INOTIFY_NAME_MAX - 1 ? nameLen : INOTIFY_NAME_MAX - 1;
+                foreach (k; 0 .. n) ev.name[k] = name[k];
+                ev.name[n] = 0;
+                ev.nameLen = cast(ubyte)n;
+            }
+            g_inotify[i].qTail = (g_inotify[i].qTail + 1) % INOTIFY_MAX_EVENTS;
+        }
+    }
+}
+
+public bool inotifyHasEvents(int id) @nogc nothrow {
+    if (id < 0 || id >= INOTIFY_MAX_INST || !g_inotify[id].inUse) return false;
+    return g_inotify[id].qHead != g_inotify[id].qTail;
+}
+
+// Serialise queued events into the caller's buffer as struct inotify_event:
+//   { int32 wd; uint32 mask; uint32 cookie; uint32 len; char name[len] }
+// `len` is the NUL-terminated name padded to a 4-byte boundary, which is what glibc/musl and GIO
+// step over when walking the buffer.  Returns EAGAIN when empty, like a non-blocking inotify fd.
+public ssize_t inotifyRead(int id, void* buf, size_t count) @nogc nothrow {
+    if (id < 0 || id >= INOTIFY_MAX_INST || !g_inotify[id].inUse) return cast(ssize_t)negErrno(EBADF);
+    if (g_inotify[id].qHead == g_inotify[id].qTail) return cast(ssize_t)negErrno(EAGAIN);
+    auto inst = &g_inotify[id];
+    auto out_ = cast(ubyte*)buf;
+    size_t off = 0;
+    while (inst.qHead != inst.qTail) {
+        auto ev = &inst.q[inst.qHead];
+        uint nlen = 0;
+        if (ev.nameLen > 0) {
+            nlen = cast(uint)ev.nameLen + 1;                 // include the NUL
+            nlen = (nlen + 3) & ~3u;                         // pad to 4 bytes
+        }
+        const size_t need = 16 + nlen;
+        if (off + need > count) break;                       // rest stays queued for the next read
+        *cast(int*) (out_ + off + 0)  = ev.wd;
+        *cast(uint*)(out_ + off + 4)  = ev.mask;
+        *cast(uint*)(out_ + off + 8)  = 0;                   // cookie: only used for MOVED_FROM/TO
+        *cast(uint*)(out_ + off + 12) = nlen;
+        foreach (k; 0 .. nlen) out_[off + 16 + k] = (k < ev.nameLen) ? cast(ubyte)ev.name[k] : 0;
+        off += need;
+        inst.qHead = (inst.qHead + 1) % INOTIFY_MAX_EVENTS;
+    }
+    if (off == 0) return cast(ssize_t)negErrno(EINVAL);      // buffer too small for one event
+    return cast(ssize_t)off;
+}
+
+public long linux_sys_inotify_init1(ulong f) {
+    initFdTable();
+    const int id = inotifyAlloc();
+    if (id < 0) return negErrno(EMFILE);
+    const int fd = allocFd();
+    if (fd < 0) { inotifyRelease(id); return negErrno(EMFILE); }
+    g_fdTable[fd].type     = FileType.FD_INOTIFY;
+    g_fdTable[fd].flags    = cast(int)f;
+    g_fdTable[fd].offset   = 0;
+    g_fdTable[fd].backend  = cast(void*)cast(size_t)id;
+    g_fdTable[fd].fileSize = 0;
+    return publishActiveFdReturn(fd);
+}
+public long linux_sys_inotify_add_watch(ulong fd, ulong path, ulong mask) {
+    initFdTable();
+    if (fd >= 1024 || g_fdTable[cast(int)fd].type != FileType.FD_INOTIFY) return negErrno(EBADF);
+    if (path == 0) return negErrno(EFAULT);
+    const int id = cast(int)cast(size_t)g_fdTable[cast(int)fd].backend;
+    if (id < 0 || id >= INOTIFY_MAX_INST || !g_inotify[id].inUse) return negErrno(EBADF);
+
+    int parent; const(char)* leaf; size_t leafLen;
+    const int node = rtResolve(cast(const(char)*)path, parent, leaf, leafLen);
+    if (node < 0) return negErrno(ENOENT);
+
+    auto inst = &g_inotify[id];
+    foreach (w; 0 .. INOTIFY_MAX_WATCH) {          // re-adding an existing path updates its mask
+        if (inst.watches[w].inUse && inst.watches[w].rtNode == node) {
+            inst.watches[w].mask = cast(uint)mask;
+            return inst.watches[w].wd;
+        }
+    }
+    foreach (w; 0 .. INOTIFY_MAX_WATCH) {
+        if (inst.watches[w].inUse) continue;
+        inst.watches[w].inUse  = true;
+        inst.watches[w].wd     = inst.nextWd++;
+        inst.watches[w].rtNode = node;
+        inst.watches[w].mask   = cast(uint)mask;
+        return inst.watches[w].wd;
+    }
+    return negErrno(ENOSPC);
+}
+public long linux_sys_inotify_rm_watch(ulong fd, ulong wd) {
+    initFdTable();
+    if (fd >= 1024 || g_fdTable[cast(int)fd].type != FileType.FD_INOTIFY) return negErrno(EBADF);
+    const int id = cast(int)cast(size_t)g_fdTable[cast(int)fd].backend;
+    if (id < 0 || id >= INOTIFY_MAX_INST || !g_inotify[id].inUse) return negErrno(EBADF);
+    auto inst = &g_inotify[id];
+    foreach (w; 0 .. INOTIFY_MAX_WATCH) {
+        if (inst.watches[w].inUse && inst.watches[w].wd == cast(int)wd) {
+            inotifyNotify(inst.watches[w].rtNode, IN_IGNORED_F, null, 0);
+            inst.watches[w] = InotifyWatch.init;
+            return 0;
+        }
+    }
+    return negErrno(EINVAL);
+}
 
 // --- prctl / scheduling ---
 public long linux_sys_prctl(ulong opt, ulong a2, ulong a3, ulong a4, ulong a5) { return 0; }

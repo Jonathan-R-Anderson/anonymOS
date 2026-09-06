@@ -65,14 +65,27 @@ from `wl-term`:
 The procedure is documented in `src/desktop.conf` beside the `persist =` lines, which is where
 someone looking at what survives a reboot will actually find it.
 
-**Blocked, and it limits this item: `librsvg` is a stub**, so gdk-pixbuf cannot decode SVG at all.
-An SVG-only pack resolves to nothing — silently. This is also why the shipped Epin theme
-(all `scalable/*.svg`) has never rendered an icon, and why GTK's `image-missing` fallback had to be
-a PNG. **Either build real librsvg or accept PNG-only packs**; until then the constraint is
-documented rather than hidden.
+**Real librsvg would not have helped, and was not built.** GTK gets SVG from librsvg via a
+`dlopen`-ed gdk-pixbuf *loader module*, and this stack has no way to load one: gdk-pixbuf is built
+`-Dbuiltin_loaders=png` with everything else disabled, the whole stack is static
+(`libgdk_pixbuf-2.0.a`, `libgtk-3.a`, no `.so`, no `loaders/`, no `loaders.cache`), and `dlopen`
+does not work in static musl anyway. The blocker is not a missing library, it is that nothing here
+can load a loader.
 
-**Not yet done:** an end-to-end test that installs a real pack and confirms an app picks it up.
-The directories are proven to be scanned; a pack actually changing what renders is not yet proven.
+**Instead: icons are rasterised to PNG at build time** (`scripts/stage-gui-assets.py`, ImageMagick,
+sizes 16/22/24/32/48/64/128). 42 PNGs ship and reach the guest -- verified in the ISO and in
+`icons.blob`. `index.theme` is generated so each size gets both a `Directories=` entry and its own
+`[NxN/context]` section, which GTK requires.
+
+**Still not resolving, and this is the open item.** GTK reads
+`/usr/share/icons/Epin/index.theme`, the index is well-formed, the PNGs are present in the guest --
+and GTK never opens one. The icon that appears in a GTK window is its own built-in fallback from
+`gtk.gresource`, not a theme icon. Since GTK discovers theme contents by *listing* directories,
+the next thing to check is **`getdents` on the unpacked asset directories**: if enumeration returns
+nothing, a perfectly good theme looks empty.
+
+**Also not done:** an end-to-end test that installs a real pack and confirms an app picks it up.
+The install directories are proven scanned; a pack changing what renders is not.
 ### 2.6 — the `/proc` data is real; the C1 apps are now unblocked
 
 The data every C1 reader consumes is done and verified on a real boot: `/proc/cpuinfo` reports

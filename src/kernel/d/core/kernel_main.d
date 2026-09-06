@@ -1485,9 +1485,21 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     // domains must still boot a desktop.  That fallback is the old behaviour, now the exception
     // rather than the rule.
     {
-        import core.domain : domainSessionIdentity;
+        import core.domain : domainSessionIdentity, domainSessionId;
         const uint sid = domainSessionIdentity();
         g_tasks[t].identityObjId = (sid != 0) ? sid : g_tasks[0].identityObjId;
+        // ROADMAP 4.0: one line per spawn, bounded.  The border still showed System after this
+        // change, and the two explanations -- no session domain found, or one found with no
+        // identity -- are indistinguishable from the border alone.
+        static __gshared int g_sessIdLogN = 0;
+        if (g_sessIdLogN < 4) {
+            ++g_sessIdLogN;
+            klog("[4.0] spawn tid="); klog_dec(cast(ulong)cast(uint)t);
+            klog(" sessionDomain="); klog_hex(domainSessionId());
+            klog(" sessionIdentity="); klog_hex(sid);
+            klog(" task0Identity="); klog_hex(g_tasks[0].identityObjId);
+            klog(" -> ident="); klog_hex(g_tasks[t].identityObjId); klog("\n");
+        }
     }
     g_tasks[t].untypedObjId     = untypedCreateProcess(0);
     if (g_tasks[t].untypedObjId == 0) {

@@ -863,3 +863,36 @@ public void domainStats() {
     klog(" domobj=");         klog_hex(cast(ulong)objCountType(ObjType.Domain));
     klog("\n");
 }
+
+// ── ROADMAP 4.0: the session domain ───────────────────────────────────────────────────────────
+//
+// Spawned applications must not inherit the KERNEL's identity.  Task 0 carries System, and having
+// every desktop app run as System is the same category of wrong as the pid-hash border: a label
+// that is present, plausible, and describes the wrong thing.  An app should carry the identity of
+// the domain it lives under.
+//
+// Nothing designated which domain the desktop session is, so this states a rule rather than
+// inventing a field: the SESSION DOMAIN is the first non-template domain in the registry.  Domains
+// are created in declarative-config order (configboot.d), so the config author chooses it by
+// ordering, and templates are skipped because a template is a definition, not something to run in.
+//
+// Returns 0 when no domain qualifies, and callers fall back to their existing behaviour: a system
+// with no domains configured must still boot a desktop.
+public DomainId domainSessionId() @nogc nothrow {
+    foreach (ref e; g_domains) {
+        if (!e.inUse || e.isTemplate) continue;
+        return e.objId;
+    }
+    return 0;
+}
+
+// The session domain's identity, or 0.  Kept separate from domainBindTaskNs(), which also clones
+// the domain's RESTRICTED namespace -- that confines the task, and confining the compositor and
+// installer is a much larger change than labelling them correctly.  Identity first, confinement
+// with the policy engine.
+public uint domainSessionIdentity() @nogc nothrow {
+    const DomainId d = domainSessionId();
+    if (d == 0) return 0;
+    auto rec = domainById(d);
+    return (rec is null) ? 0 : rec.identityObjId;
+}

@@ -1476,11 +1476,19 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     // with no identity on any task, the border fell back to a pid hash and the stated invariant was
     // false for the whole desktop.  Measured: pid=10 tid=9 ident=0.
     //
-    // System is what task 0 carries, so this makes the invariant TRUE without inventing policy.
-    // Giving user applications a less privileged identity than the kernel's own is a real decision
-    // about which identity a spawned app should get, and it belongs with 4.1's policy engine rather
-    // than being smuggled in here.
-    g_tasks[t].identityObjId    = g_tasks[0].identityObjId;
+    // The identity comes from the SESSION DOMAIN, not from task 0.  Task 0 is the kernel and carries
+    // System; giving every desktop app System is the same category of error as the pid-hash border
+    // -- a label that is present, plausible, and describes the wrong thing.  An application belongs
+    // to the domain it lives under, so it carries that domain's identity.
+    //
+    // Falls back to task 0 only when no domain is configured at all, because a system without
+    // domains must still boot a desktop.  That fallback is the old behaviour, now the exception
+    // rather than the rule.
+    {
+        import core.domain : domainSessionIdentity;
+        const uint sid = domainSessionIdentity();
+        g_tasks[t].identityObjId = (sid != 0) ? sid : g_tasks[0].identityObjId;
+    }
     g_tasks[t].untypedObjId     = untypedCreateProcess(0);
     if (g_tasks[t].untypedObjId == 0) {
         klog(tag); klog(" no untyped budget for "); klog(prog); klog("\n");

@@ -1488,23 +1488,12 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
         import core.domain : domainSessionIdentity, domainSessionId;
         const uint sid = domainSessionIdentity();
         g_tasks[t].identityObjId = (sid != 0) ? sid : g_tasks[0].identityObjId;
-        // ROADMAP 4.0b: give the task a SHADOW clone of the session domain's restricted namespace.
-        // Opens are still resolved against the real namespace and still succeed; this one is only
-        // consulted to report what confinement WOULD have denied.  Enforcing straight away would
-        // break the desktop -- that view denies /System, which is where the compositor, the
-        // installer and every app read fonts, config and binaries from -- and the correct binding
-        // set cannot be guessed, only observed.
-        // ROADMAP 4.0b: the per-spawn nsClone() is REMOVED, not merely unused.
-        //
-        // Disabling the audit hook alone did not restore the boot -- the same fault persisted:
-        //   [pf] no region tid=2 va=00007f53f000f000
-        //   KERNEL FAULT trap=10e pf=not-present
-        // so the cloning itself is what breaks dbus, independently of anything reading the clone.
-        // Cloning a domain namespace on every spawn is evidently not a side-effect-free operation
-        // here, which is worth knowing before the next attempt: the shadow namespace has to come
-        // from somewhere that does not mutate namespace state per process.
-        //
-        // g_tasks[].auditNsObjId stays declared and is left 0; nsAuditOpen() is a no-op on 0.
+        // ROADMAP 4.0b: no confinement audit here.  The attempt is recorded in git history --
+        // a shadow namespace clone per spawn plus a hook in namespaceCheckOpen -- and it broke the
+        // boot.  Unwinding it one piece at a time did not restore the desktop either; only removing
+        // ALL of it did, including a hook that returned on its first line.  The remaining suspicion
+        // is the extra call frame on the open hot path, which is a reason to collect confinement
+        // data somewhere other than inside open().
         // ROADMAP 4.0: one line per spawn, bounded.  The border still showed System after this
         // change, and the two explanations -- no session domain found, or one found with no
         // identity -- are indistinguishable from the border alone.

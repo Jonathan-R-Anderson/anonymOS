@@ -1485,7 +1485,7 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     // domains must still boot a desktop.  That fallback is the old behaviour, now the exception
     // rather than the rule.
     {
-        import core.domain : domainSessionIdentity;
+        import core.domain : domainSessionIdentity, domainSessionId;
         const uint sid = domainSessionIdentity();
         g_tasks[t].identityObjId = (sid != 0) ? sid : g_tasks[0].identityObjId;
         // ROADMAP 4.0b: give the task a SHADOW clone of the session domain's restricted namespace.

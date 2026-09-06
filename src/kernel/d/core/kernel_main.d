@@ -2414,7 +2414,14 @@ private void maybeSpawnInotifyTest() {
     import core.syscalls.posix : g_rtInitialized;
     if (g_inotifyTestStarted) return;
     if (!g_rtInitialized) return;
-    if (pitMs() < 12_000) return;         // let the desktop finish its own startup churn first
+    // Run BEFORE the desktop claims the framebuffer.  exec() paints a "[proc] exec <name>" marker
+    // straight onto the framebuffer text console (procFb), which is the top of the screen -- the
+    // strip the bar occupies.  Spawning this after the desktop owns the display added one such
+    // line and moved 16020 pixels, failing the 3.3 golden check.  Early is also simply the right
+    // time: the overlay is up, and every other boot-time self-test runs here too.
+    import core.console : g_desktopClaimedFb;
+    if (g_desktopClaimedFb) { g_inotifyTestStarted = true; return; }   // too late to run cleanly
+    if (pitMs() < 2_000) return;
     g_inotifyTestStarted = true;
     klog("[inotify] ROADMAP 2.2: launching inotify-test (create/write/delete over a real watch)\n");
     spawnWaylandProgram("inotify-test\0".ptr, "[inotest]\0".ptr);

@@ -47,6 +47,10 @@ int main(void)
 	printf("[inotify] ROADMAP 2.2: exercising inotify over the runtime overlay\n");
 	fflush(stdout);
 
+	/* The overlay is young at this point in boot, so make the whole chain rather than assuming
+	   /home/user already exists. */
+	mkdir("/home", 0755);
+	mkdir("/home/user", 0755);
 	mkdir(DIR, 0755);
 
 	int ifd = inotify_init1(0);

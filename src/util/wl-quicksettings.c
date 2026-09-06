@@ -127,6 +127,7 @@ struct app {
     /* No volume/dragging state: there is no audio backend, so there was nothing to hold. */
     int  hover;             /* hovered region for highlight (R_*) */
     int  view;              /* V_MAIN or V_SETTINGS (ROADMAP 3.0b) */
+    int  sel;               /* settings view: keyboard-selected row */
     unsigned last_hash;
 };
 
@@ -584,9 +585,11 @@ static void setting_ctl_rect(struct app *app, int idx, int which, int *x, int *y
     int ry = setting_row_y(idx);
     if (SETTINGS[idx].kind == ST_BOOL){
         *w = 46; *h = 22;
-        *x = CARD_X + CARD_W_OF(app) - 12 - *w; *y = ry + (SROW_H - *h)/2;
+        *x = CARD_X + CARD_W_OF(app) - 12 - *w; *y = ry + (SROW_H - 6 - *h)/2;
     } else {
-        *w = 24; *h = 24; *y = ry + (SROW_H - *h)/2;
+        /* centred on the CARD (SROW_H-6 tall), not on the row pitch -- the 6px is the gap
+         * between cards, and counting it would sit every control 3px low. */
+        *w = 24; *h = 24; *y = ry + (SROW_H - 6 - *h)/2;
         int px = CARD_X + CARD_W_OF(app) - 12 - *w;
         *x = which ? px : px - 4 - *w;
     }
@@ -646,6 +649,7 @@ static void draw_settings(struct app *app){
 
     fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
     draw_text(app, "Settings", 14, 7, 200, 15, TXT);
+    draw_text(app, "arrows move  -/+ change  Esc back", 96, 10, 240, 10, DIM);
     fill_rect(app, GEAR_X_OF(app), GEAR_Y, GEAR_W, GEAR_H, (app->hover==R_BACK)?ROWH:BTN);
     draw_text(app, "<", GEAR_X_OF(app)+8, GEAR_Y+3, 16, 14, TXT);
     fill_rect(app, CLOSE_X_OF(app), CLOSE_Y, CLOSE_W, CLOSE_H, (app->hover==R_CLOSE)?CLOSEC:ROWH);
@@ -656,7 +660,9 @@ static void draw_settings(struct app *app){
         int ry = setting_row_y(i);
         if (ry + SROW_H > app->height) break;
         if (s->section) draw_text(app, s->section, CARD_X+2, ry-SEC_H+4, 200, 12, ACC);
-        fill_round_rect(app, CARD_X, ry, CARD_W_OF(app), SROW_H-6, 10, ROW);
+        int selected = (i == app->sel);
+        fill_round_rect(app, CARD_X, ry, CARD_W_OF(app), SROW_H-6, 10, selected ? ROWH : ROW);
+        if (selected) fill_rect(app, CARD_X, ry+4, 3, SROW_H-14, ACC);   /* keyboard cursor */
 
         if (s->kind == ST_NOTE){
             draw_text(app, s->label, CARD_X+12, ry+3,  CARD_W_OF(app)-24, 12, DIM);
@@ -854,6 +860,32 @@ static void pointer_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t
     a->pointer_x=wl_fixed_to_double(x); a->pointer_y=wl_fixed_to_double(y);
     int nh = hit_region(a, a->pointer_x, a->pointer_y);
     if (nh != a->hover){ a->hover = nh; redraw_commit(a); } }
+/* ROADMAP 3.0b: one place where a setting actually changes, shared by the mouse and the
+ * keyboard.  Live over IPC first, then persisted -- the saved copy exists to survive a reboot,
+ * not to be what makes the setting take effect. */
+static void settings_adjust(struct app *app, int i, int dir){
+    const struct setting_def *s = &SETTINGS[i];
+    if (s->kind == ST_NOTE) return;
+    int v = g_setval[i];
+    if (s->kind == ST_BOOL) v = !v;
+    else {
+        v += dir * s->step;
+        if (v < s->lo) v = s->lo;
+        if (v > s->hi) v = s->hi;
+    }
+    if (v != g_setval[i]){
+        g_setval[i] = v;
+        settings_apply_one(i);
+        settings_save();
+    }
+    redraw_commit(app);
+}
+/* Next selectable row in direction dir, skipping the note row and stopping at the ends. */
+static void settings_move_sel(struct app *app, int dir){
+    for (int i = app->sel + dir; i >= 0 && i < S_COUNT; i += dir)
+        if (SETTINGS[i].kind != ST_NOTE){ app->sel = i; redraw_commit(app); return; }
+}
+
 static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t t, uint32_t button, uint32_t state){ (void)p;(void)se;(void)t; struct app*a=d;
     /* Presses only.  Without the state check a release re-fires the action, so every click
      * would act twice -- two launches, or two poweroffs. */
@@ -877,20 +909,8 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t 
              * survive a reboot, not to be what makes the setting take effect. */
             if (r >= R_SET0){
                 int i = (r - R_SET0) / 2, inc = (r - R_SET0) & 1;
-                const struct setting_def *s = &SETTINGS[i];
-                int v = g_setval[i];
-                if (s->kind == ST_BOOL) v = !v;
-                else {
-                    v += inc ? s->step : -s->step;
-                    if (v < s->lo) v = s->lo;
-                    if (v > s->hi) v = s->hi;
-                }
-                if (v != g_setval[i]){
-                    g_setval[i] = v;
-                    settings_apply_one(i);
-                    settings_save();
-                }
-                redraw_commit(a);
+                a->sel = i;              /* clicking a row also selects it for the keyboard */
+                settings_adjust(a, i, inc ? +1 : -1);
             }
             break;
     } }
@@ -908,9 +928,37 @@ static const struct wl_pointer_listener pointer_listener = {
 static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, uint32_t sz){ (void)d;(void)k;(void)f;(void)sz; if (fd>=0) close(fd); }
 static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf, struct wl_array *ks){ (void)d;(void)k;(void)s;(void)sf;(void)ks; }
 static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf){ (void)d;(void)k;(void)s;(void)sf; }
+/* ROADMAP 3.0b: the panel is fully keyboard-driven.
+ *
+ * That is a feature in its own right -- a settings panel nobody can reach without a working
+ * pointer is not much of a settings panel -- and it is also what makes this testable.  The two
+ * cursors in this guest do not track each other under synthetic relative motion: driving the
+ * QEMU monitor's mouse_move moved the kernel-drawn cursor 610px while the compositor's own
+ * pointer, the one clicks are dispatched against, moved 343.  sendkey has no such problem.
+ *
+ * Keycodes are evdev, which is what the compositor forwards. */
 static void kb_key(void *d, struct wl_keyboard *k, uint32_t se, uint32_t t, uint32_t key, uint32_t state){ (void)k;(void)se;(void)t; struct app*a=d;
     if (state != 1) return;
-    if (key==1) a->running = 0;   /* Esc closes */ }
+    if (a->view == V_SETTINGS){
+        switch (key){
+            case 1:                                    /* Esc: back to the main view, not quit */
+                a->view = V_MAIN; redraw_commit(a); return;
+            case 103: settings_move_sel(a, -1); return; /* Up    */
+            case 108: settings_move_sel(a, +1); return; /* Down  */
+            case 105: case 12:                         /* Left,  '-' */
+                settings_adjust(a, a->sel, -1); return;
+            case 106: case 13:                         /* Right, '=' */
+                settings_adjust(a, a->sel, +1); return;
+            case 28: case 57:                          /* Enter, Space: toggle */
+                if (SETTINGS[a->sel].kind == ST_BOOL) settings_adjust(a, a->sel, +1);
+                return;
+            case 31:                                   /* S: back out of settings */
+                a->view = V_MAIN; redraw_commit(a); return;
+            default: return;
+        }
+    }
+    if (key==1) a->running = 0;        /* Esc closes the main view */
+    if (key==31){ a->view = V_SETTINGS; redraw_commit(a); }   /* S opens settings */ }
 static void kb_modifiers(void *d, struct wl_keyboard *k, uint32_t se, uint32_t md, uint32_t ml, uint32_t lo, uint32_t g){ (void)d;(void)k;(void)se;(void)md;(void)ml;(void)lo;(void)g; }
 static void kb_repeat(void *d, struct wl_keyboard *k, int32_t r, int32_t delay){ (void)d;(void)k;(void)r;(void)delay; }
 static const struct wl_keyboard_listener keyboard_listener = {

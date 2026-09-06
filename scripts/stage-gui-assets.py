@@ -187,6 +187,25 @@ def stage_icons(root: Path) -> None:
     write_text(theme / "scalable" / "mimetypes" / "text-x-generic.svg", svg_icon("text-x-generic"))
     rasterise(theme, "mimetypes", "text-x-generic")
 
+    # GTK 3 hardcodes "Adwaita" as its fallback icon theme, and reaches for it regardless of
+    # gtk-icon-theme-name: with settings.ini saying Epin, the abort still read "Icon
+    # 'image-missing' not present in theme Adwaita", and the only theme directories GTK ever
+    # listed were Adwaita/<size>/status.  Directory enumeration is fine -- getdents on
+    # Epin/48x48/apps returns all four PNGs -- GTK simply never looks there.
+    #
+    # So give Adwaita a real index that inherits ours.  An inheriting theme with no icons of its
+    # own is a normal arrangement, and it makes the lookup resolve whichever name GTK settles on
+    # rather than depending on a setting it evidently does not honour here.
+    adwaita = root / "icons" / "Adwaita"
+    if adwaita.exists():
+        shutil.rmtree(adwaita)
+    write_text(
+        adwaita / "index.theme",
+        "[Icon Theme]\nName=Adwaita\n"
+        "Comment=Alias onto the Epin theme; GTK falls back to this name unconditionally\n"
+        "Inherits=Epin,hicolor\nDirectories=\n",
+    )
+
     default = root / "icons" / "default"
     if default.exists():
         shutil.rmtree(default)

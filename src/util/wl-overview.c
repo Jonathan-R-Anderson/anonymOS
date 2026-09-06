@@ -160,6 +160,10 @@ struct app {
     unsigned char *font_data;
     size_t font_size, buffer_size;
     int width, height, stride;
+    /* ROADMAP 3.2: the shm mapping (released on resize) and the size the compositor last asked
+     * for, applied on the next xdg_surface.configure. */
+    unsigned char *map_base; size_t map_total;
+    int pending_width, pending_height;
     int font_ready, running;
     double pointer_x, pointer_y;
 
@@ -271,10 +275,27 @@ static void recompute_filter(struct app *app){
     if (app->hover >= app->n_filt) app->hover = -1;
 }
 
+/* ROADMAP 3.2: how many columns fit in the CURRENT width.
+ *
+ * GRID_COLS was a fixed 5, sized for WIN_W (5*160 = 800 inside 920).  Tiled narrower than that,
+ * (width - 5*CELL_PITCH_X) went negative and the centring below pushed the outer columns off both
+ * edges; tiled wider, the grid stayed a fixed 800px island.  The centring was already width-aware
+ * -- only the column count was not.
+ *
+ * One helper rather than a computed constant because tile_cell() and tile_hit() must agree: if the
+ * renderer and the hit-tester ever disagree about the column count, clicks land on the wrong tile,
+ * which is far harder to notice than a visual glitch. */
+static int grid_cols(struct app *app){
+    int c = app->width / CELL_PITCH_X;
+    if (c < 1) c = 1;
+    return c;
+}
+
 /* geometry of the filtered tile at position `pos` (0..n_filt-1) */
 static void tile_cell(struct app *app, int pos, int *cx, int *cy){
-    int col = pos % GRID_COLS, row = pos / GRID_COLS;
-    int gx = (app->width - GRID_COLS*CELL_PITCH_X) / 2;
+    int cols = grid_cols(app);
+    int col = pos % cols, row = pos / cols;
+    int gx = (app->width - cols*CELL_PITCH_X) / 2;
     *cx = gx + col*CELL_PITCH_X;
     *cy = GRID_Y + row*CELL_PITCH_Y;
 }
@@ -361,6 +382,7 @@ static int create_buffers(struct app *app){
         wl_buffer_add_listener(app->bufs[i].wl, &buffer_listener, app);
         app->bufs[i].busy = 0;
     }
+    app->map_base = base; app->map_total = total;
     wl_shm_pool_destroy(pool); close(fd);
     return 0;
 }
@@ -448,15 +470,41 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+/* ROADMAP 3.2: record the size Hyprland asks for; this used to discard w and h. */
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){
+    struct app*a=d; (void)t; (void)s;
+    if (w > 0) a->pending_width  = w;
+    if (h > 0) a->pending_height = h;
+}
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
 static const struct xdg_toplevel_listener toplevel_listener = {
     .configure=toplevel_configure,.close=toplevel_close,.configure_bounds=toplevel_bounds,.wm_capabilities=toplevel_wmcap };
 
+/* ROADMAP 3.2: rebuild both buffers at a new size.  The grid itself reflows via grid_cols(),
+ * which derives the column count from the current width. */
+static int resize_buffers(struct app *app, int w, int h){
+    if (w <= 0 || h <= 0) return 0;
+    if (w == app->width && h == app->height && app->bufs[0].wl) return 0;
+    for (int i = 0; i < 2; i++){
+        if (app->bufs[i].wl){ wl_buffer_destroy(app->bufs[i].wl); app->bufs[i].wl = NULL; }
+        app->bufs[i].px = NULL; app->bufs[i].busy = 0;
+    }
+    if (app->map_base && app->map_base != MAP_FAILED) munmap(app->map_base, app->map_total);
+    app->map_base = NULL; app->map_total = 0; app->pixels = NULL;
+    app->width = w; app->height = h; app->stride = w * 4;
+    app->buffer_size = (size_t)app->stride * (size_t)h;
+    return create_buffers(app);
+}
+
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    int ww = a->pending_width  > 0 ? a->pending_width  : a->width;
+    int wh = a->pending_height > 0 ? a->pending_height : a->height;
+    if (ww != a->width || wh != a->height){
+        if (resize_buffers(a, ww, wh) < 0){ log_line("OVERVIEW: resize failed"); return; }
+    }
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };
@@ -497,7 +545,7 @@ int main(void){
     /* FLOAT under the tiling WM: min==max marks us fixed-size so the tiler
      * (epin_is_tileable()) skips us and leaves this overview as a floating popover. */
     xdg_toplevel_set_min_size(app.toplevel, WIN_W, WIN_H);
-    xdg_toplevel_set_max_size(app.toplevel, WIN_W, WIN_H);
+    /* ROADMAP 3.2: no maximum -- min == max is what made Hyprland float this window. */
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

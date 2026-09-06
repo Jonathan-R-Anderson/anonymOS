@@ -27,8 +27,8 @@ What remains is real but no longer blocking, so Tier 3 can start:
 
 | # | Item | State | Source |
 |---|---|---|---|
-| 2.1 | **`/proc` + `/sys` + `/etc`** | `/proc` reports real data. `/sys` and `/etc` are still largely synthetic | APPS A2 · OBJECT_FS F0 |
-| 2.2 | **inotify** | Audit done: of 14 syscalls probed, **only the 4 inotify calls are missing**. GIO file monitors are the visible casualty. Remaining work is implementing it, not surveying | APPS A3 |
+| 2.1 | ◑ **`/proc` + `/sys` + `/etc`** — `/proc` is real. `/sys`: `/sys/bus/pci/devices` now enumerates the LIVE bus, and the DRM device's vendor/device/revision derive from the real display controller (PCI class 0x03) instead of hardcoded `0x1af4` — **~2 of ~138 entries**; `/sys/class/net` still returns a fixed `["lo","wlan0"]` and the rest are constants. `/etc`: **untouched, ~87 constants**, incl. `machine-id` as a literal — a hardcoded machine-id is a stable cross-install fingerprint, which is a deniability problem, not just a fidelity one | APPS A2 · OBJECT_FS F0 |
+| 2.2 | ✅ **inotify — DONE 2026-09-06.** Real watches over the rtfs overlay, keyed on node index; events posted from the three overlay mutation points (create/unlink/write); `read()` returns `struct inotify_event` 4-byte padded; poll/epoll see it via `fdReadable`. Verified 8/8 from userspace (`src/util/inotify-test.c`), and dbus-daemon's "Cannot initialize inotify" is gone. Only the writable overlay generates events — a watch on an image file or synthetic `/proc` succeeds and never fires | APPS A3 |
 | 2.6 | **Stage C1 readers** | The `/proc` data they consume is real and verified; the apps themselves are unbuilt. Unblocked by 2.3 | APPS C1 |
 
 Two follow-ups the audit surfaced, both cheap: `nr 254` routed to `inotify_init()` while `253` was
@@ -118,6 +118,17 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
 
 ## Corrections to carry forward
 
+- **No task carries an identity, so the "identity border" is decorative.** `identity.d` states that
+  windows "are bordered with the identity's color by the trusted compositor", and `idwin.d`
+  implements exactly that — but nothing on the live path stamps a task: the installer, the bar and
+  every desktop app run with `identityObjId == 0`. `hosIdentityColor()` therefore always took its
+  fallback, which was `HOS_ID_PALETTE[pid % 8]` — a pid hash presented as a domain indicator. Found
+  when implementing inotify shifted pids and the 3.3 golden check failed on a border that had no
+  business changing. The fallback is now one fixed colour (honest, and stable across boots) and the
+  real-identity path takes over the moment `identityObjId` is non-zero. **Stamping tasks with
+  identities is the actual work, and it is unstarted** — until then, per-window domain separation is
+  not visible to the user. Note the original intent was per-client colours; if wanted back, key them
+  on the exec name (stable) rather than the pid (shifts every boot).
 - **An IRQ taken in the kernel used to be unsurvivable**, and that shaped a lot of this system.
   `serviceISR` assumes userspace was interrupted: it saves registers into `curUserSpaceState` and
   returns from `x64SwitchToUserspace`. From kernel mode that corrupts the task's state and unwinds

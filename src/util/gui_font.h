@@ -133,7 +133,16 @@ static void gf_glyph(gf_u32 *buf, int pitch_px, int bw, int bh,
     for (int row = 0; row < 8; row++) {
         gf_u8 bits = g_font8x8[idx][row];
         for (int col = 0; col < 8; col++) {
-            if ((bits >> (7 - col)) & 1)
+            // BIT ORDER: this table is the classic font8x8_basic layout, which is LSB-FIRST --
+            // bit 0 is the LEFTMOST pixel.  Reading it MSB-first (7 - col) mirrors every glyph
+            // horizontally, which is exactly what the terminal was showing: 'b' rendered as 'd',
+            // 'L' with its stroke on the right, 'F' with its arms pointing left.
+            //
+            // Only apps that FALL BACK to this table were affected.  wl-term prints "failed to
+            // load Noto Sans Mono; using 8x8 bitmap fallback" and then draws every character
+            // through here, while apps whose FreeType load succeeds never reach it -- which is why
+            // the mirroring looked specific to the terminal rather than system-wide.
+            if ((bits >> col) & 1)
                 gf_put(buf, pitch_px, bw, bh, x + col, y + row, fg);
             else if (bg >= 0)
                 gf_put(buf, pitch_px, bw, bh, x + col, y + row, (gf_u32)bg);

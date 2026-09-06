@@ -4052,6 +4052,20 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
         } else if (f.type == FileType.FD_KLOG) {
             import core.io : g_klogHead;
             writeLinuxStat(_statBuf, 0x8000 | 0x0124, g_klogHead); // S_IFREG | 0444 (live-growing size)
+        } else if (f.type == FileType.FD_MEMFD) {
+            // ROADMAP 2.3 ROOT CAUSE.  Report the length recorded on the MEMFD, not the copy in
+            // this File.  SCM_RIGHTS hands the receiver a *copy* of the sender's File, so a
+            // client that passed its shm fd and then grew the pool left the compositor stat-ing
+            // the size as of the hand-off.  Hyprland saw a file smaller than the pool being
+            // declared and killed the client with
+            //     wl_shm: "The size of the file is not big enough for the shm pool"
+            // which libwayland turns into a teardown -- so GTK apps died mid-startup, printed
+            // nothing (a Hyprland-forked child has no console), and never mapped a window.
+            // A length belongs to the object; every fd referring to it must see the same value.
+            const int mid = cast(int)cast(size_t)f.backend;
+            const ulong len = (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse)
+                              ? g_memfds[mid].exactLen : f.fileSize;
+            writeLinuxStat(_statBuf, 0x8000 | 0x01a4, len); // S_IFREG | 0644
         } else {
             writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
         }
@@ -11680,6 +11694,18 @@ private struct MemFdRec {
     bool  inUse;
     ulong physBase;  // 0 until ftruncate allocates backing pages
     ulong size;      // page-aligned byte size
+    // ROADMAP 2.3 ROOT CAUSE: the exact ftruncate length, as opposed to `size` above which is
+    // rounded up to a page.  It lives on the memfd rather than the fd because a length is a
+    // property of the object, and every fd referring to it must see the same value.
+    //
+    // fstat used to report the per-fd File.fileSize, and SCM_RIGHTS passes a *copy* of the File.
+    // So once a client passed its shm fd to the compositor and then grew the pool, the compositor
+    // kept seeing the size from the moment of the hand-off.  It fstat'd, found the file smaller
+    // than the pool being declared, and killed the client with
+    //     wl_shm: "The size of the file is not big enough for the shm pool"
+    // which libwayland turns into a connection teardown -- so GTK apps died during startup
+    // without printing anything and never mapped a window.
+    ulong exactLen;
     int   seals;
     uint  vmoObjId;  // Phase 3: VMO identity for shared mmap backings
     bool  aliased;   // true: physBase is borrowed (e.g. a GEM dumb buffer exported
@@ -11734,7 +11760,7 @@ public long linux_sys_ftruncate(ulong fd, ulong length) {
     if (g_memfds[mid].physBase != 0) {
         // A resize within the current contiguous allocation is free — the wl_shm
         // / toytoolkit cursor allocator grows its pool in steps and re-ftruncates.
-        if (aligned <= g_memfds[mid].size) { f.fileSize = length; return 0; }
+        if (aligned <= g_memfds[mid].size) { f.fileSize = length; g_memfds[mid].exactLen = length; return 0; }
         // Grow.  A borrowed (PRIME/GEM-aliased) backing must not be moved.
         if (g_memfds[mid].aliased) return negErrno(EINVAL);
         // Allocate a larger contiguous region with geometric headroom (so a pool
@@ -11757,9 +11783,10 @@ public long linux_sys_ftruncate(ulong fd, ulong length) {
         g_memfds[mid].size     = newSize;
         physPagesSetOwner(newPhys, newPages, 0, growVmo);
         f.fileSize             = length;
+        g_memfds[mid].exactLen = length;   // shared: every fd on this memfd must agree
         return 0;
     }
-    if (aligned == 0) { f.fileSize = 0; return 0; }
+    if (aligned == 0) { f.fileSize = 0; g_memfds[mid].exactLen = 0; return 0; }
     size_t pages = cast(size_t)(aligned >> 12);
     ulong phys = alloc_phys_pages(pages);
     if (phys == 0) return negErrno(ENOMEM);
@@ -11768,6 +11795,7 @@ public long linux_sys_ftruncate(ulong fd, ulong length) {
     g_memfds[mid].size     = aligned;
     physPagesSetOwner(phys, pages, 0, vmoObjId);
     f.fileSize             = length;
+    g_memfds[mid].exactLen = length;   // shared: every fd on this memfd must agree
     return 0;
 }
 

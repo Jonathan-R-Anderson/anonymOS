@@ -22,6 +22,9 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <dirent.h>
 #include <sys/wait.h>
 #include <sys/reboot.h>
 #include <time.h>
@@ -115,6 +118,68 @@ struct app {
 };
 
 static void log_line(const char *s){ fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
+
+/* ── ROADMAP 3.0b: the input/appearance configuration backend ──────────────────────────────────
+ *
+ * 3.0b was blocked as "four panels of controls that change nothing", and that was the honest
+ * state: input and theme settings lived only in system/hypr/custom/general.lua, which is baked
+ * into the image at build time, so a running desktop had no way to change them.
+ *
+ * Hyprland already exposes one: the same IPC socket hyprctl talks to.  Writing
+ * "keyword input:sensitivity 0.4" to it applies the setting live, exactly as editing the config
+ * and reloading would.  The wire format is the bare command with no framing (see
+ * hyprland/hyprtester/src/hyprctlCompat.cpp) and the reply is "ok" on success.
+ *
+ * Finding the socket is the one wrinkle.  hyprctl locates it via HYPRLAND_INSTANCE_SIGNATURE,
+ * and this kernel does not export that variable, so instead we enumerate /run/user/1000/hypr and
+ * take the single instance directory -- there is exactly one compositor on this system, which is
+ * a safe assumption here and would not be on a multi-seat desktop.
+ */
+#define HYPR_DIR "/run/user/1000/hypr"
+
+static int hypr_socket_path(char *out, size_t cap)
+{
+    DIR *d = opendir(HYPR_DIR);
+    if (!d) return -1;
+    struct dirent *e;
+    int found = 0;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.') continue;          /* skip . and .. */
+        snprintf(out, cap, HYPR_DIR "/%s/.socket.sock", e->d_name);
+        found = 1;
+        break;                                       /* exactly one instance */
+    }
+    closedir(d);
+    return found ? 0 : -1;
+}
+
+/* Send one hyprctl command.  Returns 0 if Hyprland accepted it.
+ * reply may be NULL when the caller only cares whether it worked. */
+static int hypr_ipc(const char *cmd, char *reply, size_t replycap)
+{
+    char path[256];
+    if (hypr_socket_path(path, sizeof path) < 0) return -1;
+
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return -1;
+    struct sockaddr_un sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX;
+    strncpy(sa.sun_path, path, sizeof sa.sun_path - 1);
+    if (connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0) { close(fd); return -1; }
+
+    size_t len = strlen(cmd);
+    if (write(fd, cmd, len) != (ssize_t)len) { close(fd); return -1; }
+
+    char buf[256];
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    close(fd);
+    if (n < 0) return -1;
+    buf[n > 0 ? n : 0] = 0;
+    if (reply && replycap) { strncpy(reply, buf, replycap - 1); reply[replycap-1] = 0; }
+    /* Hyprland answers "ok" for an accepted keyword; anything else is its error text. */
+    return (n >= 2 && buf[0] == 'o' && buf[1] == 'k') ? 0 : -1;
+}
 static int create_memfd(const char *name){ return (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC); }
 
 static int load_file(const char *path, unsigned char **out, size_t *out_size){
@@ -603,6 +668,17 @@ int main(void){
     wl_registry_add_listener(app.registry, &registry_listener, &app);
     wl_display_roundtrip(app.display);
     if (!app.compositor || !app.shm || !app.wm_base){ log_line("QSETTINGS: missing globals"); return 1; }
+    /* ROADMAP 3.0b: prove the configuration backend is actually wired to the compositor, once,
+     * at startup.  "getoption" is read-only, so this changes nothing -- it just answers whether
+     * the socket was found and Hyprland replied, which is the part that was missing. */
+    {
+        char rep[160] = {0};
+        if (hypr_ipc("getoption input:sensitivity", rep, sizeof rep) == 0 || rep[0])
+            { log_line("QUICKSET: hypr IPC ok:"); log_line(rep); }
+        else
+            log_line("QUICKSET: hypr IPC unavailable (no instance socket)");
+    }
+
     if (create_buffers(&app) < 0){ log_line("QSETTINGS: buffer failed"); return 1; }
 
     app.surface = wl_compositor_create_surface(app.compositor);

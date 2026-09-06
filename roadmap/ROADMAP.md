@@ -158,9 +158,41 @@ The clients now get much further and stop cleanly, waiting on the compositor rat
 killed by it. The trace ends on inbound events around objects 19 and 25 with the client sending
 nothing more.
 
-**Next:** extend the decoder past the header — resolve object ids to interfaces by tracking
-`wl_registry.bind` and the `new_id` arguments, so the trace names `xdg_surface`/`xdg_toplevel`
-instead of bare numbers, and say which request goes unanswered.
+**The decoder now names objects and interfaces** (from `wl_registry.bind`) and lists what the
+compositor advertises (from `wl_registry.global`). With `hos-wl-trace` giving the client a console,
+its own messages are readable for the first time. What that shows:
+
+- **The compositor is fine.** It advertises 70 globals including `xdg_wm_base`, `wl_compositor`,
+  `wl_shm`, `zwlr_layer_shell_v1` and `zwp_linux_dmabuf_v1`. Nothing is missing.
+- **The client reaches its own "create window" marker** and then sends **zero** further Wayland
+  messages. It binds `wl_compositor`, `wl_shm`, `wl_seat`, `wl_output`, `wl_data_device_manager`,
+  `zwp_primary_selection`, `org_kde_kwin_server_dec` — never `xdg_wm_base`, which GDK binds lazily
+  when the first toplevel is created, i.e. it never gets that far.
+- **It hangs rather than dying** — no exit, no crash. Final syscalls are repeated
+  `ioctl(fd=2, 0x5413)` = `TIOCGWINSZ` from two tasks, which is the ioctl the capability layer
+  denies (`want=0x10` = `CAP_RIGHT_IOCTL`). It stops after icon-theme loading.
+
+**Second bug, found here, not yet fixed: a missing file under a synthetic-directory prefix is
+reported as a DIRECTORY instead of ENOENT.** `isVirtualDirectoryPath()` matches on *prefixes*
+(`/etc/gtk-3.0/`, `/usr/share/themes/`, …), so every path beneath one — including leaf files — is
+fabricated as a directory. GTK sees:
+
+```
+Theme parsing error: Failed to import: Error opening file
+  /usr/share/themes/Epin/gtk-3.24/gtk.css: Is a directory
+Failed to parse .../settings.ini: Not a regular file
+Error reading file "/etc/gtk-3.0/Compose": Is a directory
+```
+
+Note the theme genuinely does not exist (the Epin asset ships only `settings.ini` and
+`index.theme`; there is no `gtk.css` anywhere in the tree, and GTK 3.24 looks in `gtk-3.24/` while
+the asset provides `gtk-3.0/`). The correct answer is ENOENT, which GTK handles by falling back to
+its built-in theme. "Is a directory" is a different thing and it does not.
+
+**Next, in order:** (1) make a non-`O_DIRECTORY` open of a non-existent path under those prefixes
+return ENOENT rather than a fabricated directory — being careful, since some callers rely on empty
+synthetic directories existing; (2) re-test, since GTK may simply be mishandling the directory
+answer; (3) if it still hangs, find what it waits on after icon-theme loading.
 
 **Real bugs found while building the harness** (all fixed, none related to 2.3):
 

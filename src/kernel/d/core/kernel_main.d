@@ -358,18 +358,6 @@ private void freezeWatchdog() {
 // (whose fd array lives in userspace and cannot be re-checked from the tick).
 __gshared int[MAX_TASKS] g_pollEpfd = -1;
 
-// ROADMAP 3.5b: a snapshot of a poll() waiter's fd set, taken at park time.
-//
-// The epoll half of this fix could consult g_epollTable directly, because the kernel owns that
-// watch set.  poll() keeps its array in USERSPACE, which a PIT tick must not dereference -- the
-// tick can run under a different CR3 entirely.  So the set is copied into kernel memory when the
-// task parks, and the tick checks the copy.  Bounded at 32: past that the task keeps the old
-// wake-every-tick behaviour rather than the kernel growing an unbounded per-task buffer.
-private enum int POLLSNAP_MAX = 32;
-__gshared int[POLLSNAP_MAX][MAX_TASKS]    g_pollSnapFd;
-__gshared ushort[POLLSNAP_MAX][MAX_TASKS] g_pollSnapEv;
-__gshared int[MAX_TASKS]                  g_pollSnapN = -1;   // -1 = no usable snapshot
-
 private void wakePollers() @nogc nothrow {
     import core.syscalls.posix : fdIsReadable;
     // ITIMER_REAL expiry -> pending SIGALRM.  Driven here because wakePollers() already runs on
@@ -396,21 +384,10 @@ private void wakePollers() @nogc nothrow {
             // Skipping cannot lose a wakeup: this is the same predicate epoll_wait evaluates, so
             // a task left parked would have found nothing and re-parked on the spot.
             const int ep = g_pollEpfd[i];
-            const ulong dl = g_pollDeadline[i];
-            const bool due = (dl != 0 && pitMs() >= dl);
-            if (!due && ep >= 0) {
-                if (!fdIsReadable(ep)) continue;          // epoll: nothing ready, stay asleep
-            } else if (!due && g_pollSnapN[i] > 0) {
-                bool any = false;
-                foreach (k; 0 .. g_pollSnapN[i]) {
-                    const int fd = g_pollSnapFd[i][k];
-                    const ushort ev = g_pollSnapEv[i][k];
-                    if (fd < 0 || fd >= 1024) continue;
-                    if (((ev & 0x0001) && fdIsReadable(fd)) || ((ev & 0x0004) && fdIsWritable(fd))) {
-                        any = true; break;
-                    }
-                }
-                if (!any) continue;                       // poll(): nothing ready, stay asleep
+            if (ep >= 0) {
+                const ulong dl = g_pollDeadline[i];
+                const bool due = (dl != 0 && pitMs() >= dl);
+                if (!due && !fdIsReadable(ep)) continue;   // nothing ready, not yet due: stay asleep
             }
             g_tasks[i].waiting = false;
         }
@@ -3981,22 +3958,10 @@ private void dispatchSyscall(int tid) {
                 } else {
                     g_pollBlocked[tid]  = true;
                     g_pollDeadline[tid] = (tmo < 0) ? 0 : (pitMs() + cast(ulong)tmo);
-                    // ROADMAP 3.5b: record what this task is waiting ON, so the PIT tick can tell
-                    // whether it has anything to wake for.  epoll: just the instance fd, since the
-                    // kernel owns that watch set.  poll(): SNAPSHOT the fd array into kernel memory
-                    // here, while the caller's address space is still current -- the tick may run
-                    // under a different CR3 and must never dereference a userspace pointer.
+                    // ROADMAP 3.5b: remember WHICH epoll instance, so the tick can tell whether
+                    // this task has anything to wake for.  poll() records -1: its fd array is in
+                    // userspace and cannot be re-scanned outside the syscall.
                     g_pollEpfd[tid] = isEpoll ? cast(int)rdi : -1;
-                    g_pollSnapN[tid] = -1;
-                    if (isPoll && rdi != 0 && rsi > 0 && rsi <= POLLSNAP_MAX) {
-                        const int n = cast(int)rsi;
-                        foreach (k; 0 .. n) {
-                            auto base = cast(ubyte*)(rdi + cast(ulong)k * 8);   // struct pollfd = 8 bytes
-                            g_pollSnapFd[tid][k] = *cast(int*)(base + 0);
-                            g_pollSnapEv[tid][k] = *cast(ushort*)(base + 4);
-                        }
-                        g_pollSnapN[tid] = n;
-                    }
                 }
                 task.waiting = true;                  // park: scheduler skips us
                 task.regs[REG_RIP] -= 2;              // re-run the syscall on wake

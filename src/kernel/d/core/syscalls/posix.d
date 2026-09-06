@@ -13699,6 +13699,56 @@ private void presentAccount(ulong t0, ulong t1, ulong blitPx, bool full) @nogc n
 // needed (unlike drmPresentToFramebuffer, which reads a userspace pointer).
 __gshared ulong g_primeDbgN = 0;
 
+// DESKTOP_RESP R5 — damage-tracked present.
+//
+// A RAM copy of the last frame blitted to the scanout, so the next present can tell which
+// scanlines changed without reading back write-combining MMIO (which is far slower than the write
+// it would save).  Allocated once, lazily, at the first present's dimensions.
+private __gshared ubyte* g_presentShadow      = null;
+private __gshared size_t g_presentShadowBytes = 0;
+private __gshared ulong  g_presentFrameNo     = 0;
+// Full blit every N frames, bounding how long the shadow can disagree with the screen if
+// something writes to the framebuffer behind our back (console output, a HUD row).  60 is about a
+// second of frames: cheap enough not to matter, short enough that any artefact is transient.
+private enum ulong PRESENT_FULL_EVERY = 60;
+// R5 accounting, reported by presentProfStats: how much of the screen we actually wrote.
+public __gshared ulong g_presentRowsCopied = 0;
+public __gshared ulong g_presentRowsTotal  = 0;
+
+// Row compare, 8 bytes at a time.  Written out rather than calling memcmp because this file
+// imports only memcpy from core.stdc.string, and a 64-bit-wide compare is the point anyway: it
+// has to be decisively cheaper than the MMIO write it is trying to avoid, or the whole scheme
+// loses.  Returns true on the first difference, so an early change costs almost nothing.
+private bool rowDiffers(const(ubyte)* a, const(ubyte)* b, size_t n) @nogc nothrow {
+    size_t i = 0;
+    const size_t n8 = n & ~cast(size_t)7;
+    for (; i < n8; i += 8)
+        if (*cast(const(ulong)*)(a + i) != *cast(const(ulong)*)(b + i)) return true;
+    for (; i < n; ++i)
+        if (a[i] != b[i]) return true;
+    return false;
+}
+
+// True once a shadow of at least `rows * rowBytes` exists.  False means "copy everything this
+// frame" -- the caller must not skip rows it has no recorded previous content for.
+private bool presentShadowEnsure(uint rows, size_t rowBytes) @nogc nothrow {
+    const size_t need = cast(size_t)rows * rowBytes;
+    if (need == 0) return false;
+    if (g_presentShadow !is null && g_presentShadowBytes >= need) return true;
+    const size_t pages = (need + 0xFFF) >> 12;
+    const ulong phys = alloc_phys_pages(pages);
+    if (phys == 0) {
+        // Out of memory is not fatal here: without a shadow every row is copied, which is exactly
+        // the behaviour this optimisation replaced.
+        g_presentShadow = null;
+        g_presentShadowBytes = 0;
+        return false;
+    }
+    g_presentShadow = cast(ubyte*)phys_to_virt(phys);
+    g_presentShadowBytes = pages << 12;
+    return false;   // freshly allocated: nothing to compare against yet, so copy everything once
+}
+
 private long drmPresentFb(uint fbId) @nogc nothrow {
     const ulong _t0 = rdtsc();
     if (!g_fb || g_fb.address is null || g_fb.pitch == 0 || g_fb.bpp != 32)
@@ -13784,11 +13834,52 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
         }
     }
 
+    // DESKTOP_RESP R5: blit only the scanlines that actually changed.
+    //
+    // The framebuffer is write-combining MMIO -- writes run at roughly a GB/s and reads are far
+    // worse, so comparing against the framebuffer itself would cost more than the copy it saves.
+    // Compare against a RAM shadow of the last frame instead: a plain-memory compare is an order
+    // of magnitude cheaper than the MMIO write it avoids, so on a mostly-static desktop most rows
+    // cost a compare rather than a copy.
+    //
+    // Two things force a row to be copied regardless of whether it changed:
+    //
+    //   * the cursor band.  cursorRepaintAfterPresent() stamps the sprite into the framebuffer
+    //     AFTER this blit and sets g_curSaveValid = false, so nothing ever erases the previous
+    //     sprite.  Skipping an unchanged row under the old cursor position would leave that
+    //     sprite on screen -- a cursor trail.  Both the previous and current positions are
+    //     forced, since the mouse IRQ can move it between presents.
+    //   * a periodic full refresh.  Anything else that writes straight to g_fb.address (the
+    //     console, a HUD row) makes the shadow disagree with the screen, and this bounds how long
+    //     such a disagreement can persist to one interval rather than forever.
+    ++g_presentFrameNo;
+    const bool fullRefresh = presentShadowEnsure(copyH, rowBytes) == false
+                             || (g_presentFrameNo % PRESENT_FULL_EVERY) == 0;
+    const int curTop  = (g_curY < g_curSaveY ? g_curY : g_curSaveY) - 1;
+    const int curBot  = (g_curY > g_curSaveY ? g_curY : g_curSaveY) + CUR_H + 1;
+    uint rowsCopied = 0;
     foreach (row; 0 .. copyH) {
+        auto srow = src + cast(size_t)row * cast(size_t)fb.pitch;
+        if (!fullRefresh) {
+            const bool inCursorBand = (cast(int)row >= curTop && cast(int)row <= curBot);
+            if (!inCursorBand) {
+                auto shrow = g_presentShadow + cast(size_t)row * rowBytes;
+                if (!rowDiffers(shrow, srow, rowBytes)) continue;   // unchanged: skip the MMIO write
+                memcpy(shrow, srow, rowBytes);
+            }
+        } else if (g_presentShadow !is null) {
+            memcpy(g_presentShadow + cast(size_t)row * rowBytes, srow, rowBytes);
+        }
+        ++rowsCopied;
         memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
                src + cast(size_t)row * cast(size_t)fb.pitch,
                rowBytes);
     }
+
+    // R5 accounting: how much of the screen this present actually wrote.  A static desktop should
+    // settle near zero rows copied; a full redraw equals copyH.
+    g_presentRowsCopied += rowsCopied;
+    g_presentRowsTotal  += copyH;
 
     // Real-hardware bring-up: announce the first present (display claimed) while the
     // fb console is still live, so the confirmation lands on the panel right before
@@ -13852,6 +13943,13 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
 // everything else (Weston compositing + cooperative scheduling = the inter-present
 // gap).  Resets interval counters; keeps the cumulative total.
 public void presentProfStats() @nogc nothrow {
+    // R5: the share of scanlines actually written to the scanout.  This is the number the
+    // optimisation lives or dies by -- a static desktop should sit near 0%, a full redraw at 100%.
+    if (g_presentRowsTotal != 0) {
+        klog("[present] rows_written=");
+        klog_dec((g_presentRowsCopied * 100) / g_presentRowsTotal);
+        klog("% of "); klog_dec(g_presentRowsTotal); klog(" scanlines\n");
+    }
     klog("[present] total="); klog_dec(g_presTotal);
     klog(" flipQ="); klog_dec(g_flipQueued);
     klog(" flipRd="); klog_dec(g_flipRead);

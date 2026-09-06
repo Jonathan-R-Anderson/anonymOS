@@ -3137,19 +3137,19 @@ private size_t procDynamicSynth(const(char)* path) {
                     break;
                 }
             }
-            size_t pos = 0;
-            pbStr(pos, "0x".ptr);
+            size_t gpos = 0;
+            pbStr(gpos, "0x".ptr);
             if (isRevision) {
-                g_procBuf[pos++] = hexDigitLower((grev >> 4) & 0xF);
-                g_procBuf[pos++] = hexDigitLower(grev & 0xF);
+                g_procBuf[gpos++] = hexDigitLower((grev >> 4) & 0xF);
+                g_procBuf[gpos++] = hexDigitLower(grev & 0xF);
             } else {
                 const ushort v = isVendor ? gv : gd;
                 foreach_reverse (i; 0 .. 4)
-                    g_procBuf[pos++] = hexDigitLower((v >> (i * 4)) & 0xF);
+                    g_procBuf[gpos++] = hexDigitLower((v >> (i * 4)) & 0xF);
             }
-            g_procBuf[pos++] = '\n';
-            g_procBuf[pos] = 0;
-            return pos;
+            g_procBuf[gpos++] = '\n';
+            g_procBuf[gpos] = 0;
+            return gpos;
         }
     }
 

@@ -139,10 +139,13 @@ static void log_line(const char *s){ fputs(s, stdout); fputc('\n', stdout); fflu
  * state: input and theme settings lived only in system/hypr/custom/general.lua, which is baked
  * into the image at build time, so a running desktop had no way to change them.
  *
- * Hyprland already exposes one: the same IPC socket hyprctl talks to.  Writing
- * "keyword input:sensitivity 0.4" to it applies the setting live, exactly as editing the config
- * and reloading would.  The wire format is the bare command with no framing (see
- * hyprland/hyprtester/src/hyprctlCompat.cpp) and the reply is "ok" on success.
+ * Hyprland already exposes one: the same IPC socket hyprctl talks to.  The wire format is the
+ * bare command with no framing (see hyprland/hyprtester/src/hyprctlCompat.cpp) and the reply is
+ * "ok" on success.
+ *
+ * The command is `eval <lua>`, NOT `keyword`.  This desktop's config is Lua, and Hyprland answers
+ * a keyword request on a Lua config with "keyword can't work with non-legacy parsers. Use eval."
+ * -- keyword only drives the old hyprlang parser.  See settings_apply_one().
  *
  * Finding the socket is the one wrinkle.  hyprctl locates it via HYPRLAND_INSTANCE_SIGNATURE,
  * and this kernel does not export that variable, so instead we enumerate /run/user/1000/hypr and
@@ -376,19 +379,55 @@ static int settings_load(void)
     return 1;
 }
 
-/* Push one setting to the running compositor. */
+/* Push one setting to the running compositor.
+ *
+ * NOT "keyword".  Hyprland answers a keyword request on a Lua config with
+ * "keyword can't work with non-legacy parsers. Use eval." (HyprCtl.cpp:1143) -- keyword only
+ * drives the old hyprlang parser, and this desktop's config is Lua.  `eval` runs a chunk in the
+ * config manager's own Lua state (HyprCtl.cpp:1090), so the command is built out of exactly the
+ * same hl.config({...}) call the files in system/hypr/custom use, and returns "ok" or the error.
+ *
+ * The keyword path doubles as the Lua path: "input:touchpad:tap-to-click" becomes
+ * hl.config({ input = { touchpad = { ["tap-to-click"] = true } } }).  A segment containing a
+ * hyphen is not a Lua identifier, so it is written in bracket form. */
 static int settings_apply_one(int i)
 {
     const struct setting_def *s = &SETTINGS[i];
     if (!s->keyword) return 0;
-    char cmd[160];
+
+    char val[24];
     if (s->kind == ST_BOOL && i != S_M_FOLLOW)     /* follow_mouse is an int 0..3, not a bool */
-        snprintf(cmd, sizeof cmd, "keyword %s %s", s->keyword, bool_word(g_setval[i]));
+        snprintf(val, sizeof val, "%s", bool_word(g_setval[i]));
     else
-        snprintf(cmd, sizeof cmd, "keyword %s %d", s->keyword, g_setval[i]);
+        snprintf(val, sizeof val, "%d", g_setval[i]);
+
+    char   body[256];
+    size_t o = 0;
+    int    depth = 0;
+    const char *p = s->keyword;
+    for (;;) {
+        const char *colon = strchr(p, ':');
+        if (colon) {
+            o += snprintf(body + o, sizeof body - o, "%.*s = { ", (int)(colon - p), p);
+            depth++;
+            p = colon + 1;
+        } else {
+            size_t seglen = strlen(p);
+            o += snprintf(body + o, sizeof body - o,
+                          memchr(p, '-', seglen) ? "[\"%.*s\"] = %s" : "%.*s = %s",
+                          (int)seglen, p, val);
+            break;
+        }
+        if (o >= sizeof body) return -1;
+    }
+    while (depth-- > 0) o += snprintf(body + o, sizeof body - o, " }");
+    if (o >= sizeof body) return -1;
+
+    char cmd[320];
+    snprintf(cmd, sizeof cmd, "eval hl.config({ %s })", body);
     int rc = hypr_ipc(cmd, g_last_ipc, sizeof g_last_ipc);
     if (!g_last_ipc[0]) snprintf(g_last_ipc, sizeof g_last_ipc, "no socket");
-    for (char *p = g_last_ipc; *p; p++) if (*p == '\n') *p = ' ';   /* keep the footer one line */
+    for (char *q = g_last_ipc; *q; q++) if (*q == '\n') *q = ' ';   /* keep the footer one line */
     return rc;
 }
 

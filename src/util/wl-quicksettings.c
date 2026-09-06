@@ -76,7 +76,19 @@ enum {
 #define CARD_W_OF(a)  ((a)->width - 24)
 
 /* clickable regions returned by hit_region() */
-enum { R_NONE=0, R_CLOSE, R_WIFI, R_SYSTEM, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT };
+enum { R_NONE=0, R_CLOSE, R_WIFI, R_SYSTEM, R_SETTINGS, R_LOCK, R_RESTART, R_POWER, R_LOGOUT,
+       R_GEAR,      /* titlebar: main view -> settings view */
+       R_BACK };   /* titlebar: settings view -> main view */
+
+/* ROADMAP 3.0b: the settings view's own regions, numbered above every R_* above so the two
+ * views' codes cannot collide.  Row i contributes two: the decrement/toggle and the increment. */
+enum { R_SET0 = 100 };
+#define R_SET_DEC(i) (R_SET0 + (i)*2)
+#define R_SET_INC(i) (R_SET0 + (i)*2 + 1)
+
+/* settings-view layout: a header before each section, then fixed-height rows */
+enum { V_MAIN = 0, V_SETTINGS = 1 };
+enum { SET_TOP = TITLE_H + 8, SEC_H = 24, SROW_H = 36 };
 
 struct app {
     struct wl_display *display;
@@ -114,6 +126,7 @@ struct app {
     unsigned long long cpu_prev_total, cpu_prev_idle;
     /* No volume/dragging state: there is no audio backend, so there was nothing to hold. */
     int  hover;             /* hovered region for highlight (R_*) */
+    int  view;              /* V_MAIN or V_SETTINGS (ROADMAP 3.0b) */
     unsigned last_hash;
 };
 
@@ -179,6 +192,175 @@ static int hypr_ipc(const char *cmd, char *reply, size_t replycap)
     if (reply && replycap) { strncpy(reply, buf, replycap - 1); reply[replycap-1] = 0; }
     /* Hyprland answers "ok" for an accepted keyword; anything else is its error text. */
     return (n >= 2 && buf[0] == 'o' && buf[1] == 'k') ? 0 : -1;
+}
+
+/* --- ROADMAP 3.0b: the settings model -------------------------------------------------------
+ *
+ * Ten rows over four sections, each one a Hyprland keyword.  A change does two things:
+ *
+ *   LIVE     hypr_ipc("keyword <kw> <v>")  -- takes effect immediately, no restart.
+ *   PERSIST  two files under /home, which `persist = /home` (src/desktop.conf) keeps across
+ *            reboots.  settings.conf is the source of truth this app reads back; settings.lua
+ *            is GENERATED from it and require()d last by hyprland.lua, so Hyprland re-applies
+ *            the same values at every boot without this app having to run.
+ *
+ * What is deliberately NOT offered:
+ *
+ *   input:sensitivity / accel_profile.  custom/general.lua pins these to flat + 0 and explains
+ *   why at length: two cursors exist here -- the kernel paints its own into the framebuffer and
+ *   the compositor tracks the evdev stream separately -- and any acceleration curve makes them
+ *   drift, so clicks land where the user is not pointing.  A pointer-speed slider would be a
+ *   control that breaks aiming, so the row says so instead of offering it.
+ *
+ *   decoration:rounding.  Also pinned in general.lua, and for a measured reason: rounding is a
+ *   per-fragment SDF, and on softpipe without LLVM that took the desktop to roughly one frame
+ *   per second.  Exposing it would let the user make the machine unusable from inside a
+ *   settings panel.
+ */
+enum { ST_INT, ST_BOOL, ST_NOTE };
+enum { S_KB_RATE, S_KB_DELAY, S_M_NATSCROLL, S_M_FOLLOW, S_NOTE_SPEED,
+       S_TP_TAP, S_TP_NATSCROLL, S_TP_DWT, S_A_BORDER, S_A_GAPS, S_COUNT };
+
+struct setting_def {
+    const char *section;   /* non-NULL: this row starts a new section, with this header */
+    const char *label;
+    const char *key;       /* name in settings.conf */
+    const char *keyword;   /* hyprctl keyword path */
+    int kind, lo, hi, step, def;
+    const char *note;      /* ST_NOTE only */
+};
+
+static const struct setting_def SETTINGS[S_COUNT] = {
+ [S_KB_RATE]      = { "Keyboard",   "Repeat rate",          "kb_rate",     "input:repeat_rate",
+                      ST_INT,  10, 60,  5,  25, NULL },
+ [S_KB_DELAY]     = { NULL,         "Repeat delay",         "kb_delay",    "input:repeat_delay",
+                      ST_INT, 200,1000, 50, 600, NULL },
+ [S_M_NATSCROLL]  = { "Mouse",      "Natural scroll",       "m_natscroll", "input:natural_scroll",
+                      ST_BOOL, 0, 1, 1, 0, NULL },
+ [S_M_FOLLOW]     = { NULL,         "Focus follows mouse",  "m_follow",    "input:follow_mouse",
+                      ST_BOOL, 0, 1, 1, 1, NULL },
+ [S_NOTE_SPEED]   = { NULL,         "Pointer speed",        NULL,          NULL,
+                      ST_NOTE, 0, 0, 0, 0, "Locked 1:1 -- keeps the two cursors aligned" },
+ [S_TP_TAP]       = { "Touchpad",   "Tap to click",         "tp_tap",      "input:touchpad:tap-to-click",
+                      ST_BOOL, 0, 1, 1, 1, NULL },
+ [S_TP_NATSCROLL] = { NULL,         "Natural scroll",       "tp_natscroll","input:touchpad:natural_scroll",
+                      ST_BOOL, 0, 1, 1, 1, NULL },
+ [S_TP_DWT]       = { NULL,         "Disable while typing", "tp_dwt",      "input:touchpad:disable_while_typing",
+                      ST_BOOL, 0, 1, 1, 1, NULL },
+ [S_A_BORDER]     = { "Appearance", "Border size",          "a_border",    "general:border_size",
+                      ST_INT, 0, 8, 1, 2, NULL },
+ [S_A_GAPS]       = { NULL,         "Window gaps",          "a_gaps",      "general:gaps_out",
+                      ST_INT, 0, 30, 2, 5, NULL },
+};
+
+static int g_setval[S_COUNT];
+
+#define SETTINGS_DIR  "/home/user/.config/hos"
+#define SETTINGS_CONF SETTINGS_DIR "/settings.conf"
+#define HYPR_CUSTOM   "/home/user/.config/hypr/custom"
+#define SETTINGS_LUA  HYPR_CUSTOM "/settings.lua"
+
+/* mkdir -p, without a shell (there is no /bin/sh in this image). */
+static void mkdir_p(const char *path)
+{
+    char tmp[256];
+    size_t n = strlen(path);
+    if (n >= sizeof tmp) return;
+    memcpy(tmp, path, n + 1);
+    for (char *p = tmp + 1; *p; p++)
+        if (*p == '/') { *p = 0; mkdir(tmp, 0755); *p = '/'; }
+    mkdir(tmp, 0755);
+}
+
+static const char *bool_word(int v){ return v ? "true" : "false"; }
+
+/* Emit the Lua that Hyprland reads at startup.  Values only -- no logic -- so a corrupt or
+ * half-written file can at worst restore defaults, never break the config chain. */
+static void settings_write_lua(void)
+{
+    mkdir_p(HYPR_CUSTOM);
+    FILE *f = fopen(SETTINGS_LUA, "w");
+    if (!f) return;
+    fprintf(f,
+        "-- GENERATED by wl-quicksettings (ROADMAP 3.0b).  Edits here are overwritten.\n"
+        "-- hyprland.lua require()s this LAST, so it wins over custom/general.lua.\n"
+        "hl.config({\n"
+        "    input = {\n"
+        "        repeat_rate    = %d,\n"
+        "        repeat_delay   = %d,\n"
+        "        natural_scroll = %s,\n"
+        "        follow_mouse   = %d,\n"
+        "        touchpad = {\n"
+        "            [\"tap-to-click\"]    = %s,\n"
+        "            natural_scroll       = %s,\n"
+        "            disable_while_typing = %s\n"
+        "        }\n"
+        "    },\n"
+        "    general = {\n"
+        "        border_size = %d,\n"
+        "        gaps_out    = %d\n"
+        "    }\n"
+        "})\n",
+        g_setval[S_KB_RATE], g_setval[S_KB_DELAY],
+        bool_word(g_setval[S_M_NATSCROLL]), g_setval[S_M_FOLLOW],
+        bool_word(g_setval[S_TP_TAP]), bool_word(g_setval[S_TP_NATSCROLL]),
+        bool_word(g_setval[S_TP_DWT]),
+        g_setval[S_A_BORDER], g_setval[S_A_GAPS]);
+    fclose(f);
+}
+
+static void settings_save(void)
+{
+    mkdir_p(SETTINGS_DIR);
+    FILE *f = fopen(SETTINGS_CONF, "w");
+    if (f) {
+        for (int i = 0; i < S_COUNT; i++)
+            if (SETTINGS[i].key) fprintf(f, "%s=%d\n", SETTINGS[i].key, g_setval[i]);
+        fclose(f);
+    }
+    settings_write_lua();
+}
+
+/* Returns 1 if a saved file was read, 0 if defaults were used. */
+static int settings_load(void)
+{
+    for (int i = 0; i < S_COUNT; i++) g_setval[i] = SETTINGS[i].def;
+    FILE *f = fopen(SETTINGS_CONF, "r");
+    if (!f) return 0;
+    char line[128];
+    while (fgets(line, sizeof line, f)) {
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = 0;
+        int v = atoi(eq + 1);
+        for (int i = 0; i < S_COUNT; i++)
+            if (SETTINGS[i].key && !strcmp(SETTINGS[i].key, line)) {
+                if (v < SETTINGS[i].lo) v = SETTINGS[i].lo;      /* a hand-edited file must not */
+                if (v > SETTINGS[i].hi) v = SETTINGS[i].hi;      /* be able to push a bad value */
+                g_setval[i] = v;
+                break;
+            }
+    }
+    fclose(f);
+    return 1;
+}
+
+/* Push one setting to the running compositor. */
+static int settings_apply_one(int i)
+{
+    const struct setting_def *s = &SETTINGS[i];
+    if (!s->keyword) return 0;
+    char cmd[160];
+    if (s->kind == ST_BOOL && i != S_M_FOLLOW)     /* follow_mouse is an int 0..3, not a bool */
+        snprintf(cmd, sizeof cmd, "keyword %s %s", s->keyword, bool_word(g_setval[i]));
+    else
+        snprintf(cmd, sizeof cmd, "keyword %s %d", s->keyword, g_setval[i]);
+    return hypr_ipc(cmd, NULL, 0);
+}
+
+static void settings_apply_all(void)
+{
+    for (int i = 0; i < S_COUNT; i++) settings_apply_one(i);
 }
 static int create_memfd(const char *name){ return (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC); }
 
@@ -380,9 +562,54 @@ static void act_btn_rect(struct app *app, int i, int *x, int *y, int *w, int *h)
 static int in_rect(double px, double py, int x, int y, int w, int h){
     return px>=x && px<x+w && py>=y && py<y+h;
 }
-static int hit_region(struct app *app, double px, double py){
-    (void)app;
+
+/* ROADMAP 3.0b: settings-view geometry.  Defined once and shared by the renderer and the
+ * hit-tester, for the reason the 3.2 CARD_W_OF()/CLOSE_X_OF() macros exist: when the two
+ * compute their rectangles separately they drift, and the clickable area stops matching what
+ * is drawn. */
+#define GEAR_X_OF(a) ((a)->width - 52)
+enum { GEAR_Y = CLOSE_Y, GEAR_W = CLOSE_W, GEAR_H = CLOSE_H };
+
+/* Top of row `idx`, counting the section headers above it. */
+static int setting_row_y(int idx){
+    int y = SET_TOP;
+    for (int i = 0; i <= idx; i++){
+        if (SETTINGS[i].section) y += SEC_H;
+        if (i < idx)             y += SROW_H;
+    }
+    return y;
+}
+/* Control rects on row idx: which=0 is [-] or the toggle pill, which=1 is [+]. */
+static void setting_ctl_rect(struct app *app, int idx, int which, int *x, int *y, int *w, int *h){
+    int ry = setting_row_y(idx);
+    if (SETTINGS[idx].kind == ST_BOOL){
+        *w = 46; *h = 22;
+        *x = CARD_X + CARD_W_OF(app) - 12 - *w; *y = ry + (SROW_H - *h)/2;
+    } else {
+        *w = 24; *h = 24; *y = ry + (SROW_H - *h)/2;
+        int px = CARD_X + CARD_W_OF(app) - 12 - *w;
+        *x = which ? px : px - 4 - *w;
+    }
+}
+static int hit_settings_region(struct app *app, double px, double py){
     if (in_rect(px,py,CLOSE_X_OF(app),CLOSE_Y,CLOSE_W,CLOSE_H)) return R_CLOSE;
+    if (in_rect(px,py,GEAR_X_OF(app),GEAR_Y,GEAR_W,GEAR_H))     return R_BACK;
+    for (int i=0;i<S_COUNT;i++){
+        if (SETTINGS[i].kind == ST_NOTE) continue;
+        int x,y,w,h;
+        setting_ctl_rect(app,i,0,&x,&y,&w,&h);
+        if (in_rect(px,py,x,y,w,h)) return R_SET_DEC(i);
+        if (SETTINGS[i].kind == ST_INT){
+            setting_ctl_rect(app,i,1,&x,&y,&w,&h);
+            if (in_rect(px,py,x,y,w,h)) return R_SET_INC(i);
+        }
+    }
+    return R_NONE;
+}
+static int hit_region(struct app *app, double px, double py){
+    if (app->view == V_SETTINGS) return hit_settings_region(app, px, py);
+    if (in_rect(px,py,CLOSE_X_OF(app),CLOSE_Y,CLOSE_W,CLOSE_H)) return R_CLOSE;
+    if (in_rect(px,py,GEAR_X_OF(app),GEAR_Y,GEAR_W,GEAR_H))     return R_GEAR;
     if (in_rect(px,py,CARD_X,WIFI_Y,CARD_W_OF(app),WIFI_H))     return R_WIFI;
     if (in_rect(px,py,CARD_X,TOPBAR_Y,CARD_W_OF(app),TOPBAR_H)) return R_SYSTEM;
     static const int reg[4] = { R_SETTINGS, R_LOCK, R_RESTART, R_POWER };
@@ -405,7 +632,60 @@ static void draw_battery_glyph(struct app *app, int x, int y, uint32_t on, uint3
 }
 
 /* --- rendering --- */
+/* --- ROADMAP 3.0b: the settings view ---
+ *
+ * Same renderer primitives as the main view (fill_rect / fill_round_rect / draw_text), and the
+ * rectangles come from setting_ctl_rect(), which the hit-tester also calls.  A row past the
+ * bottom edge is skipped rather than clipped: min_size keeps the window tall enough for the
+ * whole stack, so this only fires if a compositor ignores that. */
+static void draw_settings(struct app *app){
+    const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, ROW=0xff232834u, ROWH=0xff2d3444u,
+                   TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu,
+                   BTN=0xff2a3140u, OFF=0xff3a4250u, CLOSEC=0xffe0564au;
+    fill_rect(app, 0, 0, app->width, app->height, BG);
+
+    fill_rect(app, 0, 0, app->width, TITLE_H, TITLE);
+    draw_text(app, "Settings", 14, 7, 200, 15, TXT);
+    fill_rect(app, GEAR_X_OF(app), GEAR_Y, GEAR_W, GEAR_H, (app->hover==R_BACK)?ROWH:BTN);
+    draw_text(app, "<", GEAR_X_OF(app)+8, GEAR_Y+3, 16, 14, TXT);
+    fill_rect(app, CLOSE_X_OF(app), CLOSE_Y, CLOSE_W, CLOSE_H, (app->hover==R_CLOSE)?CLOSEC:ROWH);
+    draw_text(app, "x", CLOSE_X_OF(app)+7, CLOSE_Y+3, 16, 14, TXT);
+
+    for (int i=0;i<S_COUNT;i++){
+        const struct setting_def *s = &SETTINGS[i];
+        int ry = setting_row_y(i);
+        if (ry + SROW_H > app->height) break;
+        if (s->section) draw_text(app, s->section, CARD_X+2, ry-SEC_H+4, 200, 12, ACC);
+        fill_round_rect(app, CARD_X, ry, CARD_W_OF(app), SROW_H-6, 10, ROW);
+
+        if (s->kind == ST_NOTE){
+            draw_text(app, s->label, CARD_X+12, ry+3,  CARD_W_OF(app)-24, 12, DIM);
+            draw_text(app, s->note,  CARD_X+12, ry+16, CARD_W_OF(app)-24, 11, DIM);
+            continue;
+        }
+        draw_text(app, s->label, CARD_X+12, ry+8, CARD_W_OF(app)-130, 13, TXT);
+
+        int x,y,w,h;
+        if (s->kind == ST_BOOL){
+            int on = g_setval[i];
+            setting_ctl_rect(app, i, 0, &x, &y, &w, &h);
+            fill_round_rect(app, x, y, w, h, h/2, on ? ACC : OFF);
+            fill_round_rect(app, on ? (x+w-h+2) : (x+2), y+2, h-4, h-4, (h-4)/2, TXT);
+        } else {
+            char v[16]; snprintf(v, sizeof v, "%d", g_setval[i]);
+            setting_ctl_rect(app, i, 0, &x, &y, &w, &h);
+            draw_text(app, v, x-44, y+5, 40, 13, TXT);
+            fill_round_rect(app, x, y, w, h, 6, (app->hover==R_SET_DEC(i))?ROWH:BTN);
+            draw_text(app, "-", x+9, y+4, 16, 14, TXT);
+            setting_ctl_rect(app, i, 1, &x, &y, &w, &h);
+            fill_round_rect(app, x, y, w, h, 6, (app->hover==R_SET_INC(i))?ROWH:BTN);
+            draw_text(app, "+", x+8, y+4, 16, 14, TXT);
+        }
+    }
+}
+
 static void draw_menu(struct app *app){
+    if (app->view == V_SETTINGS){ draw_settings(app); return; }
     const uint32_t BG=0xff1b1f27u, TITLE=0xff11141bu, ROW=0xff232834u, ROWH=0xff2d3444u,
                    TXT=0xfff2f5fau, DIM=0xff8b94a3u, ACC=0xff4da3ffu,
                    OK=0xff57d977u, DANGER=0xffe0564au, CLOSEC=0xffe0564au;
@@ -416,6 +696,15 @@ static void draw_menu(struct app *app){
     draw_text(app, "System", 14, 7, 200, 15, TXT);
     fill_rect(app, CLOSE_X_OF(app), CLOSE_Y, CLOSE_W, CLOSE_H, (app->hover==R_CLOSE)?CLOSEC:ROWH);
     draw_text(app, "x", CLOSE_X_OF(app)+7, CLOSE_Y+3, 16, 14, TXT);
+    /* ROADMAP 3.0b: the gear, left of the close button -- opens the settings view.  It is in
+     * the titlebar rather than the button row because the four buttons there are session
+     * actions (Domains/Lock/Restart/Power) and none of them could be given up. */
+    fill_rect(app, GEAR_X_OF(app), GEAR_Y, GEAR_W, GEAR_H, (app->hover==R_GEAR)?ROWH:0xff2a3140u);
+    for (int r=0;r<3;r++){                       /* three sliders, drawn with fill_rect like every icon here */
+        int gy = GEAR_Y + 6 + r*5;
+        fill_rect(app, GEAR_X_OF(app)+4, gy, 14, 2, TXT);
+        fill_rect(app, GEAR_X_OF(app)+4 + (r==1?9:4), gy-1, 3, 4, ACC);
+    }
 
     /* --- Q0.2 identity header: avatar + username + current domain + current identity --- */
     {
@@ -552,8 +841,11 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t 
      * would act twice -- two launches, or two poweroffs. */
     if (button != 0x110 /*BTN_LEFT*/ || state != 1) return;
 
-    switch (hit_region(a, a->pointer_x, a->pointer_y)){
+    int r = hit_region(a, a->pointer_x, a->pointer_y);
+    switch (r){
         case R_CLOSE:    exit(0);
+        case R_GEAR:     a->view = V_SETTINGS; redraw_commit(a); break;
+        case R_BACK:     a->view = V_MAIN;     redraw_commit(a); break;
         case R_WIFI:     launch("/wl-wifi-menu"); break;
         case R_SYSTEM:   launch("/wl-sysmon"); break;
         case R_SETTINGS: launch("/wl-domain-manager"); break;
@@ -561,7 +853,28 @@ static void pointer_button(void *d, struct wl_pointer *p, uint32_t se, uint32_t 
         case R_RESTART:  session_action("reboot"); break;
         case R_POWER:    session_action("poweroff"); break;
         case R_LOGOUT:   session_action("logout"); break;
-        default: break;
+        default:
+            /* ROADMAP 3.0b: a settings row.  Apply live over IPC first so the change is
+             * immediate, then persist -- in that order, because the persisted copy exists to
+             * survive a reboot, not to be what makes the setting take effect. */
+            if (r >= R_SET0){
+                int i = (r - R_SET0) / 2, inc = (r - R_SET0) & 1;
+                const struct setting_def *s = &SETTINGS[i];
+                int v = g_setval[i];
+                if (s->kind == ST_BOOL) v = !v;
+                else {
+                    v += inc ? s->step : -s->step;
+                    if (v < s->lo) v = s->lo;
+                    if (v > s->hi) v = s->hi;
+                }
+                if (v != g_setval[i]){
+                    g_setval[i] = v;
+                    settings_apply_one(i);
+                    settings_save();
+                }
+                redraw_commit(a);
+            }
+            break;
     } }
 static void pointer_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax, wl_fixed_t v){ (void)d;(void)p;(void)t;(void)ax;(void)v; }
 /* wl_pointer >= v5 also emits frame/axis_source/axis_stop/axis_discrete -- these listener slots MUST be
@@ -652,7 +965,7 @@ static void live_refresh(struct app *app){
 
 int main(void){
     static struct app app; memset(&app, 0, sizeof app);
-    app.running = 1; app.hover = R_NONE;
+    app.running = 1; app.hover = R_NONE; app.view = V_MAIN;
     app.width = WIN_W; app.height = WIN_H; app.stride = WIN_W*4; app.buffer_size = (size_t)app.stride*WIN_H;
     signal(SIGCHLD, SIG_IGN);
     init_freetype(&app);
@@ -660,6 +973,13 @@ int main(void){
     load_identity(&app);
     load_stats(&app);
     publish_state(&app);
+
+    /* ROADMAP 3.0b: load the saved settings, and re-assert them on the running compositor.
+     * Redundant when hyprland.lua already read custom/settings.lua at boot -- and that is the
+     * point: it costs one socket write per setting and leaves the panel correct even if that
+     * require() did not happen.  Nothing is sent when no file has been saved yet, so opening
+     * this app never changes a setting on its own. */
+    if (settings_load()) settings_apply_all();
 
     log_line("QSETTINGS: starting quick-settings menu");
     app.display = wl_display_connect(NULL);

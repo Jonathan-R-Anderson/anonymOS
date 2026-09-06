@@ -31,6 +31,17 @@ end
 if is_file_exists(HOME .. "/.config/hypr/custom/keybinds.lua") then
     require("custom.keybinds")
 end
+-- ROADMAP 3.0b: settings written by wl-quicksettings.  Sourced LAST of the custom/ files on
+-- purpose, so a value the user chose in the panel wins over the image's own custom/general.lua.
+--
+-- This file is deliberately NOT in the image: it is created at runtime under /home, which
+-- `persist = /home` (src/desktop.conf) keeps across reboots, and the blob unpack that stages
+-- .config/hypr only writes its own files, so a settings.lua next to them survives.  Guarded by
+-- is_file_exists like every other require here, so a machine that has never opened the panel
+-- behaves exactly as before.
+if is_file_exists(HOME .. "/.config/hypr/custom/settings.lua") then
+    require("custom.settings")
+end
 
 -- nwg-displays support --
 if is_file_exists(HOME .. "/.config/hypr/workspaces.lua") then

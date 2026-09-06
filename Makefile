@@ -1386,11 +1386,13 @@ test:
 #   make golden                 compare against tests/golden/installer.png
 #   make golden GOLDEN=foo      compare against tests/golden/foo.png
 #   make golden-update          re-record the golden from the current screen
+GOLDEN ?= installer
+
 golden:
-	@scripts/golden-check.sh 100 1 57 72 100 131 984 1000or 100 1 57 72 100 131 984 1000GOLDEN),installer)
+	@scripts/golden-check.sh $(GOLDEN)
 
 golden-update:
-	@GOLDEN_UPDATE=1 scripts/golden-check.sh 100 1 57 72 100 131 984 1000or 100 1 57 72 100 131 984 1000GOLDEN),installer)
+	@GOLDEN_UPDATE=1 scripts/golden-check.sh $(GOLDEN)
 
 # =========================================================
 # Legacy: Haskell userspace programs (optional, not part of main build)

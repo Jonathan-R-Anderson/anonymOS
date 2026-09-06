@@ -17,117 +17,28 @@ carried-forward items live on as 3.0b (`wl-quicksettings` panels) and 5.0 (virti
 
 ---
 
-## Tier 2 — The application runtime (the multiplier)
+## Tier 2 — ✅ exit criterion MET (2026-09-05); three items still open
 
-Everything in Tier 3+ and 54 of the 124 apps sit behind this. It is the highest-leverage
-work in the project, and it is *not* speculative: GTK 3 with the Wayland backend is already
-built for musl in `deps/gtk-stack/sysroot`, and upstream `gtk3-widget-factory` now runs on the
-desktop -- the exit criterion below is MET.
+**Exit criterion met:** upstream `gtk3-widget-factory` runs on the desktop, and a GTK app renders
+Pango text and theme icons. 2.3 (upstream GTK app) and 2.4 (font/icon/theme resolution +
+installable packs) are **complete and removed** — see git history.
 
-| # | Item | Why here | Source | Effort |
-|---|---|---|---|---|
-| 2.1 | ◑ **`/compat/linux` + `/proc` + `/sys` + `/etc`** — `/proc` now reports real data (2026-09-05); `/sys` and `/etc` still largely synthetic | Most monitor-type apps read `/proc` and nothing else. Also what SHELL A1/A5 need | APPS A2 · OBJECT_FS F0 | M |
-| 2.2 | ◑ **Syscall audit** — done as a survey: **only the 4 inotify calls are missing**. Remaining work is implementing inotify | Record what is missing once, rather than one crash at a time | APPS A3 · syscalls | M |
-| 2.4 | ✅ **Font / icon / theme resolution + installable packs** — DONE 2026-09-05. Fonts and icons resolve and render; a user-installed pack demonstrably overrides the system theme | Blobs are staged; confirm fontconfig and the icon theme actually resolve | APPS A5 | S |
-| 2.6 | ◑ **Stage C1** — the `/proc` data is real and verified; the apps are now **unblocked** by 2.3 | Falls out of 2.1 almost free. ~8 more apps | APPS C1 | M |
+What remains is real but no longer blocking, so Tier 3 can start:
 
-**Exit criterion — ✅ MET 2026-09-05:** upstream `gtk3-widget-factory` runs on the desktop.
-Detail removed; see git history. One finding survives it: **`librsvg` is a stub, so gdk-pixbuf
-cannot decode SVG at all** — an SVG-only icon theme cannot load. That is 2.4's problem.
+| # | Item | State | Source |
+|---|---|---|---|
+| 2.1 | **`/proc` + `/sys` + `/etc`** | `/proc` reports real data. `/sys` and `/etc` are still largely synthetic | APPS A2 · OBJECT_FS F0 |
+| 2.2 | **inotify** | Audit done: of 14 syscalls probed, **only the 4 inotify calls are missing**. GIO file monitors are the visible casualty. Remaining work is implementing it, not surveying | APPS A3 |
+| 2.6 | **Stage C1 readers** | The `/proc` data they consume is real and verified; the apps themselves are unbuilt. Unblocked by 2.3 | APPS C1 |
 
+Two follow-ups the audit surfaced, both cheap: `nr 254` routed to `inotify_init()` while `253` was
+unrouted (fixed — **the rest of the syscall table is worth sweeping for the same pattern**), and
+`signalfd` accepts `0xFFFF_FFFF` as a descriptor instead of returning EBADF.
 
-### 2.4 — installable font / icon / theme packs (2026-09-05)
-
-**Done: packs have a persistent home and both toolkits scan it.** The two font directories
-fontconfig knew about — `/usr/share/fonts`, `/usr/local/share/fonts` — are rebuilt from the asset
-blobs on every boot, so anything installed there vanished at the next one. There was no writable,
-persistent location at all.
-
-`/home` already survives reboots via `persist =` (1.2), so the user data root under it is the
-target. `fonts.conf` now lists `~/.local/share/fonts` and `~/.fonts`; `XDG_DATA_HOME` is exported
-explicitly as `/home/user/.local/share` (GTK reads `$XDG_DATA_HOME/{icons,themes}` from it); and
-all eight directories are created at boot, because a scanner that finds no directory just skips it.
-
-Verified on a real boot — both toolkits scan the new locations:
-
-```
-fontconfig   /home/user/.fonts               /home/user/.local/share/fonts   (+ .uuid)
-GTK          /home/user/.icons               /home/user/.local/share/icons   (+ icon-theme.cache)
-```
-
-Installing needs no new tooling: busybox already has `tar`, `unzip`, `gunzip`, `cp` and `mkdir`, so
-from `wl-term`:
-
-```
-/busybox tar -xzf mypack.tar.gz -C /home/user/.local/share/icons
-```
-
-The procedure is documented in `src/desktop.conf` beside the `persist =` lines, which is where
-someone looking at what survives a reboot will actually find it.
-
-**Real librsvg would not have helped, and was not built.** GTK gets SVG from librsvg via a
-`dlopen`-ed gdk-pixbuf *loader module*, and this stack has no way to load one: gdk-pixbuf is built
-`-Dbuiltin_loaders=png` with everything else disabled, the whole stack is static
-(`libgdk_pixbuf-2.0.a`, `libgtk-3.a`, no `.so`, no `loaders/`, no `loaders.cache`), and `dlopen`
-does not work in static musl anyway. The blocker is not a missing library, it is that nothing here
-can load a loader.
-
-**Instead: icons are rasterised to PNG at build time** (`scripts/stage-gui-assets.py`, ImageMagick,
-sizes 16/22/24/32/48/64/128). 42 PNGs ship and reach the guest -- verified in the ISO and in
-`icons.blob`. `index.theme` is generated so each size gets both a `Directories=` entry and its own
-`[NxN/context]` section, which GTK requires.
-
-**Icons now resolve.** GTK loads the rasterised theme icons -- `[open]
-/usr/share/icons/Epin/128x128/apps/terminal.png` -- and the terminal icon renders in the GTK
-window where a generic grey placeholder used to be.
-
-The getdents suspicion was **wrong**, and ruling it out mattered: enumeration works fine
-(`Epin/48x48/apps` lists all four PNGs). The real cause was already in the log unacted on -- the
-only theme directories GTK ever listed were `Adwaita/<size>/status`, and the original abort said
-"not present in theme **Adwaita**", while `/etc/gtk-3.0/settings.ini` says `gtk-icon-theme-name=Epin`
-and GTK demonstrably opens that file. **GTK 3 reaches for Adwaita regardless of the setting.**
-Fixed by giving Adwaita a real index that `Inherits=Epin,hicolor` -- an inheriting theme with no
-icons of its own is an ordinary arrangement, and it resolves whichever name GTK settles on.
-
-**Proven end-to-end.** A pack was installed into `~/.local/share/icons/Adwaita/48x48/apps/` that
-*overrides* an icon the system theme already provides -- the folder image under the name
-`terminal` -- so success could not be a judgement call. gtk-hello asks for `terminal` and rendered
-a **folder**, and the only `terminal.png` GTK opened was the user one:
-
-```
-[open] /home/user/.local/share/icons/Adwaita/48x48/apps/terminal.png
-```
-
-That confirms both halves: user packs are found, and `$XDG_DATA_HOME/icons` takes precedence over
-`/usr/share/icons` -- without the ordering a user install would resolve to nothing.
-
-The test itself was **removed after proving**: it wrote into `/home`, which persists, so leaving it
-in would permanently replace a real user's terminal icon with a folder on every boot.
-### 2.6 — the `/proc` data is real; the C1 apps are now unblocked
-
-The data every C1 reader consumes is done and verified on a real boot: `/proc/cpuinfo` reports
-CPUID vendor and brand with the SMP CPU count (was a hardcoded 1 CPU at 2000 MHz);
-`/proc/bus/pci/devices` exists for the first time (walks bus 0, first entry `8086:1237`); and
-`meminfo`, `stat`, `loadavg`, `uptime`, `diskstats`, `net/dev` are real from 2.1. `wl-sysmon`
-reads five of those already, so it went from an invented 512 MB to the machine's real memory with
-no change to the app.
-
-Deliberately absent rather than faked: `cpu MHz`, PCI BAR sizes, Sensors/Battery (need ACPI).
-
-With 2.3 now green, C1 is unblocked: cross-build the readers as the roadmap intends.
-
-### 2.2 — audit result: only inotify is missing
-
-Of the 14 syscalls probed **through the real dispatcher** at boot (`[audit]` lines), only the four
-inotify calls return ENOSYS. `eventfd`, `eventfd2`, `signalfd`, `signalfd4`, `timerfd_create`,
-`memfd_create`, `ppoll`, `epoll_create1`, `dup3` and `pipe2` all work. So 2.2 is no longer a
-survey — the remaining work is **implementing inotify**. GIO's file monitors are the visible
-casualty (`Unable to find default local file monitor type`).
-
-Probing beats reading the switch table: `inotify_init1` has a `case` arm *and* an ENOSYS stub, so
-grepping `case <nr>:` would have scored it present. Two follow-ups it surfaced: `nr 254` routed to
-`inotify_init()` while `253` was unrouted (fixed; **the rest of the table is worth sweeping for
-this**), and `signalfd` accepts `0xFFFF_FFFF` as a descriptor instead of returning EBADF.
+**Constraint that outlives Tier 2:** `librsvg` is a stub and gdk-pixbuf is built
+`-Dbuiltin_loaders=png` in a fully static stack, so **SVG cannot be decoded at all** — icons must be
+PNG. Theme icons are rasterised at build time by `scripts/stage-gui-assets.py`; a user-installed
+SVG-only pack will silently resolve to nothing.
 
 ---
 

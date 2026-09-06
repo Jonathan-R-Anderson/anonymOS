@@ -3153,6 +3153,57 @@ private size_t procDynamicSynth(const(char)* path) {
         }
     }
 
+
+    // ── ROADMAP 2.1: /etc/machine-id, per install rather than per source tree ──────────────────
+    //
+    // This was the literal "deadbeefcafe00001234567890abcdef", identical on every machine that has
+    // ever booted this OS.  systemd's own spec calls machine-id a persistent unique identifier and
+    // warns it must not be exposed on an untrusted network -- because it is exactly the kind of
+    // value that links sessions together.  A CONSTANT one is worse than unique: every install is
+    // trivially identifiable as this OS, and any two are indistinguishable from each other.  On a
+    // system built for deniability that is a fingerprint, not a fidelity gap.
+    //
+    // So: 16 random bytes on first boot, hex, kept at /home/.machine-id -- under the `persist =
+    // /home` root, so it survives reboots the way a real machine-id must, and travels with the
+    // install rather than the image.  Regenerating it per boot would break the "persistent" half of
+    // the contract; baking it into the image would break the "unique" half.
+    if (cstrEq(path, "/etc/machine-id")) {
+        __gshared char[33] mid;               // 32 hex + NUL
+        __gshared bool midReady = false;
+        if (!midReady) {
+            bool loaded = false;
+            int parent; const(char)* leaf; size_t leafLen;
+            const int node = rtResolve("/home/.machine-id\0".ptr, parent, leaf, leafLen);
+            if (node >= 0 && g_rt[node].kind == RT_REG && g_rt[node].size >= 32) {
+                foreach (i; 0 .. 32) mid[i] = cast(char)g_rt[node].data[i];
+                loaded = true;
+            }
+            if (!loaded) {
+                ubyte[16] raw;
+                random_get_bytes(raw.ptr, 16);
+                foreach (i; 0 .. 16) {
+                    mid[i * 2]     = hexDigitLower((raw[i] >> 4) & 0xF);
+                    mid[i * 2 + 1] = hexDigitLower(raw[i] & 0xF);
+                }
+                // Persist it.  A failure here is not fatal: the id stays stable for this boot and
+                // is regenerated next time, which is worse than persistent but still not shared.
+                const int fd = cast(int)linux_sys_open(cast(ulong)"/home/.machine-id\0".ptr,
+                                                       O_CREAT | O_WRONLY | O_TRUNC, 0600);
+                if (fd >= 0) {
+                    (void)linux_sys_write(cast(ulong)fd, cast(ulong)mid.ptr, 32);
+                    linux_sys_close(cast(ulong)fd);
+                }
+            }
+            mid[32] = 0;
+            midReady = true;
+        }
+        size_t mpos = 0;
+        foreach (i; 0 .. 32) g_procBuf[mpos++] = mid[i];
+        g_procBuf[mpos++] = '\n';
+        g_procBuf[mpos] = 0;
+        return mpos;
+    }
+
     if (cstrEq(path, "/proc/bus/pci/devices")) {
         import drivers.pci : pciConfigRead32;
         foreach (slot; 0 .. 32) {

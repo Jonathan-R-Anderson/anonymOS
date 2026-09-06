@@ -189,10 +189,37 @@ Note the theme genuinely does not exist (the Epin asset ships only `settings.ini
 the asset provides `gtk-3.0/`). The correct answer is ENOENT, which GTK handles by falling back to
 its built-in theme. "Is a directory" is a different thing and it does not.
 
-**Next, in order:** (1) make a non-`O_DIRECTORY` open of a non-existent path under those prefixes
-return ENOENT rather than a fabricated directory — being careful, since some callers rely on empty
-synthetic directories existing; (2) re-test, since GTK may simply be mishandling the directory
-answer; (3) if it still hangs, find what it waits on after icon-theme loading.
+**FIXED — second bug.** A non-`O_DIRECTORY` open of a path that only matched a prefix rule now
+returns ENOENT. Scoped narrowly: `O_DIRECTORY` opens still get their directory (so `opendir` on an
+empty `/etc/dbus-1` is unaffected) and the exact base directories come from the non-prefix rules.
+`boot-test: PASS` afterwards, so nothing that relies on synthetic directories regressed.
+
+The messages are now the right ones — GTK's ordinary fallback path:
+
+```
+Theme parsing error: ... Error opening file .../gtk-3.24/gtk.css: No such file or directory
+Failed to open file "/etc/gtk-3.0/Compose": No such file or directory
+```
+
+**Still hangs — third blocker, now located: fontconfig.** After its own "create window" marker the
+client's last activity is font setup, and then it stops:
+
+```
+[open] /etc/fonts/fonts.conf
+[open] /usr/share/fonts
+[open] /var/cache/fontconfig//3830…cache-9
+[open] /var/cache/fontconfig//3830…cache-9.TMP-lPEcK      <- writing a cache
+```
+
+then nothing but repeated `ioctl(fd=2, TIOCGWINSZ)`, which the capability layer denies. It never
+sends another Wayland message and never binds `xdg_wm_base`. The process stays alive — this is a
+hang, not a crash.
+
+**Next:** find why the fontconfig cache write does not complete. A related failure is already
+visible earlier in the same log — `Failed to write keyfile to /etc/glib-2.0/settings/keyfile:
+Function not implemented` — so writes to some paths return ENOSYS, and fontconfig writing
+`cache-9.TMP-…` and renaming it into place is exactly that shape. Worth checking whether
+`/var/cache/fontconfig` is writable at all, and what the `.TMP-` create/rename actually returns.
 
 **Real bugs found while building the harness** (all fixed, none related to 2.3):
 

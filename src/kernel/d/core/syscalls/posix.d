@@ -9643,6 +9643,31 @@ private void wlWireTrace(const(char)* dir, msghdr* m, long n) @nogc nothrow {
         klog(" sz="); klog_dec(sz);
         hangTraceWho();
         klog("\n");
+
+        // wl_display.error(object_id, code, message) -- event opcode 0 on object 1.  This is the
+        // one message that matters: the compositor rejecting the client, after which libwayland
+        // tears the connection down and the client exits without ever mapping a window.  Its
+        // payload is the whole answer to ROADMAP 2.3, so decode it rather than just its size.
+        // Layout after the 8-byte header: u32 object_id, u32 code, then a string as u32 length
+        // (including the NUL) followed by that many bytes.
+        if (objId == 1 && op == 0 && dir[0] == '<' && off + 20 <= avail && sz >= 20) {
+            const uint badObj = *cast(const(uint)*)(p + off + 8);
+            const uint code   = *cast(const(uint)*)(p + off + 12);
+            const uint slen   = *cast(const(uint)*)(p + off + 16);
+            klog("[wl] PROTOCOL ERROR obj="); klog_dec(badObj);
+            klog(" code="); klog_dec(code);
+            klog(" msg=");
+            if (slen > 0 && slen < 256 && off + 20 + slen <= avail) {
+                foreach (i; 0 .. slen - 1) {          // -1: drop the trailing NUL
+                    const char c = cast(char)p[off + 20 + i];
+                    if (c == 0) break;
+                    char[2] s; s[0] = c; s[1] = 0; klog(s.ptr);
+                }
+            } else {
+                klog("(unreadable)");
+            }
+            klog("\n");
+        }
         off += sz;
     }
 }

@@ -4120,7 +4120,14 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
     // this investigation -- the HOG: counters, TIOCGWINSZ, and fontconfig-is-last.  A complete
     // record of syscall numbers says where it actually stops without any inference.
     // REMOVE once 2.3 is understood.
-    if (g_gtkSyscallN < 4000 && gtkTaskNow()) {
+    // Skip the high-frequency, state-free calls.  The first attempt spent 2050 of its 4000-line
+    // budget on poll alone and never reached the end of the process's life, so it showed the
+    // beginning of startup rather than where it stops.  Writing a line to the serial port per
+    // syscall is also slow enough to distort what is being measured -- a client that is merely
+    // slow starts to look hung.  Dropping poll, read, readv, lseek and clock_gettime keeps the
+    // calls that change state and makes the same budget cover far more wall-clock.
+    const bool scNoise = (n == 7 || n == 0 || n == 19 || n == 8 || n == 228 || n == 1);
+    if (!scNoise && g_gtkSyscallN < 4000 && gtkTaskNow()) {
         ++g_gtkSyscallN;
         klog("[sc] "); klog_dec(n);
         klog(" a="); klog_hex(a);

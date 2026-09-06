@@ -682,6 +682,24 @@ static void draw_settings(struct app *app){
             draw_text(app, "+", x+8, y+4, 16, 14, TXT);
         }
     }
+
+    /* Footer: the persistence state, READ BACK from disk rather than remembered.  It tells the
+     * user their settings will outlive the session, and it is the only way to see that the two
+     * files were actually written -- this app is forked by Hyprland and so has no console, which
+     * is what made a log line useless for the same question during 3.0b. */
+    {
+        char foot[128]; struct stat sc, sl;
+        int okc = (stat(SETTINGS_CONF, &sc) == 0), okl = (stat(SETTINGS_LUA, &sl) == 0);
+        if (okc && okl)
+            snprintf(foot, sizeof foot, "Saved: settings.conf %ldB + settings.lua %ldB",
+                     (long)sc.st_size, (long)sl.st_size);
+        else if (okc || okl)
+            snprintf(foot, sizeof foot, "Partly saved: conf %s, lua %s",
+                     okc ? "ok" : "MISSING", okl ? "ok" : "MISSING");
+        else
+            snprintf(foot, sizeof foot, "Defaults -- nothing saved yet");
+        draw_text(app, foot, CARD_X+2, app->height-20, CARD_W_OF(app), 11, DIM);
+    }
 }
 
 static void draw_menu(struct app *app){

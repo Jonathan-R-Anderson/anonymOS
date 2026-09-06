@@ -59,6 +59,10 @@ struct app {
     uint32_t *pixels; FT_Library ft; FT_Face face;
     unsigned char *font_data; size_t font_size, buffer_size;
     int width, height, stride, font_ready, running;
+    /* ROADMAP 3.2: the shm mapping (so a resize can release it) and the size the compositor
+     * last asked for, applied on the next xdg_surface.configure. */
+    unsigned char *map_base; size_t map_total;
+    int pending_width, pending_height;
     double ptr_y;
 
     char *text; int textlen;       // current file content
@@ -203,6 +207,7 @@ static int create_buffers(struct app *a){
     for(int i=0;i<2;i++){ a->bufs[i].px=(uint32_t*)(base+(size_t)i*a->buffer_size);
         a->bufs[i].wl=wl_shm_pool_create_buffer(pool,(int)((size_t)i*a->buffer_size),a->width,a->height,a->stride,WL_SHM_FORMAT_XRGB8888);
         if(!a->bufs[i].wl){wl_shm_pool_destroy(pool);close(fd);return -1;} wl_buffer_add_listener(a->bufs[i].wl,&buffer_listener,a); a->bufs[i].busy=0; }
+    a->map_base=base; a->map_total=tot;
     wl_shm_pool_destroy(pool); close(fd);
     /* Shadow copy of the last presented frame; commit() diffs against it.  A NULL shadow is a
        supported fallback -- commit() then damages the full surface, i.e. the old behaviour. */
@@ -322,12 +327,51 @@ static void seat_name(void*d,struct wl_seat*s,const char*n){(void)d;(void)s;(voi
 static const struct wl_seat_listener seat_listener={.capabilities=seat_caps,.name=seat_name};
 static void wm_ping(void*d,struct xdg_wm_base*b,uint32_t s){(void)d;xdg_wm_base_pong(b,s);}
 static const struct xdg_wm_base_listener wm_base_listener={.ping=wm_ping};
-static void tl_conf(void*d,struct xdg_toplevel*t,int32_t w,int32_t h,struct wl_array*s){(void)d;(void)t;(void)w;(void)h;(void)s;}
+/* ROADMAP 3.2: record the size Hyprland asks for; this used to discard w and h. */
+static void tl_conf(void*d,struct xdg_toplevel*t,int32_t w,int32_t h,struct wl_array*s){
+    struct app*a=d; (void)t; (void)s;
+    if(w>0) a->pending_width=w;
+    if(h>0) a->pending_height=h;
+}
 static void tl_close(void*d,struct xdg_toplevel*t){(void)t;struct app*a=d;a->running=0;}
 static void tl_bounds(void*d,struct xdg_toplevel*t,int32_t w,int32_t h){(void)d;(void)t;(void)w;(void)h;}
 static void tl_wmcap(void*d,struct xdg_toplevel*t,struct wl_array*c){(void)d;(void)t;(void)c;}
 static const struct xdg_toplevel_listener toplevel_listener={.configure=tl_conf,.close=tl_close,.configure_bounds=tl_bounds,.wm_capabilities=tl_wmcap};
-static void xs_conf(void*d,struct xdg_surface*s,uint32_t serial){struct app*a=d;xdg_surface_ack_configure(s,serial);a->configured=1;commit(a);}
+/* ROADMAP 3.2: rebuild both buffers, the shadow, and the visible row count at a new size.
+ *
+ * The row count is the reflow here: a log view is a list, so "how many lines fit" IS the layout.
+ * It was already derived from the height -- (height - HEADER_H - 6) / LINEH -- but computed once
+ * behind an `if (rows <= 0)` guard, which was correct while the window could not change size.
+ *
+ * The shadow (commit()'s damage-diff buffer) has to be reallocated too, and marked invalid: it
+ * describes a frame of the OLD dimensions, so diffing against it after a resize would compare
+ * mismatched geometry.  A NULL shadow is already a supported fallback -- commit() then damages
+ * the whole surface -- so a failed realloc degrades rather than breaks. */
+static int resize_buffers(struct app *a,int w,int h){
+    if(w<=0||h<=0) return 0;
+    if(w==a->width&&h==a->height&&a->bufs[0].wl) return 0;
+    for(int i=0;i<2;i++){
+        if(a->bufs[i].wl){ wl_buffer_destroy(a->bufs[i].wl); a->bufs[i].wl=NULL; }
+        a->bufs[i].px=NULL; a->bufs[i].busy=0;
+    }
+    if(a->map_base&&a->map_base!=MAP_FAILED) munmap(a->map_base,a->map_total);
+    a->map_base=NULL; a->map_total=0; a->pixels=NULL;
+    free(a->shadow); a->shadow=NULL; a->shadow_valid=0;
+    a->width=w; a->height=h; a->stride=w*4;
+    a->buffer_size=(size_t)a->stride*(size_t)h;
+    a->rows=(a->height-HEADER_H-6)/LINEH; if(a->rows<1) a->rows=1;
+    /* Fewer rows can leave the view scrolled past the end, showing blank space below the last
+     * line; more rows can leave a gap at the bottom while following the tail. */
+    clampscroll(a);
+    if(a->follow) a->scroll=bottom_scroll(a);
+    return create_buffers(a);
+}
+
+static void xs_conf(void*d,struct xdg_surface*s,uint32_t serial){struct app*a=d;xdg_surface_ack_configure(s,serial);
+    int ww=a->pending_width>0?a->pending_width:a->width;
+    int wh=a->pending_height>0?a->pending_height:a->height;
+    if(ww!=a->width||wh!=a->height){ if(resize_buffers(a,ww,wh)<0){ log_line("LOGVIEW: resize failed"); return; } }
+    a->configured=1;commit(a);}
 static const struct xdg_surface_listener xdg_surface_listener={.configure=xs_conf};
 static void reg_global(void*d,struct wl_registry*r,uint32_t name,const char*iface,uint32_t ver){struct app*a=d;
     if(!strcmp(iface,wl_compositor_interface.name))a->compositor=wl_registry_bind(r,name,&wl_compositor_interface,ver<4?ver:4);
@@ -360,7 +404,9 @@ int main(void){
     /* FLOAT: mark this popover as fixed-size (min==max = natural size) so the tiling WM's
      * epin_is_tileable() returns false and leaves it as a free-floating window, not a tile. */
     xdg_toplevel_set_min_size(app.toplevel,WIN_W,WIN_H);
-    xdg_toplevel_set_max_size(app.toplevel,WIN_W,WIN_H);
+    /* ROADMAP 3.2: no maximum -- Hyprland floats any toplevel whose min equals its max, which is
+     * what kept this window out of the tiling layout.  The minimum stays: the header and a
+     * couple of log rows need somewhere to live. */
     wl_surface_commit(app.surface); wl_display_flush(app.display);
     int wlfd=wl_display_get_fd(app.display);
     int tick=0;

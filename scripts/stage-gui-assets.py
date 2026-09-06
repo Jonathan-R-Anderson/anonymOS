@@ -72,6 +72,18 @@ def write_png(path: Path, width: int, height: int, variant: int) -> None:
 
 def svg_icon(kind: str) -> str:
     base = {
+        # GTK's last-resort icon.  gtkiconhelper.c:495 does
+        #   g_assert(error == NULL)
+        # after looking up "image-missing", so when ANY icon lookup fails and image-missing is
+        # absent too, GTK does not degrade -- it aborts the process.  That is what killed every
+        # GTK client here: gtk_image_new_from_icon_name("terminal", ...) missed, the fallback
+        # missed as well, and the app raised SIGABRT before creating its first surface.
+        "image-missing": """
+  <rect x="14" y="24" width="100" height="80" rx="10" fill="#1E293B" stroke="#64748B" stroke-width="6"/>
+  <path d="M30 88l24-30 16 20 12-14 16 24z" fill="#475569"/>
+  <circle cx="46" cy="46" r="9" fill="#94A3B8"/>
+  <path d="M24 34l80 60" stroke="#EF4444" stroke-width="8" stroke-linecap="round"/>
+""",
         "terminal": """
   <rect x="8" y="10" width="112" height="88" rx="18" fill="#111827"/>
   <rect x="8" y="10" width="112" height="24" rx="18" fill="#334155"/>
@@ -160,8 +172,26 @@ Context=MimeTypes
     write_text(default / "index.theme", "[Icon Theme]\nInherits=Epin\n")
     write_text(default / "cursor.theme", "[Icon Theme]\nInherits=Epin\n")
 
+    # hicolor is the theme every other theme inherits from, and it shipped EMPTY --
+    # "Directories=" with nothing behind it.  So when a lookup missed in Epin, the fallback chain
+    # ended nowhere, GTK then looked for "image-missing", found nothing there either, and
+    # gtkiconhelper.c aborted the process.  Give hicolor the fallback icon GTK requires.
     hicolor = root / "icons" / "hicolor"
-    write_text(hicolor / "index.theme", "[Icon Theme]\nName=hicolor\nDirectories=\n")
+    (hicolor / "scalable" / "status").mkdir(parents=True, exist_ok=True)
+    write_text(hicolor / "scalable" / "status" / "image-missing.svg", svg_icon("image-missing"))
+    write_text(
+        hicolor / "index.theme",
+        "[Icon Theme]\n"
+        "Name=hicolor\n"
+        "Directories=scalable/status\n"
+        "\n"
+        "[scalable/status]\n"
+        "Size=128\n"
+        "Type=Scalable\n"
+        "MinSize=16\n"
+        "MaxSize=256\n"
+        "Context=Status\n",
+    )
 
 
 def stage_cursors(root: Path, cursor_src: Path | None, cursor_license: Path | None) -> None:

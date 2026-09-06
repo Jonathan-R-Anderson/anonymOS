@@ -4609,6 +4609,13 @@ private void kernelLoop() {
         // so the AP can hold it (and dispatch its own task's syscalls) while the BSP is in ring 3.
         // EVERY exit path from here to the userspace run, and the end of the body, must release it.
         bklAcquire(&g_bkl);
+        {   // ROADMAP 3.5b: sample the compositor's park state from the LOOP, which runs orders of
+            // magnitude more often than the 1 Hz probe.  Without this the probe only ever saw one
+            // instant per second and mistook an idle desktop for a stalled one.
+            import core.syscalls.posix : freezeNotePresenterParked, g_presenterTid;
+            const int _pt = g_presenterTid;
+            if (_pt >= 0 && _pt < MAX_TASKS && g_pollBlocked[_pt]) freezeNotePresenterParked();
+        }
         freezeProbeKlog();     // freeze diagnostic → /run/klog (filter "freeze"): who hogs the core during a stall
         presentProfTick();     // PERF: per-frame cost split (kernel blit vs compositor render), every 5 s
         fsPersistTick(pitMs());// ROADMAP 1.2: flush /home if it changed, at most every 30 s

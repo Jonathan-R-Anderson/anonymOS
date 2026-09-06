@@ -13601,9 +13601,21 @@ public bool desktopIsIdle() @nogc nothrow {
     const int c = g_presenterTid;
     if (c < 0 || c >= MAX_TASKS) return false;
     if (!g_tasks[c].active || g_tasks[c].exited) return false;
-    if (!g_pollBlocked[c]) return false;              // running, so not idle-by-choice
+    // ROADMAP 3.5b: the park state must be sampled OVER the last second, not at this instant.
+    // Hyprland alternates parked/runnable many times a second (timers, dbus, client traffic), so
+    // an instantaneous !g_pollBlocked[c] caught it runnable on roughly half the ticks and called
+    // a perfectly idle desktop "stalled".  The symptom was unmistakable once counted: 79 stall
+    // lines and 79 CLEARED lines, strictly alternating, with flipQ pinned at 67 the whole time --
+    // the probe flapping at 1 Hz, not the desktop freezing and recovering 79 times.
+    if (!g_cmpParkedSeen) return false;               // never parked this window: genuinely running
     return g_flipQueued == g_flipRead;                // nothing outstanding to wake it for
 }
+
+// ROADMAP 3.5b: sticky "the compositor parked at least once since the last probe tick", set from
+// the scheduler loop (which runs far faster than the probe) and cleared once per probe window.
+__gshared bool g_cmpParkedSeen = false;
+private __gshared ulong g_freezeLastFlipQ = 0;
+public void freezeNotePresenterParked() @nogc nothrow { g_cmpParkedSeen = true; }
 
 public void freezeProbeKlog() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
@@ -13614,9 +13626,16 @@ public void freezeProbeKlog() @nogc nothrow {
     const bool stalled = (now >= g_lastPresentMs) && (now - g_lastPresentMs >= 1500)
                          && !desktopIsIdle();
     if (!stalled) {
+        g_cmpParkedSeen = false;                      // start a fresh observation window
         if (g_freezeWasStalled) {
             g_freezeWasStalled = false;
-            klog("[freeze] CLEARED — desktop presenting again\n");
+            // Say which of the two actually happened.  "presenting again" was printed
+            // unconditionally, including when the stall ended because the desktop went IDLE with
+            // flipQ unmoved -- a diagnostic asserting frames that were never drawn.
+            if (g_flipQueued != g_freezeLastFlipQ)
+                klog("[freeze] CLEARED — desktop presenting again\n");
+            else
+                klog("[freeze] CLEARED — desktop went idle, no frame was pending\n");
             for (int i = 0; i < MAX_TASKS; i++) g_freezeSchedHist[i] = 0;  // fresh histogram for the next episode
         }
         return;
@@ -13624,6 +13643,8 @@ public void freezeProbeKlog() @nogc nothrow {
     if (g_freezeKlogLastMs != 0 && now - g_freezeKlogLastMs < 1000) return;   // ~1 Hz while stalled
     g_freezeKlogLastMs = now;
     g_freezeWasStalled = true;
+    g_freezeLastFlipQ  = g_flipQueued;                // to tell "presented" from "went idle" later
+    g_cmpParkedSeen    = false;                       // fresh window for the next second
     int[3] top; top[0]=-1; top[1]=-1; top[2]=-1;
     for (int i=0;i<MAX_TASKS;i++){ const uint c=g_freezeSchedHist[i]; if(c==0)continue;
         if(top[0]<0||c>g_freezeSchedHist[top[0]]){top[2]=top[1];top[1]=top[0];top[0]=i;}

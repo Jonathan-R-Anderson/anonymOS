@@ -18,7 +18,12 @@
 terminal        = "/hos-wifiterm"
 fileManager     = "/wl-files"
 textEditor      = "/wl-editor"
-codeEditor      = "/wl-editor"
+-- ROADMAP 3.2: a NO-OP on purpose.  The base config binds SUPER+C to codeEditor, and
+-- custom/keybinds.lua binds the same key to the calendar -- and Hyprland runs BOTH, so one
+-- press opened the editor and the calendar together (observed: wl-calendar and wl-editor
+-- starting one log line apart from a single keypress).  The editor keeps its own binding at
+-- SUPER+SHIFT+E instead, which is free.
+codeEditor      = "true"
 taskManager     = "/wl-sysmon"
 settingsApp     = "/wl-quicksettings"
 

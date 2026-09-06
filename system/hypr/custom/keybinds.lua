@@ -18,6 +18,7 @@ hl.bind("SUPER + N",         hl.dsp.exec_cmd("/wl-quicksettings"),  { descriptio
 hl.bind("SUPER + ALT + L",   hl.dsp.exec_cmd("/wl-logview"),        { description = "Log viewer" })
 hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd("/wl-term"),           { description = "Terminal (wl-term)" })
 hl.bind("SUPER + SHIFT + F", hl.dsp.exec_cmd("/wl-files"),          { description = "Files" })
+hl.bind("SUPER + SHIFT + E", hl.dsp.exec_cmd("/wl-editor"),         { description = "Text editor" })
 hl.bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("/wl-sysmon"),         { description = "System monitor" })
 hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("/wl-screenshot"),     { description = "Screenshot" })
 hl.bind("SUPER + SHIFT + A", hl.dsp.exec_cmd("/store-app"),         { description = "App store" })

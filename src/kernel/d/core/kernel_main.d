@@ -1485,8 +1485,7 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     // domains must still boot a desktop.  That fallback is the old behaviour, now the exception
     // rather than the rule.
     {
-        import core.domain : domainSessionIdentity, domainSessionId, domainById;
-        import core.namespace : nsClone;
+        import core.domain : domainSessionIdentity;
         const uint sid = domainSessionIdentity();
         g_tasks[t].identityObjId = (sid != 0) ? sid : g_tasks[0].identityObjId;
         // ROADMAP 4.0b: give the task a SHADOW clone of the session domain's restricted namespace.
@@ -1495,12 +1494,17 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
         // break the desktop -- that view denies /System, which is where the compositor, the
         // installer and every app read fonts, config and binaries from -- and the correct binding
         // set cannot be guessed, only observed.
-        const uint sdom = domainSessionId();
-        if (sdom != 0) {
-            auto drec = domainById(sdom);
-            if (drec !is null && drec.nsObjId != 0)
-                g_tasks[t].auditNsObjId = nsClone(drec.nsObjId);
-        }
+        // ROADMAP 4.0b: the per-spawn nsClone() is REMOVED, not merely unused.
+        //
+        // Disabling the audit hook alone did not restore the boot -- the same fault persisted:
+        //   [pf] no region tid=2 va=00007f53f000f000
+        //   KERNEL FAULT trap=10e pf=not-present
+        // so the cloning itself is what breaks dbus, independently of anything reading the clone.
+        // Cloning a domain namespace on every spawn is evidently not a side-effect-free operation
+        // here, which is worth knowing before the next attempt: the shadow namespace has to come
+        // from somewhere that does not mutate namespace state per process.
+        //
+        // g_tasks[].auditNsObjId stays declared and is left 0; nsAuditOpen() is a no-op on 0.
         // ROADMAP 4.0: one line per spawn, bounded.  The border still showed System after this
         // change, and the two explanations -- no session domain found, or one found with no
         // identity -- are indistinguishable from the border alone.

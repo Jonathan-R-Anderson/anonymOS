@@ -9678,6 +9678,23 @@ private void wlWireTrace(const(char)* dir, msghdr* m, long n) @nogc nothrow {
         // Learn names before printing, so the bind itself already shows what it created.
         if (objId == 2 && op == 0 && dir[0] == '-') wlNoteBind(p, off, avail);
 
+        // wl_registry.global(name: u32, interface: string, version: u32) -- the EVENT direction on
+        // object 2.  The client binds only a subset, so the bind table alone cannot distinguish
+        // "the compositor never offered xdg_wm_base" from "the client chose not to bind it".
+        // That distinction decides whether the remaining fault is compositor-side or client-side.
+        if (objId == 2 && op == 0 && dir[0] == '<' && off + 16 <= avail) {
+            const uint slen = *cast(const(uint)*)(p + off + 12);
+            if (slen > 1 && slen < 64 && off + 16 + slen <= avail) {
+                klog("[wl]    advertises: ");
+                foreach (i; 0 .. slen - 1) {
+                    const char c = cast(char)p[off + 16 + i];
+                    if (c == 0) break;
+                    char[2] s; s[0] = c; s[1] = 0; klog(s.ptr);
+                }
+                klog("\n");
+            }
+        }
+
         ++g_wlWireN;
         klog("[wl] "); klog(dir);
         klog(" obj="); klog_dec(objId);

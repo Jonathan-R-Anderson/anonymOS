@@ -57,9 +57,14 @@ for _ in $(seq 1 20); do [ -s "$PPM" ] && break; sleep 0.5; done
 
 # Blank the volatile regions in the CAPTURE.  The golden is recorded through this same path, so
 # both sides are masked identically and the mask can change without invalidating stored goldens.
+# The width has to be resolved before the draw: ImageMagick does NOT expand %[fx:...] inside
+# -draw, so "rectangle 0,0 %[fx:w-1],32" is taken literally and the whole convert fails.
 mask() {
+    local w
+    w="$(identify -format '%w' "$1" 2>/dev/null)"
+    [ -n "$w" ] || return 1
     convert "$1" -fill black \
-        -draw "rectangle 0,0 %[fx:w-1],$BAR_H" \
+        -draw "rectangle 0,0 $((w - 1)),$BAR_H" \
         "$2" 2>/dev/null
 }
 

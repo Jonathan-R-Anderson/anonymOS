@@ -177,21 +177,19 @@ Context=MimeTypes
     # ended nowhere, GTK then looked for "image-missing", found nothing there either, and
     # gtkiconhelper.c aborted the process.  Give hicolor the fallback icon GTK requires.
     hicolor = root / "icons" / "hicolor"
-    (hicolor / "scalable" / "status").mkdir(parents=True, exist_ok=True)
-    write_text(hicolor / "scalable" / "status" / "image-missing.svg", svg_icon("image-missing"))
-    write_text(
-        hicolor / "index.theme",
-        "[Icon Theme]\n"
-        "Name=hicolor\n"
-        "Directories=scalable/status\n"
-        "\n"
-        "[scalable/status]\n"
-        "Size=128\n"
-        "Type=Scalable\n"
-        "MinSize=16\n"
-        "MaxSize=256\n"
-        "Context=Status\n",
-    )
+    # PNG, not SVG.  librsvg here is a STUB (deps/hyprland-hos/Makefile.deps builds
+    # librsvg-stub), so gdk-pixbuf cannot decode an SVG at all -- which is why writing
+    # image-missing.svg changed nothing and GTK still aborted with the icon "not present".
+    # gdk-pixbuf handles PNG natively, so the fallback has to be a PNG to actually load.
+    # Several fixed sizes because GTK picks by requested size; GTK_ICON_SIZE_DIALOG is 48.
+    sizes = (16, 22, 24, 32, 48, 64, 128)
+    for i, sz in enumerate(sizes):
+        write_png(hicolor / f"{sz}x{sz}" / "status" / "image-missing.png", sz, sz, i)
+    dirs = ",".join(f"{sz}x{sz}/status" for sz in sizes)
+    body = "[Icon Theme]\nName=hicolor\nDirectories=" + dirs + "\n"
+    for sz in sizes:
+        body += f"\n[{sz}x{sz}/status]\nSize={sz}\nType=Fixed\nContext=Status\n"
+    write_text(hicolor / "index.theme", body)
 
 
 def stage_cursors(root: Path, cursor_src: Path | None, cursor_license: Path | None) -> None:

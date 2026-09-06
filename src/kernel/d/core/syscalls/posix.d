@@ -3167,6 +3167,41 @@ private size_t procDynamicSynth(const(char)* path) {
     // /home` root, so it survives reboots the way a real machine-id must, and travels with the
     // install rather than the image.  Regenerating it per boot would break the "persistent" half of
     // the contract; baking it into the image would break the "unique" half.
+
+    // ── ROADMAP 2.1: /etc/resolv.conf from the DHCP lease, not hardcoded public resolvers ──────
+    //
+    // This was a constant "nameserver 8.8.8.8 / nameserver 1.1.1.1".  On an OS built for
+    // deniability that is the wrong default twice over: every DNS query on every install went to
+    // Google and Cloudflare regardless of what the network actually offered, which both leaks the
+    // browsing of a user who chose this OS specifically to avoid that, and ignores the resolver the
+    // local network configured -- so split-horizon and captive-portal names simply did not resolve.
+    //
+    // The DHCP client already learns a resolver (dhcpGetConfig's dns out-parameter) and nothing was
+    // reading it.  Use it when the lease is BOUND; fall back to the public resolvers only when
+    // there is no lease at all, since a nameserver-less resolv.conf breaks name resolution
+    // outright, and state that in the file itself so the fallback is visible rather than silent.
+    if (cstrEq(path, "/etc/resolv.conf")) {
+        import network.dhcp : dhcpGetConfig;
+        import network.types : IPv4Address;
+        IPv4Address ip, gw, mask, dns;
+        size_t rpos = 0;
+        if (dhcpGetConfig(&ip, &gw, &mask, &dns) &&
+            !(dns.bytes[0] == 0 && dns.bytes[1] == 0 && dns.bytes[2] == 0 && dns.bytes[3] == 0)) {
+            pbStr(rpos, "# from the DHCP lease\n".ptr);
+            pbStr(rpos, "nameserver ".ptr);
+            foreach (i; 0 .. 4) {
+                pbNum(rpos, cast(long)dns.bytes[i]);
+                if (i < 3) pbStr(rpos, ".".ptr);
+            }
+            pbStr(rpos, "\n".ptr);
+        } else {
+            pbStr(rpos, "# no DHCP lease yet -- public fallback, NOT the local network's resolver\n".ptr);
+            pbStr(rpos, "nameserver 8.8.8.8\nnameserver 1.1.1.1\n".ptr);
+        }
+        g_procBuf[rpos] = 0;
+        return rpos;
+    }
+
     if (cstrEq(path, "/etc/machine-id")) {
         __gshared char[33] mid;               // 32 hex + NUL
         __gshared bool midReady = false;

@@ -3188,10 +3188,10 @@ private size_t procDynamicSynth(const(char)* path) {
                 // Persist it.  A failure here is not fatal: the id stays stable for this boot and
                 // is regenerated next time, which is worse than persistent but still not shared.
                 const int fd = cast(int)linux_sys_open(cast(ulong)"/home/.machine-id\0".ptr,
-                                                       O_CREAT | O_WRONLY | O_TRUNC, 0600);
+                                                       O_CREAT | O_WRONLY | O_TRUNC, 0x180);   // 0600
                 if (fd >= 0) {
-                    (void)linux_sys_write(cast(ulong)fd, cast(ulong)mid.ptr, 32);
-                    linux_sys_close(cast(ulong)fd);
+                    cast(void)linux_sys_write(cast(ulong)fd, cast(ulong)mid.ptr, 32);
+                    cast(void)linux_sys_close(cast(ulong)fd);
                 }
             }
             mid[32] = 0;

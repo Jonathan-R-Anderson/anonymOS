@@ -515,11 +515,50 @@ private uint futexRequeueAddress(ulong from, ulong to, uint maxRequeue, uint wak
     return moved;
 }
 
+// ROADMAP 3.5: alternation state for the compositor turn guarantee below.
+private __gshared bool g_schedCompTurn = false;
+
 private void scheduleNext() {
     for (int i = 0; i < MAX_TASKS; i++)
         refreshFutexWaiter(i);
 
     ulong cur = g_current_task_id;
+
+    // ── ROADMAP 3.5 (DESKTOP_RESP R6): guarantee the compositor a turn ──
+    //
+    // Measured first, then fixed.  R6 assumes the scheduler is cooperative and "a task that
+    // doesn't yield can monopolize the core"; that part is already false -- the 4 kHz APIC tick
+    // reaches scheduleNext() at 1 kHz and takes a non-yielding ring-3 task off the core after
+    // ~1ms.  Four /hog tasks (src/util/hog.c, which never makes a syscall) confirmed it: the
+    // system stayed alive and kept logging throughout.
+    //
+    // What they DID do is stall the display: "[freeze] stalled 1s cur=14:hog".  The cause is not
+    // preemption but SHARE.  Plain round-robin hands every runnable task an equal slice, so N
+    // background spinners cut the compositor to 1/(N+1) of the core -- and on softpipe, where a
+    // frame is already expensive, a fifth of the CPU is not enough to keep presenting.
+    //
+    // So the compositor alternates with everything else: at most one non-compositor task runs
+    // between two compositor turns, which floors its share at ~50% no matter how many hogs exist,
+    // instead of letting it decay as 1/(N+1).  g_presenterTid is whoever last actually presented
+    // a frame, so this follows the real compositor rather than a hardcoded name.
+    //
+    // Deliberately not a priority system: one bit of alternation is the smallest thing that meets
+    // R6's "the compositor is guaranteed turns", and it cannot starve anyone -- the other half of
+    // the slots stay strict round-robin.
+    if (!g_schedCompTurn) {
+        const int ptid = g_presenterTid;
+        if (ptid >= 0 && ptid < MAX_TASKS && ptid != g_idleTid && cast(ulong)ptid != cur) {
+            auto pt = &g_tasks[ptid];
+            if (pt.active && !pt.exited && !pt.waiting) {
+                g_schedCompTurn = true;              // next selection goes back to round-robin
+                g_current_task_id = cast(uint)ptid;
+                freezeSchedSample(ptid);
+                return;
+            }
+        }
+    }
+    g_schedCompTurn = false;
+
     // Round-robin over ALL task slots including 0: task 0 is the main userspace
     // process, so once it blocks (poll/futex/vfork) it must be reschedulable like
     // any other.  (Previously slot 0 was skipped, which permanently starved the

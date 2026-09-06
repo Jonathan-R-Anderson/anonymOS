@@ -358,8 +358,14 @@ private void freezeWatchdog() {
 // (whose fd array lives in userspace and cannot be re-checked from the tick).
 __gshared int[MAX_TASKS] g_pollEpfd = -1;
 
+// ROADMAP 3.5b: how often a poll() waiter is re-checked by the tick backstop.  Power of two so
+// the test is a mask.  8 ticks = ~8ms at the 1 kHz scheduler tick.
+private enum ulong POLL_BACKSTOP_TICKS = 8;
+private __gshared ulong g_wakeTick = 0;
+
 private void wakePollers() @nogc nothrow {
     import core.syscalls.posix : fdIsReadable;
+    ++g_wakeTick;
     // ITIMER_REAL expiry -> pending SIGALRM.  Driven here because wakePollers() already runs on
     // every PIT tick and is the natural place to un-park time-based waiters.
     itimerTick();
@@ -384,10 +390,26 @@ private void wakePollers() @nogc nothrow {
             // Skipping cannot lose a wakeup: this is the same predicate epoll_wait evaluates, so
             // a task left parked would have found nothing and re-parked on the spot.
             const int ep = g_pollEpfd[i];
+            const ulong dl = g_pollDeadline[i];
+            const bool due = (dl != 0 && pitMs() >= dl);
             if (ep >= 0) {
-                const ulong dl = g_pollDeadline[i];
-                const bool due = (dl != 0 && pitMs() >= dl);
                 if (!due && !fdIsReadable(ep)) continue;   // nothing ready, not yet due: stay asleep
+            } else if (!due && (g_wakeTick & (POLL_BACKSTOP_TICKS - 1)) != 0) {
+                // ROADMAP 3.5b: poll() waiters -- RATE-LIMIT rather than filter.
+                //
+                // Filtering these the way epoll waiters are filtered does not work, and the
+                // attempt is on record (reverted d37fb65e90): a poll() fd array lives in
+                // userspace, so the tick can only consult a snapshot taken at park time, and
+                // removing the unconditional wake stranded a futex waiter spinning on *u == val
+                // until the desktop never came up.  The blanket wake is a system-wide SAFETY NET,
+                // not merely poll servicing -- anything that parks and is never explicitly woken
+                // still re-checks itself every millisecond because of it.
+                //
+                // So keep the net and lower its rate.  Re-checking every 8th tick instead of every
+                // tick cuts the churn ~8x while bounding the cost of a missed wakeup at ~8ms
+                // instead of forever.  Input and fd readiness do NOT depend on this path: their
+                // own IRQ and completion paths call wakePollers() directly.
+                continue;
             }
             g_tasks[i].waiting = false;
         }

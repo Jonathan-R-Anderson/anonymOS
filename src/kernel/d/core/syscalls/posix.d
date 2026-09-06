@@ -13715,6 +13715,7 @@ private enum ulong PRESENT_FULL_EVERY = 60;
 public __gshared ulong g_presentRowsCopied = 0;
 public __gshared ulong g_presentRowsTotal  = 0;
 public __gshared ulong g_presentBlitCycles = 0;
+public __gshared ulong g_presentStoreCycles = 0;   // the framebuffer writes alone
 
 // Row compare, 8 bytes at a time.  Written out rather than calling memcmp because this file
 // imports only memcpy from core.stdc.string, and a 64-bit-wide compare is the point anyway: it
@@ -13873,9 +13874,14 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
             memcpy(g_presentShadow + cast(size_t)row * rowBytes, srow, rowBytes);
         }
         ++rowsCopied;
+        // Time the STORE only.  Timing the whole loop and dividing by copied rows charged the
+        // cost of comparing ~740 unchanged rows to the ~60 that were written, which says nothing
+        // about the store instruction -- the thing actually under evaluation here.
+        const ulong _tRow = rdtsc();
         memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
                src + cast(size_t)row * cast(size_t)fb.pitch,
                rowBytes);
+        g_presentStoreCycles += rdtsc() - _tRow;
     }
 
     // R5 accounting: how much of the screen this present actually wrote, and what the writing
@@ -13954,8 +13960,8 @@ public void presentProfStats() @nogc nothrow {
         klog_dec((g_presentRowsCopied * 100) / g_presentRowsTotal);
         klog("% of "); klog_dec(g_presentRowsTotal); klog(" scanlines\n");
         if (g_presentRowsCopied != 0) {
-            klog("[present] blit_cycles_per_row=");
-            klog_dec(g_presentBlitCycles / g_presentRowsCopied);
+            klog("[present] cycles_per_row loop="); klog_dec(g_presentBlitCycles / g_presentRowsCopied);
+            klog(" store="); klog_dec(g_presentStoreCycles / g_presentRowsCopied);
             klog("\n");
         }
     }

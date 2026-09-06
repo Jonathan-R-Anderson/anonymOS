@@ -3212,6 +3212,78 @@ private size_t procDynamicSynth(const(char)* path) {
         return rpos;
     }
 
+
+    // ── ROADMAP 2.1: the DRM device's uevent + subsystem ids, from the same live function ──────
+    //
+    // These stayed constant when vendor/device/revision went live, and the proof run showed that
+    // is not a theoretical mismatch: this VM's display controller is 1234:1111 (QEMU stdvga), so
+    // `vendor` read 0x1234 while `uevent` next to it still announced PCI_ID=1AF4:1050.  Files in
+    // one directory contradicting each other is worse than both being wrong together -- a caller
+    // that cross-checks them sees corruption, and one that reads only uevent gets the old lie.
+    //
+    // Subsystem ids come from config offset 0x2C, and the slot name is built from the function
+    // actually found rather than the 0000:00:04.0 that was assumed.
+    {
+        const bool isUevent = cstrEq(path, "/sys/dev/char/226:0/device/uevent")
+                           || cstrEq(path, "/sys/dev/char/226:128/device/uevent");
+        const bool isSubVen = cstrEq(path, "/sys/dev/char/226:0/device/subsystem_vendor")
+                           || cstrEq(path, "/sys/dev/char/226:128/device/subsystem_vendor");
+        const bool isSubDev = cstrEq(path, "/sys/dev/char/226:0/device/subsystem_device")
+                           || cstrEq(path, "/sys/dev/char/226:128/device/subsystem_device");
+        if (isUevent || isSubVen || isSubDev) {
+            import drivers.pci : pciConfigRead32;
+            ushort gv = 0x1af4, gd = 0x1050, sv = 0x1af4, sd = 0x1100;
+            uint gslot = 4, gfunc = 0, gcls = 0x030000;
+            foreach (slot; 0 .. 32) {
+                bool done = false;
+                foreach (func; 0 .. 8) {
+                    const uint id = pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func, 0x00);
+                    const ushort vendor = cast(ushort)(id & 0xFFFF);
+                    if (vendor == 0xFFFF || vendor == 0) continue;
+                    const uint cls = pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func, 0x08);
+                    if (((cls >> 24) & 0xFF) != 0x03) continue;     // base class 0x03 = display
+                    const uint sub = pciConfigRead32(0, cast(ubyte)slot, cast(ubyte)func, 0x2C);
+                    gv = vendor; gd = cast(ushort)(id >> 16);
+                    sv = cast(ushort)(sub & 0xFFFF); sd = cast(ushort)(sub >> 16);
+                    gslot = cast(uint)slot; gfunc = cast(uint)func;
+                    gcls = (cls >> 8) & 0xFFFFFF;
+                    done = true; break;
+                }
+                if (done) break;
+            }
+            size_t upos = 0;
+            if (isSubVen || isSubDev) {
+                const ushort v = isSubVen ? sv : sd;
+                pbStr(upos, "0x".ptr);
+                foreach_reverse (i; 0 .. 4) g_procBuf[upos++] = hexDigitLower((v >> (i * 4)) & 0xF);
+                g_procBuf[upos++] = '\n';
+            } else {
+                pbStr(upos, "DRIVER=".ptr);
+                // virtio-gpu only when it really is one; otherwise the generic framebuffer driver
+                // Linux would bind to a stdvga-class device.
+                pbStr(upos, (gv == 0x1af4) ? "virtio_gpu\n".ptr : "bochs-drm\n".ptr);
+                pbStr(upos, "PCI_CLASS=".ptr);
+                foreach_reverse (i; 0 .. 6) g_procBuf[upos++] = hexDigitLower((gcls >> (i * 4)) & 0xF);
+                pbStr(upos, "\nPCI_ID=".ptr);
+                foreach_reverse (i; 0 .. 4) g_procBuf[upos++] = hexDigitUpper((gv >> (i * 4)) & 0xF);
+                g_procBuf[upos++] = ':';
+                foreach_reverse (i; 0 .. 4) g_procBuf[upos++] = hexDigitUpper((gd >> (i * 4)) & 0xF);
+                pbStr(upos, "\nPCI_SUBSYS_ID=".ptr);
+                foreach_reverse (i; 0 .. 4) g_procBuf[upos++] = hexDigitUpper((sv >> (i * 4)) & 0xF);
+                g_procBuf[upos++] = ':';
+                foreach_reverse (i; 0 .. 4) g_procBuf[upos++] = hexDigitUpper((sd >> (i * 4)) & 0xF);
+                pbStr(upos, "\nPCI_SLOT_NAME=0000:00:".ptr);
+                g_procBuf[upos++] = hexDigitLower((gslot >> 4) & 0xF);
+                g_procBuf[upos++] = hexDigitLower(gslot & 0xF);
+                g_procBuf[upos++] = '.';
+                g_procBuf[upos++] = hexDigitLower(gfunc & 0xF);
+                g_procBuf[upos++] = '\n';
+            }
+            g_procBuf[upos] = 0;
+            return upos;
+        }
+    }
+
     if (cstrEq(path, "/etc/machine-id")) {
         __gshared char[33] mid;               // 32 hex + NUL
         __gshared bool midReady = false;
@@ -10787,6 +10859,9 @@ private static immutable string[4] g_devCharEntries = ["226:0", "226:128", "13:6
 private enum ulong SYNTHDIR_NETCLASS = 0x0E7C1A55;
 // ROADMAP 2.1: /sys/bus/pci/devices, enumerated live from PCI config space rather than a constant.
 private enum ulong SYNTHDIR_PCIDEVS  = 0x0E7C1C71;
+private char hexDigitUpper(uint v) @nogc nothrow {
+    return cast(char)(v < 10 ? ('0' + v) : ('A' + (v - 10)));
+}
 private char hexDigitLower(uint v) @nogc nothrow {
     return cast(char)(v < 10 ? ('0' + v) : ('a' + (v - 10)));
 }

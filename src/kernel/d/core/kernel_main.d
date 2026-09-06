@@ -1485,9 +1485,22 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     // domains must still boot a desktop.  That fallback is the old behaviour, now the exception
     // rather than the rule.
     {
-        import core.domain : domainSessionIdentity, domainSessionId;
+        import core.domain : domainSessionIdentity, domainSessionId, domainById;
+        import core.namespace : nsClone;
         const uint sid = domainSessionIdentity();
         g_tasks[t].identityObjId = (sid != 0) ? sid : g_tasks[0].identityObjId;
+        // ROADMAP 4.0b: give the task a SHADOW clone of the session domain's restricted namespace.
+        // Opens are still resolved against the real namespace and still succeed; this one is only
+        // consulted to report what confinement WOULD have denied.  Enforcing straight away would
+        // break the desktop -- that view denies /System, which is where the compositor, the
+        // installer and every app read fonts, config and binaries from -- and the correct binding
+        // set cannot be guessed, only observed.
+        const uint sdom = domainSessionId();
+        if (sdom != 0) {
+            auto drec = domainById(sdom);
+            if (drec !is null && drec.nsObjId != 0)
+                g_tasks[t].auditNsObjId = nsClone(drec.nsObjId);
+        }
         // ROADMAP 4.0: one line per spawn, bounded.  The border still showed System after this
         // change, and the two explanations -- no session domain found, or one found with no
         // identity -- are indistinguishable from the border alone.

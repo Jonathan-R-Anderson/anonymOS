@@ -2491,9 +2491,31 @@ private uint openRightsForFlags(int flags) {
 // object, and the matching binding must grant the requested open rights. The
 // default "/" binding grants all rights, preserving current boot behavior while
 // restricted namespaces can deny access before the legacy backing resolver runs.
+// ROADMAP 4.0b: report what confinement WOULD deny, without denying it.
+//
+// Bounded and de-duplicated by first-seen path prefix, because an unbounded log of every open in a
+// desktop session is not evidence, it is noise.  The output is the input to writing the domain's
+// real bindings: today the answer to "which paths does a confined desktop need" is unknown, and
+// guessing it produces a desktop that fails to start for reasons that look like unrelated bugs.
+private __gshared int g_nsAuditLogN = 0;
+private void nsAuditOpen(int tid, const(char)* path) @nogc nothrow {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    const uint ans = g_tasks[tid].auditNsObjId;
+    if (ans == 0 || g_nsAuditLogN >= 60) return;
+    const(char)* rest; uint rights; bool denied;
+    const uint target = nsResolveCheck(ans, path, rest, rights, denied);
+    if (target != 0) return;                       // confinement would have allowed it
+    ++g_nsAuditLogN;
+    klog("[4.0b] would-deny "); klog(path);
+    klog(denied ? " (explicit deny)" : " (unbound)");
+    klog(" tid="); klog_dec(cast(ulong)cast(uint)tid);
+    klog("\n");
+}
+
 private int namespaceCheckOpen(const(char)* path, int flags) {
     if (path is null || path[0] != '/') return 0; // relative paths still use cwd shim
     int tid = cast(int)g_current_task_id;
+    nsAuditOpen(tid, path);
     if (tid < 0 || tid >= MAX_TASKS) return negErrno(ENOENT);
     objEnsureNamespace(tid);
     const(char)* rest;

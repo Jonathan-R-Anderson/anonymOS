@@ -145,6 +145,15 @@ struct Task {
     // Phase 9: this process's Namespace object (name→object bindings/mounts).
     // Threads of a process share the leader's namespace; fork clones it.
     uint namespaceObjId;
+    // ROADMAP 4.0b: a SHADOW namespace to audit confinement against, without enforcing it.
+    //
+    // Binding the desktop straight into a domain's restricted namespace breaks it: the boot proof
+    // describes that view as "home rw, /Shared ro, Private+/System+unbound denied", and the
+    // compositor, installer and every app read fonts, config and binaries out of /system.  The
+    // paths a confined desktop needs cannot be guessed, so this records what WOULD be denied while
+    // opens continue to succeed -- permissive mode, and the input to writing real bindings.
+    // 0 = no audit.
+    uint auditNsObjId;
     // IMMUTABLE_ROOTLESS §3.1/3.3: User object this task runs as. Threads and
     // forked processes inherit it; setuid-style calls can replace it only with
     // ADMIN_USER authority.

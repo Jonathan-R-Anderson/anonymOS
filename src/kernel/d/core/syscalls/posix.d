@@ -6879,6 +6879,20 @@ private immutable VFEntry[] g_vfs = [
     { "/etc/os-release",    "NAME=\"HanonymOS\"\nID=anonymos\nID_LIKE=gentoo\n" ~
                             "PRETTY_NAME=\"HanonymOS 0.1\"\nVERSION=\"0.1\"\n" ~
                             "VERSION_ID=\"0.1\"\nANSI_COLOR=\"1;36\"\n"                               },
+    // ROADMAP 2.1: hostname and timezone are DELIBERATELY uniform, not unconverted leftovers.
+    //
+    // The rest of 2.1 replaced constants with live values because a constant misdescribed the
+    // machine.  These two are the opposite case: they are BROADCAST.  A hostname goes out in every
+    // DHCP request and mDNS announcement; a timezone is a location signal that any page can read.
+    // Making them per-install would make each install distinguishable from every other -- the exact
+    // fingerprint that making machine-id unique was meant to remove, since machine-id is a
+    // local-only id that the spec requires to be unique and this OS never puts on the wire.
+    //
+    // So they stay uniform on purpose, the way Tails runs UTC regardless of where the user is and
+    // Tor Browser ships one user-agent for everyone: the anonymity set is every install of this OS,
+    // and a "correct" local value would shrink it to one.  The installer collects a timezone for
+    // display and scheduling; wiring it to /etc/timezone would be a privacy regression, not the
+    // completion of this item.
     { "/etc/hostname",      "hanonymOS\n"                                                              },
     { "/etc/hosts",         "127.0.0.1 localhost hanonymOS\n::1 localhost\n"                           },
     { "/etc/machine-id",    "deadbeefcafe00001234567890abcdef\n"                                       },

@@ -2503,7 +2503,7 @@ private __gshared bool g_nsAuditEnabled = false;
 private void nsAuditOpen(int tid, const(char)* path) @nogc nothrow {
     if (!g_nsAuditEnabled) return;
     if (tid < 0 || tid >= MAX_TASKS) return;
-    const uint ans = g_tasks[tid].auditNsObjId;
+    const uint ans = 0;   // ROADMAP 4.0b: no shadow namespace today -- see the note at the call site
     if (ans == 0 || g_nsAuditLogN >= 60) return;
     const(char)* rest; uint rights; bool denied;
     const uint target = nsResolveCheck(ans, path, rest, rights, denied);

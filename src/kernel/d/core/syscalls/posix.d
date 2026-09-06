@@ -9626,6 +9626,31 @@ public long linux_sys_connect(ulong sockfd, ulong addr, ulong addrlen) {
 // Object 1 is always wl_display, and the first object a client makes is normally wl_registry.
 // Logging id/opcode/size for the GTK client is enough to see which request goes unanswered.
 private __gshared int g_wlWireN = 0;
+// Object id -> interface name, learned from wl_registry.bind.  Bare object numbers were enough to
+// find the shm error (it arrives on wl_display, which is always object 1), but not to say which
+// request is going unanswered now: "obj=19" could be anything.  Registry bind carries the
+// interface name and the new id together, so the ids that matter can be named as they are created.
+private enum WL_ID_MAX = 64;
+private __gshared char[24][WL_ID_MAX] g_wlIfName;
+private __gshared bool[WL_ID_MAX]     g_wlIfKnown;
+private void wlNoteBind(const(ubyte)* p, size_t off, size_t avail) @nogc nothrow {
+    // wl_registry.bind(name: u32, interface: string, version: u32, new_id: u32).
+    // A wayland string is a u32 length (including the NUL) followed by that many bytes, padded
+    // out to a 4-byte boundary.
+    if (off + 16 > avail) return;
+    const uint slen = *cast(const(uint)*)(p + off + 12);
+    if (slen == 0 || slen > 64) return;
+    const size_t padded = (slen + 3) & ~3UL;
+    const size_t idOff  = off + 16 + padded + 4;     // skip the string, then version
+    if (idOff + 4 > avail) return;
+    const uint newId = *cast(const(uint)*)(p + idOff);
+    if (newId == 0 || newId >= WL_ID_MAX) return;
+    size_t n = slen - 1;                              // drop the NUL
+    if (n > 23) n = 23;
+    foreach (i; 0 .. n) g_wlIfName[newId][i] = cast(char)p[off + 16 + i];
+    g_wlIfName[newId][n] = 0;
+    g_wlIfKnown[newId] = true;
+}
 private bool taskIsGtkClient() @nogc nothrow {
     const int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS) return false;
@@ -9650,9 +9675,19 @@ private void wlWireTrace(const(char)* dir, msghdr* m, long n) @nogc nothrow {
         const ushort op    = *cast(const(ushort)*)(p + off + 4);
         const ushort sz    = *cast(const(ushort)*)(p + off + 6);
         if (sz < 8) break;                       // malformed; stop rather than loop forever
+        // Learn names before printing, so the bind itself already shows what it created.
+        if (objId == 2 && op == 0 && dir[0] == '-') wlNoteBind(p, off, avail);
+
         ++g_wlWireN;
         klog("[wl] "); klog(dir);
         klog(" obj="); klog_dec(objId);
+        if (objId < WL_ID_MAX && g_wlIfKnown[objId]) {
+            klog("("); klog(g_wlIfName[objId].ptr); klog(")");
+        } else if (objId == 1) {
+            klog("(wl_display)");
+        } else if (objId == 2) {
+            klog("(wl_registry)");
+        }
         klog(" op="); klog_dec(op);
         klog(" sz="); klog_dec(sz);
         hangTraceWho();

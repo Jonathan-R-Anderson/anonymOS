@@ -872,15 +872,27 @@ public void domainStats() {
 // the domain it lives under.
 //
 // Nothing designated which domain the desktop session is, so this states a rule rather than
-// inventing a field: the SESSION DOMAIN is the first non-template domain in the registry.  Domains
-// are created in declarative-config order (configboot.d), so the config author chooses it by
-// ordering, and templates are skipped because a template is a definition, not something to run in.
+// inventing a field: the SESSION DOMAIN is the first non-template, non-SYSTEM-trust domain in the
+// registry.  Domains are created in declarative-config order (configboot.d), so the config author
+// chooses it by ordering; templates are skipped because a template is a definition rather than
+// something to run in.
+//
+// The system-trust exclusion is not a refinement, it is the whole point.  Measured: the first
+// non-template domain is the System domain, whose identity is the SAME object task 0 carries
+// (sessionDomain=0x45 sessionIdentity=0x31 task0Identity=0x31).  Selecting it produced applications
+// labelled System -- exactly the outcome this change exists to prevent, arrived at by a longer
+// route.  An application lives under a user-facing domain; the system domain is where the kernel
+// lives.
 //
 // Returns 0 when no domain qualifies, and callers fall back to their existing behaviour: a system
 // with no domains configured must still boot a desktop.
 public DomainId domainSessionId() @nogc nothrow {
+    import core.identity : identityById, TRUST_SYSTEM;
     foreach (ref e; g_domains) {
         if (!e.inUse || e.isTemplate) continue;
+        if (e.identityObjId == 0) continue;              // a domain with no identity labels nothing
+        auto idr = identityById(e.identityObjId);
+        if (idr is null || idr.trust >= TRUST_SYSTEM) continue;   // the kernel's domain, not an app's
         return e.objId;
     }
     return 0;

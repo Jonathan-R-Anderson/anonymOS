@@ -65,6 +65,12 @@ struct app {
     unsigned char *font_data;
     size_t font_size, buffer_size;
     int width, height, stride;
+    /* ROADMAP 3.2: the shm mapping, kept so a resize can release it.  create_buffers() used to
+     * map and forget, which was fine while the window could never change size. */
+    unsigned char *map_base;
+    size_t map_total;
+    /* Size the compositor last asked for, applied on the next xdg_surface.configure. */
+    int pending_width, pending_height;
     int font_ready, running;
     double pointer_x, pointer_y;
 
@@ -165,6 +171,15 @@ static void draw_calendar(struct app *app){
                    ACC=0xff4da3ffu, CLOSE=0xffb03a3au, CLOSEH=0xffe05555u,
                    ARR=0xff232834u, ARRH=0xff2d3444u, TODAYTX=0xff11141bu;
 
+    /* ROADMAP 3.2: derive the grid from the ACTUAL window size rather than the compiled default.
+     * CELL_W/CELL_H were sized for exactly WIN_W (7*41 + 2*6 = 299 ~ 300), so at any other width
+     * the grid either stopped short of the edge or ran off it.  The header above the grid keeps
+     * its fixed heights -- the clock and date are type, not a layout that stretches -- while the
+     * cells absorb whatever space is left, which is what makes a tiled size usable.
+     * A floor of 1 keeps a degenerate configure from producing a zero or negative step. */
+    int cell_w = (app->width - 2*GRID_X0) / 7;   if (cell_w < 1) cell_w = 1;
+    int cell_h = (app->height - GRID_Y0 - GRID_X0) / 6;  if (cell_h < 1) cell_h = 1;
+
     fill_rect(app, 0, 0, app->width, app->height, BG);
 
     /* --- CSD titlebar --- */
@@ -196,7 +211,7 @@ static void draw_calendar(struct app *app){
     /* --- weekday initials --- */
     for (int c = 0; c < 7; c++){
         char s[2] = { WINIT[c], 0 };
-        int cx = GRID_X0 + c*CELL_W + CELL_W/2;
+        int cx = GRID_X0 + c*cell_w + cell_w/2;
         draw_text_centered(app, s, cx, WDAY_Y, WDAY_PX, (c==0||c==6)?ACC:DIM);
     }
 
@@ -208,19 +223,19 @@ static void draw_calendar(struct app *app){
     for (int day = 1; day <= ndays; day++){
         int idx = fw + (day - 1);
         int row = idx / 7, col = idx % 7;
-        int cx0 = GRID_X0 + col*CELL_W;
-        int cy0 = GRID_Y0 + row*CELL_H;
-        int cxc = cx0 + CELL_W/2;
+        int cx0 = GRID_X0 + col*cell_w;
+        int cy0 = GRID_Y0 + row*cell_h;
+        int cxc = cx0 + cell_w/2;
         uint32_t col_tx = (col==0||col==6) ? ACC : TXT;
 
         if (is_this_month && day == lt.tm_mday){
             /* highlight TODAY with a filled accent square behind the number */
             int inset = 3;
-            fill_rect(app, cx0+inset, cy0+inset, CELL_W-2*inset, CELL_H-2*inset, ACC);
+            fill_rect(app, cx0+inset, cy0+inset, cell_w-2*inset, cell_h-2*inset, ACC);
             col_tx = TODAYTX;
         }
         char ds[4]; snprintf(ds, sizeof ds, "%d", day);
-        draw_text_centered(app, ds, cxc, cy0 + (CELL_H-WDAY_PX)/2 - 1, WDAY_PX+1, col_tx);
+        draw_text_centered(app, ds, cxc, cy0 + (cell_h-WDAY_PX)/2 - 1, WDAY_PX+1, col_tx);
     }
 }
 
@@ -247,8 +262,42 @@ static int create_buffers(struct app *app){
         wl_buffer_add_listener(app->bufs[i].wl, &buffer_listener, app);
         app->bufs[i].busy = 0;
     }
+    app->map_base  = base;
+    app->map_total = total;
     wl_shm_pool_destroy(pool); close(fd);
     return 0;
+}
+
+/* ROADMAP 3.2: rebuild both buffers at a new size.
+ *
+ * Without this the window told Hyprland min == max via xdg_toplevel_set_max_size(), which makes
+ * Hyprland float it -- so windows overlapped instead of tiling, and the layout was never at
+ * fault.  Dropping set_max_size alone is not enough: a tiled window is then handed a size it
+ * cannot render at, which is how wl-domain-manager collapsed to a 562x181 sliver.  The window has
+ * to be able to reflow first, which is what this plus the metrics in draw_calendar() provide.
+ *
+ * Destroying a buffer the compositor may still hold is fine -- the release arrives against a dead
+ * proxy and is ignored.  What is NOT fine is drawing into a busy buffer, which is why both busy
+ * flags are cleared here: the new buffers are genuinely untouched. */
+static int resize_buffers(struct app *app, int w, int h)
+{
+    if (w <= 0 || h <= 0) return 0;
+    if (w == app->width && h == app->height && app->bufs[0].wl) return 0;
+
+    for (int i = 0; i < 2; i++) {
+        if (app->bufs[i].wl) { wl_buffer_destroy(app->bufs[i].wl); app->bufs[i].wl = NULL; }
+        app->bufs[i].px = NULL;
+        app->bufs[i].busy = 0;
+    }
+    if (app->map_base && app->map_base != MAP_FAILED) munmap(app->map_base, app->map_total);
+    app->map_base = NULL; app->map_total = 0;
+    app->pixels = NULL;
+
+    app->width  = w;
+    app->height = h;
+    app->stride = w * 4;
+    app->buffer_size = (size_t)app->stride * (size_t)h;
+    return create_buffers(app);
 }
 /* Draw into a FREE buffer and commit it; if both are in use, mark dirty and redraw on the next release
  * (never modify a buffer the compositor may still be reading -> that vanished the window on real HW). */
@@ -330,7 +379,14 @@ static const struct wl_seat_listener seat_listener = { .capabilities=seat_caps, 
 
 static void wm_base_ping(void *d, struct xdg_wm_base *b, uint32_t serial){ (void)d; xdg_wm_base_pong(b, serial); }
 static const struct xdg_wm_base_listener wm_base_listener = { .ping=wm_base_ping };
-static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){ (void)d;(void)t;(void)w;(void)h;(void)s; }
+/* ROADMAP 3.2: remember the size Hyprland asks for.  This used to discard w and h entirely,
+ * which was consistent with the window declaring itself unresizable -- and is exactly why a
+ * tiled size could never be honoured. */
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s){
+    struct app *a = d; (void)t; (void)s;
+    if (w > 0) a->pending_width  = w;
+    if (h > 0) a->pending_height = h;
+}
 static void toplevel_close(void *d, struct xdg_toplevel *t){ (void)t; struct app*a=d; a->running=0; }
 static void toplevel_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h){ (void)d;(void)t;(void)w;(void)h; }
 static void toplevel_wmcap(void *d, struct xdg_toplevel *t, struct wl_array *c){ (void)d;(void)t;(void)c; }
@@ -339,6 +395,15 @@ static const struct xdg_toplevel_listener toplevel_listener = {
 
 static void xdg_surface_configure(void *d, struct xdg_surface *s, uint32_t serial){ struct app*a=d;
     xdg_surface_ack_configure(s, serial);
+    /* ROADMAP 3.2: adopt the size the compositor asked for.  The first configure is legitimately
+     * 0x0 -- "pick your own size" -- and the real tile geometry only arrives after the window
+     * maps, so a post-map configure must be honoured rather than ignored.  wl-installer carries
+     * the same note, having been fixed for exactly this. */
+    int want_w = a->pending_width  > 0 ? a->pending_width  : a->width;
+    int want_h = a->pending_height > 0 ? a->pending_height : a->height;
+    if (want_w != a->width || want_h != a->height){
+        if (resize_buffers(a, want_w, want_h) < 0){ log_line("CALENDAR: resize failed"); return; }
+    }
     a->configured = 1;
     redraw_commit(a); }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure=xdg_surface_configure };
@@ -379,8 +444,11 @@ int main(void){
     xdg_toplevel_set_title(app.toplevel, "Calendar");
     xdg_toplevel_set_app_id(app.toplevel, "epin-calendar");
     /* FLOAT: min==max fixes the size so the tiler treats us as a floating popover. */
+    /* ROADMAP 3.2: a minimum, but NO maximum.  Hyprland floats any toplevel whose min equals its
+     * max, so declaring both was the window opting out of tiling -- the layout was never at
+     * fault.  The minimum stays: below roughly this size the grid stops being legible, and a
+     * floor is a real constraint rather than a refusal to resize. */
     xdg_toplevel_set_min_size(app.toplevel, WIN_W, WIN_H);
-    xdg_toplevel_set_max_size(app.toplevel, WIN_W, WIN_H);
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

@@ -2566,6 +2566,41 @@ private void maybeProcSelfTest() {
 // Kernel-spawned deliberately: a Hyprland-forked child inherits no console, so its PASS/FAIL lines
 // would be invisible -- the property that cost several rounds in 3.0b.
 __gshared bool g_inotifyTestStarted = false;
+// ── ROADMAP 4.1 step 1: prove two identities can run at once ──────────────────────────────────
+//
+// 4.1 is brokers, disposable identities and a policy engine -- and all three already exist as code
+// that only a self-test has ever reached: brokerAuthorizePair() is called from idipcSelfTest,
+// g_idIpcRules is populated but consulted by no real IPC call, and `disposable` is set only for
+// boot identities and self-test fixtures.
+//
+// None of it can be exercised for a reason that is not about brokers at all: every app currently
+// runs as the SAME identity.  The exec log shows each getting its own namespace clone but all
+// carrying domain 0x46 (Personal), so there is no cross-identity traffic for a gate to gate.
+//
+// So the first real step is a second identity running concurrently.  domainSpawnProgram() already
+// implements it -- registered as core.domain's spawn hook, driven by `spawn <domain> <prog>` on
+// /config/domain.action -- and BankVault exists at boot with the Banking identity.  This fires it
+// once and reports the resulting identity, which is the precondition everything else in 4.1 rests
+// on.  Banking is 0xFFFFD600 (yellow) against Personal's 0xFF2E7D32 (green), so the window border
+// says which identity owns it without reading a log.
+__gshared bool g_dualIdProofDone = false;
+private void maybeProveDualIdentity() {
+    import core.domain : domainByName, domainSpawnInto, domainById;
+    if (g_dualIdProofDone) return;
+    if (pitMs() < 30_000) return;              // let the desktop settle first
+    g_dualIdProofDone = true;
+    const uint bank = domainByName("BankVault\0".ptr);
+    if (bank == 0) { klog("[4.1] no BankVault domain; dual-identity proof SKIPPED\n"); return; }
+    auto d = domainById(bank);
+    klog("[4.1] spawning /wl-calc into BankVault (identity=");
+    klog_hex(d !is null ? d.identityObjId : 0);
+    klog(") -- session domain is ");
+    klog_hex(domainSessionId());
+    klog("\n");
+    const bool ok = domainSpawnInto(bank, "wl-calc\0".ptr);
+    klog(ok ? "[4.1] dual-identity spawn accepted\n" : "[4.1] dual-identity spawn REFUSED\n");
+}
+
 private void maybeSpawnInotifyTest() {
     import core.syscalls.posix : g_rtInitialized;
     if (g_inotifyTestStarted) return;
@@ -4861,6 +4896,7 @@ private void kernelLoop() {
         maybeSpawnSshd();      // SSH-in: start the dropbear launcher for remote access
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
         maybeSpawnInotifyTest(); // ROADMAP 2.2: prove inotify delivers create/write/delete events
+        maybeProveDualIdentity(); // ROADMAP 4.1: two identities running at once, the 4.1 precondition
         maybeProcSelfTest();   // ROADMAP 2.1: prove /proc once real time and load have accrued
         maybeSyscallAudit();   // ROADMAP 2.2: record which syscalls are missing, once
         maybeEpollDump();      // ROADMAP 2.3: is the compositor watching the new client fd?

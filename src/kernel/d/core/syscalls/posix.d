@@ -13828,7 +13828,14 @@ __gshared int  g_curSaveX = 0, g_curSaveY = 0;
 __gshared uint[CUR_W * CUR_H] g_curSaveUnder;
 
 // Restore the framebuffer pixels the cursor last covered (erase the sprite).
+//
+// Once the desktop owns the framebuffer these saved pixels are STALE -- the compositor has redrawn
+// that region since -- so writing them back would stamp a rectangle of old content over live
+// output.  Drop the save instead of replaying it.  The final erase before the handover still runs,
+// so the kernel's arrow does not get left behind on screen.
 private void cursorErase() @nogc nothrow {
+    import core.console : g_desktopClaimedFb;
+    if (g_desktopClaimedFb) { g_curSaveValid = false; return; }
     if (!g_curSaveValid || g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
     auto px = cast(uint*)g_fb.address;
     const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;
@@ -13846,7 +13853,23 @@ private void cursorErase() @nogc nothrow {
 }
 
 // Save the framebuffer under the cursor, then stamp the arrow over it.
+//
+// ONLY while the kernel still owns the display.  Two cursors used to be drawn at once: this one,
+// stamped straight into the framebuffer so motion stays responsive while the compositor is busy,
+// and the compositor's own software pointer built from the evdev stream (hardware cursors are
+// refused on purpose -- see cursor:no_hardware_cursors in custom/general.lua).
+//
+// Two is worse than either alone, because only ONE of them is where clicks land: Hyprland
+// dispatches input at ITS pointer, so aiming with the kernel's arrow means clicking somewhere
+// else.  Measured earlier: driving the pointer 610px moved the kernel cursor 610 and the
+// compositor's 343, so the two visibly separate under load.
+//
+// So the kernel draws the cursor during boot, when nothing else can, and stops the moment the
+// desktop claims the framebuffer.  After that the compositor's pointer is the only one, and it is
+// the one clicks follow.
 private void cursorPaint() @nogc nothrow {
+    import core.console : g_desktopClaimedFb;
+    if (g_desktopClaimedFb) return;
     if (g_curX < 0 || g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
     auto px = cast(uint*)g_fb.address;
     const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;

@@ -19,3 +19,8 @@ require  [4.0b] exec wl-clocks CONFINED
 
 # The identities already proven must keep working alongside it.
 require  [4.1] dual-identity spawn accepted
+
+# ROADMAP 4.1 §7 -- the broker's first non-self-test descriptor, stamped with two REAL identities
+# rather than the self-test's 0x100/0x200 fixtures.
+require  [4.1] brokered session minted
+forbid   [4.1] brokered session REFUSED

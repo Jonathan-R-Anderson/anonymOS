@@ -1903,12 +1903,30 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
     if (f.type == FileType.FD_INSTALL_PROGRESS) {
         import drivers.veracrypt_impl : installProgressPermille;
         if (f.offset > 0 || _buf is null) return 0;
-        char[8] d; int n = 0;
+        // The permille value stays FIRST and unchanged: the GUI parses it with atoi(), which
+        // stops at the first non-digit, so the diagnostic fields appended after it are invisible
+        // to an old reader and free to a new one.
+        import drivers.veracrypt_impl : installPhase, installProgressDone, installProgressTotal,
+                                        installProgressLba;
+        char[96] d; int n = 0;
         const int sv = installProgressPermille();
         uint v = (sv < 0) ? cast(uint)(-sv) : cast(uint)sv;
         if (sv < 0) d[n++] = '-';
         if (v == 0) { d[n++] = '0'; }
         else { char[8] r; int rn = 0; uint x = v; while (x > 0) { r[rn++] = cast(char)('0' + x % 10); x /= 10; } while (rn > 0) d[n++] = r[--rn]; }
+        // Diagnostics after the number: " p<phase> d<done> t<total> l<lba>".  A stalled install
+        // and a slow one look identical through a permille value alone; these say which.
+        void app(string lit) { foreach (c; lit) if (n < cast(int)d.length - 1) d[n++] = c; }
+        void appHex(ulong v) {
+            char[16] r; int rn = 0;
+            if (v == 0) r[rn++] = '0';
+            while (v > 0) { const uint dg = cast(uint)(v & 0xF); r[rn++] = cast(char)(dg < 10 ? ('0' + dg) : ('a' + dg - 10)); v >>= 4; }
+            while (rn > 0 && n < cast(int)d.length - 1) d[n++] = r[--rn];
+        }
+        app(" p"); appHex(installPhase());
+        app(" d"); appHex(installProgressDone());
+        app(" t"); appHex(installProgressTotal());
+        app(" l"); appHex(installProgressLba());
         d[n++] = '\n';
         ulong w = (cast(ulong)n < _count) ? cast(ulong)n : _count;
         auto buffer = cast(ubyte*)_buf;

@@ -319,6 +319,8 @@ struct app {
     int clip_top;           /* draw_text_ft vertical clip window (0/0 == no clip) */
     int clip_bottom;
     char install_cmd[32];   /* "install" or "install <idx>" */
+    unsigned long last_done;   /* kernel sector counter, for stall detection */
+    int  stall_polls;          /* consecutive polls with no sector progress */
 };
 
 /* ── geometry ──────────────────────────────────────────────────────────────── */
@@ -1919,6 +1921,29 @@ static void install_step(struct app *app)
                 }
                 if (next / 10 != app->progress / 10 && next > 0 && next < 1000)
                     ilog("INSTALLER: progress %d%%", next / 10);
+
+                /* STALL DETECTION.  The kernel now appends " p<phase> d<done> t<total> l<lba>"
+                 * after the permille number (atoi above stops at the first non-digit, so the old
+                 * parse is untouched).  Without this a slow install and a wedged one look
+                 * identical: the bar simply does not move.  The installer advances ONE 4 MiB
+                 * batch per compositor round-trip, so on a software-rendered desktop "slow" is
+                 * the normal case and needs to be distinguishable from "dead".
+                 *
+                 * `d` is the sector counter: if it climbs while the permille does not, the
+                 * install is fine and the bar is just coarse.  If neither moves, it is stuck --
+                 * and the phase says where. */
+                {
+                    const char *dp = strstr(b, " d");
+                    unsigned long done = dp ? strtoul(dp + 2, NULL, 16) : 0;
+                    if (done != app->last_done) {
+                        app->last_done = done;
+                        app->stall_polls = 0;
+                    } else if (++app->stall_polls == 40) {
+                        ilog("INSTALLER: no sector progress in 40 polls -- kernel says %s", b);
+                        ilog("INSTALLER: if the phase and d= are unchanged the install is STUCK;");
+                        ilog("INSTALLER: if d= is climbing it is advancing, just slowly (CPU rendering)");
+                    }
+                }
                 app->progress = next;
             }
         } else {

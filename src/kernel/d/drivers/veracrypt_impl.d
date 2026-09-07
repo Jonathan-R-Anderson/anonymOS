@@ -1632,3 +1632,14 @@ public void installAutoIfRequested() {
     else
         klog("[install] AUTOINSTALL FAILED\n");
 }
+
+// INSTALLER diagnostics: the install's phase and byte counters, for /config/install.progress.
+//
+// The progress file used to carry a permille number and nothing else, so a GUI could not tell
+// "advancing slowly" from "wedged" -- and on a software-rendered desktop the installer advances
+// one 4 MiB batch per compositor round-trip, which looks exactly like wedged.  Exposing the phase
+// and the raw counters lets the caller say which, and lets a serial log say it too.
+@nogc nothrow public ubyte installPhase()        { return g_instPhase; }
+@nogc nothrow public ulong installProgressDone() { return g_instProgressDone; }
+@nogc nothrow public ulong installProgressTotal(){ return g_instTotal; }
+@nogc nothrow public ulong installProgressLba()  { return g_instLba; }

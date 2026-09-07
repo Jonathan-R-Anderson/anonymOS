@@ -58,6 +58,7 @@ import drivers.veracrypt_impl : bootHasInstallPayload,
                                 vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof,
                                 vcEncryptedInstallProof, vcFullInstallProof; // §E2b/§E3/§E4a/§E4b/full
 import core.install_cap : installCapProof;             // INSTALLER §E4c: one-shot block-write cap
+import core.acceptance : acceptanceRun;   // IMMUTABLE_ROOTLESS Phase 0.4 section-F gates
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
                        objstoreLoadExec; // F4/F4.2 persisted object store (/objects/apps) + launch
 import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
@@ -5406,6 +5407,12 @@ void d_kernel_main() {
     // the idle task does not exist yet, so /proc/stat and /proc/uptime correctly read zero and the
     // proof shows nothing.  It runs from the periodic loop once the desktop is up instead.
     bootProgress("store");
+    // IMMUTABLE_ROOTLESS Phase 0.4: run the section-F acceptance gates.  Placed HERE, after
+    // objstoreMount, because immutable-1 asks whether the system tree is on a real backing and
+    // the answer is only known once the store has tried to mount a disk; running it earlier
+    // would report "in RAM" on every machine including installed ones.  Everything else it needs
+    // -- init's caps, the /usr:/etc:/var split, the A/B slots -- is already up by this point.
+    acceptanceRun();
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).

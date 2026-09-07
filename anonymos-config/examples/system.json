@@ -39,7 +39,7 @@
       "packages": ["git","clang"], "applications": ["terminal","editor"],
       "filesystemAccess": {
         "defaultPolicy": "deny",
-        "allowTraversalOutsideMounts": true,
+        "allowTraversalOutsideMounts": false,
         "readWrite": ["/home/user", "/tmp", "/run", "/var/cache", "/var/lib",
                       "/dev/dri", "/dev/input", "/dev/null"],
         "readOnly":  ["/usr/share", "/usr/lib", "/usr/local", "/lib", "/etc", "/proc",
@@ -51,7 +51,7 @@
     { "name": "Throwaway",  "type": "domain", "identity": "Disposable", "persist": "ephemeral",
       "filesystemAccess": {
         "defaultPolicy": "deny",
-        "allowTraversalOutsideMounts": true,
+        "allowTraversalOutsideMounts": false,
         "readWrite": ["/tmp", "/run", "/dev/null"],
         "readOnly":  ["/usr/share", "/usr/lib", "/lib", "/etc", "/proc", "/dev/urandom"],
         "deny":      ["/home/user", "/config", "/objects"]

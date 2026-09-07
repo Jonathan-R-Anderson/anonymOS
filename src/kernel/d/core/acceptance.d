@@ -410,4 +410,12 @@ public void readIsolationProof() {
     probe("DevSandbox\0".ptr, "/config/system.json\0".ptr, true);
     // A path the policy ALLOWS, to prove the probe can report both answers.
     probe("DevSandbox\0".ptr, "/usr/share/icons\0".ptr, false);
+
+    // THE ONE THAT CHANGED.  These are neither allowed nor explicitly denied by any policy.
+    // Under the old blanket read-only "/" they were READABLE -- reads were a deny-list, so a path
+    // nobody thought to deny was open.  With allowTraversalOutsideMounts off they are refused,
+    // which is what makes reads an ALLOW-list: unlisted means unreachable, not permitted.
+    probe("DevSandbox\0".ptr, "/srv/anything\0".ptr, true);
+    probe("DevSandbox\0".ptr, "/root/.bash_history\0".ptr, true);
+    probe("Throwaway\0".ptr,  "/srv/anything\0".ptr, true);
 }

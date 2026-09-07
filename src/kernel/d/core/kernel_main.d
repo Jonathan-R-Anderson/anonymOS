@@ -3016,7 +3016,21 @@ private enum uint X2APIC_TIMER_INIT = 0x838;
 private enum uint X2APIC_TIMER_CUR  = 0x839;
 private enum uint X2APIC_TIMER_DIV  = 0x83E;
 
+// Every x2APIC register access is an MSR access, and on a CPU without x2APIC each one raises #GP.
+// Guarding the two accessors covers every caller at once, which matters because the callers are
+// spread across timer setup, IPI delivery, MSI targeting and the WiFi path -- guarding them one at
+// a time is how the first attempt at this fix missed readApicId() and faulted again.
+//
+// Evaluated once and cached: CPUID is not free, and these run on the interrupt path.
+private bool cpuHasX2apic() @nogc nothrow;
+__gshared int g_x2apicAvail = -1;   // -1 = not yet probed, 0 = absent, 1 = present
+private bool apicUsable() @nogc nothrow {
+    if (g_x2apicAvail < 0) g_x2apicAvail = cpuHasX2apic() ? 1 : 0;
+    return g_x2apicAvail == 1;
+}
+
 private void apicWriteReg(uint reg, uint val) @nogc nothrow {
+    if (!apicUsable()) return;              // no x2APIC: the legacy PIT drives the tick instead
     asm @nogc nothrow {
         mov ECX, reg;
         mov EAX, val;
@@ -3025,6 +3039,7 @@ private void apicWriteReg(uint reg, uint val) @nogc nothrow {
     }
 }
 private uint apicReadReg(uint reg) @nogc nothrow {
+    if (!apicUsable()) return 0;            // no x2APIC: report 0 rather than #GP
     uint outv;
     asm @nogc nothrow {
         mov ECX, reg;

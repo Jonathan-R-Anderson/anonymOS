@@ -168,6 +168,17 @@ public uint identityCount() {
 
 // Create an Identity object.  Refused after freeze, on a duplicate name, a zero
 // color (a border color is mandatory), or a ceiling that exceeds the universe.
+// ROADMAP 4.0c: the ONE neutral identity-border colour, shared by every path that draws one.
+//
+// Two paths draw identity borders and they must not be able to disagree.  The kernel draws them
+// directly under Hyprland (drmSetHosWindows -> fbDrawBorder, the live configuration), and the
+// in-kernel compositor draws them on the Weston path (compositor.d borderColorFor).  Both fall back
+// to a neutral colour when the owning task has no identity -- and until this constant existed they
+// fell back to DIFFERENT ones, 0xFF8FBF5F and 0xFF505050, so the same unlabelled window drew a
+// different colour depending on which compositor was built.  A security indicator whose meaning
+// depends on the build is not an indicator.
+public enum uint IDENTITY_BORDER_NEUTRAL = 0xFF8FBF5F;
+
 public IdentityId identityCreate(const(char)* name, IdentityColor color, ubyte trust,
                                  uint ceiling, NamespaceId nsTemplate,
                                  NetPolicy net, ClipPolicy clip, uint gui) {

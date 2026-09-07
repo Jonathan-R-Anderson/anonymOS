@@ -15105,7 +15105,7 @@ __gshared bool g_hosBorderLogged = false;
 // A small palette of distinct, unmistakable identity colours (ARGB).  Indexed by
 // the owning process so each client gets a stable border colour.
 // Drawn when the owning task has no identity.  Deliberately one fixed colour, not a pid hash.
-private enum uint HOS_ID_NEUTRAL = 0xFF8FBF5F;
+private enum uint HOS_ID_NEUTRAL = IDENTITY_BORDER_NEUTRAL;   // ROADMAP 4.0c: one definition
 private immutable uint[8] HOS_ID_PALETTE = [
     0xFF4CC2A8, // teal
     0xFFE0B341, // amber

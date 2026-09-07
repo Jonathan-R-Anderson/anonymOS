@@ -643,7 +643,16 @@ private void drawWindows(scope const(WindowEntry)[] windows, uint taskbarHeight)
 // the border is unspoofable.
 uint borderColorFor(ref const Window window) @nogc nothrow
 {
-    return (window.identityColor != 0) ? window.identityColor : borderColor;
+    // ROADMAP 4.0c: the neutral fallback is IDENTITY_BORDER_NEUTRAL, shared with the kernel's own
+    // border path (hosIdentityColor in syscalls/posix.d).  It used to be this module's generic
+    // `borderColor` (0xFF505050) while the kernel path used 0xFF8FBF5F, so an unlabelled window
+    // drew a different colour depending on whether the build shipped Weston or Hyprland.
+    //
+    // Which path runs: the kernel draws these directly under Hyprland -- measured, this module's
+    // self-test and surface allocation never fire there -- and this one runs on the Weston path,
+    // which `make all` still builds.  Both are kept; both now agree.
+    import core.identity : IDENTITY_BORDER_NEUTRAL;
+    return (window.identityColor != 0) ? window.identityColor : IDENTITY_BORDER_NEUTRAL;
 }
 
 private void drawWindow(ref const Window window, uint taskbarHeight)

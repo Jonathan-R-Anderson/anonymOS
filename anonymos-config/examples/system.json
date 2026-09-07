@@ -33,15 +33,6 @@
     { "name": "DevSandbox", "type": "domain", "identity": "Personal", "persist": "full",
       "template": "DevTemplate",
       "packages": ["git","clang"], "applications": ["terminal","editor"],
-      "_comment_filesystemAccess": [
-        "ROADMAP 4.0b: these paths describe the REAL filesystem this OS runs, not an idealised one.",
-        "The previous set (/Domains/DevSandbox/Home, /Shared/Projects, /System/Templates) was",
-        "measured against a boot: of 270 distinct absolute paths the desktop opens, ZERO fell under",
-        "any of them, and /Domains, /Shared and /System/Templates were opened zero times because",
-        "they do not exist here.  Confinement against that policy would have denied every open.",
-        "Derived from the actual open traffic: /usr/share is fonts, icons and themes (143 paths);",
-        "/run/user carries the Wayland socket, without which no app can display anything."
-      ],
       "filesystemAccess": {
         "defaultPolicy": "deny",
         "readWrite": ["/home/user", "/tmp", "/run/user", "/var/cache", "/dev/dri", "/dev/input"],

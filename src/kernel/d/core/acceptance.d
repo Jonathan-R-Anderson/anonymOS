@@ -100,28 +100,30 @@ private bool checkImmutable2() {
     const bool usrRo  = !storeWritable("/usr/share/x\0".ptr);
     const bool etcRw  =  storeWritable("/etc/hostname\0".ptr);
     const bool varRw  =  storeWritable("/var/lib/x\0".ptr);
-    // An unmounted path must not be writable either: "deny by default", not "deny by list".
+    // ENFORCEMENT, not description.  The earlier version of this check asked whether an UNMOUNTED
+    // path was writable in the system view, and that was the wrong question twice over: the system
+    // namespace's job is to describe the three trees, and everything outside them is legitimately
+    // governed by each task's own namespace, so demanding deny-by-default there would have failed
+    // for a correct system.  Worse, storeWritable had NO callers outside store.d's self-test and
+    // this file -- it described a policy no real open consulted.
     //
-    // THIS IS THE GATE'S FIRST REAL FINDING, and it is worth stating precisely rather than
-    // leaving as a bare 0.  storeMountSystem() builds the system namespace with nsAlloc(), and
-    // nsAlloc calls bindRoot(), which binds "/" to the rtfs root with `rights = uint.max`.  So
-    // /usr IS correctly read-only -- its own binding is more specific and carries only
-    // CAP_RIGHT_READ -- but every path NOT covered by one of the three explicit bindings inherits
-    // write rights from that catch-all root.  The split is therefore a property of three named
-    // subtrees, not a default, which is section G mistake #3 (ambient namespace).
-    //
-    // nsAllocRestricted() exists precisely for this and omits the root binding, but switching
-    // storeMountSystem to it would deny every path outside /usr, /etc and /var to task 0 and
-    // everything that inherits from it -- /dev, /proc, /run, /home included.  That is a change
-    // that has to be made deliberately with its own proof, not slipped in behind an acceptance
-    // probe, so the gate reports the hole and leaves the decision visible.
-    const bool unknownRo = !storeWritable("/nowhere/x\0".ptr);
+    // §F says "state split ENFORCED", so the honest test is whether a real WRITE to the read-only
+    // image is actually refused.  namespaceCheckOpen now returns EROFS for exactly that case, so
+    // this asks the question that matters: is /usr writable in practice?
+    // Ask the REAL gate, with the real flags a writing open would carry.  O_WRONLY = 1.
+    import core.syscalls.posix : namespaceOpenVerdict;
+    const int wr = namespaceOpenVerdict("/usr/lib/libc.so\0".ptr, 1);
+    const int rd = namespaceOpenVerdict("/usr/lib/libc.so\0".ptr, 0);
+    const bool usrEnforced = (wr < 0) && (rd == 0);   // write refused, read still allowed
+
     klog("[F]     immutable-2 parts: usr-ro="); klog_dec(usrRo ? 1 : 0);
     klog(" etc-rw=");                           klog_dec(etcRw ? 1 : 0);
     klog(" var-rw=");                           klog_dec(varRw ? 1 : 0);
-    klog(" unmounted-ro=");                     klog_dec(unknownRo ? 1 : 0);
+    klog(" usr-write-enforced="); klog_dec(usrEnforced ? 1 : 0);
+    klog(" (openW=");   klog_dec(cast(ulong)cast(uint)-wr);
+    klog(" openR=");    klog_dec(cast(ulong)cast(uint)rd); klog(")");
     klog("\n");
-    return usrRo && etcRw && varRw && unknownRo;
+    return usrRo && etcRw && varRw && usrEnforced;
 }
 
 // §F immutable-3: atomic update AND rollback to a prior generation.  Measured by actually

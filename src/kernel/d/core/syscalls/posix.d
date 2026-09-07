@@ -2492,6 +2492,10 @@ private uint openRightsForFlags(int flags) {
 // object, and the matching binding must grant the requested open rights. The
 // default "/" binding grants all rights, preserving current boot behavior while
 // restricted namespaces can deny access before the legacy backing resolver runs.
+// IMMUTABLE_ROOTLESS §F: the acceptance gate asks this the same question a real open asks, so
+// immutable-2 tests ENFORCEMENT rather than re-reading the policy that describes it.
+public int namespaceOpenVerdict(const(char)* path, int flags) { return namespaceCheckOpen(path, flags); }
+
 private int namespaceCheckOpen(const(char)* path, int flags) {
     if (path is null || path[0] != '/') return 0; // relative paths still use cwd shim
     int tid = cast(int)g_current_task_id;
@@ -2506,6 +2510,34 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     if (target == 0) return negErrno(denied ? EACCES : ENOENT);
     uint need = openRightsForFlags(flags);
     if ((rights & need) != need) return negErrno(EACCES);
+
+    // IMMUTABLE_ROOTLESS §F immutable-2 — the state split, ENFORCED rather than described.
+    //
+    // storeMountSystem() has bound /usr read-only, /etc and /var read-write since Tier 4, and
+    // storeWritable() answers "may this be written" from those mount rights.  Nothing consulted
+    // it: its only callers were store.d's own self-test and the acceptance gate, so the split was
+    // a statement about a namespace no real open ever looked at.  §F asks for ENFORCED, and a
+    // policy nothing enforces is documentation.
+    //
+    // Deliberately NARROW.  It fires only where the system view says "readable but not writable",
+    // which today is exactly /usr.  A path outside the three system trees resolves through the
+    // task's own namespace as before, so writes to /home, /tmp and /run are untouched -- this
+    // refuses writes to the READ-ONLY IMAGE and nothing else.  Kernel-internal asset unpacking
+    // into /usr/share is unaffected: it does not come through this gate, which is a userspace
+    // open path keyed on g_current_task_id.
+    if ((need & CAP_RIGHT_WRITE) != 0) {
+        import core.store : storeWritable, storeReadable;
+        if (storeReadable(path) && !storeWritable(path)) {
+            static __gshared uint g_rofsN = 0;
+            if (g_rofsN < 16) {
+                ++g_rofsN;
+                klog("[F] EROFS: write refused to the read-only system tree: ");
+                klog(path);
+                klog("\n");
+            }
+            return negErrno(EROFS);
+        }
+    }
     return 0;
 }
 

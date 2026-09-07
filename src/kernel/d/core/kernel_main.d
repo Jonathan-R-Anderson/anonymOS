@@ -1503,7 +1503,15 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
         {
             import core.task : domainBindTaskNs;
             const uint sd = domainSessionId();
-            const uint boundNs = (sd != 0) ? domainBindTaskNs(t, sd) : 0;
+            // ROADMAP 4.0b: enforcement DISABLED 2026-09-06 -- it broke installing the OS.
+            // The session domain denies /config on purpose (installer/disk control surface), but
+            // the INSTALLER is spawned through this same path and opens /config/disks.json to
+            // enumerate targets, so confinement gave it EACCES and the install failed.
+            // The fix is NOT to allow /config -- that hands every app in the domain the ability to
+            // drive the installer.  It is per-app policy: system apps must not run under the user
+            // sandbox.  Identity assignment (4.0) stays on; it gates nothing.
+            const uint boundNs = 0;   // was: domainBindTaskNs(t, sd)
+            cast(void)sd;
             // Prove confinement is ON rather than inferring it from an absence of denials.  Zero
             // denials is ambiguous: it reads the same whether the policy is being enforced and not
             // violated, or the bind silently failed and nothing is enforced at all.  That is the

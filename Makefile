@@ -1141,6 +1141,16 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 		echo "Included manifest.blob (§4 declarative config: $(DECLARATIVE_CONFIG))"; \
 	fi
 
+	# ROADMAP 4.4 / SYSTEM_UPDATE D1: stage a small REAL .hosupd built by the host
+	# packager, so the kernel verifier is proven against an artifact the host toolchain
+	# produced rather than only against one it built for itself in RAM.  A host/kernel
+	# wire-format disagreement is the failure this project has actually hit.
+	@if [ -f build/test.hosupd ]; then \
+		cp build/test.hosupd cd/test.hosupd; \
+		printf '\n    module_path: boot():/test.hosupd\n' >> cd/boot/limine/limine.conf; \
+		echo "Included test.hosupd (D1 whole-image update unit)"; \
+	fi
+
 	@if [ -n "$(DYNTEST)" ] && [ -f src/test-dyn/dyntest ]; then \
 		cp src/test-dyn/dyntest cd/dyntest; \
 		cp src/test-dyn/libfoo.so cd/libfoo.so; \

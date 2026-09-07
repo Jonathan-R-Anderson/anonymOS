@@ -5485,6 +5485,7 @@ void d_kernel_main() {
         // artifact those verbs will eventually switch to: signed, hash-committed, anti-replayed.
         import core.imgupdate : imgUpdateSelfTest;
         if (bootHasInstallPayload()) { bootStateSelfTest(); updateEngineSelfTest(); imgUpdateSelfTest(); }
+        { import core.imgupdate : imgUpdateHostBundleProof; imgUpdateHostBundleProof(); }
     }
     domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
     templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback

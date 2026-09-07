@@ -269,3 +269,53 @@ public void imgUpdateSelfTest() {
     klog(" targetSlot=");                             klog_dec(tgt);
     klog(pass ? " -- D1 PASS\n" : " -- D1 FAIL\n");
 }
+
+// ── Cross-check against a REAL host-produced bundle ───────────────────────────────────────────
+//
+// The self-test above proves the verifier is internally consistent: it accepts what it builds and
+// rejects what it corrupts.  That is necessary and not sufficient.  The failure this project has
+// actually hit -- twice, on the config manifest -- is the HOST and the KERNEL disagreeing about a
+// wire format, and a self-test cannot see that because both sides of it are the same code.
+//
+// So scripts/mk-hosupd.sh packages a small real bundle, the ISO stages it as a boot module, and
+// this verifies THAT.  If a field width, an endianness or the signed byte range ever drifts
+// between the script and this module, the boot log says so on the next build.
+public void imgUpdateHostBundleProof() {
+    import core.exports : g_mboot_modules, g_module_count, phys_to_virt;
+
+    align(8) static struct BootModuleRecord {
+        ulong mod_start;
+        ulong mod_end;
+        char[112] name;
+    }
+
+    if (g_mboot_modules is null || g_module_count <= 0) {
+        klog("[4.4] host bundle: no boot modules\n");
+        return;
+    }
+    auto recs = cast(const(BootModuleRecord)*) g_mboot_modules;
+    foreach (i; 0 .. g_module_count) {
+        const BootModuleRecord* rec = &recs[i];
+        const(char)* nm = cast(const(char)*)&rec.name[0];
+        const(char)* base = nm;
+        for (const(char)* p = nm; *p != 0; p++) if (*p == '/') base = p + 1;
+
+        bool match = true;
+        static immutable char[13] WANT = ['t','e','s','t','.','h','o','s','u','p','d','\0','\0'];
+        foreach (k; 0 .. 12) { if (base[k] != WANT[k]) { match = false; break; } }
+        if (!match) continue;
+
+        const ulong len = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
+        const(ubyte)* buf = cast(const(ubyte)*) phys_to_virt(cast(ulong)rec.mod_start);
+        const auto v = imgUpdateVerify(buf, len);
+        klog("[4.4] host bundle (");
+        klog_dec(len);
+        klog(" bytes) verdict=");
+        klog(imgUpdVerdictName(v));
+        klog(v == ImgUpdVerdict.Ok
+             ? " -- host packager and kernel verifier AGREE\n"
+             : " -- host/kernel wire-format MISMATCH\n");
+        return;
+    }
+    klog("[4.4] host bundle: test.hosupd not staged in this image\n");
+}

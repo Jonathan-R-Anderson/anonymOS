@@ -1,0 +1,28 @@
+.TH SIGNALFD4 2 "2026-09-06" "EpinAnonymOS" "System Calls"
+.SH NAME
+signalfd4 \- Linux syscall 289, as implemented by the EpinAnonymOS kernel
+.SH SYNOPSIS
+.B syscall(289, ...)
+.br
+kernel handler: \fBlinux_sys_signalfd4\fR
+.SH DESCRIPTION
+signalfd / signalfd4(fd, sigset, sizemask, flags). We don't deliver async
+signals to userspace, so a signalfd never reports a pending signal — but it
+must EXIST and be pollable: libwayland's wl_event_loop_add_signal() calls
+signalfd() and returns NULL on failure, which makes Weston abort at startup
+(it registers SIGTERM/SIGUSR2/SIGCHLD handlers and exits if any is NULL).
+Back it with an always-empty eventfd: a valid, poll-able fd that stays
+not-readable (so the event loop never spuriously wakes or misreads it).
+SFD_NONBLOCK (0x800) / SFD_CLOEXEC (0x80000) share their bit values with the
+EFD_* flags, so `flags` passes straight through. fd >= 0 means "update an
+existing signalfd's mask" — a no-op for us, return it unchanged.
+.SH IMPLEMENTATION
+Dispatched from \fIsrc/kernel/d/core/kernel_main.d\fR;
+implemented in \fIsrc/kernel/d/core/syscalls/posix.d\fR.
+.SH CAVEAT
+This kernel emulates a SUBSET of the Linux ABI.  Behaviour that stock Linux
+guarantees is not guaranteed here unless the DESCRIPTION says so.  Notably,
+AF_UNIX reads return EAGAIN on an empty socket rather than blocking, and
+absolute opens are resolved against the calling task's namespace.
+.SH SEE ALSO
+.BR anonymos-syscalls (7)

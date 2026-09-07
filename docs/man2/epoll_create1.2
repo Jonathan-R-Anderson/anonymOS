@@ -1,0 +1,19 @@
+.TH EPOLL_CREATE1 2 "2026-09-06" "EpinAnonymOS" "System Calls"
+.SH NAME
+epoll_create1 \- Linux syscall 291, as implemented by the EpinAnonymOS kernel
+.SH SYNOPSIS
+.B syscall(291, ...)
+.br
+kernel handler: \fBlinux_sys_epoll_create1\fR
+.SH DESCRIPTION
+--- epoll ---
+.SH IMPLEMENTATION
+Dispatched from \fIsrc/kernel/d/core/kernel_main.d\fR;
+implemented in \fIsrc/kernel/d/core/syscalls/posix.d\fR.
+.SH CAVEAT
+This kernel emulates a SUBSET of the Linux ABI.  Behaviour that stock Linux
+guarantees is not guaranteed here unless the DESCRIPTION says so.  Notably,
+AF_UNIX reads return EAGAIN on an empty socket rather than blocking, and
+absolute opens are resolved against the calling task's namespace.
+.SH SEE ALSO
+.BR anonymos-syscalls (7)

@@ -1,0 +1,20 @@
+.TH SENDFILE 2 "2026-09-06" "EpinAnonymOS" "System Calls"
+.SH NAME
+sendfile \- Linux syscall 40, as implemented by the EpinAnonymOS kernel
+.SH SYNOPSIS
+.B syscall(40, ...)
+.br
+kernel handler: \fBlinux_sys_sendfile\fR
+.SH DESCRIPTION
+setitimer: was UNROUTED (35,36,37 then 39), so it returned ENOSYS and busybox ping
+never got the SIGALRM that sends packets 2..N -- it hung after the first reply.
+.SH IMPLEMENTATION
+Dispatched from \fIsrc/kernel/d/core/kernel_main.d\fR;
+implemented in \fIsrc/kernel/d/core/syscalls/posix.d\fR.
+.SH CAVEAT
+This kernel emulates a SUBSET of the Linux ABI.  Behaviour that stock Linux
+guarantees is not guaranteed here unless the DESCRIPTION says so.  Notably,
+AF_UNIX reads return EAGAIN on an empty socket rather than blocking, and
+absolute opens are resolved against the calling task's namespace.
+.SH SEE ALSO
+.BR anonymos-syscalls (7)

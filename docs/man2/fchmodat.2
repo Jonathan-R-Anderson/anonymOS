@@ -1,0 +1,25 @@
+.TH FCHMODAT 2 "2026-09-06" "EpinAnonymOS" "System Calls"
+.SH NAME
+fchmodat \- Linux syscall 268, as implemented by the EpinAnonymOS kernel
+.SH SYNOPSIS
+.B syscall(268, ...)
+.br
+kernel handler: \fBlinux_sys_fchmodat\fR
+.SH DESCRIPTION
+setitimer: was UNROUTED (35,36,37 then 39), so it returned ENOSYS and busybox ping
+never got the SIGALRM that sends packets 2..N -- it hung after the first reply.
+x86_64: 253 = inotify_init, 254 = inotify_add_watch, 255 = inotify_rm_watch.
+254 used to route to inotify_init() and 253 was not routed at all -- the same mis-map
+that case 233 above carries a note about.  Harmless only while every one of these is a
+stub; the moment inotify is implemented, inotify_add_watch(fd, path, mask) would have
+silently run inotify_init instead.
+.SH IMPLEMENTATION
+Dispatched from \fIsrc/kernel/d/core/kernel_main.d\fR;
+implemented in \fIsrc/kernel/d/core/syscalls/posix.d\fR.
+.SH CAVEAT
+This kernel emulates a SUBSET of the Linux ABI.  Behaviour that stock Linux
+guarantees is not guaranteed here unless the DESCRIPTION says so.  Notably,
+AF_UNIX reads return EAGAIN on an empty socket rather than blocking, and
+absolute opens are resolved against the calling task's namespace.
+.SH SEE ALSO
+.BR anonymos-syscalls (7)

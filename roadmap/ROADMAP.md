@@ -131,6 +131,25 @@ Each is a project. Listed so the estimate is honest, not to be scheduled.
 
 ---
 
+
+---
+
+## Tier 7 — Administrator documentation
+
+An admin cannot manage what is not written down, and this kernel deviates from Linux in ways that
+are invisible until something fails oddly. The reference has to be GENERATED from the kernel
+source: `docs/SYSCALL_ABI.md` was hand-written and already claimed "160 syscalls" against 177
+dispatch arms, and a reference that drifts is worse than none because nobody can tell which half
+is lying.
+
+| # | Item | State | Source |
+|---|---|---|---|
+| 7.1 | ✅ **Generated syscall man pages** — DONE 2026-09-06. `scripts/gen-syscall-man.sh` parses the dispatch table and the implementations, emitting **150 section-2 pages** plus `anonymos-syscalls(7)`. Descriptions come from the source comments at the implementation AND the dispatch site: **130 of 150 carry real notes**, 20 are honest placeholders where the source records none. Regeneration is the only update path, so it cannot drift | `scripts/gen-syscall-man.sh`, `docs/man2/`, `docs/man7/` |
+| 7.2 | **Ship the pages on the system** — the pages exist in the repo but are not staged into the ISO, so an admin on the running OS cannot read them. Needs a `man` binary (or a minimal pager) plus staging under `/usr/share/man` | GUI · INSTALLER |
+| 7.3 | **Fill the 20 undocumented calls** — where neither the implementation nor the dispatch site records anything. These are the calls whose behaviour is least known, which is exactly why they should be written up rather than left to the reader | — |
+| 7.4 | **Document the native object ABI per verb** — 25 `HOSQ_*` verbs. `docs/NATIVE_OBJECT_ABI.md` (752 lines) covers the surface in prose; the per-verb pages do not exist | `docs/NATIVE_OBJECT_ABI.md` |
+| 7.5 | **Admin runbook for the deviations** — the ABI differences that have each cost real debugging time (AF_UNIX read returning EAGAIN, namespace-resolved opens, cross-identity connect refusal, overlay-only inotify) belong in one place an admin reads BEFORE debugging, not after | — |
+
 ## Corrections to carry forward
 
 - **No task carries an identity, so the "identity border" is decorative.** `identity.d` states that

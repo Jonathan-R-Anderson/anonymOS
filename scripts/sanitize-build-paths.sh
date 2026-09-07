@@ -38,6 +38,21 @@ TREE="${1:-$ROOT/cd}"
 
 [ -d "$TREE" ] || { echo "sanitize-build-paths: no staged tree at $TREE" >&2; exit 2; }
 
+# TWO prefixes, longest first.
+#
+#   1. the current build root -- musl/Mesa/glib/fontconfig search paths compiled in this tree
+#   2. the builder's HOME -- which catches what pass 1 cannot: binaries VENDORED AS PREBUILT
+#      ARTIFACTS that were compiled in a DIFFERENT checkout.  gnupg and libarchive still carry
+#      __FILE__ strings naming "/home/<user>/Documents/EpinAnonymOS/deps/...", an older directory
+#      that no longer exists.  Sanitising only the current build root left 114 of those behind,
+#      which is why this second pass exists: the username is the identifying part, and it leaks
+#      just as badly from a stale path as from a live one.
+#
+# Longest first matters: replacing HOME first would shorten nothing but would leave the build-root
+# pattern unmatchable, since its prefix would already have been rewritten.
+PREFIXES=("$ROOT")
+[ -n "${HOME:-}" ] && [ "$HOME" != "/" ] && PREFIXES+=("$HOME")
+
 BUILD_ROOT="$ROOT"
 LEN=${#BUILD_ROOT}
 
@@ -59,24 +74,35 @@ if [ "${#PLACEHOLDER}" -ne "$LEN" ]; then
     exit 2
 fi
 
-changed=0
 files=0
-while IFS= read -r f; do
-    # -a: treat every file as text. Many of these are ELF binaries and GNU grep would otherwise
-    # report "binary file matches" and skip them.
-    if grep -aqF "$BUILD_ROOT" "$f" 2>/dev/null; then
-        # LC_ALL=C so sed works on bytes, not multibyte characters: a UTF-8 locale can mangle
-        # arbitrary binary content.
-        LC_ALL=C sed -i "s|$BUILD_ROOT|$PLACEHOLDER|g" "$f"
-        files=$((files + 1))
-        changed=1
-    fi
-done < <(find "$TREE" -type f)
+for PFX in "${PREFIXES[@]}"; do
+    PLEN=${#PFX}
+    [ "$PLEN" -lt "${#BASE}" ] && continue          # cannot pad down to a shorter placeholder
+    PPAD=$(( PLEN - ${#BASE} ))
+    if [ "$PPAD" -eq 0 ]; then REPL="$BASE"
+    else REPL="$BASE$(printf '/%.0s' $(seq 1 $PPAD))"; fi
+    [ "${#REPL}" -eq "$PLEN" ] || { echo "sanitize-build-paths: pad error for $PFX" >&2; exit 2; }
+
+    while IFS= read -r f; do
+        # -a: treat every file as text.  Most of these are ELF binaries and GNU grep would
+        # otherwise report "binary file matches" and skip them entirely.
+        if grep -aqF "$PFX" "$f" 2>/dev/null; then
+            # LC_ALL=C so sed works on BYTES: a UTF-8 locale can mangle arbitrary binary content.
+            LC_ALL=C sed -i "s|$PFX|$REPL|g" "$f"
+            files=$((files + 1))
+        fi
+    done < <(find "$TREE" -type f)
+    echo "sanitize-build-paths: pass '$PFX' -> '$REPL'"
+done
 
 # `grep -c` exits 1 when it finds NOTHING, which here is the success case -- with `pipefail`
 # that killed the script precisely when the sanitisation had worked.  `|| true` keeps the
 # count without letting "no matches" read as a failure.
-remaining=$( { grep -rac "$BUILD_ROOT" "$TREE" 2>/dev/null || true; } | awk -F: '{s+=$2} END {print s+0}' )
+remaining=0
+for PFX in "${PREFIXES[@]}"; do
+    n=$( { grep -rac "$PFX" "$TREE" 2>/dev/null || true; } | awk -F: '{s+=$2} END {print s+0}' )
+    remaining=$(( remaining + n ))
+done
 
 echo "sanitize-build-paths: rewrote build root in $files file(s)"
 echo "  from  $BUILD_ROOT"

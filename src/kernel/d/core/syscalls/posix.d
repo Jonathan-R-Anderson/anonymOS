@@ -15316,7 +15316,31 @@ private void hosDrawIdentityBorders() @nogc nothrow {
     smapBegin();
     foreach (i; 0 .. g_hosWinCount) {
         auto wn = g_hosWins[i];
-        fbDrawBorder(wn.x, wn.y, wn.w, wn.h, hosIdentityColor(wn.pid));
+        const uint bc = hosIdentityColor(wn.pid);
+        fbDrawBorder(wn.x, wn.y, wn.w, wn.h, bc);
+        // ROADMAP 4.1: a census of the colours ACTUALLY PAINTED, not just window 0's.
+        // The old one-shot log below reports g_hosWins[0] alone, so a second identity on
+        // screen -- the whole point of this tier -- left no trace in the record, and any
+        // test asserting on it would pass or fail for reasons unrelated to what was drawn.
+        // One line per never-before-seen colour: bounded, so it cannot flood the UART, and
+        // complete, because a new identity appearing is exactly the event worth a line.
+        {
+            static uint[8] seen  = 0;
+            static uint    seenN = 0;
+            bool known = false;
+            foreach (k; 0 .. seenN) if (seen[k] == bc) { known = true; break; }
+            if (!known && seenN < seen.length) {
+                seen[seenN++] = bc;
+                import core.task : g_tasks, taskIdFromLinuxPid, MAX_TASKS;
+                const int ctid = taskIdFromLinuxPid(cast(int)wn.pid);
+                klog("[4.1] identity painted: color="); klog_hex(bc);
+                klog(" pid="); klog_dec(wn.pid);
+                klog(" ident=");
+                if (ctid >= 0 && ctid < MAX_TASKS) klog_hex(g_tasks[ctid].identityObjId);
+                else klog("NO-TASK");
+                klog("\n");
+            }
+        }
     }
     smapEnd();
     if (!g_hosBorderLogged) {

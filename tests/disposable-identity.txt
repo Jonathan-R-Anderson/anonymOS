@@ -11,7 +11,7 @@ forbid   [4.1] no Throwaway domain in the manifest
 # The window must actually be drawn in the disposable orange (identity.d 0xFFFF6D00), not the
 # neutral fallback -- otherwise the identity exists on paper only, which is the failure mode
 # this whole tier keeps rediscovering.
-require  ffff6d00
+require  [4.1] identity painted: color=00000000ffff6d00
 
 # Throwaway denies /home/user; being confined at all is the precondition for that meaning
 # anything.

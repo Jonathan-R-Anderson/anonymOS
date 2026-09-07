@@ -24,6 +24,7 @@ import drivers.block.disk : diskReady, diskReadSectors, diskWriteSectors;
 import memory.dma : dma_alloc;
 import core.io : klog, klog_hex, klog_dec;
 import core.stdc.string : memset, memcpy;
+import core.bootstate : BOOTSTATE_LBA;   // SYSTEM_UPDATE D1: the store must not overlap it
 
 @nogc nothrow:
 
@@ -119,6 +120,20 @@ __gshared ubyte[STAGE_BYTES] g_stage;     // scratch for blob read/write
 // corruption of partition 1 -- allocBlob() now fails instead of walking past the end.
 enum ulong GPT_GAP_FIRST = 40;      // 34 is bootstate; 35..39 left as slack
 enum ulong GPT_GAP_END   = 2048;    // exclusive -- diskpart.d align2048() puts partition 0 here
+
+// SYSTEM_UPDATE D1 requires that "the object store (user data) lives outside the slots and is
+// untouched" by an update.  On a GPT disk with no usable tail the store mounts in the pre-partition
+// gap, which STARTS FIVE SECTORS AFTER the boot-state sector an update rewrites -- so the whole
+// guarantee rests on GPT_GAP_FIRST staying above BOOTSTATE_LBA.
+//
+// Until now that relationship was a comment.  The same LBA is written down in three places
+// (core/bootstate.d, this comment, and efi_arbiter.c's BS_LBA) and nothing checked that they
+// agreed; lowering GPT_GAP_FIRST to 34, or raising BOOTSTATE_LBA, would put the store's superblock
+// exactly on the boot-state sector and every update would silently eat the user's data.  A
+// compile-time assert costs nothing and makes that unbuildable.
+static assert(GPT_GAP_FIRST > BOOTSTATE_LBA,
+              "object store would overlap the boot-state sector: an update would destroy user data");
+static assert(GPT_GAP_FIRST < GPT_GAP_END, "pre-partition gap is empty or inverted");
 
 __gshared ulong g_baseLba = 0;      // absolute LBA of this store's relative sector 0
 __gshared ulong g_endLba  = 0;      // first absolute LBA the store may NOT touch (0 = unbounded)

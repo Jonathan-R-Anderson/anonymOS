@@ -319,3 +319,38 @@ public void imgUpdateHostBundleProof() {
     }
     klog("[4.4] host bundle: test.hosupd not staged in this image\n");
 }
+
+// ── D1's last clause: "the object store (user data) is untouched" ─────────────────────────────
+//
+// The compile-time assert in objstore.d pins the CONSTANTS apart (GPT_GAP_FIRST > BOOTSTATE_LBA).
+// This checks the same thing about the LIVE disk, which the constants alone cannot: the store's
+// base is chosen at mount time and can land in the free tail after the last partition instead of
+// the gap, so where it actually sits is a runtime fact.
+//
+// The invariant an update depends on is simple and worth stating as an inequality rather than a
+// paragraph: the sector the update engine rewrites must not be inside the region the object store
+// owns.  If it ever is, a perfectly valid, correctly signed update silently destroys the user's
+// data -- the worst possible outcome for an update system, and one no amount of signature checking
+// would catch.
+public void imgUpdateStoreDisjointProof() {
+    import core.objstore : objstoreMounted, objstoreBaseLba;
+    import core.bootstate : BOOTSTATE_LBA;
+
+    if (!objstoreMounted()) {
+        // Live media: the store stays in RAM because the disk is reserved for the installer, so
+        // there is no on-disk region to be disjoint FROM.  Reported rather than silently skipped:
+        // "not applicable" and "checked and fine" are different claims.
+        klog("[4.4] store/update disjointness: N/A -- object store is in RAM (live media)\n");
+        return;
+    }
+
+    const ulong base = objstoreBaseLba();
+    const bool disjoint = (base > BOOTSTATE_LBA);
+    klog("[4.4] store/update disjointness: storeBaseLBA=");
+    klog_dec(base);
+    klog(" bootStateLBA=");
+    klog_dec(BOOTSTATE_LBA);
+    klog(disjoint
+         ? " -- DISJOINT, an update cannot reach user data\n"
+         : " -- OVERLAP: an update would destroy user data\n");
+}

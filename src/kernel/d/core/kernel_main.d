@@ -5374,8 +5374,10 @@ void d_kernel_main() {
         klog("[install] INSTALL image: skipping disk-writing boot proofs; target disk is reserved for the GUI installer\n");
     }
     {                          // INSTALLER §D: in-OS BOOTABLE install (esp-image → target disk; INSTALL=1 only)
-        import drivers.veracrypt_impl : installBootableProof;
+        import drivers.veracrypt_impl : installBootableProof, installAutoIfRequested;
         installBootableProof();
+        // ROADMAP 4.8: unattended install, but ONLY when the test-image trigger module is present.
+        installAutoIfRequested();
     }
     bootProgress("install");
     // F4: mount the persisted object store (formats on first boot, seeds the sample

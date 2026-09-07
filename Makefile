@@ -1377,6 +1377,14 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 	# invalidate every hash in the attestation.
 	scripts/sanitize-build-paths.sh cd
 
+	# ROADMAP 4.8: the headless-install trigger.  Staged ONLY under AUTOINSTALL=1, so a shipped
+	# ISO cannot carry it -- the trigger is absent from the image, not disabled inside it.
+	@if [ "$(AUTOINSTALL)" = "1" ]; then \
+		printf 'autoinstall' > cd/autoinstall; \
+		printf '\n    module_path: boot():/autoinstall\n' >> cd/boot/limine/limine.conf; \
+		echo "Included autoinstall trigger (TEST IMAGE -- will install to disk unattended)"; \
+	fi
+
 	python3 scripts/build-boot-integrity-manifest.py cd $(BOOT_INTEGRITY_MANIFEST) \
 		--network "$(ZKSYNC_NETWORK)" \
 		--chain-id "$(ZKSYNC_CHAIN_ID)" \

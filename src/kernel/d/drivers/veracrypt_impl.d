@@ -1590,3 +1590,44 @@ public void installBootableProof() {
     klog("B, target idx=0x"); klog_hex(idx); klog(" dsec=0x"); klog_hex(dsec);
     klog(" — click 'Install to Disk' (or: echo install > /config/install.action)\n");
 }
+
+// ── Headless install, for the test harness only (roadmap 4.8) ────────────────────────────────
+//
+// §F's IMMUTABLE-1 can only be true on a system whose store is on a real disk, and the only honest
+// way to demonstrate that is to INSTALL the OS and boot the result.  Until now the installer could
+// be driven exactly one way -- a human clicking "Install to Disk" -- so the claim "immutable" was
+// provable only by hand, which in practice means not provable at all.
+//
+// GATED ON A BOOT MODULE, deliberately.  This runs only when a module literally named
+// "autoinstall" is present, which the Makefile stages only under AUTOINSTALL=1.  A shipped ISO
+// never carries it, so this cannot wipe a user's disk: the trigger is absent from the image rather
+// than merely disabled inside it, which is the difference between a flag and a build decision.
+//
+// It takes the SAME path the GUI takes -- installBegin then step to completion -- rather than a
+// parallel "test install", because a test that exercises a different code path proves something
+// about the test.
+__gshared bool g_autoInstallDone = false;
+
+public void installAutoIfRequested() {
+    if (g_autoInstallDone) return;
+    g_autoInstallDone = true;
+
+    ulong phys, size;
+    if (!instFindModule("autoinstall", phys, size)) return;   // not a test image: do nothing
+
+    import drivers.block.disk : diskStoreIndex;
+    ulong dsec = 0;
+    int idx = diskFindTarget(dsec);
+    if (idx < 0) idx = diskStoreIndex(dsec);
+    if (idx < 0) {
+        klog("[install] AUTOINSTALL requested but no disk to install to\n");
+        return;
+    }
+    klog("[install] AUTOINSTALL (test image only): installing to idx=0x");
+    klog_hex(idx); klog(" disksec=0x"); klog_hex(dsec); klog("\n");
+
+    if (installBootableToDisk(idx, dsec))
+        klog("[install] AUTOINSTALL complete -- reboot without the ISO to boot the installed system\n");
+    else
+        klog("[install] AUTOINSTALL FAILED\n");
+}

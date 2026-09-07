@@ -64,11 +64,18 @@ TREE="${1:-$ROOT/cd}"
 # baked in at all.  That is a refactor of a 722 MB dependency tree -- changing the prefix relocates
 # every installed file and every staging path that reads it -- and this reaches the same two
 # outcomes, no host identity and probes that point somewhere real, without rebuilding it.
+# REVERTED to a single neutral placeholder.  Mapping the dependency sysroots to /usr looked like an
+# improvement -- probes would land where files are actually staged -- but these strings are not all
+# diagnostic.  One of them is the ELF PT_INTERP, the dynamic loader path, and rewriting it to
+# /usr/////...////lib/ld-musl-x86_64.so.1 produced a boot that loaded the interpreter and then took
+# a kernel fault (null read, tid=0).  /build had been through dozens of clean boots, a full install
+# and an installed-system boot, so it is the known-good target.
+#
+# The lesson is about the technique, not the target: a blind same-length byte rewrite cannot tell a
+# log string from a path the loader will act on, so the only safe placeholder is one that changes
+# nothing about how a path RESOLVES.  Landing probes on real files needs the deps rebuilt with
+# guest prefixes, which is 4.11's actual remaining work.
 PREFIX_MAP=(
-    "$ROOT/deps/gtk-stack/sysroot|/usr"
-    "$ROOT/deps/musl/install|/usr"
-    "$ROOT/deps/dbus-build/install|/usr"
-    "$ROOT/deps/zsh/sysroot|/usr"
     "$ROOT|/build"
 )
 [ -n "${HOME:-}" ] && [ "$HOME" != "/" ] && PREFIX_MAP+=("$HOME|/build")

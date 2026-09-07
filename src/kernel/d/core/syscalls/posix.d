@@ -11621,6 +11621,13 @@ public void msiHudRepaint() @nogc nothrow {
 // (observed 0x20 → addr 0xFEE20000) so the MSI lands on a CPU with no 0x30 handler → FIRES=0.
 __gshared uint g_bspApicId = 0;
 public uint readApicId() @nogc nothrow {   // the CURRENT cpu's x2APIC ID
+    // Its OWN rdmsr rather than the guarded accessor in kernel_main.d, so the x2APIC guard added
+    // there did not cover it and the boot still took a #GP on a CPU without x2APIC.  Same check,
+    // because the register does not exist to be read: report 0, which is a valid BSP APIC id and
+    // is what single-CPU callers (MSI targeting) already treat as "the only CPU".
+    uint feat;
+    asm @nogc nothrow { push RBX; mov EAX, 1; cpuid; mov feat, ECX; pop RBX; }
+    if (((feat >> 21) & 1) == 0) return 0;
     uint id;
     asm @nogc nothrow { mov ECX, 0x802; rdmsr; mov id, EAX; }
     return id;

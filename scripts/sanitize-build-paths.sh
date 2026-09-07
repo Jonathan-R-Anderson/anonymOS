@@ -73,7 +73,10 @@ while IFS= read -r f; do
     fi
 done < <(find "$TREE" -type f)
 
-remaining=$(grep -rac "$BUILD_ROOT" "$TREE" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')
+# `grep -c` exits 1 when it finds NOTHING, which here is the success case -- with `pipefail`
+# that killed the script precisely when the sanitisation had worked.  `|| true` keeps the
+# count without letting "no matches" read as a failure.
+remaining=$( { grep -rac "$BUILD_ROOT" "$TREE" 2>/dev/null || true; } | awk -F: '{s+=$2} END {print s+0}' )
 
 echo "sanitize-build-paths: rewrote build root in $files file(s)"
 echo "  from  $BUILD_ROOT"

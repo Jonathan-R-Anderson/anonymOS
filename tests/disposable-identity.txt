@@ -1,0 +1,21 @@
+# ROADMAP 4.1 §8 -- disposable identities.
+#
+# The Disposable identity has existed in identity.d's boot table since Tier 2, but no domain
+# referenced it, so nothing ever ran as Disposable.  This suite asserts the whole chain now
+# works: the manifest declares the identity, the Throwaway domain binds it, and a real program
+# is spawned into it and confined.
+
+require  [4.1] spawning /wl-clocks into Throwaway
+forbid   [4.1] no Throwaway domain in the manifest
+
+# The window must actually be drawn in the disposable orange (identity.d 0xFFFF6D00), not the
+# neutral fallback -- otherwise the identity exists on paper only, which is the failure mode
+# this whole tier keeps rediscovering.
+require  ffff6d00
+
+# Throwaway denies /home/user; being confined at all is the precondition for that meaning
+# anything.
+require  [4.0b] exec wl-clocks CONFINED
+
+# The identities already proven must keep working alongside it.
+require  [4.1] dual-identity spawn accepted

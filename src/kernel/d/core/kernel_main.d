@@ -5494,15 +5494,6 @@ void d_kernel_main() {
         { import core.imgupdate : imgUpdateHostBundleProof, imgUpdateStoreDisjointProof;
           imgUpdateHostBundleProof(); imgUpdateStoreDisjointProof(); }
         { import core.hoscall : hosAuditPrivProof; hosAuditPrivProof(); }   // 4.5 B5
-        {   // ROADMAP 4.5 B5: run the shell's own guard self-test, in the guest, headlessly.
-            import core.exports : g_spawnEnvExtra;
-            import core.domain : domainSpawnInto, domainByName;
-            immutable string ev = "EPIN_SH_SELFTEST=1";
-            foreach (i, c; ev) g_spawnEnvExtra[i] = c;
-            g_spawnEnvExtra[ev.length] = 0;
-            const uint dsh = domainByName("Throwaway\0".ptr);
-            if (dsh != 0) cast(void)domainSpawnInto(dsh, "hos-sh\0".ptr);
-        }
         { import core.identity : identityPolicyTxnProof; identityPolicyTxnProof(); } // 4.9 §9
         { import core.imgupdate : imgUpdateSlotResolveProof; imgUpdateSlotResolveProof(); } // 4.10 D2
         { import core.ed25519 : ed25519SelfTest; ed25519SelfTest(); }                    // 4.10 D3

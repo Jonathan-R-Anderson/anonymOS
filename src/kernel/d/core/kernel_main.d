@@ -1488,12 +1488,23 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
         import core.domain : domainSessionIdentity, domainSessionId;
         const uint sid = domainSessionIdentity();
         g_tasks[t].identityObjId = (sid != 0) ? sid : g_tasks[0].identityObjId;
-        // ROADMAP 4.0b: no confinement audit here.  The attempt is recorded in git history --
-        // a shadow namespace clone per spawn plus a hook in namespaceCheckOpen -- and it broke the
-        // boot.  Unwinding it one piece at a time did not restore the desktop either; only removing
-        // ALL of it did, including a hook that returned on its first line.  The remaining suspicion
-        // is the extra call frame on the open hot path, which is a reason to collect confinement
-        // data somewhere other than inside open().
+        // ROADMAP 4.0b: bind the task into the session domain -- confinement ON.
+        //
+        // domainBindTaskNs() is the sanctioned path (task.d): it clones the domain's namespace,
+        // sets identityObjId from the domain, and records domainObjId so the overlay copy-up hook
+        // works.  It supersedes the manual identity assignment above.
+        //
+        // This is only attemptable because the policy now describes the real filesystem: measured
+        // coverage went 0 -> 257 of the 270 paths a boot opens, and allowTraversalOutsideMounts
+        // adds a read-only "/" so the binaries and libraries this OS stages at the root stay
+        // reachable.  The model that leaves is READ-mostly, WRITE-confined, explicit denies
+        // enforced -- weaker than full isolation, and the shape that actually fits an OS whose
+        // executables live at /.
+        {
+            import core.task : domainBindTaskNs;
+            const uint sd = domainSessionId();
+            if (sd != 0) cast(void)domainBindTaskNs(t, sd);
+        }
         // ROADMAP 4.0: one line per spawn, bounded.  The border still showed System after this
         // change, and the two explanations -- no session domain found, or one found with no
         // identity -- are indistinguishable from the border alone.

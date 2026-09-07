@@ -35,6 +35,7 @@
       "packages": ["git","clang"], "applications": ["terminal","editor"],
       "filesystemAccess": {
         "defaultPolicy": "deny",
+        "allowTraversalOutsideMounts": true,
         "readWrite": ["/home/user", "/tmp", "/run", "/var/cache", "/var/lib",
                       "/dev/dri", "/dev/input", "/dev/null"],
         "readOnly":  ["/usr/share", "/usr/lib", "/usr/local", "/lib", "/etc", "/proc",

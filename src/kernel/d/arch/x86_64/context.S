@@ -613,7 +613,17 @@ serviceSyscall:
 	mov $0x100, %rax
 restoreKernelState:
 	movabsq $kernelState, %rdi
+	# DIAGNOSTIC GUARD.  kernelState is populated by x64SwitchToUserspace.  If an interrupt or
+	# exception arrives BEFORE the first userspace entry, this path runs with the whole struct
+	# still zero: rsp becomes 0 and the `ret` below reads address 0, surfacing as
+	#   KERNEL FAULT ... rip=restoreKernelState pf=not-present/read cr2=0
+	# which names the SYMPTOM and hides the trap that actually fired.  kmain.d already warns that
+	# this shape is "a cryptic fault".  The vector is still in %rax on the serviceISR path, so
+	# report it rather than dying on a null ret.
+	cmpq $0, (RSP_I * 8)(%rdi)
+	je earlyTrapNoState
 	movq (RBX_I * 8)(%rdi), %rbx
+
 	movq (RCX_I * 8)(%rdi), %rcx
 	movq (RDX_I * 8)(%rdi), %rdx
 	movq (RSI_I * 8)(%rdi), %rsi
@@ -636,6 +646,15 @@ restoreKernelState:
 	# because the thunk had spilled it to the original stack → #GP at resume.
 	movq (RSP_I * 8)(%rdi), %rsp
 	ret
+
+# Reached only when kernelState is empty (see the guard above).  %rax holds the vector the
+# serviceISR path was returning from.  Hands it to D for a readable message; does not return.
+earlyTrapNoState:
+	movq %rax, %rdi
+	callq earlyTrapNoKernelState
+	cli
+	hlt
+	jmp earlyTrapNoState
 
 .global setupSysCalls
 setupSysCalls:

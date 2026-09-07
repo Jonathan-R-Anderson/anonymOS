@@ -1547,3 +1547,20 @@ ulong linux_seed_initial_stack_with_args(
 
     return stackVirtBase + rspPhysOff;
 }
+
+// Called from context.S's restoreKernelState guard when kernelState is still empty -- i.e. an
+// interrupt or exception arrived BEFORE the first x64SwitchToUserspace populated it.  Without this
+// the CPU takes a null `ret` and the only evidence is a KERNEL FAULT whose rip is
+// restoreKernelState and whose cr2 is 0: the symptom, never the cause.  kmain.d already calls that
+// shape "a cryptic fault"; this prints the vector that actually fired.
+extern (C) void earlyTrapNoKernelState(ulong vec) @nogc nothrow {
+    console_force_framebuffer_log();
+    klog("\n!!! EARLY TRAP BEFORE FIRST USERSPACE ENTRY !!!\n");
+    klog("vector=");
+    klog_hex(vec & 0xff);
+    klog(" (raw=");
+    klog_hex(vec);
+    klog(")\n");
+    klog("kernelState is empty: x64SwitchToUserspace has not run yet, so there is no kernel\n");
+    klog("context to return to.  The vector above is the trap that fired, not the null ret.\n");
+}

@@ -3067,7 +3067,35 @@ public void lapicEOI() @nogc nothrow {
 // in QEMU) can't double-tick.  Hang-safe: if channel 2 never reaches terminal count
 // the spin is capped and we fall back to a conservative count so the clock still
 // advances rather than freezing the boot.
+// True iff this CPU reports x2APIC (CPUID.01h:ECX[21]).  Writing IA32_APIC_BASE bit 10 without it
+// raises #GP, and this early there is no kernel context to return to, so the trap surfaces as a
+// null `ret` inside restoreKernelState -- the symptom, never the cause.
+private bool cpuHasX2apic() @nogc nothrow {
+    uint feat;
+    asm @nogc nothrow { push RBX; mov EAX, 1; cpuid; mov feat, ECX; pop RBX; }
+    return ((feat >> 21) & 1) != 0;
+}
+
 private void startBspApicTimer() @nogc nothrow {
+    // The x2APIC feature check kmain.d performs guards only the SMP path, and it sits AFTER that
+    // function's `g_smpCpuCount <= 1` early return -- so on a single-core machine it never runs,
+    // and this call was reached unguarded on every boot.  A CPU without x2APIC therefore died here
+    // with a cryptic fault instead of the actionable message the check was written to print.
+    //
+    // This is not exotic hardware: QEMU under TCG (no /dev/kvm) exposes a CPU with no x2APIC, and
+    // VirtualBox ships x2APIC OFF by default.  Both are ordinary ways to run this OS.
+    //
+    // Degrade rather than halt.  The legacy PIT IRQ0 is already driving the tick at this point --
+    // the code below masks it only because the APIC timer is about to replace it.  Returning
+    // before both the MSR write and that masking leaves a working 100 Hz clock, so the desktop
+    // boots on a machine without x2APIC instead of dying before first userspace entry.
+    if (!cpuHasX2apic()) {
+        klog("[apic] CPU lacks x2APIC (CPUID.01h:ECX[21]=0) -- keeping the legacy PIT tick.\n");
+        klog("[apic]   Faster, and required for SMP: enable it on the hypervisor.\n");
+        klog("[apic]   VirtualBox: VBoxManage modifyvm <vm> --x2apic on\n");
+        klog("[apic]   QEMU: run with KVM (/dev/kvm accessible); TCG's default CPU has none.\n");
+        return;
+    }
     setupBspX2apic();                          // ensure x2APIC mode (idempotent)
     apicWriteReg(X2APIC_TIMER_DIV, 0x3);       // divide bus clock by 16
 

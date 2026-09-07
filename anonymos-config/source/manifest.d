@@ -52,6 +52,7 @@ enum Tag : ubyte
     domainCreate   = 8,   // payload: name\0 identity\0 template\0 u8 persist  → domainCreate (DOMAIN_MANAGER DM1)
     fsPolicy       = 9,   // payload: domainName\0 u8 flags(bit0=allowTraversal)  → start a domain fs policy (DM2.3)
     fsBind         = 10,  // payload: domainName\0 u8 mode(1=ro,2=rw,3=deny) path\0  → add a binding (DM2.3)
+    ipcAllow       = 11,  // payload: from\0 to\0 broker\0 u8 flags(bit0=dh,bit1=audit)  → idipcPairRuleAdd (DECLARATIVE_CONFIG Phase 7)
 }
 
 // The trusted key MUST match src/kernel/d/core/crypto.d g_trustedKey exactly.
@@ -131,6 +132,7 @@ public ubyte[] buildManifest(in CompiledGraph g, in JSONValue doc)
     auto nsRecs = manifestNamespaces(g);
     auto idRecs = manifestIdentities(g);
     auto domRecs = manifestDomains(g);      // DOMAIN_MANAGER DM1
+    auto ipcRecs = manifestIpcRules(g);     // DECLARATIVE_CONFIG Phase 7
     auto svcRegRecs = manifestServiceRegs(g, doc);
     auto svcDepRecs = manifestServiceDeps(g, doc);
     uint count = 0;
@@ -138,6 +140,7 @@ public ubyte[] buildManifest(in CompiledGraph g, in JSONValue doc)
     count += countRecords(idRecs);
     if (idRecs.length) count += 1;          // identityFreeze
     count += countRecords(domRecs);         // DOMAIN_MANAGER DM1
+    count += countRecords(ipcRecs);         // DECLARATIVE_CONFIG Phase 7
     count += countRecords(svcRegRecs);
     count += countRecords(svcDepRecs);
     count += 1;                              // svcStartAll
@@ -153,6 +156,9 @@ public ubyte[] buildManifest(in CompiledGraph g, in JSONValue doc)
     b.buf ~= domRecs;                       // DOMAIN_MANAGER DM1 (after identities exist + freeze)
     b.buf ~= svcRegRecs;
     b.buf ~= svcDepRecs;
+    // Phase 7 rules go AFTER the service registrations: each names its broker by name, and the
+    // kernel resolves it with serviceLookup, which cannot succeed before svcReg has run.
+    b.buf ~= ipcRecs;
     b.putRecord(Tag.svcStartAll, null);
     if (auto sys = "system" in doc.object)
         if (sys.type == JSONType.object)
@@ -406,4 +412,36 @@ private uint guiMask(in string[] flags)
         }
     }
     return m;
+}
+
+// DECLARATIVE_CONFIG Phase 7 — materialize the declared cross-identity IPC rules.
+//
+// Stage 8 has always built g.ipcRules from `ipc[].allow[]`, and this emitter dropped them exactly
+// the way it dropped net/clip/gui: the kernel's g_idIpcRules was populated only by hardcoded rules
+// in idipcInit, so `{"from":"Personal","to":"System","broker":"ipc-broker"}` in system.json
+// described a policy the running system did not have.
+//
+// The broker is emitted BY NAME rather than resolved here.  A service object id does not exist
+// until the kernel registers the service, so the name is the only thing that can cross the wire;
+// the kernel resolves it with serviceLookup and falls back to a direct (unbrokered) rule when the
+// named service is absent, which is what a manifest naming a broker that failed to start should do.
+public ubyte[] manifestIpcRules(in CompiledGraph g)
+{
+    ManifestBuilder b;
+    foreach (r; g.ipcRules)
+    {
+        ubyte[] p;
+        foreach (c; r.fromId) p ~= cast(ubyte) c;
+        p ~= cast(ubyte) 0;
+        foreach (c; r.toId) p ~= cast(ubyte) c;
+        p ~= cast(ubyte) 0;
+        foreach (c; r.broker) p ~= cast(ubyte) c;
+        p ~= cast(ubyte) 0;
+        ubyte flags = 0;
+        if (r.dh)    flags |= 1;
+        if (r.audit) flags |= 2;
+        p ~= flags;
+        b.putRecord(Tag.ipcAllow, p);
+    }
+    return b.buf;
 }

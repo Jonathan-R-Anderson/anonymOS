@@ -37,7 +37,8 @@ import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;              
 import core.identity : identityCreate, identityFreeze, identityByName, NetPolicy, ClipPolicy,
                        identityApplyPolicy;   // DECLARATIVE_CONFIG Phase 5/9
 import core.domain   : domainCreate, domainByName, domainById, domainSetTemplate;   // DOMAIN_MANAGER DM1/DM6
-import core.servicemgr : serviceRegister, serviceAddDep, serviceStartAll;
+import core.servicemgr : serviceRegister, serviceAddDep, serviceStartAll, serviceLookup;
+import core.idipc : idipcPairRuleAdd;   // DECLARATIVE_CONFIG Phase 7
 import core.store : genSetActive, genActive, genCreate;
 import core.audit : auditLog, AuditKind;
 import core.user : userDefaultObjId;
@@ -75,6 +76,7 @@ private enum ubyte TAG_SVC_START_ALL  = 7;
 private enum ubyte TAG_DOMAIN_CREATE  = 8;   // DOMAIN_MANAGER DM1
 private enum ubyte TAG_FS_POLICY      = 9;   // DOMAIN_MANAGER DM2.3
 private enum ubyte TAG_FS_BIND        = 10;  // DOMAIN_MANAGER DM2.3
+private enum ubyte TAG_IPC_ALLOW      = 11;  // DECLARATIVE_CONFIG Phase 7
 
 private enum MANIFEST_HEADER_SIZE = 16;
 private enum MANIFEST_HMAC_SIZE   = 32;
@@ -85,6 +87,7 @@ __gshared ulong g_cfgIdApplied;
 __gshared ulong g_cfgDomApplied;   // DOMAIN_MANAGER DM1
 __gshared ulong g_cfgSvcApplied;
 __gshared ulong g_cfgSvcDeps;
+__gshared ulong g_cfgIpcApplied;   // DECLARATIVE_CONFIG Phase 7
 __gshared bool  g_cfgApplied;     // a verified manifest was applied this boot
 __gshared bool  g_cfgSelfTested;
 
@@ -160,7 +163,9 @@ public bool configBootApply() {
     klog_hex(g_cfgDomApplied);
     klog(" domains, ");
     klog_hex(g_cfgNsApplied);
-    klog(" namespaces, gen=");
+    klog(" namespaces, ");
+    klog_hex(g_cfgIpcApplied);
+    klog(" ipc rules, gen=");
     klog_hex(genActive());
     klog("\n");
     return true;
@@ -346,6 +351,40 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
         if      (mode == 1) nsBind(d.nsObjId, path, nsRootDir(), RO);
         else if (mode == 2) nsBind(d.nsObjId, path, nsRootDir(), RW);
         else if (mode == 3) nsBindDeny(d.nsObjId, path);
+        break;
+    }
+    case TAG_IPC_ALLOW: {
+        // payload: from\0 to\0 broker\0 u8 flags(bit0=dh, bit1=audit)
+        //
+        // DECLARATIVE_CONFIG Phase 7.  Stage 8 has always compiled `ipc[].allow[]` into
+        // g.ipcRules; nothing carried them to the kernel, so g_idIpcRules held only the rules
+        // hardcoded in idipcInit and a declared allow-rule described a policy the running system
+        // did not have.  4.1 made those rules load-bearing -- they gate every cross-identity
+        // AF_UNIX connect -- which is exactly why they should be declared rather than compiled in.
+        size_t off = 0;
+        const(char)* fromN = readCStr(payload, len, off);
+        const(char)* toN   = readCStr(payload, len, off);
+        const(char)* brkN  = readCStr(payload, len, off);
+        if (fromN is null || toN is null) break;
+        const uint fromId = identityByName(fromN);
+        const uint toId   = identityByName(toN);
+        if (fromId == 0 || toId == 0) {
+            klog("[cfg] ipc rule SKIPPED (unknown identity): ");
+            klog(fromN); klog(" -> "); klog(toN); klog("\n");
+            break;
+        }
+        // Resolve the declared broker by name.  A manifest may name a broker that never
+        // registered (the service failed, or this build does not ship it); a direct rule is the
+        // right degradation -- the pair stays allowed, it simply is not sanitized.
+        uint brokerObj = 0;
+        if (brkN !is null && brkN[0] != 0) brokerObj = serviceLookup(brkN);
+        if (idipcPairRuleAdd(fromId, toId, brokerObj)) {
+            ++g_cfgIpcApplied;
+            klog("[cfg] ipc rule applied: ");
+            klog(fromN); klog(" -> "); klog(toN);
+            klog(" broker="); klog_hex(brokerObj);
+            klog("\n");
+        }
         break;
     }
     case TAG_SVC_REG: {

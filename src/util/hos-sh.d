@@ -53,7 +53,79 @@ __gshared char[8192] g_buf;
 __gshared char[128]  g_who;   // "user@namespace" (cached)
 __gshared char[256]  g_cwd;
 
+// ── SHELL_AND_COMMANDS B5 — destructive-operation guard ──────────────────────────────────────
+//
+// ns-enter, cap-grant, cap-derive and identity-switch CHANGE the caller's security context:
+// they move a process between namespaces, mint an attenuated capability, or drop it into another
+// identity.  They used to fire the moment the form was evaluated, so a typo in a REPL over the
+// object model was indistinguishable from an intention.
+//
+// Two guards, and they answer different questions:
+//   --dry-run  "what WOULD this do" -- reports the verb and its arguments, calls nothing.
+//   --yes      "I meant it" -- without it a destructive verb is REFUSED, not merely warned about.
+//
+// ARMING IS ONE-SHOT.  `--yes` authorises the next destructive verb and is consumed by it, so a
+// script that arms once cannot silently authorise a second operation it never mentioned.  That is
+// the difference between confirming an action and switching the safety off.
+//
+// Dry-run takes precedence over armed: if a caller passes both, nothing executes.  A caller who
+// asked what would happen gets an answer, not an action.
+__gshared int g_dryRun = 0;
+__gshared int g_armed  = 0;
+__gshared long g_lastGuardVerdict = 0;   // 0 = executed, 1 = dry-run, 2 = refused
+
+// Returns true if the caller may proceed.  Prints the reason when it says no, because a silent
+// refusal in a shell reads as a bug in the shell.
+bool guardDestructive(const(char)* verb, long a, long b) @nogc nothrow {
+    if (g_dryRun) {
+        printf("dry-run: %s(%ld, %ld) -- not executed\n", verb, a, b);
+        g_lastGuardVerdict = 1;
+        return false;
+    }
+    if (!g_armed) {
+        printf("refused: %s is destructive; re-run with --yes (or `arm`) to authorise it\n", verb);
+        g_lastGuardVerdict = 2;
+        return false;
+    }
+    g_armed = 0;               // one-shot: consumed by this operation
+    g_lastGuardVerdict = 0;
+    return true;
+}
+
+// B5 completion.  The data source is the SAME query the user would run, so completion cannot drift
+// from reality: it lists what `id` / `ns` / `svc` actually report, filtered by prefix.  Returns the
+// number of matches, so a caller (and the self-test) can act on it without parsing stdout.
+int completeNames(long op, const(char)* prefix, int printThem) @nogc nothrow {
+    const long n = syscall(HOS_SYS_QUERY, op, 0, cast(long)g_buf.ptr, cast(long)(g_buf.length - 1));
+    if (n <= 0) return 0;
+    g_buf[cast(size_t)n] = 0;
+    size_t plen = 0; while (prefix !is null && prefix[plen] != 0) ++plen;
+    int hits = 0;
+    size_t i = 0;
+    while (i < cast(size_t)n) {
+        // Each line's first whitespace-delimited token is the name.
+        size_t st = i;
+        while (i < cast(size_t)n && g_buf[i] != '\n') ++i;
+        size_t end = i;
+        if (i < cast(size_t)n) ++i;
+        while (st < end && (g_buf[st] == ' ' || g_buf[st] == '\t')) ++st;
+        size_t tok = st;
+        while (tok < end && g_buf[tok] != ' ' && g_buf[tok] != '\t') ++tok;
+        if (tok == st) continue;
+        bool match = true;
+        for (size_t k = 0; k < plen; ++k) {
+            if (st + k >= tok || g_buf[st + k] != prefix[k]) { match = false; break; }
+        }
+        if (!match) continue;
+        ++hits;
+        if (printThem) { fwrite(&g_buf[st], 1, tok - st, stdout); printf("\n"); }
+    }
+    if (printThem) fflush(stdout);
+    return hits;
+}
+
 // Run a native object-model query and print its text result.
+
 void runQuery(long op, const(char)* header) @nogc nothrow {
     const long n = syscall(HOS_SYS_QUERY, op, 0, cast(long)g_buf.ptr, cast(long)(g_buf.length - 1));
     if (n < 0) { printf("hos-sh: native query failed (errno %ld)\n", -n); return; }
@@ -63,7 +135,85 @@ void runQuery(long op, const(char)* header) @nogc nothrow {
     fflush(stdout);
 }
 
+// B5 `man` — the per-topic detail `help` deliberately does not carry.  help() is a one-screen
+// reminder; man answers "what does this verb actually do to my process".
+void manPage(const(char)* cmd) @nogc nothrow {
+    const(char)* t = cmd + 3; while (*t == ' ') ++t;
+    if (*t == 0) {
+        printf("man <topic>.  Topics: destructive, complete, identity, namespace, cap\n");
+        return;
+    }
+    if (strncmp(t, "destructive".ptr, 11) == 0) {
+        printf("DESTRUCTIVE VERBS — ns-enter, cap-grant, cap-derive, identity-switch\n");
+        printf("  These change the CALLING process's security context: they move it between\n");
+        printf("  namespaces, mint an attenuated capability, or drop it into another identity.\n");
+        printf("  They are refused unless armed.\n\n");
+        printf("    arm            authorise the NEXT destructive verb (one-shot, consumed by it)\n");
+        printf("    dry-run        report what a destructive verb WOULD do and execute nothing\n\n");
+        printf("  dry-run wins over arm: asking what would happen never performs it.\n");
+        printf("  Every one of these is audited by the kernel whether it succeeds or is refused\n");
+        printf("  (AuditKind.NativeVerbOk / NativeVerbDeny).\n");
+    } else if (strncmp(t, "complete".ptr, 8) == 0) {
+        printf("complete <prefix> — names matching <prefix> across identities, namespaces and\n");
+        printf("  services.  The source is the same query `id` / `ns` / `svc` print, so a\n");
+        printf("  completion cannot offer a name the object model does not actually have.\n");
+    } else if (strncmp(t, "identity".ptr, 8) == 0) {
+        printf("identity — (identity) => #(user ns caps).  (identity-switch \"Name\") is\n");
+        printf("  DE-ESCALATION ONLY: the kernel refuses a switch that would gain rights.\n");
+    } else if (strncmp(t, "namespace".ptr, 9) == 0) {
+        printf("namespace — (ns-clone) copies the caller's namespace and returns its id;\n");
+        printf("  (ns-enter id) enters one the caller OWNS.  Entering another task's is refused.\n");
+    } else if (strncmp(t, "cap".ptr, 3) == 0) {
+        printf("cap — (cap-grant h rights) mints an ATTENUATED handle: rights are intersected\n");
+        printf("  with what the source holds, so a derive can never widen authority.\n");
+    } else {
+        printf("man: no such topic '%s'\n", t);
+    }
+}
+
+// B5 self-test.  Runs headlessly (`hos-sh --selftest`) because the alternative is a human typing
+// into a terminal, and a guard nobody can test is a guard nobody should trust.  It checks the
+// REFUSAL paths, which are the ones that matter: a destructive verb must not fire unarmed, and
+// dry-run must not fire even when armed.
+int b5SelfTest() @nogc nothrow {
+    int pass = 1;
+
+    // 1. Unarmed destructive verb is REFUSED (verdict 2) and does not call the kernel.
+    g_dryRun = 0; g_armed = 0;
+    const bool r1 = guardDestructive("ns-enter".ptr, 1, 0);
+    if (r1 || g_lastGuardVerdict != 2) pass = 0;
+
+    // 2. Armed -> permitted (verdict 0), and the arm is CONSUMED.
+    g_armed = 1;
+    const bool r2 = guardDestructive("ns-enter".ptr, 1, 0);
+    const bool r3 = guardDestructive("ns-enter".ptr, 1, 0);   // second call: no longer armed
+    if (!r2 || g_lastGuardVerdict != 2 || r3) pass = 0;
+
+    // 3. dry-run beats armed: asking what would happen must never perform it.
+    g_dryRun = 1; g_armed = 1;
+    const bool r4 = guardDestructive("cap-grant".ptr, 7, 1);
+    if (r4 || g_lastGuardVerdict != 1) pass = 0;
+    g_dryRun = 0; g_armed = 0;
+
+    // 4. Completion returns real names: "Sys" must match the System identity, and a prefix that
+    //    cannot exist must match nothing.  Both directions, so a stub that always returns 0 or
+    //    always returns 1 fails.
+    const int cHit  = completeNames(HOSQ_IDENTITIES, "Sys".ptr, 0);
+    const int cMiss = completeNames(HOSQ_IDENTITIES, "zzzznope".ptr, 0);
+    if (cHit < 1 || cMiss != 0) pass = 0;
+
+    printf("[4.5] B5: unarmed-refused=%d armed-once=%d dryrun-wins=%d complete(hit=%d,miss=%d) -- %s\n",
+           (!r1 && g_lastGuardVerdict != 0) ? 1 : 0,
+           (r2 && !r3) ? 1 : 0,
+           (!r4) ? 1 : 0,
+           cHit, cMiss,
+           pass ? "B5 PASS".ptr : "B5 FAIL".ptr);
+    fflush(stdout);
+    return 0;
+}
+
 void help() @nogc nothrow {
+
     printf("-sh — a Lisp (LFE) over the object model.  Forms evaluate to data:\n");
     printf("  values   1   \"str\"   foo   (list 1 2 3)   (tuple 1 2)   ()   true / false\n");
     printf("  define   (defun sq (x) (* x x))     then  (sq 9) => 81   (recursion ok)\n");
@@ -75,6 +225,7 @@ void help() @nogc nothrow {
     printf("  arith    (+ - * /)    compare (== /= < > >= =<)\n");
     printf("  objects  (obj) (id) (ns) (svc) (sys) (whoami)    (ns-clone) (ns-enter id) (cap-grant h r)\n");
     printf("  security (identity)=>#(user ns caps)  (namespace)  (caps)  (cap-derive h r)  (identity-switch \"Name\")\n");
+    printf("  safety   arm | dry-run | complete <prefix> | man <topic>   (destructive verbs need `arm`)\n");
     printf("  shell    (cat \"/p\")  (cd \"/p\")  (print x)  (reset)  (exit)\n");
 }
 
@@ -458,16 +609,24 @@ int evalList(int nd, int env) @nogc nothrow {
         if (symEqA(ho,hl,"sys")) { runQuery(HOSQ_SYS, null); return NIL; }
         if (symEqA(ho,hl,"whoami")) return whoCell();
         if (symEqA(ho,hl,"ns-clone")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_NS_CLONE, 0, 0, 0));
-        if (symEqA(ho,hl,"ns-enter")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, asInt(eval(a0,env)), 0, 0));
-        if (symEqA(ho,hl,"cap-grant")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, asInt(eval(a0,env)), asInt(eval(a1,env)), 0));
+        if (symEqA(ho,hl,"ns-enter")) { const long v = asInt(eval(a0,env));
+            if (!guardDestructive("ns-enter".ptr, v, 0)) return mkInt(-1);
+            return mkInt(syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, v, 0, 0)); }
+        if (symEqA(ho,hl,"cap-grant")) { const long h = asInt(eval(a0,env)), r = asInt(eval(a1,env));
+            if (!guardDestructive("cap-grant".ptr, h, r)) return mkInt(-1);
+            return mkInt(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, h, r, 0)); }
         if (symEqA(ho,hl,"subscribe")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_SUBSCRIBE, asInt(eval(a0,env)), 0, 0));
 
         // L4 — the security model as first-class forms (the prompt's fields, manipulable as LFE)
         if (symEqA(ho,hl,"identity"))  return buildIdentity();                       // #(user ns caps)
         if (symEqA(ho,hl,"namespace")) return tupleElem(buildIdentity(), 2);         // my namespace atom
         if (symEqA(ho,hl,"caps"))      return tupleElem(buildIdentity(), 3);         // my rights, a list of atoms
-        if (symEqA(ho,hl,"cap-derive")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, asInt(eval(a0,env)), asInt(eval(a1,env)), 0));
-        if (symEqA(ho,hl,"identity-switch")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_ID_SWITCH, 0, cast(long)cstrCell(eval(a0,env)), 0));
+        if (symEqA(ho,hl,"cap-derive")) { const long h = asInt(eval(a0,env)), r = asInt(eval(a1,env));
+            if (!guardDestructive("cap-derive".ptr, h, r)) return mkInt(-1);
+            return mkInt(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, h, r, 0)); }
+        if (symEqA(ho,hl,"identity-switch")) { auto nm = cstrCell(eval(a0,env));
+            if (!guardDestructive("identity-switch".ptr, 0, 0)) return mkInt(-1);
+            return mkInt(syscall(HOS_SYS_QUERY, HOSQ_ID_SWITCH, 0, cast(long)nm, 0)); }
 
         // shell side-effects
         if (symEqA(ho,hl,"print")) { int ai=a0; while(ai>=0){ printCell(eval(ai,env)); printf("\n"); ai=g_nodes[ai].next; } fflush(stdout); return NIL; }
@@ -608,6 +767,23 @@ int runCommand(char* cmd) @nogc nothrow {
     // Native zsh uses `/hos-sh whoami` to build a prompt that shows the full native identity.
     else if (strcmp(cmd, "whoami".ptr) == 0)  printf("%s\n", g_who.ptr);
     else if (strcmp(cmd, "z4".ptr) == 0)      z4test();  // Z4b.3/Z4c.3 native verb self-test
+    // ── B5 ────────────────────────────────────────────────────────────────────────────────
+    else if (strcmp(cmd, "--dry-run".ptr) == 0 || strcmp(cmd, "dry-run".ptr) == 0) {
+        g_dryRun = 1; printf("dry-run ON: destructive verbs report and do nothing\n");
+    }
+    else if (strcmp(cmd, "--yes".ptr) == 0 || strcmp(cmd, "arm".ptr) == 0) {
+        g_armed = 1; printf("armed: the NEXT destructive verb will execute (one-shot)\n");
+    }
+    else if (strncmp(cmd, "complete".ptr, 8) == 0) {
+        const(char)* pfx = cmd + 8; while (*pfx == ' ') ++pfx;
+        int t = 0;
+        t += completeNames(HOSQ_IDENTITIES, pfx, 1);
+        t += completeNames(HOSQ_NAMESPACES, pfx, 1);
+        t += completeNames(HOSQ_SERVICES,   pfx, 1);
+        if (t == 0) printf("  (no completions)\n");
+    }
+    else if (strcmp(cmd, "man".ptr) == 0 || strncmp(cmd, "man ".ptr, 4) == 0) manPage(cmd);
+    else if (strcmp(cmd, "--selftest".ptr) == 0) return b5SelfTest();
     else printf("hos-sh: unknown command '%s' (try 'help')\n", cmd);
     return 1;
 }

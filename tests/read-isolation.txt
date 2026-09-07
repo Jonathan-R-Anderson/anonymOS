@@ -1,0 +1,18 @@
+# ROADMAP 4.12 -- does a domain policy's DENY survive the blanket read-only "/"?
+#
+# Confined domains get an explicit deny-list AND, under allowTraversalOutsideMounts, a read-only
+# "/" -- needed because the binaries a program runs live at the root.  If the blanket read overrode
+# the denies, every deny in every domain policy would be decorative and Banking's data would be
+# readable from a Disposable window.  It does not: measured 2026-09-07.
+
+require  [4.12] Throwaway /home/user/secret -> REFUSED  (as policy declares)
+require  [4.12] Throwaway /config/system.json -> REFUSED  (as policy declares)
+require  [4.12] DevSandbox /home/user/.ssh/id_rsa -> REFUSED  (as policy declares)
+require  [4.12] DevSandbox /config/system.json -> REFUSED  (as policy declares)
+
+# An ALLOWED path, so the probe is capable of printing both answers.  A check that can only ever
+# say REFUSED proves nothing about enforcement.
+require  [4.12] DevSandbox /usr/share/icons -> readable  (as policy declares)
+
+forbid   POLICY NOT ENFORCED
+forbid   EARLY BOOT EXCEPTION

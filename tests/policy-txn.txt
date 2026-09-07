@@ -1,0 +1,18 @@
+# IDENTITY_DOMAIN §9 (roadmap 4.9) -- signed policy transactions on a SEALED registry.
+#
+# The freeze is a security property: privilege cannot be minted at runtime.  §9's exception is not
+# "unfreeze" but a signed, capability-gated, epoch-monotonic transaction.  Each of those four locks
+# is asserted to refuse ON ITS OWN -- a suite that only checked "a good transaction applies" would
+# pass with three of the four checks missing.
+
+require  [4.9] signed policy txn on a SEALED registry:
+require  -- §9 PASS
+
+# The individual verdicts.  BadSignature=3, NoCapability=5, Ok=0, StaleEpoch=4.
+require  forged=0000000000000003
+require  no-cap=0000000000000005
+require  applied=0000000000000000
+require  replayed=0000000000000004
+
+forbid   EARLY BOOT EXCEPTION
+forbid   §9 FAIL

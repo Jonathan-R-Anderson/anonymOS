@@ -50,8 +50,28 @@ TREE="${1:-$ROOT/cd}"
 #
 # Longest first matters: replacing HOME first would shorten nothing but would leave the build-root
 # pattern unmatchable, since its prefix would already have been rewritten.
-PREFIXES=("$ROOT")
-[ -n "${HOME:-}" ] && [ "$HOME" != "/" ] && PREFIXES+=("$HOME")
+# Each entry is "<host prefix>|<guest path it should become>".  Order matters: LONGEST first, so a
+# dependency's sysroot is rewritten before the generic build root that contains it.
+#
+# The dependency sysroots map to /usr rather than to a placeholder, because these strings are not
+# dead weight -- the guest PROBES them at runtime (Mesa's DRI/GBM search, musl's ld path, glib's
+# gio modules, libinput's data dir, fontconfig).  Rewriting
+#     <root>/deps/gtk-stack/sysroot/share/drirc.d  ->  /usr/////...////share/drirc.d
+# leaves a path POSIX collapses to /usr/share/drirc.d, which is where this OS actually stages that
+# kind of file.  A probe landing there can resolve; one landing in /build never could.
+#
+# The principled fix remains building the dependencies with --prefix=/usr and DESTDIR so nothing is
+# baked in at all.  That is a refactor of a 722 MB dependency tree -- changing the prefix relocates
+# every installed file and every staging path that reads it -- and this reaches the same two
+# outcomes, no host identity and probes that point somewhere real, without rebuilding it.
+PREFIX_MAP=(
+    "$ROOT/deps/gtk-stack/sysroot|/usr"
+    "$ROOT/deps/musl/install|/usr"
+    "$ROOT/deps/dbus-build/install|/usr"
+    "$ROOT/deps/zsh/sysroot|/usr"
+    "$ROOT|/build"
+)
+[ -n "${HOME:-}" ] && [ "$HOME" != "/" ] && PREFIX_MAP+=("$HOME|/build")
 
 BUILD_ROOT="$ROOT"
 LEN=${#BUILD_ROOT}
@@ -75,12 +95,14 @@ if [ "${#PLACEHOLDER}" -ne "$LEN" ]; then
 fi
 
 files=0
-for PFX in "${PREFIXES[@]}"; do
+for ENTRY in "${PREFIX_MAP[@]}"; do
+    PFX="${ENTRY%%|*}"
+    TGT="${ENTRY##*|}"
     PLEN=${#PFX}
-    [ "$PLEN" -lt "${#BASE}" ] && continue          # cannot pad down to a shorter placeholder
-    PPAD=$(( PLEN - ${#BASE} ))
-    if [ "$PPAD" -eq 0 ]; then REPL="$BASE"
-    else REPL="$BASE$(printf '/%.0s' $(seq 1 $PPAD))"; fi
+    [ "$PLEN" -lt "${#TGT}" ] && continue
+    PPAD=$(( PLEN - ${#TGT} ))
+    if [ "$PPAD" -eq 0 ]; then REPL="$TGT"
+    else REPL="$TGT$(printf '/%.0s' $(seq 1 $PPAD))"; fi
     [ "${#REPL}" -eq "$PLEN" ] || { echo "sanitize-build-paths: pad error for $PFX" >&2; exit 2; }
 
     while IFS= read -r f; do
@@ -92,14 +114,15 @@ for PFX in "${PREFIXES[@]}"; do
             files=$((files + 1))
         fi
     done < <(find "$TREE" -type f)
-    echo "sanitize-build-paths: pass '$PFX' -> '$REPL'"
+    echo "sanitize-build-paths: $PFX -> $TGT"
 done
 
 # `grep -c` exits 1 when it finds NOTHING, which here is the success case -- with `pipefail`
 # that killed the script precisely when the sanitisation had worked.  `|| true` keeps the
 # count without letting "no matches" read as a failure.
 remaining=0
-for PFX in "${PREFIXES[@]}"; do
+for ENTRY in "${PREFIX_MAP[@]}"; do
+    PFX="${ENTRY%%|*}"
     n=$( { grep -rac "$PFX" "$TREE" 2>/dev/null || true; } | awk -F: '{s+=$2} END {print s+0}' )
     remaining=$(( remaining + n ))
 done

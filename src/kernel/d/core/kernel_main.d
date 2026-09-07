@@ -1503,7 +1503,21 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
         {
             import core.task : domainBindTaskNs;
             const uint sd = domainSessionId();
-            if (sd != 0) cast(void)domainBindTaskNs(t, sd);
+            const uint boundNs = (sd != 0) ? domainBindTaskNs(t, sd) : 0;
+            // Prove confinement is ON rather than inferring it from an absence of denials.  Zero
+            // denials is ambiguous: it reads the same whether the policy is being enforced and not
+            // violated, or the bind silently failed and nothing is enforced at all.  That is the
+            // pid-hash border mistake -- a security property assumed from a quiet log.
+            static __gshared int g_bindLogN = 0;
+            if (g_bindLogN < 4) {
+                ++g_bindLogN;
+                klog("[4.0b] bind tid="); klog_dec(cast(ulong)cast(uint)t);
+                klog(" domain="); klog_hex(sd);
+                klog(" ns="); klog_hex(boundNs);
+                klog(" taskNs="); klog_hex(g_tasks[t].namespaceObjId);
+                klog(" domainObjId="); klog_hex(g_tasks[t].domainObjId);
+                klog(boundNs != 0 ? " CONFINED\n" : " NOT-CONFINED\n");
+            }
         }
         // ROADMAP 4.0: one line per spawn, bounded.  The border still showed System after this
         // change, and the two explanations -- no session domain found, or one found with no

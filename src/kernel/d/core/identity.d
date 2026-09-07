@@ -101,7 +101,9 @@ public bool identityDeviceAllowed(IdentityId idObj, uint devClass) {
 
 // --- per-identity allow-lists (deny-by-default; small fixed tables) ----------
 // 0 brokerSvcObjId = direct allow; non-zero = the brokered service the pair routes through.
-struct IpcPairRule { bool inUse; IdentityId from, to; uint brokerSvcObjId; }
+// DECLARATIVE_CONFIG Phase 7: `dh` and `audit` come from the manifest.  APPENDED to the struct,
+// never inserted -- the same discipline the FileType enum and Task struct needed after two bugs.
+struct IpcPairRule { bool inUse; IdentityId from, to; uint brokerSvcObjId; bool dh; bool audit; }
 // A cap-wrapped cross-identity object share (audited; rights ⊆ owner's).
 struct ShareRule   { bool inUse; IdentityId owner; uint objId; uint rights; IdentityId grantee; }
 

@@ -38,7 +38,7 @@ import core.identity : identityCreate, identityFreeze, identityByName, NetPolicy
                        identityApplyPolicy;   // DECLARATIVE_CONFIG Phase 5/9
 import core.domain   : domainCreate, domainByName, domainById, domainSetTemplate;   // DOMAIN_MANAGER DM1/DM6
 import core.servicemgr : serviceRegister, serviceAddDep, serviceStartAll, serviceLookup;
-import core.idipc : idipcPairRuleAdd;   // DECLARATIVE_CONFIG Phase 7
+import core.idipc : idipcPairRuleAdd, idipcPairRuleAddEx;   // DECLARATIVE_CONFIG Phase 7
 import core.store : genSetActive, genActive, genCreate;
 import core.audit : auditLog, AuditKind;
 import core.user : userDefaultObjId;
@@ -378,11 +378,19 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
         // right degradation -- the pair stays allowed, it simply is not sanitized.
         uint brokerObj = 0;
         if (brkN !is null && brkN[0] != 0) brokerObj = serviceLookup(brkN);
-        if (idipcPairRuleAdd(fromId, toId, brokerObj)) {
+        // DECLARATIVE_CONFIG Phase 7: the flags byte the emitter has always written and the kernel
+        // has always thrown away.  bit0 = dh, bit1 = audit.
+        ubyte ipcFlags = 0;
+        if (off < len) ipcFlags = payload[off];
+        const bool wantDh    = (ipcFlags & 1) != 0;
+        const bool wantAudit = (ipcFlags & 2) != 0;
+        if (idipcPairRuleAddEx(fromId, toId, brokerObj, wantDh, wantAudit)) {
             ++g_cfgIpcApplied;
             klog("[cfg] ipc rule applied: ");
             klog(fromN); klog(" -> "); klog(toN);
             klog(" broker="); klog_hex(brokerObj);
+            klog(" dh="); klog_hex(wantDh ? 1 : 0);
+            klog(" audit="); klog_hex(wantAudit ? 1 : 0);
             klog("\n");
         }
         break;

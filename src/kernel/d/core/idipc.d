@@ -78,15 +78,23 @@ public uint idipcBrokerSvc(IdentityId fromId, IdentityId toId) {
 // Install / update a directed cross-identity allow rule (policy authority does
 // this; also used by tests and §7 brokers).  Idempotent on (from,to).
 public bool idipcPairRuleAdd(IdentityId fromId, IdentityId toId, uint brokerSvcObjId) {
+    return idipcPairRuleAddEx(fromId, toId, brokerSvcObjId, false, false);
+}
+
+// DECLARATIVE_CONFIG Phase 7: the manifest carries `dh` and `audit` per allow-rule and the kernel
+// dropped both, so "dh": true in system.json granted nothing.  They are policy the config author
+// wrote down; storing them is what lets anything act on them.
+public bool idipcPairRuleAddEx(IdentityId fromId, IdentityId toId, uint brokerSvcObjId,
+                               bool dh, bool audit) {
     if (fromId == 0 || toId == 0 || fromId == toId) return false;
     foreach (ref r; g_idIpcRules)
         if (r.inUse && r.from == fromId && r.to == toId) {
-            r.brokerSvcObjId = brokerSvcObjId; return true;
+            r.brokerSvcObjId = brokerSvcObjId; r.dh = dh; r.audit = audit; return true;
         }
     foreach (ref r; g_idIpcRules)
         if (!r.inUse) {
             r.inUse = true; r.from = fromId; r.to = toId;
-            r.brokerSvcObjId = brokerSvcObjId; return true;
+            r.brokerSvcObjId = brokerSvcObjId; r.dh = dh; r.audit = audit; return true;
         }
     return false;
 }

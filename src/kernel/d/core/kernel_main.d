@@ -5342,26 +5342,16 @@ void d_kernel_main() {
             }
         }
 
-        // GW3: Weston (Wayland reference compositor + Pixman software renderer)
-        // takes priority over Hyprland as the desktop target when its module is
-        // staged. Match the binary by EXACT basename "weston" so the weston-*
-        // helper-client modules (weston-desktop-shell, weston-terminal, …) aren't
-        // mistaken for the compositor. Staging weston is what toggles this on;
-        // remove it from the ISO to fall back to Hyprland for comparison.
-        // ...UNLESS /epin-hyprland.conf is staged, in which case skip this pass entirely and let
-        // the Hyprland loop below claim init.  Both compositors stay in the image either way.
-        for (int i = 0; i < g_module_count && initPhys == 0 && !hyprlandPreferred(); i++) {
-            auto rec  = cast(multiboot_module_t*)(recs + i * 128);
-            auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
-            if (cstrEqK(cstrBasenameK(name), "weston\0".ptr)) {
-                initPhys = cast(ulong)rec.mod_start;
-                initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
-                initExecName = cstrBasenameK(name);
-                klog("[dkernel] init = Weston module (GW3)\n");
-            }
-        }
-        if (hyprlandPreferred())
-            klog("[dkernel] /epin-hyprland.conf staged -> Weston skipped, selecting Hyprland\n");
+        // GW3 REMOVED 2026-09-06: Weston is no longer selectable as init.
+        //
+        // This pass used to claim init for any staged module named exactly "weston", ahead of
+        // Hyprland, gated only on /epin-hyprland.conf being present.  Combined with the Makefile
+        // defaulting WESTON=1, a plain `make` produced an ISO that booted the wrong desktop, and
+        // nothing said so until the machine was up: two independent switches had to agree to get
+        // the desktop this OS actually ships.
+        //
+        // Hyprland is now the only compositor the kernel will select.  Weston can still be BUILT
+        // and staged (WESTON=1) for comparison; it simply cannot take over the boot.
 
         // First pass: Hyprland is the desktop autostart target when present.
         for (int i = 0; i < g_module_count && initPhys == 0; i++) {

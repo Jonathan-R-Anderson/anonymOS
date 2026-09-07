@@ -178,11 +178,16 @@ HYPRLAND_BIN := deps/hyprland/Hyprland
 DECOY_IMAGE := deps/decoy-os/build/decoy.ext4
 PREBOOT_EFI := deps/veracrypt/build/preboot.efi
 STAGE2_EFI := deps/veracrypt/build/stage2.efi
-# GW3: Weston (reference Wayland compositor + Pixman software renderer). When
-# WESTON=1 and the binary is built, it is staged as a boot module named "weston"
-# and the kernel selects it as init ahead of Hyprland. Set WESTON=0 to fall back
-# to Hyprland for comparison.
-WESTON       ?= 1
+# GW3: Weston (reference Wayland compositor + Pixman software renderer).
+#
+# DEFAULT OFF as of 2026-09-06.  It used to default to 1, which meant a plain `make` produced an
+# ISO that booted WESTON, not Hyprland -- so anyone building without knowing to pass WESTON=0 got
+# the wrong desktop, and the difference was invisible until the machine came up.  Hyprland is the
+# desktop this OS ships; Weston was a bring-up comparison.
+#
+# The kernel no longer selects a staged weston module as init either, so WESTON=1 now only builds
+# and stages the binary -- it cannot take over the boot.
+WESTON       ?= 0
 WESTON_BUILD ?= deps/weston-14.0.0/build-epin
 WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 

@@ -38,3 +38,8 @@ require  [cfg] identity policy applied: Personal color=00000000ff2e7d32
 require  [cfg] identity policy applied: Banking color=00000000ffffd600
 require  [cfg] identity policy applied: Disposable color=00000000ffff6d00
 require  [4.1] identity painted: color=00000000ff2e7d32
+
+# DECLARATIVE_CONFIG Phase 7: the declared cross-identity IPC rule must reach g_idIpcRules.
+# 4.1 made these rules gate every cross-identity AF_UNIX connect, so a declared allow-rule that
+# never arrived was a policy the running system did not have.
+require  [cfg] ipc rule applied: Personal -> System

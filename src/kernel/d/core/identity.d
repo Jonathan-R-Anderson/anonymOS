@@ -222,6 +222,48 @@ public bool identityValidate(IdentityId id) {
 
 public void identityFreeze() { g_idFrozen = true; }      // registry immutable
 
+// DECLARATIVE_CONFIG Phase 5/9 — apply a DECLARED policy to an identity that already exists.
+//
+// The kernel creates System/Personal/Banking/… from a compiled-in table before the config runs,
+// so every identity the manifest declares is a duplicate name and identityCreate() refuses it.
+// configboot treated that as a successful no-op "the config agrees with the built-ins", but
+// nothing ever checked that it agreed: system.json declared Personal as #3478F6 while the screen
+// painted 0xFF2E7D32 from the built-in table, and the declared colour had never reached a pixel
+// in the life of the project.  A config file that looks authoritative and is not is worse than no
+// config file, because it is read as documentation.
+//
+// This is the sanctioned mutation point, not a hole in the freeze.  IDENTITY_DOMAIN §2 says an
+// IdentityRec is immutable once active and changes only via a signed policy transaction; the boot
+// manifest IS that transaction -- configboot verifies its HMAC with cryptoVerify before applying a
+// single record, and identityFreeze() runs immediately after the last one.  So the window this
+// opens is exactly "a verified policy, before the registry seals", which is what §9 describes.
+//
+// Refuses once frozen, so nothing at runtime can reach it.  policyEpoch is bumped so the change
+// is attributable rather than silent.
+public bool identityApplyPolicy(const(char)* name, IdentityColor color, ubyte trust,
+                                uint ceiling, NamespaceId nsTemplate,
+                                NetPolicy net, ClipPolicy clip, uint gui) {
+    if (g_idFrozen) return false;                        // sealed: policy load is over
+    const IdentityId id = identityByName(name);
+    if (id == 0) return false;
+    auto r = identityById(id);
+    if (r is null) return false;
+
+    // A declared ceiling must still be a subset of the universe, same rule identityCreate
+    // enforces; a manifest may not mint rights that do not exist.
+    if ((ceiling & ~CAP_RIGHT_UNIVERSE) != 0) return false;
+
+    if (color != 0)      r.color = color;
+    if (trust != 0)      r.trust = trust;
+    if (ceiling != 0)    r.rightsCeiling = ceiling;
+    if (nsTemplate != 0 && objGet(nsTemplate) !is null) r.nsTemplate = nsTemplate;
+    r.net  = net;
+    r.clip = clip;
+    if (gui != 0)        r.gui = gui;
+    ++r.policyEpoch;
+    return true;
+}
+
 // One boot identity: a private ns template (Phase 4 clones it per process), the
 // record, then activate (immutable).
 private void mkBootIdentity(const(char)* name, IdentityColor color, ubyte trust,

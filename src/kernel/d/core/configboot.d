@@ -34,7 +34,8 @@ import core.exports : g_mboot_modules, g_module_count, phys_to_virt;
 import core.crypto : cryptoVerify;
 import core.namespace : nsAlloc, nsAllocRestricted, nsBind, nsBindDeny, nsRootDir;  // DOMAIN_MANAGER DM2.3
 import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;                  // DOMAIN_MANAGER DM2.3
-import core.identity : identityCreate, identityFreeze, identityByName, NetPolicy, ClipPolicy;
+import core.identity : identityCreate, identityFreeze, identityByName, NetPolicy, ClipPolicy,
+                       identityApplyPolicy;   // DECLARATIVE_CONFIG Phase 5/9
 import core.domain   : domainCreate, domainByName, domainById, domainSetTemplate;   // DOMAIN_MANAGER DM1/DM6
 import core.servicemgr : serviceRegister, serviceAddDep, serviceStartAll;
 import core.store : genSetActive, genActive, genCreate;
@@ -216,17 +217,44 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
             const(char)* nsName = cast(const(char)*)(payload + off);
             nsTemplate = lookupNs(nsName);
         }
-        // An identity of this name may already exist (the kernel's compiled-in
-        // identityInitDefaults creates System/Personal/Banking before the config
-        // runs). Treat that as a successful no-op re-assertion (the config agrees
-        // with the built-ins) rather than a failure — count it applied.
+        off += nsNameLen;
+
+        // DECLARATIVE_CONFIG Phase 5/9: net, clip and gui, appended after the namespace name.
+        // Optional by construction -- a manifest built before these existed simply ends here, and
+        // the bounds check below leaves the defaults in place.  That is why they were appended
+        // rather than inserted: no version bump, no flag day, old blobs still parse.
+        ubyte netB  = cast(ubyte)NetPolicy.None;
+        ubyte clipB = cast(ubyte)ClipPolicy.Deny;
+        uint  guiM  = 0;
+        if (off + 1 + 1 + 4 <= len) {
+            netB  = payload[off]; off += 1;
+            clipB = payload[off]; off += 1;
+            guiM  = readU32(payload, off); off += 4;
+        }
+        // Clamp to the declared enums: the payload is verified (HMAC) but a value out of range
+        // would index past the enum, and the restrictive member is the right failure direction.
+        const NetPolicy  netP  = (netB  <= cast(ubyte)NetPolicy.Disposable)
+                               ? cast(NetPolicy)netB   : NetPolicy.None;
+        const ClipPolicy clipP = (clipB <= cast(ubyte)ClipPolicy.AllowDownTrust)
+                               ? cast(ClipPolicy)clipB : ClipPolicy.Deny;
+        // An identity of this name already exists whenever the kernel's compiled-in
+        // identityInitDefaults got there first (System/Personal/Banking/…).  This used to be
+        // counted as a no-op "the config agrees with the built-ins" -- but nothing checked that
+        // it agreed, and it did not: system.json declared Personal #3478F6 while the screen
+        // painted the built-in 0xFF2E7D32.  The declared value now WINS, which is the whole point
+        // of a declarative config; identityApplyPolicy refuses once the registry is frozen, so
+        // this window is exactly "a verified manifest, before the seal".
         const uint existing = identityByName(name);
-        if (existing != 0) { ++g_cfgIdApplied; break; }
+        if (existing != 0) {
+            if (identityApplyPolicy(name, color, trust, ceiling, nsTemplate, netP, clipP, guiM))
+                ++g_cfgIdApplied;
+            break;
+        }
         // ceiling must be ⊆ UNIVERSE (identityCreate checks this); a declared
         // ceiling of 0 means "use the safe default (no ambient rights)".
         const uint safeCeiling = (ceiling == 0) ? 0 : ceiling;
         const uint id = identityCreate(name, color, trust, safeCeiling, nsTemplate,
-                                       NetPolicy.None, ClipPolicy.Deny, 0);
+                                       netP, clipP, guiM);
         if (id != 0) ++g_cfgIdApplied;
         break;
     }

@@ -206,6 +206,17 @@ private ubyte[] manifestIdentities(in CompiledGraph g)
             foreach (c; rec.namespace_) p ~= cast(ubyte) c;
         }
         else putU32Raw(p, 0);
+        // DECLARATIVE_CONFIG Phase 5/9: net, clip and gui.  The compiler has always parsed these
+        // into IdentityRecFields; this emitter dropped them on the floor, so the kernel hardcoded
+        // NetPolicy.None / ClipPolicy.Deny / gui=0 for every declared identity and a `net` or
+        // `clip` written in system.json meant nothing at all.
+        //
+        // APPENDED after the namespace name, deliberately.  The kernel walks records by length
+        // and bounds-checks each field, so a reader that predates these three fields still parses
+        // the record correctly and simply stops early -- no version bump, no flag day.
+        p ~= netPolicy(rec.net);
+        p ~= clipPolicy(rec.clip);
+        putU32Raw(p, guiMask(rec.gui));
         b.putRecord(Tag.identityCreate, p);
     }
     return b.buf;
@@ -347,4 +358,52 @@ private ubyte trustLevel(string t)
     case "disposable": return 5;
     default:          return 50;
     }
+}
+
+// DECLARATIVE_CONFIG Phase 5/9 — the JSON enum spellings of §2 lowered to the kernel's
+// NetPolicy / ClipPolicy / GuiPolicy numeric values (core/identity.d).  The schema has already
+// rejected anything outside these sets by the time this runs, so `default` is a safety net rather
+// than a validation step -- and it defaults to the RESTRICTIVE member in both cases, so a spelling
+// this table forgets denies rather than grants.
+private ubyte netPolicy(string s)
+{
+    switch (s)
+    {
+    case "none":       return 0;   // NetPolicy.None
+    case "nat":        return 1;   // NetPolicy.NAT
+    case "vpn":        return 2;   // NetPolicy.VPN
+    case "tor":        return 3;   // NetPolicy.Tor
+    case "localonly":  return 4;   // NetPolicy.LocalOnly
+    case "disposable": return 5;   // NetPolicy.Disposable
+    default:           return 0;   // None — no network
+    }
+}
+
+private ubyte clipPolicy(string s)
+{
+    switch (s)
+    {
+    case "deny": return 0;   // ClipPolicy.Deny
+    case "ask":  return 1;   // ClipPolicy.AskApproval
+    case "same": return 2;   // ClipPolicy.AllowSameIdentity
+    case "down": return 3;   // ClipPolicy.AllowDownTrust
+    default:     return 0;   // Deny
+    }
+}
+
+private uint guiMask(string[] flags)
+{
+    uint m = 0;
+    foreach (f; flags)
+    {
+        switch (f)
+        {
+        case "borderAlways":         m |= 1; break;   // GuiPolicy.BorderAlways
+        case "titleLabel":           m |= 2; break;   // GuiPolicy.TitleLabel
+        case "noScreenshotAcrossId": m |= 4; break;   // GuiPolicy.NoScreenshotAcrossId
+        case "noGlobalGrab":         m |= 8; break;   // GuiPolicy.NoGlobalGrab
+        default: break;
+        }
+    }
+    return m;
 }

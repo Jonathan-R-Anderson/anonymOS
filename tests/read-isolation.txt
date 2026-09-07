@@ -1,17 +1,29 @@
-# ROADMAP 4.12 -- does a domain policy's DENY survive the blanket read-only "/"?
+# ROADMAP 4.12 -- read isolation is an ALLOW-list.
 #
-# Confined domains get an explicit deny-list AND, under allowTraversalOutsideMounts, a read-only
-# "/" -- needed because the binaries a program runs live at the root.  If the blanket read overrode
-# the denies, every deny in every domain policy would be decorative and Banking's data would be
-# readable from a Disposable window.  It does not: measured 2026-09-07.
+# Domain policies used to carry allowTraversalOutsideMounts, which re-adds a read-only "/", on the
+# grounds that the binaries and libraries staged at the root had to stay reachable.  That made
+# reads a DENY-list over a blanket allow: a path nobody thought to deny was readable.
+#
+# The premise did not survive measurement.  Nothing opens a root-level FILE during a boot -- exec
+# loads binaries in kernel context rather than through the task's namespace, and the shared
+# libraries live under /usr/lib and /lib, which the policies bind explicitly.  With the blanket
+# off, the desktop still comes up and confined apps hit zero denials.
 
+# Policy denies are enforced.
 require  [4.12] Throwaway /home/user/secret -> REFUSED  (as policy declares)
 require  [4.12] Throwaway /config/system.json -> REFUSED  (as policy declares)
 require  [4.12] DevSandbox /home/user/.ssh/id_rsa -> REFUSED  (as policy declares)
 require  [4.12] DevSandbox /config/system.json -> REFUSED  (as policy declares)
 
-# An ALLOWED path, so the probe is capable of printing both answers.  A check that can only ever
-# say REFUSED proves nothing about enforcement.
+# THE ALLOW-LIST ASSERTIONS.  These paths are neither allowed nor denied by any policy.  Under the
+# old blanket read they were READABLE; unlisted must now mean unreachable, not permitted.  If
+# allowTraversalOutsideMounts is ever turned back on, these three fail.
+require  [4.12] DevSandbox /srv/anything -> REFUSED  (as policy declares)
+require  [4.12] DevSandbox /root/.bash_history -> REFUSED  (as policy declares)
+require  [4.12] Throwaway /srv/anything -> REFUSED  (as policy declares)
+
+# An ALLOWED path, so the probe is demonstrably capable of printing both answers.  A check that can
+# only ever say REFUSED proves nothing about enforcement.
 require  [4.12] DevSandbox /usr/share/icons -> readable  (as policy declares)
 
 forbid   POLICY NOT ENFORCED

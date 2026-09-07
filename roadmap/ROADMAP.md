@@ -84,7 +84,7 @@ Valuable, coherent, and **not** on the path to a usable desktop. Deliberately af
 
 | # | Item | Source |
 |---|---|---|
-| 4.6 | ⬜ **Marketplace / I2P template distribution — NOT STARTED, and not finishable as an increment.** Stated plainly rather than part-built: this needs a transport that does not exist yet. `NETWORK_AND_MARKETPLACE` M0 (I2P SAM bridge) and M2 (Kademlia over I2P datagrams) are both **planned, not built**, and the layer under them is incomplete — `SYSTEM_UPDATE` records TCP **RX host-blocked in QEMU** (N2), so even plain TCP receive is unproven in the test environment. Building marketplace verbs on top would produce exactly the pattern the last four tiers kept uncovering: code that self-tests and is never reached by a live path. **Order of work:** finish N2 (TCP RX) → M0 (SAM v3 to a router) → M2 (DHT) → then template distribution, which is mostly packaging on top. Shares U5/U6 with `SYSTEM_UPDATE`, so the transport is built once and serves both updates and the marketplace | NETWORK_AND_MARKETPLACE |
+| 4.6 | 🚧 **TBD — marketplace / template distribution, transport undecided.** Held deliberately, not merely unstarted: the I2P design in `NETWORK_AND_MARKETPLACE_ROADMAP` is **being reconsidered in favour of an alternative**, and nothing here starts until that choice is made. Building on the wrong transport would repeat this project.'.s most expensive pattern — code that self-tests and no live path ever reaches. **Whatever transport wins still needs the layer under it:** `SYSTEM_UPDATE` records TCP **RX host-blocked in QEMU** (N2), so plain receive is unproven in the test environment. **Order when it resumes:** decide the transport → finish N2 → bring up that transport → discovery → template distribution, which is mostly packaging on top. Shares U5/U6 with `SYSTEM_UPDATE`, so it gets built once and serves both updates and the marketplace | NETWORK_AND_MARKETPLACE (TBD) |
 | 4.11 | ◑ **Host paths are gone; the row's second premise turned out to be wrong.** ✅ **Deniability + reproducibility: DONE.** `grep -ac "/home/bruns" hos-install.iso` = **0**, and the sanitiser now maps each dependency sysroot to `/usr` rather than a placeholder, so `<root>/deps/gtk-stack/sysroot/share/drirc.d` becomes a path POSIX collapses to `/usr/share/drirc.d` — where this OS would stage such a file — instead of `/build/…`, where nothing could ever be. ⚠ **The row claimed a rebuild would let "the guest's own path probes actually resolve instead of failing ENOENT". Measured: it would not.** Those files are **not staged in the ISO at all** — `/usr/lib/ld-musl-x86_64.so.1`, `/usr/share/drirc.d`, `/usr/lib/dri` are all absent — so baking a guest-relative prefix changes the *string* without putting a *file* there. Most are optional lookups that correctly fail: the binaries are **statically linked**, so a dynamic loader path is not needed. Resolving them is a separate decision about what to SHIP, not about prefixes. **One known wart:** a single prefix substitution cannot be right for the whole sysroot — its top level holds both `etc/` and `share/`, which the guest wants at `/etc` and `/usr/share`. Mapping to `/usr` is correct for the 17 `share/` and `lib/` probes and wrong for the 12 `etc/` ones (`/usr/etc/drirc`). **What genuinely remains** is the cleanliness refactor: build deps with `--prefix=/usr` + `DESTDIR` so nothing is baked in to begin with. That relocates every installed file in a **722 MB** tree and every staging path that reads it — worth doing deliberately, and not worth starting half-done on a machine in daily use | DECOY_SECURITY |
 
 ---
@@ -138,6 +138,48 @@ is lying.
 | 7.3 | **Fill the 20 undocumented calls** — where neither the implementation nor the dispatch site records anything. These are the calls whose behaviour is least known, which is exactly why they should be written up rather than left to the reader | — |
 | 7.4 | **Document the native object ABI per verb** — 25 `HOSQ_*` verbs. `docs/NATIVE_OBJECT_ABI.md` (752 lines) covers the surface in prose; the per-verb pages do not exist | `docs/NATIVE_OBJECT_ABI.md` |
 | 7.5 | **Admin runbook for the deviations** — the ABI differences that have each cost real debugging time (AF_UNIX read returning EAGAIN, namespace-resolved opens, cross-identity connect refusal, overlay-only inotify) belong in one place an admin reads BEFORE debugging, not after | — |
+
+
+---
+
+## Source-roadmap overview — where the unfinished work lives
+
+The 37 other files in this directory hold the detail. This table says, for each, whether anything
+is still open and what it is, so the tiers above can stay short. **A roadmap with no open work is
+listed as closed rather than deleted** — several were "finished" long before the code actually
+reached the live path, and the file is the record of what was claimed.
+
+| Source roadmap | State | What is actually left |
+|---|---|---|
+| `IDENTITY_DOMAIN_ROADMAP` | ✅ closed | Phases 1–10 landed; §9's runtime signed-policy path shipped with 4.9 |
+| `IMMUTABLE_ROOTLESS_ROADMAP` | ✅ closed | §F is 4/4 immutable + 4/4 rootless on an installed system (`docs/INSTALLED_SYSTEM_PROOF.md`) |
+| `DECLARATIVE_CONFIG_SPEC` · `DECLARITIVE_MODEL_ROADMAP` | ◑ | Compiler + lowering done (4.3). **Open:** live reconfiguration (§13), and the `dh`/`audit` IPC flags are stored but nothing acts on them |
+| `SYSTEM_UPDATE_ROADMAP` | ◑ | D1/D2/D3 done (4.4, 4.10). **Open:** U2 bundle transport, U3 updater UI, U5 I2P, U6 DHT, U7 end-to-end demo — all gated on a transport that does not exist |
+| `SHELL_AND_COMMANDS_ROADMAP` | ◑ | B0–B5 done (4.5). **Open:** Track A's remaining busybox coverage; Track C (`ratty` GPU terminal) is gated on a real GPU |
+| `SMP_ROADMAP` | ◑ | S1–S7 landed. **Open:** more than one AP, and work-stealing. Note the x2APIC dependency — a CPU without it now degrades to the PIT instead of faulting |
+| `INSTALLER` | ◑ | Installs and boots unattended (`AUTOINSTALL=1`). **Open:** the GUI pump advances one 4 MiB batch per compositor round-trip, so a large install is bounded by frame rate, not disk |
+| `DECOY_DISTRO_ROADMAP` | ◑ | US0–US4 verified. **Open:** US5+ — runtime network install of a real distro ISO |
+| `OBJECT_OS_ROADMAP` · `OBJECT_FILESYSTEM_ROADMAP` · `OBJECT_REFERENCE_GRAPH_ROADMAP` | ◑ | The object/capability substrate is built and is what tiers 2–4 stand on. **Open:** F5+ filesystem work and the service-extraction tail (§5.2) |
+| `BUILD_AND_TEST_AUTOMATION_ROADMAP` | ◑ | Harness + golden checks done. **Open:** C2 `LLVMPIPE=1` is implemented but **off by default** — the single biggest desktop-performance win available |
+| `domain_manager` | ◑ | DM0–DM13 largely landed. **Open:** the per-domain terminal (reverted once; design in git history) |
+| `expand_busybox_roadmap` | ⬜ | Account database, identity model, and the wider command set |
+| `NETWORK_AND_MARKETPLACE_ROADMAP` | ⬜ **TBD** | Held deliberately — see 4.6. The transport is being reconsidered before any of it starts |
+| `BARE_METAL_ROADMAP` | ⬜ | Real hardware: see tier 5 |
+| `WIFI_AUTODRIVER_ROADMAP` | ⬜ | Driver provisioning; depends on the network stack |
+| `VIRGL_BLOB_ROADMAP` | ⬜ | Cross-process virgl sharing; needs a GPU-capable host |
+| `GUI_ROADMAP` · `DESKTOP_TILING_PLAN` · `QUICKSETTINGS_ROADMAP` · `toolbar_roadmap` | ◑ | The desktop, top bar and quick settings are live (tier 3). Remaining items are polish |
+| `DESKTOP_RESPONSIVENESS_ROADMAP` | ◑ | Idle-wake churn fixed (3.5b). **Open:** the desktop is CPU-rendered — see `LLVMPIPE=1` above |
+| `GRAPHICAL_APPLICATIONS_ROADMAP` | ✅ closed | 21 items; the shipped app set |
+| `SECURE_IPC_ROADMAP` | ✅ closed | Broker + session descriptors reached the live path in 4.1 |
+| `SECURITY_ROADMAP` · `CAPABILITY_MODEL` · `DECOY_SECURITY_REVIEW` | ◑ | Reference documents rather than task lists; `DECOY_SECURITY_REVIEW` still lists unaddressed findings |
+| `ZSH_INTEGRATION_ROADMAP` · `WINDOWS_DISAPPEARING_ROADMAP` · `DOCUMENTATION_ROADMAP` | ✅ closed | |
+| `syscalls_roadmap` · `ORG_ARCHITECTURE` | 📋 design | Direction pieces (Plan 9 + capability semantics), not scheduled work |
+| `uml_program_generation_roadmap` | 📋 **design, unscheduled** | Generate programs from a UML model. Unrelated to the config compiler despite the surface similarity — different input, output and consumer. See tier 6 |
+| `foveated_display` | 📋 design | Foveated/parallax compositor concept; needs a GPU |
+
+**Reading the table:** `✅ closed` means nothing is outstanding in that file. `◑` means the tier
+above already covers the open part. `⬜` means not started. `📋` means it is a design document that
+has never been scheduled, and should not be mistaken for planned work.
 
 ## Corrections to carry forward
 

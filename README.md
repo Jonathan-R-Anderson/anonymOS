@@ -28,21 +28,29 @@ running system.
 
 The system boots, renders a desktop, and runs Linux programs. Every subsystem
 below is **implemented and self-tested** (each prints `[<tag>] selftest PASS` at
-boot), unless explicitly marked 🚧 (in progress) or 🔵 (planned).
+boot), unless explicitly marked| Whole-image A/B update unit — signed `.hosupd`, **Ed25519 verified against a pinned root** (RFC 8032 vectors) | ✅ | [`SYSTEM_UPDATE_ROADMAP`](roadmap/SYSTEM_UPDATE_ROADMAP.md) |
+| Executable §F acceptance gates — eight conditions probed at every boot, printing the evidence for each | ✅ | [`IMMUTABLE_ROOTLESS_ROADMAP`](roadmap/IMMUTABLE_ROOTLESS_ROADMAP.md) |
+| Read isolation is an **allow-list** — a path no policy names is unreachable, not merely undenied | ✅ | [`IDENTITY_DOMAIN_ROADMAP`](roadmap/IDENTITY_DOMAIN_ROADMAP.md) |
+| Signed policy transactions — identity policy changes on a **sealed** registry via a signed, cap-gated, epoch-monotonic transaction | ✅ | [`IDENTITY_DOMAIN_ROADMAP`](roadmap/IDENTITY_DOMAIN_ROADMAP.md) §9 |
+| Native-verb audit trail — every privileged object-ABI verb is logged, **refusals included** | ✅ | [`SHELL_AND_COMMANDS_ROADMAP`](roadmap/SHELL_AND_COMMANDS_ROADMAP.md) B5 |
+| Generated syscall documentation — 150 `man2` pages + `anonymos-syscalls(7)`, regenerated from source | ✅ | [`DOCUMENTATION_ROADMAP`](roadmap/DOCUMENTATION_ROADMAP.md) |
+| Reproducible, non-identifying ISO — the image no longer contains the builder's username or tree layout | ✅ | [`DECOY_SECURITY_REVIEW`](roadmap/DECOY_SECURITY_REVIEW.md) |
+| Memory-safety hardening (W^X, ASLR, NX stack) | 🚧 |
+(in progress) or 🔵 (planned).
 
 | Area | Status | Roadmap |
 |------|:------:|---------|
 | Object-capability kernel (6 pillars, 16 object families) | ✅ | [`OBJECT_OS_ROADMAP`](roadmap/OBJECT_OS_ROADMAP.md) |
 | Capability model (19 rights, derive, revoke, typed admin) | ✅ | [`CAPABILITY_MODEL`](roadmap/CAPABILITY_MODEL.md) |
 | Object-Reference-Graph + cycle-detecting GC | ✅ | [`OBJECT_REFERENCE_GRAPH_ROADMAP`](roadmap/OBJECT_REFERENCE_GRAPH_ROADMAP.md) / [`ORG_ARCHITECTURE`](roadmap/ORG_ARCHITECTURE.md) |
-| Identity / security domains (Qubes-style, no VMs) | ✅ | [`IDENTITY_DOMAIN_ROADMAP`](roadmap/IDENTITY_DOMAIN_ROADMAP.md) |
+| Identity / security domains (Qubes-style, no VMs) — **three identities on screen at once, each border drawn by the kernel from the owning task's identity** | ✅ | [`IDENTITY_DOMAIN_ROADMAP`](roadmap/IDENTITY_DOMAIN_ROADMAP.md) |
 | Domain Manager — cloneable domains: restricted FS, device/peripheral gates, cap-gated packages, per-domain Linux distros, signed exportable templates + inheritance, full tabbed GUI | ✅ | [`domain_manager`](roadmap/domain_manager.md) |
 | Native object filesystem (`/objects`, `/config`, `/system`) | ✅ | [`OBJECT_FILESYSTEM_ROADMAP`](roadmap/OBJECT_FILESYSTEM_ROADMAP.md) |
-| Declarative config compiler + verified-config boot | ✅ | [`DECLARATIVE_CONFIG_SPEC`](roadmap/DECLARATIVE_CONFIG_SPEC.md) / [`anonymos-config/`](anonymos-config/) |
+| Declarative config compiler + verified-config boot — **the file now governs identity colour, trust, net/clip policy and cross-identity IPC rules** | ✅ | [`DECLARATIVE_CONFIG_SPEC`](roadmap/DECLARATIVE_CONFIG_SPEC.md) / [`anonymos-config/`](anonymos-config/) |
 | Secure IPC (X25519 / HKDF / ChaCha20-Poly1305) | ✅ | [`SECURE_IPC_ROADMAP`](roadmap/SECURE_IPC_ROADMAP.md) |
-| Immutable store + A/B updates + rollback | ✅ | [`IMMUTABLE_ROOTLESS_ROADMAP`](roadmap/IMMUTABLE_ROOTLESS_ROADMAP.md) |
+| Immutable store + A/B updates + rollback — **§F gates measured 4/4 immutable, 4/4 rootless on an installed system** | ✅ | [`IMMUTABLE_ROOTLESS_ROADMAP`](roadmap/IMMUTABLE_ROOTLESS_ROADMAP.md) |
 | Rootless administration (no UID 0) | ✅ | [`IMMUTABLE_ROOTLESS_ROADMAP`](roadmap/IMMUTABLE_ROOTLESS_ROADMAP.md) |
-| Weston 14 desktop (Pixman software renderer) | ✅ | [`GUI_ROADMAP`](roadmap/GUI_ROADMAP.md) / [`DESKTOP_RESPONSIVENESS_ROADMAP`](roadmap/DESKTOP_RESPONSIVENESS_ROADMAP.md) |
+| Hyprland 0.55 desktop (aquamarine; Mesa software rasteriser) | ✅ | [`GUI_ROADMAP`](roadmap/GUI_ROADMAP.md) / [`DESKTOP_RESPONSIVENESS_ROADMAP`](roadmap/DESKTOP_RESPONSIVENESS_ROADMAP.md) |
 | Real Z Shell (Linux + native-ABI port) | ✅ | [`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md) |
 | Shell & command set (`hos-sh`, `esh`, busybox 381 applets) | ✅ | [`SHELL_AND_COMMANDS_ROADMAP`](roadmap/SHELL_AND_COMMANDS_ROADMAP.md) |
 | Memory-safety hardening (W^X, ASLR, NX stack) | 🚧 | [`SECURITY_ROADMAP`](roadmap/SECURITY_ROADMAP.md) |
@@ -534,9 +542,17 @@ anonymOS is honest about its gaps (each roadmap names them):
   is partial (enforced on `mprotect` tighten; the inline mmap path still maps
   W+X for ld.so relocation); **no ASLR**, no NX stack, no guard pages, no stack
   canaries, SMAP/SMEP disabled in QEMU. This is the headline remaining work.
-- **Truly immutable image on real storage** — the content store is RAM-backed
-  today; real disk-backed verification + physical `/var` separation pending.
-- **Ed25519 + Limine verified boot** — HMAC stand-in today.
+- **Immutable image on real storage — now measured, with one caveat.** On an INSTALLED
+  system all four §F immutable conditions hold (`docs/INSTALLED_SYSTEM_PROOF.md`): the store
+  mounts on disk, `/usr` is unwritable (a real write returns `EROFS`), verity verifies, and
+  generations deploy and roll back. On **live media** the store stays in RAM by design — the disk
+  is reserved for the installer — so the same gate correctly reports 3/4 there. Physical `/var`
+  separation is still pending.
+- **Ed25519 for update bundles — done; for Limine boot — not.** Update bundles are verified
+  against a pinned Ed25519 root (checked against RFC 8032 vectors, with forged signatures, wrong
+  messages and malformed keys all refused). Two honest limits: the committed release key is a
+  **development** key, so a real release needs one generated offline (`keys/README.md`), and
+  **Limine still loads boot modules unsigned**.
 - **Kernel-mode IRQ handling on the boot CPU** ([`DESKTOP_RESPONSIVENESS`](roadmap/DESKTOP_RESPONSIVENESS_ROADMAP.md))
   — on the BSP, hardware IRQs are caught in userspace (the run loop returns on the
   PIC IRQ) and its scheduler is **PIC-driven + cooperative**, polled — so the BSP

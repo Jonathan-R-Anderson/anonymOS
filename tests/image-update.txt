@@ -20,3 +20,10 @@ require  short=truncated
 # The boot must still come up: this runs during the install-media proof block.
 forbid   EARLY BOOT EXCEPTION
 require  [4.1] dual-identity spawn accepted
+
+# The cross-check: the kernel verifies a bundle the HOST packager produced.  A self-test cannot
+# catch a host/kernel wire-format disagreement, because both its sides are the same code -- and
+# that disagreement is the failure this project has actually hit, twice, on the config manifest.
+require  [4.4] host bundle
+require  host packager and kernel verifier AGREE
+forbid   host/kernel wire-format MISMATCH

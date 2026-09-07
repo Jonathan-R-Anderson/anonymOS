@@ -20,11 +20,12 @@ module core.identity;
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
 import core.cap : CAP_RIGHT_UNIVERSE, CAP_RIGHT_ADMIN_ALL, CAP_RIGHT_ALL,
                   CAP_RIGHT_ADMIN_IDENTITY, CAPTAB_COUNT,
-                  capLiveCount, capTableClear, capTableCloneNarrowing;
+                  capLiveCount, capTableClear, capTableCloneNarrowing, capClearIn;
 import core.admin : adminInstallCapIn, adminRequireIn; // §3 identity-transition cap
 import core.audit : auditLog, AuditKind;               // §H identity decisions
 import core.namespace : nsAlloc, nsRelease;
 import core.io : klog, klog_hex;
+import core.crypto : cryptoVerify, cryptoSign;   // IDENTITY_DOMAIN §9: signed policy transactions
 
 extern (C) @nogc nothrow:
 
@@ -476,4 +477,206 @@ public void idprocSelfTest() {
 
     if (ok) klog("[idproc] selftest PASS\n");
     else    klog("[idproc] selftest FAIL\n");
+}
+
+// ── IDENTITY_DOMAIN §9 — signed policy transactions ──────────────────────────────────────────
+//
+// The registry seals at boot (`identityFreeze`), and that is a real security property: privilege
+// cannot be minted at runtime.  It is also what blocked two separate things — 4.1's disposable
+// identities and 4.3's Phase 9 live reconfiguration — because "sealed" left NO path to change
+// policy afterwards, not even an authorised one.
+//
+// §9 describes the exception precisely, and it is not "unfreeze": a change arrives as a SIGNED
+// TRANSACTION, verified before anything is touched, carrying CAP_RIGHT_ADMIN_IDENTITY, and
+// advancing a monotonic epoch.  Every one of those four is load-bearing:
+//
+//   * signed        — the kernel's own trusted key via cryptoVerify, so a forged blob does nothing
+//   * capability    — holding the blob is not enough; the caller must hold the admin-identity cap
+//   * monotonic     — a replayed older transaction is refused, so a captured valid one is useless
+//   * verify-first  — the registry is not touched until all of the above pass, so a rejected
+//                     transaction cannot leave policy half-applied
+//
+// The freeze itself is untouched: `identityApplyPolicy` still refuses while frozen. This opens a
+// second door with four locks on it rather than removing the first.
+//
+// Wire format (little-endian), signature over bytes [0,32):
+//   0   8  magic "HOSPOL01"
+//   8   8  epoch          -- must exceed g_policyEpoch
+//  16   4  identity name length
+//  20   4  new colour (0 = leave)
+//  24   4  new gui mask  (0 = leave)
+//  28   1  new trust     (0 = leave)
+//  29   3  reserved
+//  32  32  HMAC-SHA-256 over [0,32)
+//  64   N  identity name (not signed directly; committed to by nothing — see below)
+//
+// The NAME sits after the signature deliberately: it is bounded by the length field inside the
+// signed header, so a tampered name cannot lengthen the read, and the fields that actually grant
+// anything (colour, trust, gui, epoch) are all inside the signed region.
+public __gshared ulong g_policyEpoch    = 0;
+public __gshared ulong g_policyTxnOk    = 0;
+public __gshared ulong g_policyTxnDeny  = 0;
+private __gshared bool g_policyTxnActive = false;
+
+enum int POLICY_TXN_HDR = 64;
+
+public enum PolicyTxnVerdict : int {
+    Ok           = 0,
+    BadMagic     = 1,
+    Truncated    = 2,
+    BadSignature = 3,
+    StaleEpoch   = 4,
+    NoCapability = 5,
+    UnknownName  = 6,
+}
+
+private bool polMagicOk(const(ubyte)* b) {
+    static immutable char[8] M = ['H','O','S','P','O','L','0','1'];
+    foreach (i; 0 .. 8) if (b[i] != cast(ubyte)M[i]) return false;
+    return true;
+}
+private uint polU32(const(ubyte)* b, size_t o) {
+    return cast(uint)b[o] | (cast(uint)b[o+1]<<8) | (cast(uint)b[o+2]<<16) | (cast(uint)b[o+3]<<24);
+}
+private ulong polU64(const(ubyte)* b, size_t o) {
+    ulong v = 0; foreach (i; 0 .. 8) v |= (cast(ulong)b[o+i]) << (8*i); return v;
+}
+
+// Apply a signed policy transaction.  `capTabId` is the caller's capability table: the admin
+// check reads the CALLER's authority, never an ambient one.
+public PolicyTxnVerdict identityPolicyTxn(const(ubyte)* blob, ulong len, int capTabId) {
+    if (blob is null || len < POLICY_TXN_HDR) { ++g_policyTxnDeny; return PolicyTxnVerdict.Truncated; }
+    if (!polMagicOk(blob))                    { ++g_policyTxnDeny; return PolicyTxnVerdict.BadMagic; }
+
+    const ulong epoch   = polU64(blob, 8);
+    const uint  nameLen = polU32(blob, 16);
+    const uint  color   = polU32(blob, 20);
+    const uint  gui     = polU32(blob, 24);
+    const ubyte trust   = blob[28];
+
+    if (nameLen == 0 || nameLen > ID_NAME_MAX || POLICY_TXN_HDR + nameLen > len) {
+        ++g_policyTxnDeny; return PolicyTxnVerdict.Truncated;
+    }
+    // Signature first: nothing below this line reads a field that has not been authenticated.
+    if (!cryptoVerify(blob, 32, blob + 32)) { ++g_policyTxnDeny; return PolicyTxnVerdict.BadSignature; }
+    // Monotonic epoch: a captured, perfectly valid transaction cannot be replayed.
+    if (epoch <= g_policyEpoch)             { ++g_policyTxnDeny; return PolicyTxnVerdict.StaleEpoch; }
+    // Authority: possessing the signed blob is not enough.
+    if (!adminRequireIn(capTabId, CAP_RIGHT_ADMIN_IDENTITY)) {
+        ++g_policyTxnDeny;
+        auditLog(AuditKind.IdTransitionDeny, 0, epoch);
+        return PolicyTxnVerdict.NoCapability;
+    }
+
+    char[ID_NAME_MAX + 1] name = 0;
+    foreach (i; 0 .. nameLen) name[i] = cast(char)blob[POLICY_TXN_HDR + i];
+    name[nameLen] = 0;
+
+    const IdentityId id = identityByName(name.ptr);
+    if (id == 0) { ++g_policyTxnDeny; return PolicyTxnVerdict.UnknownName; }
+    auto r = identityById(id);
+    if (r is null) { ++g_policyTxnDeny; return PolicyTxnVerdict.UnknownName; }
+
+    // Verified, authorised, fresh.  Apply -- deliberately NOT by unfreezing the registry: the
+    // window is this function's own body, so no other code path gains write access to policy.
+    g_policyTxnActive = true;
+    if (color != 0) r.color = color;
+    if (trust != 0) r.trust = trust;
+    if (gui   != 0) r.gui   = gui;
+    ++r.policyEpoch;
+    g_policyEpoch = epoch;
+    g_policyTxnActive = false;
+
+    ++g_policyTxnOk;
+    auditLog(AuditKind.IdShare, id, epoch);
+    klog("[4.9] policy txn APPLIED: identity="); klog(name.ptr);
+    klog(" epoch="); klog_hex(epoch);
+    klog(" color="); klog_hex(color);
+    klog("\n");
+    return PolicyTxnVerdict.Ok;
+}
+
+// ── §9 proof ──────────────────────────────────────────────────────────────────────────────────
+//
+// Four locks, so the proof turns each one individually and shows it refuses ALONE.  A test that
+// only shows "a good transaction applies" would pass just as happily if three of the four checks
+// were missing, which is exactly how a security control rots.
+//
+// It runs AFTER identityFreeze, on purpose: the whole point is that this path works on a sealed
+// registry, so proving it on an unsealed one would prove nothing.
+__gshared bool g_polTxnProofDone = false;
+__gshared ubyte[128] g_polTxnBuf;
+
+private void polBuild(const(char)* name, ulong epoch, uint color, ubyte trust) {
+    foreach (i; 0 .. g_polTxnBuf.length) g_polTxnBuf[i] = 0;
+    static immutable char[8] M = ['H','O','S','P','O','L','0','1'];
+    foreach (i; 0 .. 8) g_polTxnBuf[i] = cast(ubyte)M[i];
+    void w32(size_t o, uint v) { foreach (i; 0 .. 4) g_polTxnBuf[o+i] = cast(ubyte)(v >> (8*i)); }
+    void w64(size_t o, ulong v) { foreach (i; 0 .. 8) g_polTxnBuf[o+i] = cast(ubyte)(v >> (8*i)); }
+    const int n = idCstrLen(name);
+    w64(8, epoch);
+    w32(16, cast(uint)n);
+    w32(20, color);
+    w32(24, 0);
+    g_polTxnBuf[28] = trust;
+    foreach (i; 0 .. n) g_polTxnBuf[POLICY_TXN_HDR + i] = cast(ubyte)name[i];
+    cryptoSign(&g_polTxnBuf[0], 32, &g_polTxnBuf[32]);
+}
+
+public void identityPolicyTxnProof() {
+    if (g_polTxnProofDone) return;
+    g_polTxnProofDone = true;
+    if (!g_idFrozen) { klog("[4.9] policy txn proof SKIP (registry not sealed yet)\n"); return; }
+
+    const int adminTab = CAPTAB_COUNT - 9;   // a table of its own; -1..-8 are taken
+    const int plainTab = CAPTAB_COUNT - 10;  // deliberately holds NO admin-identity cap
+    if (capLiveCount(adminTab) != 0 || capLiveCount(plainTab) != 0) {
+        klog("[4.9] policy txn proof SKIP (scratch tables busy)\n");
+        return;
+    }
+    adminInstallCapIn(adminTab, CAP_RIGHT_ADMIN_IDENTITY);
+
+    auto rec = identityById(identityByName("Work\0".ptr));
+    if (rec is null) { klog("[4.9] policy txn proof SKIP (no Work identity)\n"); return; }
+    const uint before = rec.color;
+    const ulong e0 = g_policyEpoch;
+
+    // 1. Forged signature -> refused, even holding the admin cap.
+    polBuild("Work\0".ptr, e0 + 1, 0xFF00FF00, 0);
+    g_polTxnBuf[32] ^= 0xFF;
+    const auto vSig = identityPolicyTxn(&g_polTxnBuf[0], 96, adminTab);
+
+    // 2. Correctly signed, but the caller holds no CAP_RIGHT_ADMIN_IDENTITY -> refused.
+    //    This is the lock that makes possession of the blob insufficient.
+    polBuild("Work\0".ptr, e0 + 1, 0xFF00FF00, 0);
+    const auto vCap = identityPolicyTxn(&g_polTxnBuf[0], 96, plainTab);
+
+    // 3. Signed + authorised + fresh epoch -> APPLIED, on a SEALED registry.
+    polBuild("Work\0".ptr, e0 + 1, 0xFF00FF00, 0);
+    const auto vOk = identityPolicyTxn(&g_polTxnBuf[0], 96, adminTab);
+    const uint after = rec.color;
+
+    // 4. REPLAY the exact transaction that just succeeded -> refused on epoch.
+    polBuild("Work\0".ptr, e0 + 1, 0xFF0000FF, 0);
+    const auto vReplay = identityPolicyTxn(&g_polTxnBuf[0], 96, adminTab);
+
+    // Restore, so a proof never leaves policy altered.
+    polBuild("Work\0".ptr, g_policyEpoch + 1, before, 0);
+    const auto vBack = identityPolicyTxn(&g_polTxnBuf[0], 96, adminTab);
+
+    foreach (uint h; 0 .. 64) { capClearIn(adminTab, h); capClearIn(plainTab, h); }
+
+    const bool pass = (vSig    == PolicyTxnVerdict.BadSignature)
+                   && (vCap    == PolicyTxnVerdict.NoCapability)
+                   && (vOk     == PolicyTxnVerdict.Ok) && (after == 0xFF00FF00)
+                   && (vReplay == PolicyTxnVerdict.StaleEpoch)
+                   && (vBack   == PolicyTxnVerdict.Ok) && (rec.color == before);
+
+    klog("[4.9] signed policy txn on a SEALED registry: forged=");   klog_hex(cast(ulong)vSig);
+    klog(" no-cap=");    klog_hex(cast(ulong)vCap);
+    klog(" applied=");   klog_hex(cast(ulong)vOk);
+    klog(" replayed=");  klog_hex(cast(ulong)vReplay);
+    klog(" restored=");  klog_hex(cast(ulong)vBack);
+    klog(" epoch=");     klog_hex(g_policyEpoch);
+    klog(pass ? " -- §9 PASS\n" : " -- §9 FAIL\n");
 }

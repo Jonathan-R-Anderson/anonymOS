@@ -1455,6 +1455,42 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
 // GUI roadmap clients: launch Wayland clients once Hyprland has a listener. Each
 // client is a boot module, reusing the existing task/exec machinery. Best-effort
 // and isolated: failure logs and leaves desktop boot untouched.
+// ROADMAP 4.0b: does this program run as a SYSTEM app, outside the user sandbox?
+//
+// Confinement broke installing because the installer is spawned through the same path as every
+// other app and the session domain denies /config -- the installer/disk control surface.  Allowing
+// /config for everyone would hand any app in the domain the ability to drive the installer, so the
+// split has to be per-app.
+//
+// An ALLOWLIST, deliberately, not a list of things to confine.  A denylist would silently confine
+// every daemon added later, and the failure mode is a service that cannot read its own config for
+// reasons that look nothing like a policy change.  Anything not named here is confined; adding a
+// system service means saying so explicitly.
+//
+// Measured basis: only two GUI programs touch /config -- wl-installer (live media) and
+// wl-domain-manager, which uses /config/domain.action plus domains/templates/users/services/
+// packages.json.  The kernel's own daemons (hos-*) are launchers for dbus, sshd, NetworkManager,
+// wpa and dhcp; they are infrastructure, not user apps, and confining them is not what 4.0b is for.
+private bool isSystemProgram(const(char)* prog) @nogc nothrow {
+    if (prog is null) return true;                  // unknown: fail SAFE (unconfined), never break boot
+    const(char)* b = cstrBasenameK(prog);
+    static immutable string[] SYSTEM_PROGS = [
+        "calamares",           // the installer: reads /config/disks.json, writes install.action
+        "wl-installer",
+        "wl-domain-manager",   // reads+writes /config/domain.action and the domain JSON views
+        "Hyprland",            // the compositor itself
+        "wl-layer-bar",        // the shell bar is part of the desktop, not an app in it
+    ];
+    foreach (s; SYSTEM_PROGS) {
+        size_t i = 0;
+        while (i < s.length && b[i] != 0 && b[i] == s[i]) ++i;
+        if (i == s.length && b[i] == 0) return true;
+    }
+    // The kernel's own service launchers all share this prefix.
+    if (b[0] == 'h' && b[1] == 'o' && b[2] == 's' && b[3] == '-') return true;
+    return false;
+}
+
 private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     int t = allocTask();
     if (t <= 0) {
@@ -1510,8 +1546,9 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
             // The fix is NOT to allow /config -- that hands every app in the domain the ability to
             // drive the installer.  It is per-app policy: system apps must not run under the user
             // sandbox.  Identity assignment (4.0) stays on; it gates nothing.
-            const uint boundNs = 0;   // was: domainBindTaskNs(t, sd)
-            cast(void)sd;
+            // System apps run unconfined; everything else is bound into the session domain.
+            const bool sysApp  = isSystemProgram(prog);
+            const uint boundNs = (!sysApp && sd != 0) ? domainBindTaskNs(t, sd) : 0;
             // Prove confinement is ON rather than inferring it from an absence of denials.  Zero
             // denials is ambiguous: it reads the same whether the policy is being enforced and not
             // violated, or the bind silently failed and nothing is enforced at all.  That is the
@@ -1524,6 +1561,7 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
                 klog(" ns="); klog_hex(boundNs);
                 klog(" taskNs="); klog_hex(g_tasks[t].namespaceObjId);
                 klog(" domainObjId="); klog_hex(g_tasks[t].domainObjId);
+                klog(sysApp ? " SYSTEM(unconfined)" : "");
                 klog(boundNs != 0 ? " CONFINED\n" : " NOT-CONFINED\n");
             }
         }

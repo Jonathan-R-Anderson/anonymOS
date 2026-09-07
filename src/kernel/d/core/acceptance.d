@@ -101,6 +101,20 @@ private bool checkImmutable2() {
     const bool etcRw  =  storeWritable("/etc/hostname\0".ptr);
     const bool varRw  =  storeWritable("/var/lib/x\0".ptr);
     // An unmounted path must not be writable either: "deny by default", not "deny by list".
+    //
+    // THIS IS THE GATE'S FIRST REAL FINDING, and it is worth stating precisely rather than
+    // leaving as a bare 0.  storeMountSystem() builds the system namespace with nsAlloc(), and
+    // nsAlloc calls bindRoot(), which binds "/" to the rtfs root with `rights = uint.max`.  So
+    // /usr IS correctly read-only -- its own binding is more specific and carries only
+    // CAP_RIGHT_READ -- but every path NOT covered by one of the three explicit bindings inherits
+    // write rights from that catch-all root.  The split is therefore a property of three named
+    // subtrees, not a default, which is section G mistake #3 (ambient namespace).
+    //
+    // nsAllocRestricted() exists precisely for this and omits the root binding, but switching
+    // storeMountSystem to it would deny every path outside /usr, /etc and /var to task 0 and
+    // everything that inherits from it -- /dev, /proc, /run, /home included.  That is a change
+    // that has to be made deliberately with its own proof, not slipped in behind an acceptance
+    // probe, so the gate reports the hole and leaves the decision visible.
     const bool unknownRo = !storeWritable("/nowhere/x\0".ptr);
     klog("[F]     immutable-2 parts: usr-ro="); klog_dec(usrRo ? 1 : 0);
     klog(" etc-rw=");                           klog_dec(etcRw ? 1 : 0);
@@ -171,8 +185,17 @@ private bool checkImmutable4() {
 // actions must be refused.  If any authorization path still consulted a uid, a task could be
 // privileged while holding nothing, and this is where that would show.
 private bool checkRootless1() {
-    const int st = CAPTAB_COUNT - 3;
-    if (capLiveCount(st) != 0) return false;            // busy; do not report a bogus verdict
+    // CAPTAB_COUNT-1..-6 are already spoken for: cap/ipc (-1), admin/hardening/update and several
+    // security self-tests (-2), identity (-3 and -4), idipc's self-test (-5) and its live session
+    // minting (-6).  The first version of these probes reused -3 and collided with identity.d,
+    // which is why ROOTLESS-3 reported FAIL with no parts line at all: it bailed on a busy table
+    // before printing anything.  A gate that cannot say why it failed is not a gate, so the busy
+    // path now announces itself instead of being indistinguishable from a real failure.
+    const int st = CAPTAB_COUNT - 7;
+    if (capLiveCount(st) != 0) {
+        klog("[F]     rootless-1 parts: SKIPPED -- scratch table busy\n");
+        return false;
+    }
 
     const bool anyGranted =
            adminRequireIn(st, CAP_RIGHT_ADMIN_MOUNT)
@@ -193,8 +216,11 @@ private bool checkRootless1() {
 // and the other six refused.  A "god" cap, or an ADMIN_ALL bitmask treated as a single grant,
 // fails this immediately -- which is §G mistake #2.
 private bool checkRootless2() {
-    const int st = CAPTAB_COUNT - 3;
-    if (capLiveCount(st) != 0) return false;
+    const int st = CAPTAB_COUNT - 7;
+    if (capLiveCount(st) != 0) {
+        klog("[F]     rootless-2 parts: SKIPPED -- scratch table busy\n");
+        return false;
+    }
 
     bool granted = false, leaked = false;
     if (adminInstallCapIn(st, CAP_RIGHT_ADMIN_REBOOT)) {
@@ -219,8 +245,13 @@ private bool checkRootless2() {
 // The widening attempt is the load-bearing part: a derive that returns a cap with rights the
 // parent never held collapses the whole model (§G #6).
 private bool checkRootless3() {
-    const int st = CAPTAB_COUNT - 3;
-    if (capLiveCount(st) != 0) return false;
+    // A table of its own, not shared with rootless-1/2: those install and clear admin caps, and
+    // admin.d chooses its own handle numbers, so "clear handles 0..63" is not a reliable reset.
+    const int st = CAPTAB_COUNT - 8;
+    if (capLiveCount(st) != 0) {
+        klog("[F]     rootless-3 parts: SKIPPED -- scratch table busy\n");
+        return false;
+    }
 
     const uint obj = objAlloc(ObjType.Directory, null);
     if (obj == 0) return false;
@@ -284,12 +315,12 @@ public void acceptanceRun() {
     const bool i1 = checkImmutable1();
     line("IMMUTABLE-1\0".ptr, "system-tree-read-only-and-verified\0".ptr, i1,
          i1 ? "/usr unwritable, verity verifies, store on disk\0".ptr
-            : "see parts above -- any 0 is the reason\0".ptr);
+            : "see parts above; on live media backing-on-disk=0 is expected, not a defect\0".ptr);
 
     const bool i2 = checkImmutable2();
     line("IMMUTABLE-2\0".ptr, "state-split-enforced\0".ptr, i2,
          i2 ? "/usr ro, /etc + /var rw, unmounted denied\0".ptr
-            : "see parts above\0".ptr);
+            : "system ns root binds / with uint.max rights -- split is 3 subtrees, not a default\0".ptr);
 
     const bool i3 = checkImmutable3();
     line("IMMUTABLE-3\0".ptr, "atomic-update-and-rollback\0".ptr, i3,

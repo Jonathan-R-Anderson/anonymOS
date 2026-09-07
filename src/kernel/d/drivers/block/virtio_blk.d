@@ -312,7 +312,7 @@ private bool vblkRequest(bool write, ulong lba, uint sectors, ubyte* buf) {
             klog(")\n");
             return false;
         }
-        asm @nogc nothrow { pause; }
+        asm @nogc nothrow { rep; nop; }   // spin hint; same idiom as ahci.d
     }
     g_q.lastUsed = g_q.used.idx;
     memBarrier();

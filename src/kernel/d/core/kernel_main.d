@@ -5487,6 +5487,7 @@ void d_kernel_main() {
         if (bootHasInstallPayload()) { bootStateSelfTest(); updateEngineSelfTest(); imgUpdateSelfTest(); }
         { import core.imgupdate : imgUpdateHostBundleProof, imgUpdateStoreDisjointProof;
           imgUpdateHostBundleProof(); imgUpdateStoreDisjointProof(); }
+        { import core.hoscall : hosAuditPrivProof; hosAuditPrivProof(); }   // 4.5 B5
     }
     domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
     templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback

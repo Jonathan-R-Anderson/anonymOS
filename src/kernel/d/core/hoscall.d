@@ -27,13 +27,13 @@ import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
 import core.namespace: g_namespaces, nsClone, nsRecByObj,
                        nsBindingAt, nsHasRootMount;          // Z4c.3 / Z12.1 + DOMAIN_MANAGER DM2.4
-import core.io       : klog, klog_hex;           // Z4b.3/Z4c.3 verb tracing
+import core.io       : klog, klog_hex, klog_dec;  // Z4b.3/Z4c.3 verb tracing
 import core.servicemgr : g_svcs;
 import core.task     : g_tasks, MAX_TASKS;
 import core.user     : userByObj, g_users;
 import core.exports  : g_current_task_id;
 import core.store    : g_gens, g_activeGen;
-import core.audit    : auditLog, AuditKind;   // SHELL_AND_COMMANDS B5: audit privileged verbs
+import core.audit    : auditLog, AuditKind, auditCount;   // SHELL_AND_COMMANDS B5
 // Z4a.1: the native FS verbs reuse the kernel VFS behind native handles.  posix.d already
 // imports hoscall.d; the reverse import is a function-only cycle, fine under -betterC
 // (no module static-ctor init order).
@@ -991,4 +991,45 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
             return -22; // EINVAL
     }
     return cast(long)b.len;
+}
+
+// ── SHELL_AND_COMMANDS B5 proof ───────────────────────────────────────────────────────────────
+//
+// B5 says "audit-log every privileged action".  Wiring auditLog into the dispatch is worth
+// nothing on its own -- this tier has repeatedly found machinery that was written, self-tested
+// and never reached -- so this drives the REAL entry point, hosQuery(), and reads the audit ring
+// back to prove records actually landed.
+//
+// Both outcomes are exercised deliberately.  ns_enter is called with an object id the caller does
+// not own, which must be refused: an audit trail that only records successes is precisely the one
+// an attacker does not mind, so the denial is the record that matters.
+__gshared bool g_hosAuditProofDone = false;
+public void hosAuditPrivProof() {
+    if (g_hosAuditProofDone) return;
+    g_hosAuditProofDone = true;
+
+    const ulong okBefore   = auditCount(AuditKind.NativeVerbOk);
+    const ulong denyBefore = auditCount(AuditKind.NativeVerbDeny);
+
+    // A privileged verb that should SUCCEED: clone the caller's namespace.
+    const long cloned = hosQuery(HOSQ_NS_CLONE, 0, 0, 0);
+
+    // A privileged verb that should FAIL: enter a namespace object that is not ours.  0xFFFFFF is
+    // not a live namespace the caller owns, so hosNsEnter must refuse it.
+    const long entered = hosQuery(HOSQ_NS_ENTER, 0xFFFFFF, 0, 0);
+
+    const ulong okAfter   = auditCount(AuditKind.NativeVerbOk);
+    const ulong denyAfter = auditCount(AuditKind.NativeVerbDeny);
+
+    klog("[4.5] B5 privileged-verb audit: ns_clone=");
+    klog_hex(cast(ulong)cloned);
+    klog(" ns_enter(bogus)=");
+    klog_hex(cast(ulong)entered);
+    klog(" auditOk +");   klog_dec(okAfter - okBefore);
+    klog(" auditDeny +"); klog_dec(denyAfter - denyBefore);
+
+    // The denial is the load-bearing half: a refused privileged verb MUST leave a record.
+    const bool pass = (entered < 0) && (denyAfter > denyBefore)
+                   && ((cloned < 0) ? (denyAfter - denyBefore) >= 2 : (okAfter > okBefore));
+    klog(pass ? " -- B5 PASS\n" : " -- B5 FAIL\n");
 }

@@ -1539,13 +1539,17 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
         {
             import core.task : domainBindTaskNs;
             const uint sd = domainSessionId();
-            // ROADMAP 4.0b: enforcement DISABLED 2026-09-06 -- it broke installing the OS.
-            // The session domain denies /config on purpose (installer/disk control surface), but
-            // the INSTALLER is spawned through this same path and opens /config/disks.json to
-            // enumerate targets, so confinement gave it EACCES and the install failed.
-            // The fix is NOT to allow /config -- that hands every app in the domain the ability to
-            // drive the installer.  It is per-app policy: system apps must not run under the user
-            // sandbox.  Identity assignment (4.0) stays on; it gates nothing.
+            // ROADMAP 4.0b: per-app confinement.  System apps run unconfined because the session
+            // domain denies /config -- the installer/disk control surface -- and both the installer
+            // and the domain manager need it.  Allowing /config for everyone would instead hand any
+            // app in the domain the ability to drive the installer.
+            //
+            // SCOPE, measured: this hook only sees KERNEL-spawned tasks.  Apps launched from a
+            // keybind or the app menu are forked by Hyprland through execve and never reach here,
+            // so they are not confined by it.  On live media every spawn is a system app, which
+            // makes confinement inactive there; on an installed system it covers the autostart
+            // apps.  Covering user-launched apps means hooking execve, which is the hot path for
+            // every exec and needs its own care.
             // System apps run unconfined; everything else is bound into the session domain.
             const bool sysApp  = isSystemProgram(prog);
             const uint boundNs = (!sysApp && sd != 0) ? domainBindTaskNs(t, sd) : 0;

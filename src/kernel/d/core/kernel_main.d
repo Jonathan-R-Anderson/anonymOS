@@ -5480,7 +5480,11 @@ void d_kernel_main() {
         import drivers.veracrypt_impl : bootHasInstallPayload;
         import core.bootstate : bootStateSelfTest;
         import core.sysupdate : updateEngineSelfTest;
-        if (bootHasInstallPayload()) { bootStateSelfTest(); updateEngineSelfTest(); }
+        // ROADMAP 4.4 / SYSTEM_UPDATE D1: the whole-image update UNIT.  sysupdate.d is the U1
+        // control surface and says so itself -- "no image staging yet" -- so this proves the
+        // artifact those verbs will eventually switch to: signed, hash-committed, anti-replayed.
+        import core.imgupdate : imgUpdateSelfTest;
+        if (bootHasInstallPayload()) { bootStateSelfTest(); updateEngineSelfTest(); imgUpdateSelfTest(); }
     }
     domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
     templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback

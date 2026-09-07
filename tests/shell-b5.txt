@@ -1,0 +1,21 @@
+# SHELL_AND_COMMANDS B5 (roadmap 4.5) -- destructive-operation safety in the native object shell.
+#
+# ns-enter, cap-grant, cap-derive and identity-switch change the CALLING process's security
+# context.  They used to fire the moment the form was evaluated, so in a REPL over the object model
+# a typo was indistinguishable from an intention.
+#
+# Run in the guest, confined in Throwaway, via the same b5SelfTest() a user reaches with
+# `hos-sh --selftest` -- so what is asserted here is what a person actually runs.
+
+require  [4.5] B5: unarmed-refused=1 armed-once=1 dryrun-wins=1
+require  -- B5 PASS
+
+# Completion checked in BOTH directions: a stub that always returns 0, or always returns 1, fails.
+require  complete(hit=1,miss=0)
+
+# The kernel-side half: every privileged native verb leaves an audit record, refusals included.
+require  [4.5] B5 privileged-verb audit:
+require  auditDeny +
+
+forbid   B5 FAIL
+forbid   EARLY BOOT EXCEPTION

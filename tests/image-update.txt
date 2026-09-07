@@ -27,3 +27,9 @@ require  [4.1] dual-identity spawn accepted
 require  [4.4] host bundle
 require  host packager and kernel verifier AGREE
 forbid   host/kernel wire-format MISMATCH
+
+# D1's last clause: "the object store (user data) lives outside the slots and is untouched".
+# A correctly-signed update that silently ate the user's data is the worst outcome this system can
+# have, and no signature check would catch it -- so the region relationship is asserted, not
+# assumed.  On live media the store is in RAM, so N/A is the correct and expected answer here.
+require  [4.4] store/update disjointness:

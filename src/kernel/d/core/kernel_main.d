@@ -2599,6 +2599,12 @@ private void maybeProveDualIdentity() {
     klog("\n");
     const bool ok = domainSpawnInto(bank, "wl-calc\0".ptr);
     klog(ok ? "[4.1] dual-identity spawn accepted\n" : "[4.1] dual-identity spawn REFUSED\n");
+    // And prove the gate REFUSES app-to-app across identities.  xid-test runs as Banking and
+    // connects to the dbus socket owned by dbus-daemon under the session identity: neither side is
+    // system trust and no pair rule exists, so the kernel must answer EACCES.  Until this ran, the
+    // deny path had never executed on any boot -- a refusal that never fires is a claim, not a
+    // control.
+    cast(void)domainSpawnInto(bank, "xid-test\0".ptr);
 }
 
 private void maybeSpawnInotifyTest() {

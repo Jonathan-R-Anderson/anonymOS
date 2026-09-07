@@ -43,7 +43,15 @@
                       "/dev/urandom", "/display.conf"],
         "deny":      ["/home/user/.ssh", "/config", "/objects"]
       } },
-    { "name": "BankVault",  "type": "domain", "identity": "Banking",  "persist": "home-only" }
+    { "name": "BankVault",  "type": "domain", "identity": "Banking",  "persist": "home-only" },
+    { "name": "Throwaway",  "type": "domain", "identity": "Disposable", "persist": "ephemeral",
+      "filesystemAccess": {
+        "defaultPolicy": "deny",
+        "allowTraversalOutsideMounts": true,
+        "readWrite": ["/tmp", "/run", "/dev/null"],
+        "readOnly":  ["/usr/share", "/usr/lib", "/lib", "/etc", "/proc", "/dev/urandom"],
+        "deny":      ["/home/user", "/config", "/objects"]
+      } }
   ],
   "namespaces": [
     { "name": "system-ns", "root": "$root", "isolated": true },

@@ -2614,6 +2614,22 @@ private void maybeProveDualIdentity() {
     // deny path had never executed on any boot -- a refusal that never fires is a claim, not a
     // control.
     cast(void)domainSpawnInto(bank, "xid-test\0".ptr);
+
+    // ROADMAP 4.1 §8: a DISPOSABLE domain.  The Disposable identity has existed since boot --
+    // orange, TRUST_DISPOSABLE, NetPolicy.Disposable, clipboard Deny, with System->Disposable and
+    // Development->Disposable launch rules -- but no domain referenced it, so nothing could ever
+    // run as Disposable.  Throwaway is ephemeral (§8: discarded after use) and denies /home/user,
+    // which is what makes it throwaway rather than just another sandbox.
+    const uint disp = domainByName("Throwaway\0".ptr);
+    if (disp != 0) {
+        auto dr = domainById(disp);
+        klog("[4.1] spawning /wl-clocks into Throwaway (identity=");
+        klog_hex(dr !is null ? dr.identityObjId : 0);
+        klog(") -- expect the DISPOSABLE border 0xFFFF6D00\n");
+        cast(void)domainSpawnInto(disp, "wl-clocks\0".ptr);
+    } else {
+        klog("[4.1] no Throwaway domain in the manifest\n");
+    }
 }
 
 private void maybeSpawnInotifyTest() {

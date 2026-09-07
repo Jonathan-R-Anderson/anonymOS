@@ -1616,7 +1616,7 @@ public void installAutoIfRequested() {
     ulong phys, size;
     if (!instFindModule("autoinstall", phys, size)) return;   // not a test image: do nothing
 
-    import drivers.block.disk : diskStoreIndex;
+    import drivers.block.disk : diskStoreIndex, diskFindTarget;
     ulong dsec = 0;
     int idx = diskFindTarget(dsec);
     if (idx < 0) idx = diskStoreIndex(dsec);

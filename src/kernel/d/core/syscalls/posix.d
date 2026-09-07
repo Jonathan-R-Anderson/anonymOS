@@ -9695,6 +9695,43 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     auto listener = findUnixListener(un, pathLen);
     if (listener is null) return negErrno(ECONNREFUSED);
 
+    // ── ROADMAP 4.1: observe CROSS-IDENTITY IPC before gating any of it ────────────────────────
+    //
+    // g_idIpcRules and brokerAuthorizePair() have existed since P5/P7 and are reached only by
+    // idipcSelfTest -- no real IPC call consults them.  They could not be tested before now for a
+    // reason unrelated to brokers: every app ran as one identity, so there was no cross-identity
+    // traffic.  Domain spawning fixed that (a BankVault app now runs alongside Personal ones).
+    //
+    // AUDIT ONLY, deliberately.  Enforcement changes shipped on "the desktop still booted" have
+    // cost two broken boots and one broken install today, and a connect gate would sever dbus or
+    // Wayland with symptoms nothing like a policy change.  What legitimately crosses identities is
+    // not yet known, and it has to be measured before it is refused.
+    //
+    // Placed beside the existing [conn] logging rather than in a new hook: that site has been in
+    // this path all session without incident, and connection setup is not the per-open hot path
+    // that made the last audit attempt fatal.
+    {
+        import core.task : g_tasks, taskIdFromLinuxPid, MAX_TASKS;
+        static __gshared int g_xidLogN = 0;
+        const int me = cast(int)g_current_task_id;
+        const int peer = taskIdFromLinuxPid(listener.ownerPid);
+        if (g_xidLogN < 24 && me >= 0 && me < MAX_TASKS && peer >= 0 && peer < MAX_TASKS) {
+            const uint myId = g_tasks[me].identityObjId;
+            const uint peerId = g_tasks[peer].identityObjId;
+            if (myId != 0 && peerId != 0 && myId != peerId) {
+                ++g_xidLogN;
+                klog("[4.1] cross-identity connect: ");
+                { const(char)* n = g_taskExecName[me]; klog(n !is null ? n : "?".ptr); }
+                klog("(id="); klog_hex(myId); klog(") -> ");
+                { const(char)* n = g_taskExecName[peer]; klog(n !is null ? n : "?".ptr); }
+                klog("(id="); klog_hex(peerId); klog(") path=");
+                foreach (i; 0 .. 108) { if (un.sun_path[i] == 0) break;
+                    char[2] c; c[0] = un.sun_path[i]; c[1] = 0; klog(c.ptr); }
+                klog("\n");
+            }
+        }
+    }
+
     const int clientId = fileSocketId(f);
     const int acceptedId = allocLocalSocket(AF_UNIX, SOCK_STREAM);
     if (acceptedId < 0) return negErrno(EMFILE);

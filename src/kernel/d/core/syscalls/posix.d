@@ -9712,13 +9712,34 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
     // that made the last audit attempt fatal.
     {
         import core.task : g_tasks, taskIdFromLinuxPid, MAX_TASKS;
+        import core.identity : identityById, TRUST_SYSTEM;
+        import core.idipc : idipcMayConnect;
         static __gshared int g_xidLogN = 0;
         const int me = cast(int)g_current_task_id;
         const int peer = taskIdFromLinuxPid(listener.ownerPid);
-        if (g_xidLogN < 24 && me >= 0 && me < MAX_TASKS && peer >= 0 && peer < MAX_TASKS) {
+        if (me >= 0 && me < MAX_TASKS && peer >= 0 && peer < MAX_TASKS) {
             const uint myId = g_tasks[me].identityObjId;
             const uint peerId = g_tasks[peer].identityObjId;
             if (myId != 0 && peerId != 0 && myId != peerId) {
+                // THE RULE, from measurement: every cross-identity connect observed in a real
+                // session is app -> COMPOSITOR on the Wayland socket, and there is no app-to-app
+                // crossing at all.  So a service running at system trust is a HUB every identity
+                // may reach -- refusing that would cut every application off from its display
+                // while refusing nothing that actually happens.  App-to-app across identities is
+                // what IDENTITY_DOMAIN says must go through the broker, and it is denied here
+                // unless a pair rule exists.
+                auto peerRec = identityById(peerId);
+                const bool peerIsSystemHub = (peerRec !is null && peerRec.trust >= TRUST_SYSTEM);
+                if (!peerIsSystemHub && !idipcMayConnect(myId, peerId)) {
+                    klog("[4.1] DENY cross-identity connect (no broker rule): ");
+                    { const(char)* n = g_taskExecName[me]; klog(n !is null ? n : "?".ptr); }
+                    klog(" -> ");
+                    { const(char)* n = g_taskExecName[peer]; klog(n !is null ? n : "?".ptr); }
+                    klog("\n");
+                    return negErrno(EACCES);
+                }
+            }
+            if (g_xidLogN < 24 && myId != 0 && peerId != 0 && myId != peerId) {
                 ++g_xidLogN;
                 klog("[4.1] cross-identity connect: ");
                 { const(char)* n = g_taskExecName[me]; klog(n !is null ? n : "?".ptr); }

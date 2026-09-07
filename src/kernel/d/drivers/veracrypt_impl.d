@@ -1608,6 +1608,7 @@ public void installBootableProof() {
 // about the test.
 __gshared bool g_autoInstallDone = false;
 
+@nogc nothrow
 public void installAutoIfRequested() {
     if (g_autoInstallDone) return;
     g_autoInstallDone = true;

@@ -246,8 +246,22 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
         // this window is exactly "a verified manifest, before the seal".
         const uint existing = identityByName(name);
         if (existing != 0) {
-            if (identityApplyPolicy(name, color, trust, ceiling, nsTemplate, netP, clipP, guiM))
+            if (identityApplyPolicy(name, color, trust, ceiling, nsTemplate, netP, clipP, guiM)) {
                 ++g_cfgIdApplied;
+                // The evidence trail for Phase 5/9.  A test can assert the DECLARED value was
+                // applied, which is a stronger claim than asserting the painted colour happens to
+                // equal some constant: the colour could match by coincidence if the built-in table
+                // and the manifest agree, and that coincidence is exactly the state this tier
+                // found and fixed.  This line only appears if the config actually drove it.
+                klog("[cfg] identity policy applied: ");
+                klog(name);
+                klog(" color="); klog_hex(color);
+                klog(" trust="); klog_hex(trust);
+                klog(" net=");   klog_hex(cast(ulong)netP);
+                klog(" clip=");  klog_hex(cast(ulong)clipP);
+                klog(" gui=");   klog_hex(guiM);
+                klog("\n");
+            }
             break;
         }
         // ceiling must be ⊆ UNIVERSE (identityCreate checks this); a declared

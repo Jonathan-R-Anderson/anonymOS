@@ -24,3 +24,17 @@ require  [4.1] dual-identity spawn accepted
 # rather than the self-test's 0x100/0x200 fixtures.
 require  [4.1] brokered session minted
 forbid   [4.1] brokered session REFUSED
+
+# ── DECLARATIVE_CONFIG Phase 5/9 ──────────────────────────────────────────────────────────────
+# The declared identity policy must actually reach the kernel.  Proven by experiment on
+# 2026-09-07: setting Personal to #00E5FF in system.json changed the painted border to
+# color=00000000ff00e5ff, and reverting restored 0xFF2E7D32.  Before this, every declared identity
+# took configboot's no-op branch and the declared colour had never reached a pixel.
+#
+# Asserting the APPLY LINE, not just the colour: a painted colour can match by coincidence when
+# the built-in table and the manifest agree, and that coincidence is exactly the state this tier
+# found.  This line appears only if the config drove it.
+require  [cfg] identity policy applied: Personal color=00000000ff2e7d32
+require  [cfg] identity policy applied: Banking color=00000000ffffd600
+require  [cfg] identity policy applied: Disposable color=00000000ffff6d00
+require  [4.1] identity painted: color=00000000ff2e7d32

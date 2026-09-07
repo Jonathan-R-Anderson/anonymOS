@@ -1,0 +1,26 @@
+# IMMUTABLE_ROOTLESS Phase 0.4 -- the section-F acceptance gates.
+#
+# This suite deliberately does NOT require every gate to pass.  Section 0.4 asks for "a test list
+# that FAILS today and must pass to claim each property", so the contract here is that the gates
+# RUN and REPORT, and that the ones already earned do not silently regress.  Adding a `require`
+# line for a gate is how a property gets claimed; weakening one to make the board green would
+# defeat the entire point of the phase.
+
+require  [F] === IMMUTABLE_ROOTLESS Phase 0.4 acceptance gates
+require  [F] SUMMARY immutable
+
+# All eight gates must report a verdict.  A gate that silently fails to run is worse than one that
+# fails: it leaves the property unmeasured while looking fine.
+require  [F] IMMUTABLE-1
+require  [F] IMMUTABLE-2
+require  [F] IMMUTABLE-3
+require  [F] IMMUTABLE-4
+require  [F] ROOTLESS-1
+require  [F] ROOTLESS-2
+require  [F] ROOTLESS-3
+require  [F] ROOTLESS-4
+
+# The desktop must still come up -- an acceptance probe that runs cap-table and generation
+# surgery during boot is exactly the kind of change that has broken this boot before.
+require  [4.1] dual-identity spawn accepted
+forbid   EARLY BOOT EXCEPTION

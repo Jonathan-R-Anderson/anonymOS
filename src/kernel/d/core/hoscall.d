@@ -1049,7 +1049,6 @@ private long hosPciCfgWrite(ulong arg, ulong val) {
 }
 
 // ── SHELL_AND_COMMANDS B5 proof ─
-──────────────────────────────────────────────────────────────
 //
 // B5 says "audit-log every privileged action".  Wiring auditLog into the dispatch is worth
 // nothing on its own -- this tier has repeatedly found machinery that was written, self-tested

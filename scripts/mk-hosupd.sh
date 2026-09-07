@@ -64,9 +64,16 @@ le64() { printf "$(printf '\\x%02x\\x%02x\\x%02x\\x%02x\\x%02x\\x%02x\\x%02x\\x%
 mkdir -p "$(dirname "$OUT")"
 HDR="$(mktemp)"; trap 'rm -f "$HDR" "$HDR.sig"' EXIT
 
+# Format 2 (Ed25519 against the pinned root) whenever the release key is present; format 1
+# (symmetric HMAC) otherwise, so a tree without the key still builds a bundle this kernel accepts.
+# The difference matters: under format 1 the verifier holds the signing secret, so a signature
+# proves only that something with the image produced the bundle.
+RELKEY="${RELKEY:-$ROOT/keys/dev-release.ed25519.key}"
+if [ -f "$RELKEY" ]; then FMT=2; else FMT=1; fi
+
 {
     printf 'HOSUPD01'
-    le32 1                 # formatVersion
+    le32 "$FMT"            # formatVersion
     le32 "$VERSION"
     le32 "${PREV:-0}"
     le32 "$KEYID"
@@ -76,12 +83,22 @@ HDR="$(mktemp)"; trap 'rm -f "$HDR" "$HDR.sig"' EXIT
 
 [ "$(stat -c %s "$HDR")" -eq 64 ] || { echo "mk-hosupd: header is not 64 bytes" >&2; exit 2; }
 
-openssl dgst -sha256 -mac HMAC -macopt "hexkey:$TRUSTED_KEY_HEX" -binary -out "$HDR.sig" "$HDR"
+if [ "$FMT" = "2" ]; then
+    # Ed25519 over the 64-byte header.  openssl's pkeyutl signs the raw message for Ed25519
+    # (PureEdDSA hashes internally), which is what the kernel's verifier expects.
+    openssl pkeyutl -sign -inkey "$RELKEY" -rawin -in "$HDR" -out "$HDR.sig"
+    [ "$(stat -c %s "$HDR.sig")" -eq 64 ] || { echo "mk-hosupd: Ed25519 signature is not 64 bytes" >&2; exit 2; }
+else
+    openssl dgst -sha256 -mac HMAC -macopt "hexkey:$TRUSTED_KEY_HEX" -binary -out "$HDR.sig" "$HDR"
+    # Format 1's header is 96 bytes: pad the 32-byte tag out to the 64-byte signature slot so the
+    # image always starts at a fixed offset for the format in use.
+fi
 
 cat "$HDR" "$HDR.sig" "$IMAGE" > "$OUT"
 
 echo "mk-hosupd: wrote $OUT"
 echo "  image      $IMAGE ($IMAGE_LEN bytes)"
 echo "  imageHash  $IMAGE_HASH"
+echo "  format     $FMT $( [ "$FMT" = 2 ] && echo "(Ed25519, pinned root)" || echo "(HMAC, symmetric)" )"
 echo "  version    $VERSION (replaces $PREV)"
 echo "  bundle     $(stat -c %s "$OUT") bytes"

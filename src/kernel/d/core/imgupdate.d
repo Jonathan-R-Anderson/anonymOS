@@ -53,8 +53,24 @@ import core.sysversion : SYSTEM_VERSION;
 // The signature covers the HEADER, and the header commits to the image via imageHash.  So one
 // verification of 64 bytes plus one hash of the payload authenticates the entire artifact -- and
 // the hash can be computed while streaming, which is what U2 needs for chunked download.
-enum uint IMGUPD_HDR   = 96;
-enum uint IMGUPD_FMT   = 1;
+// Format 1 signs with the kernel's SYMMETRIC HMAC key: 32-byte tag at offset 64, image at 96.
+// Format 2 signs with Ed25519 against the PINNED release key: 64-byte signature at offset 64,
+// image at 128.  Both are accepted, and the difference is not cosmetic -- under format 1 the
+// verifier holds the signing secret, so it proves only that something with the image made the
+// bundle.  Format 2 is the one a downloaded release can actually rely on.
+enum uint IMGUPD_HDR    = 96;    // format 1 header (32-byte HMAC tag)
+enum uint IMGUPD_HDR_ED = 128;   // format 2 header (64-byte Ed25519 signature)
+enum uint IMGUPD_FMT    = 1;
+enum uint IMGUPD_FMT_ED = 2;
+
+// The pinned root public key (SYSTEM_UPDATE D3).  This is the DEVELOPMENT key in keys/, committed
+// so the pipeline is testable end to end; a key in a public repository is a key everybody has, so
+// shipping releases means generating one offline and pinning it here instead.  Swapping it is a
+// one-line change and needs no format change, which is what the bundle's keyId field is for.
+private static immutable ubyte[32] ED_ROOT_PUBKEY = [
+    0xdb,0x76,0x0f,0x72,0x8e,0xd6,0x2a,0xbd,0x88,0x8d,0xef,0xce,0xd7,0xad,0x9e,0xe8,
+    0xeb,0x2b,0x1e,0x56,0xb9,0xa7,0x14,0x37,0xb1,0x26,0xec,0x62,0xb3,0x7b,0xc7,0x64];
+
 enum ulong IMGUPD_MAGIC_0 = 0x44505355534F48UL;   // "HOSUPD" + 0x00 padding, compared bytewise below
 
 struct ImgUpdateHeader {
@@ -143,16 +159,26 @@ public ImgUpdVerdict imgUpdateVerify(const(ubyte)* buf, ulong len) {
     if (buf is null || len < IMGUPD_HDR)          { ++g_imgRefuseTotal; return ImgUpdVerdict.Truncated; }
     if (!magicOk(buf))                            { ++g_imgRefuseTotal; return ImgUpdVerdict.BadMagic; }
     if (!imgUpdateParse(buf, len, h))             { ++g_imgRefuseTotal; return ImgUpdVerdict.Truncated; }
-    if (h.formatVersion != IMGUPD_FMT)            { ++g_imgRefuseTotal; return ImgUpdVerdict.BadFormat; }
-    if (h.imageLen == 0 || IMGUPD_HDR + h.imageLen > len)
+    const bool isEd = (h.formatVersion == IMGUPD_FMT_ED);
+    if (h.formatVersion != IMGUPD_FMT && !isEd)   { ++g_imgRefuseTotal; return ImgUpdVerdict.BadFormat; }
+    const uint hdrLen = isEd ? IMGUPD_HDR_ED : IMGUPD_HDR;
+    if (h.imageLen == 0 || hdrLen + h.imageLen > len)
                                                   { ++g_imgRefuseTotal; return ImgUpdVerdict.Truncated; }
 
-    // Signature over the header's first 64 bytes (everything up to and excluding `sig`).
-    if (!cryptoVerify(buf, 64, &h.sig[0]))        { ++g_imgRefuseTotal; return ImgUpdVerdict.BadSignature; }
+    // Signature over the header's first 64 bytes (everything up to and excluding the signature).
+    // Format 2 checks Ed25519 against the pinned root; format 1 checks the symmetric HMAC.
+    bool sigOk;
+    if (isEd) {
+        import core.ed25519 : ed25519Verify;
+        sigOk = ed25519Verify(buf + 64, buf, 64, &ED_ROOT_PUBKEY[0]);
+    } else {
+        sigOk = cryptoVerify(buf, 64, &h.sig[0]);
+    }
+    if (!sigOk)                                   { ++g_imgRefuseTotal; return ImgUpdVerdict.BadSignature; }
 
     // The header is now trusted, so its imageHash is a trustworthy commitment to the payload.
     ubyte[32] actual;
-    sha256(buf + IMGUPD_HDR, h.imageLen, &actual[0]);
+    sha256(buf + hdrLen, h.imageLen, &actual[0]);
     if (!ctEqual32(&actual[0], &h.imageHash[0])) { ++g_imgRefuseTotal; return ImgUpdVerdict.BadImageHash; }
 
     if (h.imageVersion <= g_imgRunningVersion)   { ++g_imgRefuseTotal; return ImgUpdVerdict.Rollback; }
@@ -425,7 +451,8 @@ public bool imgUpdateWriteToSlot(const(ubyte)* buf, ulong len, out ImgUpdVerdict
     if (idx < 0) return false;
 
     auto cap = mintInstallWriteCap(idx);
-    const(ubyte)* src = buf + IMGUPD_HDR;
+    ImgUpdateHeader hh; imgUpdateParse(buf, len, hh);
+    const(ubyte)* src = buf + ((hh.formatVersion == IMGUPD_FMT_ED) ? IMGUPD_HDR_ED : IMGUPD_HDR);
     bool ok = true;
     ulong done = 0;
     // 64 sectors (32 KiB) per call: large enough that the per-write overhead disappears, small

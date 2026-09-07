@@ -2585,7 +2585,7 @@ __gshared bool g_inotifyTestStarted = false;
 // says which identity owns it without reading a log.
 __gshared bool g_dualIdProofDone = false;
 private void maybeProveDualIdentity() {
-    import core.domain : domainByName, domainSpawnInto, domainById;
+    import core.domain : domainByName, domainSpawnInto, domainById, domainSessionId;
     if (g_dualIdProofDone) return;
     if (pitMs() < 30_000) return;              // let the desktop settle first
     g_dualIdProofDone = true;

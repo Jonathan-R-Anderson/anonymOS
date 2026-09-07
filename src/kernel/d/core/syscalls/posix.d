@@ -35,7 +35,8 @@ import core.domain : domainControlWrite,                     // DM10.3: /config/
                      domainDeviceAllowed, domainSetDevice, domainByName, domainById, DomainId; // DM10.7
 import core.identity : identityDeviceAllowed, identityByName, // DM8: §7 device-class enforcement
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
-                       DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB, DEVCLASS_NET;
+                       DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB, DEVCLASS_NET,
+                       IDENTITY_BORDER_NEUTRAL;   // ROADMAP 4.0c: shared neutral border colour
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userByUid, userByGid,
                    userSetActiveSubject, userDefaultNameContent; // Phase 10 / IR-P3 User objects

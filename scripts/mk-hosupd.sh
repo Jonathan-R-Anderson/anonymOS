@@ -27,7 +27,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IMAGE="${IMAGE:-$ROOT/cd/esp-image}"
 OUT="${OUT:-$ROOT/build/system.hosupd}"
 VERSION="${VERSION:-}"
-PREV="${PREV:-0}"
+# Left EMPTY by default so the block below can derive it from SYSTEM_VERSION.  Setting it to 0 here
+# would silently win over that derivation and every bundle would say "replaces any version".
+PREV="${PREV-}"
 KEYID="${KEYID:-0}"
 
 # Must equal core/crypto.d g_trustedKey.
@@ -44,7 +46,7 @@ if [ -z "$VERSION" ]; then
            "$ROOT/src/kernel/d/core/sysversion.d" | head -1)"
     [ -n "$cur" ] || { echo "mk-hosupd: cannot read SYSTEM_VERSION" >&2; exit 2; }
     VERSION=$((cur + 1))
-    PREV="${PREV:-$cur}"
+    [ -n "$PREV" ] || PREV="$cur"
 fi
 
 IMAGE_LEN=$(stat -c %s "$IMAGE")
@@ -66,7 +68,7 @@ HDR="$(mktemp)"; trap 'rm -f "$HDR" "$HDR.sig"' EXIT
     printf 'HOSUPD01'
     le32 1                 # formatVersion
     le32 "$VERSION"
-    le32 "$PREV"
+    le32 "${PREV:-0}"
     le32 "$KEYID"
     le64 "$IMAGE_LEN"
     printf '%s' "$IMAGE_HASH" | xxd -r -p

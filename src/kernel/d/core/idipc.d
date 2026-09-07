@@ -127,6 +127,84 @@ public void idipcInit() {
         uint sanitizer = objAlloc(ObjType.Service, null); // Dev→Disposable broker
         idipcPairRuleAdd(dev, disp, sanitizer);
     }
+
+    // ROADMAP 4.1 §7: the COMPOSITOR HUB, written down as broker rules.
+    //
+    // sys_connect already lets any identity reach a system-trust peer, because measurement showed
+    // every real cross-identity connect is app -> compositor on the Wayland socket; refusing it
+    // would cut every application off from its display.  But that lived only as a trust comparison
+    // inside the connect path, so the broker -- which is where IDENTITY_DOMAIN §1.2 says the
+    // decision belongs -- did not know about it, and brokerRequestSession refused to mint a
+    // descriptor for the one crossing that actually happens.  Stating it as rules keeps the two
+    // agreeing and makes the policy greppable instead of implicit.
+    IdentityId sys = identityByName("System\0".ptr);
+    if (sys != 0) {
+        static immutable(char)*[6] hubUsers = [
+            "Personal\0".ptr, "Work\0".ptr, "Banking\0".ptr,
+            "Development\0".ptr, "Untrusted\0".ptr, "Disposable\0".ptr,
+        ];
+        foreach (nm; hubUsers) {
+            IdentityId u = identityByName(nm);
+            if (u != 0 && u != sys) idipcPairRuleAdd(u, sys, 0);   // 0: no sanitizer, direct hub
+        }
+    }
+}
+
+// ROADMAP 4.1 §7: mint a REAL brokered session for a real crossing.
+//
+// brokerRequestSession has been reachable only from idipcSelfTest, on three synthetic process
+// objects and a throwaway resolver.  Everything it needs from a real crossing already exists:
+// tasks carry processObjId (ObjType.Process), and the default resolver idipcResolveViaTask maps
+// those to the identity the task actually runs as.  So the only thing standing between the
+// self-test and the live path was a caller.
+//
+// Called once per distinct identity pair from sys_connect, after the connect is allowed: the
+// point is not to gate the connection a second time -- sys_connect already decided -- but to
+// produce the signed, expiring descriptor the design says a crossing should be attributable to.
+//
+// Returns true if a descriptor was minted; the sessionId and both stamped identities are logged
+// so the record shows a real pair, not the self-test's 0x100/0x200 fixtures.
+public bool idipcMintLiveSession(uint aProc, uint bProc) {
+    if (aProc == 0 || bProc == 0 || aProc == bProc) return false;
+
+    // A scratch table distinct from the self-test's (CAPTAB_COUNT-5), so a mint cannot disturb
+    // a self-test in flight or vice versa.
+    enum int  ST       = CAPTAB_COUNT - 6;
+    enum uint LAUNCH_H = 60, CHAN_H = 61;
+
+    uint launchObj = objAlloc(ObjType.Process, null);
+    if (launchObj == 0) return false;
+    if (capInstallIn(ST, LAUNCH_H, launchObj, CAP_RIGHT_CALL, CAP_INVALID) == CAP_INVALID) {
+        objRelease(launchObj); return false;
+    }
+
+    // The kernel is its own CA here (caSign), so a self-registered cert verifies.  The public key
+    // is a placeholder until identities carry real launch keys -- what is being proven now is that
+    // the broker path runs on live processes, not that the key material is meaningful.
+    ubyte[32] pub; foreach (i; 0 .. 32) pub[i] = cast(ubyte)(0x40 + i);
+    bool ok = identityRegister(ST, aProc, pub.ptr, LAUNCH_H, 1_000_000)
+           && identityRegister(ST, bProc, pub.ptr, LAUNCH_H, 1_000_000);
+    if (ok) brokerAuthorizePair(aProc, bProc);
+
+    SessionDescriptor d;
+    bool minted = ok && brokerRequestSession(ST, aProc, bProc,
+                                             SUITE_CHACHA20POLY1305 | SUITE_AES256GCM,
+                                             CHAN_H, 10, 100_000, &d);
+    if (minted) {
+        klog("[4.1] brokered session minted: id="); klog_hex(d.sessionId);
+        klog(" aIdentity="); klog_hex(d.aIdentity);
+        klog(" bIdentity="); klog_hex(d.bIdentity);
+        klog(" suite=");     klog_hex(d.suite);
+        klog(" channelCap="); klog_hex(d.channelCap);
+        klog("\n");
+    } else {
+        klog("[4.1] brokered session REFUSED for a connect sys_connect had already allowed\n");
+    }
+
+    capClearIn(ST, LAUNCH_H);
+    capClearIn(ST, CHAN_H);
+    objRelease(launchObj);
+    return minted;
 }
 
 // === proof (roadmap §5 outcome) ==============================================

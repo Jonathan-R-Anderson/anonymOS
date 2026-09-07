@@ -9739,6 +9739,29 @@ public int sys_connect(int sockfd, const(sockaddr)* addr, uint addrlen) {
                     return negErrno(EACCES);
                 }
             }
+            // ROADMAP 4.1 §7: the crossing is allowed -- now make it ATTRIBUTABLE.
+            //
+            // brokerRequestSession() has minted descriptors only for idipcSelfTest's synthetic
+            // process objects since P7.  This is its first real caller: once per distinct
+            // identity pair, mint a signed, expiring session descriptor for a crossing that
+            // actually happened, using the tasks' real processObjIds and the live task->identity
+            // resolver.  Once per pair rather than per connect because the descriptor describes
+            // the PAIR's authorization, and because a per-connect mint would allocate an endpoint
+            // on every Wayland reconnect.
+            if (myId != 0 && peerId != 0 && myId != peerId) {
+                import core.idipc : idipcMintLiveSession;
+                static __gshared uint[8] mintA = 0;
+                static __gshared uint[8] mintB = 0;
+                static __gshared uint    mintN = 0;
+                bool seenPair = false;
+                foreach (k; 0 .. mintN) if (mintA[k] == myId && mintB[k] == peerId) { seenPair = true; break; }
+                if (!seenPair && mintN < mintA.length) {
+                    mintA[mintN] = myId; mintB[mintN] = peerId; ++mintN;
+                    cast(void)idipcMintLiveSession(g_tasks[me].processObjId,
+                                                   g_tasks[peer].processObjId);
+                }
+            }
+
             if (g_xidLogN < 24 && myId != 0 && peerId != 0 && myId != peerId) {
                 ++g_xidLogN;
                 klog("[4.1] cross-identity connect: ");

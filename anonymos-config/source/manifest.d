@@ -391,7 +391,7 @@ private ubyte clipPolicy(string s)
     }
 }
 
-private uint guiMask(string[] flags)
+private uint guiMask(in string[] flags)
 {
     uint m = 0;
     foreach (f; flags)

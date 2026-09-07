@@ -1372,6 +1372,11 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 		echo "Included apps.blob ($$(ls $(APPS_SRC) | wc -l) .desktop entries -> /usr/share/applications)"; \
 	fi
 
+	# ROADMAP 4.7: strip the builder's absolute path out of the staged binaries.  MUST come
+	# before the boot-integrity manifest below, which hashes cd/ -- sanitising afterwards would
+	# invalidate every hash in the attestation.
+	scripts/sanitize-build-paths.sh cd
+
 	python3 scripts/build-boot-integrity-manifest.py cd $(BOOT_INTEGRITY_MANIFEST) \
 		--network "$(ZKSYNC_NETWORK)" \
 		--chain-id "$(ZKSYNC_CHAIN_ID)" \

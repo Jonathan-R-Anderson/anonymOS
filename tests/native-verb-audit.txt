@@ -1,0 +1,14 @@
+# SHELL_AND_COMMANDS B5 (roadmap 4.5) -- every privileged native verb leaves an audit record.
+#
+# The native object ABI's four mutating verbs (cap_grant, ns_clone, ns_enter, id_switch) are the
+# operations that move capabilities and identity -- the two things this OS's security model is
+# built on -- and none of them was audited.  hoscall.d did not import core.audit at all.
+
+require  [4.5] B5 privileged-verb audit:
+require  -- B5 PASS
+
+# The DENIAL is the load-bearing assertion.  An audit trail that records only successes is the one
+# an attacker is happy to leave behind, so a refused privileged verb must appear in the ring.
+require  auditDeny +
+
+forbid   EARLY BOOT EXCEPTION

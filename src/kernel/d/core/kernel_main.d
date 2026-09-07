@@ -5415,7 +5415,6 @@ void d_kernel_main() {
     // would report "in RAM" on every machine including installed ones.  Everything else it needs
     // -- init's caps, the /usr:/etc:/var split, the A/B slots -- is already up by this point.
     acceptanceRun();
-    { import core.acceptance : readIsolationProof; readIsolationProof(); }   // 4.12
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).
@@ -5456,6 +5455,10 @@ void d_kernel_main() {
     // — so a declared config, not hardcoded init, constructs running state.  Safe
     // fallthrough: a missing/tampered manifest logs + continues to hardcoded init.
     configBootApply();
+    // ROADMAP 4.12: must run AFTER configBootApply -- domain namespaces are built by the
+    // manifest's TAG_FS_POLICY records, so probing before this point measured nothing and
+    // reported SKIP for every domain.
+    { import core.acceptance : readIsolationProof; readIsolationProof(); }
     domainRehydrateFromDisk();   // DOMAIN_MANAGER DM5: recreate persisted domains (after seed+manifest; dedup by name)
     // DOMAIN_MANAGER DM0.d/DM1: run the domain VIEW proofs AFTER the manifest applies, so they
     // reflect the final registry (DM0 seed + any DM1 manifest-declared domains).

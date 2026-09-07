@@ -2593,9 +2593,9 @@ private void maybeProveDualIdentity() {
     // instead of a pass -- which is the whole reason it distinguishes "refused" from "nothing was
     // listening".  A test that cannot tell those apart would have reported success for a control
     // that never ran.
-    if (!unixListenerReady("/run/dbus/system_bus_socket\0".ptr)) {
-        if (pitMs() < 90_000) return;          // bounded: do not wait forever for a bus that fails
-        klog("[4.1] dbus never bound; gate proof will be INCONCLUSIVE\n");
+    if (!unixListenerReady("/run/sshd.sock\0".ptr)) {
+        if (pitMs() < 90_000) return;          // bounded: never wedge the proof on a missing peer
+        klog("[4.1] sshd socket never bound; gate proof will be INCONCLUSIVE\n");
     }
     g_dualIdProofDone = true;
     const uint bank = domainByName("BankVault\0".ptr);

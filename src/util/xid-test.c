@@ -20,7 +20,14 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#define DBUS_SOCK "/run/dbus/system_bus_socket"
+// Target the sshd control socket, not dbus.  Measured: dbus-daemon runs but never binds
+// /run/dbus/system_bus_socket -- the kernel reports "bus still not listening after 60s" and the
+// only AF_UNIX listener in the system is this one.  Aiming at an absent socket produced
+// ECONNREFUSED and an honest INCONCLUSIVE, which proved nothing about the gate.
+//
+// /run/sshd.sock is owned by hos-sshd-launch, which runs under the SESSION identity (Personal).
+// This test runs as Banking.  Neither is system trust, so the gate must refuse.
+#define DBUS_SOCK "/run/sshd.sock"
 
 int main(void)
 {

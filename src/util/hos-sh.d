@@ -23,6 +23,7 @@ extern(C) @nogc nothrow {
     int    strcmp(const(char)* a, const(char)* b);
     int    strncmp(const(char)* a, const(char)* b, size_t n);
     char*  getcwd(char* buf, size_t size);
+    char*  getenv(const(char)* name);   // ROADMAP 4.5: the boot proof's trigger
     int    chdir(const(char)* path);
     int    pipe(int* fds);   // Z4b.4: a §8 channel for the object_send/recv self-test
     extern __gshared void* stdin;
@@ -800,6 +801,13 @@ version(LfeLib) {
     }
 } else {
 extern(C) int main(int argc, char** argv) @nogc nothrow {
+    // ROADMAP 4.5: the kernel spawn path passes argv=0 (only the execve syscall carries a real
+    // argv), so the boot proof reaches this through the staged environment instead.  Same code as
+    // `hos-sh --selftest`, so the thing proven at boot is the thing a user runs.
+    {
+        const(char)* st = getenv("EPIN_SH_SELFTEST".ptr);
+        if (st !is null && st[0] != 0) { b5SelfTest(); return 0; }
+    }
     loadWho();
 
     // Z4c.1: non-interactive mode — `hos-sh <verb> [args]` runs one command and exits.  This

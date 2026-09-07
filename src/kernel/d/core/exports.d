@@ -920,6 +920,10 @@ private ulong _copyKernelStrToStack(ulong stackPhysVirt, ulong stackVirtBase, re
 // Empty first byte = nothing staged.
 public __gshared char[64] g_spawnEnvDomain = 0;
 public __gshared char[32] g_spawnEnvShell  = 0;
+// ROADMAP 4.5: one more staged variable, so a kernel-side spawn can hand a program an argument.
+// The kernel spawn path passes argv=0 (only the execve SYSCALL carries a real argv), and the
+// staged environment is the established way to reach a program launched from the kernel.
+public __gshared char[48] g_spawnEnvExtra  = 0;
 
 ulong linux_seed_initial_stack(
     ulong stackPhys,
@@ -1281,8 +1285,13 @@ ulong linux_seed_initial_stack(
         envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, g_spawnEnvShell.ptr);
         if (envVirt != 0) envVirts[envc++] = envVirt;
     }
+    if (g_spawnEnvExtra[0] != 0) {
+        envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, g_spawnEnvExtra.ptr);
+        if (envVirt != 0) envVirts[envc++] = envVirt;
+    }
     g_spawnEnvDomain[0] = 0;
     g_spawnEnvShell[0]  = 0;
+    g_spawnEnvExtra[0]  = 0;
 
     bool isHyprland =
     execName !is null &&

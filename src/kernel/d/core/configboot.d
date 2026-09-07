@@ -73,7 +73,6 @@ private enum ubyte TAG_IDENTITY_FREEZE = 6;
 private enum ubyte TAG_SVC_START_ALL  = 7;
 private enum ubyte TAG_DOMAIN_CREATE  = 8;   // DOMAIN_MANAGER DM1
 private enum ubyte TAG_FS_POLICY      = 9;   // DOMAIN_MANAGER DM2.3
-private enum ubyte TAG_DOMAIN_TERMINAL = 30; // the domain's app-menu terminal
 private enum ubyte TAG_FS_BIND        = 10;  // DOMAIN_MANAGER DM2.3
 
 private enum MANIFEST_HEADER_SIZE = 16;
@@ -272,22 +271,6 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
             if (templateObjId != 0) { klog(" template "); klog(tplName); }
             klog(" persist="); klog_hex(persist); klog("\n");
         }
-        break;
-    }
-    case TAG_DOMAIN_TERMINAL: {
-        // payload: domainName\0 execPath\0
-        size_t off = 0;
-        const(char)* dname = readCStr(payload, len, off);
-        if (dname is null || off >= len) break;
-        const(char)* term = readCStr(payload, len, off);
-        if (term is null) break;
-        auto d = domainById(domainByName(dname));
-        if (d is null) break;
-        size_t n = 0;
-        while (term[n] != 0 && n < d.terminal.length - 1) { d.terminal[n] = term[n]; ++n; }
-        d.terminal[n] = 0;
-        d.terminalLen = cast(ubyte)n;
-        klog("[configboot] domain "); klog(dname); klog(" terminal → "); klog(term); klog("\n");
         break;
     }
     case TAG_FS_POLICY: {

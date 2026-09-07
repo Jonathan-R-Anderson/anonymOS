@@ -218,7 +218,6 @@ SchemaNode documentSchema()
         p["persist"] = enumN(["ephemeral", "home-only", "full"]);
         p["packages"] = arr(str());
         p["applications"] = arr(str());
-        p["terminal"] = str();                          // app-menu terminal for this domain
         p["services"] = arr(str(false, RefKind.service));
         p["startupPrograms"] = arr(str());
         p["environment"] = freeNode();

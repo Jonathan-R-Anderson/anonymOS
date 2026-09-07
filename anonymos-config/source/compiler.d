@@ -118,11 +118,6 @@ struct DomainRecFields
     string identity;    // the identity name this domain binds to ("" → same-named identity)
     string template_;   // parent template name (DM6); "" = none
     string persist;     // "ephemeral" | "home-only" | "full" (default "ephemeral")
-    // The terminal emulator this domain launches from the app menu.  Carried end-to-end so the
-    // menu opens the domain's terminal rather than one hardcoded in the launcher: previously
-    // wl-overview had "/hos-wifiterm" baked in, and the domain's own `applications` list was
-    // validated by the schema and then discarded, so nothing the config said could reach it.
-    string terminal;
     // DM2.3 — the restricted-filesystem policy (the core fields; others deferred)
     bool     fsHasPolicy;       // a filesystemAccess block was declared
     bool     fsAllowTraversal;  // allowTraversalOutsideMounts → re-add a read-only "/" mount
@@ -797,7 +792,6 @@ DomainRecFields[string] buildDomainTable(const ref JSONValue doc)
                 if (auto id = "identity" in e.object) r.identity = id.str;
                 if (auto tpl = "template" in e.object) r.template_ = tpl.str;
                 if (auto ps = "persist" in e.object) r.persist = ps.str;
-                if (auto tm = "terminal" in e.object) r.terminal = tm.str;
                 // DM2.3: the filesystemAccess policy
                 if (auto fa = "filesystemAccess" in e.object)
                     if (fa.type == JSONType.object)

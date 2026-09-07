@@ -50,7 +50,6 @@ enum Tag : ubyte
     identityFreeze = 6,   // payload: (none)                    → identityFreeze
     svcStartAll    = 7,   // payload: (none)                    → serviceStartAll (applied after all svcDep)
     domainCreate   = 8,   // payload: name\0 identity\0 template\0 u8 persist  → domainCreate (DOMAIN_MANAGER DM1)
-    domainTerminal = 30,  // payload: domainName\0 execPath\0   → the domain's app-menu terminal
     fsPolicy       = 9,   // payload: domainName\0 u8 flags(bit0=allowTraversal)  → start a domain fs policy (DM2.3)
     fsBind         = 10,  // payload: domainName\0 u8 mode(1=ro,2=rw,3=deny) path\0  → add a binding (DM2.3)
 }
@@ -243,17 +242,6 @@ private ubyte[] manifestDomains(in CompiledGraph g)
         p ~= persistMode(rec.persist);
         p ~= cast(ubyte)(isTpl ? 1 : 0);        // DM6: type (1=template, 0=domain)
         b.putRecord(Tag.domainCreate, p);
-
-        // The domain's app-menu terminal, when declared.
-        if (rec.terminal.length)
-        {
-            ubyte[] tp;
-            foreach (c; name) tp ~= cast(ubyte) c;
-            tp ~= cast(ubyte) 0;
-            foreach (c; rec.terminal) tp ~= cast(ubyte) c;
-            tp ~= cast(ubyte) 0;
-            b.putRecord(Tag.domainTerminal, tp);
-        }
 
         // DM2.3: the restricted-filesystem policy (fsPolicy starts the domain's ns, fsBind per path)
         if (rec.fsHasPolicy)

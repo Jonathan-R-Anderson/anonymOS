@@ -6445,25 +6445,6 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
 // The trailing flag is what lets the desktop distinguish "on a LAN" from "actually online" --
 // the kernel proves the difference at boot with a real DNS lookup, and used to keep it to
 // itself, so there was no way to tell from the UI whether the box had internet.
-// Publish the session domain's app-menu terminal so the launcher can honour it.
-//
-// wl-overview had "/hos-wifiterm" hardcoded, and the domain's own declaration could not reach it:
-// `applications` is validated by the schema and then discarded (no manifest tag), so the config
-// said one thing and the menu did another with nothing connecting them.  This is the connection --
-// one line, the same shape as /run/domain.current that the panel already reads.
-public void publishDomainTerminal() @nogc nothrow {
-    import core.domain : domainSessionTerminal;
-    const(char)* t = domainSessionTerminal();
-    if (t is null) return;                       // domain declares none: launcher keeps its default
-    size_t n = 0; while (t[n] != 0 && n < 120) ++n;
-    if (n == 0) return;
-    char[128] buf;
-    foreach (i; 0 .. n) buf[i] = t[i];
-    buf[n] = '\n';
-    rtAddFile("run/domain.terminal\0".ptr, "run/domain.terminal".length,
-              cast(const(ubyte)*)buf.ptr, cast(uint)(n + 1));
-}
-
 public void publishNetStatus(bool up, ubyte a, ubyte b, ubyte c, ubyte d, bool internet) @nogc nothrow {
     char[64] buf;
     uint n = 0;

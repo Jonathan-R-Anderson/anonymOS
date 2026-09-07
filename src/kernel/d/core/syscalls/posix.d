@@ -8792,7 +8792,27 @@ private void hangTracePoll(const(char)* name, ulong nfds, ulong timeout) {
     hangTrace2(name, nfds, timeout);
 }
 
+// The HOT-PATH tracer.  ioctl, sendmsg and recvmsg called hangTrace2 UNCONDITIONALLY, unlike
+// hangTracePoll which checks a budget first -- so every one of them wrote a line to the serial
+// port.  klog busy-waits on the 16550 THR-empty bit (core/io.d: `while ((inb(0x3F8+5) & 0x20) ==
+// 0)`), one character at a time, so at 115200 baud the kernel can emit roughly 150 of these lines
+// per second.  Hyprland and its clients issue thousands of those three calls per second: the
+// desktop was measured at 0.8 fps with frame_us=4636320, i.e. 4.6 SECONDS per frame, because the
+// kernel was spending its time spinning on a UART rather than compositing.
+//
+// A budget keeps what the tracer was for -- the first couple of hundred calls still appear, which
+// is what diagnoses a hang during startup -- and makes the steady-state cost zero.  Same shape as
+// HANG_TRACE_POLL_MAX, which exists for exactly this reason and was simply never applied here.
+private __gshared uint g_hotTraceN = 0;
+private enum uint HOT_TRACE_MAX = 240;
+private void hangTraceHot(const(char)* name, ulong a, ulong b) {
+    if (g_hotTraceN >= HOT_TRACE_MAX) return;
+    ++g_hotTraceN;
+    hangTrace2(name, a, b);
+}
+
 private void hangTrace2(const(char)* name, ulong a, ulong b) {
+
     klog("[trace] "); klog(name);
     klog(" a="); klog_hex(a);
     klog(" b="); klog_hex(b);
@@ -8801,7 +8821,7 @@ private void hangTrace2(const(char)* name, ulong a, ulong b) {
 }
 
 public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
-    hangTrace2("ioctl fd,cmd", fd, cmd);
+    hangTraceHot("ioctl fd,cmd", fd, cmd);
     // Terminal queries on the console, answered before the capability lookup for the same
     // reason as the console write path in sys_write(): isatty(1) was returning EBADF, and
     // libc++'s std::print consults it to pick its output path.  TCGETS succeeding (the console
@@ -10199,7 +10219,7 @@ private void wlWireTrace(const(char)* dir, msghdr* m, long n) @nogc nothrow {
 }
 
 public long linux_sys_sendmsg(ulong sockfd, ulong msg, ulong flags) {
-    hangTrace2("sendmsg fd,flags", sockfd, flags);
+    hangTraceHot("sendmsg fd,flags", sockfd, flags);
     const long r = cast(long)sys_sendmsg(cast(int)sockfd, cast(msghdr*)msg, cast(int)flags);
     // Decoded from the caller's buffer, which is intact either way, so a short write still shows
     // what was attempted.
@@ -10208,7 +10228,7 @@ public long linux_sys_sendmsg(ulong sockfd, ulong msg, ulong flags) {
 }
 
 public long linux_sys_recvmsg(ulong sockfd, ulong msg, ulong flags) {
-    hangTrace2("recvmsg fd,flags", sockfd, flags);
+    hangTraceHot("recvmsg fd,flags", sockfd, flags);
     const long r = cast(long)sys_recvmsg(cast(int)sockfd, cast(msghdr*)msg, cast(int)flags);
     // AFTER the call: on receive the buffer is only filled by it.
     wlWireTrace("<-", cast(msghdr*)msg, r);

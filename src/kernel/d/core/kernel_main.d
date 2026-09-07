@@ -3068,6 +3068,10 @@ private uint apicCrystalHz() @nogc nothrow {
 // x2APIC End-Of-Interrupt (MSR 0x80B = 0).  MUST be sent from the irqIdx==0 tick
 // handler so the local-APIC delivers the next timer interrupt.
 public void lapicEOI() @nogc nothrow {
+    // Fourth x2APIC MSR site, and the one on the INTERRUPT path.  Without x2APIC the legacy PIC
+    // delivers the tick and is acknowledged by its own EOI, so writing MSR 0x80B here is both
+    // impossible (it #GPs) and unnecessary.
+    if (!apicUsable()) return;
     asm @nogc nothrow {
         mov ECX, 0x80B;
         xor EAX, EAX;

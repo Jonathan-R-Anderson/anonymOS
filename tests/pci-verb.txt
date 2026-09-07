@@ -1,0 +1,21 @@
+# ROADMAP 5.1 / BARE_METAL L3 — PCI config space reachable from userspace, capability-gated.
+#
+# LKL's PCI backend contract needs .read/.write on config space from the host.  The kernel had
+# pciConfigRead32 all along; userspace had no way to reach it, so a userspace LKL could not
+# enumerate or program a device at all.
+
+require  [5.1] L3 PCI verb:
+require  -- L3 PASS
+
+# The REFUSAL is the load-bearing assertion.  Raw config access can reprogram BARs, enable bus
+# mastering, or move an interrupt line, so the property worth testing is not that an authorised
+# caller succeeds but that an unauthorised one is stopped.  PID1 does not hold ADMIN_DEVICE, so the
+# boot task is already the unauthorised case.  -1 = EPERM.
+require  unauth=ffffffffffffffff
+
+# Misaligned offsets rejected (-22 = EINVAL): config space is dword-addressed, and silently reading
+# the neighbouring register is worse than an error.
+require  misaligned=ffffffffffffffea
+
+forbid   L3 FAIL
+forbid   KERNEL FAULT

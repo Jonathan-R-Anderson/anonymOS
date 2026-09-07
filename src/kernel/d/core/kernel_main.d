@@ -2588,6 +2588,15 @@ private void maybeProveDualIdentity() {
     import core.domain : domainByName, domainSpawnInto, domainById, domainSessionId;
     if (g_dualIdProofDone) return;
     if (pitMs() < 30_000) return;              // let the desktop settle first
+    // Wait for the dbus listener rather than guessing a delay.  The first run of the gate proof
+    // fired at 30s, before dbus had bound, and xid-test correctly reported errno=111 INCONCLUSIVE
+    // instead of a pass -- which is the whole reason it distinguishes "refused" from "nothing was
+    // listening".  A test that cannot tell those apart would have reported success for a control
+    // that never ran.
+    if (!unixListenerReady("/run/dbus/system_bus_socket\0".ptr)) {
+        if (pitMs() < 90_000) return;          // bounded: do not wait forever for a bus that fails
+        klog("[4.1] dbus never bound; gate proof will be INCONCLUSIVE\n");
+    }
     g_dualIdProofDone = true;
     const uint bank = domainByName("BankVault\0".ptr);
     if (bank == 0) { klog("[4.1] no BankVault domain; dual-identity proof SKIPPED\n"); return; }

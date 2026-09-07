@@ -140,46 +140,89 @@ is lying.
 | 7.5 | **Admin runbook for the deviations** — the ABI differences that have each cost real debugging time (AF_UNIX read returning EAGAIN, namespace-resolved opens, cross-identity connect refusal, overlay-only inotify) belong in one place an admin reads BEFORE debugging, not after | — |
 
 
+
 ---
 
-## Source-roadmap overview — where the unfinished work lives
+## The backlog — every unimplemented item, by source roadmap
 
-The 37 other files in this directory hold the detail. This table says, for each, whether anything
-is still open and what it is, so the tiers above can stay short. **A roadmap with no open work is
-listed as closed rather than deleted** — several were "finished" long before the code actually
-reached the live path, and the file is the record of what was claimed.
+The tiers above are the *ordered* plan. This is the *complete* one: the named, still-open
+milestones from all 37 other roadmaps in this directory, so work can continue down the list
+without re-reading each file. **Items already delivered are omitted** — each roadmap keeps its own
+record of what it claimed.
 
-| Source roadmap | State | What is actually left |
-|---|---|---|
-| `IDENTITY_DOMAIN_ROADMAP` | ✅ closed | Phases 1–10 landed; §9's runtime signed-policy path shipped with 4.9 |
-| `IMMUTABLE_ROOTLESS_ROADMAP` | ✅ closed | §F is 4/4 immutable + 4/4 rootless on an installed system (`docs/INSTALLED_SYSTEM_PROOF.md`) |
-| `DECLARATIVE_CONFIG_SPEC` · `DECLARITIVE_MODEL_ROADMAP` | ◑ | Compiler + lowering done (4.3). **Open:** live reconfiguration (§13), and the `dh`/`audit` IPC flags are stored but nothing acts on them |
-| `SYSTEM_UPDATE_ROADMAP` | ◑ | D1/D2/D3 done (4.4, 4.10). **Open:** U2 bundle transport, U3 updater UI, U5 I2P, U6 DHT, U7 end-to-end demo — all gated on a transport that does not exist |
-| `SHELL_AND_COMMANDS_ROADMAP` | ◑ | B0–B5 done (4.5). **Open:** Track A's remaining busybox coverage; Track C (`ratty` GPU terminal) is gated on a real GPU |
-| `SMP_ROADMAP` | ◑ | S1–S7 landed. **Open:** more than one AP, and work-stealing. Note the x2APIC dependency — a CPU without it now degrades to the PIT instead of faulting |
-| `INSTALLER` | ◑ | Installs and boots unattended (`AUTOINSTALL=1`). **Open:** the GUI pump advances one 4 MiB batch per compositor round-trip, so a large install is bounded by frame rate, not disk |
-| `DECOY_DISTRO_ROADMAP` | ◑ | US0–US4 verified. **Open:** US5+ — runtime network install of a real distro ISO |
-| `OBJECT_OS_ROADMAP` · `OBJECT_FILESYSTEM_ROADMAP` · `OBJECT_REFERENCE_GRAPH_ROADMAP` | ◑ | The object/capability substrate is built and is what tiers 2–4 stand on. **Open:** F5+ filesystem work and the service-extraction tail (§5.2) |
-| `BUILD_AND_TEST_AUTOMATION_ROADMAP` | ◑ | Harness + golden checks done. **Open:** C2 `LLVMPIPE=1` is implemented but **off by default** — the single biggest desktop-performance win available |
-| `domain_manager` | ◑ | DM0–DM13 largely landed. **Open:** the per-domain terminal (reverted once; design in git history) |
-| `expand_busybox_roadmap` | ⬜ | Account database, identity model, and the wider command set |
-| `NETWORK_AND_MARKETPLACE_ROADMAP` | ⬜ **TBD** | Held deliberately — see 4.6. The transport is being reconsidered before any of it starts |
-| `BARE_METAL_ROADMAP` | ⬜ | Real hardware: see tier 5 |
-| `WIFI_AUTODRIVER_ROADMAP` | ⬜ | Driver provisioning; depends on the network stack |
-| `VIRGL_BLOB_ROADMAP` | ⬜ | Cross-process virgl sharing; needs a GPU-capable host |
-| `GUI_ROADMAP` · `DESKTOP_TILING_PLAN` · `QUICKSETTINGS_ROADMAP` · `toolbar_roadmap` | ◑ | The desktop, top bar and quick settings are live (tier 3). Remaining items are polish |
-| `DESKTOP_RESPONSIVENESS_ROADMAP` | ◑ | Idle-wake churn fixed (3.5b). **Open:** the desktop is CPU-rendered — see `LLVMPIPE=1` above |
-| `GRAPHICAL_APPLICATIONS_ROADMAP` | ✅ closed | 21 items; the shipped app set |
-| `SECURE_IPC_ROADMAP` | ✅ closed | Broker + session descriptors reached the live path in 4.1 |
-| `SECURITY_ROADMAP` · `CAPABILITY_MODEL` · `DECOY_SECURITY_REVIEW` | ◑ | Reference documents rather than task lists; `DECOY_SECURITY_REVIEW` still lists unaddressed findings |
-| `ZSH_INTEGRATION_ROADMAP` · `WINDOWS_DISAPPEARING_ROADMAP` · `DOCUMENTATION_ROADMAP` | ✅ closed | |
-| `syscalls_roadmap` · `ORG_ARCHITECTURE` | 📋 design | Direction pieces (Plan 9 + capability semantics), not scheduled work |
-| `uml_program_generation_roadmap` | 📋 **design, unscheduled** | Generate programs from a UML model. Unrelated to the config compiler despite the surface similarity — different input, output and consumer. See tier 6 |
-| `foveated_display` | 📋 design | Foveated/parallax compositor concept; needs a GPU |
+Where a milestone is partly done, the remaining part is what is listed.
 
-**Reading the table:** `✅ closed` means nothing is outstanding in that file. `◑` means the tier
-above already covers the open part. `⬜` means not started. `📋` means it is a design document that
-has never been scheduled, and should not be mistaken for planned work.
+### Hardware enablement — `BARE_METAL_ROADMAP`, `WIFI_AUTODRIVER_ROADMAP`
+- **BM0** — boot + software desktop on real hardware (verify; no LKL)
+- **L3** — the hardware bridge: a custom `lkl_dev_pci_ops` backend *(the core piece)*
+- **L4** — per-device LKL isolation (cap-gating) + bridge LKL's devices to the OS
+- **L5** — USB HID via LKL *("the usable-desktop unlock" on real hardware)*
+- **L6** — GPU via LKL *(research frontier)*
+- **W1/W1-pre** — LKL wireless rebuild + toolchain · **W2** firmware provisioning
+- **W3** — WPA/WPA2/WPA3 association *(the hard part)* · **W4** IP + connectivity
+- **W5** — installer network page · **W6** auto-driver detection + provisioning
+
+### Graphics + desktop — `VIRGL_BLOB_ROADMAP`, `DESKTOP_RESPONSIVENESS_ROADMAP`, `GUI_ROADMAP`
+- **B1–B8** — host-visible `RESOURCE_CREATE_BLOB` for cross-process virgl sharing: cap-walk the SHM
+  region, negotiate the feature, fix the hardcoded `fence_id`, kernel transport, GETPARAM, the DRM
+  ioctl, cross-process import *(the payoff)*, lifecycle
+- **R5** — cheap present wins (damage-tracked KMS blit + fast copy)
+- **R6** — preemptive scheduling · **R7** multi-core · **R8** GPU-accelerated compositing
+- **G18** settings app · **G19** animation/effects · **G20** multi-window + workspaces ·
+  **G21** visual QA + screenshot regression tests
+- *(**GW4** "re-express the shell on Weston" is **obsolete** — the desktop is Hyprland now)*
+- **`LLVMPIPE=1`** — implemented, off by default; the largest desktop-performance win available
+
+### Update + distribution — `SYSTEM_UPDATE_ROADMAP`
+- **U2** — signed `.hosupd` staging over a transport *(the unit and its verification are done)*
+- **U3** — updater UI + offline medium (USB) · **U5** I2P transport · **U6** Kademlia DHT
+- **U7** — end-to-end decentralized upgrade + rollback *(the north-star demo)*
+- **U8** efficiency/scope · **U9** hardening tail
+- **D4/D5/D5a/D6** — the zkSync, I2P-router and updater-daemon design decisions
+- *All of the transport half is gated on 4.6's TBD decision.*
+
+### Domains + templates — `domain_manager`, `DECOY_DISTRO_ROADMAP`
+- **DM6** templates/overlay tail · **DM9** template inheritance + least-privilege merge
+- **DM11** multi-distro / package-manager shims · **DM12** signed downloadable templates *(TBD, 4.6)*
+- Per-domain terminal — reverted once; design in git history
+- **X1–X7** — runtime network install of a real distro ISO: download/verify/extract → ext4,
+  feed it to the VeraCrypt decoy path, wizard picker, squashfs-live distros (Mint/Fedora),
+  non-live distros (Debian/Alpine/NixOS), resumable download + mirror failover, hardening
+
+### Installer + deniability — `INSTALLER`, `DECOY_SECURITY_REVIEW`
+- **F6** — update integration (keep the boot-integrity chain equal to the legit system)
+- **F7** — boot-integrity security review · **H5** hidden-OS detectability review *(both flagged
+  security-critical, and neither has been done)*
+- **H3** — full-disk illusion driver (hide the hidden volume's space)
+- **H4** — conceal the fake-log generator (kernel-embedded, hidden from the process table)
+- Unaddressed findings in `DECOY_SECURITY_REVIEW`
+- **GUI installer throughput** — one 4 MiB batch per compositor round-trip, so a large install is
+  bounded by frame rate rather than disk
+
+### Shell + userland — `SHELL_AND_COMMANDS_ROADMAP`, `expand_busybox_roadmap`
+- **Track A** — the remaining busybox/coreutils coverage
+- **C2** — Rust toolchain targeting the OS *(no rustc on host)* · **C3** winit/Wayland client ·
+  **C4** GPU stack for wgpu *(the hard gate)* · **C5** `ratty` bring-up
+- Account database + the wider identity/command model (`expand_busybox_roadmap`)
+
+### Kernel + platform — `SMP_ROADMAP`, `OBJECT_*`, `SECURITY_ROADMAP`
+- **SMP** — more than one AP online; work-stealing. *(Needs x2APIC: absent → PIT fallback.)*
+- **Object FS F5+** and the service-extraction tail (§5.2) — move FS/net/display out of the kernel
+- **Memory hardening** — ASLR, NX stack, guard pages, stack canaries, SMAP/SMEP
+- **Physical `/var` separation** — the last piece of the immutable story
+
+### Documentation — `DOCUMENTATION_ROADMAP` (all deliverables verified missing)
+- **D4** `docs/IDENTITY_AND_CAPABILITIES.md` · **D5** `docs/OBJECT_MODEL.md` ·
+  **D6** `docs/IPC_AND_SERVICES.md` · **D7** `docs/BOOT_MEMORY_SCHED.md` ·
+  **D8** `docs/PERSISTENCE.md` · **D9** `docs/DRIVERS_AND_DISPLAY.md` · **D10** `docs/BUILD_AND_TEST.md`
+- *(Tier 7's syscall pages are done: 150 `man2` + `anonymos-syscalls(7)`.)*
+
+### Design documents — not scheduled work
+`syscalls_roadmap` (Plan 9 + capability semantics), `ORG_ARCHITECTURE`, `foveated_display`
+(foveated/parallax compositor), and **`uml_program_generation_roadmap`** — generate programs from a
+UML model. That last one is unrelated to the declarative config compiler despite the surface
+similarity: different input, output and consumer. None of these have ever been scheduled, and they
+should not be read as planned work.
 
 ## Corrections to carry forward
 

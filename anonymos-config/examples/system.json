@@ -35,9 +35,11 @@
       "packages": ["git","clang"], "applications": ["terminal","editor"],
       "filesystemAccess": {
         "defaultPolicy": "deny",
-        "readWrite": ["/home/user", "/tmp", "/run/user", "/var/cache", "/dev/dri", "/dev/input"],
+        "readWrite": ["/home/user", "/tmp", "/run", "/var/cache", "/var/lib",
+                      "/dev/dri", "/dev/input", "/dev/null"],
         "readOnly":  ["/usr/share", "/usr/lib", "/usr/local", "/lib", "/etc", "/proc",
-                      "/sys/class", "/sys/dev", "/sys/devices", "/display.conf"],
+                      "/sys/class", "/sys/dev", "/sys/devices", "/sys/firmware",
+                      "/dev/urandom", "/display.conf"],
         "deny":      ["/home/user/.ssh", "/config", "/objects"]
       } },
     { "name": "BankVault",  "type": "domain", "identity": "Banking",  "persist": "home-only" }

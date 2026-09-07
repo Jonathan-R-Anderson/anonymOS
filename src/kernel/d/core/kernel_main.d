@@ -1449,6 +1449,42 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // child now has its own fresh address space, no longer sharing the parent's).
     resumeVforkParent(tid);
 
+    // ── ROADMAP 4.0b: confine the program THIS task just became ────────────────────────────────
+    //
+    // The decision lives here rather than in spawnWaylandProgram because this is the choke point
+    // every launch passes through.  spawnWaylandProgram calls execveTask, and so does the Linux
+    // execve syscall -- which is how Hyprland starts everything you open from a keybind or the app
+    // menu.  Hooking only the former confined kernel-spawned tasks and missed every app a user
+    // actually opens: on live media that meant nothing was confined at all.
+    //
+    // Keyed on the program that was just loaded, not on the task's history, because that is what
+    // execve changes: a shell that execs a sandboxed app must end up sandboxed, and a task that
+    // execs a system app must not stay confined from whatever it was before.
+    //
+    // Re-binding on every exec is deliberate.  domainBindTaskNs() clones the domain namespace
+    // fresh, so a task cannot inherit a namespace from the program it used to be running.
+    {
+        import core.domain : domainSessionId;
+        import core.task : domainBindTaskNs;
+        const bool sysApp = isSystemProgram(execName);
+        const uint sd = domainSessionId();
+        if (!sysApp && sd != 0) {
+            cast(void)domainBindTaskNs(tid, sd);
+        } else {
+            // A system app must not keep a sandbox it inherited from a previous exec.
+            g_tasks[tid].namespaceObjId = g_tasks[0].namespaceObjId;
+            g_tasks[tid].domainObjId    = 0;
+        }
+        static __gshared int g_exBindLogN = 0;
+        if (g_exBindLogN < 12) {
+            ++g_exBindLogN;
+            klog("[4.0b] exec "); klog(execName !is null ? execName : "?".ptr);
+            klog(sysApp ? " SYSTEM(unconfined)" : " CONFINED ns=");
+            if (!sysApp) klog_hex(g_tasks[tid].namespaceObjId);
+            klog("\n");
+        }
+    }
+
     return 0;
 }
 
@@ -1550,9 +1586,11 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
             // makes confinement inactive there; on an installed system it covers the autostart
             // apps.  Covering user-launched apps means hooking execve, which is the hot path for
             // every exec and needs its own care.
-            // System apps run unconfined; everything else is bound into the session domain.
+            // The bind itself now happens in execveTask, the choke point EVERY launch passes
+            // through -- including the apps Hyprland forks for a keybind, which never reach here.
+            // This site only reports what the session domain is; it no longer decides.
             const bool sysApp  = isSystemProgram(prog);
-            const uint boundNs = (!sysApp && sd != 0) ? domainBindTaskNs(t, sd) : 0;
+            const uint boundNs = 0;
             // Prove confinement is ON rather than inferring it from an absence of denials.  Zero
             // denials is ambiguous: it reads the same whether the policy is being enforced and not
             // violated, or the bind silently failed and nothing is enforced at all.  That is the

@@ -33,6 +33,7 @@ import core.task     : g_tasks, MAX_TASKS;
 import core.user     : userByObj, g_users;
 import core.exports  : g_current_task_id;
 import core.store    : g_gens, g_activeGen;
+import core.audit    : auditLog, AuditKind;   // SHELL_AND_COMMANDS B5: audit privileged verbs
 // Z4a.1: the native FS verbs reuse the kernel VFS behind native handles.  posix.d already
 // imports hoscall.d; the reverse import is a function-only cycle, fine under -betterC
 // (no module static-ctor init order).
@@ -83,7 +84,20 @@ enum : ulong {
     HOSQ_ID_SWITCH  = 23,  // identity_switch(buf=name) -> 0 / -errno
 }
 
+// SHELL_AND_COMMANDS B5 — one audit record per privileged native verb.
+//
+// `detail` carries the verb in the high 32 bits and the result in the low 32, so a single ring
+// entry says WHICH operation and WHAT happened without needing a second kind per verb.  The
+// return value is passed straight through, so wrapping a call can never change its behaviour --
+// only whether it was recorded.
+private long hosAuditPriv(uint verb, uint subj, long r) {
+    const ulong detail = (cast(ulong)verb << 32) | (cast(uint)cast(int)r);
+    auditLog(r >= 0 ? AuditKind.NativeVerbOk : AuditKind.NativeVerbDeny, subj, detail);
+    return r;
+}
+
 // Z4b.3 / Z4c.3 per-task state for the native mutation verbs.
+
 __gshared uint[MAX_TASKS] g_taskSubscriptions;   // §6 subscribed-event bitmask
 __gshared uint[MAX_TASKS] g_taskOwnedNs;         // last namespace this task cloned (ns_enter gate)
 
@@ -864,10 +878,21 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
         case HOSQ_SEND:      return hosWrite(arg, buf, buflen);  // Z4b.4: §8 channel send (over the fd)
         case HOSQ_RECV:      return hosRead(arg, buf, buflen);   // Z4b.4: §8 channel recv
         case HOSQ_SUBSCRIBE: return hosSubscribe(arg);           // Z4b.3: §6 event subscription
-        case HOSQ_CAP_GRANT: return hosCapGrant(arg, buf);       // Z4c.3: attenuating cap grant
-        case HOSQ_NS_CLONE:  return hosNsClone();                // Z4c.3: clone the caller's namespace
-        case HOSQ_NS_ENTER:  return hosNsEnter(arg);             // Z4c.3: enter an owned namespace
-        case HOSQ_ID_SWITCH: return hosIdSwitch(buf);            // L4.2: gated identity de-escalation
+        // SHELL_AND_COMMANDS B5: "audit-log every privileged action".  These four are the whole
+        // mutating surface of the native object ABI -- a task can attenuate and grant itself a
+        // capability, clone a namespace, enter one, and change the identity it runs as -- and
+        // until now not one of them left a record.  hoscall.d did not even import core.audit,
+        // so in a system whose entire security model is capabilities plus identity, the
+        // operations that move both were the only ones invisible to the audit log.
+        //
+        // Wrapped at the DISPATCH site rather than inside each helper: it is one place, it
+        // cannot be forgotten when a fifth verb is added next to these four, and it records the
+        // OUTCOME, so a refused grant is as visible as a successful one.  A denial is the more
+        // interesting record of the two.
+        case HOSQ_CAP_GRANT: return hosAuditPriv(HOSQ_CAP_GRANT, cast(uint)arg, hosCapGrant(arg, buf));
+        case HOSQ_NS_CLONE:  return hosAuditPriv(HOSQ_NS_CLONE,  0,             hosNsClone());
+        case HOSQ_NS_ENTER:  return hosAuditPriv(HOSQ_NS_ENTER,  cast(uint)arg, hosNsEnter(arg));
+        case HOSQ_ID_SWITCH: return hosAuditPriv(HOSQ_ID_SWITCH, 0,             hosIdSwitch(buf));
         default: break;
     }
 

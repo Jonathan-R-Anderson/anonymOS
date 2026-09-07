@@ -37,6 +37,11 @@ enum AuditKind : uint {
     IdNetReq,         // a brokered network request (§7)
     IdClipboard,      // a brokered clipboard transfer (§7)
     IdWindowCreate,   // a window stamped with its owner's identity (§6)
+    // SHELL_AND_COMMANDS B5: the native object ABI's PRIVILEGED verbs.  Appended, never
+    // inserted -- inserting into this enum renumbers every kind after it, and a persisted or
+    // previously-captured audit record would silently change meaning.
+    NativeVerbOk,     // a privileged native verb succeeded (detail = return value)
+    NativeVerbDeny,   // a privileged native verb was refused (detail = -errno)
     Count
 }
 

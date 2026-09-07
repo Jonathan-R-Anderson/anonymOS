@@ -15348,8 +15348,8 @@ private void hosDrawIdentityBorders() @nogc nothrow {
         // One line per never-before-seen colour: bounded, so it cannot flood the UART, and
         // complete, because a new identity appearing is exactly the event worth a line.
         {
-            static uint[8] seen  = 0;
-            static uint    seenN = 0;
+            static __gshared uint[8] seen  = 0;
+            static __gshared uint    seenN = 0;
             bool known = false;
             foreach (k; 0 .. seenN) if (seen[k] == bc) { known = true; break; }
             if (!known && seenN < seen.length) {

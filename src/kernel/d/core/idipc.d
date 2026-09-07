@@ -137,17 +137,24 @@ public void idipcInit() {
     // decision belongs -- did not know about it, and brokerRequestSession refused to mint a
     // descriptor for the one crossing that actually happens.  Stating it as rules keeps the two
     // agreeing and makes the policy greppable instead of implicit.
+    // Spelled out one call at a time rather than looped over a string-pointer array: a
+    // `static immutable(char)*[6]` of literal .ptrs needs load-time relocations this kernel does
+    // not apply, so every entry read back as null and identityByName faulted on CR2=0 inside
+    // idipcInit, before the desktop existed.  Six calls cost nothing and need no relocation.
     IdentityId sys = identityByName("System\0".ptr);
     if (sys != 0) {
-        static immutable(char)*[6] hubUsers = [
-            "Personal\0".ptr, "Work\0".ptr, "Banking\0".ptr,
-            "Development\0".ptr, "Untrusted\0".ptr, "Disposable\0".ptr,
-        ];
-        foreach (nm; hubUsers) {
-            IdentityId u = identityByName(nm);
-            if (u != 0 && u != sys) idipcPairRuleAdd(u, sys, 0);   // 0: no sanitizer, direct hub
-        }
+        idipcAddHubRule(sys, "Personal\0".ptr);
+        idipcAddHubRule(sys, "Work\0".ptr);
+        idipcAddHubRule(sys, "Banking\0".ptr);
+        idipcAddHubRule(sys, "Development\0".ptr);
+        idipcAddHubRule(sys, "Untrusted\0".ptr);
+        idipcAddHubRule(sys, "Disposable\0".ptr);
     }
+}
+
+private void idipcAddHubRule(IdentityId sys, const(char)* nm) {
+    IdentityId u = identityByName(nm);
+    if (u != 0 && u != sys) idipcPairRuleAdd(u, sys, 0);   // 0: no sanitizer, direct hub
 }
 
 // ROADMAP 4.1 §7: mint a REAL brokered session for a real crossing.

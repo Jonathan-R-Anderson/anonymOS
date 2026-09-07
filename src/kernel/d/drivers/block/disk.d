@@ -4,6 +4,7 @@ import drivers.block.ahci : initAHCI, ahciDataPort, readSector, writeSector,
                             HBA_PORT, g_ahciDevices, getPort;
 import drivers.block.nvme : initNVMe, nvmeReady, nvmeReadBlocks, nvmeWriteBlocks,
                             nvmeCapacityBytes, nvmeBlockSize, nvmeFlush;
+import drivers.block.virtio_blk : virtioBlkProbe, virtioBlkCapacity, virtioBlkRead, virtioBlkWrite;  // ROADMAP 5.0
 import memory.dma : dma_alloc;
 import core.stdc.string : memcpy, memset;
 import core.io : klog, klog_hex;
@@ -19,7 +20,11 @@ enum DiskBackend
 {
     none,
     ahci,
-    nvme
+    nvme,
+    // ROADMAP 5.0.  APPENDED, never inserted: this enum is compared by value in several
+    // final switches, and renumbering ahci/nvme would silently change which backend a stored
+    // value means.  The same mistake cost two debugging sessions on FileType and on Task.
+    virtioblk
 }
 
 private __gshared DiskBackend g_backend = DiskBackend.none;
@@ -116,8 +121,34 @@ public void diskInit()
         return;
     }
 
+    // ROADMAP 5.0: VirtIO block.  Proxmox VE defaults to VirtIO SCSI and `-drive if=virtio` is the
+    // usual way anyone attaches a QEMU disk, so without this a stock VM reports "no disk to install
+    // to" and the object store silently stays in RAM -- nothing broken, just no device to see.
+    // Probed LAST so a machine with real AHCI/NVMe keeps using it.
+    if (virtioBlkProbe())
+    {
+        g_backend = DiskBackend.virtioblk;
+
+        // The driver DMAs from its own physically-allocated pages, so unlike AHCI and NVMe this
+        // backend needs no bounce buffer here -- virtio_blk.d stages every request itself.
+        g_diskSectors = virtioBlkCapacity();
+        if (g_diskSectors == 0)
+        {
+            klog("[disk] virtio-blk reported zero capacity -- refusing\n");
+            g_backend = DiskBackend.none;
+            return;
+        }
+
+        g_diskReady = true;
+        klog("[disk] VirtIO block disk ready, sectors=0x");
+        klog_hex(g_diskSectors);
+        klog("\n");
+        return;
+    }
+
     klog("[disk] no block device found; object store stays in-memory\n");
 }
+
 
 private bool diskReadAhci(ulong lba, uint count, void* dst)
 {
@@ -231,6 +262,9 @@ public bool diskReadSectors(ulong lba, uint count, void* dst)
         case DiskBackend.nvme:
             return diskReadNvme(lba, count, dst);
 
+        case DiskBackend.virtioblk:
+            return virtioBlkRead(lba, count, dst);
+
         case DiskBackend.none:
             return false;
     }
@@ -249,6 +283,9 @@ public bool diskWriteSectors(ulong lba, uint count, const(void)* src)
 
         case DiskBackend.nvme:
             return diskWriteNvme(lba, count, src);
+
+        case DiskBackend.virtioblk:
+            return virtioBlkWrite(lba, count, src);
 
         case DiskBackend.none:
             return false;

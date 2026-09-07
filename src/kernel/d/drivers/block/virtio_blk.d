@@ -357,9 +357,12 @@ public bool virtioBlkWrite(ulong lba, uint count, const(void)* src) {
 
 // Scan PCI for a virtio-blk device and bring the first one up.
 public bool virtioBlkProbe() {
-    import drivers.pci : g_pciDevices, g_pciDeviceCount;
-    foreach (i; 0 .. g_pciDeviceCount) {
-        auto d = &g_pciDevices[i];
+    import drivers.pci : scanPCIDevices;
+    // scanPCIDevices() is the public enumeration every other driver uses; the device table itself
+    // is private to pci.d.
+    auto devs = scanPCIDevices();
+    foreach (ref dev; devs) {
+        auto d = &dev;
         if (d.vendorId != VIRTIO_VENDOR) continue;
         if (d.deviceId != VBLK_DEV_TRANSITIONAL && d.deviceId != VBLK_DEV_MODERN) continue;
         klog("[virtio-blk] found device 0x");

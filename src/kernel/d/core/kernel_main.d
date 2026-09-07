@@ -5415,6 +5415,7 @@ void d_kernel_main() {
     // would report "in RAM" on every machine including installed ones.  Everything else it needs
     // -- init's caps, the /usr:/etc:/var split, the A/B slots -- is already up by this point.
     acceptanceRun();
+    { import core.acceptance : readIsolationProof; readIsolationProof(); }   // 4.12
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).

@@ -370,3 +370,44 @@ public void acceptanceRun() {
     klog(rootlessPassed == 4 ? "ROOTLESS\0".ptr : "single-root with extra steps\0".ptr);
     klog("\n");
 }
+
+// ── 4.12: read isolation, measured rather than assumed ────────────────────────────────────────
+//
+// A confined domain's namespace is built with an explicit deny-list AND, when
+// allowTraversalOutsideMounts is set, a blanket read-only "/" -- because the binaries a program
+// needs live at the root, so without it nothing can start.  That raises a question the roadmap
+// answered with a shrug ("read-mostly"): does a policy's DENY still win over the blanket read?
+//
+// If it does not, every deny in every domain policy is decorative and Banking's data is readable
+// from a Disposable window.  That is worth knowing precisely, so this asks the resolver directly
+// for each domain that declares denies.
+public void readIsolationProof() {
+    import core.domain : domainByName, domainById;
+    import core.namespace : nsResolveCheck;
+
+    static void probe(const(char)* domName, const(char)* path, bool expectDenied) {
+        const uint d = domainByName(domName);
+        auto rec = domainById(d);
+        if (rec is null || rec.nsObjId == 0) {
+            klog("[4.12] "); klog(domName); klog(": SKIP (no namespace)\n");
+            return;
+        }
+        const(char)* rest; uint rights; bool denied;
+        const uint target = nsResolveCheck(rec.nsObjId, path, rest, rights, denied);
+        // "Refused" means either an explicit deny binding or no binding at all; both stop the open.
+        const bool refused = denied || (target == 0);
+        klog("[4.12] "); klog(domName); klog(" ");
+        klog(path);
+        klog(refused ? " -> REFUSED" : " -> readable");
+        klog(refused == expectDenied ? "  (as policy declares)\n" : "  *** POLICY NOT ENFORCED ***\n");
+    }
+
+    // Each of these is denied by the domain's own filesystemAccess block in system.json.  If the
+    // blanket read-only "/" overrode them, they would come back readable.
+    probe("Throwaway\0".ptr,  "/home/user/secret\0".ptr, true);
+    probe("Throwaway\0".ptr,  "/config/system.json\0".ptr, true);
+    probe("DevSandbox\0".ptr, "/home/user/.ssh/id_rsa\0".ptr, true);
+    probe("DevSandbox\0".ptr, "/config/system.json\0".ptr, true);
+    // A path the policy ALLOWS, to prove the probe can report both answers.
+    probe("DevSandbox\0".ptr, "/usr/share/icons\0".ptr, false);
+}

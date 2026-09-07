@@ -26,6 +26,9 @@
       "clip": "same" },
     { "name": "Banking",  "color": "#E02020", "trust": "banking",
       "rightsCeiling": "fs-ro",   "namespace": "bank-ns",   "net": "vpn",
+      "clip": "deny", "gui": ["borderAlways","noScreenshotAcrossId"] },
+    { "name": "Disposable", "color": "#FF6D00", "trust": "disposable",
+      "rightsCeiling": "fs-ro", "namespace": "disposable-ns", "net": "disposable",
       "clip": "deny", "gui": ["borderAlways","noScreenshotAcrossId"] }
   ],
   "domains": [
@@ -56,7 +59,8 @@
   "namespaces": [
     { "name": "system-ns", "root": "$root", "isolated": true },
     { "name": "user-ns",   "root": "$root", "inherits": "system-ns" },
-    { "name": "bank-ns",   "root": "$root", "isolated": true }
+    { "name": "bank-ns",   "root": "$root", "isolated": true },
+    { "name": "disposable-ns", "root": "$root", "isolated": true }
   ],
   "services": [
     { "name": "init",        "executable": "/init",        "identity": "System",

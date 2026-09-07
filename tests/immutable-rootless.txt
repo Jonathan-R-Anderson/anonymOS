@@ -32,12 +32,18 @@ require  [F] ROOTLESS-1 no-privilege-from-uid-zero  PASS
 require  [F] ROOTLESS-2 typed-admin-caps-no-god-cap  PASS
 require  [F] ROOTLESS-3 unforgeable-narrowing-revocable  PASS
 require  [F] ROOTLESS-4 pid1-least-privilege  PASS
-require  [F] SUMMARY immutable 2/4 -> read-mostly (not immutable);  rootless 4/4 -> ROOTLESS
+require  [F] SUMMARY immutable 3/4 -> read-mostly (not immutable);  rootless 4/4 -> ROOTLESS
 require  [F] IMMUTABLE-3 atomic-update-and-rollback  PASS
 require  [F] IMMUTABLE-4 no-w-xor-x-pages  PASS
 
-# The two immutable gates that do NOT hold.  Asserted as still-failing on purpose: if either
-# starts passing, this suite fails and the roadmap has to be updated to claim it -- which is the
-# only way a property gets claimed deliberately rather than by accident.
+# CLAIMED 2026-09-07: the state split is now ENFORCED, not described.  namespaceCheckOpen refuses a
+# write where the system view says readable-but-not-writable, so a real write to /usr returns
+# EROFS.  This suite FAILED when that started passing -- which is the mechanism working: a property
+# gets claimed deliberately, by editing this file, or not at all.
+require  [F] IMMUTABLE-2 state-split-enforced  PASS
+require  [F] EROFS: write refused to the read-only system tree
+
+# Still does NOT hold, asserted as failing on purpose.  On live media the object store is in RAM
+# (the disk is reserved for the installer), so backing-on-disk=0 is the correct answer here; the
+# gate is expected to pass on an INSTALLED system, which is not yet verified.
 require  [F] IMMUTABLE-1 system-tree-read-only-and-verified  FAIL
-require  [F] IMMUTABLE-2 state-split-enforced  FAIL

@@ -4773,6 +4773,11 @@ private void kernelLoop() {
         maybeSpawnSshd();      // SSH-in: start the dropbear launcher for remote access
         maybeSpawnDbusTest();  // M0: dbus-send GetId once the bus is up (proves EXTERNAL auth)
         maybeSpawnInotifyTest(); // ROADMAP 2.2: prove inotify delivers create/write/delete events
+        {   // publish the session domain's terminal once, for the app launcher
+            import core.syscalls.posix : publishDomainTerminal;
+            static __gshared bool s_termPublished = false;
+            if (!s_termPublished) { s_termPublished = true; publishDomainTerminal(); }
+        }
         maybeProcSelfTest();   // ROADMAP 2.1: prove /proc once real time and load have accrued
         maybeSyscallAudit();   // ROADMAP 2.2: record which syscalls are missing, once
         maybeEpollDump();      // ROADMAP 2.3: is the compositor watching the new client fd?

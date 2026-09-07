@@ -60,7 +60,7 @@ static const struct appentry BUILTIN_APPS[] = {
     /* /hos-wifiterm = wl-term with EPIN_SHELL=light (zsh -f -i), software (wl_shm) rendered — works on
      * the FW13 Pixman desktop.  /gl-term is GLES2/EGL and FAILS without a GPU; a full login-zsh wl-term
      * fork-storms.  (GL terminal is still on SUPER+Y for the virgl/GPU desktop.) */
-    { "Terminal",       "/hos-wifiterm" },
+    { "Terminal",       "/hos-wifiterm" },   /* default; overridden per-domain, see term_override() */
     { "Software",       "/store-app" },
     { "Settings",       "/wl-quicksettings" },
     { "Domains",        "/wl-domain-manager" },
@@ -76,6 +76,28 @@ static const struct appentry BUILTIN_APPS[] = {
     { "Screenshot",     "/wl-screenshot" },
 };
 enum { N_BUILTIN = (int)(sizeof(BUILTIN_APPS)/sizeof(BUILTIN_APPS[0])) };
+
+/* The terminal this DOMAIN wants, published by the kernel at /run/domain.terminal.
+ *
+ * The Terminal entry above used to be the only answer, so the launcher opened /hos-wifiterm no
+ * matter which domain the session was in -- and the domain's own declaration could not reach it,
+ * because `applications` is validated by the config schema and then discarded.  The path is now
+ * carried config -> manifest -> kernel -> here.
+ *
+ * Absent file or empty value keeps the built-in default, so a config that declares no terminal
+ * behaves exactly as before. */
+static char g_domain_term[128];
+static const char *term_override(void)
+{
+    FILE *f = fopen("/run/domain.terminal", "r");
+    if (!f) return NULL;
+    char *p = fgets(g_domain_term, sizeof g_domain_term, f);
+    fclose(f);
+    if (!p) return NULL;
+    size_t n = strlen(g_domain_term);
+    while (n && (g_domain_term[n-1] == '\n' || g_domain_term[n-1] == '\r')) g_domain_term[--n] = 0;
+    return n ? g_domain_term : NULL;
+}
 
 /* Populated by load_apps(); indexes into these are what the grid draws and launches. */
 static struct appentry APPS[MAX_APPS];
@@ -130,6 +152,18 @@ static void load_apps(void)
     }
     if (N_APPS == 0) {                       /* no apps.blob in this image -- use the fallback */
         for (int i = 0; i < N_BUILTIN && i < MAX_APPS; i++) APPS[N_APPS++] = BUILTIN_APPS[i];
+    }
+    /* Per-domain terminal.  Applied AFTER the list is built, so it overrides whichever source
+     * supplied the entry -- a .desktop file from apps.blob or the built-in fallback -- rather than
+     * only one of them.  Matching on the label is deliberate: the point is "whatever this menu
+     * calls Terminal launches the DOMAIN's terminal", not "patch one hardcoded path". */
+    const char *dt = term_override();
+    if (dt) {
+        for (int i = 0; i < N_APPS; i++)
+            if (APPS[i].label && !strcmp(APPS[i].label, "Terminal")) {
+                APPS[i].exec = dt;
+                break;
+            }
     }
 }
 

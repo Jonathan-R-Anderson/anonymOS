@@ -33,6 +33,7 @@
     { "name": "DevSandbox", "type": "domain", "identity": "Personal", "persist": "full",
       "template": "DevTemplate",
       "packages": ["git","clang"], "applications": ["terminal","editor"],
+      "terminal": "/wl-term",
       "filesystemAccess": {
         "defaultPolicy": "deny",
         "allowTraversalOutsideMounts": true,

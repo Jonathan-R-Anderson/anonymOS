@@ -76,6 +76,14 @@ struct DomainRec {
     ubyte         distro;         // DM11: DISTRO_* Linux-compat root selector
     ubyte         pkgMgr;         // DM11: PKGMGR_* package manager for this domain
     ulong         policyEpoch;    // signed-mutation counter (mirrors IdentityRec)
+    // APPENDED, never inserted -- adding a field mid-struct shifts every offset below it, which
+    // cost a broken boot earlier today in struct Task.  New domain fields go here.
+    //
+    // The app-menu terminal for this domain (TAG_DOMAIN_TERMINAL).  Empty = the launcher's own
+    // default.  Carried so the menu opens the terminal the DOMAIN specifies rather than one baked
+    // into wl-overview.
+    ubyte         terminalLen;
+    char[64]      terminal;
 }
 
 // --- fixed registry (deny-by-default; small fixed table, like the identities) --
@@ -886,6 +894,15 @@ public void domainStats() {
 //
 // Returns 0 when no domain qualifies, and callers fall back to their existing behaviour: a system
 // with no domains configured must still boot a desktop.
+// The session domain's app-menu terminal, or null when it declares none.
+public const(char)* domainSessionTerminal() @nogc nothrow {
+    const DomainId d = domainSessionId();
+    if (d == 0) return null;
+    auto rec = domainById(d);
+    if (rec is null || rec.terminalLen == 0) return null;
+    return rec.terminal.ptr;
+}
+
 public DomainId domainSessionId() @nogc nothrow {
     import core.identity : identityById, TRUST_SYSTEM;
     foreach (ref e; g_domains) {

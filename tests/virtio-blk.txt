@@ -1,0 +1,25 @@
+# ROADMAP 5.0 — VirtIO block driver.
+#
+# The disk layer knew AHCI and NVMe only.  Proxmox VE defaults to VirtIO SCSI and `-drive
+# if=virtio` is the usual way anyone attaches a QEMU disk, so on a stock VM the installer reported
+# "no disk to install to" and the object store silently stayed in RAM.
+#
+# RUN IT WITH THE DISK ON THE VIRTIO BUS:
+#     VIRTIO_BLK=1 TIMEOUT=260 scripts/boot-test.sh tests/virtio-blk.txt
+# Without VIRTIO_BLK=1 the disk is AHCI and these markers correctly never appear.
+
+require  [virtio-blk] found device
+require  [virtio-blk] ready: sectors=
+require  [disk] VirtIO block disk ready
+
+# The load-bearing assertion.  Detecting a device proves the PCI walk; this proves the driver can
+# actually move data, because the disk layer's own round-trip writes a sector and reads it back
+# through whichever backend is active.
+require  [disk] selftest PASS (sector round-trip verified)
+
+# The AHCI backend must NOT be what answered -- otherwise this suite would pass on a machine where
+# virtio-blk did nothing at all.
+forbid   [disk] AHCI SATA data disk ready
+
+forbid   EARLY BOOT EXCEPTION
+forbid   KERNEL FAULT

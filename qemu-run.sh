@@ -122,6 +122,17 @@ echo "[qemu-run] booting $ISO"
 # 4G raw is SPARSE: it costs only what is actually written, so this is close to free on disk
 # while leaving room for both install modes and the object store.
 DISK_SIZE="${DISK_SIZE:-4G}"
+
+# ROADMAP 5.0: which bus the data disk hangs off.  AHCI by default, because that is what every
+# existing test and the golden checks expect.  VIRTIO_BLK=1 attaches it as virtio-blk instead,
+# which is what Proxmox and `-drive if=virtio` present -- the configuration that used to report
+# "no disk to install to" because the kernel had no virtio block driver.
+if [ "${VIRTIO_BLK:-0}" = "1" ]; then
+  DISKDEV=( -device virtio-blk-pci,drive=hosdisk )
+  echo "[qemu-run] data disk on VIRTIO-BLK (VIRTIO_BLK=1)"
+else
+  DISKDEV=( -device ahci,id=ahci0 -device ide-hd,drive=hosdisk,bus=ahci0.0 )
+fi
 if [ ! -f "$DISK_IMG" ]; then
   qemu-img create -f raw "$DISK_IMG" "$DISK_SIZE" >/dev/null 2>&1 \
     || dd if=/dev/zero of="$DISK_IMG" bs=1M count=4096 status=none
@@ -302,8 +313,7 @@ exec "$QEMU_BIN" \
   -D qemu-debug.log \
   "${ACCEL[@]}" \
   -drive file="$DISK_IMG",if=none,id=hosdisk,format=raw \
-  -device ahci,id=ahci0 \
-  -device ide-hd,drive=hosdisk,bus=ahci0.0 \
+  "${DISKDEV[@]}" \
   "${NVME[@]}" \
   "${USBDEV[@]}" \
   "${LOGUSBDEV[@]}" \

@@ -5541,6 +5541,7 @@ void d_kernel_main() {
         { import core.imgupdate : imgUpdateHostBundleProof, imgUpdateStoreDisjointProof;
           imgUpdateHostBundleProof(); imgUpdateStoreDisjointProof(); }
         { import core.hoscall : hosAuditPrivProof; hosAuditPrivProof(); }   // 4.5 B5
+        { import core.hoscall : hosPciVerbProof; hosPciVerbProof(); }           // 5.1 L3
         { import core.identity : identityPolicyTxnProof; identityPolicyTxnProof(); } // 4.9 §9
         { import core.imgupdate : imgUpdateSlotResolveProof; imgUpdateSlotResolveProof(); } // 4.10 D2
         { import core.ed25519 : ed25519SelfTest; ed25519SelfTest(); }                    // 4.10 D3

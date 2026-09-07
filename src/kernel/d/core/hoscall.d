@@ -82,7 +82,31 @@ enum : ulong {
     HOSQ_NS_ENTER   = 22,  // namespace_enter(arg=nsObjId) -> 0 / -errno (owned namespaces only)
     // L4.2 — identity_switch(buf=name): de-escalation-only (target trust <= current) + cap attenuation.
     HOSQ_ID_SWITCH  = 23,  // identity_switch(buf=name) -> 0 / -errno
+
+    // BARE_METAL L3 (roadmap 5.1) — PCI config space for a userspace LKL.
+    //
+    // LKL's PCI backend contract (struct lkl_dev_pci_ops) needs four things from the host, and
+    // .read/.write on CONFIG space are the first two.  The kernel has pciConfigRead32 already;
+    // what was missing was any way for userspace to reach it, so a userspace LKL could not
+    // enumerate or program a device at all.
+    //
+    // ADMIN-GATED.  Raw PCI config access is device-level authority: it can reprogram BARs, turn
+    // bus mastering on, or move a device's interrupt line.  It requires CAP_RIGHT_ADMIN_DEVICE,
+    // which PID1 deliberately does NOT hold (adminInstallInitCaps gives it mount/reboot/inspect/
+    // identity only), so this is reachable solely by a task explicitly granted it.
+    HOSQ_PCI_CFG_RD = 24,  // pci_config_read(arg=BDF|off<<32) -> value / -errno
+    HOSQ_PCI_CFG_WR = 25,  // pci_config_write(arg=BDF|off<<32, buf=value) -> 0 / -errno
 }
+
+// BARE_METAL L3: pack/unpack the (bus,slot,func,offset) selector carried in `arg`.
+//   bits 0..7 bus | 8..12 slot | 13..15 func | 32..39 offset
+private void pciUnpack(ulong a, out ubyte bus, out ubyte slot, out ubyte func, out ubyte off) {
+    bus  = cast(ubyte)(a & 0xFF);
+    slot = cast(ubyte)((a >> 8) & 0x1F);
+    func = cast(ubyte)((a >> 13) & 0x07);
+    off  = cast(ubyte)((a >> 32) & 0xFF);
+}
+
 
 // SHELL_AND_COMMANDS B5 — one audit record per privileged native verb.
 //
@@ -893,6 +917,8 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
         case HOSQ_NS_CLONE:  return hosAuditPriv(HOSQ_NS_CLONE,  0,             hosNsClone());
         case HOSQ_NS_ENTER:  return hosAuditPriv(HOSQ_NS_ENTER,  cast(uint)arg, hosNsEnter(arg));
         case HOSQ_ID_SWITCH: return hosAuditPriv(HOSQ_ID_SWITCH, 0,             hosIdSwitch(buf));
+        case HOSQ_PCI_CFG_RD: return hosAuditPriv(HOSQ_PCI_CFG_RD, cast(uint)arg, hosPciCfgRead(arg));
+        case HOSQ_PCI_CFG_WR: return hosAuditPriv(HOSQ_PCI_CFG_WR, cast(uint)arg, hosPciCfgWrite(arg, buf));
         default: break;
     }
 
@@ -993,7 +1019,37 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
     return cast(long)b.len;
 }
 
-// ── SHELL_AND_COMMANDS B5 proof ───────────────────────────────────────────────────────────────
+// BARE_METAL L3 (roadmap 5.1) — PCI config read/write for a userspace LKL.
+//
+// Both refuse without CAP_RIGHT_ADMIN_DEVICE.  That cap is not held by PID1, so this is not
+// ambient authority: a task must be granted it explicitly, and every call is audited by the
+// hosAuditPriv wrapper at the dispatch site whether it succeeds or is refused.
+private long hosPciCfgRead(ulong arg) {
+    import core.admin : adminRequire;
+    import core.cap : CAP_RIGHT_ADMIN_DEVICE;
+    import drivers.pci : pciConfigRead32;
+    if (!adminRequire(CAP_RIGHT_ADMIN_DEVICE)) return -1;   // -EPERM
+    ubyte bus, slot, func, off;
+    pciUnpack(arg, bus, slot, func, off);
+    // Config space is dword-addressed; a misaligned offset would silently read the wrong register.
+    if ((off & 3) != 0) return -22;                         // -EINVAL
+    return cast(long)cast(uint)pciConfigRead32(bus, slot, func, off);
+}
+
+private long hosPciCfgWrite(ulong arg, ulong val) {
+    import core.admin : adminRequire;
+    import core.cap : CAP_RIGHT_ADMIN_DEVICE;
+    import drivers.pci : pciConfigWrite32;
+    if (!adminRequire(CAP_RIGHT_ADMIN_DEVICE)) return -1;
+    ubyte bus, slot, func, off;
+    pciUnpack(arg, bus, slot, func, off);
+    if ((off & 3) != 0) return -22;
+    pciConfigWrite32(bus, slot, func, off, cast(uint)val);
+    return 0;
+}
+
+// ── SHELL_AND_COMMANDS B5 proof ─
+──────────────────────────────────────────────────────────────
 //
 // B5 says "audit-log every privileged action".  Wiring auditLog into the dispatch is worth
 // nothing on its own -- this tier has repeatedly found machinery that was written, self-tested
@@ -1032,4 +1088,52 @@ public void hosAuditPrivProof() {
     const bool pass = (entered < 0) && (denyAfter > denyBefore)
                    && ((cloned < 0) ? (denyAfter - denyBefore) >= 2 : (okAfter > okBefore));
     klog(pass ? " -- B5 PASS\n" : " -- B5 FAIL\n");
+}
+
+// ── BARE_METAL L3 proof (roadmap 5.1) ────────────────────────────────────────────────────────
+//
+// Reads a device's vendor/device ID through the NEW userspace verb and compares it to what the
+// kernel's own PCI scan found.  Comparing against an independent source is the point: a verb that
+// returned a plausible-looking constant would pass a self-consistency check.
+//
+// It also drives the REFUSAL path, because the interesting property is not that an authorised
+// caller can read config space -- it is that an unauthorised one cannot.  PID1 does not hold
+// CAP_RIGHT_ADMIN_DEVICE (adminInstallInitCaps grants mount/reboot/inspect/identity only), so the
+// boot task is already the unauthorised case and needs no setup to test.
+__gshared bool g_l3ProofDone = false;
+public void hosPciVerbProof() {
+    import drivers.pci : scanPCIDevices;
+    import core.admin : adminInstallCapIn, adminRequire;
+    import core.cap : CAP_RIGHT_ADMIN_DEVICE;
+    import core.exports : g_current_task_id;
+    import core.task : g_tasks;
+
+    if (g_l3ProofDone) return;
+    g_l3ProofDone = true;
+
+    auto devs = scanPCIDevices();
+    if (devs.length == 0) { klog("[5.1] L3 PCI verb: SKIP (no PCI devices)\n"); return; }
+    auto d = &devs[0];
+    const ulong sel = cast(ulong)d.bus | (cast(ulong)d.slot << 8) | (cast(ulong)d.func << 13);
+
+    // 1. UNAUTHORISED: the running task has no ADMIN_DEVICE cap, so the verb must refuse.
+    const long denied = hosQuery(HOSQ_PCI_CFG_RD, sel, 0, 0);
+
+    // 2. AUTHORISED: grant the cap to this task's own table, then the same call must succeed and
+    //    agree with the kernel's scan.
+    const int tab = g_tasks[cast(int)g_current_task_id].capTabId;
+    adminInstallCapIn(tab, CAP_RIGHT_ADMIN_DEVICE);
+    const long got = hosQuery(HOSQ_PCI_CFG_RD, sel, 0, 0);
+    const uint expect = (cast(uint)d.deviceId << 16) | cast(uint)d.vendorId;
+
+    // 3. A misaligned offset must be rejected: config space is dword-addressed, and silently
+    //    reading the wrong register is worse than an error.
+    const long misaligned = hosQuery(HOSQ_PCI_CFG_RD, sel | (1UL << 32), 0, 0);
+
+    const bool pass = (denied < 0) && (got == cast(long)expect) && (misaligned == -22);
+    klog("[5.1] L3 PCI verb: unauth="); klog_hex(cast(ulong)denied);
+    klog(" read=");    klog_hex(cast(ulong)got);
+    klog(" expect=");  klog_hex(expect);
+    klog(" misaligned="); klog_hex(cast(ulong)misaligned);
+    klog(pass ? " -- L3 PASS\n" : " -- L3 FAIL\n");
 }

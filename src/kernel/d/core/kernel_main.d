@@ -5490,6 +5490,7 @@ void d_kernel_main() {
         { import core.hoscall : hosAuditPrivProof; hosAuditPrivProof(); }   // 4.5 B5
         { import core.identity : identityPolicyTxnProof; identityPolicyTxnProof(); } // 4.9 §9
         { import core.imgupdate : imgUpdateSlotResolveProof; imgUpdateSlotResolveProof(); } // 4.10 D2
+        { import core.ed25519 : ed25519SelfTest; ed25519SelfTest(); }                    // 4.10 D3
     }
     domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
     templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback

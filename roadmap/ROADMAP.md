@@ -95,6 +95,7 @@ Valuable, coherent, and **not** on the path to a usable desktop. Deliberately af
 | 4.4 | Whole-image A/B update unit | SYSTEM_UPDATE D1 |
 | 4.5 | Native object shell `-sh` (B0–B5) | SHELL_AND_COMMANDS |
 | 4.6 | Marketplace / I2P template distribution | NETWORK_AND_MARKETPLACE |
+| 4.7 | ⚠ **The shipped ISO names the person who built it.** `grep -ac "/home/bruns/Documents/anonymOS" hos-install.iso` = **396**, across **34 binaries** in `cd/`. Compile-time prefixes baked into the vendored stack: musl's `ld-musl-x86_64.path`, Mesa's DRI/GBM driver search, glib's gio modules, libinput's data dir, `drirc`. The guest probes 9 of them at runtime and every one fails `ENOENT`, so nothing is broken functionally — but an image whose premise is deniability embeds its builder's username and source-tree layout, which is a fingerprint of exactly the kind this OS exists to avoid, and it also makes the build non-reproducible across machines. Fix is a deps rebuild with guest-relative prefixes (`--prefix`/sysroot), not a kernel change | DECOY_SECURITY · IMMUTABLE_ROOTLESS |
 
 ---
 

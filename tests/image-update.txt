@@ -1,0 +1,22 @@
+# SYSTEM_UPDATE D1 (roadmap 4.4) -- the whole-image A/B update unit.
+#
+# Each case here is one a delivery mechanism cannot protect against: a flipped bit, a forged
+# signature and a replayed older release all arrive looking like perfectly valid downloads.  That
+# is why the unit is proven before any transport (U5 I2P, U6 DHT) is built -- those are just
+# different ways of delivering these bytes.
+
+require  [4.4] whole-image update unit:
+require  -- D1 PASS
+
+# The specific verdicts, spelled out.  Asserting only "PASS" would let a future change that
+# collapsed every refusal into one reason still pass, and telling a bit-flip from a replay is the
+# whole point of having distinct verdicts.
+require  accept=ok
+require  tampered=bad-image-hash
+require  forged=bad-signature
+require  replayed=rollback-refused
+require  short=truncated
+
+# The boot must still come up: this runs during the install-media proof block.
+forbid   EARLY BOOT EXCEPTION
+require  [4.1] dual-identity spawn accepted

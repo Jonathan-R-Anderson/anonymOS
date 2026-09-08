@@ -96,7 +96,21 @@ enum : ulong {
     // identity only), so this is reachable solely by a task explicitly granted it.
     HOSQ_PCI_CFG_RD = 24,  // pci_config_read(arg=BDF|off<<32) -> value / -errno
     HOSQ_PCI_CFG_WR = 25,  // pci_config_write(arg=BDF|off<<32, buf=value) -> 0 / -errno
+
+    // BARE_METAL L3, capabilities 2 and 3.  LKL's PCI backend needs BAR access and a DMA address.
+    //
+    // .resource_alloc calls LKL's register_iomem(), and the LKL kernel then routes every BAR MMIO
+    // read/write back through the backend -- so the backend only has to FORWARD each access.  That
+    // is what these two verbs are: no mmap of the BAR is required, which is the key simplifier the
+    // roadmap identified when it scoped L3.
+    //
+    // .map_page needs a physical address for a buffer LKL allocated.  With no IOMMU the IOVA is
+    // the physical address, so a virt->phys of the caller's own page is the whole operation.
+    HOSQ_MMIO_RD    = 26,  // mmio_read(arg=phys, buf=width 1/2/4/8) -> value / -errno
+    HOSQ_MMIO_WR    = 27,  // mmio_write(arg=phys, buf=value, buflen=width) -> 0 / -errno
+    HOSQ_VIRT2PHYS  = 28,  // virt_to_phys(arg=vaddr) -> phys / -errno  (caller's own space)
 }
+
 
 // BARE_METAL L3: pack/unpack the (bus,slot,func,offset) selector carried in `arg`.
 //   bits 0..7 bus | 8..12 slot | 13..15 func | 32..39 offset
@@ -919,6 +933,9 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
         case HOSQ_ID_SWITCH: return hosAuditPriv(HOSQ_ID_SWITCH, 0,             hosIdSwitch(buf));
         case HOSQ_PCI_CFG_RD: return hosAuditPriv(HOSQ_PCI_CFG_RD, cast(uint)arg, hosPciCfgRead(arg));
         case HOSQ_PCI_CFG_WR: return hosAuditPriv(HOSQ_PCI_CFG_WR, cast(uint)arg, hosPciCfgWrite(arg, buf));
+        case HOSQ_MMIO_RD:   return hosAuditPriv(HOSQ_MMIO_RD,   cast(uint)arg, hosMmioRead(arg, buf));
+        case HOSQ_MMIO_WR:   return hosAuditPriv(HOSQ_MMIO_WR,   cast(uint)arg, hosMmioWrite(arg, buf, buflen));
+        case HOSQ_VIRT2PHYS: return hosAuditPriv(HOSQ_VIRT2PHYS, cast(uint)arg, hosVirtToPhys(arg));
         default: break;
     }
 
@@ -1019,7 +1036,95 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
     return cast(long)b.len;
 }
 
+// BARE_METAL L3 capability 2 — is `phys` inside some PCI device's BAR?
+//
+// Arbitrary physical MMIO from userspace would be a hole big enough to write kernel memory through
+// the HHDM, so the address must belong to a real device aperture.  Walking the BARs is both the
+// safety check and exactly the scope LKL needs: its iomem forward only ever touches BARs.
+private bool physInSomeBar(ulong phys, uint width) {
+    import drivers.pci : scanPCIDevices, pciConfigRead32, pciConfigWrite32;
+    if (width == 0) return false;
+    auto devs = scanPCIDevices();
+    foreach (ref dev; devs) {
+        auto d = &dev;
+        for (uint b = 0; b < 6; ++b) {
+            const ubyte off = cast(ubyte)(0x10 + b * 4);
+            const uint lo = pciConfigRead32(d.bus, d.slot, d.func, off);
+            if (lo == 0 || (lo & 1) != 0) continue;          // unused, or I/O-space BAR
+            ulong base = lo & 0xFFFFFFF0u;
+            bool is64 = ((lo & 0x6) == 0x4);
+            if (is64) {
+                const uint hi = pciConfigRead32(d.bus, d.slot, d.func, cast(ubyte)(off + 4));
+                base |= (cast(ulong)hi << 32);
+            }
+            if (base == 0) { if (is64) ++b; continue; }
+            // Size a BAR the standard way: write all-ones, read back the mask, restore.  Done
+            // with interrupts as they are because this runs only from an admin-gated verb.
+            pciConfigWrite32(d.bus, d.slot, d.func, off, 0xFFFFFFFFu);
+            const uint mask = pciConfigRead32(d.bus, d.slot, d.func, off);
+            pciConfigWrite32(d.bus, d.slot, d.func, off, lo);
+            const uint sizeMask = mask & 0xFFFFFFF0u;
+            if (sizeMask == 0) { if (is64) ++b; continue; }
+            const ulong size = (~cast(ulong)sizeMask + 1) & 0xFFFFFFFFUL;
+            if (phys >= base && (phys + width) <= (base + size)) return true;
+            if (is64) ++b;
+        }
+    }
+    return false;
+}
+
+private long hosMmioRead(ulong phys, ulong width) {
+    import core.admin : adminRequire;
+    import core.cap : CAP_RIGHT_ADMIN_DEVICE;
+    import core.globals : hhdm_offset;
+    if (!adminRequire(CAP_RIGHT_ADMIN_DEVICE)) return -1;
+    if (width != 1 && width != 2 && width != 4 && width != 8) return -22;
+    if ((phys % width) != 0) return -22;                       // an unaligned MMIO can fault
+    if (!physInSomeBar(phys, cast(uint)width)) return -1;      // not a device aperture: refuse
+    auto p = cast(void*)(phys + hhdm_offset);
+    final switch (width) {
+        case 1: return cast(long)(*cast(shared const ubyte*)p);
+        case 2: return cast(long)(*cast(shared const ushort*)p);
+        case 4: return cast(long)(*cast(shared const uint*)p);
+        case 8: return cast(long)(*cast(shared const ulong*)p);
+    }
+}
+
+private long hosMmioWrite(ulong phys, ulong val, ulong width) {
+    import core.admin : adminRequire;
+    import core.cap : CAP_RIGHT_ADMIN_DEVICE;
+    import core.globals : hhdm_offset;
+    if (!adminRequire(CAP_RIGHT_ADMIN_DEVICE)) return -1;
+    if (width != 1 && width != 2 && width != 4 && width != 8) return -22;
+    if ((phys % width) != 0) return -22;
+    if (!physInSomeBar(phys, cast(uint)width)) return -1;
+    auto p = cast(void*)(phys + hhdm_offset);
+    switch (width) {
+        case 1: *cast(shared ubyte*)p  = cast(ubyte)val;  break;
+        case 2: *cast(shared ushort*)p = cast(ushort)val; break;
+        case 4: *cast(shared uint*)p   = cast(uint)val;   break;
+        default: *cast(shared ulong*)p = val;             break;
+    }
+    return 0;
+}
+
+// BARE_METAL L3 capability 3 — the caller's OWN virtual address to a physical one.
+//
+// Deliberately the active address space only.  Translating an arbitrary task's address would let a
+// caller discover another domain's physical layout, which is exactly the isolation L4 is meant to
+// establish rather than undermine.
+private long hosVirtToPhys(ulong va) {
+    import core.admin : adminRequire;
+    import core.cap : CAP_RIGHT_ADMIN_DEVICE;
+    import core.addrspace : activeVirtToPhys;
+    if (!adminRequire(CAP_RIGHT_ADMIN_DEVICE)) return -1;
+    const ulong phys = activeVirtToPhys(va);
+    if (phys == 0) return -14;                                 // -EFAULT: not a present page
+    return cast(long)phys;
+}
+
 // BARE_METAL L3 (roadmap 5.1) — PCI config read/write for a userspace LKL.
+
 //
 // Both refuse without CAP_RIGHT_ADMIN_DEVICE.  That cap is not held by PID1, so this is not
 // ambient authority: a task must be granted it explicitly, and every call is audited by the
@@ -1129,10 +1234,36 @@ public void hosPciVerbProof() {
     //    reading the wrong register is worse than an error.
     const long misaligned = hosQuery(HOSQ_PCI_CFG_RD, sel | (1UL << 32), 0, 0);
 
-    const bool pass = (denied < 0) && (got == cast(long)expect) && (misaligned == -22);
+    // ── capability 2: MMIO forward ────────────────────────────────────────────────────────
+    // Read the SAME vendor/device dword through the MMIO path is not possible (config space is
+    // not a BAR), so instead prove the SAFETY properties, which are the ones that matter for a
+    // verb that can otherwise touch any device register:
+    //   * an address that is not inside any BAR is refused, so this cannot be used to reach
+    //     kernel memory through the HHDM;
+    //   * an unaligned or bad-width access is refused rather than faulting.
+    const long mmioBadAddr  = hosQuery(HOSQ_MMIO_RD, 0x1000, 4, 0);   // low RAM, not a BAR
+    const long mmioBadWidth = hosQuery(HOSQ_MMIO_RD, 0x1000, 3, 0);   // width 3 is not legal
+
+    // ── capability 3: virt->phys ──────────────────────────────────────────────────────────
+    // Translate a KERNEL address we already know the physical form of: g_hosAuditProofDone lives
+    // in the HHDM, so its physical address must be its virtual address minus the HHDM offset.
+    // Checking against an independently-derived answer, not against the verb's own output.
+    import core.globals : hhdm_offset;
+    const ulong probeVa = cast(ulong)&g_l3ProofDone;
+    const long  v2p     = hosQuery(HOSQ_VIRT2PHYS, probeVa, 0, 0);
+    const bool  v2pOk   = (v2p > 0) && (cast(ulong)v2p == probeVa - hhdm_offset);
+    const long  v2pBad  = hosQuery(HOSQ_VIRT2PHYS, 0x00007f0000000000UL, 0, 0);  // unmapped
+
+    const bool pass = (denied < 0) && (got == cast(long)expect) && (misaligned == -22)
+                   && (mmioBadAddr < 0) && (mmioBadWidth == -22)
+                   && v2pOk && (v2pBad == -14);
     klog("[5.1] L3 PCI verb: unauth="); klog_hex(cast(ulong)denied);
     klog(" read=");    klog_hex(cast(ulong)got);
     klog(" expect=");  klog_hex(expect);
     klog(" misaligned="); klog_hex(cast(ulong)misaligned);
+    klog(" mmioNotBar="); klog_hex(cast(ulong)mmioBadAddr);
+    klog(" mmioBadWidth="); klog_hex(cast(ulong)mmioBadWidth);
+    klog(" v2p="); klog_hex(v2pOk ? 1 : 0);
+    klog(" v2pUnmapped="); klog_hex(cast(ulong)v2pBad);
     klog(pass ? " -- L3 PASS\n" : " -- L3 FAIL\n");
 }

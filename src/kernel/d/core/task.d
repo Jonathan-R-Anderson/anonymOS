@@ -609,6 +609,20 @@ void removeRegion(ref Task task, ulong start, ulong end) {
         if (r.start >= start && r.end <= end) {
             objReleaseRegion(r);
             task.regions[i] = task.regions[n - 1];   // swap-remove
+            // The swap moves a LIVE region to a new ADDRESS.  Its MemRegion object still records
+            // the old slot in `impl`, so the next objEnsureRegion() sees impl != &regions[i],
+            // treats the object as stale, and -- because its release is guarded on impl MATCHING
+            // -- silently orphans it and allocates another.  That leaks one MemRegion per unmap.
+            //
+            // Mesa/softpipe churns many short-lived maps (see the note above), so this drains the
+            // 8192-object table during ordinary desktop work: the installer reached ~5%% and then
+            // every open/read/write failed EBADF, because publishActiveFd could no longer get an
+            // object and cleared the fd's capability.  The symptom is nowhere near the cause.
+            {
+                auto mh = objGet(task.regions[i].objId);
+                if (mh !is null && mh.type == ObjType.MemRegion)
+                    mh.impl = cast(void*)&task.regions[i];
+            }
             --n;
             continue;                                 // re-check swapped-in entry
         }

@@ -128,7 +128,24 @@ __gshared ulong g_objOpsDispatch = 0;
 // object table for behaviour in Phase 2).
 public uint objAlloc(ObjType t, void* impl) {
     objInit();
-    if (g_objFreeTop < 0) return 0;
+    if (g_objFreeTop < 0) {
+        // Silent exhaustion produces mystery EBADFs far from here: publishActiveFd calls
+        // ensureFileObject, gets null, clears the fd's capability, and every later read/write on
+        // that fd returns EBADF with nothing explaining why.  Say it once.
+        static __gshared bool told = false;
+        if (!told) {
+            told = true;
+            klog("[objmgr] OBJECT TABLE EXHAUSTED (OBJ_MAX=8192) -- fds will fail EBADF\n");
+            // Name the leak: whichever type dominates is the one not being released.
+            for (uint ty = 1; ty < cast(uint)ObjType.Count; ++ty) {
+                const uint c = objCountType(cast(ObjType)ty);
+                if (c == 0) continue;
+                klog("[objmgr]   type="); klog_hex(ty);
+                klog(" live="); klog_hex(c); klog("\n");
+            }
+        }
+        return 0;
+    }
     uint id = g_objFree[g_objFreeTop--];
     auto h = &g_objects[id];
     h.id       = id;

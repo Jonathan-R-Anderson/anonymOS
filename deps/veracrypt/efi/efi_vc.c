@@ -127,6 +127,14 @@ int vc_open_header(const char*pw,const unsigned char header[512],unsigned char o
     return 0;
 }
 
+/* §E5d — public wrapper so efi_main.c can decrypt the on-disk bootloader payload with the
+ * master key returned by preboot_authenticate. Same XTS as the header open, but the caller
+ * supplies the master-key halves and the data-unit index directly. */
+void vc_xts_decrypt(unsigned char *buf, unsigned long long len, unsigned long long unit,
+                    const unsigned char *k1, const unsigned char *k2){
+    xts_dec(buf, (u64)len, (u64)unit, k1, k2);
+}
+
 /* §G2.2 typo tolerance — fuzz the INPUT (caps-lock / first-char / transposition / single
  * deletion), the same bounded model as deps/decoy/g2/dm.c. The VeraCrypt header is the
  * exact verifier, so a typo whose correction equals the real password opens the volume.

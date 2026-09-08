@@ -37,7 +37,7 @@ VC_CFLAGS := -O2 -DNDEBUG -DCRYPTOPP_DISABLE_ASM -fPIC -I$(VCSRC) -I$(VCSRC)/Cry
 
 RUN := $(BUILD_RESOURCE_RUN)
 
-.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk mkinstall clean
+.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk mkinstall decrypt-boot-check clean
 all: crypto
 
 $(BLD) $(SYSROOT)/lib:
@@ -100,7 +100,11 @@ cryptdisk: crypto | $(BLD)
 
 # §E7/F2 — assemble a FULL deniable install (GPT + ESP + fully-encrypted system + fully-
 # random outer) and prove the entropy map is featureless.
-mkinstall: crypto | $(BLD)
+# §E5d — the bootloader payload the pre-boot loader decrypts and starts after unlock. Default
+# is the stage2.efi PE (a real, LoadImage-able UEFI app) so the OVMF test proves the whole
+# crypto->boot path; a production install swaps in the real decoy/hidden OS loader.
+PAYLOAD ?= $(BLD)/stage2.efi
+mkinstall: crypto efi | $(BLD)
 	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
 	    $(SELF)/vcheader.c $(SELF)/test/mkinstall.c \
 	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-mkinstall
@@ -112,11 +116,20 @@ mkinstall: crypto | $(BLD)
 	  sS=$$(sgdisk -i 2 $$img | awk '/Partition size/{print $$3}'); \
 	  oL=$$(sgdisk -i 3 $$img | awk '/First sector/{print $$3}'); \
 	  oS=$$(sgdisk -i 3 $$img | awk '/Partition size/{print $$3}'); \
-	  $(BLD)/vc-mkinstall $$img $(ROOTFS) decoy-password $$sL $$sS $$oL $$oS; \
+	  $(BLD)/vc-mkinstall $$img $(PAYLOAD) decoy-password $$sL $$sS $$oL $$oS; \
 	  echo "--- §F2 entropy map (encrypted partitions must be featureless) ---"; \
 	  python3 $(SELF)/test/entropy_scan.py $$img $$sL $$sS $$oL $$oS; \
 	  free=$$(sgdisk -p $$img | awk '/Total free space/{print $$5}'); \
 	  echo "--- §H3 disk-illusion: $$free sectors free ($$(($$free/2048)) MiB) = normal 1MiB alignment, no partition-sized gap ---"
+
+# §E5d — end-to-end: unlock -> derive master key -> decrypt the matched OS's bootloader off the
+# RAW install disk -> LoadImage/StartImage it, in real UEFI firmware (OVMF). The ESP carries only
+# preboot.efi (no plaintext stage2 anywhere), so a running payload can ONLY have been decrypted.
+decrypt-boot-check: mkinstall
+	@echo "=== §E5d decrypt-and-boot (decoy / hidden / reject) ==="
+	@python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img decoy-password  DECOY
+	@python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img hidden-password HIDDEN
+	@python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img not-the-password REJECT
 
 # §E5 — validate the pre-boot authenticator (decoy vs hidden routing) on a disk image.
 preboot-check: crypto | $(BLD)

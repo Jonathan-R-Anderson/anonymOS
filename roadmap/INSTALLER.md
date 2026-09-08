@@ -526,13 +526,21 @@ honey/chaff is inherent). OVMF-validated: a **transposition typo `dceoy-password
 while `wrong-pass` and far-off typos are rejected. (The 8 KB candidate buffer is `static` to avoid the
 freestanding `__chkstk` stack-probe.)
 
-**E5d — chain-load ✅ DONE + OVMF-validated.** After unlock the loader reads the matched OS's loader
-off the boot volume (`EFI_LOADED_IMAGE` → `EFI_SIMPLE_FILE_SYSTEM` → open `\EFI\anonymos\stage2.efi`
-→ read) and hands off via `LoadImage`/`StartImage`. Proven end-to-end in OVMF — typing
-`decoy-password` runs the whole chain: prompt → unlock → *"chain-loading the OS bootloader…"* →
-**`[stage2] … STAGE2 RUNNING`**. `efi_stage2.c` is still a stand-in for the real decrypted decoy/hidden
-bootloader. The installer now writes the hidden preboot ESP, encrypted decoy Linux image, and encrypted
-hidden EpinAnonymOS payload, but a real stage2 bootloader remains the E5/H1 handoff gap.
+**E5d — decrypt-and-boot ✅ DONE + OVMF-validated (the plaintext stage2 hand-off is gone).** After
+unlock the loader now **decrypts the matched OS's bootloader off the RAW install disk** with the master
+key that password just unlocked, and `LoadImage`/`StartImage`s it — no plaintext file on the ESP. The
+on-disk payload region is: sector 0 an XTS-encrypted boot descriptor (magic `ANOSBOOT` + payload
+length), sectors 1.. the XTS-encrypted PE — decoy at `sys_first+1` (decoy key), hidden at `hidden_lba+1`
+(hidden key), written by `deps/veracrypt/test/mkinstall.c:write_bootloader` and consumed by
+`deps/veracrypt/efi/efi_main.c:decrypt_and_boot` (unit numbers + key halves kept in lock-step). The ESP
+carries **only `preboot.efi`**, so a running payload can *only* have come from decryption. `make
+veracrypt decrypt-boot-check` boots it in OVMF and drives the prompt via QMP: **`decoy-password`
+decrypts + runs the decoy bootloader**, **`hidden-password` the hidden one**, and a **wrong password
+reaches the boot path with no key and boots nothing** (`access denied`; nothing decrypted; `STAGE2
+RUNNING` absent) — 3/3. `efi_stage2.c` remains only as the *test payload* both routes boot; the
+mechanism is real. **Remaining E5/H1 gap:** swap that test PE for the real per-OS payloads — an Alpine
+EFI-stub kernel (decoy) and the EpinAnonymOS loader (hidden) — now "supply a bigger PE", not "invent the
+hand-off".
 
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:

@@ -152,36 +152,54 @@ static int read_password(EFI_SIMPLE_TEXT_INPUT *ci, char *buf, int max){
     buf[n]=0; return n;
 }
 
-/* Chain-load the matched OS's next stage: read its loader image off the boot volume and
- * LoadImage/StartImage it. Here it loads \EFI\anonymos\stage2.efi (the stand-in for the
- * decrypted decoy/hidden bootloader — §H1 supplies the real one). */
-static u16 STAGE2_PATH[] = L"\\EFI\\anonymos\\stage2.efi";
-static void chainload(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST){
+/* §E5d — decrypt the matched OS's bootloader off the RAW install disk and start it.
+ *
+ * This is the real hand-off the stage2.efi stub stood in for. The bootloader payload is
+ * XTS-encrypted on disk with the volume's master key (the same key preboot_authenticate just
+ * returned), so nothing bootable is readable without the password and a wrong password reaches
+ * this path with no key at all. The payload region begins at `region_lba`:
+ *   sector 0            — a boot descriptor: magic "ANOSBOOT" + u64 LE payload byte-length,
+ *                         XTS data unit 0;
+ *   sectors 1..ceil(n)  — the PE bootloader itself, XTS data units 1.. .
+ * The installer (deps/veracrypt/test/mkinstall.c, and the in-kernel veracrypt_impl.d) writes
+ * exactly this shape; unit numbers and key halves must stay in lock-step with it. */
+static void decrypt_and_boot(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_IO *bio,
+                             u64 region_lba, const u8 *key){
     EFI_BOOT_SERVICES *BS = ST->BS;
-    EFI_LOADED_IMAGE *li=0; EFI_SIMPLE_FS *fs=0; EFI_FILE *root=0, *file=0; void *buf=0; EFI_HANDLE img=0;
-    if (BS->HandleProtocol(Image, &LOADED_IMAGE_GUID, (void**)&li)!=0){ ss("[preboot-efi] chainload: no loaded-image\n"); return; }
-    if (BS->HandleProtocol(li->DeviceHandle, &SIMPLE_FS_GUID, (void**)&fs)!=0){ ss("[preboot-efi] chainload: no filesystem\n"); return; }
-    if (fs->OpenVolume(fs,&root)!=0 || root->Open(root,&file,STAGE2_PATH,1,0)!=0){ ss("[preboot-efi] chainload: stage2 not found\n"); return; }
-    u64 cap = 1u<<20;
-    if (BS->AllocatePool(2 /*LoaderData*/, cap, &buf)!=0){ ss("[preboot-efi] chainload: alloc failed\n"); return; }
-    u64 size = cap;
-    if (file->Read(file,&size,buf)!=0){ ss("[preboot-efi] chainload: read failed\n"); return; }
-    if (BS->LoadImage(0, Image, 0, buf, size, &img)!=0){ ss("[preboot-efi] chainload: LoadImage failed\n"); return; }
-    ss("[preboot-efi] chain-loading the OS bootloader...\n");
+    static const u8 MAGIC[8] = {'A','N','O','S','B','O','O','T'};
+    u8 desc[512];
+    if (!read_lba(bio, region_lba, desc)){ ss("[preboot-efi] boot: descriptor read failed\n"); return; }
+    vc_xts_decrypt(desc, 512, 0, key, key+32);
+    for (int i=0;i<8;i++) if (desc[i]!=MAGIC[i]){ ss("[preboot-efi] boot: no bootable payload here\n"); return; }
+    u64 plen = le64(desc+8);
+    if (plen < 512 || plen > (16ULL<<20)){ ss("[preboot-efi] boot: bad payload size\n"); return; }
+    u64 nsec = (plen + 511)/512;
+    void *buf=0;
+    if (BS->AllocatePool(2 /*LoaderData*/, nsec*512, &buf)!=0){ ss("[preboot-efi] boot: alloc failed\n"); return; }
+    u8 *p = (u8*)buf;
+    for (u64 i=0;i<nsec;i++){
+        if (!read_lba(bio, region_lba+1+i, p+i*512)){ ss("[preboot-efi] boot: payload read failed\n"); return; }
+        vc_xts_decrypt(p+i*512, 512, 1+i, key, key+32);
+    }
+    EFI_HANDLE img=0;
+    if (BS->LoadImage(0, Image, 0, buf, plen, &img)!=0){ ss("[preboot-efi] boot: LoadImage failed\n"); return; }
+    ss("[preboot-efi] decrypted the OS bootloader; starting it...\n");
     BS->StartImage(img, 0, 0);
 }
 
 /* Interactive pre-boot authentication: prompt, route, retry. The prompt and the wrong-
- * password message are identical regardless of whether a hidden OS exists. */
-static void interactive(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, const u8*decoy, const u8*hidden){
+ * password message are identical regardless of whether a hidden OS exists. A match decrypts
+ * that OS's bootloader payload (DECOY at sys_first+1, HIDDEN at hidden_lba+1) and starts it. */
+static void interactive(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_IO *bio,
+                        const u8*decoy, const u8*hidden, u64 sys_first, u64 hidden_lba){
     EFI_SIMPLE_TEXT_INPUT *ci = ST->ConIn;
     char pw[128]; u8 key[256];
     for (int attempt=0; attempt<3; attempt++){
         ss("[preboot-efi] Enter password: ");
         read_password(ci, pw, sizeof pw);
         int v = preboot_authenticate(pw, decoy, hidden, key);
-        if (v==PREBOOT_DECOY){  ss("[preboot-efi] unlocked; BOOTING DECOY OS\n");  chainload(Image, ST); return; }
-        if (v==PREBOOT_HIDDEN){ ss("[preboot-efi] unlocked; BOOTING HIDDEN OS\n"); chainload(Image, ST); return; }
+        if (v==PREBOOT_DECOY){  ss("[preboot-efi] unlocked; BOOTING DECOY OS\n");  decrypt_and_boot(Image, ST, bio, sys_first + 1,  key); return; }
+        if (v==PREBOOT_HIDDEN){ ss("[preboot-efi] unlocked; BOOTING HIDDEN OS\n"); decrypt_and_boot(Image, ST, bio, hidden_lba + 1, key); return; }
         ss("[preboot-efi] access denied\n");
     }
     ss("[preboot-efi] too many attempts\n");
@@ -213,7 +231,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *ST){
             try_pw("wrong-password ", "not-a-password",  decoy, hidden);
             ss("[preboot-efi] SELFTEST DONE\n");
         }
-        interactive(ImageHandle, ST, decoy, hidden);    /* §E5c prompt + §E5d chain-load */
+        interactive(ImageHandle, ST, bio, decoy, hidden, sys_first, hidden_lba);   /* §E5c prompt + §E5d decrypt-and-boot */
         goto done;
     }
     ss("[preboot-efi] install layout not found on any block device\n");

@@ -148,20 +148,32 @@ hl.config({
 -- fresh present blit".  So the borders are kernel-drawn and stay; the contents are
 -- compositor-drawn and go.
 --
--- Mode 1 (= DAMAGE_TRACKING_MONITOR) is the right setting rather than 0:
---   * Renderer.cpp:2217 -- NONE *or* MONITOR adds the whole monitor to the frame damage, so a
---     rendered frame is always complete and the stale-buffer inheritance never applies.
---   * Renderer.cpp:321  -- the "nothing changed, skip this frame" early-out is taken for every
---     mode EXCEPT NONE, so mode 1 still renders NOTHING while the desktop is idle.
--- Mode 0 would also fix the corruption but would redraw unconditionally, forever, which is the
--- opposite of what is wanted here.
+-- ---------------------------------------------------------------------------------------------
+-- RESOLVED: the premise above is no longer true, so the workaround is withdrawn (1 -> 2).
 --
--- Net effect: no redraw at all unless something is actually damaged, and a whole correct frame
--- when there is.  The finer-grained "redraw only the damaged rectangle" is given up deliberately
--- -- it is the exact path that loses the window contents on this stack.
+-- Everything above hinges on "a swapchain of THREE rotating buffers", which made the undamaged
+-- part of a frame inherit from a buffer two frames stale.  That root cause was fixed separately:
+-- Monitor.cpp:2609 now pins `options.length = 1`, and its own comment states the consequence --
+-- with length 1 the buffer age is 1, which is exactly the assumption partial re-rendering needs.
+-- The live boot log agrees: "Swapchain: Reconfigured ... XR24 of length 1".  Buffer age 1 means
+-- the buffer handed back IS the one presented last frame, so inheriting the undamaged region is
+-- trivially correct and the corruption this setting suppressed can no longer arise that way.
+--
+-- What mode 1 costs, measured rather than assumed: Renderer.cpp:1759 computes the correct damage
+-- (for a mouse move, the cursor box expanded by 4px -- about 44x44), and Renderer.cpp:2116-2117
+-- then overwrites it with the whole monitor scaled x10 to make it unclippable.  So llvmpipe
+-- rasterises all 1,024,000 pixels to move a cursor over ~2,000 that changed.  With forceFull=0
+-- confirmed across every steady-state frame sampled, this config line was the only live term
+-- still forcing a full frame.
+--
+-- If window contents ever vanish again at mode 2, do NOT simply restore this workaround: at
+-- buffer age 1 partial rendering is mathematically sound, so a recurrence means a real bug
+-- elsewhere -- most likely the kernel writing into the scanout buffer behind the compositor's
+-- back (drmSetHosWindows paints identity borders straight into it), which partial re-rendering
+-- would never repaint over.  Fix that instead of hiding it again.
 hl.config({
     debug = {
-        damage_tracking = 1
+        damage_tracking = 2
     }
 })
 

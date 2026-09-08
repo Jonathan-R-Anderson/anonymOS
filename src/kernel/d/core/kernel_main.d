@@ -313,6 +313,7 @@ private void presentProfTick() {
     if (now - g_presProfLastMs < 5000) return;         // one rolling 5 s window per line
     g_presProfLastMs = now;
     presentProfStats();                                // NB: prints AND resets the interval counters
+    schedProfStats();      // absolute USERSPACE ms/task -- vs [cputime] jiffies this is the user/kernel split
 
     const ulong tot = g_cmpParkSamples + g_cmpRunSamples;
     klog("[cmpduty] parked_permil=");
@@ -3508,14 +3509,20 @@ private void schedProfStats() {
     ulong total = 0;
     foreach (i; 0 .. MAX_TASKS) total += g_schedCyc[i];
     if (total == 0) return;
-    klog("[sched] cpu_permil:");
+    // ABSOLUTE userspace ms, not just a share of each other.  g_schedCyc counts cycles between
+    // entering userspace and trapping back, so it is pure user time; set beside the same task's
+    // [cputime] jiffies (total CPU ms) it gives the split directly: kernel_ms = jiffies - user_ms.
+    // A share alone cannot do that -- it normalises away the very quantity in question.
+    const ulong dPitS = pitMs() - g_presCalibPit0;
+    const ulong cpmsS = (dPitS > 0) ? ((rdtsc() - g_presCalibTsc0) / dPitS) : 0;
+    klog("[sched] user_ms:");
     foreach (i; 0 .. MAX_TASKS) {
         if (g_schedCyc[i] == 0) continue;
         const ulong permil = g_schedCyc[i] * 1000 / total;
         if (permil < 5) continue;                 // hide <0.5%
-        klog(" t"); klog_dec(cast(ulong)i);
-        klog("="); klog_dec(permil);
-        klog("("); if (g_taskExecName[i] !is null) klog(g_taskExecName[i]); else klog("?"); klog(")");
+        klog(" t"); klog_dec(cast(ulong)i); klog(":");
+        if (g_taskExecName[i] !is null) klog(g_taskExecName[i]); else klog("?");
+        klog("="); klog_dec(cpmsS != 0 ? g_schedCyc[i] / cpmsS : 0UL); klog("ms");
     }
     klog("\n");
     foreach (i; 0 .. MAX_TASKS) { g_schedCyc[i] = 0; g_schedN[i] = 0; }
@@ -5146,8 +5153,15 @@ private void kernelLoop() {
                 g_syscallTagPrinted = true;
                 bootProgress("syscall");
             }
-            noteSyscallEntry(cast(uint)tid, x64LastSyscallRax);   // syscalls/frame: kernel overhead or userspace render?
+            // Capture nr BEFORE the call: dispatchSyscall writes the return value back and
+            // x64LastSyscallRax no longer names the syscall afterwards.
+            const ulong scNr = x64LastSyscallRax;
+            noteSyscallEntry(cast(uint)tid, scNr);
+            const ulong scT0 = rdtsc();
             dispatchSyscall(tid);
+            // Measures time in the HANDLER, not time blocked: a park (poll/futex) returns from
+            // dispatchSyscall immediately with the task marked waiting, so this stays a cost.
+            noteSyscallCost(cast(uint)tid, scNr, rdtsc() - scT0);
         } else if ((reason & 0x80) != 0) {
             // Hardware IRQ — irq0 pushes 0x80, irq1 → 0x81, …, irq12 → 0x8C
             uint irqIdx = cast(uint)(reason - 0x80);

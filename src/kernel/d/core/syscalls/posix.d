@@ -14259,11 +14259,22 @@ private void pollWaitStats() @nogc nothrow {
 // name matching) to name the specific call if there is a hot one.
 __gshared uint[MAX_TASKS] g_scTaskN;
 __gshared uint[512]       g_scNrN;
+// COUNT alone cannot close this: the compositor issues only ~105 syscalls per frame, which reads
+// as "syscalls are not the cost" -- except ~25 mmap + ~26 munmap of those land in the MemRegion
+// and page-table path, whose per-call cost is unknown and potentially large.  A few dozen
+// expensive calls and a cheap 50 ms of rasterisation look identical in a histogram of counts, and
+// they have opposite fixes.  So accumulate CYCLES per syscall number too, and let the ranking by
+// time -- not by frequency -- say where the frame actually goes.
+__gshared ulong[512]      g_scNrCyc;
 public void noteSyscallEntry(uint tid, ulong nr) @nogc nothrow {
     if (tid < MAX_TASKS && g_scTaskN[tid] != uint.max) ++g_scTaskN[tid];
     const int comp = (g_presenterTid >= 0) ? g_presenterTid : 0;
     if (cast(int)tid == comp && nr < 512 && g_scNrN[cast(size_t)nr] != uint.max)
         ++g_scNrN[cast(size_t)nr];
+}
+public void noteSyscallCost(uint tid, ulong nr, ulong cyc) @nogc nothrow {
+    const int comp = (g_presenterTid >= 0) ? g_presenterTid : 0;
+    if (cast(int)tid == comp && nr < 512) g_scNrCyc[cast(size_t)nr] += cyc;
 }
 private void syscallRateStats() @nogc nothrow {
     klog("[syscalls] comp="); klog_dec(cast(ulong)(g_presenterTid >= 0 ? g_presenterTid : 0));
@@ -14274,7 +14285,7 @@ private void syscallRateStats() @nogc nothrow {
         klog("="); klog_dec(cast(ulong)g_scTaskN[i]);
         g_scTaskN[i] = 0;
     }
-    klog("\n[syscalls] compositor top:");
+    klog("\n[syscalls] compositor by count:");
     for (int r = 0; r < 6; ++r) {
         int best = -1;
         for (int nr = 0; nr < 512; ++nr)
@@ -14283,7 +14294,30 @@ private void syscallRateStats() @nogc nothrow {
         klog(" nr"); klog_dec(cast(ulong)best); klog("="); klog_dec(cast(ulong)g_scNrN[best]);
         g_scNrN[best] = 0;
     }
-    for (int nr = 0; nr < 512; ++nr) g_scNrN[nr] = 0;
+    // Ranked by TIME, in microseconds, which is the ranking that decides the fix.  us_total is
+    // the whole interval's kernel time in that call; compare it against the ~5000 ms window and
+    // against the compositor's own [cputime] jiffies to see what fraction of the frame it is.
+    // Total first: if this sum is small next to the compositor's [cputime] jiffies, the frame is
+    // userspace rasterisation no matter how the individual calls rank.  That comparison is the
+    // whole point, so make it readable without arithmetic.
+    const ulong dPit2 = pitMs() - g_presCalibPit0;
+    const ulong cpms2 = (dPit2 > 0) ? ((rdtsc() - g_presCalibTsc0) / dPit2) : 0;
+    ulong sumCyc = 0;
+    for (int nr = 0; nr < 512; ++nr) sumCyc += g_scNrCyc[nr];
+    klog("\n[syscalls] compositor kernel_ms=");
+    klog_dec(cpms2 != 0 ? sumCyc / cpms2 : 0UL);
+    klog(" of 5000ms window   by time:");
+    for (int r = 0; r < 6; ++r) {
+        int best = -1;
+        for (int nr = 0; nr < 512; ++nr)
+            if (g_scNrCyc[nr] != 0 && (best < 0 || g_scNrCyc[nr] > g_scNrCyc[best])) best = nr;
+        if (best < 0) break;
+        klog(" nr"); klog_dec(cast(ulong)best); klog("=");
+        klog_dec(cpms2 != 0 ? (g_scNrCyc[best] * 1000) / cpms2 : g_scNrCyc[best]);
+        klog("us");
+        g_scNrCyc[best] = 0;
+    }
+    for (int nr = 0; nr < 512; ++nr) { g_scNrN[nr] = 0; g_scNrCyc[nr] = 0; }
     klog("\n");
 }
 

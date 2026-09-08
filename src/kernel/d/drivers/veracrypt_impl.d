@@ -1627,10 +1627,14 @@ public void installAutoIfRequested() {
     klog("[install] AUTOINSTALL (test image only): installing to idx=0x");
     klog_hex(idx); klog(" disksec=0x"); klog_hex(dsec); klog("\n");
 
-    if (installBootableToDisk(idx, dsec))
-        klog("[install] AUTOINSTALL complete -- reboot without the ISO to boot the installed system\n");
+    // Start the install the BATCHED way (like the GUI's first write to /config/install.action)
+    // and let the kernel-loop driver (kernel_main installStep tick) run it to completion — this
+    // exercises the same autonomous path that keeps a real GUI install from freezing when the
+    // desktop stalls. installStep logs "[install] DONE"/"FAIL" from the loop.
+    if (installBegin(idx, dsec))
+        klog("[install] AUTOINSTALL started; kernel loop is driving it to completion\n");
     else
-        klog("[install] AUTOINSTALL FAILED\n");
+        klog("[install] AUTOINSTALL FAILED to begin\n");
 }
 
 // INSTALLER diagnostics: the install's phase and byte counters, for /config/install.progress.

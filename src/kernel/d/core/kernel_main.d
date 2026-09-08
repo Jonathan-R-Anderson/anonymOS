@@ -56,7 +56,8 @@ import core.diskpart : gptPartProof, gptWriteProof;  // INSTALLER §D2(b): nativ
 import drivers.veracrypt_crypto : vcCryptoKat;       // INSTALLER §E2b: real kernel AES-256 + SHA-512
 import drivers.veracrypt_impl : bootHasInstallPayload,
                                 vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof,
-                                vcEncryptedInstallProof, vcFullInstallProof; // §E2b/§E3/§E4a/§E4b/full
+                                vcEncryptedInstallProof, vcFullInstallProof, // §E2b/§E3/§E4a/§E4b/full
+                                installStep;              // INSTALLER §D: autonomous install driver
 import core.install_cap : installCapProof;             // INSTALLER §E4c: one-shot block-write cap
 import core.acceptance : acceptanceRun;   // IMMUTABLE_ROOTLESS Phase 0.4 section-F gates
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
@@ -4992,6 +4993,14 @@ private void kernelLoop() {
         fsPersistTick(pitMs());// ROADMAP 1.2: flush /home if it changed, at most every 30 s
         freezeWatchdog();      // LOST-WAKEUP RECOVERY: un-park stalled sleepers so the compositor resumes
         maybeReapZombies();    // free leaked task slots (crash-loop zombies) so new apps/installer can spawn
+        // INSTALLER §D: advance an in-flight disk install AUTONOMOUSLY, from the kernel loop, so it
+        // completes regardless of the GUI. The desktop installer used to be the ONLY driver — it
+        // writes /config/install.action, each write advancing one batch — so the moment the ~1 fps
+        // compositor stalled, the install froze mid-write, leaving a disk with a GPT but a blank,
+        // unbootable ESP and no OS (VirtualBox then reports "failed to load Boot0002"). This runs
+        // under the BKL like the rest of the loop; installStep() no-ops when no install is active,
+        // and a bounded batch per pass keeps the compositor/scheduler responsive between writes.
+        installStep(2048);     // 1 MiB per loop pass
         maybeSpawnWaylandClient();
         // R2.5: GPU-test launchers OFF during Weston-GL bring-up — they contend with
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.

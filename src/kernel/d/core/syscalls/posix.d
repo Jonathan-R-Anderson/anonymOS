@@ -14245,6 +14245,48 @@ private void pollWaitStats() @nogc nothrow {
     klog("\n");
 }
 
+// ---------------------------------------------------------------------------
+// WHAT the compositor's CPU time is spent on: syscalls, or userspace rendering?
+//
+// Under real mouse input Hyprland burns ~63% of the core for 8 fps (~79 ms of its own CPU per
+// frame) against a 937 us present, so the cost is inside the compositor -- but "inside" splits
+// two ways, and the fix differs completely.  Thousands of syscalls per frame means kernel
+// round-trip overhead; a handful means the time is userspace rasterisation of the 1.02M-pixel
+// full-screen redraw, and damage tracking is the lever instead.
+//
+// Counted at the single dispatchSyscall() call site, and the syscall NUMBERS are histogrammed
+// for the compositor alone (g_presenterTid -- the task that last presented, so this needs no
+// name matching) to name the specific call if there is a hot one.
+__gshared uint[MAX_TASKS] g_scTaskN;
+__gshared uint[512]       g_scNrN;
+public void noteSyscallEntry(uint tid, ulong nr) @nogc nothrow {
+    if (tid < MAX_TASKS && g_scTaskN[tid] != uint.max) ++g_scTaskN[tid];
+    const int comp = (g_presenterTid >= 0) ? g_presenterTid : 0;
+    if (cast(int)tid == comp && nr < 512 && g_scNrN[cast(size_t)nr] != uint.max)
+        ++g_scNrN[cast(size_t)nr];
+}
+private void syscallRateStats() @nogc nothrow {
+    klog("[syscalls] comp="); klog_dec(cast(ulong)(g_presenterTid >= 0 ? g_presenterTid : 0));
+    foreach (i; 0 .. MAX_TASKS) {
+        if (g_scTaskN[i] == 0) continue;
+        klog(" t"); klog_dec(cast(ulong)i); klog(":");
+        { const(char)* n = g_taskExecName[i]; klog(n !is null ? n : "?".ptr); }
+        klog("="); klog_dec(cast(ulong)g_scTaskN[i]);
+        g_scTaskN[i] = 0;
+    }
+    klog("\n[syscalls] compositor top:");
+    for (int r = 0; r < 6; ++r) {
+        int best = -1;
+        for (int nr = 0; nr < 512; ++nr)
+            if (g_scNrN[nr] != 0 && (best < 0 || g_scNrN[nr] > g_scNrN[best])) best = nr;
+        if (best < 0) break;
+        klog(" nr"); klog_dec(cast(ulong)best); klog("="); klog_dec(cast(ulong)g_scNrN[best]);
+        g_scNrN[best] = 0;
+    }
+    for (int nr = 0; nr < 512; ++nr) g_scNrN[nr] = 0;
+    klog("\n");
+}
+
 __gshared uint[MAX_TASKS] g_freezeSchedHist;         // per-task times-scheduled, recent-weighted
 __gshared ulong g_freezeSchedSamples = 0;
 // Last syscall ENTERED (recorded in dispatchSyscall).  During a hard freeze the kernel loop is
@@ -14900,6 +14942,7 @@ public void presentProfStats() @nogc nothrow {
     // question "who had the core?" matters most, and returning first would hide it.
     cpuTimeStats();
     pollWaitStats();
+    syscallRateStats();
 
     if (g_presN == 0) { klog("[present] (idle: no frames this interval)\n"); return; }
     klog("[present]");

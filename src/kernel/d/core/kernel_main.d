@@ -5146,6 +5146,7 @@ private void kernelLoop() {
                 g_syscallTagPrinted = true;
                 bootProgress("syscall");
             }
+            noteSyscallEntry(cast(uint)tid, x64LastSyscallRax);   // syscalls/frame: kernel overhead or userspace render?
             dispatchSyscall(tid);
         } else if ((reason & 0x80) != 0) {
             // Hardware IRQ — irq0 pushes 0x80, irq1 → 0x81, …, irq12 → 0x8C

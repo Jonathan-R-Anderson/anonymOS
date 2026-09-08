@@ -6,11 +6,15 @@
 #
 # Prereq: `make stage-iso-tree` has populated cd/ (the boot tree). This script is idempotent.
 #
-# Usage:  scripts/mk-install-iso.sh [ESP_MiB]      (default 320; must exceed du(cd) + slack)
+# Usage:  scripts/mk-install-iso.sh [ESP_MiB]      (default 512; must exceed du(cd) + slack)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ESP_MB="${1:-320}"
+# Default raised 320 -> 512 when llvmpipe landed: JIT-compiling shaders means Mesa statically
+# links LLVM, which took the boot tree from ~335 MiB to 380 MiB and no longer fit.  The check
+# below is what caught it -- it refuses to build a too-small ESP rather than producing an image
+# that fails at install time.
+ESP_MB="${1:-512}"
 BOOTX64="deps/bdepend/boot/limine-bin/BOOTX64.EFI"
 PREBOOT_EFI="deps/veracrypt/build/preboot.efi"
 STAGE2_EFI="deps/veracrypt/build/stage2.efi"

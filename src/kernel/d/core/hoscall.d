@@ -1245,13 +1245,17 @@ public void hosPciVerbProof() {
     const long mmioBadWidth = hosQuery(HOSQ_MMIO_RD, 0x1000, 3, 0);   // width 3 is not legal
 
     // ── capability 3: virt->phys ──────────────────────────────────────────────────────────
-    // Translate a KERNEL address we already know the physical form of: g_hosAuditProofDone lives
-    // in the HHDM, so its physical address must be its virtual address minus the HHDM offset.
-    // Checking against an independently-derived answer, not against the verb's own output.
+    // Use a page whose physical address we KNOW because we just allocated it, and address it
+    // through the HHDM.  The first version of this check used a kernel global and subtracted
+    // hhdm_offset -- but kernel globals live in the kernel IMAGE mapping, not the HHDM, so the
+    // expected value was nonsense and the check failed against a verb that was working.  The
+    // expectation has to be derived independently AND correctly.
     import core.globals : hhdm_offset;
-    const ulong probeVa = cast(ulong)&g_l3ProofDone;
+    import memory.mm : alloc_phys_page;
+    const ulong probePhys = alloc_phys_page();
+    const ulong probeVa   = (probePhys == 0) ? 0 : (probePhys + hhdm_offset);
     const long  v2p     = hosQuery(HOSQ_VIRT2PHYS, probeVa, 0, 0);
-    const bool  v2pOk   = (v2p > 0) && (cast(ulong)v2p == probeVa - hhdm_offset);
+    const bool  v2pOk   = (probePhys != 0) && (v2p > 0) && (cast(ulong)v2p == probePhys);
     const long  v2pBad  = hosQuery(HOSQ_VIRT2PHYS, 0x00007f0000000000UL, 0, 0);  // unmapped
 
     const bool pass = (denied < 0) && (got == cast(long)expect) && (misaligned == -22)

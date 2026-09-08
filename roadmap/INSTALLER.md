@@ -851,7 +851,7 @@ a low-rate daemon maintaining live, correlated activity. *Deps:* §G (engine), H
 generator must never write a timestamp/PID/path that contradicts the rest of the decoy (the §G metadata
 invariants apply verbatim). *New:* `installer/decoy/fakelog/`. *Cx:* L. *Order:* 2.
 
-### H3 — Full-disk illusion driver (hide the hidden volume's space)
+### H3 — Full-disk illusion driver (hide the hidden volume's space)  ◑ LOGIC DONE + tested
 *Purpose:* make the decoy Linux believe it owns the **entire disk**, so neither the hidden volume's
 reserved space nor the partition geometry that brackets it is visible (unaccounted space, or a too-small
 "disk", is a tell). *Tasks:* a Linux **block shim / device-mapper target** that (a) reports the full disk
@@ -861,6 +861,21 @@ from-free random (the §E4a free-fill), writes into that region are redirected o
 *detecting* the hidden OS. *Deps:* §E (layout), §E4a (entropy fill), H1. *Security:* the protection map
 must not itself be discoverable from inside the decoy. *New:* a kernel module
 `installer/decoy/dm-fulldisk/`. *Cx:* L. *Order:* 3.
+
+**Status — the illusion accounting is implemented and tested; the enforcement layer awaits the
+decoy boot.** `deps/decoy/h3/hidden_protect.{c,h}` is the portable core the dm-target/init hook
+enforces: (a) `hp_reported_sectors()` returns the WHOLE disk (never shrunk → no too-small-disk / gap
+tell), `hp_used_sectors()` counts the hidden reserve as USED and `hp_free_sectors()` the remainder, so
+a booted decoy's `df`/`blockdev` show a full, fully-accounted disk with **no hidden-volume-sized free
+hole**; (b) the write-protect/read-passthrough filter is unchanged. `make -C deps/decoy h3` = 8/8
+(full capacity reported, hidden reserve used, used+free == disk, hidden volume uncorrupted +
+undetectable). The installer sizes the decoy filesystem to the visible partition via
+`DECOY_IMG_MB` (deps/decoy-os) so there is no small-fs-in-a-big-partition gap. **Two things remain,
+both gated on the decoy actually booting a real kernel (the E5/H1 payload):** wiring the accounting
+into a live device presentation, and — critically — placing that enforcement *below* the decoy (in
+the anonymOS/preboot layer, not a discoverable decoy-side `dmsetup` table, whose visible error-target
+over the hidden region would itself be the tell §H5 must prevent). H5 adjudicates the enforcement
+location.
 
 ### H4 — Conceal the generator (kernel-embedded, hidden from the process table)
 *Purpose:* hide H2's existence so an examiner with the decoy password **and root** cannot find the

@@ -1,6 +1,6 @@
-/* deps/decoy §H3 — validate the "protect hidden volume" filter: a coerced examiner inside
- * the decoy, using the outer volume's free space, can neither corrupt nor detect the hidden
- * volume living in it. */
+/* deps/decoy §H3 — validate (a) the full-disk illusion (the decoy sees the WHOLE disk, fully
+ * used, no hidden-volume-sized free hole) and (b) the "protect hidden volume" filter (a coerced
+ * examiner inside the decoy can neither corrupt nor detect the hidden volume living in it). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,8 +24,24 @@ int main(int argc, char **argv){
     for(uint64_t i=0;i<HSEC;i++) for(int j=0;j<SEC;j++) horig[i*SEC+j]=(uint8_t)(0x5A ^ (i*7+j));
     fseek(d,HSTART*SEC,SEEK_SET); fwrite(horig,1,HSEC*SEC,d); fflush(d);
 
-    HiddenProtect hp; hp_init(&hp,HSTART,HSEC);
+    HiddenProtect hp; hp_init(&hp,DISK,HSTART,HSEC);
 
+    /* ── (a) the disk illusion: what the booted decoy would report ────────────────── */
+    /* The decoy believes it owns the WHOLE disk — no shrink, so fdisk/blockdev show full size
+     * and there is no unaccounted region to explain. */
+    ok("decoy sees the FULL disk capacity (no too-small-disk / gap tell)",
+       hp_reported_sectors(&hp) == DISK);
+    /* Say the decoy's own filesystem occupies 4000 sectors. df's "used" must ALSO count the
+     * hidden reserve, and "free" must be the remainder — so no hidden-volume-sized free hole. */
+    const uint64_t DECOY_USED = 4000;
+    ok("hidden reserve is counted as USED (df shows no suspicious free hole)",
+       hp_used_sectors(&hp, DECOY_USED) == DECOY_USED + HSEC);
+    ok("free space = disk - decoy_used - hidden (the hidden space is never reported free)",
+       hp_free_sectors(&hp, DECOY_USED) == DISK - DECOY_USED - HSEC);
+    ok("used + free == full disk (every sector is accounted for)",
+       hp_used_sectors(&hp, DECOY_USED) + hp_free_sectors(&hp, DECOY_USED) == DISK);
+
+    /* ── (b) the protect filter: the decoy uses its disk but can't corrupt/detect the hidden vol ── */
     /* simulate a busy decoy: write decoy data across the WHOLE outer volume in 256-sec chunks */
     static uint8_t chunk[256*SEC]; memset(chunk,0xCC,sizeof chunk);
     int applied=0, refused=0, expect_refused=0;

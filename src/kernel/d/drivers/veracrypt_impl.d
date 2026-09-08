@@ -1608,6 +1608,40 @@ public void installBootableProof() {
 // about the test.
 __gshared bool g_autoInstallDone = false;
 
+// TEST-ONLY repro of the GUI Hidden-OS install: preseed the three boot-volume passwords and
+// begin a hidden install, so the kernel-loop driver can run it WHILE the desktop is up — the
+// exact scenario a user hits by clicking "Install now" with Hidden OS selected. Reproduces the
+// freeze (or confirms it is fixed) headlessly on the serial.
+@nogc nothrow
+public bool installBeginHiddenTest() {
+    import drivers.block.disk : diskFindTarget, diskStoreIndex;
+    void setpw(ref char[INST_SECRET_MAX] dst, ref uint dlen, string s) @nogc nothrow {
+        uint n = 0; foreach (c; s) { if (n < INST_SECRET_MAX) dst[n++] = c; } dlen = n;
+    }
+    g_instConfigHidden = true;
+    setpw(g_instHiddenPassword,    g_instHiddenPasswordLen,    "hidden-password");
+    setpw(g_instOuterPassword,     g_instOuterPasswordLen,     "outer-password");
+    setpw(g_instDecoyBootPassword, g_instDecoyBootPasswordLen, "decoy-boot-pw");
+    ulong dsec = 0;
+    int idx = diskFindTarget(dsec);
+    if (idx < 0) idx = diskStoreIndex(dsec);
+    if (idx < 0) { klog("[install] TEST hidden: no disk\n"); return false; }
+    return installBegin(idx, dsec);
+}
+
+// Called every main-loop pass; starts the delayed hidden test install once, only on a test image
+// that carries the "autoinstall-hidden" module, and only after the desktop has had time to come up.
+__gshared bool g_hiddenTestStarted = false;
+@nogc nothrow
+public void installMaybeStartHiddenTest(ulong nowMs) {
+    if (g_hiddenTestStarted || nowMs < 90000) return;
+    ulong phys, size;
+    if (!instFindModule("autoinstall-hidden", phys, size)) return;   // test image only
+    g_hiddenTestStarted = true;
+    klog("[install] TEST: delayed HIDDEN install starting from the loop (desktop is up)\n");
+    installBeginHiddenTest();
+}
+
 @nogc nothrow
 public void installAutoIfRequested() {
     if (g_autoInstallDone) return;

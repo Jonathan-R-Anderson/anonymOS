@@ -57,7 +57,9 @@ import drivers.veracrypt_crypto : vcCryptoKat;       // INSTALLER §E2b: real ke
 import drivers.veracrypt_impl : bootHasInstallPayload,
                                 vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof,
                                 vcEncryptedInstallProof, vcFullInstallProof, // §E2b/§E3/§E4a/§E4b/full
-                                installStep;              // INSTALLER §D: autonomous install driver
+                                installStep,              // INSTALLER §D: autonomous install driver
+                                installMaybeStartHiddenTest;   // TEST: delayed hidden-install repro
+__gshared ulong g_instDriveLastMs = 0;   // rate-limit the loop's install driver to 1 batch/ms
 import core.install_cap : installCapProof;             // INSTALLER §E4c: one-shot block-write cap
 import core.acceptance : acceptanceRun;   // IMMUTABLE_ROOTLESS Phase 0.4 section-F gates
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
@@ -4994,13 +4996,19 @@ private void kernelLoop() {
         freezeWatchdog();      // LOST-WAKEUP RECOVERY: un-park stalled sleepers so the compositor resumes
         maybeReapZombies();    // free leaked task slots (crash-loop zombies) so new apps/installer can spawn
         // INSTALLER §D: advance an in-flight disk install AUTONOMOUSLY, from the kernel loop, so it
-        // completes regardless of the GUI. The desktop installer used to be the ONLY driver — it
-        // writes /config/install.action, each write advancing one batch — so the moment the ~1 fps
-        // compositor stalled, the install froze mid-write, leaving a disk with a GPT but a blank,
-        // unbootable ESP and no OS (VirtualBox then reports "failed to load Boot0002"). This runs
-        // under the BKL like the rest of the loop; installStep() no-ops when no install is active,
-        // and a bounded batch per pass keeps the compositor/scheduler responsive between writes.
-        installStep(2048);     // 1 MiB per loop pass
+        // completes regardless of the GUI (the desktop installer used to be the only driver —
+        // batch-per-write — so a ~1 fps compositor stalled it mid-ESP, leaving an unbootable disk).
+        //
+        // RATE-LIMITED: a Hidden-OS install is heavy — XTS encryption plus a multi-GB CSPRNG
+        // random-fill of the whole outer volume. Driving a big batch EVERY pass monopolised the
+        // loop and FROZE the compositor for the entire install. So do a SMALL batch at most once
+        // per millisecond: ~128 KiB/ms ≈ 128 MB/s of install progress while leaving the bulk of
+        // each millisecond for the compositor and scheduler. installStep() no-ops when idle.
+        if (pitMs() != g_instDriveLastMs) {
+            g_instDriveLastMs = pitMs();
+            installStep(256);   // 128 KiB per ms, bounded so the UI stays responsive
+        }
+        installMaybeStartHiddenTest(pitMs());  // TEST image only: delayed hidden install repro
         maybeSpawnWaylandClient();
         // R2.5: GPU-test launchers OFF during Weston-GL bring-up — they contend with
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.

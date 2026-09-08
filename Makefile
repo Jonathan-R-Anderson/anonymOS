@@ -1384,6 +1384,11 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 		printf '\n    module_path: boot():/autoinstall\n' >> cd/boot/limine/limine.conf; \
 		echo "Included autoinstall trigger (TEST IMAGE -- will install to disk unattended)"; \
 	fi
+	@if [ "$(AUTOINSTALL_HIDDEN)" = "1" ]; then \
+		printf 'autoinstall-hidden' > cd/autoinstall-hidden; \
+		printf '\n    module_path: boot():/autoinstall-hidden\n' >> cd/boot/limine/limine.conf; \
+		echo "Included DELAYED HIDDEN autoinstall trigger (TEST IMAGE -- repros the GUI install after the desktop is up)"; \
+	fi
 
 	python3 scripts/build-boot-integrity-manifest.py cd $(BOOT_INTEGRITY_MANIFEST) \
 		--network "$(ZKSYNC_NETWORK)" \

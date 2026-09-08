@@ -53,7 +53,17 @@ UKI_STUB    := /usr/lib/systemd/boot/efi/linuxx64.efi.stub
 # lands. With tty0 last, the userspace banner goes to VGA and the serial boot-check sees nothing.
 UKI_CMDLINE ?= console=tty0 console=ttyS0,115200 rdinit=/init loglevel=4
 
-.PHONY: rootfs image verify consistency h4 uki boot-check clean
+.PHONY: rootfs image verify consistency h4 uki boot-check desktop-rootfs desktop-image desktop-boot-check clean
+
+# §H1 desktop cover story — a graphical XFCE daily-driver decoy. The CLI believability set stays;
+# these add a real Xorg + XFCE + Firefox stack (so booting the decoy lands in Alex's desktop).
+DROOT       := $(BLD)/desktop-rootfs
+DESKTOP_MB  ?= 3072
+DESKTOP_PKGS ?= alpine-base linux-lts xorg-server xf86-input-libinput xf86-video-modesetting \
+                mesa-dri-gallium mesa-egl mesa-gbm xfce4 xfce4-terminal thunar \
+                xfce4-screenshooter xfconf xfce4-settings dbus dbus-x11 elogind \
+                polkit-elogind firefox-esr font-dejavu ttf-dejavu adwaita-icon-theme \
+                hicolor-icon-theme gtk+3.0 networkmanager networkmanager-tui xinit e2fsprogs
 rootfs: $(BLD)/decoy-rootfs.tar.gz
 
 $(BLD) $(DL):
@@ -129,6 +139,51 @@ boot-check: uki
 	    -drive file=esp-uki.img,format=raw,if=ide \
 	    -serial file:serial-uki.log -display none -no-reboot >/dev/null 2>&1 || true; \
 	  tr -d '\0' < serial-uki.log | grep -aq 'DECOY-INIT-OK' && echo "  [PASS] decoy UKI boots real Alpine Linux to userspace" || { echo "  [FAIL] UKI did not reach userspace"; exit 1; }
+
+# ── §H1 desktop variant: believable rootfs + XFCE, autologin, rendering caches ──────────────
+$(DROOT)/.stamp: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd customize.sh customize-desktop.sh | $(BLD)
+	$(SUDO) rm -rf $(DROOT)
+	mkdir -p $(DROOT)
+	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(DROOT)
+	$(SUDO) $(BLD)/apk.static --root $(DROOT) --repository $(APKMAIN) --repository $(APKCOMM) \
+	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(DESKTOP_PKGS)
+	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
+	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
+	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(DROOT) $(BLD)/fakelogd "$(DECOY_PW)"
+	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
+	    $(SELF)/customize-desktop.sh $(DROOT)
+	$(SUDO) touch $(DROOT)/.stamp
+	@echo "[decoy-os] desktop rootfs built ($$($(SUDO) du -sh $(DROOT)|cut -f1))"
+desktop-rootfs: $(DROOT)/.stamp
+
+# pack the desktop rootfs into an ext4 image sized to the visible disk (§H3), + a module-carrying
+# initramfs that reaches the ext4 root on virtio-blk.
+KVER = $(shell $(SUDO) sh -c 'ls $(DROOT)/lib/modules 2>/dev/null | head -1')
+desktop-image: desktop-rootfs
+	$(SUDO) rm -f $(BLD)/decoy-desktop.ext4
+	$(SUDO) sh -c 'dd if=/dev/zero of=$(BLD)/decoy-desktop.ext4 bs=1M count=$(DESKTOP_MB) status=none && \
+	  mkfs.ext4 -q -L decoyroot -d $(DROOT) $(BLD)/decoy-desktop.ext4'
+	$(SUDO) cp $(DROOT)/boot/vmlinuz-lts $(BLD)/vmlinuz-decoy
+	$(SUDO) chown $(UGID) $(BLD)/decoy-desktop.ext4 $(BLD)/vmlinuz-decoy
+	@# module-carrying initramfs (Alpine .ko.gz -> gunzip -> /mod; init-disk multi-pass insmods)
+	@$(SUDO) rm -rf $(BLD)/dir && mkdir -p $(BLD)/dir/bin $(BLD)/dir/mod $(BLD)/dir/proc $(BLD)/dir/sys $(BLD)/dir/dev $(BLD)/dir/sysroot
+	@cp $(BLD)/busybox.static $(BLD)/dir/bin/busybox
+	@cp $(SELF)/initramfs/init-disk $(BLD)/dir/init && chmod +x $(BLD)/dir/init
+	@set -e; M=$(DROOT)/lib/modules/$(KVER)/kernel; for name in virtio virtio_ring \
+	   virtio_pci_modern_dev virtio_pci_legacy_dev virtio_pci virtio_blk crc16 crc32c_generic \
+	   libcrc32c mbcache jbd2 ext4; do \
+	   f=$$($(SUDO) find $$M -name "$$name.ko.gz" 2>/dev/null | head -1); \
+	   [ -n "$$f" ] && $(SUDO) sh -c "gunzip -c '$$f' > $(BLD)/dir/mod/$$name.ko" || true; done
+	@$(SUDO) chown -R $(UGID) $(BLD)/dir
+	@( cd $(BLD)/dir && find . | $(BLD)/busybox.static cpio -o -H newc 2>/dev/null | gzip > $(BLD)/initramfs-decoy.gz )
+	@echo "[decoy-os] desktop image: decoy-desktop.ext4 ($(DESKTOP_MB) MiB) + initramfs-decoy.gz + vmlinuz-decoy (kver $(KVER))"
+
+# boot the desktop image in QEMU and assert a real desktop RENDERED — a failed session leaves a
+# flat solid colour (near-zero variance); a painted XFCE desktop (wallpaper+panel) has high
+# variance. -vga virtio so screendump captures the DRM scanout, not just the legacy VGA plane.
+desktop-boot-check: desktop-image
+	@echo "--- §H1 decoy XFCE desktop boot (direct kernel boot, QMP screendump) ---"
+	@$(SELF)/desktop-boot-check.sh $(BLD)
 
 # Pack the rootfs into an ext4 image for the installer to encrypt into the decoy system partition.
 # DECOY_IMG_MB sizes the filesystem the decoy will believe it owns (§H3 disk-illusion — the

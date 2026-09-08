@@ -845,13 +845,28 @@ the decoy rootfs is written by §E4c.
 > hiding from third-party systems. The §H4 concealment is dual-use, so the security review (§H5) is
 > mandatory and treats *detectability of the concealment itself* as the primary risk.
 
-### H1 — The decoy Linux distribution
+### H1 — The decoy Linux distribution  ✅ BUILT (headless + graphical XFCE)
 *Purpose:* a real, believable decoy OS. *Tasks:* select a base distro (Debian/Arch-class); the installer
 images its rootfs into the **encrypted system partition** (§E4b) and registers it with the §E5 pre-boot
 loader (decoy password → chainload this Linux). *Critical:* it must be a *believable daily driver* —
 real installed packages, a plausible home dir, browser/app state — because an empty, pristine decoy is
 the single biggest tell that a hidden OS exists (E7/§G). *Deps:* §E4b/c, §E5. *Files:* `installer/`,
 `installer/decoy/`. *Cx:* M. *Order:* 1.
+
+**Status — a real, consistent, GRAPHICAL Alpine decoy (`deps/decoy-os`).** Two variants: `make rootfs`
+(headless: a genuine 153-package toolchain, `make consistency` proving every history tool is installed,
+the git repo the history uses exists, ssh state matches, machine-id is 32-hex, mtimes are varied — the
+tells a coerced examiner would hit) and `make desktop-rootfs` (the cover story the user picked: a full
+**XFCE desktop** — Xorg + xfce4 + Thunar + Firefox + NetworkManager, autologin to Alex's session).
+`make desktop-boot-check` boots it in QEMU and asserts the desktop actually **rendered** (screen-variance
+check; a failed session is a flat colour). Two build gotchas are captured in the tree: `apk --no-scripts`
+skips the post-install triggers, so the **gdk-pixbuf loader cache** must be rebuilt via chroot or the
+desktop paints nothing but the backdrop; and `alpine-base` (→ OpenRC) must be installed or `sysinit`
+never runs and there are no tty nodes. Everything stays deterministic and passes the §H4 tell-scan (no
+`*decoy*` artifact, no resident generator). **NOT yet wired:** booting this rootfs through the §E5d
+decrypt-and-boot path — the UKI initramfs must mount the *encrypted on-disk* rootfs (master-key handoff
+to a dm-crypt/switch_root), where the §H3 disk illusion also goes live. Today the desktop boots from a
+plain ext4 as the proof.
 
 ### H2 — The Linux fake-log generator program
 *Purpose:* a program inside the decoy Linux that backfills + maintains realistic fake history (logs,

@@ -1,0 +1,19 @@
+#!/bin/busybox sh
+# deps/decoy-os/initramfs/init-disk — PID 1 of the decoy DESKTOP initramfs. Loads just enough
+# modules to reach the ext4 root on virtio-blk, then hands off to the real Alpine init, which
+# brings up OpenRC -> autologin -> XFCE (roadmap/INSTALLER.md §H1).
+#
+# Alpine ships modules as .ko.gz; busybox insmod cannot read gzip, so the build gunzips the
+# needed ones into /mod. Insmod them in several passes so dependency order does not matter.
+B=/bin/busybox
+$B mount -t proc     proc /proc 2>/dev/null
+$B mount -t sysfs    sys  /sys  2>/dev/null
+$B mount -t devtmpfs dev  /dev  2>/dev/null
+for pass in 1 2 3 4; do for m in /mod/*.ko; do $B insmod "$m" 2>/dev/null; done; done
+for i in $($B seq 1 60); do [ -b /dev/vda ] && break; $B sleep 0.1; done
+$B echo "[decoy-initramfs] mounting root /dev/vda"
+if ! $B mount -t ext4 /dev/vda /sysroot; then
+  $B echo "[decoy-initramfs] ROOT MOUNT FAILED"; exec $B sh
+fi
+$B echo "[decoy-initramfs] switch_root -> the decoy Alpine"
+exec $B switch_root /sysroot /sbin/init

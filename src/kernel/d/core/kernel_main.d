@@ -392,10 +392,13 @@ private void wakePollers() @nogc nothrow {
             // a task left parked would have found nothing and re-parked on the spot.
             const int ep = g_pollEpfd[i];
             const ulong dl = g_pollDeadline[i];
-            const bool due = (dl != 0 && pitMs() >= dl);
+            const uint nowMs = cast(uint)pitMs();
+            const bool due = (dl != 0 && nowMs >= dl);
+            pollNoteParked(i, nowMs);   // measure how long this park really lasts
             if (ep >= 0) {
                 if (!due && !fdIsReadable(ep)) continue;   // nothing ready, not yet due: stay asleep
             } else if (!due && (g_wakeTick & (POLL_BACKSTOP_TICKS - 1)) != 0) {
+                pollNoteSkipped(i);     // a wake this call could have delivered, dropped by the mask
                 // ROADMAP 3.5b: poll() waiters -- RATE-LIMIT rather than filter.
                 //
                 // Filtering these the way epoll waiters are filtered does not work, and the
@@ -412,6 +415,7 @@ private void wakePollers() @nogc nothrow {
                 // own IRQ and completion paths call wakePollers() directly.
                 continue;
             }
+            pollNoteWoken(i, nowMs);
             g_tasks[i].waiting = false;
         }
     }

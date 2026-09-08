@@ -14195,6 +14195,56 @@ private void cpuTimeStats() @nogc nothrow {
     klog("\n");
 }
 
+// ---------------------------------------------------------------------------
+// HOW LONG each poll() park actually lasts, and how many wakes are dropped.
+//
+// The per-task CPU census showed the core 92% IDLE at ~1 fps, so the frame cost is not compute
+// anywhere -- it is latency between a task becoming wakeable and actually being woken.  The
+// suspect is the POLL_BACKSTOP_TICKS mask in wakePollers(): it skips a parked poll() waiter
+// unless (g_wakeTick & 7) == 0, and g_wakeTick advances on EVERY wakePollers() call -- the PIT
+// tick, both PS/2 IRQs, and the socket-peer wake a Wayland commit goes through.  Its comment
+// reasons about "every 8th tick ... bounding a missed wakeup at ~8ms", which only holds if the
+// counter advances at the tick rate and nothing else.  These counters test that claim directly:
+// parked_ms/wakes is the real average park, and skip counts what the mask threw away.
+__gshared uint[MAX_TASKS]  g_pollParkAt;      // pitMs when first observed parked (0 = not parked)
+__gshared ulong[MAX_TASKS] g_pollParkMsSum;
+__gshared uint[MAX_TASKS]  g_pollParkN;
+__gshared uint[MAX_TASKS]  g_pollParkMax;
+__gshared uint[MAX_TASKS]  g_pollSkipN;       // wakePollers reached it, mask dropped the wake
+public void pollNoteParked(uint tid, uint nowMs) @nogc nothrow {
+    if (tid < MAX_TASKS && g_pollParkAt[tid] == 0) g_pollParkAt[tid] = nowMs != 0 ? nowMs : 1;
+}
+public void pollNoteSkipped(uint tid) @nogc nothrow {
+    if (tid < MAX_TASKS && g_pollSkipN[tid] != uint.max) ++g_pollSkipN[tid];
+}
+public void pollNoteWoken(uint tid, uint nowMs) @nogc nothrow {
+    if (tid >= MAX_TASKS) return;
+    const uint at = g_pollParkAt[tid];
+    g_pollParkAt[tid] = 0;
+    if (at == 0 || nowMs < at) return;
+    const uint dur = nowMs - at;
+    g_pollParkMsSum[tid] += dur;
+    ++g_pollParkN[tid];
+    if (dur > g_pollParkMax[tid]) g_pollParkMax[tid] = dur;
+}
+private void pollWaitStats() @nogc nothrow {
+    klog("[pollwait]");
+    bool any = false;
+    foreach (i; 0 .. MAX_TASKS) {
+        if (g_pollParkN[i] == 0 && g_pollSkipN[i] == 0) continue;
+        any = true;
+        klog(" t"); klog_dec(cast(ulong)i); klog(":");
+        { const(char)* n = g_taskExecName[i]; klog(n !is null ? n : "?".ptr); }
+        klog(" avg="); klog_dec(g_pollParkN[i] != 0 ? g_pollParkMsSum[i] / g_pollParkN[i] : 0UL);
+        klog("ms max="); klog_dec(cast(ulong)g_pollParkMax[i]);
+        klog(" n="); klog_dec(cast(ulong)g_pollParkN[i]);
+        klog(" skipped="); klog_dec(cast(ulong)g_pollSkipN[i]);
+        g_pollParkMsSum[i] = 0; g_pollParkN[i] = 0; g_pollParkMax[i] = 0; g_pollSkipN[i] = 0;
+    }
+    if (!any) klog(" (none)");
+    klog("\n");
+}
+
 __gshared uint[MAX_TASKS] g_freezeSchedHist;         // per-task times-scheduled, recent-weighted
 __gshared ulong g_freezeSchedSamples = 0;
 // Last syscall ENTERED (recorded in dispatchSyscall).  During a hard freeze the kernel loop is
@@ -14849,6 +14899,7 @@ public void presentProfStats() @nogc nothrow {
     // BEFORE the idle early-return: "no frames this interval" is precisely the case where the
     // question "who had the core?" matters most, and returning first would hide it.
     cpuTimeStats();
+    pollWaitStats();
 
     if (g_presN == 0) { klog("[present] (idle: no frames this interval)\n"); return; }
     klog("[present]");

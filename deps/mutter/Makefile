@@ -266,6 +266,9 @@ $(MESON_CROSS): $(HOST_PY_STAMP) $(MUSL_CC) $(MUSL_CXX) $(CXXRT_STAMP) $(SELF)/M
 		if [ -n "$$WS" ]; then \
 			printf "wayland_scanner = '%s'\n" "$$WS"; \
 		fi; \
+		if [ -x "$(SYSROOT)/bin/llvm-config" ]; then \
+			printf "llvm-config = '%s'\\n" "$(SYSROOT)/bin/llvm-config"; \
+		fi; \
 		printf '\n[built-in options]\n'; \
 		printf "c_args = ['-O2', '-fPIC', '-I%s/include', '-I%s/include/freetype2', '-I%s/include/libpng16', '-I%s/include']\n" \
 			"$(SYSROOT)" "$(SYSROOT)" "$(SYSROOT)" "$(MUSL_INSTALL)"; \

@@ -12,7 +12,12 @@ module core.exports;
 // EGL_FALSE, i.e. no renderer at all.  Change this ONLY together with LLVMPIPE=1.
 //   softpipe  — default, always correct
 //   llvmpipe  — requires deps built with LLVMPIPE=1 (see BUILD_AND_TEST_AUTOMATION_ROADMAP C)
-__gshared immutable(char)* g_galliumDriver = "GALLIUM_DRIVER=softpipe\0".ptr;
+// Switched to llvmpipe 2026-09-07, together with the LLVMPIPE=1 dependency build -- the two MUST
+// move together, because naming a driver Mesa was not built with yields EGL_FALSE, i.e. no
+// renderer at all.  Verified before flipping: swrast_dri.so went from 0 to 204 occurrences of
+// "llvmpipe".  softpipe INTERPRETS every fragment; llvmpipe JITs the same shaders to x86-64.
+// To fall back, set this to softpipe -- Mesa still contains it, the switch is one string.
+__gshared immutable(char)* g_galliumDriver = "GALLIUM_DRIVER=llvmpipe\0".ptr;
 
 import memory.mm;
 import arch.x86_64.arch;

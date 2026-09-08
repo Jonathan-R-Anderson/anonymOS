@@ -78,8 +78,24 @@ public ulong userVirtToPhys(int taskId, ulong va) {
 public ulong activeVirtToPhys(ulong va) {
     const ulong pml4 = x64ReadCR3() & PTE_ADDR_MASK;
     auto pte = leafPTEPtr(pml4, va & ~0xFFFUL);
-    if (pte is null || !(*pte & PTE_PRESENT)) return 0;
-    return (*pte & PTE_ADDR_MASK) | (va & 0xFFF);
+    if (pte !is null && (*pte & PTE_PRESENT)) return (*pte & PTE_ADDR_MASK) | (va & 0xFFF);
+    // leafPTEPtr only resolves 4K leaves and returns null the moment it meets a PS bit, so a
+    // HUGE-page mapping translated as "not present".  The HHDM is mapped with large pages, which
+    // made this return 0 for perfectly valid kernel addresses -- and a DMA path that silently
+    // reports "no physical address" for a large-page buffer would be a real defect, not just a
+    // failing test.  Walk again, honouring 1 GiB and 2 MiB leaves.
+    auto p4 = cast(ulong*)(pml4 + hhdm_offset);
+    const ulong e4 = p4[(va >> 39) & 0x1FF];
+    if (!(e4 & PTE_PRESENT)) return 0;
+    auto p3 = cast(ulong*)((e4 & PTE_ADDR_MASK) + hhdm_offset);
+    const ulong e3 = p3[(va >> 30) & 0x1FF];
+    if (!(e3 & PTE_PRESENT)) return 0;
+    if (e3 & PTE_PS) return (e3 & PTE_ADDR_MASK & ~0x3FFFFFFFUL) | (va & 0x3FFFFFFFUL);  // 1 GiB
+    auto p2 = cast(ulong*)((e3 & PTE_ADDR_MASK) + hhdm_offset);
+    const ulong e2 = p2[(va >> 21) & 0x1FF];
+    if (!(e2 & PTE_PRESENT)) return 0;
+    if (e2 & PTE_PS) return (e2 & PTE_ADDR_MASK & ~0x1FFFFFUL) | (va & 0x1FFFFFUL);       // 2 MiB
+    return 0;
 }
 
 // Walk PML4 entries 0..255 (user space) and deep-copy every mapped page

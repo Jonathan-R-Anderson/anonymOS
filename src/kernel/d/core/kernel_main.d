@@ -2588,6 +2588,15 @@ __gshared bool g_dualIdProofDone = false;
 private void maybeProveDualIdentity() {
     import core.domain : domainByName, domainSpawnInto, domainById, domainSessionId;
     if (g_dualIdProofDone) return;
+    // LIVE MEDIA ONLY.  These spawns exist to PROVE the identity model -- wl-calc in BankVault,
+    // wl-clocks in Throwaway, xid-test probing the cross-identity gate.  They are diagnostics, and
+    // on an installed system they are three windows the user did not ask for, competing for a
+    // software-rendered desktop's first frames.  An installed system autostarts the Domain Manager
+    // and nothing else.
+    {
+        import drivers.veracrypt_impl : bootHasInstallPayload;
+        if (!bootHasInstallPayload()) { g_dualIdProofDone = true; return; }
+    }
     if (pitMs() < 30_000) return;              // let the desktop settle first
     // Wait for the dbus listener rather than guessing a delay.  The first run of the gate proof
     // fired at 30s, before dbus had bound, and xid-test correctly reported errno=111 INCONCLUSIVE

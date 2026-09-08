@@ -1820,8 +1820,14 @@ private void spawnWaylandClients() {
         {
             import drivers.veracrypt_impl : bootHasInstallPayload;
             if (!bootHasInstallPayload()) {
+                // An INSTALLED system starts the Domain Manager and NOTHING else.  wl-cairo-demo
+                // was a second window opening on every boot of an installed machine -- a demo
+                // client, not something a user asked for, and on a software-rendered desktop a
+                // second surface costs real first-frame time.  It is still launchable on demand.
+                //
+                // wl-layer-bar above stays: it is the top bar, i.e. the desktop shell itself,
+                // not an application window.
                 spawnWaylandProgram("wl-domain-manager\0".ptr, "[dm]\0".ptr);
-                spawnWaylandProgram("wl-cairo-demo\0".ptr, "[g11]\0".ptr);
             }
         }
     }

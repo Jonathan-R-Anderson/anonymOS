@@ -4882,6 +4882,7 @@ bool kernelIrqDrainBottomHalf() @nogc nothrow {
         g_kirqTickDue = false;
         increment_ticks();
         cpuAccountTick(g_idleTid >= 0 && g_current_task_id == cast(ulong)g_idleTid);
+        cpuAccountTaskTick(cast(uint)g_current_task_id);   // same jiffy, attributed to a NAME
         networkStackPoll();
         resched = true;
     }
@@ -5165,6 +5166,7 @@ private void kernelLoop() {
                     // Sample who was running for /proc/stat.  g_idleTid is -1 before the idle
                     // task exists, which never equals a valid task id, so early ticks count busy.
                     cpuAccountTick(g_idleTid >= 0 && g_current_task_id == cast(ulong)g_idleTid);
+                    cpuAccountTaskTick(cast(uint)g_current_task_id);   // same jiffy, attributed to a NAME
                     // SMP_ROADMAP S4.4d: surface the AP task's parallel getpid progress from HERE.
                     if (g_apSyscallCount != 0 && (++g_apPitLogCtr % 2000) == 0) {
                         if (g_apActivatedIdx != 0) sendApIpi(apActivatedLapicId(), 0x40);

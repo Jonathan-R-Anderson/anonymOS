@@ -14151,6 +14151,50 @@ public __gshared int   g_lastSigSig  = 0;            // last signal delivered: s
 public __gshared int   g_lastSigFrom = -1;           // …sender tid…
 public __gshared int   g_lastSigTo   = -1;           // …target tid…
 public __gshared ulong g_lastSigMs   = 0;            // …at pitMs
+// ---------------------------------------------------------------------------
+// PER-TASK CPU TIME, sampled at the 1 kHz PIT tick.
+//
+// Every other counter in this file counts EVENTS -- presents queued, poll() calls, times-
+// scheduled.  None counts TIME, so none can tell a task that is scheduled 570 times and burns a
+// full slice from one that is scheduled 570 times and parks immediately.  g_freezeSchedHist just
+// below is exactly that kind of counter, and its "HOG:" line has been read as a CPU attribution
+// it cannot support.
+//
+// That distinction is the whole question behind the 1.25 s frame gap: present_us measures under
+// 1 ms, so ~99.9% of a frame is spent somewhere none of these counters can see.  Sampled at the
+// same 1 kHz point that feeds /proc/stat, so a jiffy here is the same jiffy there and these
+// per-task counts sum to the cpuBusyJiffies()+cpuIdleJiffies() delta over the same window.
+__gshared uint[MAX_TASKS] g_cpuJifTask;
+__gshared uint            g_cpuJifTotal;
+public void cpuAccountTaskTick(uint tid) @nogc nothrow {
+    if (tid < MAX_TASKS) ++g_cpuJifTask[tid];
+    ++g_cpuJifTotal;
+}
+// Printed as tid:name=jiffies(permil), so 1000 = that task held the core for the whole window.
+// The idle task is a real task and appears by name like any other -- its share IS the answer to
+// "is the core busy or asleep between frames?", which no existing counter reports.
+private void cpuTimeStats() @nogc nothrow {
+    import core.kernel_main : g_idleTid;
+    klog("[cputime] jif="); klog_dec(g_cpuJifTotal);
+    klog(" idletid="); klog_dec(cast(ulong)(g_idleTid < 0 ? 0 : g_idleTid));
+    for (int r = 0; r < 8; ++r) {
+        int best = -1;
+        for (int i = 0; i < MAX_TASKS; ++i)
+            if (g_cpuJifTask[i] != 0 && (best < 0 || g_cpuJifTask[i] > g_cpuJifTask[best])) best = i;
+        if (best < 0) break;
+        klog(" "); klog_dec(cast(ulong)best); klog(":");
+        { const(char)* n = g_taskExecName[best]; klog(n !is null ? n : "?".ptr); }
+        klog("="); klog_dec(g_cpuJifTask[best]);
+        if (g_cpuJifTotal != 0) {
+            klog("("); klog_dec((cast(ulong)g_cpuJifTask[best] * 1000) / g_cpuJifTotal); klog(")");
+        }
+        g_cpuJifTask[best] = 0;              // consumed, so the next pass finds the next-biggest
+    }
+    for (int i = 0; i < MAX_TASKS; ++i) g_cpuJifTask[i] = 0;
+    g_cpuJifTotal = 0;
+    klog("\n");
+}
+
 __gshared uint[MAX_TASKS] g_freezeSchedHist;         // per-task times-scheduled, recent-weighted
 __gshared ulong g_freezeSchedSamples = 0;
 // Last syscall ENTERED (recorded in dispatchSyscall).  During a hard freeze the kernel loop is
@@ -14801,7 +14845,13 @@ public void presentProfStats() @nogc nothrow {
     klog(" wall_ms="); klog_dec(wallMs);
     klog(" fps_x100="); klog_dec(wallMs != 0 ? (g_presN * 100000UL) / wallMs : 0UL);
 
-    if (g_presN == 0) { klog(" (idle: no frames this interval)\n"); return; }
+    klog("\n");
+    // BEFORE the idle early-return: "no frames this interval" is precisely the case where the
+    // question "who had the core?" matters most, and returning first would hide it.
+    cpuTimeStats();
+
+    if (g_presN == 0) { klog("[present] (idle: no frames this interval)\n"); return; }
+    klog("[present]");
 
     // cycles<->ms calibration over the whole run (clean PIT ms).
     const ulong dPit = pitMs() - g_presCalibPit0;

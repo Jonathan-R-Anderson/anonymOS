@@ -43,3 +43,9 @@ require  [4.1] identity painted: color=00000000ff2e7d32
 # 4.1 made these rules gate every cross-identity AF_UNIX connect, so a declared allow-rule that
 # never arrived was a policy the running system did not have.
 require  [cfg] ipc rule applied: Personal -> System
+
+# Object-table exhaustion is a silent, delayed killer: objAlloc returns 0, publishActiveFd clears
+# the fd's capability, and every later open/read/write fails EBADF far from the leak.  It stalled
+# the GUI installer at ~5% for an unknown length of time before removeRegion's swap-remove was
+# found to orphan a MemRegion per unmap.  Never let it recur unnoticed.
+forbid   [objmgr] OBJECT TABLE EXHAUSTED

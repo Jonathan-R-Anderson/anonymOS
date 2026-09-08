@@ -22,7 +22,16 @@
 -- host's own values apply unchanged.  That is what makes the guest look like the host, and it no
 -- longer requires deleting this file by hand.
 
-local softpipe = os.getenv("GALLIUM_DRIVER") == "softpipe"
+-- Test for ANY software rasteriser, not the one literal string "softpipe".
+--
+-- This gate guards every cost reduction below (blur, shadow, rounding, dim_inactive, animation
+-- playback), and it read `== "softpipe"` while the kernel exports GALLIUM_DRIVER=llvmpipe
+-- (src/kernel/d/core/exports.d:20).  So the entire block became dead the moment the rasteriser
+-- was switched: llvmpipe got a faster rasteriser AND, silently, all the expensive effects back.
+-- No error, no log line -- the block simply stopped executing.  Both drivers are CPU rasterisers
+-- with the same reason to want these off, so ask what the driver IS, not what it is called.
+local drv      = os.getenv("GALLIUM_DRIVER")
+local softpipe = (drv == "softpipe" or drv == "llvmpipe")
 
 -- Host runs a HiDPI laptop panel at scale 1.25.  Kept at 1 on BOTH paths deliberately: at this
 -- VM's 1280x800 a 1.25 scale yields a cramped 1024x640 logical desktop, which looks less like the

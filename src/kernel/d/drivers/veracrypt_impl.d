@@ -1636,7 +1636,7 @@ __gshared bool g_hiddenTestStarted = false;
 public void installMaybeStartHiddenTest(ulong nowMs) {
     if (g_hiddenTestStarted || nowMs < 90000) return;
     ulong phys, size;
-    if (!instFindModule("autoinstall-hidden", phys, size)) return;   // test image only
+    if (!instFindModule("hiddeninstall-test", phys, size)) return;   // test image only
     g_hiddenTestStarted = true;
     klog("[install] TEST: delayed HIDDEN install starting from the loop (desktop is up)\n");
     installBeginHiddenTest();

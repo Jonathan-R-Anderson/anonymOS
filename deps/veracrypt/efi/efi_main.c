@@ -172,15 +172,20 @@ static void decrypt_and_boot(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_I
     vc_xts_decrypt(desc, 512, 0, key, key+32);
     for (int i=0;i<8;i++) if (desc[i]!=MAGIC[i]){ ss("[preboot-efi] boot: no bootable payload here\n"); return; }
     u64 plen = le64(desc+8);
-    if (plen < 512 || plen > (16ULL<<20)){ ss("[preboot-efi] boot: bad payload size\n"); return; }
+    /* upper bound is a sanity cap, not a design limit — a real decoy UKI (kernel + initramfs)
+     * runs tens of MB; 128 MiB leaves room for a full embedded rootfs. */
+    if (plen < 512 || plen > (128ULL<<20)){ ss("[preboot-efi] boot: bad payload size\n"); return; }
     u64 nsec = (plen + 511)/512;
     void *buf=0;
     if (BS->AllocatePool(2 /*LoaderData*/, nsec*512, &buf)!=0){ ss("[preboot-efi] boot: alloc failed\n"); return; }
     u8 *p = (u8*)buf;
-    for (u64 i=0;i<nsec;i++){
-        if (!read_lba(bio, region_lba+1+i, p+i*512)){ ss("[preboot-efi] boot: payload read failed\n"); return; }
+    /* Read the WHOLE payload in one ReadBlocks — a multi-MB kernel is tens of thousands of
+     * sectors, and one firmware round-trip per sector is minutes of latency. Then XTS-decrypt
+     * each 512-byte data unit (unit = its offset within the region, matching the installer). */
+    if (bio->ReadBlocks(bio, bio->Media->MediaId, region_lba+1, nsec*512, p)!=0){
+        ss("[preboot-efi] boot: payload read failed\n"); return; }
+    for (u64 i=0;i<nsec;i++)
         vc_xts_decrypt(p+i*512, 512, 1+i, key, key+32);
-    }
     EFI_HANDLE img=0;
     if (BS->LoadImage(0, Image, 0, buf, plen, &img)!=0){ ss("[preboot-efi] boot: LoadImage failed\n"); return; }
     ss("[preboot-efi] decrypted the OS bootloader; starting it...\n");

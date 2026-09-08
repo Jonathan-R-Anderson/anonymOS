@@ -67,17 +67,22 @@ try:
 
     ok = wait_for(verdict, 15)
     checks = [("routing verdict %r"%verdict, ok)]
+    # The marker proving the decrypted payload actually RAN. Default is the stage2 test stub;
+    # BOOT_MARKER overrides it for a real payload (e.g. "DECOY-INIT-OK" from the Alpine UKI),
+    # which can take longer to reach userspace, so BOOT_TIMEOUT is generous.
+    marker = os.environ.get("BOOT_MARKER", "STAGE2 RUNNING")
+    btmo = int(os.environ.get("BOOT_TIMEOUT", "12"))
     if booted:
-        dec = wait_for("decrypted the OS bootloader", 12)
-        run = wait_for("STAGE2 RUNNING", 12)
+        dec = wait_for("decrypted the OS bootloader", btmo)
+        run = wait_for(marker, btmo)
         checks += [("decrypted payload off raw disk", dec),
-                   ("decrypted bootloader actually ran", run)]
+                   ("decrypted bootloader actually ran (%s)"%marker, run)]
     else:
         # a rejected password must NOT decrypt or start anything
         time.sleep(3)
         lg = readlog()
         checks += [("no bootloader decrypted on REJECT", "decrypted the OS bootloader" not in lg),
-                   ("no payload ran on REJECT", "STAGE2 RUNNING" not in lg)]
+                   ("no payload ran on REJECT", marker not in lg)]
     allok = all(c for _,c in checks)
     for name,c in checks: print("  [%s] %s"%("PASS" if c else "FAIL", name))
     print("E5d decrypt-and-boot (pw=%r want=%s): %s"%(pw, want, "PASS" if allok else "FAIL"))

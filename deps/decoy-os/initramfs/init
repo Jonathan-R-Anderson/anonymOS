@@ -1,0 +1,21 @@
+#!/bin/busybox sh
+# deps/decoy-os/initramfs/init — PID 1 of the decoy Alpine UKI (roadmap/INSTALLER.md §E5d/§H1).
+#
+# The decoy boots as a real Alpine Linux kernel: the §E5 pre-boot loader decrypts this UKI
+# (kernel + this initramfs + cmdline, one PE) off the encrypted disk and StartImages it. This
+# init proves userspace is reached; the marker below is what the OVMF boot-check asserts.
+#
+# NEXT (documented, not yet wired): pivot into the believable on-disk decoy rootfs
+# (deps/decoy-os, the lived-in Alpine with the user/history/packages). That rootfs is
+# XTS-encrypted in the decoy system partition, so it needs the master key the pre-boot loader
+# holds handed forward (EFI variable / dm-crypt), or the rootfs embedded here and switch_root'd.
+/bin/busybox mount -t proc     proc /proc 2>/dev/null
+/bin/busybox mount -t sysfs    sys  /sys  2>/dev/null
+/bin/busybox mount -t devtmpfs dev  /dev  2>/dev/null
+
+/bin/busybox echo ""
+/bin/busybox echo "==== DECOY ALPINE LINUX: userspace reached via decrypt-and-boot ===="
+/bin/busybox echo "kernel: $(/bin/busybox uname -sr)"
+/bin/busybox echo "==== DECOY-INIT-OK ===="
+
+exec /bin/busybox sh

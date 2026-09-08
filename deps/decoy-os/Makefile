@@ -44,7 +44,16 @@ DECOY_IMG_MB ?= 256
 SUDO := $(shell [ "$$(id -u)" -eq 0 ] || echo sudo)
 UGID := $(shell id -u):$(shell id -g)
 
-.PHONY: rootfs image verify consistency h4 clean
+VMLINUZ_URL := https://dl-cdn.alpinelinux.org/alpine/$(ALPINE_BRANCH)/releases/$(ALPINE_ARCH)/netboot/vmlinuz-lts
+# The decoy is booted as a self-contained UKI (kernel + initramfs + cmdline, one PE) that the
+# §E5 pre-boot loader decrypts off the encrypted disk and StartImages — no LoadOptions reach the
+# kernel, so everything must be embedded. Needs ukify + systemd-boot's linuxx64.efi.stub.
+UKI_STUB    := /usr/lib/systemd/boot/efi/linuxx64.efi.stub
+# NB: ttyS0 must be the LAST console= — the last one becomes /dev/console, where PID 1's stdout
+# lands. With tty0 last, the userspace banner goes to VGA and the serial boot-check sees nothing.
+UKI_CMDLINE ?= console=tty0 console=ttyS0,115200 rdinit=/init loglevel=4
+
+.PHONY: rootfs image verify consistency h4 uki boot-check clean
 rootfs: $(BLD)/decoy-rootfs.tar.gz
 
 $(BLD) $(DL):
@@ -79,6 +88,47 @@ $(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd 
 	$(SUDO) tar -czf $@ -C $(ROOTFS) .
 	$(SUDO) chown $(UGID) $@
 	@echo "[decoy-os] built $@ ($$(du -h $@ | cut -f1)), $$(wc -l < $(ROOTFS)/etc/apk/world) pkgs in world, seeded with the §H2 fake history"
+
+# ── §E5d/§H1 — the bootable decoy UKI (real Alpine kernel, decrypt-and-booted) ──────────────
+$(DL)/vmlinuz-lts: | $(DL)
+	curl -fL -o $@ $(VMLINUZ_URL)
+
+# a static busybox for the initramfs PID 1 (extracted from the busybox-static apk)
+$(BLD)/busybox.static: | $(BLD)
+	@BB=$$(curl -fsSL $(APKMAIN)/$(ALPINE_ARCH)/ | grep -oE 'busybox-static-[0-9][0-9.p_r-]+\.apk' | head -1); \
+	  test -n "$$BB" || { echo "[decoy-os] cannot find busybox-static in repo index"; exit 1; }; \
+	  echo "[decoy-os] fetching $$BB"; \
+	  curl -fsSL "$(APKMAIN)/$(ALPINE_ARCH)/$$BB" | tar -xzO bin/busybox.static > $@; chmod +x $@
+
+# the initramfs: static busybox + our /init (deps/decoy-os/initramfs/init)
+$(BLD)/initramfs.gz: $(BLD)/busybox.static initramfs/init | $(BLD)
+	@rm -rf $(BLD)/ir && mkdir -p $(BLD)/ir/bin $(BLD)/ir/proc $(BLD)/ir/sys $(BLD)/ir/dev
+	@cp $(BLD)/busybox.static $(BLD)/ir/bin/busybox
+	@cp $(SELF)/initramfs/init $(BLD)/ir/init && chmod +x $(BLD)/ir/init
+	@( cd $(BLD)/ir && find . | $(BLD)/busybox.static cpio -o -H newc 2>/dev/null | gzip -9 > $(BLD)/initramfs.gz )
+	@echo "[decoy-os] built initramfs.gz ($$(du -h $(BLD)/initramfs.gz | cut -f1))"
+
+$(BLD)/decoy-uki.efi: $(DL)/vmlinuz-lts $(BLD)/initramfs.gz | $(BLD)
+	@test -f $(UKI_STUB) || { echo "[decoy-os] missing $(UKI_STUB) — apt install systemd-boot-efi systemd-ukify"; exit 1; }
+	ukify build --linux=$(DL)/vmlinuz-lts --initrd=$(BLD)/initramfs.gz \
+	    --cmdline="$(UKI_CMDLINE)" --stub=$(UKI_STUB) --output=$@
+	@echo "[decoy-os] built decoy-uki.efi ($$(du -h $@ | cut -f1)) — a self-contained bootable Alpine PE"
+uki: $(BLD)/decoy-uki.efi
+
+# boot the UKI directly in OVMF (no encryption) and assert it reaches Alpine userspace — proves
+# the UKI itself is bootable, independent of the §E5 decrypt path (which decrypt-boot-check covers).
+boot-check: uki
+	@echo "--- §H1 decoy UKI direct-boot (OVMF) ---"
+	@cd $(BLD) && rm -f esp-uki.img serial-uki.log && dd if=/dev/zero of=esp-uki.img bs=1M count=64 status=none && \
+	  mformat -i esp-uki.img -F :: && mmd -i esp-uki.img ::/EFI ::/EFI/BOOT && \
+	  mcopy -i esp-uki.img decoy-uki.efi ::/EFI/BOOT/BOOTX64.EFI && \
+	  cp /usr/share/OVMF/OVMF_VARS_4M.fd vars-uki.fd && \
+	  timeout 70 qemu-system-x86_64 -enable-kvm -m 1024 \
+	    -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+	    -drive if=pflash,format=raw,file=vars-uki.fd \
+	    -drive file=esp-uki.img,format=raw,if=ide \
+	    -serial file:serial-uki.log -display none -no-reboot >/dev/null 2>&1 || true; \
+	  tr -d '\0' < serial-uki.log | grep -aq 'DECOY-INIT-OK' && echo "  [PASS] decoy UKI boots real Alpine Linux to userspace" || { echo "  [FAIL] UKI did not reach userspace"; exit 1; }
 
 # Pack the rootfs into an ext4 image for the installer to encrypt into the decoy system partition.
 # DECOY_IMG_MB sizes the filesystem the decoy will believe it owns (§H3 disk-illusion — the

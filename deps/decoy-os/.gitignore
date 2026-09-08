@@ -1,2 +1,5 @@
 build/
 dl/
+# UKI build artifacts (fetched kernel/busybox, generated initramfs/UKI, OVMF scratch)
+/dl/vmlinuz-lts
+/build/

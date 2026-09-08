@@ -537,10 +537,22 @@ carries **only `preboot.efi`**, so a running payload can *only* have come from d
 veracrypt decrypt-boot-check` boots it in OVMF and drives the prompt via QMP: **`decoy-password`
 decrypts + runs the decoy bootloader**, **`hidden-password` the hidden one**, and a **wrong password
 reaches the boot path with no key and boots nothing** (`access denied`; nothing decrypted; `STAGE2
-RUNNING` absent) — 3/3. `efi_stage2.c` remains only as the *test payload* both routes boot; the
-mechanism is real. **Remaining E5/H1 gap:** swap that test PE for the real per-OS payloads — an Alpine
-EFI-stub kernel (decoy) and the EpinAnonymOS loader (hidden) — now "supply a bigger PE", not "invent the
-hand-off".
+RUNNING` absent) — 3/3. `efi_stage2.c` remains only as the fast *mechanism-test payload*
+`decrypt-boot-check` uses.
+
+**The decoy now boots REAL Alpine Linux via this path (E5/H1 handoff — done for the decoy).**
+`deps/decoy-os` builds a self-contained **UKI** (`make uki` → `decoy-uki.efi`): the Alpine
+`vmlinuz-lts` (6.6 LTS) + a busybox initramfs (`initramfs/init`) + an embedded cmdline, one PE —
+necessary because `StartImage` passes no LoadOptions, so kernel/initrd/cmdline must all live inside
+the image. `make boot-check` direct-boots it in OVMF to userspace; encrypted as the decoy payload
+(`make -C deps/veracrypt mkinstall PAYLOAD=…/decoy-uki.efi`) it decrypt-and-boots end-to-end:
+`decoy-password` → unlock → decrypt the 12 MB UKI off the raw disk → `StartImage` → **`Linux version
+6.6.110 … Run /init … DECOY-INIT-OK`**, with `hidden-password` booting its payload and a wrong
+password booting nothing. (efi_main.c reads the whole payload in one `ReadBlocks` — per-sector was
+minutes — and the size cap is 128 MiB to fit a full embedded rootfs.) **Remaining:** the UKI's init
+reaches a shell to *prove* the boot; pivoting it into the believable on-disk decoy rootfs
+(deps/decoy-os) needs the master key handed forward to a dm-crypt mount (or the rootfs embedded +
+`switch_root`), and the HIDDEN payload still needs to become the real EpinAnonymOS loader.
 
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:

@@ -31,13 +31,20 @@ preboot_verdict preboot_authenticate(const char *password,
     preboot_verdict v = PREBOOT_REJECT;
     /* No early-out: try every candidate against BOTH headers, so the work — and thus the
      * timing — is the same shape whether the password is decoy, hidden, a typo, or wrong:
-     * a wrong password must be indistinguishable from "there is no hidden OS here". */
+     * a wrong password must be indistinguishable from "there is no hidden OS here".
+     *
+     * DENIABILITY: typo-correction lands ONLY on the decoy — the hidden OS is accepted only for
+     * the EXACT typed password (candidate 0), so a fumbled password can reach the decoy or a
+     * reject but NEVER the hidden OS. A coerced user who transposes a character of the decoy
+     * password must not thereby unlock the hidden system in front of their coercer. Both headers
+     * are still opened every candidate (work unchanged); only the hidden MATCH is narrowed.
+     * Kept in lock-step with deps/veracrypt/efi/efi_vc.c. */
     for (int c=0;c<nc;c++){
         uint8_t kd[256], kh[256];
         int okd = (vc_open_header(cand[c], decoyHeader,  kd) == 0);
         int okh = (vc_open_header(cand[c], hiddenHeader, kh) == 0);
         if (okd && v==PREBOOT_REJECT){ memcpy(outMasterKey, kd, 256); v=PREBOOT_DECOY;  }
-        if (okh && v==PREBOOT_REJECT){ memcpy(outMasterKey, kh, 256); v=PREBOOT_HIDDEN; }
+        if (okh && c==0 && v==PREBOOT_REJECT){ memcpy(outMasterKey, kh, 256); v=PREBOOT_HIDDEN; }
     }
     return v;
 }

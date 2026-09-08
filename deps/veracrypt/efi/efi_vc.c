@@ -161,14 +161,22 @@ int preboot_authenticate(const char*pw,const unsigned char decoy[512],const unsi
     static char cand[64][128];      /* static: keep the 8 KB off the stack (no __chkstk in freestanding EFI) */
     int nc = vc_typo_candidates(pw, cand, 64);
     int v = PREBOOT_REJECT;
-    /* no early-out: try every candidate against both headers so a wrong password takes the
-     * same work as a right one (a typo opens whichever header its correction matches). */
+    /* no early-out: try every candidate against both headers so a wrong password takes the same
+     * work as a right one (constant shape, no timing side-channel).
+     *
+     * DENIABILITY: typo-correction lands ONLY on the decoy — the hidden OS is accepted only for
+     * the EXACT typed password (candidate 0). A person enters the hidden OS deliberately, when
+     * safe, so exactness there costs nothing; and it makes a fumbled password able to reach only
+     * the decoy or a reject, NEVER the hidden OS. Otherwise a nervous, coerced user who
+     * transposed a character of the decoy password could unlock the hidden system in front of
+     * their coercer — the exact failure deniability exists to prevent. Both headers are still
+     * OPENED every candidate (work unchanged); only what counts as a hidden MATCH is narrowed. */
     for (int c=0;c<nc;c++){
         u8 kd[256], kh[256];
         int okd = (vc_open_header(cand[c], decoy,  kd)==0);
         int okh = (vc_open_header(cand[c], hidden, kh)==0);
         if (okd && v==PREBOOT_REJECT){ vc_memcpy(outKey,kd,256); v=PREBOOT_DECOY;  }
-        if (okh && v==PREBOOT_REJECT){ vc_memcpy(outKey,kh,256); v=PREBOOT_HIDDEN; }
+        if (okh && c==0 && v==PREBOOT_REJECT){ vc_memcpy(outKey,kh,256); v=PREBOOT_HIDDEN; }
     }
     return v;
 }

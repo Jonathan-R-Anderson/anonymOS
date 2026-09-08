@@ -49,6 +49,14 @@ int main(int argc, char **argv){
     ok("a far-off typo (2+ edits) -> REJECT",
        preboot_authenticate("decoy-passXYZ", decoyH, hiddenH, key)==PREBOOT_REJECT);
 
+    /* DENIABILITY: typo-correction is DECOY-ONLY. The exact hidden password boots the hidden OS
+     * (checked above), but a typo of it must NOT — a fumbled password can reach the decoy or a
+     * reject, never expose the hidden OS. */
+    ok("a transposition typo of the HIDDEN password -> REJECT (never reveals the hidden OS)",
+       preboot_authenticate("hidden-passwrod", decoyH, hiddenH, key)==PREBOOT_REJECT);
+    ok("a caps-lock typo of the HIDDEN password -> REJECT (hidden requires the exact password)",
+       preboot_authenticate("HIDDEN-PASSWORD", decoyH, hiddenH, key)==PREBOOT_REJECT);
+
     /* the outer-volume password is not a bootable system → also rejected by the loader */
     preboot_verdict vO = preboot_authenticate("outer-password",  decoyH, hiddenH, key);
     ok("outer-volume password -> REJECT for boot (it's a data volume, not an OS)", vO==PREBOOT_REJECT);

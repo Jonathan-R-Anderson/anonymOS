@@ -9,10 +9,20 @@ BLD  := $(SELF)/build
 DL   := $(SELF)/dl
 CC   ?= cc
 
-ALPINE_VER  := 3.19.9
-ALPINE_ARCH := x86_64
-MINIROOT    := alpine-minirootfs-$(ALPINE_VER)-$(ALPINE_ARCH).tar.gz
-URL         := https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/$(ALPINE_ARCH)/$(MINIROOT)
+ALPINE_VER    := 3.19.9
+ALPINE_BRANCH := v3.19
+ALPINE_ARCH   := x86_64
+MINIROOT      := alpine-minirootfs-$(ALPINE_VER)-$(ALPINE_ARCH).tar.gz
+URL           := https://dl-cdn.alpinelinux.org/alpine/$(ALPINE_BRANCH)/releases/$(ALPINE_ARCH)/$(MINIROOT)
+APKMAIN       := https://dl-cdn.alpinelinux.org/alpine/$(ALPINE_BRANCH)/main
+APKCOMM       := https://dl-cdn.alpinelinux.org/alpine/$(ALPINE_BRANCH)/community
+
+# §H1 believability — a REAL toolchain installed with apk (so `apk info`, `which`, the shell
+# history and the /var/log daemons are all CONSISTENT: a workstation that claims git/ssh/vim
+# but has none installed is a decoy tell). apk.static installs into the rootfs from the host
+# with no chroot (--no-scripts), the Alpine-supported way to build a rootfs from a foreign OS.
+DECOY_PKGS ?= openssh git vim htop tmux curl wget chrony bash sudo less tree rsync nano \
+              tcpdump bind-tools mtr iproute2 file jq man-db docs
 
 # a real install reseeds with the user's decoy password
 DECOY_PW ?= decoy-password
@@ -24,8 +34,17 @@ DECOY_HOSTNAME ?= workstation
 export DECOY_USER DECOY_HOSTNAME DECOY_USER_FULLNAME DECOY_USER_PASSWORD DECOY_NOW
 DECOY    := ../decoy
 ROOTFS   := $(BLD)/rootfs
+DECOY_IMG_MB ?= 256
 
-.PHONY: rootfs image verify h4 clean
+# Assembling a REAL distro rootfs (apk install, correct root:root ownership, device nodes) is
+# inherently a privileged operation — fakeroot cannot fake a STATIC apk.static's syscalls, and
+# Ubuntu's AppArmor blocks unprivileged user namespaces. So run the privileged steps as root:
+# passwordless when already root (the ISO build runs in Docker as root), else via sudo. The
+# artifacts are chown'd back to the caller so later unprivileged steps (git, verify) can read.
+SUDO := $(shell [ "$$(id -u)" -eq 0 ] || echo sudo)
+UGID := $(shell id -u):$(shell id -g)
+
+.PHONY: rootfs image verify consistency h4 clean
 rootfs: $(BLD)/decoy-rootfs.tar.gz
 
 $(BLD) $(DL):
@@ -34,24 +53,42 @@ $(BLD) $(DL):
 $(DL)/$(MINIROOT): | $(DL)
 	curl -fL -o $@ $(URL)
 
+# apk.static — the standalone package manager, extracted from apk-tools-static, so the host
+# (Ubuntu, no apk) can install real Alpine packages into the rootfs. Version discovered from
+# the repo index so it tracks the pinned branch.
+$(BLD)/apk.static: | $(BLD)
+	@AV=$$(curl -fsSL $(APKMAIN)/$(ALPINE_ARCH)/ | grep -oE 'apk-tools-static-[0-9][0-9.r-]+\.apk' | head -1); \
+	  test -n "$$AV" || { echo "[decoy-os] cannot find apk-tools-static in repo index"; exit 1; }; \
+	  echo "[decoy-os] fetching $$AV"; \
+	  curl -fsSL "$(APKMAIN)/$(ALPINE_ARCH)/$$AV" | tar -xzO sbin/apk.static > $@; \
+	  chmod +x $@; $@ --version
+
 # the §H2 fake-log generator (built standalone here to avoid the cross-Makefile self-test)
 $(BLD)/fakelogd: $(DECOY)/decoy.c $(DECOY)/decoy_render.c $(DECOY)/h2/fakelogd.c | $(BLD)
 	$(CC) -O2 -I$(DECOY) $^ -o $@
 
-$(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/fakelogd customize.sh | $(BLD)
-	@rm -rf $(ROOTFS); mkdir -p $(ROOTFS)
-	fakeroot -s $(BLD)/fakeroot.db sh -c '\
-	  tar -xzf $(DL)/$(MINIROOT) -C $(ROOTFS) && \
-	  $(SELF)/customize.sh $(ROOTFS) $(BLD)/fakelogd "$(DECOY_PW)" && \
-	  tar -czf $@ -C $(ROOTFS) .'
-	@echo "[decoy-os] built $@ ($$(du -h $@ | cut -f1)), seeded with the §H2 fake history"
+$(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd customize.sh | $(BLD)
+	$(SUDO) rm -rf $(ROOTFS)
+	mkdir -p $(ROOTFS)
+	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(ROOTFS)
+	$(SUDO) $(BLD)/apk.static --root $(ROOTFS) --repository $(APKMAIN) --repository $(APKCOMM) \
+	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS)
+	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
+	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
+	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(ROOTFS) $(BLD)/fakelogd "$(DECOY_PW)"
+	$(SUDO) tar -czf $@ -C $(ROOTFS) .
+	$(SUDO) chown $(UGID) $@
+	@echo "[decoy-os] built $@ ($$(du -h $@ | cut -f1)), $$(wc -l < $(ROOTFS)/etc/apk/world) pkgs in world, seeded with the §H2 fake history"
 
 # Pack the rootfs into an ext4 image for the installer to encrypt into the decoy system partition.
+# DECOY_IMG_MB sizes the filesystem the decoy will believe it owns (§H3 disk-illusion — the
+# installer passes the visible-disk size so `df` shows the whole disk, no hidden-volume gap).
 image: rootfs
-	@rm -f $(BLD)/decoy.ext4
-	fakeroot -i $(BLD)/fakeroot.db sh -c 'dd if=/dev/zero of=$(BLD)/decoy.ext4 bs=1M count=256 status=none && \
+	$(SUDO) rm -f $(BLD)/decoy.ext4
+	$(SUDO) sh -c 'dd if=/dev/zero of=$(BLD)/decoy.ext4 bs=1M count=$(DECOY_IMG_MB) status=none && \
 	  mkfs.ext4 -q -L decoy -d $(ROOTFS) $(BLD)/decoy.ext4'
-	@echo "[decoy-os] built $(BLD)/decoy.ext4"
+	$(SUDO) chown $(UGID) $(BLD)/decoy.ext4
+	@echo "[decoy-os] built $(BLD)/decoy.ext4 ($(DECOY_IMG_MB) MiB)"
 
 verify: rootfs
 	@echo "--- §H1 decoy rootfs verify ---"
@@ -61,16 +98,36 @@ verify: rootfs
 	@grep -q "^$(DECOY_USER):" $(ROOTFS)/etc/passwd && echo "  [PASS] user account present" || echo "  [FAIL] no user"
 	@test -s $(ROOTFS)/home/$(DECOY_USER)/.bash_history && echo "  [PASS] shell history present" || echo "  [FAIL] no bash_history"
 
+# §H1/E7 believability — INTERNAL CONSISTENCY. A coerced examiner who has the decoy password
+# and root must find nothing that contradicts "an ordinary, used workstation". Each check here
+# is a specific decoy tell if it fails.
+consistency: rootfs
+	@echo "--- §H1 decoy internal-consistency ---"
+	@R=$(ROOTFS); U=$(DECOY_USER); Hh=$$R/home/$$U; fail=0; \
+	  grep -qE '^[0-9a-f]{32}$$' $$R/etc/machine-id && echo "  [PASS] machine-id is 32-hex (not the all-zero tell)" || { echo "  [FAIL] machine-id not 32 hex"; fail=1; }; \
+	  miss=""; for t in git ssh vim htop tmux curl rsync sudo; do \
+	    find $$R/usr/bin $$R/bin $$R/usr/sbin $$R/sbin -name $$t 2>/dev/null | grep -q . || miss="$$miss $$t"; done; \
+	  [ -z "$$miss" ] && echo "  [PASS] every tool the shell history uses is really installed" || { echo "  [FAIL] history uses uninstalled tools:$$miss"; fail=1; }; \
+	  test -d $$Hh/Projects/infra/.git && echo "  [PASS] the git repo the history references exists (real .git)" || { echo "  [FAIL] history references a missing repo"; fail=1; }; \
+	  $(SUDO) test -s $$Hh/.ssh/known_hosts && $(SUDO) test -s $$Hh/.ssh/id_ed25519.pub && echo "  [PASS] ssh state (known_hosts + key) matches the ssh history" || { echo "  [FAIL] ssh usage without ssh state"; fail=1; }; \
+	  pm=""; for p in $(DECOY_PKGS); do grep -qx "$$p" $$R/etc/apk/world || pm="$$pm $$p"; done; \
+	  [ -z "$$pm" ] && echo "  [PASS] apk world records every installed package ($$(wc -l < $$R/etc/apk/world) total)" || { echo "  [FAIL] world missing:$$pm"; fail=1; }; \
+	  nt=$$(cut -f1 $$Hh/.bash_history 2>/dev/null; :); \
+	  test -f $$Hh/Documents/notes.txt && echo "  [PASS] files the history edits (notes.txt) exist" || { echo "  [FAIL] history edits an absent file"; fail=1; }; \
+	  u=$$(ls -l --time-style=+%s $$Hh/.bash_history $$Hh/.gitconfig $$Hh/.vimrc 2>/dev/null | awk '{print $$6}' | sort -u | wc -l); \
+	  [ "$$u" -gt 1 ] && echo "  [PASS] file mtimes are varied ($$u distinct), not a uniform build stamp" || { echo "  [FAIL] uniform mtimes (build tell)"; fail=1; }; \
+	  [ $$fail -eq 0 ] && echo "  §H1 consistency: PASS" || { echo "  §H1 consistency: FAIL"; exit 1; }
+
 # §H4 hide-in-plain-sight — the decoy must contain NOTHING that reveals it's a decoy or
 # that manufactures the fake history (no generator binary/process/cron, no "*decoy*" file,
 # no "decoy…" account). Fails loudly on any tell.
 h4: rootfs
 	@echo "--- §H4 concealment tell-scan ---"
-	@n=$$(find $(ROOTFS) -iname 'fakelogd*' -o -iname '*decoy*' 2>/dev/null | wc -l); \
-	  [ $$n -eq 0 ] && echo "  [PASS] no generator binary / *decoy* file shipped" || { echo "  [FAIL] tells:"; find $(ROOTFS) -iname 'fakelogd*' -o -iname '*decoy*' | sed "s#$(ROOTFS)#    #"; }
-	@n=$$(grep -rIl -iE 'fakelogd|\bdecoy' $(ROOTFS)/etc $(ROOTFS)/home $(ROOTFS)/var 2>/dev/null | wc -l); \
-	  [ $$n -eq 0 ] && echo "  [PASS] no 'decoy'/'fakelogd' string in any config/script/log" || { echo "  [FAIL]:"; grep -rIl -iE 'fakelogd|\bdecoy' $(ROOTFS)/etc $(ROOTFS)/home $(ROOTFS)/var; }
-	@n=$$(grep -rIl -iE 'fakelogd|decoy|fake.?log' $(ROOTFS)/etc/periodic $(ROOTFS)/etc/crontabs $(ROOTFS)/etc/init.d 2>/dev/null | wc -l); \
+	@n=$$($(SUDO) find $(ROOTFS) -iname 'fakelogd*' -o -iname '*decoy*' 2>/dev/null | wc -l); \
+	  [ $$n -eq 0 ] && echo "  [PASS] no generator binary / *decoy* file shipped" || { echo "  [FAIL] tells:"; $(SUDO) find $(ROOTFS) -iname 'fakelogd*' -o -iname '*decoy*' | sed "s#$(ROOTFS)#    #"; }
+	@n=$$($(SUDO) grep -rIl -iE 'fakelogd|\bdecoy' $(ROOTFS)/etc $(ROOTFS)/home $(ROOTFS)/var 2>/dev/null | wc -l); \
+	  [ $$n -eq 0 ] && echo "  [PASS] no 'decoy'/'fakelogd' string in any config/script/log" || { echo "  [FAIL]:"; $(SUDO) grep -rIl -iE 'fakelogd|\bdecoy' $(ROOTFS)/etc $(ROOTFS)/home $(ROOTFS)/var; }
+	@n=$$($(SUDO) grep -rIl -iE 'fakelogd|decoy|fake.?log' $(ROOTFS)/etc/periodic $(ROOTFS)/etc/crontabs $(ROOTFS)/etc/init.d 2>/dev/null | wc -l); \
 	  [ $$n -eq 0 ] && echo "  [PASS] no resident generator (cron/init runs nothing suspicious)" || echo "  [FAIL] resident generator"
 	@u=$$(cut -d: -f1 $(ROOTFS)/etc/passwd | grep -iE 'decoy|fake' | tr '\n' ' '); \
 	  [ -z "$$u" ] && echo "  [PASS] no 'decoy…' account name" || echo "  [FAIL] tell account: $$u"

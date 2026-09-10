@@ -20,6 +20,29 @@ pools, guard selection, a blinded DHT, on-chain naming). It is **110 outstanding
 "Inside the OS" therefore means: host the node in anonymOS, give it a transport, and carry AXON in
 as it lands upstream.
 
+## Desktop integration — the network graph as the system wallpaper · ✅ DONE
+
+Independently of the node phases below, the dendritic network's **radial keyspace topology** — the
+graph the website embedded (`../dendritic/backend/templates/includes/peer-canvas.html`) — is now the
+anonymOS desktop wallpaper. Peers sit on a ring at `sha256(node id)` folded into [0,1) (the DHT's own
+placement, so ring neighbours are keyspace neighbours), joined by keyspace-adjacency (Kademlia-finger)
+chords bowed through the centre, each node a role-coloured glowing dot on the panel's dark ground
+(`#0d1117`). Pipeline:
+- `tools/wallpaper-gen/` — a pure-Go renderer (stdlib only) that reproduces peer-canvas.html's palette,
+  layout and glow from a **deterministic** synthetic fleet, emitting a PNG. `make wallpaper` regenerates
+  it; the PNG is committed (`system/hypr/wallpapers/dendritic-network.png`) so the ISO builds without Go.
+- `src/util/wl-wallpaper.c` — a wlr-layer-shell **BACKGROUND** client (software `wl_shm`, libpng, the
+  wl-layer-bar + wl-imgview patterns) that blits the PNG "contain"-scaled with the image's own ground as
+  seamless letterbox fill. No GPU, no async gatherer — immune to the stock-wallpaper mallocng crash.
+- The kernel launches it next to the top bar (`spawnWaylandProgram("wl-wallpaper", "[wall]")`); the PNG
+  ships both in the Hyprland config tree and as a `/dendritic-network.png` boot module. Needed because
+  Hyprland paints only a solid colour and this image ships no wallpaper daemon (quickshell/hyprpaper/swww
+  are all absent).
+
+This is a **visual** integration only: it does not run, replace, or depend on the node — `syndichan-node`
+is retained and unchanged. A later step can point the generator at the node's own live peer view instead
+of the synthetic fleet, turning the wallpaper into a real network readout.
+
 ## Phases
 
 ### P0 — Node builds for anonymOS · ✅ DONE

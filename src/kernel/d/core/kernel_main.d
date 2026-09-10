@@ -1806,6 +1806,12 @@ private void spawnWaylandClients() {
     if (mode == 1 || mode == 3)
         spawnWaylandProgram("wl-term\0".ptr, "[g4]\0".ptr);
     if (mode == 2 || mode == 3) {
+        // Desktop background (wlr-layer-shell BACKGROUND layer): paints the dendritic-network
+        // topology PNG (the graph the dendritic website embedded).  Hyprland renders only a solid
+        // misc:background_color and no wallpaper daemon ships, so the background is drawn by this
+        // client.  Like the bar it is a layer surface that reserves no space and takes no input, so
+        // it is safe under the installer on live media; on Weston it exits cleanly (no layer-shell).
+        spawnWaylandProgram("wl-wallpaper\0".ptr, "[wall]\0".ptr);
         // GNOME-style top bar (wlr-layer-shell).  Hyprland's own exec-once=/wl-layer-bar in the
         // synthesized config never actually spawns, so launch it here via the proven kernel autostart.
         // Safe on Weston too: wl-layer-bar exits cleanly (returns 1) when no zwlr_layer_shell is offered.

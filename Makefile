@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean iso zsh scp-client progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets build-zksync-wallet boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi arbiter-efi hos-install.iso
+.PHONY: all clean iso zsh scp-client progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets build-zksync-wallet boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi arbiter-efi hos-install.iso wallpaper
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -125,6 +125,9 @@ WLWIFIMENU_BIN := build/wl-wifi-menu
 WLLOGVIEW_BIN := build/wl-logview
 # GNOME-style top bar for the Hyprland desktop (wlr-layer-shell, unlike the Weston panel)
 WLLAYERBAR_BIN := build/wl-layer-bar
+# Desktop background for the Hyprland desktop (wlr-layer-shell BACKGROUND layer):
+# paints the dendritic-network topology PNG, since Hyprland renders no wallpaper.
+WLWALLPAPER_BIN := build/wl-wallpaper
 # GNOME-style toolbar popovers + utility programs (native wl_shm clients)
 WLOVERVIEW_BIN := build/wl-overview
 WLCALENDAR_BIN := build/wl-calendar
@@ -231,6 +234,24 @@ $(DECOY_IMAGE):
 veracrypt-efi:
 	+$(MAKE) -C deps/veracrypt efi
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt
+
+# ── Dendritic network wallpaper ────────────────────────────────────────────
+# The desktop background is the dendritic network's radial keyspace topology —
+# the same graph the dendritic website embedded (backend/templates/includes/
+# peer-canvas.html). A small pure-Go tool renders it to a checked-in PNG under
+# system/hypr/, which pack-hyprcfg.py then ships to the guest at
+# /home/user/.config/hypr/wallpapers/. The PNG is committed so the ISO builds
+# with no Go toolchain; run `make wallpaper` to regenerate it after editing the
+# generator. Output is deterministic (fixed seed), so regeneration is a no-op
+# unless the generator changed. See roadmap/DENDRITIC_NETWORK_ROADMAP.md.
+WALLPAPER_GEN_SRC := tools/wallpaper-gen
+WALLPAPER_PNG     := system/hypr/wallpapers/dendritic-network.png
+wallpaper:
+	@command -v go >/dev/null 2>&1 || { echo "go toolchain required to regenerate the wallpaper"; exit 1; }
+	cd $(WALLPAPER_GEN_SRC) && go build -o ../../build/wallpaper-gen .
+	./build/wallpaper-gen -out $(WALLPAPER_PNG) -w 2560 -h 1440
+	@echo "Regenerated $(WALLPAPER_PNG)"
+
 HYPRCFG_SRC  := system/hypr
 APPS_SRC     := system/applications
 APPS_BLOB    := build/apps.blob
@@ -750,6 +771,20 @@ $(WLLAYERBAR_BIN): src/util/wl-layer-bar.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 		-lm \
 		-pthread
 
+# Desktop background for Hyprland — a wlr-layer-shell BACKGROUND client that paints
+# the dendritic-network PNG.  Links the layer-shell protocol code like wl-layer-bar,
+# but needs no FreeType (its text is baked into the PNG), only libpng to decode it.
+$(WLWALLPAPER_BIN): src/util/wl-wallpaper.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE) $(LAYER_SHELL_HEADER) $(LAYER_SHELL_CODE)
+	@echo "==== Building wl-wallpaper (desktop background for Hyprland, wlr-layer-shell) ===="
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -Ibuild \
+		-o $@ $< $(XDG_SHELL_CODE) $(LAYER_SHELL_CODE) \
+		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		$$WL_LIBS \
+		-lm \
+		-pthread
+
 # GNOME toolbar popovers + utility programs — all share the wl-wifi-menu link line
 # (freetype + png/bz2/z + wayland-client).  Static pattern rule scoped to exactly
 # these targets, so it never shadows the explicit wl-* rules above.
@@ -789,7 +824,7 @@ $(BSDTAR_BIN):
 $(GPGV_BIN):
 	$(MAKE) -C deps/gnupg
 
-stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOG_BIN) $(XIDTEST_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(INOTIFYTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLWALLPAPER_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOG_BIN) $(XIDTEST_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(INOTIFYTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -1281,6 +1316,8 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 		fi; \
 		if [ "$(WESTON)" != "1" ]; then \
 			cp $(WLLAYERBAR_BIN)   cd/wl-layer-bar; \
+			cp $(WLWALLPAPER_BIN)  cd/wl-wallpaper; \
+			cp $(WALLPAPER_PNG)    cd/dendritic-network.png; \
 			cp $(WLOVERVIEW_BIN)   cd/wl-overview; \
 			cp $(WLCALENDAR_BIN)   cd/wl-calendar; \
 			cp $(WLWIFIMENU_BIN)   cd/wl-wifi-menu; \
@@ -1294,7 +1331,7 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 			cp $(WLCLOCKS_BIN)    cd/wl-clocks; \
 			cp $(WLIMGVIEW_BIN)   cd/wl-imgview; \
 			cp $(WLCHARS_BIN)     cd/wl-chars; \
-			printf '\n    module_path: boot():/wl-layer-bar\n    module_path: boot():/wl-overview\n    module_path: boot():/wl-calendar\n    module_path: boot():/wl-wifi-menu\n    module_path: boot():/wl-quicksettings\n' >> cd/boot/limine/limine.conf; \
+			printf '\n    module_path: boot():/wl-wallpaper\n    module_path: boot():/dendritic-network.png\n    module_path: boot():/wl-layer-bar\n    module_path: boot():/wl-overview\n    module_path: boot():/wl-calendar\n    module_path: boot():/wl-wifi-menu\n    module_path: boot():/wl-quicksettings\n' >> cd/boot/limine/limine.conf; \
 			printf '    module_path: boot():/wl-domain-manager\n    module_path: boot():/wl-logview\n    module_path: boot():/wl-sysmon\n    module_path: boot():/wl-editor\n    module_path: boot():/wl-screenshot\n    module_path: boot():/wl-calc\n    module_path: boot():/wl-clocks\n    module_path: boot():/wl-imgview\n    module_path: boot():/wl-chars\n' >> cd/boot/limine/limine.conf; \
 			echo "Included GNOME top bar (wl-layer-bar, wlr-layer-shell) + Activities/clock/wifi utilities for Hyprland"; \
 		fi; \

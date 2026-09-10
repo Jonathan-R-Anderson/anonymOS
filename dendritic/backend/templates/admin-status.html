@@ -1,0 +1,188 @@
+{%- extends "admin-shell.html" %}
+{% set admin_title = "Status" %}
+{% set admin_lede = "Software update, deploy state and service health." %}
+{% block admin_content %}
+<style>
+  .as-wrap { max-width: 1000px; margin: 0 auto; padding: 20px 16px 60px; color: inherit; }
+  .as-muted { opacity: var(--sc-muted-alpha, .62); }
+  .as-card { border: 1px solid var(--sc-border); border-radius: 10px;
+             background: var(--sc-surface); padding: 16px 18px; margin-bottom: 16px; }
+  .as-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .as-row input, .as-row select, .as-row textarea { flex: 1 1 200px; min-width: 0; }
+  .as-table { width: 100%; font-size: .84rem; border-collapse: collapse; }
+  .as-table th, .as-table td { text-align: left; padding: 5px 8px 5px 0;
+                               border-bottom: 1px solid var(--sc-border); vertical-align: top; }
+  .as-new { background: rgba(217,161,60,.12); }
+  .as-pill { font-size: .74rem; padding: 1px 7px; border-radius: 20px;
+             border: 1px solid var(--sc-border); }
+  .as-fail { color: #d9534f; }
+  .as-ok { color: #3c9a5f; }
+  code.as-detail { font-size: .74rem; word-break: break-all; }
+</style>
+
+<div class="as-wrap">
+  <h2 class="mb-1">Status</h2>
+  <p class="as-muted">
+    Public page: <a href="{{ url_for('status.status_page') }}">/status</a> ·
+    <a href="{{ url_for('status.status_rss') }}">RSS</a> ·
+    <a href="{{ url_for('status.status_json') }}">JSON</a>
+  </p>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}<div class="as-card">{% for m in messages %}<div>{{ m }}</div>{% endfor %}</div>{% endif %}
+  {% endwith %}
+
+  <div class="as-card">
+    <h5>Open an incident</h5>
+    <p class="small as-muted">
+      Written by hand, never opened automatically. A failing probe says something changed;
+      it does not say what, who it affects, or whether you already know. Auto-filed
+      incidents teach people to ignore the page.
+    </p>
+    <form method="POST" action="{{ url_for('admin.status_open_incident') }}">
+      <div class="as-row mb-2">
+        <input class="form-control form-control-sm" name="title" placeholder="What is wrong, in one line" required>
+        <select class="form-control form-control-sm" name="component" style="max-width:200px">
+          <option value="">Whole site</option>
+          {% for component in components %}
+            <option value="{{ component.key }}">{{ component.name }}</option>
+          {% endfor %}
+        </select>
+        <select class="form-control form-control-sm" name="impact" style="max-width:150px">
+          {% for impact in impacts %}<option value="{{ impact }}" {% if impact == 'minor' %}selected{% endif %}>{{ impact }}</option>{% endfor %}
+        </select>
+      </div>
+      <textarea class="form-control form-control-sm mb-2" name="body" rows="2" required
+                placeholder="First update — what you know so far, and what people should expect."></textarea>
+      <button class="btn btn-warning btn-sm" type="submit">Open incident</button>
+    </form>
+  </div>
+
+  {% if status_board.incidents %}
+  <div class="as-card">
+    <h5>Incidents</h5>
+    {% for incident in status_board.incidents %}
+      <div style="border-bottom:1px solid var(--sc-border); padding-bottom:10px; margin-bottom:10px">
+        <strong>{{ incident.title }}</strong>
+        <span class="as-pill">{{ incident.status }}</span>
+        <span class="as-pill">{{ incident.impact }}</span>
+        <span class="small as-muted">{{ incident.component_key or 'whole site' }} ·
+          started {{ incident.started_at[:16] | replace('T', ' ') }}</span>
+        {% for update in incident.updates %}
+          <div class="small as-muted" style="margin-top:4px">
+            <b>{{ update.status }}</b> — {{ update.body }} ({{ update.at[:16] | replace('T', ' ') }})
+          </div>
+        {% endfor %}
+        {% if incident.open %}
+        <form method="POST" action="{{ url_for('admin.status_update_incident', incident_id=incident.id) }}"
+              class="as-row" style="margin-top:8px">
+          <select class="form-control form-control-sm" name="status" style="max-width:170px">
+            {% for s in incident_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+          <input class="form-control form-control-sm" name="body" placeholder="What changed" required>
+          <button class="btn btn-outline-primary btn-sm" type="submit">Post update</button>
+        </form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="as-card">
+    <h5>Reports from visitors</h5>
+    {% if not reports %}
+      <p class="small as-muted mb-0">Nothing reported.</p>
+    {% else %}
+    <p class="small as-muted">
+      Acknowledged rather than deleted &mdash; a cluster from one region is evidence about
+      an outage, and clearing them as they are read destroys the pattern that would have
+      identified it.
+    </p>
+    <table class="as-table">
+      <thead><tr><th>When</th><th>Where</th><th>Component</th><th>What they said</th><th></th></tr></thead>
+      <tbody>
+        {% for report in reports %}
+        <tr {% if not report.acknowledged %}class="as-new"{% endif %}>
+          <td class="as-muted">{{ report.at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ report.country_code or '—' }}</td>
+          <td>{{ report.component_key or 'site' }}</td>
+          <td>{{ report.body }}</td>
+          <td>
+            {% if not report.acknowledged %}
+            <form method="POST" action="{{ url_for('admin.status_ack_report', report_id=report.id) }}">
+              <button class="btn btn-outline-secondary btn-sm" type="submit">Ack</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  {% if status_board.recent_failures %}
+  <div class="as-card">
+    <h5>Recent failing checks</h5>
+    <p class="small as-muted">
+      The monitors' own error text. Shown here and never on the public page: it is written
+      by a volunteer's client and can quote an internal hostname or a stack trace.
+    </p>
+    <table class="as-table">
+      <thead><tr><th>When</th><th>Component</th><th>Monitor</th><th>From</th><th>Why</th></tr></thead>
+      <tbody>
+        {% for failure in status_board.recent_failures %}
+        <tr>
+          <td class="as-muted">{{ failure.at[11:19] }}</td>
+          <td>{{ failure.component_key }}</td>
+          <td><code class="as-detail">{{ failure.node_id }}…</code></td>
+          <td>{{ failure.country or '—' }}</td>
+          <td class="as-fail"><code class="as-detail">{{ failure.detail }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="as-card">
+    <h5>Monitored components</h5>
+    <p class="small as-muted">
+      Monitors fetch this list rather than having it compiled in, so the checks can change
+      without every volunteer updating a binary.
+    </p>
+    <table class="as-table">
+      <thead><tr><th>Key</th><th>Name</th><th>Probe URL</th><th>Timeout</th><th>State</th></tr></thead>
+      <tbody>
+        {% for component in components %}
+        <tr>
+          <td><code>{{ component.key }}</code></td>
+          <td>{{ component.name }}</td>
+          <td><code class="as-detail">{{ component.probe_url }}</code></td>
+          <td>{{ component.timeout_ms }} ms</td>
+          <td>{% if component.enabled %}<span class="as-ok">on</span>{% else %}<span class="as-muted">off</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <form method="POST" action="{{ url_for('admin.status_save_component') }}" style="margin-top:12px">
+      <div class="as-row mb-2">
+        <input class="form-control form-control-sm" name="key" placeholder="key (e.g. website)" required style="max-width:160px">
+        <input class="form-control form-control-sm" name="name" placeholder="Display name" style="max-width:200px">
+        <input class="form-control form-control-sm" name="probe_url" placeholder="/healthy or https://…">
+      </div>
+      <div class="as-row">
+        <input class="form-control form-control-sm" name="timeout_ms" type="number" value="8000" style="max-width:120px">
+        <input class="form-control form-control-sm" name="position" type="number" value="0" style="max-width:100px">
+        <label class="small mb-0"><input type="checkbox" name="enabled" checked> enabled</label>
+        <button class="btn btn-outline-primary btn-sm" type="submit">Save component</button>
+      </div>
+      <p class="small as-muted mb-0" style="margin-top:6px">
+        Saving an existing key edits it. A relative URL is resolved against this site;
+        an absolute one is fetched as given.
+      </p>
+    </form>
+  </div>
+</div>
+{% endblock %}

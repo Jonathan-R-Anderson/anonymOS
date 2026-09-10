@@ -143,14 +143,21 @@ preboot-check: crypto | $(BLD)
 EFI      := $(SELF)/efi
 EFI_CFLAGS := -target x86_64-unknown-windows -ffreestanding -fshort-wchar -mno-red-zone -O2 -I$(EFI)
 efi: | $(BLD)
-	clang $(EFI_CFLAGS) -c $(EFI)/efi_main.c -o $(BLD)/efi_main.o
 	clang $(EFI_CFLAGS) -c $(EFI)/efi_vc.c   -o $(BLD)/efi_vc_pe.o
+	# Production loader — deniable: no banner, no decoy/hidden reveal, generic prompt. This is the
+	# binary staged into the installer ISO.
+	clang $(EFI_CFLAGS) -c $(EFI)/efi_main.c -o $(BLD)/efi_main.o
 	lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
 	    $(BLD)/efi_main.o $(BLD)/efi_vc_pe.o -out:$(BLD)/preboot.efi
+	# Proof loader — same code with -DPREBOOT_PROOF, which re-enables the §E5 routing/diagnostic
+	# markers (BOOTING DECOY OS, etc.) that decrypt-boot-test.py greps for. NOT shipped.
+	clang $(EFI_CFLAGS) -DPREBOOT_PROOF -c $(EFI)/efi_main.c -o $(BLD)/efi_main_proof.o
+	lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
+	    $(BLD)/efi_main_proof.o $(BLD)/efi_vc_pe.o -out:$(BLD)/preboot-proof.efi
 	clang $(EFI_CFLAGS) -c $(EFI)/efi_stage2.c -o $(BLD)/efi_stage2.o
 	lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
 	    $(BLD)/efi_stage2.o -out:$(BLD)/stage2.efi
-	@echo "[veracrypt] built $(BLD)/preboot.efi + $(BLD)/stage2.efi"; file $(BLD)/preboot.efi
+	@echo "[veracrypt] built $(BLD)/preboot.efi (production) + preboot-proof.efi + stage2.efi"; file $(BLD)/preboot.efi
 
 clean:
 	rm -rf $(BLD) $(SYSROOT)

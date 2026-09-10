@@ -1,0 +1,410 @@
+{# Live peer canvas — radial keyspace topology.
+
+   EXTRACTED FROM status.html so the front page and the status page run the SAME
+   component rather than a copy. The front page previously carried a hand-drawn
+   SVG that could only ever be a picture of a network; this is the network.
+
+   One instance per page: the markup uses fixed element ids (#peer-canvas-root
+   and friends) and the script binds to them by id, so including it twice on one
+   page would leave the second copy inert.
+
+   The palette is fixed rather than theme-inherited, on purpose: this is a dark
+   instrument panel on every theme, because a topology drawn in the "cyberpunk"
+   palette's link colour is unreadable and the custom themes supply no --bs-*
+   variables to fall back on.
+
+   Callers may pass `compact` to drop the stat column and shorten the stage,
+   which is what the front page wants — there, the canvas is an illustration
+   with a link to the real page, not the instrument itself. #}
+{%- set compact = compact | default(false) -%}
+<style>
+  /* ---- Peer canvas -------------------------------------------------- */
+  /* Palette is fixed rather than theme-inherited: the canvas is a dark
+     instrument panel on every theme, because a topology drawn in the
+     "cyberpunk" palette's link colour is unreadable and the themes supply no
+     --bs-* for a 2D context to sample anyway. */
+  .pc { --pc-bg:#0d1117; --pc-panel:#131a23; --pc-line:#1e2836; --pc-ink:#c9d3e0;
+        --pc-dim:#7c8899; --pc-storage:#4f9cf0; --pc-gateway:#3fc98a;
+        --pc-worker:#c98cf0; --pc-payment:#e0b341;
+        --pc-monitor:#46c7d0; --pc-drain:#e0685f;
+        --pc-compute:#f0834f; --pc-microvm:#8f9ff5;
+        --pc-probe:#6fd3a8; --pc-validator:#d9d36b;
+        --pc-mailbox:#e08fc0; --pc-delegate:#b06fe0;
+        background:var(--pc-bg); border:1px solid var(--pc-line); border-radius:12px;
+        margin-bottom:22px; overflow:hidden; color:var(--pc-ink);
+        font-family:'Space Mono',ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .pc-head { display:flex; align-items:center; gap:12px; padding:12px 16px;
+             border-bottom:1px solid var(--pc-line); }
+  .pc-title { margin:0; font-size:.82rem; font-weight:700; letter-spacing:.16em;
+              text-transform:uppercase; color:var(--pc-ink); }
+  .pc-live { margin-left:auto; font-size:.7rem; letter-spacing:.14em;
+             text-transform:uppercase; color:var(--pc-dim); display:flex;
+             align-items:center; gap:6px; }
+  .pc-live i { width:7px; height:7px; border-radius:50%; background:var(--pc-gateway);
+               box-shadow:0 0 0 0 rgba(63,201,138,.6); animation:pc-pulse 2.4s infinite; }
+  @keyframes pc-pulse { 70% { box-shadow:0 0 0 7px rgba(63,201,138,0); } 100% { box-shadow:0 0 0 0 rgba(63,201,138,0); } }
+  @media (prefers-reduced-motion:reduce) { .pc-live i { animation:none; } }
+
+  .pc-body { display:grid; grid-template-columns:210px minmax(0,1fr); }
+  @media (max-width:720px) { .pc-body { grid-template-columns:1fr; } }
+  .pc-side { padding:16px; border-right:1px solid var(--pc-line); display:flex;
+             flex-direction:column; gap:14px; }
+  @media (max-width:720px) { .pc-side { border-right:0; border-bottom:1px solid var(--pc-line); } }
+  .pc-stat { display:flex; flex-direction:column; gap:1px; }
+  .pc-stat-v { font-size:1.5rem; font-weight:700; line-height:1.05; color:#fff;
+               font-variant-numeric:tabular-nums; }
+  .pc-stat-k { font-size:.64rem; letter-spacing:.16em; text-transform:uppercase; color:var(--pc-dim); }
+  .pc-legend-h { font-size:.64rem; letter-spacing:.16em; text-transform:uppercase;
+                 color:var(--pc-dim); margin-bottom:7px; }
+  .pc-key { display:flex; align-items:center; gap:8px; font-size:.72rem; margin-bottom:5px; }
+  .pc-key i { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
+  /* A node holding several roles is filled with a sweep through each colour,
+     so the legend shows a sweep rather than a single dot. */
+  .pc-key--multi i { background:linear-gradient(135deg,var(--pc-gateway),var(--pc-monitor),var(--pc-storage)); }
+  .pc-note { font-size:.66rem; line-height:1.55; color:var(--pc-dim);
+             border-top:1px solid var(--pc-line); padding-top:12px; margin-top:auto; }
+  .pc-note code { color:var(--pc-ink); font-size:.95em; background:none; padding:0; }
+  .pc-note b { color:var(--pc-ink); font-weight:700; }
+
+  .pc-stage { position:relative; min-height:420px; }
+  #pc-canvas { display:block; width:100%; height:100%; position:absolute; inset:0; }
+  .pc-tip { position:absolute; pointer-events:none; z-index:5; background:var(--pc-panel);
+            border:1px solid var(--pc-line); border-radius:7px; padding:8px 10px;
+            font-size:.68rem; line-height:1.5; color:var(--pc-ink); white-space:nowrap;
+            box-shadow:0 6px 20px rgba(0,0,0,.5); }
+  .pc-tip b { color:#fff; }
+  .pc-tip span { color:var(--pc-dim); }
+  .pc-empty { position:absolute; inset:0; display:flex; align-items:center;
+              justify-content:center; color:var(--pc-dim); font-size:.76rem; padding:20px;
+              text-align:center; }
+
+{%- if compact %}
+  /* Compact: the front page wants the drawing, not the readout. The side
+     column and the note are the parts that only make sense when you came to
+     the status page to read them. */
+  #peer-canvas-root .pc-side { display:none; }
+  #peer-canvas-root .pc-stage { min-height:300px; }
+  #peer-canvas-root .pc-body { grid-template-columns:1fr; }
+{%- endif %}
+</style>
+
+  <!-- Peer canvas. Radial keyspace topology, after the Freenet telemetry
+       viewer's network view: peers on a ring, links drawn as chords, roles
+       carried by colour. Sits above the uptime board because "is the network
+       there" is a different question from "is the website up", and the first
+       one is the one this project is actually about. -->
+  <div class="pc" id="peer-canvas-root">
+    <div class="pc-head">
+      <h2 class="pc-title">Network topology</h2>
+      <span class="pc-live" id="pc-live"><i></i>live</span>
+    </div>
+
+    <div class="pc-body">
+      <aside class="pc-side">
+        <div class="pc-stat"><span class="pc-stat-v" id="pc-peers">--</span><span class="pc-stat-k">Peers</span></div>
+        <div class="pc-stat"><span class="pc-stat-v" id="pc-links">--</span><span class="pc-stat-k">Links</span></div>
+        <div class="pc-stat"><span class="pc-stat-v" id="pc-cap">--</span><span class="pc-stat-k">Capacity</span></div>
+
+        <div class="pc-legend">
+          <div class="pc-legend-h">Roles</div>
+          <div class="pc-key"><i style="background:var(--pc-storage)"></i>Storage</div>
+          <div class="pc-key"><i style="background:var(--pc-gateway)"></i>Gateway</div>
+          <div class="pc-key"><i style="background:var(--pc-worker)"></i>Worker</div>
+          <div class="pc-key"><i style="background:var(--pc-payment)"></i>Payment</div>
+          <div class="pc-key"><i style="background:var(--pc-monitor)"></i>Monitor</div>
+          <div class="pc-key"><i style="background:var(--pc-compute)"></i>Compute</div>
+          <div class="pc-key"><i style="background:var(--pc-microvm)"></i>MicroVM</div>
+          <div class="pc-key"><i style="background:var(--pc-probe)"></i>Probe</div>
+          <div class="pc-key"><i style="background:var(--pc-validator)"></i>Validator</div>
+          <div class="pc-key"><i style="background:var(--pc-mailbox)"></i>Tipping mailbox</div>
+          <div class="pc-key"><i style="background:var(--pc-delegate)"></i>Delegated signer</div>
+          <div class="pc-key"><i style="background:var(--pc-drain)"></i>Draining</div>
+          <div class="pc-key pc-key--multi"><i></i>Multiple roles</div>
+        </div>
+
+        <div class="pc-note">
+          Position on the ring is <code>sha256(node&nbsp;id)</code> folded into
+          [0,1) &mdash; the same placement the DHT uses, so neighbours here are
+          neighbours in the keyspace.
+          <b>Links are derived from that keyspace adjacency, not observed.</b>
+          No address is published: the heartbeat table holds one, this page
+          never reads it.
+        </div>
+      </aside>
+
+      <div class="pc-stage">
+        <canvas id="pc-canvas" role="img"
+                aria-label="Radial diagram of active network peers arranged by keyspace position"></canvas>
+        <div class="pc-tip" id="pc-tip" hidden></div>
+        <div class="pc-empty" id="pc-empty" hidden>No peers have sent a heartbeat inside the active window.</div>
+      </div>
+    </div>
+  </div>
+
+
+
+<script>
+/* Peer canvas — radial keyspace topology.
+   Vanilla 2D canvas on purpose: the page must not pull a graph library, and a
+   ring layout needs no force simulation because every position is already
+   determined by the node id. Redraw is cheap enough to do on hover. */
+(function () {
+  var root = document.getElementById("peer-canvas-root");
+  if (!root) return;
+  var cv = document.getElementById("pc-canvas");
+  var ctx = cv.getContext("2d");
+  var tip = document.getElementById("pc-tip");
+  var empty = document.getElementById("pc-empty");
+  var css = getComputedStyle(root);
+  var COLOR = {
+    storage: css.getPropertyValue("--pc-storage").trim(),
+    gateway: css.getPropertyValue("--pc-gateway").trim(),
+    worker:  css.getPropertyValue("--pc-worker").trim(),
+    monitor: css.getPropertyValue("--pc-monitor").trim(),
+    payment: css.getPropertyValue("--pc-payment").trim(),
+    compute: css.getPropertyValue("--pc-compute").trim(),
+    microvm: css.getPropertyValue("--pc-microvm").trim(),
+    probe:     css.getPropertyValue("--pc-probe").trim(),
+    validator: css.getPropertyValue("--pc-validator").trim(),
+    mailbox:   css.getPropertyValue("--pc-mailbox").trim(),
+    delegate:  css.getPropertyValue("--pc-delegate").trim(),
+    drain:   css.getPropertyValue("--pc-drain").trim(),
+    line:    css.getPropertyValue("--pc-line").trim(),
+    dim:     css.getPropertyValue("--pc-dim").trim()
+  };
+  var peers = [], edges = [], hover = -1, dpr = 1, cx = 0, cy = 0, radius = 0;
+
+  /* Role priority decides the dot colour when a node advertises several.
+     Draining wins outright: a node on its way out is the thing an operator
+     most needs to see. */
+  /* Role colours, in a fixed order so a node's gradient is stable between
+     redraws and between peers -- a dot whose colours reshuffle on every poll
+     is unreadable. */
+  /* Every role the API can emit must appear here. rolesOf() FILTERS by this
+     list, so a role missing from it is not merely uncoloured -- it is discarded,
+     and a node running only that role is drawn as though it ran nothing. That is
+     how `compute` went missing: the API had been sending it since the compute
+     columns were added and the canvas quietly dropped it on the floor.
+
+     Kept in step with storage_nodes.network_peers(). */
+  var ROLE_ORDER = ["gateway", "worker", "payment", "monitor",
+                    "compute", "microvm", "probe", "validator",
+                    "mailbox", "delegate", "storage"];
+
+  function rolesOf(p) {
+    if (p.draining) return ["drain"];
+    var out = [];
+    for (var i = 0; i < ROLE_ORDER.length; i++) {
+      if (p.roles.indexOf(ROLE_ORDER[i]) >= 0) out.push(ROLE_ORDER[i]);
+    }
+    return out.length ? out : ["storage"];
+  }
+
+  /* Primary colour: used for links, the hover halo and the tooltip accent,
+     where a gradient would not read. */
+  function colorFor(p) {
+    var r = rolesOf(p);
+    return COLOR[r[0]] || COLOR.storage;
+  }
+
+  /* A node holding several roles is drawn as a smooth sweep through each of
+     its role colours rather than being reduced to whichever role happens to
+     win a priority list -- a gateway that also stores and monitors is three
+     things, and the dot should say so. Single-role nodes get a flat fill, so
+     the common case looks exactly as before. */
+  /* Parse "#rrggbb" once so colours can be interpolated per frame. */
+  var rgbCache = {};
+  function rgb(hex) {
+    if (rgbCache[hex]) return rgbCache[hex];
+    var h = (hex || "").trim().replace("#", "");
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    var n = parseInt(h, 16);
+    var out = isNaN(n) ? [128,128,128] : [(n>>16)&255, (n>>8)&255, n&255];
+    rgbCache[hex] = out;
+    return out;
+  }
+  function mix(a, b, t) {
+    var x = rgb(a), y = rgb(b);
+    return "rgb(" + Math.round(x[0]+(y[0]-x[0])*t) + "," +
+                    Math.round(x[1]+(y[1]-x[1])*t) + "," +
+                    Math.round(x[2]+(y[2]-x[2])*t) + ")";
+  }
+
+  /* The colour a node is showing right now.
+     One role  -> its colour, steady.
+     Several   -> a continuous fade through each of them in turn, so a node
+                  that gateways AND stores AND monitors visibly cycles through
+                  all three rather than being flattened to whichever role won a
+                  priority list. Each node is offset by its ring position so the
+                  fleet does not pulse in unison, which reads as a page-wide
+                  flash rather than as per-node state. */
+  function liveColor(p, t) {
+    var r = rolesOf(p);
+    if (r.length === 1) return COLOR[r[0]] || COLOR.storage;
+    var period = 2200;                       // ms per role
+    var phase = (t + p.pos * period * r.length) / period;
+    var i = Math.floor(phase) % r.length;
+    var frac = phase - Math.floor(phase);
+    // ease so the colour dwells on each role and transitions quickly
+    var e = frac < 0.65 ? 0 : (frac - 0.65) / 0.35;
+    e = e * e * (3 - 2 * e);
+    return mix(COLOR[r[i]] || COLOR.storage,
+               COLOR[r[(i + 1) % r.length]] || COLOR.storage, e);
+  }
+
+  function human(bytes) {
+    if (!bytes) return "0 B";
+    var u = ["B","KB","MB","GB","TB","PB"], i = 0, n = bytes;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return (n >= 10 || i === 0 ? Math.round(n) : n.toFixed(1)) + " " + u[i];
+  }
+
+  function layout() {
+    var rect = cv.getBoundingClientRect();
+    dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(rect.width * dpr));
+    cv.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = rect.width / 2;
+    cy = rect.height / 2;
+    radius = Math.max(40, Math.min(rect.width, rect.height) / 2 - 46);
+    peers.forEach(function (p) {
+      var a = p.pos * Math.PI * 2 - Math.PI / 2;   /* 0.0 at 12 o'clock */
+      p.x = cx + Math.cos(a) * radius;
+      p.y = cy + Math.sin(a) * radius;
+      /* Dot area tracks capacity, so a big node reads as big without letting
+         one 100 TB node swamp the ring. */
+      var cap = p.capacity_bytes || 0;
+      p.r = 3.2 + Math.min(4.4, Math.log10(1 + cap / 1e9) * 1.5);
+    });
+  }
+
+  var animT = 0;
+  function draw(t) {
+    animT = t || animT;
+    var rect = cv.getBoundingClientRect();
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    if (!peers.length) return;
+
+    /* Guide ring — the keyspace itself. */
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = COLOR.line;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    /* Chords, bowed toward the centre so long keyspace jumps arc inward and
+       sibling links hug the rim. */
+    edges.forEach(function (e) {
+      var a = peers[e[0]], b = peers[e[1]];
+      if (!a || !b) return;
+      var lit = hover >= 0 && (e[0] === hover || e[1] === hover);
+      if (hover >= 0 && !lit) return;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.quadraticCurveTo(cx, cy, b.x, b.y);
+      ctx.strokeStyle = lit ? liveColor(peers[hover], animT) : COLOR.line;
+      ctx.globalAlpha = lit ? 0.85 : 0.5;
+      ctx.lineWidth = lit ? 1.4 : 0.7;
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+
+    peers.forEach(function (p, i) {
+      var c = liveColor(p, animT);
+      var dim = hover >= 0 && i !== hover;
+
+      /* Every node glows in its own colour. A slow breath on the glow radius
+         makes the ring read as live rather than as a static diagram; the dot
+         itself does not move, so nothing jitters. */
+      var breathe = 1 + 0.18 * Math.sin((animT + p.pos * 4000) / 1400);
+      ctx.save();
+      ctx.shadowColor = c;
+      ctx.shadowBlur = (dim ? 5 : 13) * breathe;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = c;
+      ctx.globalAlpha = dim ? 0.45 : 1;
+      ctx.fill();
+      /* Second pass deepens the glow without fattening the dot. */
+      ctx.shadowBlur = (dim ? 8 : 22) * breathe;
+      ctx.fill();
+      ctx.restore();
+
+      if (i === hover) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = c;
+        ctx.globalAlpha = 0.5;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    });
+  }
+
+  /* Animation loop. Honours prefers-reduced-motion by drawing one static
+     frame instead of running rAF, so the page is legible without motion. */
+  var reduceMotion = window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function frame(t) {
+    draw(t);
+    if (!reduceMotion) requestAnimationFrame(frame);
+  }
+
+  function nearest(mx, my) {
+    var best = -1, bestD = 16 * 16;
+    for (var i = 0; i < peers.length; i++) {
+      var dx = peers[i].x - mx, dy = peers[i].y - my, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  cv.addEventListener("mousemove", function (ev) {
+    var rect = cv.getBoundingClientRect();
+    var mx = ev.clientX - rect.left, my = ev.clientY - rect.top;
+    var hit = nearest(mx, my);
+    if (hit !== hover) { hover = hit; if (reduceMotion) draw(animT); }
+    if (hit < 0) { tip.hidden = true; return; }
+    var p = peers[hit];
+    tip.innerHTML =
+      "<b>" + p.id + "</b><br>" +
+      "<span>ring</span> " + p.pos.toFixed(4) + "<br>" +
+      "<span>roles</span> " + p.roles.join(", ") + "<br>" +
+      "<span>capacity</span> " + human(p.capacity_bytes) +
+      (p.used_bytes ? " <span>used</span> " + human(p.used_bytes) : "") +
+      (p.country ? "<br><span>region</span> " + p.country : "") +
+      (p.draining ? "<br><b>draining</b>" : "");
+    tip.hidden = false;
+    var tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.min(Math.max(4, mx + 14), rect.width - tw - 4) + "px";
+    tip.style.top = Math.min(Math.max(4, my - th - 12), rect.height - th - 4) + "px";
+  });
+  cv.addEventListener("mouseleave", function () {
+    hover = -1; tip.hidden = true; if (reduceMotion) draw(animT);
+  });
+  window.addEventListener("resize", function () { layout(); if (reduceMotion) draw(animT); });
+
+  function load() {
+    fetch("{{ url_for('storage_nodes.network_peers') }}", { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (data) {
+        peers = data.peers || [];
+        edges = data.edges || [];
+        document.getElementById("pc-peers").textContent = peers.length;
+        document.getElementById("pc-links").textContent = edges.length;
+        document.getElementById("pc-cap").textContent = data.capacity_human || "--";
+        empty.hidden = peers.length > 0;
+        layout(); if (reduceMotion) { draw(0); } else { requestAnimationFrame(frame); }
+      })
+      .catch(function () {
+        empty.textContent = "Peer data is unavailable. That is itself a fault, and it is being recorded.";
+        empty.hidden = false;
+        document.getElementById("pc-live").style.display = "none";
+      });
+  }
+  load();
+  setInterval(load, 30000);
+})();
+</script>

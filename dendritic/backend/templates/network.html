@@ -1,0 +1,2368 @@
+{%- extends "base.html" %}
+{% block title %}The Dendritic Network{% endblock %}
+{% block content %}
+<style>
+  /* Theme variables only, and colour inherited — the custom palettes
+     (midnight, cyberpunk) supply no --bs-* and any hardcoded colour here
+     becomes invisible text on those themes. */
+  .nw { max-width: 64rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; color: inherit;
+        font-family: 'Inter', system-ui, sans-serif; }
+  .nw * { box-sizing: border-box; }
+  .nw h1, .nw h2, .nw h3 { color: inherit; text-wrap: balance; }
+  .nw__eyebrow { font-family: 'Space Mono', ui-monospace, monospace; font-size: .7rem;
+                 letter-spacing: .24em; text-transform: uppercase; opacity: .6; margin: 0; }
+  .nw__title { font-weight: 700; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.04;
+               letter-spacing: -.02em; margin: .6rem 0 0; }
+  .nw__lede { font-size: clamp(1.02rem, 1.6vw, 1.18rem); line-height: 1.6; opacity: .9;
+              max-width: 46rem; margin: 1rem 0 0; }
+  .nw__sec { margin-top: clamp(2rem, 4.5vw, 3.2rem); }
+  .nw__sec > h2 { font-size: clamp(1.35rem, 3vw, 1.9rem); font-weight: 700;
+                  letter-spacing: -.02em; margin: 0; }
+  .nw__sec > p { font-size: 1.01rem; line-height: 1.62; opacity: .88; max-width: 46rem; margin: .7rem 0 0; }
+  .nw__fig { border: 1px solid var(--sc-border, rgba(128,128,128,.3)); border-radius: 14px;
+             background: var(--sc-surface-2, #f4f6f8); padding: 1rem; margin: 1.2rem 0 0; }
+  .nw__fig svg { width: 100%; height: auto; display: block; color: inherit; }
+  .nw__cap { font-size: .8rem; opacity: .6; margin: .7rem 0 0; text-align: center;
+             font-family: 'Space Mono', ui-monospace, monospace; }
+
+  /* topology */
+  .nw svg .edge { stroke: currentColor; opacity: .28; stroke-width: 1.6; fill: none; }
+  .nw svg .edge--i2p { stroke-dasharray: 5 4; }
+  .nw svg .box { fill: var(--sc-surface, #fff); stroke: var(--sc-border, rgba(128,128,128,.55));
+                 stroke-width: 1.3; }
+  .nw svg .lbl { fill: currentColor; font: 600 12.5px 'Inter', sans-serif; }
+  .nw svg .sub { fill: currentColor; opacity: .58; font: 10.5px 'Inter', sans-serif; }
+  /* Designed but not running. Dashed outline and a muted label, so a reader can
+     tell at a glance which parts of a diagram they could join today and which
+     are a plan — a page that recruits volunteers must not blur the two. */
+  .nw svg .box--planned { stroke-dasharray: 6 4; opacity: .72; }
+  .nw svg .planned { font-style: italic; opacity: .5; }
+  .nw__badge { display: inline-block; font-size: .68rem; letter-spacing: .04em;
+    text-transform: uppercase; padding: .18rem .5rem; border-radius: 999px;
+    border: 1px solid var(--sc-border, rgba(128,128,128,.5)); opacity: .75;
+    vertical-align: middle; margin-left: .55rem; font-weight: 600; }
+  .nw__role { cursor: pointer; }
+  .nw__role .box { transition: fill .15s, stroke .15s, stroke-width .15s; }
+  .nw__role:hover .box { stroke: var(--sc-accent, #b07274); stroke-width: 2; }
+  .nw__role[aria-pressed="true"] .box {
+    fill: color-mix(in srgb, var(--sc-accent, #b07274) 18%, transparent);
+    stroke: var(--sc-accent, #b07274); stroke-width: 2.2; }
+  .nw__role .tick { opacity: 0; transition: opacity .15s; }
+  .nw__role[aria-pressed="true"] .tick { opacity: 1; }
+
+  .nw__roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+               gap: .8rem; margin-top: 1.2rem; }
+  .nw__card { border: 1px solid var(--sc-border, rgba(128,128,128,.3)); border-radius: 11px;
+              background: var(--sc-surface, #fff); padding: 1rem 1.05rem; }
+  .nw__card h3 { font-size: 1rem; font-weight: 600; margin: 0 0 .3rem; }
+  .nw__card p { font-size: .9rem; line-height: 1.5; opacity: .84; margin: 0; }
+  .nw__warn { display: inline-flex; align-items: center; gap: .35rem; margin-top: .55rem;
+              font-size: .78rem; font-weight: 600; padding: .2rem .5rem; border-radius: 6px;
+              background: color-mix(in srgb, var(--sc-accent, #b07274) 16%, transparent); }
+
+  .nw__panel { border: 1px solid var(--sc-border, rgba(128,128,128,.3)); border-radius: 14px;
+               background: var(--sc-surface, #fff); padding: 1.2rem 1.25rem; margin-top: 1.2rem; }
+  .nw__row { display: flex; flex-wrap: wrap; gap: .6rem 1.2rem; align-items: baseline; }
+  .nw__k { font-family: 'Space Mono', ui-monospace, monospace; font-size: .62rem;
+           letter-spacing: .18em; text-transform: uppercase; opacity: .55; }
+  .nw label { display: block; font-size: .9rem; font-weight: 600; margin: 0 0 .3rem; }
+  .nw input[type="range"] { width: 100%; accent-color: var(--sc-accent, #b07274); }
+  .nw input[type="text"], .nw input[type="number"], .nw select {
+    width: 100%; padding: .5rem .6rem; border-radius: 8px; font: inherit; color: inherit;
+    background: var(--sc-surface-2, #f4f6f8);
+    border: 1px solid var(--sc-border, rgba(128,128,128,.4)); }
+  .nw__bar { height: 22px; border-radius: 7px; overflow: hidden; display: flex;
+             border: 1px solid var(--sc-border, rgba(128,128,128,.4)); margin-top: .5rem; }
+  .nw__bar i { display: block; height: 100%; }
+  .nw__bar .used { background: color-mix(in srgb, currentColor 22%, transparent); }
+  .nw__bar .give { background: var(--sc-accent, #b07274); }
+  .nw__legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .8rem;
+                opacity: .8; margin-top: .45rem; }
+  .nw__legend span::before { content: ""; display: inline-block; width: .7rem; height: .7rem;
+                             border-radius: 3px; margin-right: .35rem; vertical-align: -1px; }
+  .nw__legend .l-give::before { background: var(--sc-accent, #b07274); }
+  .nw__legend .l-used::before { background: color-mix(in srgb, currentColor 22%, transparent); }
+  .nw__legend .l-free::before { border: 1px solid var(--sc-border, rgba(128,128,128,.5)); }
+
+  .nw__btn { display: inline-flex; align-items: center; gap: .5rem; padding: .7rem 1.15rem;
+             border-radius: 10px; font-weight: 600; font-size: .98rem; border: 1px solid transparent;
+             text-decoration: none; cursor: pointer; font-family: inherit; }
+  .nw__btn--go { background: var(--sc-accent, #b07274); color: #fff; }
+  .nw__btn--go[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+  .nw__btn--ghost { border-color: var(--sc-border, rgba(128,128,128,.45)); color: inherit;
+                    background: transparent; }
+  .nw__hash { font-family: 'Space Mono', ui-monospace, monospace; font-size: .74rem;
+              word-break: break-all; opacity: .85; background: var(--sc-surface-2, #f4f6f8);
+              border-radius: 8px; padding: .55rem .7rem; margin-top: .5rem; }
+  .nw__note { font-size: .86rem; line-height: 1.55; opacity: .78; margin: .7rem 0 0; }
+  .nw__pre { font-family: 'Space Mono', ui-monospace, monospace; font-size: .74rem;
+             white-space: pre; overflow-x: auto; background: var(--sc-surface-2, #f4f6f8);
+             border-radius: 8px; padding: .7rem .8rem; margin-top: .6rem; }
+
+  /* one-line install */
+  .nw__panel--install { border-color: var(--sc-accent, #b07274); border-width: 2px; }
+  .nw__cmd { display: flex; flex-wrap: wrap; gap: .65rem; align-items: stretch; margin-top: .55rem; }
+  /* Bootstrap styles bare <pre> and <code> with a fixed colour, which is white
+     text on the dark themes and pink code on all of them. Both are pinned back
+     to inherit here, the same way every other block on this page does it. */
+  .nw__cmd-text { flex: 1 1 24rem; min-width: 0; margin: 0; color: inherit;
+                  font-family: 'Space Mono', ui-monospace, monospace; font-size: .84rem;
+                  line-height: 1.5; white-space: pre; overflow-x: auto;
+                  background: var(--sc-surface-2, #f4f6f8);
+                  border: 1px solid var(--sc-border, rgba(128,128,128,.4));
+                  border-radius: 9px; padding: .8rem .85rem; }
+  .nw__cmd-text code { font: inherit; color: inherit; background: none; padding: 0;
+                       word-break: normal; }
+  .nw__cmd-text:focus-visible { outline: 2px solid var(--sc-accent, #b07274); outline-offset: 2px; }
+  /* Deliberately NOT .nw__btn--go: that one paints white text on --sc-accent,
+     which is unreadable on cyberpunk's near-lime accent. A strong accent tint
+     with an accent border and inherited colour is just as unmistakable and
+     survives all four themes. */
+  .nw__btn--copy { flex: 0 0 auto; color: inherit; font-weight: 700;
+                   border: 2px solid var(--sc-accent, #b07274);
+                   background: color-mix(in srgb, var(--sc-accent, #b07274) 24%, transparent); }
+  .nw__btn--copy:hover { background: color-mix(in srgb, var(--sc-accent, #b07274) 38%, transparent); }
+  /* Reserves its line so the panel does not jump when "Copied" appears. The
+     status is visible rather than screen-reader-only: a sighted user pressing
+     a button that fell back to execCommand needs the Ctrl-C instruction too. */
+  .nw__copy-status { min-height: 1.2em; margin-top: .55rem; }
+</style>
+
+<div class="nw">
+  <!-- One arrowhead for every figure below. Defined once, in its own element,
+       rather than inside whichever SVG happens to come first — a marker
+       referenced across sibling inline SVGs works until someone reorders or
+       removes the one that owned it, and then arrowheads vanish everywhere. -->
+  <svg width="0" height="0" aria-hidden="true" focusable="false"
+       style="position:absolute">
+    <defs>
+      <marker id="nw-arrow" viewBox="0 0 8 8" refX="7" refY="4"
+              markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L8 4 L0 8 z" fill="currentColor" opacity=".45"/>
+      </marker>
+    </defs>
+  </svg>
+
+  <p class="nw__eyebrow">Network topology</p>
+  <h1 class="nw__title">how the dendritic network is actually put together</h1>
+  <p class="nw__lede">
+    There is no single machine holding this site up. Readers reach it through volunteer
+    gateways, content is stored in pieces across a distributed hash table, and every byte
+    a gateway hands you carries a signature you can check yourself. This page explains
+    each part — and if you want to run one, it builds the configuration and hands you the
+    program.
+  </p>
+
+  <!-- ================== TOPOLOGY ================== -->
+  <!-- id="roles" is the anchor the front page links to. It points at the role
+       PICKER rather than at the page top on purpose: somebody arriving from
+       "run a node" wants the thing that lets them choose one, not the
+       introduction they have already read. -->
+  <div class="nw__sec" id="roles">
+    <h2>The parts, and how they connect</h2>
+    <p>
+      Click a role to select it. You can pick more than one — a single machine happily
+      runs storage and validation together. What each one asks of your computer is
+      spelled out below, including the awkward part: several of them need an open port.
+    </p>
+
+    <div class="nw__fig">
+      <!-- Laid out in one central column with the volunteer roles on the flanks,
+           so no edge crosses another. Every line is a connection that actually
+           exists: a probe checks GATEWAYS, not the DHT, and a validator re-fetches
+           from the ORIGIN — drawing it otherwise would be a diagram that teaches
+           the wrong thing to exactly the people trying to learn it. -->
+      <svg viewBox="0 0 860 640" role="img"
+           aria-label="Topology: readers reach gateways, gateways reach the origin, volunteer roles attach to each, and compute nodes take work units from the DHT">
+        <!-- edges -->
+        <g>
+          <path class="edge" d="M430 92 L430 150" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M430 230 L430 288" marker-end="url(#nw-arrow)"/>
+          <path class="edge edge--i2p" d="M430 368 L430 410" marker-end="url(#nw-arrow)"/>
+          <path class="edge edge--i2p" d="M350 190 C 258 190 258 450 350 450"/>
+          <path class="edge" d="M200 190 L350 190" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M660 328 L510 328" marker-end="url(#nw-arrow)"/>
+          <path class="edge edge--i2p" d="M200 450 L350 450" marker-end="url(#nw-arrow)"/>
+          <!-- Compute hangs off the DHT rather than off the origin, because that
+               is where work units actually live: they are content-addressed
+               objects, so a compute node fetches one by hash and writes the
+               result back the same way. Drawing it as origin -> compute would
+               imply a dispatch channel that does not exist. -->
+          <path class="edge edge--i2p" d="M430 490 L430 530" marker-end="url(#nw-arrow)"/>
+        </g>
+
+        <!-- reader -->
+        <g>
+          <rect class="box" x="350" y="20" width="160" height="72" rx="9"/>
+          <text class="lbl" x="430" y="48" text-anchor="middle">You, reading</text>
+          <text class="sub" x="430" y="65" text-anchor="middle">an ordinary browser, holding</text>
+          <text class="sub" x="430" y="79" text-anchor="middle">the origin's public key</text>
+        </g>
+
+        <!-- gateway (selectable) -->
+        <g class="nw__role" data-role="gateway" role="button" tabindex="0" aria-pressed="false">
+          <rect class="box" x="350" y="150" width="160" height="80" rx="9"/>
+          <text class="lbl" x="430" y="178" text-anchor="middle">Gateway</text>
+          <text class="sub" x="430" y="195" text-anchor="middle">serves readers under</text>
+          <text class="sub" x="430" y="209" text-anchor="middle">its own hostname</text>
+          <text class="sub" x="430" y="223" text-anchor="middle">needs an open port</text>
+          <text class="lbl tick" x="496" y="168" text-anchor="middle">✓</text>
+        </g>
+
+        <!-- origin -->
+        <g>
+          <rect class="box" x="350" y="288" width="160" height="80" rx="9"/>
+          <text class="lbl" x="430" y="316" text-anchor="middle">Origin</text>
+          <text class="sub" x="430" y="333" text-anchor="middle">renders and signs</text>
+          <text class="sub" x="430" y="347" text-anchor="middle">holds the only</text>
+          <text class="sub" x="430" y="361" text-anchor="middle">signing key</text>
+        </g>
+
+        <!-- DHT -->
+        <g>
+          <rect class="box" x="350" y="410" width="160" height="80" rx="9"/>
+          <text class="lbl" x="430" y="438" text-anchor="middle">The DHT</text>
+          <text class="sub" x="430" y="455" text-anchor="middle">every object named</text>
+          <text class="sub" x="430" y="469" text-anchor="middle">by its own hash</text>
+          <text class="sub" x="430" y="483" text-anchor="middle">reached over I2P</text>
+        </g>
+
+        <!-- probe (selectable) -->
+        <g class="nw__role" data-role="probe" role="button" tabindex="0" aria-pressed="false">
+          <rect class="box" x="40" y="150" width="160" height="80" rx="9"/>
+          <text class="lbl" x="120" y="178" text-anchor="middle">Probe</text>
+          <text class="sub" x="120" y="195" text-anchor="middle">independently checks</text>
+          <text class="sub" x="120" y="209" text-anchor="middle">gateways are reachable</text>
+          <text class="sub" x="120" y="223" text-anchor="middle">needs an open port</text>
+          <text class="lbl tick" x="186" y="168" text-anchor="middle">✓</text>
+        </g>
+
+        <!-- validator (selectable) -->
+        <g class="nw__role" data-role="validator" role="button" tabindex="0" aria-pressed="false">
+          <rect class="box" x="660" y="288" width="160" height="80" rx="9"/>
+          <text class="lbl" x="740" y="316" text-anchor="middle">Validator</text>
+          <text class="sub" x="740" y="333" text-anchor="middle">re-fetches published</text>
+          <text class="sub" x="740" y="347" text-anchor="middle">pages and checks them</text>
+          <text class="sub" x="740" y="361" text-anchor="middle">outbound only</text>
+          <text class="lbl tick" x="806" y="306" text-anchor="middle">✓</text>
+        </g>
+
+        <!-- storage (selectable) -->
+        <g class="nw__role" data-role="storage" role="button" tabindex="0" aria-pressed="false">
+          <rect class="box" x="40" y="410" width="160" height="80" rx="9"/>
+          <text class="lbl" x="120" y="438" text-anchor="middle">Storage node</text>
+          <text class="sub" x="120" y="455" text-anchor="middle">holds encrypted</text>
+          <text class="sub" x="120" y="469" text-anchor="middle">shards for others</text>
+          <text class="sub" x="120" y="483" text-anchor="middle">no port needed</text>
+          <text class="lbl tick" x="186" y="428" text-anchor="middle">✓</text>
+        </g>
+
+        <!-- monitor (selectable) -->
+        <g class="nw__role" data-role="monitor" role="button" tabindex="0" aria-pressed="false">
+          <rect class="box" x="660" y="410" width="160" height="80" rx="9"/>
+          <text class="lbl" x="740" y="438" text-anchor="middle">Status monitor</text>
+          <text class="sub" x="740" y="455" text-anchor="middle">checks the site from</text>
+          <text class="sub" x="740" y="469" text-anchor="middle">where you are</text>
+          <text class="sub" x="740" y="483" text-anchor="middle">no port needed</text>
+          <text class="lbl tick" x="806" y="428" text-anchor="middle">✓</text>
+        </g>
+
+        <!-- compute — NOT selectable, and drawn dashed.
+             There is no "compute" entry in ROLES, so making this a role button
+             would toggle a role the config builder cannot emit and the node
+             would not understand. It is drawn as planned because that is what
+             it is: the isolation runner exists, the volunteer-facing half does
+             not. A diagram that offered it would be recruiting for something
+             nobody can yet run. -->
+        <g>
+          <rect class="box box--planned" x="350" y="530" width="160" height="80" rx="9"/>
+          <text class="lbl" x="430" y="556" text-anchor="middle">Compute node</text>
+          <text class="sub" x="430" y="573" text-anchor="middle">runs work units on</text>
+          <text class="sub" x="430" y="587" text-anchor="middle">spare CPU or GPU</text>
+          <text class="sub planned" x="430" y="602" text-anchor="middle">in development</text>
+        </g>
+
+        <!-- edge labels -->
+        <text class="sub" x="442" y="126" text-anchor="start">reads over HTTPS</text>
+        <text class="sub" x="442" y="264" text-anchor="start">fetches, cannot re-sign</text>
+        <text class="sub" x="442" y="394" text-anchor="start">publishes snapshots</text>
+        <text class="sub" x="275" y="182" text-anchor="middle">reachability</text>
+        <text class="sub" x="585" y="320" text-anchor="middle">re-fetch &amp; verify</text>
+        <text class="sub" x="275" y="442" text-anchor="middle">shards</text>
+        <text class="sub" x="240" y="296" text-anchor="end">emergency</text>
+        <text class="sub" x="240" y="310" text-anchor="end">snapshot</text>
+        <text class="sub" x="442" y="516" text-anchor="start">work units, by hash</text>
+        <text class="sub" x="430" y="625" text-anchor="middle">dashed = anonymous transport (I2P)</text>
+      </svg>
+      <p class="nw__cap">Selected roles are highlighted. Nothing is downloaded until you choose.
+        <a href="#install" style="color:inherit">Install command &darr;</a></p>
+    </div>
+
+    <div class="nw__roles">
+      {%- for key, role in roles.items() %}
+      <div class="nw__card">
+        <span class="nw__k">{{ key }}</span>
+        <h3>{{ role.label }}</h3>
+        <p>{{ role.summary }}</p>
+        {%- if role.needs_port %}
+        <span class="nw__warn">⚠ Needs an inbound port{% if role.port_note %} — {{ role.port_note }}{% else %} (443){% endif %}</span>
+        {%- endif %}
+      </div>
+      {%- endfor %}
+    </div>
+
+    <div class="nw__sec" id="tipping">
+      <h2>Carrying other people&rsquo;s tips</h2>
+      <p>
+        Readers can tip a creator directly, wallet to wallet, over a payment channel &mdash;
+        no transaction fee per tip and nothing passing through this site. The catch is that
+        a channel payment needs the creator to approve it at the moment it happens, which
+        used to mean every creator had to run a node. Almost nobody will.
+      </p>
+      <p>
+        Two of the roles above fix that by lending creators the one thing they were missing:
+        a machine that is awake. <strong>Neither ever holds anyone&rsquo;s money.</strong>
+        Payouts are written into the contract and go to the creator&rsquo;s own address;
+        a volunteer is not a party to the channel and cannot be made into one.
+      </p>
+
+      <div class="nw__roles">
+        <div class="nw__card">
+          <span class="nw__k">mailbox</span>
+          <h3>Tipping mailbox</h3>
+          <p>
+            You hold incoming tip messages for creators who are offline, and hand them over
+            when the creator&rsquo;s browser comes back. You hold <strong>no keys</strong>,
+            approve nothing, and cannot change a message you are carrying &mdash; the software
+            has nowhere to put a key even if it wanted one.
+          </p>
+          <p class="nw__note mb-0">
+            The tip finishes when the creator returns. This is the safe default and needs
+            no trust from anyone.
+          </p>
+        </div>
+
+        <div class="nw__card">
+          <span class="nw__k">delegate</span>
+          <h3>Delegated signer</h3>
+          <p>
+            A creator can go further and authorise you <strong>on the blockchain</strong> to
+            approve their incoming tips, so a tip completes even while they sleep. The
+            contract limits that authority to exactly one thing: agreeing the new balance.
+            You cannot withdraw funds, cannot close a channel, and cannot be paid.
+          </p>
+          <p class="nw__note mb-0">
+            The creator can revoke you at any moment and it takes effect immediately. This
+            asks real trust of you as an operator &mdash; a compromised machine could take
+            part in agreements about tips not yet collected &mdash; so it is opt-in on both
+            sides and never turned on by accident.
+          </p>
+        </div>
+      </div>
+
+      <div class="nw__fig">
+        <!-- The whole point of this figure is WHERE THE KEY IS. Every box a
+             volunteer or this site touches is on the left of the acceptance
+             step; the key sits on the right, in the creator's own machine, and
+             no arrow crosses back. Drawing it any other way would suggest a
+             tip can be accepted somewhere it cannot. -->
+        <svg viewBox="0 0 860 300" role="img"
+             aria-label="A tip travels from the reader's browser through a volunteer mailbox to the creator's own node, which is the only thing that can accept it">
+          <g>
+            <path class="edge" d="M158 76 L222 76" marker-end="url(#nw-arrow)"/>
+            <path class="edge" d="M358 76 L422 76" marker-end="url(#nw-arrow)"/>
+            <path class="edge" d="M558 76 L622 76" marker-end="url(#nw-arrow)"/>
+            <!-- back to the tipper: the countersigned state is cached at the
+                 mailbox so the next tip can continue from it -->
+            <path class="edge edge--i2p" d="M690 108 L690 172"/>
+            <path class="edge edge--i2p" d="M690 172 L290 172"/>
+            <path class="edge edge--i2p" d="M290 172 L290 108" marker-end="url(#nw-arrow)"/>
+          </g>
+
+          <g>
+            <rect class="box" x="22" y="44" width="136" height="64" rx="9"/>
+            <text class="lbl" x="90" y="70" text-anchor="middle">1 · Reader</text>
+            <text class="sub" x="90" y="86" text-anchor="middle">signs the tip in</text>
+            <text class="sub" x="90" y="100" text-anchor="middle">their own wallet</text>
+          </g>
+          <g>
+            <rect class="box" x="222" y="44" width="136" height="64" rx="9"/>
+            <text class="lbl" x="290" y="70" text-anchor="middle">2 · Mailbox</text>
+            <text class="sub" x="290" y="86" text-anchor="middle">holds the message</text>
+            <text class="sub" x="290" y="100" text-anchor="middle">signs nothing</text>
+          </g>
+          <g>
+            <rect class="box" x="422" y="44" width="136" height="64" rx="9"/>
+            <text class="lbl" x="490" y="70" text-anchor="middle">3 · Creator’s node</text>
+            <text class="sub" x="490" y="86" text-anchor="middle">checks it, then signs</text>
+            <text class="sub" x="490" y="100" text-anchor="middle">with the key it holds</text>
+          </g>
+          <g>
+            <rect class="box" x="622" y="44" width="136" height="64" rx="9"/>
+            <text class="lbl" x="690" y="70" text-anchor="middle">4 · Creator’s console</text>
+            <text class="sub" x="690" y="86" text-anchor="middle">review and accept,</text>
+            <text class="sub" x="690" y="100" text-anchor="middle">served by their node</text>
+          </g>
+
+          <text class="sub" x="430" y="192" text-anchor="middle">
+            the countersigned result is cached back at the mailbox, so a second tip continues from the first
+          </text>
+          <text class="sub" x="430" y="222" text-anchor="middle">
+            accepting costs no transaction fee and touches no blockchain — it is two signatures on a number
+          </text>
+          <text class="sub" x="430" y="252" text-anchor="middle">
+            this site is not in the path: it introduces the two of you and then has nothing to hold
+          </text>
+          <text class="sub" x="430" y="282" text-anchor="middle">
+            reviewing a waiting tip does not consume it, and nothing is accepted until the creator says so
+          </text>
+        </svg>
+        <p class="nw__cap">
+          The creator&rsquo;s key never leaves their machine, so the accepting step can only
+          happen there &mdash; not in a web page, and not here.
+        </p>
+      </div>
+
+      <p class="nw__note">
+        <strong>Where you accept them.</strong> Reviewing and accepting tips happens in your
+        own node&rsquo;s console, not on this site. That is not a stylistic choice: accepting a
+        tip means signing with your channel key, that key lives in your node so tips can
+        arrive while you are asleep, and a web page that could accept on your behalf would be
+        a web page holding your key. This site links you to your own console and otherwise
+        stays out of it.
+      </p>
+
+      <p class="nw__note">
+        <strong>What a volunteer can see.</strong> A tip message names the two people it is
+        between, so a mailbox learns who is tipping whom and roughly how often. That is a
+        real limitation and we are not going to dress it up: running a mailbox is not
+        anonymous relaying, and hiding that relationship needs a further layer that does not
+        exist yet.
+      </p>
+    </div>
+
+    <p class="nw__note">
+      <strong>About that open port.</strong> A gateway and a probe both have to be reachable
+      from the internet, which on a home connection usually means adding a port-forwarding
+      rule on your router. If your provider uses carrier-grade NAT — common on mobile and
+      some fibre plans — inbound connections are not possible at all and neither role will
+      work, however good your connection is. Storage and validation have no such
+      requirement: they reach the network over I2P and make only outbound connections.
+    </p>
+  </div>
+
+  <!-- ================== THE REQUEST PATH ================== -->
+  <div class="nw__sec">
+    <h2>What happens when you ask for a page</h2>
+    <p>
+      Five steps, of which only one involves trusting anybody. The gateway is
+      carrying bytes it cannot alter without the reader noticing, which is what
+      makes it safe to let a stranger do it.
+    </p>
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 250" role="img"
+           aria-label="Request path: browser, gateway, origin, signature check">
+        <g>
+          <path class="edge" d="M148 76 L212 76" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M348 76 L412 76" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M548 76 L612 76" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M680 108 L680 150"/>
+          <path class="edge" d="M680 150 L80 150"/>
+          <path class="edge" d="M80 150 L80 108" marker-end="url(#nw-arrow)"/>
+        </g>
+
+        <g>
+          <rect class="box" x="12" y="44" width="136" height="64" rx="9"/>
+          <text class="lbl" x="80" y="70" text-anchor="middle">1 · Your browser</text>
+          <text class="sub" x="80" y="86" text-anchor="middle">picks a gateway</text>
+          <text class="sub" x="80" y="100" text-anchor="middle">from a signed list</text>
+        </g>
+        <g>
+          <rect class="box" x="212" y="44" width="136" height="64" rx="9"/>
+          <text class="lbl" x="280" y="70" text-anchor="middle">2 · Gateway</text>
+          <text class="sub" x="280" y="86" text-anchor="middle">terminates TLS</text>
+          <text class="sub" x="280" y="100" text-anchor="middle">under its own name</text>
+        </g>
+        <g>
+          <rect class="box" x="412" y="44" width="136" height="64" rx="9"/>
+          <text class="lbl" x="480" y="70" text-anchor="middle">3 · Origin</text>
+          <text class="sub" x="480" y="86" text-anchor="middle">renders and signs</text>
+          <text class="sub" x="480" y="100" text-anchor="middle">path + version + hash</text>
+        </g>
+        <g>
+          <rect class="box" x="612" y="44" width="136" height="64" rx="9"/>
+          <text class="lbl" x="680" y="70" text-anchor="middle">4 · Gateway relays</text>
+          <text class="sub" x="680" y="86" text-anchor="middle">cannot re-sign:</text>
+          <text class="sub" x="680" y="100" text-anchor="middle">it has no key</text>
+        </g>
+        <text class="sub" x="380" y="168" text-anchor="middle">
+          5 · your browser checks the signature against the origin key it already holds
+        </text>
+        <text class="sub" x="380" y="196" text-anchor="middle">
+          a changed byte fails here — detected by the reader, not reported by a third party
+        </text>
+        <text class="sub" x="380" y="224" text-anchor="middle">
+          the version is signed too, so replaying an old page is refused rather than merely noticed
+        </text>
+      </svg>
+      <p class="nw__cap">The gateway never holds the signing key. That is the whole design.</p>
+    </div>
+  </div>
+
+  <!-- ================== FAILOVER ================== -->
+  <div class="nw__sec">
+    <h2>What happens when the origin is down</h2>
+    <p>
+      Step 3 fails. Gateways already hold a signed, read-only snapshot of the
+      site, so the answer is not an error page — it is the site, clearly
+      labelled as a copy, with everything that writes turned off.
+    </p>
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 230" role="img"
+           aria-label="Failover: origin unreachable, gateway serves a signed snapshot">
+        <g>
+          <path class="edge" d="M148 60 L212 60" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M348 60 L412 60"/>
+          <path class="edge" d="M280 92 L280 150" marker-end="url(#nw-arrow)"/>
+        </g>
+        <line x1="368" y1="44" x2="392" y2="76" stroke="currentColor" stroke-width="2" opacity=".55"/>
+        <line x1="392" y1="44" x2="368" y2="76" stroke="currentColor" stroke-width="2" opacity=".55"/>
+
+        <g>
+          <rect class="box" x="12" y="34" width="136" height="52" rx="9"/>
+          <text class="lbl" x="80" y="58" text-anchor="middle">Your browser</text>
+          <text class="sub" x="80" y="74" text-anchor="middle">asks as normal</text>
+        </g>
+        <g>
+          <rect class="box" x="212" y="34" width="136" height="52" rx="9"/>
+          <text class="lbl" x="280" y="58" text-anchor="middle">Gateway</text>
+          <text class="sub" x="280" y="74" text-anchor="middle">origin unreachable</text>
+        </g>
+        <g>
+          <rect class="box" x="412" y="34" width="200" height="52" rx="9" opacity=".45"/>
+          <text class="sub" x="512" y="64" text-anchor="middle">origin — not answering</text>
+        </g>
+        <g>
+          <rect class="box" x="182" y="150" width="196" height="56" rx="9"/>
+          <text class="lbl" x="280" y="174" text-anchor="middle">Signed snapshot</text>
+          <text class="sub" x="280" y="190" text-anchor="middle">served read-only, and labelled</text>
+        </g>
+        <text class="sub" x="620" y="164" text-anchor="middle">Posting is disabled, not broken:</text>
+        <text class="sub" x="620" y="180" text-anchor="middle">a form that silently swallows what you</text>
+        <text class="sub" x="620" y="196" text-anchor="middle">typed is worse than one that is absent.</text>
+      </svg>
+      <p class="nw__cap">
+        The snapshot carries its own signature and its own version, so an outage cannot be
+        used as cover for serving something older or altered.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================== CORROBORATION ================== -->
+  <div class="nw__sec">
+    <h2>How a gateway is judged</h2>
+    <p>
+      A gateway that misbehaves has to be removed, and the power to remove one is
+      the power to remove a competitor. So no single observer has it. A finding
+      counts only when several independent ones agree — and independence is
+      checked, not assumed, because signatures are cheap to manufacture and
+      distinct operators are not.
+    </p>
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 270" role="img"
+           aria-label="Quorum: agreeing reports from distinct operators and networks">
+        <g>
+          <path class="edge" d="M120 96 L300 130"/>
+          <path class="edge" d="M120 156 L300 140"/>
+          <path class="edge" d="M120 216 L300 150"/>
+          <path class="edge" d="M436 140 L560 140" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="12" y="74" width="108" height="44" rx="8"/>
+          <text class="sub" x="66" y="94" text-anchor="middle">probe A</text>
+          <text class="sub" x="66" y="108" text-anchor="middle">operator 1</text>
+        </g>
+        <g>
+          <rect class="box" x="12" y="134" width="108" height="44" rx="8"/>
+          <text class="sub" x="66" y="154" text-anchor="middle">probe B</text>
+          <text class="sub" x="66" y="168" text-anchor="middle">operator 2</text>
+        </g>
+        <g>
+          <rect class="box" x="12" y="194" width="108" height="44" rx="8"/>
+          <text class="sub" x="66" y="214" text-anchor="middle">probe C</text>
+          <text class="sub" x="66" y="228" text-anchor="middle">operator 2 — same</text>
+        </g>
+        <g>
+          <rect class="box" x="300" y="106" width="136" height="68" rx="9"/>
+          <text class="lbl" x="368" y="130" text-anchor="middle">Quorum</text>
+          <text class="sub" x="368" y="146" text-anchor="middle">4 of 5 agreeing</text>
+          <text class="sub" x="368" y="160" text-anchor="middle">3 operators, 2 networks</text>
+        </g>
+        <g>
+          <rect class="box" x="560" y="106" width="180" height="68" rx="9"/>
+          <text class="lbl" x="650" y="130" text-anchor="middle">Acted on</text>
+          <text class="sub" x="650" y="146" text-anchor="middle">reputation, then removal</text>
+          <text class="sub" x="650" y="160" text-anchor="middle">with the evidence kept</text>
+        </g>
+        <text class="sub" x="430" y="224" text-anchor="middle">
+          Probes B and C are one operator, so they count once. Agreement between machines
+        </text>
+        <text class="sub" x="430" y="240" text-anchor="middle">
+          somebody controls together is one opinion wearing three signatures.
+        </text>
+      </svg>
+      <p class="nw__cap">
+        The counts are the network's live thresholds. They are deliberately hard to meet.
+      </p>
+    </div>
+    <p class="nw__note">
+      <strong>Being honest about where this stands.</strong> Those thresholds are
+      real and enforced, which means that today — with few independent operators —
+      almost nothing reaches quorum. That is the correct behaviour and not a
+      finished one: a rule that never fires is doing its job only until there are
+      enough participants for it to matter. Running a probe is how that changes.
+    </p>
+  </div>
+
+  <!-- ================== WHY YOU CAN TRUST IT ================== -->
+  <div class="nw__sec">
+    <h2>Why a stranger's machine can serve you safely</h2>
+    <p>
+      A gateway is transport, not authority. It never holds the network's signing key. Every
+      page it serves carries a signature over the exact bytes, and your browser checks it
+      without asking anyone's permission — so a gateway that alters a single byte is
+      caught by the reader it tried to deceive, not by a moderator afterwards.
+    </p>
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>Signed content</h3>
+        <p>Ed25519 over <em>path + version + SHA-256 of the body</em>. The version is
+           signed too, so serving you an older page is refused rather than merely noticed.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Content addressing</h3>
+        <p>In the DHT a thing's name <em>is</em> its hash. A storage node that returns the
+           wrong bytes is detected by whoever asked, so it never has to be trusted.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Corroboration, not authority</h3>
+        <p>One report about a gateway is one observer's opinion. Findings count only when
+           independent operators agree — signatures are cheap, independence is not.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Emergency copies</h3>
+        <p>Gateways hold a signed read-only snapshot. If the origin goes down the site
+           stays readable, clearly labelled, with posting disabled rather than silently
+           swallowing what you typed.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================== COMPUTE ================== -->
+  <div class="nw__sec">
+    <h2>Lending your spare CPU &mdash; without lending your machine
+        <span class="nw__badge">In development</span></h2>
+    <p>
+      Most volunteers have no usable GPU and four to sixteen idle cores, so compute here is
+      CPU-first rather than GPU-first. That is not a consolation prize: two processors
+      running the same code over the same input produce <em>byte-identical</em> output, so
+      correctness can be checked by comparing hashes. Graphics cards do not offer that &mdash;
+      different scheduling changes the order of additions, and the answers are all correct
+      without being equal.
+    </p>
+    <p>
+      The hard problem is not speed. It is that running a stranger's program on your desktop
+      is exactly the thing you should never do. The design assumes every submitted program is
+      hostile and removes what malice needs, rather than trying to detect it:
+    </p>
+
+    <div class="nw__fig">
+      <!-- Drawn as nested containment rather than as a flowchart, because the
+           claim being made is about what ENCLOSES the job. A left-to-right
+           pipeline would suggest stages a payload passes through, which invites
+           the question "what if it gets past one" — the honest picture is that
+           each ring is independently sufficient. -->
+      <svg viewBox="0 0 860 340" role="img"
+           aria-label="Nested isolation: your machine contains a microVM, which contains the job, with no network, no devices and a read-only disk">
+        <rect class="box" x="20" y="20" width="820" height="300" rx="12"/>
+        <text class="lbl" x="40" y="46">Your machine</text>
+        <text class="sub" x="40" y="63">your files, your network, your devices — none of it reachable from inside</text>
+
+        <rect class="box box--planned" x="60" y="82" width="740" height="218" rx="11"/>
+        <text class="lbl" x="80" y="108">microVM — a real virtual machine, not a container</text>
+        <text class="sub" x="80" y="125">hardware virtualisation: the guest cannot read host memory even if it fully</text>
+        <text class="sub" x="80" y="139">compromises its own kernel; privileged instructions trap to the hypervisor</text>
+
+        <rect class="box" x="100" y="158" width="300" height="122" rx="10"/>
+        <text class="lbl" x="120" y="184">The job</text>
+        <text class="sub" x="120" y="203">reads its input</text>
+        <text class="sub" x="120" y="219">computes</text>
+        <text class="sub" x="120" y="235">writes one output file</text>
+        <text class="sub" x="120" y="258">boots in under a second,</text>
+        <text class="sub" x="120" y="272">destroyed when finished</text>
+
+        <g>
+          <rect class="box" x="430" y="158" width="170" height="56" rx="9"/>
+          <text class="lbl" x="515" y="182" text-anchor="middle">No network</text>
+          <text class="sub" x="515" y="200" text-anchor="middle">absent, not firewalled</text>
+        </g>
+        <g>
+          <rect class="box" x="620" y="158" width="170" height="56" rx="9"/>
+          <text class="lbl" x="705" y="182" text-anchor="middle">No devices</text>
+          <text class="sub" x="705" y="200" text-anchor="middle">no camera, mic, USB</text>
+        </g>
+        <g>
+          <rect class="box" x="430" y="224" width="170" height="56" rx="9"/>
+          <text class="lbl" x="515" y="248" text-anchor="middle">No keyboard, no screen</text>
+          <text class="sub" x="515" y="266" text-anchor="middle">nothing to capture</text>
+        </g>
+        <g>
+          <rect class="box" x="620" y="224" width="170" height="56" rx="9"/>
+          <text class="lbl" x="705" y="248" text-anchor="middle">Read-only disk</text>
+          <text class="sub" x="705" y="266" text-anchor="middle">nothing left behind</text>
+        </g>
+      </svg>
+      <p class="nw__cap">Dashed = built and tested, not yet running on volunteer machines.</p>
+    </div>
+
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>Nothing to block</h3>
+        <p>A keylogger needs a keyboard stream; screen capture needs a framebuffer. A
+           headless VM has neither, so there is no attack to detect &mdash; there is nothing
+           for one to attach to.</p>
+      </div>
+      <div class="nw__card">
+        <h3>No network at all</h3>
+        <p>Not filtered &mdash; <em>absent</em>. No interface, no route, no DNS. Inputs are
+           fetched before it boots and results collected after it stops, so there is no
+           botnet to join and no allowlist to leak through.</p>
+      </div>
+      <div class="nw__card">
+        <h3>It stops when told</h3>
+        <p>There is no polite shutdown to ignore. The deadline passes and the machine is
+           destroyed, along with anything it started. A job cannot hold your core by
+           declining to exit.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Wrong answers are caught</h3>
+        <p>The same unit runs on several unrelated machines and the results are compared.
+           Replicas are spread across different operators and networks, so agreement is
+           not just several copies of one bug.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================== PAYMENT ================== -->
+  <div class="nw__sec">
+    <h2>How work turns into payment
+        <span class="nw__badge">Design</span></h2>
+    <p>
+      Paying for each of these things on-chain does not work: a transaction fee dwarfs the
+      value of serving one page. So work produces <strong>signed receipts</strong> instead,
+      and receipts settle in bulk. The receipt part runs today &mdash; every rewarded action
+      already carries provider and witness signatures. What follows is the design for
+      settling them continuously rather than in epoch-sized batches.
+    </p>
+
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 210" role="img"
+           aria-label="Receipt lifecycle: work performed, receipt signed and witnessed, balance updated off-chain, settled on-chain periodically">
+        <g>
+          <path class="edge" d="M188 74 L232 74" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M400 74 L444 74" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M612 74 L656 74" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="28" y="40" width="160" height="68" rx="9"/>
+          <text class="lbl" x="108" y="66" text-anchor="middle">Work happens</text>
+          <text class="sub" x="108" y="84" text-anchor="middle">a page served, a shard</text>
+          <text class="sub" x="108" y="98" text-anchor="middle">held, a unit computed</text>
+        </g>
+        <g>
+          <rect class="box" x="232" y="40" width="168" height="68" rx="9"/>
+          <text class="lbl" x="316" y="66" text-anchor="middle">Receipt signed</text>
+          <text class="sub" x="316" y="84" text-anchor="middle">provider signs, witnesses</text>
+          <text class="sub" x="316" y="98" text-anchor="middle">co-sign — runs today</text>
+        </g>
+        <g>
+          <rect class="box box--planned" x="444" y="40" width="168" height="68" rx="9"/>
+          <text class="lbl" x="528" y="66" text-anchor="middle">Balance updated</text>
+          <text class="sub" x="528" y="84" text-anchor="middle">off-chain, instant,</text>
+          <text class="sub" x="528" y="98" text-anchor="middle">costs nothing</text>
+        </g>
+        <g>
+          <rect class="box" x="656" y="40" width="176" height="68" rx="9"/>
+          <text class="lbl" x="744" y="66" text-anchor="middle">Settled on-chain</text>
+          <text class="sub" x="744" y="84" text-anchor="middle">once, in bulk,</text>
+          <text class="sub" x="744" y="98" text-anchor="middle">for many receipts</text>
+        </g>
+        <text class="sub" x="430" y="150" text-anchor="middle">A receipt cannot be spent twice: it names the channel it debits and the moment its claim expires.</text>
+        <text class="sub" x="430" y="172" text-anchor="middle">The chain is touched when a tab is closed — not when a page is served.</text>
+      </svg>
+    </div>
+
+    <h3 style="margin-top:1.6rem">Why an off-chain payment is still safe</h3>
+    <p>
+      The worry with paying outside a blockchain is obvious: if the payment is not
+      recorded publicly, what stops the other side denying it? The answer is that a
+      payment channel does not ask you to trust anyone. It gives you something you
+      can take to the chain <em>alone</em>, at any time, whether or not the other
+      side cooperates.
+    </p>
+    <p class="nw__note">
+      This is the design Bitcoin's Lightning Network proved at scale. Dendritic Network is
+      not Lightning &mdash; Lightning is Bitcoin, and this settles on Ethereum &mdash;
+      but the safety mechanism is the same one, and it is worth understanding
+      because it is what your money actually rests on.
+    </p>
+
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 300" role="img"
+           aria-label="Channel lifecycle: one on-chain open, many free off-chain updates, one on-chain close">
+        <g>
+          <path class="edge" d="M170 70 L250 70" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M610 70 L690 70" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="20" y="36" width="150" height="68" rx="9"/>
+          <text class="lbl" x="95" y="62" text-anchor="middle">Open</text>
+          <text class="sub" x="95" y="80" text-anchor="middle">one transaction</text>
+          <text class="sub" x="95" y="94" text-anchor="middle">funds locked on-chain</text>
+        </g>
+        <g>
+          <rect class="box box--planned" x="250" y="26" width="360" height="88" rx="10"/>
+          <text class="lbl" x="430" y="52" text-anchor="middle">Thousands of updates — off-chain</text>
+          <text class="sub" x="430" y="70" text-anchor="middle">each one signed by BOTH sides, each replacing the last</text>
+          <text class="sub" x="430" y="84" text-anchor="middle">instant, free, and invisible to everyone else</text>
+          <text class="sub" x="430" y="102" text-anchor="middle">you always hold the newest signed balance</text>
+        </g>
+        <g>
+          <rect class="box" x="690" y="36" width="150" height="68" rx="9"/>
+          <text class="lbl" x="765" y="62" text-anchor="middle">Close</text>
+          <text class="sub" x="765" y="80" text-anchor="middle">one transaction</text>
+          <text class="sub" x="765" y="94" text-anchor="middle">final balances paid out</text>
+        </g>
+
+        <text class="sub" x="430" y="150" text-anchor="middle">If the other side vanishes or refuses to close honestly:</text>
+        <g>
+          <path class="edge" d="M240 196 L300 196" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M540 196 L600 196" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="60" y="168" width="180" height="56" rx="9"/>
+          <text class="lbl" x="150" y="192" text-anchor="middle">You close alone</text>
+          <text class="sub" x="150" y="210" text-anchor="middle">no cooperation needed</text>
+        </g>
+        <g>
+          <rect class="box" x="300" y="168" width="240" height="56" rx="9"/>
+          <text class="lbl" x="420" y="192" text-anchor="middle">Challenge period opens</text>
+          <text class="sub" x="420" y="210" text-anchor="middle">a newer signed state beats an older one</text>
+        </g>
+        <g>
+          <rect class="box" x="600" y="168" width="200" height="56" rx="9"/>
+          <text class="lbl" x="700" y="192" text-anchor="middle">Chain pays the honest state</text>
+          <text class="sub" x="700" y="210" text-anchor="middle">cheating costs the cheat</text>
+        </g>
+        <text class="sub" x="430" y="262" text-anchor="middle">Dashed = designed, not yet running. Nothing described here is live today.</text>
+      </svg>
+    </div>
+
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>You can always leave</h3>
+        <p>Every update is signed by both sides. If the other party disappears, you
+           submit the newest one you hold and the contract pays it out after a waiting
+           period. Their cooperation is convenient, never required &mdash; which is the
+           whole reason this is not trust.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Cheating is punished, not merely detected</h3>
+        <p>Submitting an old state &mdash; one where you had more &mdash; opens a window in
+           which anyone can post a newer signed state and take the cheat's stake.
+           Fraud is not just refused; it is the losing move.</p>
+      </div>
+      <div class="nw__card">
+        <h3>You are not required to be online</h3>
+        <p>The catch in that window is needing to notice. A watchtower watches for you
+           and submits the newer state if someone tries it, and it is built so it can
+           only ever pay you &mdash; it can never move your funds anywhere else.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Nobody holds your money in between</h3>
+        <p>Funds sit in the contract, not with an operator. Between opening and closing,
+           what changes hands is signatures &mdash; not custody. There is no moment where
+           the site is holding your balance and could freeze or lose it.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:1.6rem">And the parts that are not magic</h3>
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>Your funds are only as safe as your keys</h3>
+        <p>The signed states are what protect you. Lose them and lose the device with no
+           backup, and you can still recover what the chain last recorded &mdash; but not
+           what you were owed off-chain since. Endpoint compromise defeats all of this.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Opening and closing are public</h3>
+        <p>What happens inside a channel is private; that a channel exists is not.
+           Deposits, withdrawals and timing are on a public chain, and no amount of
+           off-chain privacy changes that.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Money in a channel is committed</h3>
+        <p>Funds locked in a channel are not spendable elsewhere until it closes, and
+           closing costs a transaction fee. Channels suit repeated small payments; for
+           one large payment they are usually not worth opening.</p>
+      </div>
+      <div class="nw__card">
+        <h3>None of this is live yet</h3>
+        <p>This section describes a design, not a running system. When it ships it will
+           say so here, and the page will state plainly which protections are in force
+           and which are still on paper.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:1.6rem">One channel with the network, not one per creator</h3>
+    <p>
+      The obvious way to do this is the wrong way: if every viewer had to open a payment
+      channel with every streamer, storage node and gateway they ever touched, nobody would
+      get past the first tip. Each channel costs a transaction to open and locks funds that
+      then sit idle.
+    </p>
+    <p>
+      So a reader opens <strong>one</strong> channel &mdash; with the network &mdash; and tops it up
+      like a prepaid card. Payments to everyone else are routed through it.
+    </p>
+
+    <div class="nw__fig">
+      <!-- The hub is drawn as a router, not as a wallet, and the caption says
+           so. That distinction is the whole design: a hub that HOLDS your
+           balance is a custodian you must trust, and a hub that only forwards
+           locked transfers is not. Drawing it ambiguously would misrepresent
+           which of those this is. -->
+      <svg viewBox="0 0 860 330" role="img"
+           aria-label="One viewer channel into the network, fanning out to streamers, storage, gateways and compute nodes">
+        <g>
+          <path class="edge" d="M430 96 L430 138" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M400 216 C 300 216 190 232 150 250" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M415 220 C 380 240 350 244 330 250" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M445 220 C 480 240 510 244 530 250" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M460 216 C 560 216 670 232 710 250" marker-end="url(#nw-arrow)"/>
+        </g>
+
+        <g>
+          <rect class="box" x="330" y="24" width="200" height="72" rx="9"/>
+          <text class="lbl" x="430" y="52" text-anchor="middle">You</text>
+          <text class="sub" x="430" y="70" text-anchor="middle">deposit once, say 100 AXON</text>
+          <text class="sub" x="430" y="84" text-anchor="middle">one channel, one signature</text>
+        </g>
+
+        <g>
+          <rect class="box box--planned" x="310" y="138" width="240" height="80" rx="10"/>
+          <text class="lbl" x="430" y="166" text-anchor="middle">The network, as a router</text>
+          <text class="sub" x="430" y="184" text-anchor="middle">forwards locked payments onward</text>
+          <text class="sub" x="430" y="198" text-anchor="middle">holds channels with providers</text>
+          <text class="sub planned" x="430" y="212" text-anchor="middle">cannot keep what it forwards</text>
+        </g>
+
+        <g>
+          <rect class="box" x="60" y="250" width="180" height="58" rx="9"/>
+          <text class="lbl" x="150" y="274" text-anchor="middle">Streamers</text>
+          <text class="sub" x="150" y="292" text-anchor="middle">per minute watched</text>
+        </g>
+        <g>
+          <rect class="box" x="250" y="250" width="160" height="58" rx="9"/>
+          <text class="lbl" x="330" y="274" text-anchor="middle">Storage</text>
+          <text class="sub" x="330" y="292" text-anchor="middle">per byte-hour</text>
+        </g>
+        <g>
+          <rect class="box" x="450" y="250" width="160" height="58" rx="9"/>
+          <text class="lbl" x="530" y="274" text-anchor="middle">Gateways</text>
+          <text class="sub" x="530" y="292" text-anchor="middle">per request</text>
+        </g>
+        <g>
+          <rect class="box" x="620" y="250" width="180" height="58" rx="9"/>
+          <text class="lbl" x="710" y="274" text-anchor="middle">Compute nodes</text>
+          <text class="sub" x="710" y="292" text-anchor="middle">per CPU-second</text>
+        </g>
+
+        <text class="sub" x="442" y="122" text-anchor="start">one deposit</text>
+      </svg>
+      <p class="nw__cap">A router, not a wallet &mdash; see below for why that distinction is the whole design.</p>
+    </div>
+
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>It forwards; it does not hold</h3>
+        <p>Each hop is locked to a secret that only completes the whole path at once. The
+           network either delivers your payment to the streamer or it never leaves your
+           channel &mdash; there is no in-between state where someone else is holding your
+           money. That is what makes this a router rather than a custodian.</p>
+      </div>
+      <div class="nw__card">
+        <h3>You can always leave</h3>
+        <p>Your channel is still yours. If the network stops responding you close it
+           yourself and the chain returns your remaining balance after a waiting period,
+           whether or not anyone cooperates.</p>
+      </div>
+      <div class="nw__card">
+        <h3>The cost is liquidity, not trust</h3>
+        <p>For this to work the network must already hold funded channels with every
+           provider you might pay. That capital is the real price of the convenience, and
+           it is why the hub is run by the treasury rather than by a volunteer.</p>
+      </div>
+      <div class="nw__card">
+        <h3>The honest catch</h3>
+        <p>A router sees what it routes. Paying everyone through one hub tells that hub
+           which reader paid which streamer &mdash; on a network built for anonymity that is a
+           real cost, and it is being designed against rather than ignored.</p>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================== WATCHTOWER ================== -->
+  <div class="nw__sec">
+    <h2>Who watches while you are asleep
+        <span class="nw__badge">In development</span></h2>
+    <p>
+      A payment channel protects you by letting you post a newer signed state than the one
+      a cheat submitted. That protection has a deadline. If someone closes your channel on
+      a stale state at three in the morning and the challenge window expires before you
+      wake up, the stale state becomes final and the difference is theirs.
+    </p>
+    <p>
+      So a watchtower holds your newest signed states and posts one if it ever sees an
+      older one hit the chain. The important design decision is what it is <em>not</em>
+      allowed to do.
+    </p>
+
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 250" role="img"
+           aria-label="A watchtower holds evidence and can only post a newer state; it cannot move funds elsewhere">
+        <g>
+          <path class="edge" d="M196 62 L280 62" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M470 62 L556 62" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M368 100 L368 152" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="26" y="32" width="170" height="60" rx="9"/>
+          <text class="lbl" x="111" y="58" text-anchor="middle">Cheat closes</text>
+          <text class="sub" x="111" y="76" text-anchor="middle">on an old state</text>
+        </g>
+        <g>
+          <rect class="box box--planned" x="280" y="32" width="190" height="60" rx="9"/>
+          <text class="lbl" x="375" y="58" text-anchor="middle">Watchtower notices</text>
+          <text class="sub" x="375" y="76" text-anchor="middle">it is holding a newer one</text>
+        </g>
+        <g>
+          <rect class="box" x="556" y="32" width="180" height="60" rx="9"/>
+          <text class="lbl" x="646" y="58" text-anchor="middle">Newer state posted</text>
+          <text class="sub" x="646" y="76" text-anchor="middle">you keep your balance</text>
+        </g>
+        <g>
+          <rect class="box" x="250" y="152" width="250" height="62" rx="9"
+                stroke-dasharray="5 4"/>
+          <text class="lbl" x="375" y="178" text-anchor="middle">What it cannot do</text>
+          <text class="sub" x="375" y="196" text-anchor="middle">send funds anywhere but to you</text>
+        </g>
+        <text class="sub" x="700" y="180" text-anchor="middle">It holds evidence,</text>
+        <text class="sub" x="700" y="198" text-anchor="middle">not authority.</text>
+      </svg>
+      <p class="nw__cap">A watchtower can only ever replace a stale state with a newer one you already signed.</p>
+    </div>
+
+    <p>
+      It never holds a key that can move your money. Everything it stores is a state
+      <em>you</em> already signed, and the only action it can take is handing one of those
+      to the contract. A compromised watchtower can fail to defend you; it cannot rob you.
+    </p>
+
+    <h3 style="margin-top:1.6rem">The waiting period is a measurement, not a guess</h3>
+    <p>
+      How long should the challenge window be? Too short and an honest person cannot react
+      in time. Too long and everyone's money is slow to withdraw. The number is fixed
+      permanently when the contract is deployed, so it was worked out by measuring every
+      step of getting a newer state onto the chain, rather than by picking a round figure.
+    </p>
+    <div class="nw__panel">
+      <div class="nw__row">
+        <span class="nw__k">Noticing a stale close</span><span>measured over 200,000 channels</span>
+      </div>
+      <div class="nw__row">
+        <span class="nw__k">Getting a transaction mined</span><span>measured on Ethereum mainnet, 30 real transactions</span>
+      </div>
+      <div class="nw__row">
+        <span class="nw__k">Re-sending it if the fee was too low</span><span>measured, 30 full recovery cycles</span>
+      </div>
+      <div class="nw__row">
+        <span class="nw__k">A chain reorganisation</span><span>still being observed &mdash; see below</span>
+      </div>
+      <div class="nw__row">
+        <span class="nw__k">Somebody being unavailable</span><span>a stated commitment, not a measurement</span>
+      </div>
+    </div>
+    <p class="nw__note">
+      Each step has a generous budget, and each budget has to be backed by an actual
+      measurement against real Ethereum before the contract can be deployed. Four are done.
+      One is not, and the reason is worth being precise about: a reorganisation is a rare
+      event, and watching for a long time without seeing one does <em>not</em> prove they
+      are shallow. An absence of events cannot bound the size of one, so that budget stays
+      unproven until a real reorganisation is observed and measured.
+    </p>
+  </div>
+
+  <!-- ================== BACKUP AND RECOVERY ================== -->
+  <div class="nw__sec">
+    <h2>If your device dies
+        <span class="nw__badge">In development</span></h2>
+    <p>
+      The signed states are what protect you, so losing them matters. Your latest states
+      are backed up encrypted, split into pieces, and spread across the same distributed
+      storage that holds the site's content &mdash; so recovering them does not depend on
+      any one machine still being alive, including ours.
+    </p>
+
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 220" role="img"
+           aria-label="Latest states are encrypted, split into erasure-coded shards, and spread across the DHT">
+        <g>
+          <path class="edge" d="M182 60 L246 60" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M420 60 L484 60" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="24" y="30" width="158" height="60" rx="9"/>
+          <text class="lbl" x="103" y="56" text-anchor="middle">Your latest states</text>
+          <text class="sub" x="103" y="74" text-anchor="middle">signed by both sides</text>
+        </g>
+        <g>
+          <rect class="box" x="246" y="30" width="174" height="60" rx="9"/>
+          <text class="lbl" x="333" y="56" text-anchor="middle">Encrypted locally</text>
+          <text class="sub" x="333" y="74" text-anchor="middle">with a key only you hold</text>
+        </g>
+        <g>
+          <rect class="box box--planned" x="484" y="30" width="180" height="60" rx="9"/>
+          <text class="lbl" x="574" y="56" text-anchor="middle">Split into shards</text>
+          <text class="sub" x="574" y="74" text-anchor="middle">any 6 of 9 rebuild it</text>
+        </g>
+        <g>
+          <rect class="box" x="700" y="30" width="136" height="60" rx="9"/>
+          <text class="lbl" x="768" y="56" text-anchor="middle">Spread wide</text>
+          <text class="sub" x="768" y="74" text-anchor="middle">across the network</text>
+        </g>
+        <text class="sub" x="430" y="140" text-anchor="middle">Three of the nine holders can vanish and your backup is still intact.</text>
+        <text class="sub" x="430" y="162" text-anchor="middle">None of them can read it, and none of them can tell it is yours.</text>
+      </svg>
+    </div>
+
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>Storage is not trust</h3>
+        <p>The nodes holding your backup hold ciphertext. They cannot read a state, cannot
+           forge one, and cannot use one &mdash; a state is only worth anything to the
+           person it pays.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Losing pieces is expected</h3>
+        <p>The backup is split so that any six of nine pieces rebuild it. Nodes going
+           offline is normal operation, not an incident.</p>
+      </div>
+      <div class="nw__card">
+        <h3>What a backup cannot fix</h3>
+        <p>If your signing key is stolen, backups do not help &mdash; whoever holds the key
+           is you, as far as the contract is concerned. Backups protect against loss, not
+           against compromise.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================== INDEPENDENT VERIFICATION ================== -->
+  <div class="nw__sec">
+    <h2>How we know the blockchain is telling the truth
+        <span class="nw__badge">In development</span></h2>
+    <p>
+      Almost every application that talks to Ethereum asks a company's server what the
+      chain says and believes the answer. That is a strange thing to do with a system whose
+      entire point is not needing to trust anyone &mdash; and here it would be worse than
+      strange, because a watchtower shown a fabricated chain would sit quietly while your
+      channel was stolen.
+    </p>
+    <p>
+      It is worth being blunt about why the obvious defences do not work. Since Ethereum
+      stopped using proof-of-work, <strong>fabricating a convincing chain of block headers
+      costs nothing</strong>. An attacker who controls the server you ask can invent blocks
+      that link together perfectly, contain any balances they like, and produce proofs that
+      verify correctly against their own invented state. Checking that the blocks fit
+      together proves nothing at all.
+    </p>
+
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 260" role="img"
+           aria-label="Rather than trusting an RPC provider, the node verifies validator signatures from an independently obtained checkpoint">
+        <g>
+          <path class="edge" d="M170 56 L244 56" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M436 56 L510 56" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M660 90 L660 150" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="20" y="26" width="150" height="60" rx="9"/>
+          <text class="lbl" x="95" y="52" text-anchor="middle">Starting point</text>
+          <text class="sub" x="95" y="70" text-anchor="middle">from 3 unrelated groups</text>
+        </g>
+        <g>
+          <rect class="box" x="244" y="26" width="192" height="60" rx="9"/>
+          <text class="lbl" x="340" y="52" text-anchor="middle">Validator signatures</text>
+          <text class="sub" x="340" y="70" text-anchor="middle">checked by us, not taken</text>
+        </g>
+        <g>
+          <rect class="box" x="510" y="26" width="300" height="60" rx="9"/>
+          <text class="lbl" x="660" y="52" text-anchor="middle">A block we can prove is real</text>
+          <text class="sub" x="660" y="70" text-anchor="middle">and the balances underneath it</text>
+        </g>
+        <g>
+          <rect class="box" x="500" y="150" width="320" height="62" rx="9" stroke-dasharray="5 4"/>
+          <text class="lbl" x="660" y="176" text-anchor="middle">If we cannot verify it</text>
+          <text class="sub" x="660" y="194" text-anchor="middle">we refuse — we do not fall back to trusting</text>
+        </g>
+        <text class="sub" x="230" y="176" text-anchor="middle">The three starting points must agree exactly.</text>
+        <text class="sub" x="230" y="198" text-anchor="middle">If they disagree, that is a stop, not a vote.</text>
+      </svg>
+      <p class="nw__cap">The only thing that makes a block real is signatures from Ethereum's validators &mdash; so those are what we check.</p>
+    </div>
+
+    <p>
+      So the node checks the validator signatures itself. It starts from a reference point
+      obtained from three unrelated organisations who must agree exactly, then follows
+      Ethereum's own signature chain forward from there. The server we read blocks from is
+      never allowed to supply that starting point, because using a provider to vouch for
+      itself is not a check.
+    </p>
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>It fails closed</h3>
+        <p>If the signatures cannot be verified, the answer is refused. There is no
+           best-effort mode that quietly falls back to believing the server, because that
+           mode would be the one running on the day it mattered.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Agreement is not the security</h3>
+        <p>Asking several providers and taking the majority raises the cost of an attack;
+           it does not prove anything. It is used to obtain a starting point, and it is
+           never described as verification.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Verified against the real chain</h3>
+        <p>This is not a diagram of an intention. It has been run against live Ethereum
+           mainnet: real validator signatures checked, real balances proven underneath a
+           block the node confirmed for itself.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================== AWARDS OVER CHANNELS ================== -->
+  <div class="nw__sec">
+    <h2>Giving an award without a transaction fee
+        <span class="nw__badge">Design</span></h2>
+    <p>
+      Awards are the visible face of all of this. Sending one on-chain means paying a
+      transaction fee that can exceed the award itself, which is why small tips do not work
+      on most chains. Over a channel an award is a signed message: instant, free, and
+      settled later in bulk with everything else.
+    </p>
+    <p>
+      One deliberate constraint shapes the design: <strong>clicking the award button does
+      not decide that you paid.</strong> The click starts a payment; the payment completes
+      only when both sides have signed a new channel state. If anything fails in between,
+      the award does not silently exist. The awards you see and the money that moved are
+      kept as separate machinery precisely so that a bug in one cannot invent the other.
+    </p>
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>Three outcomes, not two</h3>
+        <p>A payment completes, is refused, or is <em>unknown</em> &mdash; the last when a
+           reply is lost. Unknown is treated as its own case rather than guessed at, because
+           guessing wrong either double-pays or loses a payment.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Retrying cannot double-pay</h3>
+        <p>Each award carries an identifier the channel remembers. Sending the same one
+           twice updates nothing the second time, so a flaky connection costs you a retry,
+           not a second award.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================== SPLITTING ================== -->
+  <div class="nw__sec">
+    <h2>Splitting one payment across several routes
+        <span class="nw__badge">Not enabled</span></h2>
+    <p>
+      A larger payment can be cut into pieces that travel different routes and reassemble
+      at the recipient. It helps when no single route has enough capacity, and it means no
+      single intermediary sees the whole amount.
+    </p>
+    <p>
+      The planning half of this is built &mdash; fragments are sized unevenly on purpose,
+      since three identical thirds arriving together reassemble on sight, and the routes
+      chosen must share no operator, because splitting across two paths run by the same
+      party gives that party two views and a partial sum rather than any privacy at all.
+    </p>
+    <p class="nw__note">
+      <strong>It is switched off, and it should be.</strong> What is missing is the half
+      that coordinates the pieces once they are in flight: what happens when two of three
+      arrive, how partial refunds reconcile, how a payment resumes if your machine restarts
+      midway. Until that exists, splitting a payment would place real locks on real
+      channels with no coordinated way to settle or unwind them &mdash; worse than not
+      splitting. The security properties it must satisfy have been written down first, and
+      the gaps are recorded as gaps rather than quietly designed around.
+    </p>
+  </div>
+
+
+  <!-- ================== POOLED TIPPING ================== -->
+  <div class="nw__sec">
+    <h2>Pooled tipping &mdash; many people, one recipient
+        <span class="nw__badge">Design</span></h2>
+    <p>
+      Splitting, above, takes one person's payment down several routes. Pooled tipping is
+      the opposite direction: <strong>many independent people contributing toward one
+      recipient</strong>, aggregated so a streamer draws down a single total rather than
+      settling hundreds of separate tips.
+    </p>
+
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 300" role="img"
+           aria-label="Several contributors each cryptographically authorise a tip; the pool aggregates them and the recipient draws down one total">
+        <g>
+          <path class="edge" d="M120 96 L300 150" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M360 96 L410 150" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M600 96 L520 150" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M780 96 L580 152" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M430 214 L430 254" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="40" y="34" width="160" height="62" rx="9"/>
+          <text class="lbl" x="120" y="60" text-anchor="middle">Alice</text>
+          <text class="sub" x="120" y="78" text-anchor="middle">signs +0.25</text>
+        </g>
+        <g>
+          <rect class="box" x="280" y="34" width="160" height="62" rx="9"/>
+          <text class="lbl" x="360" y="60" text-anchor="middle">Bob</text>
+          <text class="sub" x="360" y="78" text-anchor="middle">signs +1.00</text>
+        </g>
+        <g>
+          <rect class="box" x="520" y="34" width="160" height="62" rx="9"/>
+          <text class="lbl" x="600" y="60" text-anchor="middle">Carol</text>
+          <text class="sub" x="600" y="78" text-anchor="middle">signs +5.00</text>
+        </g>
+        <g>
+          <rect class="box" x="700" y="34" width="140" height="62" rx="9"/>
+          <text class="lbl" x="770" y="60" text-anchor="middle">Dave</text>
+          <text class="sub" x="770" y="78" text-anchor="middle">signs +0.50</text>
+        </g>
+        <g>
+          <rect class="box box--planned" x="270" y="150" width="320" height="64" rx="10"/>
+          <text class="lbl" x="430" y="176" text-anchor="middle">Pool aggregates the authorisations</text>
+          <text class="sub" x="430" y="196" text-anchor="middle">it does not hold a balance of its own</text>
+        </g>
+        <g>
+          <rect class="box" x="290" y="254" width="280" height="40" rx="9"/>
+          <text class="lbl" x="430" y="279" text-anchor="middle">Recipient draws down 6.75</text>
+        </g>
+      </svg>
+      <p class="nw__cap">Each contribution stays backed by its contributor's signature. The pool adds them up; it never invents them.</p>
+    </div>
+
+    <p>
+      The line this design will not cross is the obvious shortcut: a pool must never become
+      a database that records <em>Alice owes 1, Bob owes 5</em> and then promises to pay the
+      streamer. That is a custodian with extra steps, and it would put every contributor's
+      money behind one operator's honesty and solvency. Every contribution stays backed by
+      cryptographic authorisation from the person who made it, so the pool is adding up
+      things that are already true rather than asserting new ones.
+    </p>
+
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>The recipient chooses</h3>
+        <p>Pooling is a per-recipient setting, off by default. Ordinary one-to-one tipping
+           stays exactly as it is and stays the default &mdash; a tip is never forced
+           through a pool just because one exists.</p>
+      </div>
+      <div class="nw__card">
+        <h3>It sits above channels, not instead of them</h3>
+        <p>The underlying channels stay two-party. This is an aggregation layer on top of
+           the same signed states, not a redesign into multi-party channels.</p>
+      </div>
+      <div class="nw__card">
+        <h3>A retry is not a second tip</h3>
+        <p>If your connection drops at the wrong moment you will retry &mdash; that is the
+           normal case, not an edge case. The same contribution sent twice must leave the
+           pool at plus twenty-five, never plus fifty.</p>
+      </div>
+      <div class="nw__card">
+        <h3>You cannot hand it a total</h3>
+        <p>A contributor asks to tip a recipient an amount. They never submit a balance, an
+           aggregate or a pool state &mdash; those are constructed and checked by the node,
+           because a caller who can choose the state can choose a flattering one.</p>
+      </div>
+    </div>
+
+    <p class="nw__note">
+      <strong>This is a design, not a running feature.</strong> It is scheduled after the
+      economic testing phase, and the questions that decide whether it can be built
+      non-custodially &mdash; how a contribution is bound to its contributor, recipient,
+      pool and amount at once &mdash; are still open questions rather than settled answers.
+      They are written down as questions on purpose: guessing at them is precisely how a
+      pool turns into the trusted database above.
+    </p>
+  </div>
+
+  <!-- ================== SURVIVING THE WORST ================== -->
+  <div class="nw__sec">
+    <h2>What happens if the domain or the server is taken</h2>
+    <p>
+      An outage is the easy case &mdash; gateways serve their snapshot and the site stays
+      readable. The hard cases are a seized domain and a dead server, because both break the
+      thing everything else is looked up through. Neither is hypothetical, and the network is
+      built so that neither ends it.
+    </p>
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>DNS is not the authority</h3>
+        <p>Where the network lives is a document signed by the operator's wallet. Nodes
+           keep the last one they verified and prefer it over anything a name resolves
+           to &mdash; because a name is exactly what gets taken away.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Your node checks it itself</h3>
+        <p>Against a wallet address written into your config when you downloaded it, never
+           fetched. Asking the origin who is allowed to replace the origin would be asking
+           the thing being replaced.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Old instructions cannot be replayed</h3>
+        <p>Every directive carries a number that only moves forward, and your node
+           remembers the highest it has seen &mdash; across restarts. A message captured
+           today is worthless tomorrow.</p>
+      </div>
+      <div class="nw__card">
+        <h3>A move waits, on purpose</h3>
+        <p>An ordinary move takes effect after a delay. That gap is the window in which a
+           directive nobody meant to issue can be frozen. A genuine emergency skips it and
+           is announced loudly instead &mdash; speed is paid for with visibility.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Backups nobody can read</h3>
+        <p>The site can be rebuilt elsewhere from an encrypted backup held by gateways.
+           Holding one reveals nothing: it is opaque to its custodian, and opening it needs
+           a passphrase no server has. Copies are spread across <em>distinct operators</em>,
+           since five copies with one person is one copy.</p>
+      </div>
+      <div class="nw__card">
+        <h3>The way in is not one address</h3>
+        <p>A joining node finds the network through several gateways discovered in DNS, so
+           one being offline costs nothing. What it is told is signed, and when it cannot
+           verify a signature it requires independent gateways to agree before believing
+           anything.</p>
+      </div>
+    </div>
+
+    <div class="nw__fig">
+      <svg viewBox="0 0 860 250" role="img"
+           aria-label="Bootstrap: a joining node asks several gateways and verifies what they say">
+        <g>
+          <path class="edge" d="M148 60 L300 60" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M148 78 L300 118" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M148 96 L300 176" marker-end="url(#nw-arrow)"/>
+          <path class="edge" d="M436 118 L560 118" marker-end="url(#nw-arrow)"/>
+        </g>
+        <g>
+          <rect class="box" x="12" y="40" width="136" height="72" rx="9"/>
+          <text class="lbl" x="80" y="66" text-anchor="middle">A joining node</text>
+          <text class="sub" x="80" y="82" text-anchor="middle">no peers yet, so it</text>
+          <text class="sub" x="80" y="96" text-anchor="middle">cannot ask the network</text>
+        </g>
+        <g>
+          <rect class="box" x="300" y="36" width="136" height="44" rx="8"/>
+          <text class="sub" x="368" y="55" text-anchor="middle">gateway A</text>
+          <text class="sub" x="368" y="70" text-anchor="middle">signed answer</text>
+        </g>
+        <g>
+          <rect class="box" x="300" y="96" width="136" height="44" rx="8"/>
+          <text class="sub" x="368" y="115" text-anchor="middle">gateway B</text>
+          <text class="sub" x="368" y="130" text-anchor="middle">same answer</text>
+        </g>
+        <g>
+          <rect class="box" x="300" y="156" width="136" height="44" rx="8" opacity=".5"/>
+          <text class="sub" x="368" y="175" text-anchor="middle">gateway C</text>
+          <text class="sub" x="368" y="190" text-anchor="middle">offline — skipped</text>
+        </g>
+        <g>
+          <rect class="box" x="560" y="86" width="180" height="64" rx="9"/>
+          <text class="lbl" x="650" y="112" text-anchor="middle">Checked, then joined</text>
+          <text class="sub" x="650" y="128" text-anchor="middle">signature first,</text>
+          <text class="sub" x="650" y="142" text-anchor="middle">agreement second</text>
+        </g>
+        <text class="sub" x="430" y="228" text-anchor="middle">
+          A gateway that answers differently from the signed document is named, not merely ignored.
+        </text>
+      </svg>
+      <p class="nw__cap">
+        Two forgers do not outvote one signature &mdash; which is why agreement is the second
+        layer and never the first.
+      </p>
+    </div>
+
+    <p class="nw__note">
+      <strong>What none of this fixes.</strong> One wallet signs those directives, so whoever
+      holds it can move the network. The delay, the freeze and the forward-only numbering
+      narrow that window; they do not close it. The real answer is a second independent
+      signer, and that needs a second operator to exist &mdash; which is one more reason to
+      run something here.
+    </p>
+  </div>
+
+  <!-- ================== CONFIGURE ================== -->
+  <div class="nw__sec" id="configure">
+    <h2>Build your configuration</h2>
+    <p>
+      Everything below goes into a <code>config.json</code> packaged beside the program.
+      Nothing here is permanent — every value can be edited afterwards, and the node has a
+      management page for exactly that.
+    </p>
+
+    <div class="nw__panel">
+      <label for="nw-storage">How much disk to donate</label>
+      <input type="range" id="nw-storage" min="0" max="1000" step="5" value="0">
+      <div class="nw__bar" aria-hidden="true">
+        <i class="used" id="nw-bar-used" style="width:0%"></i>
+        <i class="give" id="nw-bar-give" style="width:0%"></i>
+      </div>
+      <div class="nw__legend">
+        <span class="l-give">Donated: <strong id="nw-give-label">0 GB</strong></span>
+        <span class="l-used">Already used</span>
+        <span class="l-free">Free</span>
+      </div>
+      <div class="nw__row" style="margin-top:.9rem">
+        <div style="flex:1 1 12rem">
+          <label for="nw-total">Your total disk (GB)</label>
+          <input type="number" id="nw-total" min="1" max="65536" value="512">
+        </div>
+        <div style="flex:1 1 12rem">
+          <label for="nw-used">Already in use (GB)</label>
+          <input type="number" id="nw-used" min="0" max="65536" value="256">
+        </div>
+      </div>
+      <p class="nw__note" id="nw-storage-note">
+        Set your disk size so the bar means something. Your browser is not allowed to read
+        it, so these two numbers are yours to fill in — nothing is measured or sent.
+      </p>
+
+      <div class="nw__row" style="margin-top:1.2rem">
+        <div style="flex:1 1 20rem">
+          <label for="nw-payout">Payout address (optional)</label>
+          <input type="text" id="nw-payout" placeholder="0x… — where earnings are sent">
+        </div>
+        <div style="flex:1 1 16rem">
+          <label for="nw-email">Contact email (only if running a gateway)</label>
+          <input type="text" id="nw-email" placeholder="for certificate expiry notices">
+        </div>
+      </div>
+      <p class="nw__note">
+        The payout address is where AXONCoins are sent. Leave it blank and the node still
+        works — it simply earns nothing, which the node's own dashboard will nag you about.
+      </p>
+    </div>
+  </div>
+
+  <!-- ================== DOWNLOAD ================== -->
+  <div class="nw__sec" id="download">
+    <h2>Download</h2>
+    <p>
+      The program is identical for everyone on a platform. Only the configuration differs,
+      which is why the hash below is of the <strong>binary</strong> — a hash of your
+      personal archive would match nobody else's and could not be checked against anything.
+    </p>
+
+    <div class="nw__panel">
+      {%- if not releases %}
+      <p class="nw__warn" style="display:block;margin:0 0 1rem">
+        No binaries are published yet. Everything below works — you can pick roles and
+        build a configuration — but the download itself will not be available until an
+        operator uploads the builds. Nothing here is broken; there is simply nothing to
+        hand you.
+      </p>
+      {%- endif %}
+      <div class="nw__row">
+        <div style="flex:1 1 18rem">
+          <label for="nw-platform">Platform</label>
+          <select id="nw-platform">
+            {%- for p in platforms %}
+            <option value="{{ p.os }}/{{ p.arch }}"
+              {% if p.os == detected.os and p.arch == detected.arch %}selected{% endif %}>
+              {{ p.label }}
+            </option>
+            {%- endfor %}
+          </select>
+        </div>
+      </div>
+      <p class="nw__note" id="nw-detect">
+        Guessed from your browser. Guessed, not known — a browser will not tell a site
+        which processor it has, so check this is right before downloading.
+      </p>
+
+      <p style="margin:1.1rem 0 0"><span class="nw__k">Expected SHA-256 of the binary</span></p>
+      <div class="nw__hash" id="nw-hash">Select a platform…</div>
+      <div class="nw__pre" id="nw-verify">…</div>
+
+      <div class="nw__row" style="margin-top:1.2rem">
+        <a class="nw__btn nw__btn--go" id="nw-download" href="#" aria-disabled="true">
+          Choose a role first
+        </a>
+        <a class="nw__btn nw__btn--ghost" href="/api/v1/node/releases">Hashes as JSON</a>
+        <a class="nw__btn nw__btn--ghost" href="#install">Or install in one line &darr;</a>
+      </div>
+      <p class="nw__note" id="nw-summary">Nothing selected yet.</p>
+    </div>
+  </div>
+
+  <!-- ================== WHAT COMES NEXT ================== -->
+  <div class="nw__sec">
+    <h2>After it is running</h2>
+    <div class="nw__roles">
+      <div class="nw__card">
+        <h3>It earns AXONCoins</h3>
+        <p>Storage, bandwidth and verification are paid from the same treasury
+           everything else on the site draws from. Rewards are <em>claimed</em>, not
+           pushed &mdash; when an epoch settles, your share becomes provable against a
+           Merkle root and you send one transaction to collect it.
+           <a href="/claim" style="color:inherit">Claim rewards &rarr;</a> &middot;
+           <a href="/economy" style="color:inherit">How the economy works &rarr;</a></p>
+      </div>
+      <div class="nw__card">
+        <h3>It has its own dashboard</h3>
+        <p>Served on <code>127.0.0.1:9090</code> — local only, so nothing about
+           your node is exposed by running it. Capacity, peers and earnings live
+           there, and every setting in <code>config.json</code> can be changed
+           afterwards.</p>
+      </div>
+      <div class="nw__card">
+        <h3>Stopping is not a betrayal</h3>
+        <p>Shards are erasure-coded across many nodes, so leaving costs the
+           network redundancy it will rebuild, not data. Run it for as long as it
+           suits you.</p>
+      </div>
+      <div class="nw__card">
+        <h3>It needs I2P</h3>
+        <p>Storage and validation reach the network over I2P. The node speaks to
+           a local router on <code>127.0.0.1:7656</code>; if you do not have one,
+           the node's dashboard will say so rather than failing quietly.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================== ONE-LINE INSTALL ==================
+       The archive above is the careful path: pick a platform, check a hash,
+       unpack. This is the fast one, and it is the last thing on the page on
+       purpose — somebody who has read this far and clicked some boxes wants a
+       thing to run, not another explanation. The line below is generated from
+       the same selection Set the diagram drives, so it can never disagree with
+       the boxes that are lit up. -->
+  <div class="nw__sec" id="install">
+    <h2>Run it &mdash; one line</h2>
+    <p>
+      This fetches the installer, picks the right binary for the machine you run it on,
+      writes a <code>config.json</code> for the roles you selected on the diagram, and
+      starts the node. It changes as you change your selection. It is an ordinary shell
+      script and you are welcome to read it first &mdash;
+      <a href="https://dendritic.network/install.sh" style="color:inherit">open it in a
+      browser</a> before piping it into a shell.
+    </p>
+
+    <div class="nw__panel nw__panel--install">
+      <p class="nw__k" id="nw-install-k" style="margin:0">Paste this into a terminal</p>
+      <div class="nw__cmd">
+        <pre class="nw__cmd-text" id="nw-install-pre" tabindex="0"
+             aria-describedby="nw-install-k"><code id="nw-install-cmd">curl -fsSL https://dendritic.network/install.sh | sh</code></pre>
+        <button type="button" class="nw__btn nw__btn--copy" id="nw-copy"
+                aria-describedby="nw-install-cmd">
+          <span aria-hidden="true">⧉</span>
+          <span id="nw-copy-label">Copy command</span>
+        </button>
+      </div>
+      <p class="nw__note nw__copy-status" id="nw-copy-status" role="status" aria-live="polite"></p>
+      <p class="nw__note" id="nw-install-roles">
+        Nothing selected yet &mdash; this installs the node with the installer's defaults.
+        Pick roles on the diagram at the top and this line updates to match.
+      </p>
+      <p class="nw__note" id="nw-install-manual" hidden></p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var selected = new Set();
+  var releases = {{ releases | tojson }};
+  var needsPort = {{ roles | tojson }};
+
+  // This page is in the emergency snapshot, so it can be served by a gateway
+  // while the origin is unreachable. The diagrams and the explanation are worth
+  // having then — that is when somebody is most likely to be reading it. The
+  // download is not: /download/node only the origin can answer, so the button
+  // would fail at exactly the moment confidence matters. The rewriter disables
+  // forms and buttons; it cannot know a plain link needs the origin, so the
+  // page has to say so itself.
+  var frozen = !!document.querySelector(".dendritic-emergency-banner");
+
+  function el(id) { return document.getElementById(id); }
+  function gb(n) { return (n >= 1024 ? (n / 1024).toFixed(1) + " TB" : n + " GB"); }
+
+  // -- roles -------------------------------------------------------------
+  function toggleRole(node) {
+    var role = node.getAttribute("data-role");
+    if (selected.has(role)) { selected.delete(role); } else { selected.add(role); }
+    node.setAttribute("aria-pressed", selected.has(role) ? "true" : "false");
+    refresh();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".nw__role"), function (node) {
+    node.addEventListener("click", function () { toggleRole(node); });
+    node.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleRole(node);
+      }
+    });
+  });
+
+  // -- storage bar -------------------------------------------------------
+  function refreshBar() {
+    var total = Math.max(1, parseInt(el("nw-total").value, 10) || 1);
+    var used = Math.min(total, Math.max(0, parseInt(el("nw-used").value, 10) || 0));
+    var slider = el("nw-storage");
+    // The slider can never exceed what is actually free, so the bar cannot show
+    // somebody donating disk they do not have.
+    slider.max = Math.max(0, total - used);
+    var give = Math.min(parseInt(slider.value, 10) || 0, slider.max);
+    slider.value = give;
+    el("nw-bar-used").style.width = (100 * used / total) + "%";
+    el("nw-bar-give").style.width = (100 * give / total) + "%";
+    el("nw-give-label").textContent = gb(give);
+    return give;
+  }
+  ["nw-storage", "nw-total", "nw-used"].forEach(function (id) {
+    el(id).addEventListener("input", refresh);
+  });
+
+  // -- platform ----------------------------------------------------------
+  function platform() {
+    var parts = el("nw-platform").value.split("/");
+    return { os: parts[0], arch: parts[1] };
+  }
+
+  function refreshPlatform() {
+    var p = platform();
+    var entry = releases[p.os + "-" + p.arch];
+    var name = "dendritic-node-" + p.os + "-" + p.arch + (p.os === "windows" ? ".exe" : "");
+    if (entry && entry.sha256) {
+      el("nw-hash").textContent = entry.sha256;
+      var check = (p.os === "windows" ? "certutil -hashfile " + name + " SHA256"
+                   : p.os === "darwin" ? "shasum -a 256 " + name
+                   : "sha256sum " + name);
+      // The build command too, because "you could compile it yourself and
+      // compare" is only true if the exact flags are stated — -trimpath and
+      // CGO_ENABLED=0 are what make the output reproducible at all.
+      var build = "CGO_ENABLED=0 GOOS=" + p.os + " GOARCH=" + p.arch + " \\\n" +
+                  "  go build -trimpath -ldflags=\"-s -w\" -o " + name +
+                  " ./cmd/dendritic-node";
+      el("nw-verify").textContent =
+        "# check what you downloaded\n" + check +
+        "\n\n# or build it yourself and compare" +
+        (entry.toolchain ? "  (built with " + entry.toolchain + ";\n" +
+                           "#  another Go version gives a different, legitimate hash)" : "") +
+        "\n" + build;
+    } else {
+      el("nw-hash").textContent =
+        "No binary published for this platform yet.";
+      el("nw-verify").textContent = "—";
+    }
+    return entry;
+  }
+  el("nw-platform").addEventListener("change", refresh);
+
+  // -- one-line install --------------------------------------------------
+  // FLAG SHAPE, and why this one. The installer does not exist in its final
+  // form yet, so this is a choice to be reconciled with it, not a description
+  // of it:
+  //
+  //     curl -fsSL https://dendritic.network/install.sh | sh -s -- --role a,b
+  //
+  //  * `sh -s --` is how a piped script is given arguments at all. Without it
+  //    the flags land on `sh` itself and the installer never sees them.
+  //  * `--role` singular, one comma-separated value: it reuses the exact
+  //    vocabulary of the `role=` query parameter /download/node already takes,
+  //    so the page speaks one language about roles. A comma list survives being
+  //    copied, wrapped in a chat window and pasted back far better than five
+  //    repeated flags, and it keeps the line short enough to read.
+  //  * Roles are emitted in the order the server handed them over rather than
+  //    in click order, so the same boxes always produce the same string — two
+  //    people comparing their command lines are comparing configurations, not
+  //    the order they happened to click. (Flask's tojson sorts keys, so that
+  //    order is alphabetical in practice; what matters is that it is fixed.)
+  //
+  // Deliberately NOT in the command: the payout address, the contact email and
+  // the disk allowance. They are per-person values that belong nowhere near a
+  // line people paste into chat, and the node's dashboard can set all three
+  // afterwards. The note under the command says so rather than leaving somebody
+  // to find out from a wallet that never fills.
+  var INSTALL_URL = "https://dendritic.network/install.sh";
+  var INSTALL_BASE = "curl -fsSL " + INSTALL_URL + " | sh";
+  var ROLE_ORDER = Object.keys(needsPort);
+  var copyTimer = null;
+
+  function orderedRoles() {
+    var known = ROLE_ORDER.filter(function (role) { return selected.has(role); });
+    // Anything selected that the server did not describe still belongs in the
+    // command — dropping it silently would hand somebody a line that installs
+    // less than the diagram says it will.
+    var rest = Array.from(selected).filter(function (role) {
+      return ROLE_ORDER.indexOf(role) === -1;
+    });
+    return known.concat(rest);
+  }
+
+  function installCommand(roles) {
+    if (!roles.length) { return INSTALL_BASE; }
+    return INSTALL_BASE + " -s -- --role " + roles.join(",");
+  }
+
+  function refreshInstall() {
+    var roles = orderedRoles();
+    el("nw-install-cmd").textContent = installCommand(roles);
+
+    if (roles.length) {
+      // The role KEYS, not their prose labels — what this sentence names and
+      // what the command passes are then visibly the same words.
+      el("nw-install-roles").textContent =
+        "Installs a node running " + roles.join(", ") +
+        ". Change your selection above and this line changes with it.";
+    } else {
+      el("nw-install-roles").textContent =
+        "Nothing selected yet — this installs the node with the installer's defaults. " +
+        "Pick roles on the diagram at the top and this line updates to match.";
+    }
+
+    // What the command cannot do for them. One line, only when it applies.
+    var manual = [];
+    if (selected.has("storage")) {
+      // Named explicitly because this page has a disk slider and a payout box
+      // right above, and the command carries neither — somebody who filled them
+      // in would otherwise reasonably assume it did.
+      manual.push("set a payout address and a disk allowance on the node's own dashboard "
+                  + "(127.0.0.1:9090) — this line carries neither");
+    }
+    var ports = roles.filter(function (role) {
+      return needsPort[role] && needsPort[role].needs_port;
+    });
+    if (ports.length) {
+      manual.push("forward inbound TCP 443 to this machine for " + ports.join(" and "));
+    }
+    var text = manual.length ? "Still yours to do: " + manual.join("; ") + "." : "";
+    if (frozen) {
+      text = "You are reading a saved copy while the network is unreachable, so there is "
+             + "nothing at that URL to fetch until it is back. " + text;
+    }
+    var note = el("nw-install-manual");
+    note.textContent = text;
+    note.hidden = !text;
+  }
+
+  // Selects the command in place. Doubles as the fallback path's parting gift:
+  // if both copy mechanisms fail the text is left highlighted, so Ctrl-C still
+  // works and the button has not merely done nothing.
+  function selectCommand() {
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(el("nw-install-cmd"));
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // execCommand is deprecated and still the only thing that works on plain
+  // HTTP, on an I2P eepsite and in older browsers — all three are ordinary ways
+  // to be reading this page, so it is the fallback rather than nothing.
+  function legacyCopy() {
+    if (!selectCommand()) { return false; }
+    var copied = false;
+    try { copied = !!document.execCommand("copy"); } catch (error) { copied = false; }
+    if (copied) {
+      try { window.getSelection().removeAllRanges(); } catch (error) { /* harmless */ }
+    }
+    return copied;
+  }
+
+  function copyFeedback(copied) {
+    el("nw-copy-label").textContent = copied ? "Copied" : "Press Ctrl-C";
+    el("nw-copy-status").textContent = copied
+      ? "Command copied to your clipboard."
+      : "Could not reach the clipboard. The command is selected — press Ctrl-C "
+        + "(⌘C on a Mac) to copy it.";
+    if (copyTimer) { window.clearTimeout(copyTimer); }
+    copyTimer = window.setTimeout(function () {
+      el("nw-copy-label").textContent = "Copy command";
+      el("nw-copy-status").textContent = "";
+      copyTimer = null;
+    }, copied ? 2500 : 8000);
+  }
+
+  el("nw-copy").addEventListener("click", function () {
+    var command = el("nw-install-cmd").textContent;
+    // The async clipboard is refused outright without a secure context, and
+    // rejects rather than throws when permission is denied, so both the missing
+    // API and the rejection fall through to the same fallback.
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(command).then(function () {
+        copyFeedback(true);
+      }, function () {
+        // The retry runs after the promise settles, by which point the click's
+        // transient activation may have lapsed and execCommand can refuse too.
+        // That is still a better ending than nothing: the command ends up
+        // selected and the status line says how to take it.
+        copyFeedback(legacyCopy());
+      });
+      return;
+    }
+    copyFeedback(legacyCopy());
+  });
+
+  // -- download ----------------------------------------------------------
+  function refresh() {
+    var give = refreshBar();
+    var entry = refreshPlatform();
+    var p = platform();
+    var button = el("nw-download");
+
+    var roles = Array.from(selected);
+    // A storage node with nothing to store is a node that joins the network,
+    // costs its operator a running process, and holds nothing for anybody. It
+    // is a configuration mistake worth catching here rather than letting
+    // somebody discover from a dashboard that never fills up.
+    var storageUnset = selected.has("storage") && give === 0;
+    var ready = !frozen && roles.length > 0 && !storageUnset
+                && !!(entry && entry.sha256);
+
+    if (frozen) {
+      button.textContent = "Download unavailable — cached copy";
+    } else if (!roles.length) {
+      button.textContent = "Choose a role first";
+    } else if (storageUnset) {
+      button.textContent = "Set how much disk to donate";
+    } else if (!entry || !entry.sha256) {
+      button.textContent = "No binary for this platform";
+    } else {
+      button.textContent = "Download for " + p.os + "/" + p.arch;
+    }
+    button.setAttribute("aria-disabled", ready ? "false" : "true");
+
+    if (ready) {
+      var query = ["os=" + encodeURIComponent(p.os), "arch=" + encodeURIComponent(p.arch),
+                   "storage_gb=" + give];
+      roles.forEach(function (role) { query.push("role=" + encodeURIComponent(role)); });
+      var payout = el("nw-payout").value.trim();
+      var email = el("nw-email").value.trim();
+      if (payout) { query.push("payout=" + encodeURIComponent(payout)); }
+      if (email) { query.push("email=" + encodeURIComponent(email)); }
+      button.href = "/download/node?" + query.join("&");
+    } else {
+      button.href = "#";
+    }
+
+    // Summary, including the port warning — stated at the moment of downloading
+    // rather than only in a paragraph somebody may have scrolled past.
+    var parts = [];
+    if (frozen) {
+      parts.push("You are reading a saved copy while the network is unreachable. "
+                 + "The explanation above is current; the download needs the site "
+                 + "itself, so come back when it is up.");
+    }
+    if (roles.length) {
+      parts.push("Roles: " + roles.join(", "));
+    }
+    if (give > 0) { parts.push("donating " + gb(give)); }
+    var ports = roles.filter(function (r) { return needsPort[r] && needsPort[r].needs_port; });
+    if (ports.length) {
+      parts.push("⚠ " + ports.join(" and ") +
+                 " require inbound TCP 443 — you will need to forward that port on your router");
+    }
+    el("nw-summary").textContent = parts.length ? parts.join(" · ") : "Nothing selected yet.";
+
+    // Same tick of the same function that drives the summary and the download
+    // link. A second listener on `selected` would be a second thing to keep in
+    // step, and the two would drift the first time one of them gained a case
+    // the other did not.
+    refreshInstall();
+  }
+
+  el("nw-download").addEventListener("click", function (event) {
+    if (this.getAttribute("aria-disabled") === "true") { event.preventDefault(); }
+  });
+  el("nw-payout").addEventListener("input", refresh);
+  el("nw-email").addEventListener("input", refresh);
+
+  // A rough starting point for the disk figures, when the browser offers one.
+  // navigator.storage reports a quota for this ORIGIN, not the disk, so it is
+  // only ever a hint — and the fields stay editable because it is usually wrong.
+  if (navigator.storage && navigator.storage.estimate) {
+    navigator.storage.estimate().then(function (estimate) {
+      if (estimate && estimate.quota) {
+        var approx = Math.round(estimate.quota / (1024 * 1024 * 1024));
+        if (approx > 8) { el("nw-total").value = Math.min(65536, approx * 2); }
+        refresh();
+      }
+    }).catch(function () {});
+  }
+
+  refresh();
+})();
+</script>
+
+<!-- ============================================================
+     Merged in from the former standalone /reputation and /economy
+     pages. Both were short and both described the same system this
+     page already explains -- how a node earns and how that is
+     measured -- so they lived here as sections rather than as two
+     extra top-level pages. The old routes now redirect to these
+     anchors, so existing links keep working.
+     ============================================================ -->
+
+<section id="reputation" class="nw__sec nw__merged" aria-labelledby="reputation-h">
+{% if summary %}
+<style>
+  .rp-wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 52px; color: inherit; }
+  .rp-muted { opacity: var(--sc-muted-alpha, .62); }
+  .rp-card { border: 1px solid var(--sc-border); border-radius: 10px;
+             background: var(--sc-surface); padding: 16px 18px; margin-bottom: 16px; }
+  .rp-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  .rp-table th, .rp-table td { padding: 9px 6px; text-align: left;
+                               border-top: 1px solid var(--sc-border); }
+  .rp-table th { opacity: .7; font-weight: 600; }
+  .rp-bar { height: 7px; border-radius: 4px; background: var(--sc-surface-2); overflow: hidden; }
+  .rp-fill { height: 100%; background: #26de81; }
+  .rp-fill.mid { background: var(--sc-accent); }
+  .rp-fill.low { background: #ff6b6b; }
+  .rp-key { font-family: monospace; font-size: .78rem; }
+  .rp-empty { border: 1px dashed var(--sc-border); border-radius: 10px;
+              padding: 26px; text-align: center; }
+</style>
+
+<div class="rp-wrap">
+  <h2 class="mb-1">Node reputation</h2>
+  <p class="rp-muted">
+    How the network rates the machines that keep it running. Scores are derived from
+    evidence anyone can fetch — the receipts nodes signed and the epochs that settled them —
+    so this page can be recomputed by anybody who doubts it.
+  </p>
+
+  {% if summary.nodes %}
+  <div class="rp-card">
+    <strong>{{ summary.nodes }}</strong> node(s) rated ·
+    average <strong>{{ summary.average }}</strong>/100 ·
+    {{ summary.events }} scoring event(s)
+    {% if summary.events == 0 %}
+      <div class="small rp-muted mt-1">
+        Every node here is registered and sitting at the baseline. Scores start
+        moving once epochs begin settling — a node is neither trusted nor suspect
+        until the network has watched it do something.
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if not nodes %}
+    <div class="rp-empty">
+      <p class="mb-1"><strong>No nodes registered yet.</strong></p>
+      <p class="small rp-muted mb-0">
+        A node appears here once it is on-chain, and earns a rating by proving its
+        work and by auditing other nodes.
+        <a href="{{ url_for('main.download_node') }}">How to run one &rarr;</a>
+      </p>
+    </div>
+  {% else %}
+  <table class="rp-table">
+    <thead>
+      <tr><th>Node</th><th style="width:34%">Standing</th><th>Proofs</th><th>Audits</th><th>Paid to</th></tr>
+    </thead>
+    <tbody>
+      {% for n in nodes %}
+      <tr>
+        <td class="rp-key">{{ n.short }}</td>
+        <td>
+          <div class="rp-bar">
+            <div class="rp-fill {% if n.score < 40 %}low{% elif n.score < 70 %}mid{% endif %}"
+                 style="width: {{ n.score }}%;"></div>
+          </div>
+          <span class="small rp-muted">
+            {{ n.score }}/100{% if n.unjudged %} · no history yet{% endif %}
+          </span>
+        </td>
+        <td>{{ n.counts.proof_accepted }}{% if n.counts.proof_failed %}
+            <span style="color:#ff6b6b">&minus;{{ n.counts.proof_failed }}</span>{% endif %}</td>
+        <td>{{ n.counts.challenge_verified }}</td>
+        <td class="rp-key">{% if n.payout %}{{ n.payout[:12] }}…{% else %}<span class="rp-muted">&mdash;</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="rp-card mt-4">
+    <strong>How a score moves</strong>
+    <table class="rp-table mt-2">
+      <tbody>
+        <tr><td>Proof accepted</td><td>+{{ weights.proof_accepted }}</td>
+            <td class="rp-muted small">proved it holds what it claims</td></tr>
+        <tr><td>Challenge verified</td><td>+{{ weights.challenge_verified }}</td>
+            <td class="rp-muted small">audited another node and confirmed the result</td></tr>
+        <tr><td>Proof failed</td><td>{{ weights.proof_failed }}</td>
+            <td class="rp-muted small">could not prove what it advertised</td></tr>
+        <tr><td>Fraud</td><td>{{ weights.fraud }}</td>
+            <td class="rp-muted small">a fabricated or duplicated receipt</td></tr>
+        <tr><td>Caught cheating</td><td>{{ weights.cheating }}</td>
+            <td class="rp-muted small">attestations from witnesses nobody drew</td></tr>
+      </tbody>
+    </table>
+    <p class="small rp-muted mt-2 mb-0">
+      Every node starts at 50 — neither trusted nor suspect. Gains are slow and penalties are
+      not, because a reputation that is cheap to rebuild is not worth protecting. Being
+      unreachable is never counted as dishonesty: an offline node earns nothing, which is
+      punishment enough for downtime.
+    </p>
+  </div>
+</div>
+{% else %}
+<p class="nw__note">Node reputation data is not available right now.</p>
+{% endif %}
+</section>
+
+<section id="economy" class="nw__sec nw__merged" aria-labelledby="economy-h">
+<style>
+  .ec { max-width: 60rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; color: inherit;
+        font-family: 'Inter', system-ui, sans-serif; }
+  .ec * { box-sizing: border-box; }
+  .ec h1, .ec h2, .ec h3 { color: inherit; text-wrap: balance; }
+  .ec__eyebrow { font-family: 'Space Mono', ui-monospace, monospace; font-size: .7rem;
+                 letter-spacing: .24em; text-transform: uppercase; opacity: .6; margin: 0; }
+  .ec__title { font-weight: 700; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.04;
+               letter-spacing: -.02em; margin: .6rem 0 0; }
+  .ec__lede { font-size: clamp(1.02rem, 1.6vw, 1.18rem); line-height: 1.6; opacity: .9;
+              max-width: 44rem; margin: 1rem 0 0; }
+  .ec__sec { margin-top: clamp(2.2rem, 5vw, 3.4rem); }
+  .ec__sec > h2 { font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 700; letter-spacing: -.02em; margin: 0; }
+  .ec__sec > p { font-size: 1.02rem; line-height: 1.62; opacity: .88; max-width: 44rem; margin: .7rem 0 0; }
+  .ec__fig { border: 1px solid var(--sc-border, rgba(128,128,128,.3)); border-radius: 14px;
+             background: var(--sc-surface-2, #f4f6f8); padding: 1.2rem; margin: 1.2rem 0 0; }
+  .ec__fig svg { width: 100%; height: auto; display: block; color: inherit; }
+  .ec__cap { font-size: .82rem; opacity: .6; margin: .6rem 0 0; text-align: center;
+             font-family: 'Space Mono', ui-monospace, monospace; }
+  .ec__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .8rem; margin-top: 1.1rem; }
+  .ec__card { border: 1px solid var(--sc-border, rgba(128,128,128,.3)); border-radius: 11px;
+              background: var(--sc-surface, #fff); padding: 1rem 1.05rem; }
+  .ec__card h3 { font-size: 1rem; font-weight: 600; margin: 0 0 .35rem; }
+  .ec__card p { font-size: .9rem; line-height: 1.5; opacity: .82; margin: 0; }
+  .ec__k { font-family: 'Space Mono', ui-monospace, monospace; font-size: .62rem; letter-spacing: .18em;
+           text-transform: uppercase; opacity: .5; display: block; margin-bottom: .1rem; }
+  .ec__cta { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.6rem; }
+  .ec__btn { display: inline-flex; align-items: center; gap: .5rem; font-weight: 600; font-size: .94rem;
+             padding: .6rem 1.2rem; border-radius: 9px; text-decoration: none;
+             border: 1px solid var(--sc-border, rgba(128,128,128,.4)); color: inherit; }
+  .ec__btn--primary { background: var(--sc-accent, #b07274); color: var(--sc-surface, #fff); border-color: transparent; }
+  /* SVG shared classes */
+  .ec svg .box { fill: var(--sc-surface, #fff); stroke: var(--sc-border, rgba(128,128,128,.5)); stroke-width: 1.2; }
+  .ec svg .box-accent { fill: color-mix(in srgb, var(--sc-accent, #b07274) 12%, transparent);
+                        stroke: var(--sc-accent, #b07274); stroke-width: 1.4; }
+  .ec svg .lbl { fill: currentColor; font: 600 13px 'Inter', sans-serif; }
+  .ec svg .sub { fill: currentColor; opacity: .6; font: 11px 'Inter', sans-serif; }
+  .ec svg .flow { stroke: var(--sc-accent, #b07274); stroke-width: 1.6; fill: none; marker-end: url(#ec-arrow); }
+  .ec svg .flow-lbl { fill: var(--sc-accent, #b07274); font: 700 10px 'Space Mono', monospace; letter-spacing: .04em; }
+</style>
+
+<div class="ec">
+  <p class="ec__eyebrow">Dendritic AXONCoins</p>
+  <h1 class="ec__title">How the economy works</h1>
+  <p class="ec__lede">
+    AXONCoins are the network's fuel. You <strong>earn</strong> them by running real
+    infrastructure that others independently verify, and you <strong>spend</strong> them
+    on the platform's services. Everything flows in a closed loop that no single party
+    owns — here's the whole picture, simply.
+  </p>
+  <p class="ec__lede" style="font-size:.95rem;">
+    Wondering why a blockchain is involved at all, and how the verification actually works?
+    <a href="{{ url_for('main.how_it_works') }}">Start here &rarr;</a>
+  </p>
+
+  <!-- ================= 1. THE CLOSED LOOP ================= -->
+  <div class="ec__sec">
+    <h2>A closed loop, not a faucet</h2>
+    <p>
+      AXONCoins aren't printed for each action. They circulate: people who provide
+      infrastructure earn AXONCoins; people who use the platform buy and spend them; the
+      Treasury sits in the middle, funding rewards and recycling fees. The same AXONCoins
+      go around and around.
+    </p>
+    <div class="ec__fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="The AXONCoins economy closed loop">
+        <defs>
+          <marker id="ec-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--sc-accent, #b07274)"/>
+          </marker>
+        </defs>
+        <!-- four stages of the cycle -->
+        <rect class="box-accent" x="40"  y="120" width="150" height="60" rx="10"/>
+        <text class="lbl" x="115" y="146" text-anchor="middle">Infrastructure</text>
+        <text class="sub" x="115" y="164" text-anchor="middle">DHT · gateways · storage · compute</text>
+
+        <rect class="box" x="245" y="30"  width="150" height="60" rx="10"/>
+        <text class="lbl" x="320" y="56"  text-anchor="middle">Treasury</text>
+        <text class="sub" x="320" y="74"  text-anchor="middle">funds rewards · sells AXONCoins</text>
+
+        <rect class="box" x="450" y="120" width="150" height="60" rx="10"/>
+        <text class="lbl" x="525" y="146" text-anchor="middle">Consumers</text>
+        <text class="sub" x="525" y="164" text-anchor="middle">members · viewers · builders</text>
+
+        <rect class="box" x="245" y="210" width="150" height="60" rx="10"/>
+        <text class="lbl" x="320" y="236" text-anchor="middle">Services</text>
+        <text class="sub" x="320" y="254" text-anchor="middle">videos · labs · uploads · perks</text>
+
+        <!-- clockwise flows -->
+        <path class="flow" d="M175,120 C200,80 215,66 245,60"/>
+        <text class="flow-lbl" x="185" y="86">earn</text>
+        <path class="flow" d="M395,60 C430,66 455,86 470,120"/>
+        <text class="flow-lbl" x="440" y="86">buy</text>
+        <path class="flow" d="M465,180 C440,220 425,234 395,240"/>
+        <text class="flow-lbl" x="452" y="222">spend</text>
+        <path class="flow" d="M245,240 C210,234 190,214 178,180"/>
+        <text class="flow-lbl" x="150" y="222">rewards</text>
+      </svg>
+      <p class="ec__cap">earn → sell → buy → spend → fund rewards → earn …</p>
+    </div>
+  </div>
+
+  <!-- ================= 2. THREE LAYERS ================= -->
+  <div class="ec__sec">
+    <h2>Three independent layers</h2>
+    <p>
+      The economy is deliberately split into three parts that don't depend on each
+      other's internals — so each can be audited and evolved on its own. Humans set the
+      rules; the protocol runs them.
+    </p>
+    <div class="ec__fig">
+      <svg viewBox="0 0 640 300" role="img" aria-label="The three layers of the economy">
+        <rect class="box-accent" x="120" y="20"  width="400" height="62" rx="10"/>
+        <text class="lbl" x="320" y="46" text-anchor="middle">Monetary-Policy DAO</text>
+        <text class="sub" x="320" y="66" text-anchor="middle">sets the bounds: inflation range, targets, reserve ratio, reward weights</text>
+
+        <rect class="box" x="120" y="120" width="400" height="62" rx="10"/>
+        <text class="lbl" x="320" y="146" text-anchor="middle">Treasury</text>
+        <text class="sub" x="320" y="166" text-anchor="middle">within those bounds: mint · burn · buy back · sell · fund each epoch</text>
+
+        <rect class="box" x="120" y="220" width="400" height="62" rx="10"/>
+        <text class="lbl" x="320" y="246" text-anchor="middle">Proof-of-Facilitation ledger</text>
+        <text class="sub" x="320" y="266" text-anchor="middle">measures verified work → each node's share of the epoch's rewards</text>
+
+        <path class="flow" d="M320,82 L320,118"/>
+        <path class="flow" d="M320,182 L320,218"/>
+        <text class="flow-lbl" x="330" y="104">bounds</text>
+        <text class="flow-lbl" x="330" y="204">budget</text>
+      </svg>
+      <p class="ec__cap">who sets the rules · where AXONCoins come from · who earns them</p>
+    </div>
+  </div>
+
+  <!-- ================= 3. EARNING ================= -->
+  <div class="ec__sec">
+    <h2>Earning: proof, not promises</h2>
+    <p>
+      You never earn by claiming "I'm online." Work is assigned, an unpredictable
+      challenge is issued, you produce the correct result, and independently-chosen
+      witnesses confirm it — only then does it count. Each epoch has a fixed reward
+      budget, split across the services the network needs, so faking work only shrinks
+      the faker's slice.
+    </p>
+    <div class="ec__grid">
+      <div class="ec__card"><span class="ec__k">Storage</span><h3>Hold shards</h3><p>Prove you still hold assigned, erasure-coded data and serve it back.</p></div>
+      <div class="ec__card"><span class="ec__k">Gateway</span><h3>Bridge traffic</h3><p>Accept external requests and route them into the network, reachably.</p></div>
+      <div class="ec__card"><span class="ec__k">DHT</span><h3>Route lookups</h3><p>Answer routing challenges quickly and honestly across the network.</p></div>
+      <div class="ec__card"><span class="ec__k">Compute</span><h3>Run workloads</h3><p>Execute assigned containers; results are replicated + spot-checked.</p></div>
+    </div>
+  </div>
+
+  <!-- ================= 4. TREASURY AS CENTRAL BANK ================= -->
+  <div class="ec__sec">
+    <h2>Supply, managed like a central bank</h2>
+    <p>
+      New AXONCoins aren't minted per reward — they come from the Treasury, which has four
+      tools and must keep a reserve. If reserves run low, emissions taper automatically,
+      even when demand is high, so the currency can't over-inflate.
+    </p>
+    <div class="ec__fig">
+      <svg viewBox="0 0 640 240" role="img" aria-label="Treasury operations">
+        <rect class="box-accent" x="245" y="90" width="150" height="60" rx="10"/>
+        <text class="lbl" x="320" y="116" text-anchor="middle">Treasury</text>
+        <text class="sub" x="320" y="134" text-anchor="middle">keeps a reserve</text>
+
+        <rect class="box" x="40"  y="20"  width="150" height="46" rx="9"/>
+        <text class="lbl" x="115" y="48" text-anchor="middle">Mint</text>
+        <rect class="box" x="40"  y="174" width="150" height="46" rx="9"/>
+        <text class="lbl" x="115" y="202" text-anchor="middle">Burn</text>
+        <rect class="box" x="450" y="20"  width="150" height="46" rx="9"/>
+        <text class="lbl" x="525" y="48" text-anchor="middle">Sell</text>
+        <rect class="box" x="450" y="174" width="150" height="46" rx="9"/>
+        <text class="lbl" x="525" y="202" text-anchor="middle">Buy back</text>
+
+        <path class="flow" d="M190,43  C230,55 245,80 258,95"/>
+        <text class="flow-lbl" x="196" y="66">rewards</text>
+        <path class="flow" d="M258,145 C245,160 230,185 190,197"/>
+        <text class="flow-lbl" x="196" y="182">fees in</text>
+        <path class="flow" d="M395,110 C430,95 450,66 460,50"/>
+        <text class="flow-lbl" x="410" y="80">to users</text>
+        <path class="flow" d="M460,190 C450,175 430,150 400,132"/>
+        <text class="flow-lbl" x="405" y="176">off market</text>
+      </svg>
+      <p class="ec__cap">mint within the cap · burn fees · sell to users · buy back when demand is weak</p>
+    </div>
+    <div class="ec__grid">
+      <div class="ec__card"><span class="ec__k">Difficulty</span><h3>Rewards follow need</h3><p>Where the network is short on capacity, that service's reward multiplier rises — like mining difficulty, but for infrastructure. When enough joins, it falls.</p></div>
+      <div class="ec__card"><span class="ec__k">Health</span><h3>Expand only when useful</h3><p>A Network Health Index (storage, gateways, compute, coverage, success rate, reserves) decides the overall budget, so supply grows only when more infrastructure is genuinely needed.</p></div>
+    </div>
+  </div>
+
+  <!-- ================= 5. SPENDING + GOVERNANCE ================= -->
+  <div class="ec__sec">
+    <h2>Spending &amp; who decides</h2>
+    <div class="ec__grid">
+      <div class="ec__card"><span class="ec__k">Spend</span><h3>Priced in dollars</h3><p>Subscriptions and services are priced in USD; the exact AXONCoins are computed at the moment you pay, so you never speculate just to keep a membership. Fees are split: some burned, some to the Treasury, some to providers.</p></div>
+      <div class="ec__card"><span class="ec__k">Govern</span><h3>Contribution, not wealth</h3><p>Voting weight comes mostly from verified contribution and reputation, only a little from holdings — so buying AXONCoins can't buy control. Constitutional limits (max inflation, minimum reserve) are enforced in code, not votes.</p></div>
+    </div>
+  </div>
+
+  <div class="ec__cta">
+    <!-- Was pointing at /lab, which is the security labs — a reader who
+         clicked "run infrastructure" landed somewhere that does not let them.
+         /network is where that actually happens now. -->
+    <a class="ec__btn ec__btn--primary" href="/network"><i class="fas fa-server" aria-hidden="true"></i>Run infrastructure</a>
+    <a class="ec__btn" href="/arcade"><i class="fas fa-graduation-cap" aria-hidden="true"></i>Earn by learning</a>
+    <a class="ec__btn" href="/">&larr; Back to Dendritic Network</a>
+  </div>
+</div>
+</section>
+
+{% endblock %}

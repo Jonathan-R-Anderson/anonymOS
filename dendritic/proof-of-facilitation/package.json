@@ -1,0 +1,24 @@
+{
+  "name": "proof-of-facilitation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Ethereum-settled service ledger paying ANONCoins (AXON) for independently verified infrastructure facilitation in the Syndichan network.",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:sepolia": "hardhat run deploy/00_phase0.ts --network sepolia",
+    "deploy:mainnet": "hardhat run deploy/00_phase0.ts --network mainnet"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "chai": "^4.4.1",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.4",
+    "hardhat": "^2.22.17",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  }
+}

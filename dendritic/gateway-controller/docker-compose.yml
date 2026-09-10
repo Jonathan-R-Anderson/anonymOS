@@ -1,0 +1,36 @@
+# Local development only. Production deployment is Kubernetes.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gateway
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: ${GATEWAY_DB_PASSWORD:?set GATEWAY_DB_PASSWORD in your shell}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - gateway-postgres:/var/lib/postgresql/data
+
+  controller:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://gateway:${GATEWAY_DB_PASSWORD:?set GATEWAY_DB_PASSWORD in your shell}@postgres/gateway
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      # NAMECOM_USERNAME and NAMECOM_API_TOKEN come from the repo-root .env.
+      # Mounted rather than passed through `env_file:` so the container's
+      # environment does not gain all ~130 keys of the app tier's config.
+      - ../.env:/secret/.env:ro
+
+volumes:
+  gateway-postgres:

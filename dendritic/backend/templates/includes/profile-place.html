@@ -1,0 +1,288 @@
+{# Graffiti wall — a native r/place-style pixel canvas rendered as the FULL-PAGE
+   BACKGROUND of the profile. Full-colour: painters pick any hue/shade/opacity
+   from a colour wheel. Fresh pixels from other painters blink so you can see who
+   is active; a bottom time-lapse scrubber replays recent daily snapshots. Backed
+   by services/place.py (RGBA grid) + the profiles.place_* routes. No libraries. #}
+<div id="pplace-root"
+     data-canvas="{{ url_for('profiles.place_canvas', slug=profile.slug) }}"
+     data-place="{{ url_for('profiles.place_pixel_route', slug=profile.slug) }}"
+     data-recent="{{ url_for('profiles.place_recent', slug=profile.slug) }}"
+     data-days="{{ url_for('profiles.place_days', slug=profile.slug) }}"
+     data-snap="{{ url_for('profiles.place_snapshot', slug=profile.slug, day='__DAY__') }}"
+     {% if get_slip() and (get_slip().id == profile.slip_id or viewer_is_admin()) %}data-clear="{{ url_for('profiles.place_clear_route', slug=profile.slug) }}"{% endif %}>
+  <canvas id="pplace-bg"></canvas>
+  <div id="pplace-controls" aria-label="Graffiti controls">
+    <button type="button" id="pplace-toggle" title="Paint on the wall">🎨 Paint</button>
+    <div id="pplace-picker">
+      <canvas id="pplace-wheel" width="132" height="132" title="Pick a colour"></canvas>
+      <label class="pplace-sl">Shade<input type="range" id="pplace-val" min="0" max="100" value="100"></label>
+      <label class="pplace-sl">Opacity<input type="range" id="pplace-alpha" min="0" max="100" value="100"></label>
+      <div id="pplace-swatches"></div>
+      <div id="pplace-preview"><span id="pplace-swatch"></span><span id="pplace-hex"></span></div>
+    </div>
+    <div id="pplace-zoom">
+      <button type="button" id="pplace-zin" title="Zoom in">＋</button>
+      <button type="button" id="pplace-zout" title="Zoom out">－</button>
+      <button type="button" id="pplace-zreset" title="Reset view">⤾</button>
+      {% if get_slip() and (get_slip().id == profile.slip_id or viewer_is_admin()) %}
+      <button type="button" id="pplace-clear" title="Clear the wall">🗑</button>
+      {% endif %}
+    </div>
+    <span id="pplace-hint"></span>
+  </div>
+  <div id="pplace-timelapse">
+    <span class="pplace-tl-cap">time-lapse</span>
+    <input type="range" id="pplace-scrub" min="0" max="0" value="0" step="1" aria-label="Time-lapse day">
+    <span id="pplace-scrub-label">live</span>
+  </div>
+</div>
+<style>
+  #pplace-bg { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0;
+      pointer-events: none; background:
+        conic-gradient(from 0deg, #f4f4f7 0 25%, #eceef2 0 50%) 0 0 / 24px 24px; }
+  body.pplace-on { background: transparent !important; }
+  body.pplace-on > .container, body.pplace-on > main, body.pplace-on .profile-content { position: relative; z-index: 1; }
+  #pplace-root.painting #pplace-bg { pointer-events: auto; z-index: 50; cursor: crosshair; }
+  #pplace-controls { position: fixed; right: 14px; bottom: 64px; z-index: 60;
+      display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+      font: 12px -apple-system, "Segoe UI", sans-serif; }
+  #pplace-controls button { border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer;
+      background: rgba(20,20,26,.85); color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  #pplace-toggle.on { background: #b07274; }
+  #pplace-picker { display: none; flex-direction: column; gap: 6px; align-items: center;
+      padding: 10px; border-radius: 8px; background: rgba(20,20,26,.9); color: #fff; }
+  #pplace-root.painting #pplace-picker { display: flex; }
+  #pplace-wheel { cursor: crosshair; border-radius: 50%; }
+  .pplace-sl { display: flex; align-items: center; gap: 6px; width: 132px; justify-content: space-between; }
+  .pplace-sl input { flex: 1; accent-color: #b07274; }
+  #pplace-swatches { display: flex; flex-wrap: wrap; gap: 3px; max-width: 132px; justify-content: center; }
+  #pplace-swatches button { width: 18px; height: 18px; padding: 0; border-radius: 3px; border: 0;
+      cursor: pointer; box-shadow: 0 0 0 1px rgba(255,255,255,.3) inset; }
+  #pplace-preview { display: flex; align-items: center; gap: 6px; }
+  #pplace-swatch { width: 22px; height: 22px; border-radius: 4px; box-shadow: 0 0 0 1px rgba(255,255,255,.4) inset;
+      background-image: linear-gradient(45deg,#666 25%,transparent 25%,transparent 75%,#666 75%),linear-gradient(45deg,#666 25%,#999 25%,#999 75%,#666 75%);
+      background-size: 8px 8px; background-position: 0 0,4px 4px; }
+  #pplace-hex { font-variant-numeric: tabular-nums; opacity: .85; }
+  #pplace-zoom { display: flex; gap: 4px; }
+  #pplace-zoom button { width: 30px; text-align: center; font-size: 15px; line-height: 1; }
+  #pplace-hint { background: rgba(20,20,26,.85); color: #fff; padding: 3px 8px; border-radius: 6px; }
+  #pplace-hint:empty { display: none; }
+  #pplace-timelapse { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+      display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+      background: linear-gradient(180deg, transparent, rgba(10,10,14,.75) 45%); color: #fff;
+      font: 12px -apple-system, "Segoe UI", sans-serif; }
+  #pplace-timelapse .pplace-tl-cap { opacity: .8; white-space: nowrap; }
+  #pplace-scrub { flex: 1; accent-color: #b07274; }
+  #pplace-scrub-label { min-width: 92px; text-align: right; white-space: nowrap; }
+</style>
+<script>
+(function () {
+    var root = document.getElementById('pplace-root');
+    if (!root || root.dataset.wired) { return; }
+    root.dataset.wired = '1';
+    var U = root.dataset;
+
+    var view = document.getElementById('pplace-bg');
+    var vctx = view.getContext('2d');
+    var world = document.createElement('canvas');
+    var wctx = world.getContext('2d');
+    var W = 256, H = 256, cooldown = 1;
+    var scale = 1, panX = 0, panY = 0;
+    var version = 0, painting = false, live = true, cooldownUntil = 0;
+    var blinks = {};
+
+    // Colour state (HSV + alpha). currentHex() -> RRGGBBAA.
+    var hsv = { h: 0, s: 1, v: 1 }, alpha = 1;
+
+    function hint(t) { var el = document.getElementById('pplace-hint'); if (el) { el.textContent = t || ''; } }
+    function h2(n) { n = Math.max(0, Math.min(255, Math.round(n))); return (n < 16 ? '0' : '') + n.toString(16); }
+    function hsvToRgb(h, s, v) {
+        var c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c, r = 0, g = 0, b = 0;
+        if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
+        else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+        return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+    }
+    function rgbToHsv(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, h = 0;
+        if (d) {
+            if (mx === r) { h = 60 * (((g - b) / d) % 6); }
+            else if (mx === g) { h = 60 * ((b - r) / d + 2); }
+            else { h = 60 * ((r - g) / d + 4); }
+        }
+        if (h < 0) { h += 360; }
+        return { h: h, s: mx ? d / mx : 0, v: mx };
+    }
+    function currentRGB() { return hsvToRgb(hsv.h, hsv.s, hsv.v); }
+    function currentHex() { var c = currentRGB(); return h2(c[0]) + h2(c[1]) + h2(c[2]) + h2(alpha * 255); }
+    function updatePreview() {
+        var c = currentRGB();
+        document.getElementById('pplace-swatch').style.background = 'rgba(' + Math.round(c[0]) + ',' + Math.round(c[1]) + ',' + Math.round(c[2]) + ',' + alpha.toFixed(2) + ')';
+        document.getElementById('pplace-hex').textContent = '#' + currentHex();
+    }
+
+    var wheel = document.getElementById('pplace-wheel'), wctx2 = wheel.getContext('2d');
+    var WR = wheel.width / 2;
+    function drawWheel() {
+        var img = wctx2.createImageData(wheel.width, wheel.height);
+        for (var y = 0; y < wheel.height; y++) {
+            for (var x = 0; x < wheel.width; x++) {
+                var dx = x - WR, dy = y - WR, dist = Math.sqrt(dx * dx + dy * dy), i = (y * wheel.width + x) * 4;
+                if (dist > WR) { img.data[i + 3] = 0; continue; }
+                var h = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+                var rgb = hsvToRgb(h, Math.min(1, dist / WR), hsv.v);
+                img.data[i] = rgb[0]; img.data[i + 1] = rgb[1]; img.data[i + 2] = rgb[2]; img.data[i + 3] = 255;
+            }
+        }
+        wctx2.putImageData(img, 0, 0);
+    }
+    wheel.addEventListener('click', function (e) {
+        var rect = wheel.getBoundingClientRect();
+        var dx = (e.clientX - rect.left) - WR, dy = (e.clientY - rect.top) - WR, dist = Math.sqrt(dx * dx + dy * dy);
+        hsv.h = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+        hsv.s = Math.min(1, dist / WR);
+        updatePreview();
+    });
+    document.getElementById('pplace-val').addEventListener('input', function () { hsv.v = this.value / 100; drawWheel(); updatePreview(); });
+    document.getElementById('pplace-alpha').addEventListener('input', function () { alpha = this.value / 100; updatePreview(); });
+
+    function buildSwatches(list) {
+        var el = document.getElementById('pplace-swatches'); el.innerHTML = '';
+        (list || []).forEach(function (hex8) {
+            var b = document.createElement('button'); b.type = 'button';
+            var r = parseInt(hex8.substr(0, 2), 16), g = parseInt(hex8.substr(2, 2), 16), bl = parseInt(hex8.substr(4, 2), 16);
+            b.style.background = 'rgb(' + r + ',' + g + ',' + bl + ')';
+            b.addEventListener('click', function () {
+                var t = rgbToHsv(r, g, bl); hsv.h = t.h; hsv.s = t.s; hsv.v = t.v; alpha = 1;
+                document.getElementById('pplace-val').value = 100; document.getElementById('pplace-alpha').value = 100;
+                drawWheel(); updatePreview();
+            });
+            el.appendChild(b);
+        });
+    }
+
+    // --- world rendering (RGBA, 8 hex/pixel) ---
+    function paintGrid(pixels) {
+        world.width = W; world.height = H;
+        var img = wctx.createImageData(W, H);
+        for (var i = 0; i < W * H; i++) {
+            var b = i * 8;
+            img.data[i * 4] = parseInt(pixels.substr(b, 2), 16) || 0;
+            img.data[i * 4 + 1] = parseInt(pixels.substr(b + 2, 2), 16) || 0;
+            img.data[i * 4 + 2] = parseInt(pixels.substr(b + 4, 2), 16) || 0;
+            img.data[i * 4 + 3] = parseInt(pixels.substr(b + 6, 2), 16) || 0;
+        }
+        wctx.putImageData(img, 0, 0);
+    }
+    function setWorldPixel(x, y, hex8) {
+        var r = parseInt(hex8.substr(0, 2), 16), g = parseInt(hex8.substr(2, 2), 16),
+            b = parseInt(hex8.substr(4, 2), 16), a = parseInt(hex8.substr(6, 2), 16) / 255;
+        wctx.clearRect(x, y, 1, 1);
+        wctx.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+        wctx.fillRect(x, y, 1, 1);
+    }
+    function sizeView() { view.width = window.innerWidth; view.height = window.innerHeight; }
+    function fitCover() { scale = Math.max(view.width / W, view.height / H); panX = (view.width - W * scale) / 2; panY = (view.height - H * scale) / 2; }
+    function render() {
+        vctx.setTransform(1, 0, 0, 1, 0, 0); vctx.clearRect(0, 0, view.width, view.height);
+        vctx.imageSmoothingEnabled = false; vctx.setTransform(scale, 0, 0, scale, panX, panY);
+        vctx.drawImage(world, 0, 0);
+        var now = Date.now(), pulse = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(now / 120));
+        for (var k in blinks) {
+            if (!blinks.hasOwnProperty(k)) { continue; }
+            if (blinks[k] < now) { delete blinks[k]; continue; }
+            var p = k.split(','); vctx.globalAlpha = pulse; vctx.fillStyle = '#ffffff';
+            vctx.fillRect(+p[0] - 0.5, +p[1] - 0.5, 2, 2); vctx.globalAlpha = 1;
+        }
+        requestAnimationFrame(render);
+    }
+    function zoomAt(cx, cy, f) {
+        var next = Math.min(40, Math.max(view.width / W / 2, scale * f));
+        panX = cx - (cx - panX) * (next / scale); panY = cy - (cy - panY) * (next / scale); scale = next;
+    }
+    function toCell(cx, cy) { return { x: Math.floor((cx - panX) / scale), y: Math.floor((cy - panY) / scale) }; }
+
+    function placeAt(gx, gy) {
+        if (gx < 0 || gx >= W || gy < 0 || gy >= H) { return; }
+        if (Date.now() < cooldownUntil) { hint('wait ' + Math.ceil((cooldownUntil - Date.now()) / 1000) + 's'); return; }
+        var hex = currentHex();
+        fetch(U.place, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+            body: JSON.stringify({ x: gx, y: gy, color: hex }) })
+            .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+            .then(function (res) {
+                if (res.d && res.d.ok) { setWorldPixel(gx, gy, hex); version = res.d.version; cooldownUntil = Date.now() + cooldown * 1000; hint('painted'); }
+                else if (res.s === 429) { var w = (res.d && res.d.cooldown) || cooldown; cooldownUntil = Date.now() + w * 1000; hint('wait ' + w + 's'); }
+                else { hint((res.d && res.d.error) || 'error'); }
+            })
+            .catch(function () { hint('network error'); });
+    }
+
+    var down = null, moved = false;
+    view.addEventListener('mousedown', function (e) { if (!painting) { return; } down = { x: e.clientX, y: e.clientY, px: panX, py: panY }; moved = false; });
+    window.addEventListener('mousemove', function (e) {
+        if (!down) { return; }
+        var dx = e.clientX - down.x, dy = e.clientY - down.y;
+        if (Math.abs(dx) + Math.abs(dy) > 4) { moved = true; panX = down.px + dx; panY = down.py + dy; }
+    });
+    window.addEventListener('mouseup', function (e) { if (!down) { return; } if (!moved) { var c = toCell(e.clientX, e.clientY); placeAt(c.x, c.y); } down = null; });
+    view.addEventListener('wheel', function (e) { if (!painting) { return; } e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
+    document.getElementById('pplace-zin').addEventListener('click', function () { zoomAt(view.width / 2, view.height / 2, 1.25); });
+    document.getElementById('pplace-zout').addEventListener('click', function () { zoomAt(view.width / 2, view.height / 2, 1 / 1.25); });
+    document.getElementById('pplace-zreset').addEventListener('click', fitCover);
+    document.getElementById('pplace-toggle').addEventListener('click', function () {
+        painting = !painting; root.classList.toggle('painting', painting); this.classList.toggle('on', painting);
+        hint(painting ? 'click a pixel · drag to pan · scroll to zoom' : '');
+    });
+    var clearBtn = document.getElementById('pplace-clear');
+    if (clearBtn && U.clear) {
+        clearBtn.addEventListener('click', function () {
+            if (!window.confirm('Clear the entire graffiti wall?')) { return; }
+            fetch(U.clear, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                .then(function () { version = -1; loadFull(); }).catch(function () {});
+        });
+    }
+
+    function pollRecent() {
+        if (!live) { return; }
+        fetch(U.recent + '?since=' + version, { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                (d.pixels || []).forEach(function (px) {
+                    setWorldPixel(px.x, px.y, px.color);
+                    if (px.v > version) { version = px.v; }
+                    if (px.age <= 6) { blinks[px.x + ',' + px.y] = Date.now() + 4000; }
+                });
+            })
+            .catch(function () {});
+    }
+    function loadFull() {
+        fetch(U.canvas, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+            W = d.w || W; H = d.h || H; cooldown = d.cooldown || cooldown;
+            buildSwatches(d.swatches); paintGrid(d.pixels || ''); version = d.version || 0;
+        }).catch(function () {});
+    }
+
+    var scrub = document.getElementById('pplace-scrub'), scrubLabel = document.getElementById('pplace-scrub-label'), days = [];
+    function loadDays() {
+        fetch(U.days, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (d) {
+            days = d.days || []; scrub.max = days.length; scrub.value = days.length;
+        }).catch(function () {});
+    }
+    scrub.addEventListener('input', function () {
+        var i = parseInt(scrub.value, 10);
+        if (i >= days.length) { live = true; scrubLabel.textContent = 'live'; loadFull(); return; }
+        live = false; var day = days[i]; scrubLabel.textContent = day;
+        fetch(U.snap.replace('__DAY__', day), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (snap) { if (snap && snap.pixels) { paintGrid(snap.pixels); } }).catch(function () {});
+    });
+
+    window.addEventListener('resize', sizeView);
+    document.body.classList.add('pplace-on');
+    drawWheel(); updatePreview();
+    sizeView(); fitCover();
+    loadFull(); loadDays();
+    requestAnimationFrame(render);
+    window.setInterval(pollRecent, 1500);
+})();
+</script>

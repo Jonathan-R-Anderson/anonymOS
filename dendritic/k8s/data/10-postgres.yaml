@@ -1,0 +1,363 @@
+# =============================================================================
+# maniwani DATA TIER — PostgreSQL
+# =============================================================================
+# Source: docker-compose.yml `postgres` service (lines 43-57).
+# Placement: DATA NODE (nodeSelector maniwani.io/role=data),
+#            storageClassName maniwani-data.
+#
+# STORAGE BUDGET — DATA NODE (75 GB total, 17 G used, 55 G free)
+#   postgres   5 Gi declared   (measured on disk today: 349 M)
+#   the object store      30 Gi declared   (measured: 21 G)
+#   object-store-etc 128 Mi declared   (measured: tiny)
+#   ---------------------------------------------------------
+#   ~35.1 GiB declared, ~21.4 GB actual, against 55 GB free.
+#   Fits with room to spare. redis has NO PVC — see 20-redis.yaml.
+#   This group does NOT touch the software node's 97 GB.
+#
+# WHY 5 Gi AND NOT THE 2 Gi THE ANALYSIS SUGGESTED: the DB carries a growing
+# non-public `analytics` schema (behavior_sequence, recommendation_log,
+# analytics_event, content_feature, experiment_definition) on top of the board
+# data, and 3 GiB of extra headroom costs nothing against 55 GB free. Note that
+# both storage classes are directory-backed local-path — the requested size is
+# NOT enforced as a quota, so this number is scheduler input and documentation.
+#
+# GENERATED PVC / ON-DISK PATH (the migration runbook needs this):
+#   volumeClaimTemplate `data` + pod `postgres-0` => PVC `data-postgres-0`
+#   => a directory under the data node's local-path root for storageClass
+#   maniwani-data. Resolve the real path once, before restoring, with:
+#     kubectl -n maniwani get pv \
+#       -o custom-columns=NAME:.metadata.name,CLAIM:.spec.claimRef.name,PATH:.spec.local.path,HOSTPATH:.spec.hostPath.path
+#
+# =============================================================================
+# THINGS THAT WILL BREAK IF YOU CHANGE THEM
+# =============================================================================
+# 1. THE SERVICE MUST BE NAMED EXACTLY `postgres`, IN THIS NAMESPACE.
+#    deploy-configs/maniwani.cfg line 6 hardcodes the hostname:
+#      SQLALCHEMY_DATABASE_URI = "postgresql://dev:dev@postgres/dev"
+#    and k8s/app/10-maniwani.yaml sets POSTGRES_HOST: postgres to match.
+#    maniwani.cfg is mounted as a ConfigMap subPath by the app tier, so renaming
+#    this Service means editing a mounted config file. Don't.
+#
+# 2. replicas MUST stay 1 — AND the maniwani backend must also stay at 1
+#    replica. That is a hard coupling to this service, not a preference:
+#      - The backend elects singletons across its 4 uWSGI workers using
+#        PostgreSQL SESSION-level advisory locks (AGGREGATOR_SYNC_*,
+#        ANALYTICS_MAINTENANCE_*, RECOMMENDER_*, VIDEO_OFFLOAD_*; see
+#        backend/shared.py, backend/services/singleton_worker.py,
+#        backend/services/aggregator_sync/state.py). Two Postgres pods would be
+#        two independent lock namespaces, so every maintenance loop double-runs.
+#      - backend/shared.py sizes its SQLAlchemy pool against max_connections=100
+#        ON THE ASSUMPTION OF BEING THE SOLE CLIENT: 100 - 3 superuser_reserved
+#        - ~5 advisory-lock connections opened OUTSIDE the pool via
+#        pool._creator() - maintenance headroom => ~84 usable, hence
+#        pool_size=8 + max_overflow=12 = 20/worker x 4 workers = 80. A second
+#        backend replica blows max_connections. That is a PREVIOUS OUTAGE
+#        (QueuePool timeout), not a hypothetical.
+#      - Corollary for the future: if anyone ever adds pgbouncer/pgcat it MUST
+#        be SESSION pooling. Transaction pooling silently breaks session-level
+#        advisory locks and every worker starts running the sync loop.
+#
+# 3. NO custom command / args. The compose comment (lines 44-47) warns that
+#    changing the container command forces a recreate of this stateful service.
+#    The stock image entrypoint is correct; keep `command` and `args` absent.
+#
+# 4. PGDATA is deliberately NOT set. The image default is
+#    /var/lib/postgresql/data, which is exactly the mount point. initdb refuses
+#    to run in a non-empty directory and refuses if a `lost+found` exists —
+#    safe here because maniwani-data is directory-backed (neither node has a
+#    spare block device), so there is no lost+found. Do not "fix" this by moving
+#    PGDATA to a subdirectory; the migration runbook restores into this path.
+#
+# 5. IMAGE TAG. `postgres:17` is pinned to the pre-18 on-disk layout so the
+#    existing data directory keeps working without a manual pg_upgrade. DO NOT
+#    bump to postgres:18 during the migration. The MINOR still floats, so
+#    pre-load the exact production image into the data node's containerd and let
+#    imagePullPolicy: IfNotPresent stop the tag ever re-resolving:
+#      # software node — find what is actually running:
+#      docker image inspect --format '{{index .RepoDigests 0}}' postgres:17
+#      # data node:
+#      docker pull postgres@sha256:<digest>
+#      docker tag  postgres@sha256:<digest> postgres:17
+#      docker save postgres:17 | sudo ctr -n k8s.io images import -
+#
+# =============================================================================
+# MIGRATION (parallel build, DNS cutover — the live stack must not be disturbed)
+# =============================================================================
+#   * Do NOT rsync the live data directory hot; it is not crash-consistent.
+#   * Use a LOGICAL dump. 349 M over WireGuard (0.44 ms RTT) takes seconds.
+#   * The dump MUST include the non-public `analytics` schema. `pg_dump -n
+#     public` silently drops it, and backend/update.py _detect_schema_revision
+#     infers the Alembic revision from those tables — a partial restore makes
+#     the backend re-run the wrong migrations on first boot. Use pg_dumpall, or
+#     pg_dump --create with no -n filter.
+#   * Re-run the dump/restore immediately before DNS cutover to pick up the
+#     delta, exactly as with the object store bucket sync.
+#   * The restoring Job needs the label maniwani.io/postgres-client: "true" or
+#     90-networkpolicy.yaml will (correctly) refuse its connection.
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: database
+    maniwani.io/group: data
+spec:
+  # ClusterIP ONLY. compose declares NO `ports:` for postgres — it has only ever
+  # been reachable on the host-local bridge. It now crosses nodes over
+  # WireGuard, and the credentials are weak, so the overlay plus this ClusterIP
+  # plus the NetworkPolicy are the entire security boundary. NEVER add
+  # nodePort, hostPort, externalIPs, or type: LoadBalancer here. (k3s must be
+  # installed with --disable=servicelb, or klipper-lb will materialise a
+  # 0.0.0.0 hostPort DaemonSet for any LoadBalancer Service created by mistake.)
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+---
+# Governing headless Service required by the StatefulSet. Applications must NOT
+# use this name — they use `postgres` above. publishNotReadyAddresses lets an
+# operator reach the pod by DNS during a restore, before it reports ready.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: database
+    maniwani.io/group: data
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: database
+    maniwani.io/group: data
+spec:
+  serviceName: postgres-headless
+  # HARD LIMIT — see note 2. Never scale this.
+  replicas: 1
+  revisionHistoryLimit: 3
+  # Retaining the PVC is already the default; stating it makes
+  # `kubectl delete statefulset postgres` an explicitly non-destructive act.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  updateStrategy:
+    # On a 1-replica StatefulSet, RollingUpdate deletes the old pod and waits
+    # for it to be fully gone before creating the new one — i.e. it behaves like
+    # Recreate, which is what a single primary and an RWO local volume both
+    # require. (The spec called for "Recreate or a 1-replica StatefulSet";
+    # StatefulSet has no Recreate strategy, this is the equivalent.)
+    type: RollingUpdate
+  selector:
+    # IMMUTABLE after first apply. If you ever need to change these labels you
+    # must delete the StatefulSet with --cascade=orphan and re-create it.
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/part-of: maniwani
+        app.kubernetes.io/component: database
+        maniwani.io/group: data
+    spec:
+      # K8s injects <SVC>_PORT=tcp://ip:port for every Service when this is
+      # true (the default). The backend coerces uppercase env keys to the type
+      # of the matching app.config entry, so REDIS_PORT becomes
+      # int("tcp://...") and the app dies at import. Everything here uses DNS.
+      enableServiceLinks: false
+      priorityClassName: maniwani-data-critical
+      # Placement by LABEL, never by hostname. The bootstrap layer labels
+      # vps-56548ec0 with maniwani.io/role=data. The PVC's storage class
+      # (maniwani-data) is pinned to that same node, so this nodeSelector and
+      # the storageClassName must always agree; if they ever disagree the pod
+      # sits Pending forever, which is the loud failure we want.
+      nodeSelector:
+        maniwani.io/role: data
+      # Postgres never talks to the Kubernetes API.
+      automountServiceAccountToken: false
+      # The default 30 s is short for a shutdown checkpoint. SIGTERM to this
+      # image triggers a fast shutdown; give it room to finish rather than
+      # getting SIGKILLed into crash recovery on the next boot.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: postgres:17
+          imagePullPolicy: IfNotPresent
+          # NO command / NO args — stock image entrypoint. See note 3.
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            # ---------------------------------------------------------------
+            # SECRETS. These three are inline LITERALS in docker-compose.yml
+            # today (POSTGRES_USER/PASSWORD/DB = dev/dev/dev) and the same pair
+            # is duplicated in deploy-configs/maniwani.cfg
+            # (SQLALCHEMY_DATABASE_URI) and in the backend's env — three places
+            # to keep in sync. No value is ever inlined in this file.
+            #
+            # ACTION REQUIRED IN THE BOOTSTRAP LAYER: these keys are NOT present
+            # in /home/ubuntu/maniwani/.env today (verified: the only data-tier
+            # key in .env is REDIS_HOST), so the `maniwani-env` Secret must be
+            # EXTENDED with exactly these three key names:
+            #     POSTGRES_USER   POSTGRES_PASSWORD   POSTGRES_DB
+            # e.g. without echoing any value:
+            #     kubectl -n maniwani create secret generic maniwani-env \
+            #       --from-env-file=/home/ubuntu/maniwani/.env \
+            #       --from-literal=POSTGRES_USER="$(read -rs v; echo "$v")" ...
+            # (use whatever your bootstrap layer already does for the .env keys;
+            # the requirement is only that these three keys exist).
+            #
+            # These are intentionally NOT `optional: true`. A missing key leaves
+            # the pod in CreateContainerConfigError with the key name in the
+            # event — loud and instantly diagnosable. `optional: true` would
+            # instead start an image with POSTGRES_PASSWORD unset, which initdb
+            # rejects in a much more confusing way.
+            #
+            # CUTOVER OPPORTUNITY: this postgres is a brand-new instance, which
+            # makes the cutover the cheapest moment this project will ever have
+            # to rotate off dev/dev/dev. If you do, change these Secret values,
+            # the SQLALCHEMY_DATABASE_URI in the app tier's maniwani-cfg
+            # ConfigMap, and the backend's POSTGRES_* env in the SAME commit.
+            # ---------------------------------------------------------------
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: POSTGRES_DB
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          # ---- Probes ---------------------------------------------------------
+          # compose defines NO healthcheck for postgres; these are additions.
+          #
+          # `-h 127.0.0.1` is deliberate. During initdb and during a restore the
+          # official image starts postgres with listen_addresses='' (unix socket
+          # only), so a TCP pg_isready correctly reports "not ready" until the
+          # real server is accepting network clients. A socket-only check would
+          # flip the Service endpoint live too early and the backend would get
+          # connection-refused instead of waiting.
+          #
+          # $POSTGRES_USER / $POSTGRES_DB are expanded by the shell inside the
+          # container, not by kubelet: kubelet does NOT perform $(VAR)
+          # substitution on probe exec commands, only on command/args. The bare
+          # $NAME form is correct here.
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - exec pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            periodSeconds: 10
+            timeoutSeconds: 5
+            # 300 s: covers initdb on a fresh volume, a logical restore, or WAL
+            # recovery after an unclean stop.
+            failureThreshold: 30
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - exec pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # NO livenessProbe, ON PURPOSE. A liveness probe on a single-primary
+          # database is a footgun: a long checkpoint, a vacuum freeze or crash
+          # recovery makes pg_isready fail transiently, and the probe would kill
+          # the server mid-recovery, restarting the exact loop it is supposedly
+          # fixing. There is no wedged-but-running failure mode here that a
+          # restart repairs (unlike the object store — see 30-ceph.yaml, where liveness IS
+          # the point). The backend already tolerates postgres being
+          # unreachable, via ensure_runtime.main()'s retry loop
+          # (MANIWANI_STARTUP_RETRIES=30 x MANIWANI_STARTUP_DELAY=2 s); if that
+          # budget is exhausted the backend pod exits and k8s restarts it, which
+          # is a fine outcome.
+          resources:
+            # Data node: 4 vCPU / 7 GB / no swap, shared with the object store and redis.
+            # Request small (shared_buffers defaults to 128 MB); limit 1Gi so a
+            # runaway analytics query cannot starve the object store OSD. The real
+            # memory driver is work_mem x ~80 concurrent backend connections,
+            # not shared_buffers — if you ever raise pool_size in
+            # backend/shared.py, raise this limit in the same commit.
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              # 2 of 4 vCPU. A tighter CPU limit means CFS throttling, which a
+              # database surfaces as tail latency the app reads as "slow
+              # queries"; 2 cores still leaves headroom for the object store.
+              cpu: "2"
+              memory: 1Gi
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            # The entrypoint writes /var/run/postgresql, so the rootfs stays
+            # writable. (Making it read-only would need extra emptyDirs for
+            # /var/run/postgresql and /tmp — deliberately not done during a
+            # migration whose priority is behavioural parity.)
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+              # The official image starts as root, chowns PGDATA on first boot,
+              # then drops to the postgres user via gosu. Dropping ALL without
+              # re-adding these breaks that: gosu needs SETUID/SETGID and the
+              # chown needs CHOWN/FOWNER/DAC_OVERRIDE.
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+          # No fsGroup: the image's own entrypoint chowns PGDATA as root, and a
+          # recursive kubelet chown of a local volume is redundant work that
+          # would also slow every pod start as the database grows.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: postgres
+          app.kubernetes.io/part-of: maniwani
+          maniwani.io/group: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # DATA NODE class. Getting this wrong pins the pod to the wrong node and
+        # silently defeats the entire placement decision.
+        storageClassName: maniwani-data
+        resources:
+          requests:
+            storage: 5Gi

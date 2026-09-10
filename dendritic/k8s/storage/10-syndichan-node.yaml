@@ -1,0 +1,289 @@
+# =============================================================================
+# syndichan-node — the server's own storage node. i2pd + node in ONE pod.
+# =============================================================================
+# This workload does two jobs nothing else can currently do:
+#
+#   1. THE STABLE BOOTSTRAP PEER. The well-known document publishes
+#      "peers": [] today, so no volunteer node can discover another. This node
+#      has a persistent I2P destination and is always up, so it is the anchor
+#      every other node dials first. Its multiaddr is fed back to the backend as
+#      STORAGE_BOOTSTRAP_PEERS, which is what bootstrap_peers() publishes.
+#
+#   2. THE PRIMARY S3 STORE. S3_ENDPOINT points here; the backend writes media
+#      through this gateway and the node encrypts, erasure-codes and distributes
+#      shards through the DHT. It is the only object store; there is no other.
+#
+# -----------------------------------------------------------------------------
+# WHY i2pd IS A SIDECAR AND NOT ITS OWN DEPLOYMENT
+# -----------------------------------------------------------------------------
+# storage-client/internal/config/config.go:135 REFUSES a non-loopback SAM
+# bridge: "the I2P SAM bridge must be on loopback". So I2PSAM cannot be
+# "i2pd:7656" -- the router has to share this pod's network namespace. The same
+# file (:121) refuses a non-loopback dashboard outright. Only the S3 gateway can
+# leave loopback, and only with TLS (:128).
+#
+# -----------------------------------------------------------------------------
+# WHY THIS IS NOT A SIDECAR IN THE BACKEND POD
+# -----------------------------------------------------------------------------
+# Putting it beside maniwani would make every port loopback and need no TLS at
+# all -- tempting. Rejected: a sidecar that fails readiness blocks the BACKEND
+# pod from serving, so a storage-node problem would become a site outage. It
+# also means I2P tunnels are torn down on every backend deploy, and a fresh
+# router takes minutes to reintegrate. Separate lifecycle is worth one cert.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: syndichan-node
+  namespace: maniwani
+  labels:
+    app: syndichan-node
+    app.kubernetes.io/name: syndichan-node
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: storage
+spec:
+  type: ClusterIP
+  selector:
+    app: syndichan-node
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+    # The compute relay: the site hands a job to THIS node over plain HTTP and
+    # this node carries it to the target peer over libp2p/I2P. Without the port
+    # on the Service the site cannot reach the relay at all -- 8760 listens
+    # inside the container and `syndichan-node:8760` refuses, which reads as
+    # "no node took the job" rather than as a missing Service port.
+    - name: dcs
+      port: 8761
+      targetPort: dcs
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: syndichan-node
+  namespace: maniwani
+  labels:
+    app: syndichan-node
+    app.kubernetes.io/name: syndichan-node
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: storage
+spec:
+  serviceName: syndichan-node
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: syndichan-node
+  template:
+    metadata:
+      labels:
+        app: syndichan-node
+        app.kubernetes.io/name: syndichan-node
+        maniwani.io/group: storage
+    spec:
+      # Kubernetes injects <SVC>_PORT=tcp://... for every Service; the node's
+      # config loader would not care, but the backend's does (it coerces
+      # uppercase env to the config value's type), and this cluster disables it
+      # everywhere for consistency.
+      enableServiceLinks: false
+      priorityClassName: maniwani-data-critical
+      # HOST NETWORKING, for the same reason coturn uses it (k8s/media): I2P
+      # needs to be DIALABLE. Behind cluster NAT the router could open outbound
+      # tunnels but peers could not reach it, which showed up as
+      # "Streaming: No packets have been received yet", failing NetDb lookups,
+      # and the node reporting "failed to find any peer in table" while it
+      # retained every shard locally. A bootstrap peer that nobody can dial is
+      # not a bootstrap peer.
+      #
+      # SAM stays on loopback and still satisfies config.go:135 -- with
+      # hostNetwork both containers share the HOST's netns, so 127.0.0.1:7656
+      # still resolves between them. Verified free on this node first: 9000,
+      # 9090, 7656 and 4444 were all unbound.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet   # keep cluster DNS for syndichan.org
+      nodeSelector:
+        maniwani.io/role: software
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001          # so both containers can write the shared PVC
+      initContainers:
+        - name: initialize-state-directories
+          image: alpine:3.20
+          command: ["sh", "-ec", "mkdir -p /state/i2pd /state/node"]
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          resources:
+            requests: {cpu: 5m, memory: 8Mi}
+            limits: {memory: 32Mi}
+      containers:
+        # ---------------------------------------------------------------------
+        - name: i2pd
+          image: purplei2p/i2pd:latest
+          args:
+            # SAM is OFF by default in i2pd as well as Java I2P; the node fails
+            # closed without it (p2p.Open runs before the S3 listener and
+            # Fatals), so this is not optional.
+            - --sam.enabled=true
+            - --sam.address=127.0.0.1
+            - --sam.port=7656
+            # The coordinator (syndichan.org) is reached THROUGH this proxy;
+            # there is deliberately no direct fallback in the client.
+            - --httpproxy.enabled=true
+            # The cni0 bridge, not loopback. With hostNetwork this container
+            # shares the HOST's netns, so 127.0.0.1 here is the host's loopback
+            # — which the maniwani pod, in its own netns, cannot reach. The site
+            # needs this proxy to dispatch compute to volunteer nodes over I2P,
+            # so it must bind somewhere pods can see.
+            #
+            # 10.42.0.1 and NOT 0.0.0.0: the bridge is reachable from cluster
+            # pods only, while 0.0.0.0 on a hostNetwork pod publishes an open
+            # HTTP proxy on a public IP — which is how a machine becomes
+            # somebody else's relay, and a well-scanned-for mistake.
+            #
+            # SAM deliberately stays on 127.0.0.1: the node talks to it from
+            # inside this same pod, so it has no reason to leave loopback.
+            - --httpproxy.address=10.42.0.1
+            - --httpproxy.port=4444
+            # AN OUTPROXY IS MANDATORY, not a nicety. The node reaches the
+            # coordinator (syndichan.org) for BOOTSTRAP and for the short-lived
+            # leases that authorise a peer to accept bytes -- and it does so
+            # only through this proxy, with no direct fallback by design.
+            #
+            # i2pd ships with none, so every attempt failed with "Outproxy
+            # failure for syndichan.org: no outproxy enabled". Symptom was
+            # subtle: shards were stored locally and advertise attempts timed
+            # out, while zero lease requests ever reached the edge -- so nothing
+            # could ever be placed on a peer.
+            - --httpproxy.outproxy=http://exit.stormycloud.i2p
+            # SOCKS, for the site's peer-liveness prober. It needs a RAW STREAM
+            # to a destination, not HTTP: a node's garlic address speaks libp2p,
+            # so a proxied GET tells you nothing (a healthy node and a dead one
+            # both end at an i2pd error page). A SOCKS CONNECT that succeeds
+            # proves the LeaseSet resolved, which is exactly the line between
+            # "the node is gone" and "the node is up but its handshake fails".
+            #
+            # Same address rules as the HTTP proxy above, for the same reasons:
+            # the cni0 bridge so pods can reach it, and NEVER 0.0.0.0 — that
+            # would publish an open SOCKS proxy on a public IP.
+            - --socksproxy.enabled=true
+            - --socksproxy.address=10.42.0.1
+            - --socksproxy.port=4447
+            # Router console ON, bound to loopback only. Without it the log is
+            # warn-level noise and there is no way to answer the questions that
+            # actually matter -- is the router firewalled, are tunnels built,
+            # is our LeaseSet published -- so I2P health can only be guessed at.
+            # Reachable solely via `kubectl port-forward`; not exposed.
+            - --http.enabled=true
+            - --http.address=127.0.0.1
+            - --http.port=7070
+            # info, not the warn default: tunnel build and LeaseSet publication
+            # are logged at info and are exactly what needs to be visible.
+            - --loglevel=info
+            # NO --datadir here. The upstream entrypoint already passes one, and
+            # i2pd rejects a duplicate outright: "option '--datadir' cannot be
+            # specified more than once". Persist by mounting the PVC AT the data
+            # directory the image already uses instead of trying to move it.
+          volumeMounts:
+            - name: state
+              # The image's own data dir. It symlinks certificates/ in here at
+              # startup, so it must be writable by the running user -- mounting
+              # the PVC elsewhere left this read-only and it died with
+              # "ln: /home/i2pd/data/certificates: Permission denied".
+              subPath: i2pd
+              mountPath: /home/i2pd/data
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          # No readiness probe on purpose: a freshly installed router takes
+          # minutes to integrate into the I2P network, and gating the pod on
+          # that would restart-loop it before it ever succeeds.
+        # ---------------------------------------------------------------------
+        - name: node
+          image: registry.local/syndichan-node:latest
+          imagePullPolicy: IfNotPresent
+          # The posture flags are GONE, not moved: the client stopped accepting
+          # them (-data-dir, -s3-listen, -tls-cert, -tls-key, -s3-*-key-file all
+          # went away when everything moved into the config file), and a pod
+          # passing an unknown flag does not misbehave subtly -- it fails to
+          # parse and crash-loops on the first start.
+          #
+          # Nothing was lost. Every one of those values is already in the config
+          # on the PVC, because the old client persisted them there itself for
+          # restart continuity. XDG_CONFIG_HOME below is what points at it, and
+          # it was already doing that.
+          #
+          # The credentials therefore still never appear in pod arguments or the
+          # manifest. They live in the same owner-only config they were being
+          # written into, on the same volume.
+          args:
+            # Still supported, and still only a ceiling for a store that has no
+            # persisted choice: the dashboard value wins on later starts.
+            - -capacity-gib
+            - "60"
+          env:
+            # Config lives beside the shards on the PVC so the persistent
+            # libp2p identity and i2p.destination survive a restart -- if these
+            # rotate, every peer's bootstrap entry for this node breaks.
+            - name: XDG_CONFIG_HOME
+              value: /data/node
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: ui
+              containerPort: 9090
+            - name: dcs
+              containerPort: 8761
+              protocol: TCP
+          volumeMounts:
+            - name: state
+              subPath: node
+              mountPath: /data
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+            - name: s3-credentials
+              mountPath: /credentials
+              readOnly: true
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 2Gi}
+          readinessProbe:
+            tcpSocket: {port: s3}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 30      # I2P integration is slow; do not flap
+      volumes:
+        - name: tls
+          secret:
+            secretName: syndichan-node-tls
+        - name: s3-credentials
+          secret:
+            secretName: maniwani-env
+            defaultMode: 0400
+            items:
+              - key: S3_ACCESS_KEY
+                path: access-key
+              - key: S3_SECRET_KEY
+                path: secret-key
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # Deliberately omit storageClassName. The live StatefulSet was created
+        # against the cluster default (local-path); adding an explicit but
+        # equivalent class later changes the immutable claim template and makes
+        # every updater apply fail. The already-bound PVC remains local-path.
+        # Deliberately generous: this holds the encrypted shard store, and the
+        # local-path provisioner does not preallocate or enforce this request.
+        # Physical usage follows the live encrypted working set and is bounded
+        # in-process by -capacity-gib above.
+        resources:
+          requests:
+            storage: 60Gi

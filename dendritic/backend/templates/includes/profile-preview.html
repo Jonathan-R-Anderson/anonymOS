@@ -1,0 +1,66 @@
+{# Standalone profile preview card served by /profile/u/<slug>/preview and
+   loaded inside a SANDBOXED iframe by the hover popup. It is a full, self
+   contained document with its own styles so the poster's custom HTML/CSS is
+   confined to the iframe and can never affect the page the visitor is on. #}
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: #16161a;
+      color: #f2f2f5;
+      overflow: hidden;
+  }
+  .pv-head {
+      display: flex; align-items: center; gap: .6rem;
+      padding: .7rem .8rem; border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .pv-avatar {
+      flex: 0 0 2.2rem; width: 2.2rem; height: 2.2rem;
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 50%; background: linear-gradient(145deg, #6f42c1, #b07274);
+      color: #fff; font-weight: 800;
+  }
+  .pv-name { font-weight: 700; color: #d994ff; }
+  .pv-live {
+      color: #fff; background: #e02424; border-radius: .2rem;
+      padding: .02rem .3rem; font-size: .66rem; font-weight: 700; letter-spacing: .04em;
+  }
+  .pv-body {
+      position: relative; height: 150px; overflow: hidden; background: #fff;
+  }
+  /* The poster's custom HTML, scaled down and non-interactive. It lives here,
+     inside the sandboxed iframe, so its styles never touch the host page. */
+  .pv-scaled {
+      position: absolute; top: 0; left: 0; width: 200%;
+      transform: scale(.5); transform-origin: top left;
+      padding: .5rem .7rem; color: #111; pointer-events: none;
+  }
+  .pv-scaled img { max-width: 100%; height: auto; }
+  .pv-empty { padding: 1.1rem .8rem; color: rgba(255,255,255,.55); font-size: .85rem; }
+  .pv-link {
+      display: block; padding: .55rem .8rem; color: #9ecbff;
+      font-size: .82rem; font-weight: 600; text-decoration: none;
+      border-top: 1px solid rgba(255,255,255,.08);
+  }
+</style>
+</head>
+<body>
+  <div class="pv-head">
+    <span class="pv-avatar">{{ profile.slug[:1]|upper }}</span>
+    <div>
+      <div class="pv-name">{{ profile.slug }}</div>
+      {% if is_live %}<span class="pv-live">● LIVE</span>{% endif %}
+    </div>
+  </div>
+  {% if profile.custom_html %}
+  <div class="pv-body"><div class="pv-scaled">{{ profile.custom_html|safe }}</div></div>
+  {% else %}
+  <div class="pv-empty">No custom profile yet.</div>
+  {% endif %}
+  <a class="pv-link" href="{{ url_for('profiles.view', slug=profile.slug) }}" target="_parent">View full profile →</a>
+</body>
+</html>

@@ -1,0 +1,371 @@
+<!-- Front-page landing content. Rendered via `&#123;&#123; greeting | safe &#125;&#125;` inside the
+     Bootstrap .container on the index page, so it must be fully self-contained
+     (scoped <style>, inline SVG, no Jinja, no external assets). Theme-adaptive:
+     every colour comes from the shared --sc-* palette (base.html) + `inherit`, so
+     it reads correctly on light, 711chan (cream), midnight, and cyberpunk. Type:
+     Space Mono for technical kickers (loaded for the hero), Inter for prose.
+     Ambient motion is subtle and disabled under prefers-reduced-motion.
+     Links point only at routes that exist: /arcade (learning), /lab (labs),
+     /boards, /videos. -->
+<section class="sc-lp" aria-label="About Syndichan">
+  <style>
+    .sc-lp{color:inherit;display:flex;flex-direction:column;gap:clamp(1.4rem,3vw,2.2rem);
+      max-width:82rem;margin:0 auto;padding:.35rem 0 1.4rem;
+      font-family:'Inter',system-ui,-apple-system,sans-serif;}
+    .sc-lp *{box-sizing:border-box;}
+    .sc-lp h1,.sc-lp h2,.sc-lp h3{color:inherit;text-wrap:balance;}
+    .sc-lp a{text-decoration:none;}
+    .sc-lp__eyebrow{font-family:'Space Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:.7rem;letter-spacing:.24em;text-transform:uppercase;opacity:.62;margin:0;}
+    .sc-lp__live{display:inline-flex;align-items:center;gap:.55rem;}
+    .sc-lp__dot{width:7px;height:7px;border-radius:50%;background:var(--sc-accent,#b07274);
+      box-shadow:0 0 0 0 var(--sc-accent,#b07274);animation:sc-pulse 2.4s ease-out infinite;flex:0 0 auto;}
+    @keyframes sc-pulse{0%{box-shadow:0 0 0 0 var(--sc-accent,#b07274);opacity:1;}
+      70%{box-shadow:0 0 0 7px transparent;opacity:.55;}100%{box-shadow:0 0 0 0 transparent;opacity:1;}}
+
+    /* ---------- shared surfaces ---------- */
+    .sc-lp__panel{position:relative;overflow:hidden;isolation:isolate;
+      border:1px solid var(--sc-border,rgba(128,128,128,.3));border-radius:16px;
+      background:var(--sc-surface-2,#f4f6f8);}
+    .sc-lp__panel::before{content:"";position:absolute;inset:0;z-index:-2;pointer-events:none;
+      background-image:radial-gradient(currentColor 1px,transparent 1px);background-size:26px 26px;opacity:.045;}
+    .sc-lp__glow{content:"";position:absolute;z-index:-1;pointer-events:none;
+      top:-45%;right:-15%;width:65%;height:180%;
+      background:radial-gradient(closest-side,var(--sc-accent,#b07274),transparent 72%);
+      opacity:.13;filter:blur(8px);animation:sc-breathe 10s ease-in-out infinite;}
+    @keyframes sc-breathe{0%,100%{opacity:.09;transform:scale(1);}50%{opacity:.19;transform:scale(1.07);}}
+
+    /* ---------- hero ---------- */
+    /* Two columns at the top level: the network panel, then the earn column.
+       MOBILE-FIRST, and the split only happens when there is genuinely room.
+       The previous version split at 760px, so a ~830px window got two columns
+       of roughly 530px and 300px -- the right one so narrow that "Contribution,
+       rewarded" and "115 GB" both wrapped. A breakpoint that is merely "not a
+       phone" is not the same as "wide enough for two columns". */
+    .sc-lp__top{display:grid;grid-template-columns:1fr;gap:clamp(1.2rem,2.5vw,1.9rem);align-items:start;}
+    @media (min-width:1120px){
+      /* minmax floors the right column: it may shrink to .82fr of the row, but
+         never below 21rem, which is the width the figures panel needs before
+         its numbers start wrapping. */
+      .sc-lp__top{grid-template-columns:minmax(0,1.5fr) minmax(21rem,.82fr);}
+    }
+    /* The hero is single-column NOW -- copy above its canvas -- because it is
+       itself the left column of the grid above. Nesting two 2-column grids
+       inside 82rem gives four columns of nothing. */
+    .sc-lp__hero{display:grid;grid-template-columns:1fr;gap:clamp(1.1rem,2.5vw,1.6rem);
+      align-items:center;padding:clamp(1.8rem,4.5vw,3.2rem) clamp(1.4rem,4vw,3rem);}
+    .sc-lp__hero-copy{min-width:0;}
+    .sc-lp__title{font-weight:700;font-size:clamp(2.6rem,6.5vw,4.1rem);line-height:1;
+      letter-spacing:-.025em;margin:1rem 0 0;}
+    .sc-lp__tagline{font-family:'Space Mono',ui-monospace,monospace;font-size:clamp(.85rem,1.5vw,1rem);
+      letter-spacing:.05em;color:var(--sc-accent,#b07274);margin:.9rem 0 0;font-weight:700;}
+    .sc-lp__desc{font-size:clamp(.98rem,1.4vw,1.06rem);line-height:1.55;opacity:.88;margin:.8rem 0 0;max-width:42rem;}
+    .sc-lp__cta{display:flex;flex-wrap:wrap;gap:.7rem;margin:1.5rem 0 0;}
+    .sc-lp__btn{display:inline-flex;align-items:center;gap:.5rem;font-weight:600;font-size:.94rem;
+      padding:.62rem 1.25rem;border-radius:9px;border:1px solid transparent;cursor:pointer;
+      transition:transform .16s ease,border-color .16s ease,background .16s ease,opacity .16s ease;line-height:1;}
+    .sc-lp__btn:hover{transform:translateY(-2px);}
+    .sc-lp__btn--primary{background:var(--sc-accent,#b07274);color:var(--sc-surface,#fff);}
+    .sc-lp__btn--primary:hover{opacity:.92;}
+    .sc-lp__btn--ghost{background:transparent;color:inherit;border-color:var(--sc-border,rgba(128,128,128,.4));}
+    .sc-lp__btn--ghost:hover{border-color:var(--sc-accent,#b07274);}
+    .sc-lp__art{display:flex;justify-content:center;align-items:center;min-width:0;}
+    .sc-lp__artlink{display:flex;flex-direction:column;align-items:center;gap:.5rem;
+      text-decoration:none;color:inherit;border-radius:14px;padding:.5rem;width:100%;}
+    .sc-lp__artlink:hover,.sc-lp__artlink:focus-visible{color:inherit;text-decoration:none;}
+    /* The graph looks decorative, so say out loud that it goes somewhere —
+       a hover-only cue is invisible on touch and to anyone not hunting for it. */
+    .sc-lp__artcap{font-size:.78rem;letter-spacing:.02em;opacity:.62;text-align:center;
+      transition:opacity .18s,color .18s;}
+    .sc-lp__artlink:hover .sc-lp__artcap,
+    .sc-lp__artlink:focus-visible .sc-lp__artcap{opacity:1;color:var(--sc-accent,#b07274);}
+    .sc-lp__artlink:hover .n-hub{filter:brightness(1.12);}
+    .sc-lp__artlink:hover .n-line{opacity:.5;}
+    .sc-lp__artlink:hover .n-node{opacity:.8;}
+    .sc-lp__artlink:focus-visible{outline:2px solid var(--sc-accent,#b07274);outline-offset:2px;}
+    .sc-lp__art{flex-direction:column;gap:.5rem;width:100%;}
+    .sc-lp__art #peer-canvas-root{width:100%;margin:0;}
+    .sc-lp__art .pc-stage{min-height:320px;}
+    .sc-lp__artlink--under{display:block;text-align:center;text-decoration:none;}
+    .sc-lp__art .n-line{stroke:currentColor;opacity:.28;stroke-width:1.1;}
+    .sc-lp__art .n-node{fill:currentColor;opacity:.55;}
+    .sc-lp__art .n-hub{fill:var(--sc-accent,#b07274);}
+    .sc-lp__art .n-ring{fill:none;stroke:var(--sc-accent,#b07274);opacity:.4;}
+    .sc-lp__art .n-pulse{fill:none;stroke:var(--sc-accent,#b07274);transform-origin:center;
+      animation:sc-radar 4.5s ease-out infinite;}
+    @keyframes sc-radar{0%{opacity:.55;r:16px;}80%,100%{opacity:0;r:74px;}}
+
+    /* ---------- section scaffolding ---------- */
+    .sc-lp__sec-head{max-width:52rem;}
+    .sc-lp__sec-head h2{font-size:clamp(1.5rem,3vw,2.1rem);font-weight:700;letter-spacing:-.02em;margin:.5rem 0 0;}
+    .sc-lp__sec-head p{font-size:1.02rem;line-height:1.58;opacity:.85;margin:.65rem 0 0;}
+
+    /* ---------- feature grid ---------- */
+    .sc-lp__features{display:grid;grid-template-columns:repeat(auto-fit,minmax(17rem,1fr));gap:.85rem;}
+    .sc-lp__card{border:1px solid var(--sc-border,rgba(128,128,128,.3));border-radius:13px;
+      background:var(--sc-surface,#fff);padding:1.2rem 1.15rem 1.25rem;color:inherit;
+      transition:border-color .2s ease,transform .2s ease;}
+    .sc-lp__card:hover{border-color:var(--sc-accent,#b07274);transform:translateY(-3px);}
+    /* One card is an anchor. It must not pick up link colouring, or it becomes
+       the only unreadable card on the dark themes, which supply no --bs-*. */
+    .sc-lp__card--link{display:block;text-decoration:none;color:inherit;}
+    .sc-lp__card--link:hover,.sc-lp__card--link:focus-visible{text-decoration:none;color:inherit;}
+    .sc-lp__card--link:focus-visible{outline:2px solid var(--sc-accent,#b07274);outline-offset:2px;}
+    .sc-lp__cardgo{display:block;margin-top:.75rem;font-size:.8rem;font-weight:600;
+      color:var(--sc-accent,#b07274);opacity:.85;}
+    .sc-lp__card--link:hover .sc-lp__cardgo{opacity:1;}
+    .sc-lp__ico{display:inline-flex;align-items:center;justify-content:center;width:2.3rem;height:2.3rem;
+      border-radius:9px;margin-bottom:.8rem;color:var(--sc-accent,#b07274);font-size:1rem;
+      background:color-mix(in srgb,var(--sc-accent,#b07274) 14%,transparent);
+      border:1px solid color-mix(in srgb,var(--sc-accent,#b07274) 32%,transparent);}
+    .sc-lp__ktag{font-family:'Space Mono',ui-monospace,monospace;font-size:.6rem;letter-spacing:.2em;
+      text-transform:uppercase;opacity:.5;display:block;margin-bottom:.2rem;}
+    .sc-lp__card h3{font-size:1.06rem;font-weight:600;margin:0 0 .45rem;line-height:1.25;}
+    .sc-lp__card p{font-size:.9rem;line-height:1.53;margin:0;opacity:.8;}
+
+    /* ---------- chip list ---------- */
+    .sc-lp__split{display:grid;grid-template-columns:1fr 1fr;gap:clamp(1.3rem,3vw,2.4rem);align-items:start;}
+    .sc-lp__chips{display:flex;flex-wrap:wrap;gap:.55rem;margin:0;padding:0;list-style:none;}
+    .sc-lp__chips li{display:inline-flex;align-items:center;gap:.5rem;font-size:.88rem;
+      border:1px solid var(--sc-border,rgba(128,128,128,.3));border-radius:999px;
+      padding:.42rem .85rem;background:var(--sc-surface,#fff);}
+    .sc-lp__chips i{color:var(--sc-accent,#b07274);font-size:.72rem;}
+
+    /* ---------- token earn grid ---------- */
+    /* Head + chips left, live figures right. This section used to be a 52rem
+       column in an 82rem container, which read as left-aligned with a hole
+       beside it. */
+    /* Stacked, because it IS the right column now. */
+    .sc-lp__earn{display:flex;flex-direction:column;gap:1.1rem;
+      border:1px solid var(--sc-border,rgba(128,128,128,.3));border-radius:16px;
+      padding:clamp(1.2rem,2.5vw,1.7rem);background:var(--sc-surface,#fff);}
+    .sc-lp__earn .sc-lp__sec-head h2{font-size:clamp(1.35rem,2.2vw,1.75rem);}
+    .sc-lp__earn .sc-lp__tokens{grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:.5rem;}
+    @media (min-width:1120px){
+      /* Only stack the chips once the column is actually a column. */
+      .sc-lp__earn .sc-lp__tokens{grid-template-columns:1fr;}
+    }
+    .sc-lp__glance{border:1px solid var(--sc-border,rgba(128,128,128,.3));border-radius:13px;
+      padding:1.1rem 1.15rem 1.2rem;background:var(--sc-surface,#fff);}
+    .sc-lp__glance-top{display:flex;align-items:center;gap:1.1rem;margin:.55rem 0 1.1rem;}
+    .sc-lp__donut{width:96px;height:96px;flex:0 0 auto;}
+    .sc-lp__donut .d-track{fill:none;stroke:currentColor;opacity:.16;stroke-width:3.4;}
+    .sc-lp__donut .d-fill{fill:none;stroke:var(--sc-accent,#b07274);stroke-width:3.4;
+      stroke-linecap:round;transition:stroke-dasharray .6s ease;}
+    .sc-lp__donut .d-pct{font-family:'Space Mono',ui-monospace,monospace;font-size:9px;
+      font-weight:700;fill:currentColor;}
+    .sc-lp__donut .d-sub{font-family:'Space Mono',ui-monospace,monospace;font-size:4.2px;
+      fill:currentColor;opacity:.55;letter-spacing:.14em;}
+    .sc-lp__glance-nums{display:flex;flex-direction:column;gap:.55rem;min-width:0;}
+    .sc-lp__glance-nums b{display:block;font-size:1.45rem;line-height:1;font-weight:700;
+      font-variant-numeric:tabular-nums;}
+    .sc-lp__glance-nums span{font-family:'Space Mono',ui-monospace,monospace;font-size:.58rem;
+      letter-spacing:.16em;text-transform:uppercase;opacity:.55;}
+    .sc-lp__glance-k{font-family:'Space Mono',ui-monospace,monospace;font-size:.58rem;
+      letter-spacing:.16em;text-transform:uppercase;opacity:.55;margin:0 0 .45rem;}
+    .sc-lp__rolebar{width:100%;height:7px;border-radius:4px;overflow:hidden;display:block;}
+    .sc-lp__rolekey{display:flex;flex-wrap:wrap;gap:.3rem .8rem;list-style:none;margin:.6rem 0 0;padding:0;}
+    .sc-lp__rolekey li{display:flex;align-items:center;gap:.35rem;font-size:.72rem;opacity:.82;}
+    .sc-lp__rolekey i{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+
+    .sc-lp__tokens{display:grid;grid-template-columns:repeat(auto-fit,minmax(15.5rem,1fr));gap:.65rem;}
+    .sc-lp__token{display:flex;align-items:center;gap:.65rem;font-size:.93rem;
+      border:1px solid var(--sc-border,rgba(128,128,128,.3));border-radius:10px;
+      padding:.7rem .9rem;background:var(--sc-surface,#fff);}
+    .sc-lp__token i{color:var(--sc-accent,#b07274);font-size:.85rem;flex:0 0 auto;}
+
+    /* ---------- principles band ---------- */
+      margin:1.4rem 0 0;padding:.85rem 0 .85rem 1.1rem;border-left:2px solid var(--sc-accent,#b07274);
+      opacity:.95;font-style:normal;}
+
+    /* ---------- final CTA ---------- */
+    .sc-lp__callout{text-align:center;padding:clamp(2rem,5vw,3.2rem) 1.4rem;}
+    .sc-lp__callout h2{font-size:clamp(1.6rem,3.4vw,2.3rem);font-weight:700;letter-spacing:-.02em;margin:.6rem auto 0;}
+    .sc-lp__callout p{font-size:1.05rem;line-height:1.55;opacity:.86;margin:.7rem auto 0;max-width:34rem;}
+    .sc-lp__callout .sc-lp__cta{justify-content:center;margin-top:1.6rem;}
+
+    /* Below 760px the page is DELIBERATELY long and single-column -- that is
+       the right shape for a phone, and the widening above is desktop-only. */
+    @media (max-width:760px){
+      .sc-lp{max-width:100%;gap:clamp(1.6rem,5vw,2.6rem);}
+      .sc-lp__hero{grid-template-columns:1fr;text-align:left;}
+      .sc-lp__art{order:-1;max-width:100%;margin:0 auto;}
+      .sc-lp__art .pc-stage{min-height:240px;}
+      .sc-lp__split{grid-template-columns:1fr;}
+    }
+    @media (prefers-reduced-motion:reduce){
+      .sc-lp__glow,.sc-lp__dot,.sc-lp__art .n-pulse{animation:none;}
+    }
+  </style>
+
+  <!-- ================= HERO ================= -->
+  {# The Dendritic Network panel and the Earn column sit SIDE BY SIDE.
+     They used to stack, which made the page tall and left the right half
+     of the fold empty. #}
+  <div class="sc-lp__top">
+  <div class="sc-lp__panel sc-lp__hero">
+    <span class="sc-lp__glow" aria-hidden="true"></span>
+    <div class="sc-lp__hero-copy">
+      <p class="sc-lp__eyebrow sc-lp__live"><span class="sc-lp__dot" aria-hidden="true"></span>Decentralized · Onion-routed · Community-run</p>
+      <h1 class="sc-lp__title">Dendritic Network</h1>
+      <p class="sc-lp__tagline">Route · Store · Resolve · Earn</p>
+      <p class="sc-lp__desc">
+        An overlay network for anonymous routing, content-addressed distributed storage and cryptographically owned names — run by independent nodes that no single party owns. Contribute storage and bandwidth, earn credits, and help hold up infrastructure that cannot be quietly switched off.
+      </p>
+      <div class="sc-lp__cta">
+        <!-- A named button, not only the clickable graph. Nobody hunts for a
+             link inside an illustration, and "run a node" is the one action on
+             this page that grows the network rather than consuming it. -->
+        <a class="sc-lp__btn sc-lp__btn--ghost" href="/network"><i class="fas fa-server" aria-hidden="true"></i>Run a Node</a>
+        <!-- Linked from the front page on purpose: somebody who thinks the site
+             is broken is already here and already frustrated, and the worst
+             time to make them hunt for the status page is the one time they
+             need it. It is measured by independent monitor nodes and also
+             served from status.<domain>, so it survives this page not loading. -->
+        <a class="sc-lp__btn sc-lp__btn--ghost" href="/status"><i class="fas fa-heart-pulse" aria-hidden="true"></i>Network Status</a>
+      </div>
+    </div>
+    <div class="sc-lp__art">
+      {# THE LIVE NETWORK, not a motif of one.
+
+         This was hand-drawn geometry: six circles, ten lines and a radar pulse
+         standing in for a decentralized network. It is now the same real-time
+         peer canvas the status page runs, from a shared include, so the hero
+         shows the actual nodes at their actual keyspace positions.
+
+         Compact form -- the drawing without the stat readout, since the numbers
+         are what /status is for. The caption keeps the link the motif carried. #}
+      {% with compact = true %}{% include "includes/peer-canvas.html" %}{% endwith %}
+      <a class="sc-lp__artlink sc-lp__artlink--under" href="/network"
+         aria-label="Explore the network topology and run a node">
+        <span class="sc-lp__artcap">Explore the topology &amp; run a node <span aria-hidden="true">&rarr;</span></span>
+      </a>
+    </div>
+  </div>
+
+  <!-- ================= EARN TOKENS ================= -->
+
+  <div class="sc-lp__earn">
+    <div>
+      <div class="sc-lp__sec-head" style="margin:0 0 1.15rem;">
+        <p class="sc-lp__eyebrow">Earn tokens</p>
+        <h2>Contribution, rewarded</h2>
+        <p>The network pays for verified infrastructure contribution, measured by Proof of Facilitation.</p>
+      </div>
+      <div class="sc-lp__tokens">
+        <div class="sc-lp__token"><i class="fas fa-check" aria-hidden="true"></i>Store shards</div>
+        <div class="sc-lp__token"><i class="fas fa-check" aria-hidden="true"></i>Relay bandwidth</div>
+        <div class="sc-lp__token"><i class="fas fa-check" aria-hidden="true"></i>Run a gateway</div>
+        <div class="sc-lp__token"><i class="fas fa-check" aria-hidden="true"></i>Sustained uptime</div>
+      </div>
+      <p style="margin:1.15rem 0 0;font-size:1rem;opacity:.92;">
+        <a href="/network#economy" style="color:var(--sc-accent,#b07274);font-weight:600;text-decoration:none;">How the credit economy works &rarr;</a>
+      </p>
+    </div>
+
+    {# The right column was dead space. It carries the live network rather than
+       filler: the same peer feed the canvas uses, reduced to three numbers and
+       two graphics. Everything degrades to a dash if the API is unreachable --
+       this block must never be why the front page looks broken. #}
+    <aside class="sc-lp__glance" id="dn-glance" aria-label="Live network figures">
+      <p class="sc-lp__eyebrow">Live now</p>
+
+      <div class="sc-lp__glance-top">
+        <svg class="sc-lp__donut" viewBox="0 0 42 42" role="img" aria-labelledby="g-cap-lbl">
+          <title id="g-cap-lbl">Share of donated capacity currently in use</title>
+          <circle class="d-track" cx="21" cy="21" r="15.9"/>
+          <circle class="d-fill" cx="21" cy="21" r="15.9" id="g-donut"
+                  stroke-dasharray="0 100" transform="rotate(-90 21 21)"/>
+          <text x="21" y="20.4" class="d-pct" id="g-pct" text-anchor="middle">&ndash;</text>
+          <text x="21" y="26" class="d-sub" text-anchor="middle">USED</text>
+        </svg>
+        <div class="sc-lp__glance-nums">
+          <div><b id="g-peers">&ndash;</b><span>peers online</span></div>
+          <div><b id="g-cap">&ndash;</b><span>capacity pooled</span></div>
+          <div><b id="g-countries">&ndash;</b><span>countries</span></div>
+        </div>
+      </div>
+
+      <p class="sc-lp__glance-k">Roles being run</p>
+      <svg class="sc-lp__rolebar" viewBox="0 0 100 7" preserveAspectRatio="none" aria-hidden="true">
+        <g id="g-rolebar"></g>
+      </svg>
+      <ul class="sc-lp__rolekey" id="g-rolekey"></ul>
+    </aside>
+  </div>
+  </div>
+
+
+  <!-- ================= PRINCIPLES (anonymity + free speech) ================= -->
+</section>
+<script>
+/* Live figures for the "Earn tokens" panel. Same feed as the peer canvas.
+   Fails silently to dashes: a front page that shows a broken stats box because
+   an API call failed is worse than one that shows a dash. */
+(function () {
+  if (!document.getElementById("dn-glance")) return;
+
+  /* Role colours match the canvas legend, so a colour means the same thing in
+     both places. Kept in step with templates/includes/peer-canvas.html. */
+  var COLOR = {
+    storage:"#4f9cf0", gateway:"#3fc98a", worker:"#c98cf0", payment:"#e0b341",
+    monitor:"#46c7d0", compute:"#f0834f", microvm:"#8f9ff5", probe:"#6fd3a8",
+    validator:"#d9d36b", mailbox:"#e08fc0", delegate:"#b06fe0"
+  };
+  var LABEL = {
+    storage:"Storage", gateway:"Gateway", worker:"Worker", payment:"Payment",
+    monitor:"Monitor", compute:"Compute", microvm:"MicroVM", probe:"Probe",
+    validator:"Validator", mailbox:"Mailbox", delegate:"Delegate"
+  };
+
+  function human(n) {
+    if (!n) return "0 B";
+    var u = ["B","KB","MB","GB","TB","PB"], i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return (n >= 100 ? Math.round(n) : n.toFixed(1)) + " " + u[i];
+  }
+  function set(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+
+  fetch("{{ url_for('storage_nodes.network_peers') }}", { headers: { "Accept": "application/json" } })
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (d) {
+      var peers = d.peers || [], cap = 0, used = 0, countries = {}, roles = {};
+      peers.forEach(function (p) {
+        cap += p.capacity_bytes || 0;
+        used += p.used_bytes || 0;
+        if (p.country) countries[p.country] = 1;
+        (p.roles || []).forEach(function (r) { roles[r] = (roles[r] || 0) + 1; });
+      });
+
+      set("g-peers", peers.length);
+      set("g-cap", human(d.capacity_bytes || cap));
+      set("g-countries", Object.keys(countries).length || "\u2013");
+
+      var pct = cap > 0 ? Math.round(used / cap * 100) : 0;
+      set("g-pct", pct + "%");
+      /* r = 15.9 makes the circumference ~100, so the dash array IS the
+         percentage and needs no arithmetic to read. */
+      var ring = document.getElementById("g-donut");
+      if (ring) ring.setAttribute("stroke-dasharray", pct + " " + (100 - pct));
+
+      var order = ["gateway","storage","worker","monitor","payment","compute",
+                   "microvm","probe","validator","mailbox","delegate"];
+      var live = order.filter(function (r) { return roles[r]; });
+      var total = live.reduce(function (a, r) { return a + roles[r]; }, 0);
+      var bar = document.getElementById("g-rolebar"), key = document.getElementById("g-rolekey");
+      if (!bar || !key || !total) return;
+
+      var x = 0, bh = "", kh = "";
+      live.forEach(function (r) {
+        var w = roles[r] / total * 100;
+        bh += '<rect x="' + x + '" y="0" width="' + w + '" height="7" fill="' + COLOR[r] + '"/>';
+        kh += '<li><i style="background:' + COLOR[r] + '"></i>' + LABEL[r] + " " + roles[r] + "</li>";
+        x += w;
+      });
+      bar.innerHTML = bh;
+      key.innerHTML = kh;
+    })
+    .catch(function () { /* the dashes stand */ });
+})();
+</script>
+

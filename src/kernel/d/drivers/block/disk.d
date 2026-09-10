@@ -319,6 +319,42 @@ public int diskFindTarget(out ulong targetSectors)
     return -1;
 }
 
+// The disk the UEFI firmware boots first — the lowest-index present data disk (lowest SATA
+// port), regardless of which disk the object store bound to.  Installing HERE puts the ESP
+// where the firmware's default boot entry looks, so the installed system comes up without a
+// boot-order fall-through to a later disk.
+//
+// This exists because diskFindTarget() deliberately AVOIDS the object store's disk — correct
+// when re-installing from a running system onto a spare disk, but wrong for a fresh
+// install-from-ISO: there the store is in-memory, it nonetheless binds disk 0 as its data
+// port, and diskFindTarget() then steers the install onto a LATER disk (e.g. a small data
+// disk) while the firmware still boots disk 0 — which is left blank ("failed to load Boot…").
+// On a single-disk machine this returns the same disk as diskStoreIndex(), so nothing changes.
+public int diskFindBootDisk(out ulong targetSectors)
+{
+    targetSectors = 0;
+    if (!g_diskReady)
+        return -1;
+
+    if (g_backend == DiskBackend.nvme)
+    {
+        targetSectors = g_diskSectors;
+        return 0;
+    }
+
+    foreach (i; 0 .. cast(int)g_ahciDevices.length)
+    {
+        auto d = &g_ahciDevices[i];
+        if (!d.present || d.type != 1 || d.capacity == 0)
+            continue;
+
+        targetSectors = d.capacity / SECTOR;
+        return i;
+    }
+
+    return -1;
+}
+
 public int diskFindTargetBySize(ulong maxSectors, out ulong targetSectors)
 {
     targetSectors = 0;

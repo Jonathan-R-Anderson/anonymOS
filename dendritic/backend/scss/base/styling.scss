@@ -1,0 +1,212 @@
+/* ── Global ── */
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-feature-settings: "kern" 1, "liga" 1;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scroll reveal ── */
+.reveal-item {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity .42s ease, transform .42s ease;
+}
+
+.reveal-item.is-revealed {
+    opacity: 1;
+    transform: none;
+}
+
+/* ── Footer ── */
+.site-footer {
+    border-top: 1px solid rgba(0, 0, 0, .12);
+    font-size: .9rem;
+}
+
+.site-footer .footer-brand {
+    font-size: 1.05rem;
+    font-weight: 700;
+    text-decoration: none;
+    color: inherit;
+}
+
+.site-footer .footer-brand:hover {
+    text-decoration: none;
+}
+
+.site-footer .footer-heading {
+    font-weight: 700;
+    letter-spacing: .07em;
+    opacity: .55;
+}
+
+.site-footer .footer-link {
+    text-decoration: none;
+    color: inherit;
+    opacity: .65;
+    transition: opacity .14s;
+}
+
+.site-footer .footer-link:hover {
+    opacity: 1;
+    text-decoration: none;
+}
+
+.site-footer .footer-theme-select {
+    max-width: 140px;
+}
+
+.site-footer .footer-bottom {
+    border-top: 1px solid rgba(0, 0, 0, .08);
+}
+
+.site-footer .footer-bottom a {
+    color: inherit;
+    opacity: .65;
+}
+
+.site-footer .footer-bottom a:hover {
+    opacity: 1;
+}
+
+/* ── Cards ── */
+.card {
+    border-radius: .5rem;
+    border: 1px solid rgba(0, 0, 0, .09);
+}
+
+/* ── Alerts ── */
+.alert {
+    border-radius: .45rem;
+}
+
+/* ── Page section headers ── */
+.page-section-header {
+    padding: 1.5rem 1.5rem 1.1rem;
+    border-bottom: 1px solid rgba(0, 0, 0, .07);
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .75rem;
+}
+
+.page-section-header h1,
+.page-section-header h2 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.page-section-header p {
+    margin: .15rem 0 0;
+    font-size: .88rem;
+}
+
+/* ── Thread stats bar ── */
+.thread-stats-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.2rem;
+    padding: .65rem 1rem;
+    font-size: .8rem;
+    border-bottom: 1px solid rgba(0, 0, 0, .07);
+    background: rgba(0, 0, 0, .018);
+}
+
+.thread-stat {
+    opacity: .65;
+}
+
+.thread-stat i {
+    margin-right: .3rem;
+}
+
+/* ── Spoiler ── */
+.spoiler {
+    color: var(--dark);
+    background-color: var(--dark);
+}
+
+.spoiler:hover {
+    color: var(--white);
+}
+
+.spoiler-label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 6em;
+}
+
+.thumbnail-spoiler {
+    opacity: 0.3;
+    filter: blur(12px);
+}
+
+/* The anti-AI decoy font (.anti-ai / %%text%%) is declared inline in
+   base.html so it loads without a SCSS rebuild and uses the static-URL
+   helper — see the @font-face there. */
+
+/* ── Theme selector (legacy, now in footer) ── */
+.theme-selector {
+    display: none;
+}
+
+/* ── Blockquote greentext ── */
+blockquote {
+    color: var(--green);
+}
+
+/* ── Mod badges ── */
+.mod-item {
+    display: block;
+    @extend .w-100;
+    @extend .my-1;
+    @extend .badge;
+    @extend .badge-primary;
+}
+
+/* ── Source watermarks ── */
+.source-watermarked {
+    position: relative;
+    overflow: hidden;
+}
+
+.source-watermarked::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.08;
+    background-position: center;
+    background-repeat: repeat;
+    background-size: 34px 34px;
+}
+
+.watermark-content {
+    position: relative;
+    z-index: 2;
+}
+
+.source-watermarked--4chan::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='6' width='52' height='52' rx='12' fill='%2300a651'/%3E%3Ctext x='32' y='42' fill='white' font-family='Arial,sans-serif' font-size='30' font-weight='700' text-anchor='middle'%3E4%3C/text%3E%3C/svg%3E");
+}
+
+.source-watermarked--8chan::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='6' width='52' height='52' rx='12' fill='%232c6bed'/%3E%3Ctext x='32' y='42' fill='white' font-family='Arial,sans-serif' font-size='24' font-weight='700' text-anchor='middle'%3E8%3C/text%3E%3C/svg%3E");
+}
+
+.source-watermarked--7chan::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='6' width='52' height='52' rx='12' fill='%23b24646'/%3E%3Ctext x='32' y='42' fill='white' font-family='Arial,sans-serif' font-size='24' font-weight='700' text-anchor='middle'%3E7%3C/text%3E%3C/svg%3E");
+}
+
+.source-watermarked--reddit::after {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='6' width='52' height='52' rx='12' fill='%23FF4500'/%3E%3Ctext x='32' y='42' fill='white' font-family='Arial,sans-serif' font-size='30' font-weight='700' text-anchor='middle'%3Er%3C/text%3E%3C/svg%3E");
+}

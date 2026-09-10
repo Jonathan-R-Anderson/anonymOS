@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    {# Space Mono is appended to the EXISTING request rather than added as a
+       second <link>: same connection, one round trip, and the front-page hero
+       is the only thing that uses it. #}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    {# favicon.png, not logo.png: the brand image is 1024x1536 and ~2.2MB, which
+       every page would pull just to draw a 16px tab icon. Generated square with
+       transparent padding so it is not distorted. #}
+    <link rel="icon" type="image/png" href="{{ static_resource('favicon.png') }}">
+
+    <link rel="stylesheet" href="{{ get_current_theme_path() }}">
+    <script src="{{ static_resource("jquery/jquery.min.js") }}"></script>
+    <script src="{{ static_resource("popperjs/umd/popper.min.js") }}"></script>
+    <script src="{{ static_resource("bootstrap/bootstrap.min.js") }}"></script>
+    <link rel="stylesheet" href="{{ static_resource("fontawesome/all.min.css") }}">
+
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        /* Shared surface palette for custom (non-Bootstrap) components — news
+           cards, panels, etc. — so they follow the active theme instead of
+           hardcoding light colours. Light is the default; dark themes override.
+           Components use `color: inherit` for text so each theme's own text
+           colour (including cyberpunk's green) flows through automatically.
+           Declared here (not in a theme SCSS) so it applies on every page with
+           no SCSS rebuild; the body carries a theme-<name> class (below). */
+        /* The navbar toggler was functional and INVISIBLE. Bootstrap 4 draws
+           its icon as a background SVG whose stroke colour is baked into a
+           data URI by the compiled theme CSS, so on themes whose navbar is
+           dark the icon is a dark glyph on a dark bar. Drawn here as three
+           plain bars in currentColor instead, which follows whatever the
+           active theme sets for navbar text and cannot fall out of step with
+           it the way a hardcoded SVG can. */
+        .navbar-toggler { border-color: currentColor; opacity: .85; }
+        .navbar-toggler:focus { outline: 2px solid currentColor; outline-offset: 2px; }
+        .navbar-toggler .navbar-toggler-icon {
+            background-image: none;
+            position: relative;
+            width: 1.5em;
+            height: 1.5em;
+        }
+        .navbar-toggler .navbar-toggler-icon::before,
+        .navbar-toggler .navbar-toggler-icon::after,
+        .navbar-toggler .navbar-toggler-icon > i {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: currentColor;
+            border-radius: 2px;
+        }
+        .navbar-toggler .navbar-toggler-icon::before { top: .25em; }
+        .navbar-toggler .navbar-toggler-icon > i { top: .7em; }
+        .navbar-toggler .navbar-toggler-icon::after { top: 1.15em; }
+
+        body {
+            --sc-surface: #ffffff;
+            --sc-surface-2: #f4f6f8;
+            --sc-border: rgba(18, 35, 49, .12);
+            --sc-muted-alpha: .62;
+            --sc-fill: rgba(18, 35, 49, .08);
+            --sc-fill-strong: rgba(18, 35, 49, .16);
+            --sc-accent: #b07274;
+        }
+        body.theme-711chan {
+            --sc-surface: #fffff2;
+            --sc-surface-2: #f6f6e4;
+            --sc-border: rgba(0, 0, 0, .14);
+            --sc-accent: #800000;
+        }
+        body.theme-midnight,
+        body.theme-cyberpunk {
+            --sc-surface: #1a1f29;
+            --sc-surface-2: #12151d;
+            --sc-border: rgba(255, 255, 255, .14);
+            --sc-fill: rgba(255, 255, 255, .10);
+            --sc-fill-strong: rgba(255, 255, 255, .20);
+            --sc-accent: #6a9fb5;
+        }
+        body.theme-cyberpunk {
+            --sc-surface: #0b0f0b;
+            --sc-surface-2: #0a0d0a;
+            --sc-border: rgba(0, 255, 0, .28);
+            --sc-fill: rgba(0, 255, 0, .10);
+            --sc-fill-strong: rgba(0, 255, 0, .20);
+            --sc-accent: #00ff88;
+        }
+
+        /* The front-page greeting is a Bootstrap .jumbotron, whose default light
+           grey background + dark <hr> ignore the theme (jarring on dark themes,
+           especially cyberpunk). Tie it to the palette so it matches whatever
+           theme is active. Declared after the theme stylesheet so it wins. */
+        .jumbotron {
+            background-color: var(--sc-surface-2);
+            color: inherit;
+            border: 1px solid var(--sc-border);
+        }
+        .jumbotron hr {
+            border-top-color: var(--sc-border);
+        }
+
+        /* ---- Bootstrap surfaces that ship WHITE and ignore the theme ----
+           Bootstrap 4 emits `--white: #fff` in :root and defaults $card-bg to
+           white, and the per-theme SCSS files only override $body-bg/$body-color.
+           So on midnight/cyberpunk every .card (the admin dashboard alone has 47),
+           dropdown, modal and input rendered light-on-light.
+
+           Fixed here rather than in each theme's SCSS for two reasons: it needs no
+           SCSS/gulp rebuild to take effect, and it fixes every theme at once. Light
+           themes are unaffected because their --sc-surface IS #ffffff.
+           `color: inherit` lets each theme's own text colour flow through. */
+        .card,
+        .list-group-item,
+        .dropdown-menu,
+        .modal-content,
+        .popover,
+        .toast {
+            background-color: var(--sc-surface);
+            color: inherit;
+            border-color: var(--sc-border);
+        }
+        .card-header,
+        .card-footer,
+        .modal-header,
+        .modal-footer {
+            background-color: var(--sc-surface-2);
+            color: inherit;
+            border-color: var(--sc-border);
+        }
+        .dropdown-item {
+            color: inherit;
+        }
+        .dropdown-item:hover,
+        .dropdown-item:focus {
+            background-color: var(--sc-fill);
+            color: inherit;
+        }
+        .dropdown-divider {
+            border-top-color: var(--sc-border);
+        }
+
+        /* Thread posts. base/post.scss styles `.post-card` (and `.post-container`,
+           which @extends it) rather than `.post`, which is what the theme SCSS
+           overrides — that mismatch is why posts stayed white on midnight even
+           though the theme "styled" them. */
+        .post-card,
+        .post-mod-menu {
+            background: var(--sc-surface);
+            color: inherit;
+            border-color: var(--sc-border);
+        }
+        .post-card-header {
+            background: var(--sc-surface-2);
+            color: inherit;
+            border-color: var(--sc-border);
+        }
+
+        /* The rule above is not enough for thread posts and reply boxes, for two
+           reasons: the React <Post> renders `.post-container`, not `.post-card`
+           (nothing renders `.post-card`), and base/post.scss additionally stripes
+           `.post-container` with `:nth-child(odd|even)` — #f8f8f8 / var(--white).
+           A :nth-child selector outranks any bare class rule, so those stripes win
+           regardless. Only harajuku and wildride override them in their own SCSS;
+           midnight and cyberpunk fell straight through to the light defaults, so
+           every reply box rendered white on a near-black page. Scoped to the dark
+           themes so the light themes keep the striping they were designed with,
+           and kept at :nth-child specificity so it beats base/post.scss. */
+        body.theme-midnight .post-container:nth-child(odd),
+        body.theme-cyberpunk .post-container:nth-child(odd) {
+            background-color: var(--sc-surface-2);
+        }
+        body.theme-midnight .post-container:nth-child(even),
+        body.theme-cyberpunk .post-container:nth-child(even) {
+            background-color: var(--sc-surface);
+        }
+        /* Left at single-class specificity on purpose: react-thread.html's
+           `.post-container--reading` highlight is declared in the head block,
+           i.e. after this style block, so it still wins the border. */
+        .post-container {
+            border-color: var(--sc-border);
+        }
+
+        /* Form controls: $input-bg is white by default too. */
+        .form-control,
+        .custom-select,
+        .custom-file-label,
+        .input-group-text {
+            background-color: var(--sc-surface-2);
+            color: inherit;
+            border-color: var(--sc-border);
+        }
+        .form-control:focus,
+        .custom-select:focus {
+            background-color: var(--sc-surface-2);
+            color: inherit;
+        }
+        .form-control::placeholder {
+            color: inherit;
+            opacity: var(--sc-muted-alpha, .62);
+        }
+
+        /* Tables inherit $body-color but their borders and striping do not. */
+        .table {
+            color: inherit;
+        }
+        .table th,
+        .table td,
+        .table thead th {
+            border-color: var(--sc-border);
+        }
+        .table-striped tbody tr:nth-of-type(odd) {
+            background-color: var(--sc-fill);
+        }
+        .table-hover tbody tr:hover {
+            background-color: var(--sc-fill-strong);
+            color: inherit;
+        }
+
+        /* The close "x" is near-black with a white text-shadow: invisible on dark. */
+        .close {
+            color: inherit;
+            text-shadow: none;
+            opacity: .7;
+        }
+        .close:hover {
+            color: inherit;
+            opacity: 1;
+        }
+
+        /* Cyberpunk borrows wildride's monospace/terminal font. */
+        body.theme-cyberpunk {
+            font-family: monospace !important;
+        }
+
+        /* Posting forms follow the theme. Bootstrap form controls and both
+           posting containers — the react-modal new-thread dialog and the
+           floating reply window — default to white, which clashes on dark
+           themes. Tie them all to the --sc-* palette. */
+        .form-control,
+        .custom-select {
+            background-color: var(--sc-surface);
+            color: inherit;
+            border-color: var(--sc-border);
+        }
+        .form-control:focus,
+        .custom-select:focus {
+            background-color: var(--sc-surface);
+            color: inherit;
+            border-color: var(--sc-accent);
+            box-shadow: 0 0 0 .2rem var(--sc-fill);
+        }
+        .form-control::placeholder { color: inherit; opacity: .5; }
+        .form-control:disabled,
+        .form-control[readonly] { background-color: var(--sc-surface-2); }
+        .modal-content {
+            background-color: var(--sc-surface);
+            color: inherit;
+            border: 1px solid var(--sc-border);
+        }
+        .modal-header,
+        .modal-footer { border-color: var(--sc-border); }
+        .modal-header .close { color: inherit; text-shadow: none; }
+        /* react-modal (new-thread dialog) sets inline styles, so !important is
+           required to override them. */
+        .ReactModal__Content {
+            background: var(--sc-surface) !important;
+            color: inherit !important;
+            border: 1px solid var(--sc-border) !important;
+            border-radius: .6rem !important;
+        }
+        .ReactModal__Overlay { background: rgba(0, 0, 0, .55) !important; }
+        /* Floating reply window (custom composer). */
+        .floating-reply-window {
+            background: var(--sc-surface);
+            color: inherit;
+            border-color: var(--sc-border);
+        }
+        .floating-reply-window__header,
+        .floating-reply-window__footer {
+            background: var(--sc-surface-2);
+            border-color: var(--sc-border);
+        }
+
+        /* Anti-AI decoy font (roadmap/font.ttf). Declared here rather than in a
+           theme stylesheet so it loads on every page without a SCSS rebuild and
+           uses the static-URL helper (CDN/versioning aware). Inline %%text%% is
+           wrapped in .anti-ai by the markdown renderer. */
+        @font-face {
+            font-family: 'Decoy';
+            src: url('{{ static_resource("fonts/decoy-font.ttf") }}') format('truetype');
+            font-display: swap;
+        }
+
+        /* The decoy glyphs are hard enough to read on their own, and they used to
+           inherit whatever text colour the theme set — light grey on a dark post
+           after the post surfaces started following the theme, which made them
+           illegible. Give the run its own off-white plate and dark ink so it
+           reads the same on every theme. Off-white rather than pure white so it
+           sits as a marked-up run instead of a glaring block. */
+        .anti-ai {
+            font-family: 'Decoy', monospace;
+            letter-spacing: .02em;
+            -webkit-user-select: none;
+            user-select: none;
+            background-color: #f4f1e8;
+            color: #14161a;
+            -webkit-text-fill-color: #14161a;
+            padding: 0 .18em;
+            border-radius: .18em;
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
+        }
+        /* Catalog tiles force .anti-ai to white with !important so it reads over
+           the image scrim (see base/catalog.scss). That would now be white on
+           off-white, so the plate has to win there too — same specificity,
+           declared later, !important to match. */
+        .thread:not(.thread--noimg) .thread-copy-shell .anti-ai {
+            background-color: #f4f1e8;
+            color: #14161a !important;
+            -webkit-text-fill-color: #14161a !important;
+            text-shadow: none !important;
+        }
+
+        /* Post up/down voting. Palette-driven so it follows the theme; the
+           active direction uses the accent rather than a fixed colour. */
+        .post-vote {
+            display: inline-flex;
+            align-items: center;
+            gap: .25rem;
+        }
+        .post-vote__btn {
+            border: 1px solid var(--sc-border);
+            background: var(--sc-fill);
+            color: inherit;
+            border-radius: .3rem;
+            line-height: 1;
+            padding: .12rem .35rem;
+            font-size: .72rem;
+            opacity: .75;
+            transition: opacity .12s ease, background-color .12s ease, border-color .12s ease;
+        }
+        .post-vote__btn:hover:not(:disabled) {
+            opacity: 1;
+            background: var(--sc-fill-strong);
+        }
+        .post-vote__btn:disabled {
+            opacity: .4;
+            cursor: progress;
+        }
+        .post-vote__btn--active {
+            opacity: 1;
+            border-color: var(--sc-accent);
+            background: var(--sc-fill-strong);
+            color: var(--sc-accent);
+        }
+        .post-vote__score {
+            font-variant-numeric: tabular-nums;
+            font-weight: 700;
+            min-width: 1.4em;
+            text-align: center;
+        }
+        .post-vote--readonly {
+            opacity: var(--sc-muted-alpha, .62);
+            gap: .2rem;
+        }
+
+        /* Bronze/silver/gold awards. The badges are readable by everyone; the
+           button only renders when the server said this post can receive one. */
+        .post-awards {
+            display: inline-flex;
+            align-items: center;
+            gap: .25rem;
+            flex-wrap: wrap;
+            position: relative;
+        }
+        .post-awards__badge {
+            border: 1px solid var(--sc-border);
+            background: var(--sc-fill);
+            border-radius: 999px;
+            padding: .05rem .4rem;
+            font-size: .75rem;
+            line-height: 1.4;
+            font-variant-numeric: tabular-nums;
+        }
+        .post-awards__btn {
+            border: 1px solid var(--sc-border);
+            background: var(--sc-fill);
+            color: inherit;
+            border-radius: .3rem;
+            line-height: 1;
+            padding: .12rem .4rem;
+            font-size: .72rem;
+            opacity: .75;
+        }
+        .post-awards__btn:hover:not(:disabled) {
+            opacity: 1;
+            background: var(--sc-fill-strong);
+        }
+        .post-awards__btn:disabled { opacity: .4; cursor: progress; }
+        /* Floated out of the row: the menu is taller than the meta line, and in
+           flow it would push every post below it down as it opens. */
+        .post-awards__menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 5;
+            margin-top: .25rem;
+            display: flex;
+            flex-direction: column;
+            gap: .25rem;
+            min-width: 12rem;
+            padding: .4rem;
+            border: 1px solid var(--sc-border);
+            border-radius: .4rem;
+            background: var(--sc-surface);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+        }
+        .post-awards__tier {
+            border: 1px solid var(--sc-border);
+            background: var(--sc-fill);
+            color: inherit;
+            border-radius: .3rem;
+            padding: .2rem .45rem;
+            font-size: .78rem;
+            text-align: left;
+        }
+        .post-awards__tier:hover:not(:disabled) { background: var(--sc-fill-strong); }
+        .post-awards__tier:disabled { opacity: .4; cursor: progress; }
+        .post-awards__note {
+            font-size: .72rem;
+            opacity: var(--sc-muted-alpha, .62);
+            overflow-wrap: anywhere;
+        }
+
+        /* Poster country flags: a Twemoji flag web font so the emoji flags
+           render as real flag icons on every platform (Windows otherwise shows
+           the two-letter code). Falls back to the system emoji font. */
+        @font-face {
+            font-family: 'Twemoji Country Flags';
+            unicode-range: U+1F1E6-1F1FF;
+            src: url('{{ static_resource("webfonts/TwemojiCountryFlags.woff2") }}') format('woff2');
+            font-display: swap;
+        }
+        .country-flag {
+            font-family: 'Twemoji Country Flags', 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif;
+            font-size: 1.05em;
+            line-height: 1;
+            vertical-align: -0.08em;
+        }
+
+        /* 44px, not 160px. These watermarks are uploaded favicons — typically
+           16-32px source images — so tiling them at 160px upscaled them 5-10x
+           and they read as a pixellated smear. The built-in per-source
+           watermarks tile at 34px (base/styling.scss); this stays close to that
+           while leaving custom art a little more room. */
+        .source-watermarked--custom::after {
+            background-image: var(--source-watermark-image) !important;
+            background-size: 44px auto !important;
+            background-repeat: repeat !important;
+            background-position: center !important;
+        }
+
+        .site-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: .7rem;
+            font-weight: 800;
+            letter-spacing: -.02em;
+        }
+
+        .site-brand__logo {
+            width: 2.1rem;
+            height: 2.1rem;
+            border-radius: .72rem;
+            object-fit: cover;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, .16);
+            flex-shrink: 0;
+        }
+    </style>
+
+    {% block head %}{% endblock %}
+    <title>{{ instance_name() }} — {% block title %}{% endblock %}</title>
+</head>
+
+<body class="d-flex flex-column theme-{{ get_current_theme() }}" style="min-height: 100vh;" data-analytics-authenticated="{{ 'true' if get_slip() else 'false' }}">
+    <nav class="navbar navbar-expand-lg sticky-top">
+        <a class="navbar-brand site-brand" href="{{ url_for("main.index") }}">
+            <img class="site-brand__logo" src="{{ static_resource('logo.png') }}" alt="{{ instance_name() }} logo">
+            <span>{{ instance_name() }}</span>
+        </a>
+        <button id="site-nav-toggle" class="navbar-toggler collapsed" type="button" aria-controls="site-nav"
+            aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"><i></i></span>
+        </button>
+        <div id="site-nav" class="collapse navbar-collapse">
+            <div class="navbar-nav mr-auto">
+                {% block navbar %}{% endblock %}
+                <a href="{{ url_for("main.network_topology") }}" class="nav-item nav-link">Network</a>
+                <a href="{{ url_for("status.status_page") }}" class="nav-item nav-link">Status</a>
+                <a href="{{ url_for("main.epochs") }}" class="nav-item nav-link">Epochs</a>
+                <a href="{{ url_for("credits.index") }}" class="nav-item nav-link">Credits</a>
+                <a href="{{ url_for("dao.index") }}" class="nav-item nav-link">Governance</a>
+                <a href="{{ url_for("main.download_node") }}" class="nav-item nav-link">Run a node</a>
+                <a href="{{ url_for("slip.landing") }}" class="nav-item nav-link">Slip</a>
+                {% if get_slip() %}
+                <a href="{{ url_for("profiles.edit") }}" class="nav-item nav-link">Profile</a>
+                {% endif %}
+                {# No Admin link in the public navigation, by request.
+
+                   It was shown only to admins, so it disclosed nothing to a
+                   visitor -- but it advertised the panel's existence on every
+                   page an admin loaded, including over the shoulder and in any
+                   screenshot. /admin/login is reachable directly and is the
+                   only entry point that is needed. #}
+            </div>
+            <div class="navbar-nav ml-auto">
+                {# The moderator report bell is disabled: it calls
+                   `boards.mod_reports` and blueprints/boards.py is deleted, so
+                   url_for raises BuildError on EVERY page for anyone who
+                   moderates anything -- which includes the admin.
+
+                   This include was already broken before the template was
+                   restored (TemplateNotFound instead of BuildError); removing
+                   it is what actually fixes the page. Restore both together. #}
+                {% block navbar_right %}{% endblock %}
+            </div>
+        </div>
+    </nav>
+    <script>
+        (function () {
+            var navToggle = document.getElementById("site-nav-toggle");
+            var siteNav = document.getElementById("site-nav");
+            if (!navToggle || !siteNav) return;
+            navToggle.addEventListener("click", function () {
+                var isExpanded = siteNav.classList.toggle("show");
+                navToggle.classList.toggle("collapsed", !isExpanded);
+                navToggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+            });
+        })();
+    </script>
+
+    <!-- Scroll-reveal observer -->
+    <script>
+        (function () {
+            if (!window.IntersectionObserver) return;
+            var io = new IntersectionObserver(function (entries) {
+                entries.forEach(function (e) {
+                    if (e.isIntersecting) {
+                        e.target.classList.add('is-revealed');
+                        io.unobserve(e.target);
+                    }
+                });
+            }, { threshold: 0.06, rootMargin: '0px 0px -24px 0px' });
+
+            function observeAll(root) {
+                (root || document).querySelectorAll('.reveal-item:not(.is-revealed)').forEach(function (el) {
+                    io.observe(el);
+                });
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function () { observeAll(); });
+            } else {
+                observeAll();
+            }
+            window._revealObserve = observeAll;
+        })();
+    </script>
+
+    {% with flashes = get_flashed_messages() %}
+    {% if flashes %}
+    <div class="container mt-2">
+        {% for message in flashes %}
+        <div class="alert alert-info alert-dismissible mb-2" role="alert">
+            {{ message }}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <main class="flex-grow-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="site-footer mt-4">
+        <div class="container-fluid px-4">
+            <div class="row py-4">
+                <div class="col-md-4 mb-3 mb-md-0">
+                    <a class="footer-brand site-brand" href="{{ url_for("main.index") }}">
+                        <img class="site-brand__logo" src="{{ static_resource('logo.png') }}"
+                            alt="{{ instance_name() }} logo">
+                        <span>{{ instance_name() }}</span>
+                    </a>
+                    <p class="text-muted small mt-2 mb-0">A decentralized anonymous network overlay.</p>
+                </div>
+                <div class="col-md-4 mb-3 mb-md-0">
+                    <p class="footer-heading text-uppercase small mb-2">Navigate</p>
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-1"><a href="{{ url_for("main.network_topology") }}" class="footer-link">Network</a></li>
+                        <li class="mb-1"><a href="{{ url_for("status.status_page") }}" class="footer-link">Status</a></li>
+                        <li class="mb-1"><a href="{{ url_for("main.download_node") }}" class="footer-link">Run a node</a></li>
+                        <li class="mb-1"><a href="{{ url_for("main.network_topology") }}#economy" class="footer-link">Economy</a></li>
+                        <li class="mb-1"></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom py-3">
+                {% block footer %}{% endblock %}
+                <p class="text-center text-muted small mb-0">
+                    Powered by Dendritic Network
+                </p>
+            </div>
+        </div>
+    </footer>
+    <script src="{{ static_resource('js/analytics.js') }}" defer></script>
+    {# Checks that the page you are reading is the page dendritic.network signed. Runs
+       after load and reports to the console: a gateway is transport, and this is
+       how a reader finds out if it changed something. Deferred and non-blocking —
+       a verification that slowed the page down would be turned off.
+
+       The integrity attribute is the important part. nginx serves /static/
+       directly, so this file is not signed on its way out like a page is — and
+       it is the ONE file a gateway would most want to modify, because a tampered
+       verifier reports "verified" for anything. SRI is enforced by the browser
+       BEFORE the script runs, so it protects the verifier without depending on
+       the verifier, which is a circularity nothing else here can escape.
+
+       crossorigin is required for SRI to be enforced at all. Without it the
+       browser silently ignores the integrity attribute, which is the failure
+       mode that looks exactly like success. #}
+    {% set verify_integrity = integrity_for('js/verify-origin.js') %}
+    <script src="{{ static_resource('js/verify-origin.js') }}" defer
+            {% if verify_integrity %}integrity="{{ verify_integrity }}" crossorigin="anonymous"{% endif %}></script>
+    <script type="module">
+        (async function () {
+            if (!window.WebTorrent) {
+                try {
+                    const webTorrentModule = await import('https://cdn.jsdelivr.net/npm/webtorrent@2.8.4/dist/webtorrent.min.js');
+                    window.WebTorrent = webTorrentModule.default || webTorrentModule.WebTorrent || webTorrentModule;
+                } catch (error) {
+                    console.error('Failed to load WebTorrent runtime', error);
+                }
+            }
+            window.dispatchEvent(new Event('maniwani:webtorrent-ready'));
+        })();
+    </script>
+    <script>
+        (function () {
+            var client = null;
+            var resolvedMagnets = new Map();
+            var pendingMagnets = new Set();
+
+            function getWebTorrentCtor() {
+                var candidate = window.WebTorrent || null;
+                if (candidate && candidate.default) {
+                    return candidate.default;
+                }
+                return candidate;
+            }
+
+            function ensureClient() {
+                if (client) {
+                    return client;
+                }
+                var WebTorrentCtor = getWebTorrentCtor();
+                if (!WebTorrentCtor || !WebTorrentCtor.WEBRTC_SUPPORT) {
+                    return null;
+                }
+                client = new WebTorrentCtor({
+                    dht: false,
+                    lsd: false,
+                });
+                client.on('error', function (error) {
+                    console.error('Legacy WebTorrent resolver error', error);
+                });
+                return client;
+            }
+
+            function magnetTargetValue(el) {
+                if (!el || !el.getAttribute) {
+                    return null;
+                }
+                if (el.hasAttribute('data-full') && String(el.getAttribute('data-full')).indexOf('magnet:') === 0) {
+                    return el.getAttribute('data-full');
+                }
+                if (el.tagName === 'A') {
+                    return el.getAttribute('href');
+                }
+                return el.getAttribute('src');
+            }
+
+            function applyResolvedValue(el, url) {
+                if (!el || !url) {
+                    return;
+                }
+                if (el.hasAttribute && el.hasAttribute('data-full') && String(el.getAttribute('data-full')).indexOf('magnet:') === 0) {
+                    el.setAttribute('data-full', url);
+                }
+                if (el.tagName === 'A') {
+                    el.setAttribute('href', url);
+                    return;
+                }
+                if (el.tagName === 'SOURCE') {
+                    el.setAttribute('src', url);
+                    if (el.parentElement && typeof el.parentElement.load === 'function') {
+                        el.parentElement.load();
+                    }
+                    return;
+                }
+                if (el.tagName === 'IMG' && String(el.getAttribute('src') || '').indexOf('magnet:') === 0) {
+                    el.setAttribute('src', url);
+                }
+            }
+
+            function resolveMagnets(root) {
+                (root || document).querySelectorAll('a[href^="magnet:"], img[src^="magnet:"], video source[src^="magnet:"], img[data-full^="magnet:"]').forEach(function (el) {
+                    var magnet = magnetTargetValue(el);
+                    if (!magnet) return;
+
+                    if (resolvedMagnets.has(magnet)) {
+                        applyResolvedValue(el, resolvedMagnets.get(magnet));
+                        return;
+                    }
+
+                    var activeClient = ensureClient();
+                    if (!activeClient || pendingMagnets.has(magnet)) {
+                        return;
+                    }
+                    pendingMagnets.add(magnet);
+                    activeClient.add(magnet, function (torrent) {
+                        var file = torrent.files.find(function (f) {
+                            return f.name.match(/\.(jpg|jpeg|png|gif|webp|svg|mp4|webm|ogg)$/i);
+                        });
+                        if (file) {
+                            file.getBlobURL(function (err, url) {
+                                pendingMagnets.delete(magnet);
+                                if (err) return;
+                                resolvedMagnets.set(magnet, url);
+                                applyResolvedValue(el, url);
+                                resolveMagnets(document);
+                            });
+                            return;
+                        }
+                        pendingMagnets.delete(magnet);
+                    });
+                });
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function () { resolveMagnets(); });
+            } else {
+                resolveMagnets();
+            }
+
+            // Sync with scroll-reveal if it exists
+            var oldReveal = window._revealObserve;
+            window._revealObserve = function (root) {
+                if (oldReveal) oldReveal(root);
+                resolveMagnets(root);
+            };
+
+            // Also handle dynamic content (e.g. from post replies)
+            var observer = new MutationObserver(function (mutations) {
+                mutations.forEach(function (mutation) {
+                    mutation.addedNodes.forEach(function (node) {
+                        if (node.nodeType === 1) resolveMagnets(node);
+                    });
+                });
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+            window.addEventListener('maniwani:webtorrent-ready', function () {
+                resolveMagnets(document);
+            });
+        })();
+    </script>
+
+
+    {% if get_slip() %}
+    {# Idle-timeout activity heartbeat: ping keepalive only on genuine user input
+       (throttled), so the per-account auto-logout isn't defeated by background
+       polling. #}
+    <script>
+    (function () {
+        var last = 0;
+        function ping() {
+            var now = Date.now();
+            if (now - last < 45000) { return; }
+            last = now;
+            try { fetch('/session/keepalive', { method: 'POST', credentials: 'same-origin', keepalive: true }); } catch (e) { /* ignore */ }
+        }
+        ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'].forEach(function (ev) {
+            document.addEventListener(ev, ping, { passive: true });
+        });
+    })();
+    </script>
+    {% endif %}
+    {# Live post-composition monitor feed: stream the post/reply body textarea to
+       the admin panel as it is typed (throttled). Applies to every visitor. #}
+    <script>
+    (function () {
+        if (!window.fetch) { return; }
+        var pending = {};
+        function idFor(el) {
+            if (!el.__ltId) { el.__ltId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+            return el.__ltId;
+        }
+        function isBody(el) { return el && el.tagName === 'TEXTAREA' && el.name === 'body'; }
+        function send(el) {
+            var id = idFor(el);
+            try {
+                fetch('/live-typing/push', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    keepalive: true,
+                    body: JSON.stringify({
+                        comp_id: id,
+                        text: el.value || '',
+                        path: location.pathname,
+                        board: (window._BOARD_NAME || '')
+                    })
+                });
+            } catch (e) { /* ignore */ }
+        }
+        // Trailing throttle: at most one push per 300ms per textarea, always with
+        // the latest value, so the admin sees text populate near-live.
+        document.addEventListener('input', function (e) {
+            var el = e.target;
+            if (!isBody(el)) { return; }
+            var id = idFor(el);
+            if (pending[id]) { return; }
+            pending[id] = window.setTimeout(function () { pending[id] = null; send(el); }, 300);
+        }, true);
+    })();
+    </script>
+    <script>
+    // Presence heartbeat: pings the server so the admin live world map can place
+    // a dot where each current visitor is, in real time. Fire-and-forget — any
+    // failure is ignored and never affects the page.
+    (function () {
+        var base = '{{ url_for("main.presence_ping") }}';
+        function ping() {
+            try {
+                // Include the page the visitor is on (path only — no query string,
+                // which can carry sensitive tokens) for the admin map tooltip.
+                var url = base + (base.indexOf('?') < 0 ? '?' : '&') + 'p=' + encodeURIComponent(location.pathname);
+                if (navigator.sendBeacon) { navigator.sendBeacon(url); return; }
+                if (window.fetch) { fetch(url, { method: 'POST', credentials: 'same-origin', keepalive: true }).catch(function () {}); }
+            } catch (e) { /* ignore */ }
+        }
+        ping();
+        window.setInterval(ping, 20000);
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) { ping(); } });
+    })();
+    </script>
+    {# Per-page scripts. Child templates (e.g. the admin dashboard) put their
+       JavaScript here; without this block their {% block scripts %} content is
+       silently dropped and never runs. #}
+    {% block scripts %}{% endblock %}
+    {# Admin "updates" as a dismissible pop-up, signed-in slips only. Replaced
+       the old front-page Updates section. Anonymous visitors skip the fetch. #}
+    {% if get_slip() %}{% include "includes/slip-updates-popup.html" %}{% endif %}
+</body>
+
+</html>

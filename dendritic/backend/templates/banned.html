@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a0a0a">
+    <title>Banned</title>
+    <meta name="robots" content="noindex">
+    {% if ban_theme %}<link rel="stylesheet" href="/static/css/{{ ban_theme }}/theme-{{ ban_theme }}.css">{% endif %}
+    <style>
+        html, body { margin: 0; min-height: 100%; overflow-x: hidden; }
+        {% if ban_theme %}
+        html, body { background: var(--sc-surface, #101014); color: var(--sc-accent, #e6e6e6);
+            font-family: inherit; }
+        .ban-hero h1 { font-size: clamp(2rem, 9vw, 5rem); margin: 0 0 12px; color: var(--sc-accent, inherit); }
+        {% else %}
+        html, body { background: #0a0a0a; color: #ff2b2b; font-family: monospace, monospace; }
+        .ban-hero h1 { font-size: clamp(2rem, 9vw, 5.5rem); margin: 0 0 12px;
+            text-shadow: 0 0 14px #ff2b2b; animation: ban-flash 1s steps(2) infinite; }
+        @keyframes ban-flash { 50% { color: #fff; } }
+        {% endif %}
+        .ban-hero { padding: 40px 20px 10px; text-align: center; position: relative; z-index: 10; }
+        .ban-msg { font-size: 1.25rem; margin: 8px auto; max-width: 700px; }
+        #ban-media { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+            padding: 16px; position: relative; z-index: 10; }
+        .ban-embed { width: min(360px, 90vw); height: 203px; border: 0; background: #000; }
+        audio.ban-embed { height: 40px; width: min(360px, 90vw); }
+        .ban-float { position: fixed; width: 120px; height: auto; pointer-events: none; z-index: 5; }
+        .ban-custom { position: relative; z-index: 10; }
+    </style>
+    {% if ban_custom_css %}<style>{{ ban_custom_css | safe }}</style>{% endif %}
+</head>
+<body {% if ban_theme %}class="theme-{{ ban_theme }}"{% endif %}>
+    <div class="ban-hero">
+        <h1>⛔ BANNED ⛔</h1>
+        {% for msg in assets.message %}<p class="ban-msg">{{ msg }}</p>{% endfor %}
+        {% if not assets.message %}<p class="ban-msg">You have been permanently banned.</p>{% endif %}
+        {% if ban_custom_html %}<div class="ban-custom">{{ ban_custom_html | safe }}</div>{% endif %}
+    </div>
+    <div id="ban-media"></div>
+    <script>
+    (function () {
+        var A = {{ assets | tojson }};
+        var media = document.getElementById('ban-media');
+        function isFile(u) { return /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|$)/i.test(u); }
+
+        (A.video || []).forEach(function (u) {
+            var el;
+            if (isFile(u)) {
+                el = document.createElement('video');
+                el.src = u; el.autoplay = true; el.loop = true; el.controls = true; el.playsInline = true;
+            } else {
+                el = document.createElement('iframe');
+                el.src = u; el.allow = 'autoplay; fullscreen'; el.setAttribute('allowfullscreen', '');
+            }
+            el.className = 'ban-embed'; media.appendChild(el);
+        });
+        (A.audio || []).forEach(function (u) {
+            var el = document.createElement('audio');
+            el.src = u; el.autoplay = true; el.loop = true; el.controls = true;
+            el.className = 'ban-embed'; media.appendChild(el);
+        });
+        (A.image || []).forEach(function (u) {
+            var img = document.createElement('img');
+            img.src = u; img.className = 'ban-float'; img.alt = '';
+            document.body.appendChild(img);
+            var x = Math.random() * 85, y = Math.random() * 85;
+            var dx = (Math.random() * 2 - 1) || 1, dy = (Math.random() * 2 - 1) || 1;
+            img.style.left = x + 'vw'; img.style.top = y + 'vh';
+            window.setInterval(function () {
+                x += dx * 0.25; y += dy * 0.25;
+                if (x < 0 || x > 88) { dx = -dx; } if (y < 0 || y > 88) { dy = -dy; }
+                img.style.left = x + 'vw'; img.style.top = y + 'vh';
+            }, 30);
+        });
+
+        var popups = A.popup || [];
+        function openPopups() {
+            popups.forEach(function (u) {
+                try {
+                    window.open(u, '_blank',
+                        'width=520,height=420,left=' + Math.floor(Math.random() * 400) + ',top=' + Math.floor(Math.random() * 300));
+                } catch (error) { /* blocked */ }
+            });
+        }
+        function kickMedia() {
+            var els = media.querySelectorAll('video, audio');
+            for (var i = 0; i < els.length; i++) { try { els[i].play(); } catch (error) { /* ignore */ } }
+        }
+        openPopups(); kickMedia();
+        document.addEventListener('click', function () { openPopups(); kickMedia(); });
+        document.addEventListener('keydown', function () { openPopups(); kickMedia(); });
+    })();
+    </script>
+    <script>
+    /* Opt-in "extra annoying" browser features. Enabled keys come from the sysop
+       (ban_features). Harmful behaviours from the original TheAnnoyingSite
+       (super-logout, camera/mic capture, protocol hijacking) are excluded. */
+    (function () {
+        var F = {};
+        ({{ ban_features | tojson }} || []).forEach(function (k) { F[k] = true; });
+        if (!Object.keys(F).length) { return; }
+
+        var WIN_W = 480, WIN_H = 360, VELOCITY = 12, MARGIN = 15, TOP_MARGIN = 50, TICK = 50;
+        var SW = window.screen.availWidth, SH = window.screen.availHeight;
+        var PHRASES = ['Please don\'t go!', 'You are banned. Banned banned banned.',
+            'hee haw hee haw hee haw', 'Why did you have to do that?', 'There is no escape.'];
+        var wins = [], interactionCount = 0;
+        var isChild = window.location.search.indexOf('banchild=1') !== -1;
+        function rnd(a) { return a[Math.floor(Math.random() * a.length)]; }
+        function coords() { return { x: MARGIN + Math.floor(Math.random() * Math.max(1, SW - WIN_W - MARGIN)),
+            y: TOP_MARGIN + Math.floor(Math.random() * Math.max(1, SH - WIN_H - TOP_MARGIN)) }; }
+        function speak(p) { try { window.speechSynthesis.speak(new SpeechSynthesisUtterance(p == null ? rnd(PHRASES) : p)); } catch (e) {} }
+
+        // --- on-load features ---
+        if (F.confirm_unload) { window.addEventListener('beforeunload', function (e) { if (F.speak) { speak('Please don\'t go!'); } e.returnValue = true; }); }
+        if (F.block_back) { for (var i = 1; i < 20; i++) { try { history.pushState({}, '', location.pathname + '?q=' + i); } catch (e) {} } try { history.pushState({}, '', location.pathname); } catch (e) {} window.addEventListener('popstate', function () { history.forward(); }); }
+        if (F.vibrate && typeof navigator.vibrate === 'function') { setInterval(function () { navigator.vibrate(Math.floor(Math.random() * 600)); }, 1000); }
+        if (F.hide_cursor) { document.documentElement.style.cursor = 'none'; }
+        if (F.rainbow) { var mc = document.querySelector('meta[name=theme-color]'); setInterval(function () { if (mc) { mc.setAttribute('content', '#' + Math.floor(Math.random() * 16777215).toString(16)); } }, 60); }
+        if (F.emoji_url) { var em = ['🌑', '🌘', '🌗', '🌖', '🌕', '🌔', '🌓', '🌒']; setInterval(function () { var s = ''; for (var j = 0; j < 8; j++) { s += rnd(em); } location.hash = s; }, 120); }
+        if (F.alerts) { setInterval(function () { if (Math.random() < 0.5) { try { alert('⛔ You are banned. ⛔'); } catch (e) {} } else { try { print(); } catch (e) {} } }, 120000); }
+        if (F.clipboard_spam) { document.addEventListener('copy', function (e) { try { e.clipboardData.setData('text/plain', '⛔ BANNED ⛔ — nice try.'); e.preventDefault(); } catch (err) {} }); }
+        if (F.theramin) { try { var ac = new (window.AudioContext || window.webkitAudioContext)(); var o = ac.createOscillator(); var g = ac.createGain(); o.connect(g); g.connect(ac.destination); o.start(0); document.addEventListener('mousemove', function (ev) { o.frequency.value = 50 + (ev.clientX / Math.max(1, innerWidth)) * 3000; g.gain.value = Math.abs(ev.clientY / Math.max(1, innerHeight)) * 0.35; }); } catch (e) {} }
+
+        if (isChild) {
+            // Child popups bounce / chase the cursor but never spawn more windows.
+            if (F.bounce) { var vx = VELOCITY * (Math.random() > 0.5 ? 1 : -1), vy = VELOCITY * (Math.random() > 0.5 ? 1 : -1);
+                setInterval(function () { var x = window.screenX, y = window.screenY, w = window.outerWidth, h = window.outerHeight;
+                    if (x < MARGIN) { vx = Math.abs(vx); } if (x + w > SW - MARGIN) { vx = -Math.abs(vx); }
+                    if (y < TOP_MARGIN) { vy = Math.abs(vy); } if (y + h > SH - MARGIN) { vy = -Math.abs(vy); }
+                    window.moveBy(vx, vy); }, TICK); }
+            if (F.follow_mouse) { document.addEventListener('mousemove', function (e) { window.moveTo(e.screenX - WIN_W / 2, e.screenY - WIN_H / 2); }); }
+            if (F.speak) { speak(); }
+            return;
+        }
+
+        // --- interaction-gated features (need a user gesture) ---
+        function onInteract() {
+            interactionCount += 1;
+            if (F.popups && wins.length < 6) { var c = coords(); var win = window.open(location.pathname + '?banchild=1', '', 'width=' + WIN_W + ',height=' + WIN_H + ',left=' + c.x + ',top=' + c.y); if (win) { wins.push(win); } }
+            if (F.fullscreen) { try { (document.body.requestFullscreen || document.body.webkitRequestFullscreen).call(document.body); } catch (e) {} }
+            if (F.pointer_lock) { try { (document.body.requestPointerLock || document.body.webkitRequestPointerLock).call(document.body); } catch (e) {} }
+            if (F.downloads) { try { var b = new Blob([Array(500).join('You are banned.\n')], { type: 'text/plain' }); var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'banned-' + Math.floor(Math.random() * 1e6) + '.txt'; a.click(); } catch (e) {} }
+            if (F.device_prompts) { try { navigator.bluetooth && navigator.bluetooth.requestDevice({ acceptAllDevices: true }); } catch (e) {} try { navigator.usb && navigator.usb.requestDevice({ filters: [{}] }); } catch (e) {} try { navigator.serial && navigator.serial.requestPort({ filters: [] }); } catch (e) {} try { navigator.hid && navigator.hid.requestDevice({ filters: [] }); } catch (e) {} try { navigator.requestMIDIAccess && navigator.requestMIDIAccess({ sysex: true }); } catch (e) {} }
+            if (F.speak && interactionCount === 1) { speak(); }
+        }
+        ['mousedown', 'click', 'keydown', 'touchstart'].forEach(function (t) { document.addEventListener(t, onInteract, { passive: true }); });
+    })();
+    </script>
+    {% if ban_custom_js %}<script>{{ ban_custom_js | safe }}</script>{% endif %}
+</body>
+</html>

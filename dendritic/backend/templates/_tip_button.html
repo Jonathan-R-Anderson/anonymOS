@@ -1,0 +1,121 @@
+{#
+  Pooled tipping — ONE reusable component (roadmap P15).
+
+  Used by profile pages, forum posts, articles, streams and author bylines.
+  Deliberately one macro rather than five copies: the availability rule is a
+  security decision, and five copies of a security decision is four chances to
+  get it wrong.
+
+  It renders NOTHING unless `tip` is a live availability dict from
+  services.pooled_tips.availability(). That function fails closed, so a missing,
+  disabled or unpayable recipient simply has no button — never a button that
+  fails after the click.
+
+  WHAT IT MAY NOT SHOW: channel ids, payment ids, nonces, preimages, routes,
+  balances or aggregates. The recipient's wallet is public (it is on chain) and
+  the browser needs it to derive the channel; nothing else about their channels
+  appears here.
+#}
+{% macro tip_button(tip, size="normal") -%}
+  {%- if tip -%}
+    <button type="button"
+            class="tip-button{% if size == 'small' %} tip-button-small{% endif %}"
+            data-tip-recipient="{{ tip.recipient }}"
+            data-tip-slug="{{ tip.recipient_slug }}"
+            data-tip-label="{{ tip.label }}"
+            title="Send a tip directly to this creator — it does not go to the site">
+      ⚡ Tip
+    </button>
+  {%- endif -%}
+{%- endmacro %}
+
+{#
+  The panel the button opens. Included ONCE per page, not per button.
+  Amount only; everything else the browser needs comes from /tip/quote.
+#}
+{% macro tip_dialog() -%}
+{#
+  The only styling this dialog has ever carried, and deliberately minimal:
+  layout and monospace, no colours. A 42-character hex address wrapped mid-way
+  through by the default styles is a disclosure nobody can check, which is the
+  one thing the setup panel exists to provide. Colours are left alone because
+  every theme sets its own via --sc-*, and a component that hard-codes them
+  breaks on the dark ones.
+#}
+<style>
+  #tip-setup-panel .tip-mono { font-family: monospace; font-size: .8rem; word-break: break-all; }
+  #tip-setup-panel .tip-setup-facts { margin: .5rem 0; font-size: .85rem; }
+  #tip-setup-panel .tip-setup-facts dt { font-weight: 600; margin-top: .35rem; }
+  #tip-setup-panel .tip-setup-facts dd { margin: 0 0 0 .25rem; }
+  #tip-setup-panel .tip-fund-row { display: flex; align-items: center; gap: .4rem; }
+  #tip-setup-panel .tip-fund-row input { flex: 0 1 8rem; }
+</style>
+<div id="tip-dialog" class="tip-dialog" hidden>
+  <div class="tip-dialog-inner">
+    <h3>Tip <span id="tip-dialog-who"></span></h3>
+    <p class="tip-dialog-note">
+      This goes <strong>directly to the creator</strong> over a payment channel.
+      It does not pass through this site, and the site never holds it.
+    </p>
+
+    {#
+      THE TIP. Hidden while channel setup is showing, so the two are never on
+      screen together — one is free and off chain, the other is two Mainnet
+      transactions, and a panel offering both at once invites the wrong click.
+    #}
+    <div id="tip-pay-panel">
+      {#
+        step="any", not step="1". The integer step was the visible half of a
+        server that refused fractions outright; tips are the case where sending
+        a little should be easy, and a one-coin floor is the opposite of what a
+        payment channel is for. The min is one base unit — the smallest thing
+        the token can express — and the server checks the same bound.
+      #}
+      <label for="tip-amount">Amount <span class="tip-unit">ANON</span></label>
+      <input type="number" id="tip-amount" min="0.000000000000000001"
+             step="any" value="1">
+      <div class="tip-dialog-actions">
+        <button type="button" id="tip-send">Send Tip</button>
+        <button type="button" id="tip-cancel">Cancel</button>
+      </div>
+    </div>
+
+    {#
+      CHANNEL SETUP. Shown only when the chain says these two wallets have no
+      channel — the state that used to be a dead end reading "you do not have a
+      payment channel with this creator yet" and offering nothing.
+
+      The contract address is on screen BEFORE either wallet prompt, because
+      "approve" is the transaction that hands a contract power over a token
+      balance and the user is entitled to see which contract that is.
+    #}
+    <div id="tip-setup-panel" hidden>
+      <h4>Set up payment channel</h4>
+      <p class="tip-dialog-note">
+        Opening a payment channel requires an <strong>Ethereum Mainnet</strong>
+        transaction. Tips sent through the channel are then exchanged
+        <strong>off-chain</strong> — they cost no gas and confirm instantly.
+      </p>
+      <dl class="tip-setup-facts">
+        <dt>Network</dt><dd>Ethereum Mainnet <span id="tip-setup-chain"></span></dd>
+        <dt>Token</dt><dd>ANON <span id="tip-setup-token" class="tip-mono"></span></dd>
+        <dt>ChannelManagerV2</dt>
+        <dd id="tip-setup-manager" class="tip-mono"></dd>
+      </dl>
+      <label for="tip-fund-amount">Funding amount</label>
+      <div class="tip-fund-row">
+        <input type="text" id="tip-fund-amount" inputmode="decimal" value="1">
+        <span class="tip-fund-unit">ANON</span>
+      </div>
+      <p id="tip-setup-detail" class="tip-dialog-note"></p>
+      <div class="tip-dialog-actions">
+        <button type="button" id="tip-open-channel">Open Payment Channel</button>
+        <button type="button" id="tip-setup-cancel">Cancel</button>
+      </div>
+    </div>
+
+    <p id="tip-status" class="tip-status" role="status"></p>
+  </div>
+</div>
+<script type="module" src="{{ url_for('serve_static', path='pof/tip-init.js') }}"></script>
+{%- endmacro %}

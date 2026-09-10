@@ -1,0 +1,142 @@
+# =============================================================================
+# maniwani UPDATER — STATE VOLUME. The rollback baseline and the error log.
+# =============================================================================
+# ONE PVC, on the SOFTWARE node. It holds four things, and losing any of them
+# degrades or breaks the feature:
+#
+#   repo/           the git clone (~60 MB of .git plus the worktree). Persisting
+#                   it turns each poll into a `git fetch` instead of a full
+#                   clone: 288 polls/day against GitHub is fine, 288 clones/day
+#                   is rude and slow.
+#   render/<sha>/   THE ROLLBACK BASELINE. A rendered copy of k8s/ with every
+#                   registry.local image pinned to :g<sha>. Rollback is a
+#                   byte-identical re-apply of render/<previous-sha>/, not a
+#                   reconstruction. IF THIS DIRECTORY IS LOST, ROLLBACK LOSES
+#                   ITS TARGET and the updater degrades to "halt and page a
+#                   human". Last 10 SHAs kept; a few hundred KB each.
+#   state/          deployed.sha, the run phase file, applied.jsonl (what this
+#                   run has applied so far, for reverse-order revert), and the
+#                   pre-migration pg_dump restore points.
+#   logs/           what the operator actually reads, served read-only by the
+#                   nginx edge at https://<domain>/_deploy/ . See
+#                   80-nginx-deploy-status.yaml.
+#
+# -----------------------------------------------------------------------------
+# WHY A PVC AND NOT emptyDir — the requirement forces it
+# -----------------------------------------------------------------------------
+# The user's requirement is "if it fails it needs to roll back AND produce an
+# error log of what went wrong". Both halves outlive the pod that produced them:
+#   * the log must survive the failing run's own pod exiting (and the CronJob
+#     reaping it), or the operator has nothing to read;
+#   * the rollback baseline must survive between runs, or the FIRST failure
+#     after a pod restart has nothing to roll back TO.
+# An emptyDir dies with the pod and would satisfy neither.
+#
+# -----------------------------------------------------------------------------
+# WHY NOT hostPath (an earlier draft used one)
+# -----------------------------------------------------------------------------
+# A hostPath needs no PVC lifecycle, which is attractive next to the
+# "never delete an aggregator PVC" landmine. But it also has no size accounting,
+# no `kubectl get pvc` visibility, and — the deciding point — it would be a
+# fourth ad-hoc /var/lib/maniwani path in a tree that already has three
+# disagreeing log paths (see the CROSS-GROUP RECONCILIATION note in
+# 10-maniwani.yaml). A named PVC is inspectable, sized, and shows up in the same
+# place as everything else.
+# The landmine does not apply: THIS claim is owned by the updater, it holds no
+# scraped content, and deleting it costs a re-clone and the log history — it
+# does not de-link a single imported thread. It is also the ONLY PVC in the
+# namespace the updater could conceivably touch, and it cannot: the Role has no
+# write verb on persistentvolumeclaims at all.
+#
+# -----------------------------------------------------------------------------
+# TWO PODS, ONE RWO CLAIM — legal, and load-bearing
+# -----------------------------------------------------------------------------
+# The updater Job mounts this read-write; the nginx edge mounts `logs/` from it
+# READ-ONLY, which is what publishes the failure log without SSH.
+#
+# In Kubernetes, ReadWriteOnce means MOUNTABLE BY A SINGLE NODE, not by a single
+# pod. Both pods carry `nodeSelector: maniwani.io/role=software`, so both land
+# on the same node and may hold this claim simultaneously. This is the identical
+# arrangement 10-maniwani.yaml already relies on for the five aggregator claims
+# (see its STORAGE header) — it is an established property of this cluster, not
+# a novel trick.
+#
+#   >>> IF YOU EVER RELAX EITHER nodeSelector, THIS BREAKS. <<<
+#   The second pod to be scheduled sticks in ContainerCreating with
+#   "Multi-Attach error for volume", and because that pod is the EDGE, the
+#   symptom is the whole site down for a change that looked like a log tweak.
+#
+# Write ordering is not a concern: exactly one writer (the updater, serialized
+# by concurrencyPolicy: Forbid plus an flock on the volume) and one reader.
+#
+# -----------------------------------------------------------------------------
+# STORAGE CLASS AND SIZE
+# -----------------------------------------------------------------------------
+# `maniwani-local` = the SOFTWARE node's local-path class. `maniwani-data` would
+# drag the updater onto the 4 vCPU / 7 GB data node, where there is no docker,
+# no build context and no containerd namespace to import into — the pod would
+# schedule and then fail every single run. It would also put an update-time disk
+# consumer on the node whose OOM behaviour is the stack's known-worst.
+#
+# 20Gi is sized from the real artifacts:
+#     git clone (worktree + .git)                          ~ 0.3 GB
+#     10 render trees                                      ~ 0.01 GB
+#     3 pre-migration pg_dumps (349 MB logical, -Fc)       ~ 0.3 GB
+#     sqlite .backup snapshots of the aggregator DBs       ~ 1-2 GB worst case
+#     logs/ (hard-capped at 200 MiB by update.sh)          ~ 0.2 GB
+#     headroom for a partial/aborted dump                  the rest
+# k3s local-path does NOT enforce the request — it is a hostPath under
+# /var/lib/rancher/k3s/storage, so this number is documentation plus a
+# scheduling hint, not a quota. The real protection against filling the node is
+# the `MIN_FREE_GB` gate in update.sh, which refuses to start a run when the
+# filesystem is low, and the retention rules that run at the START of each run
+# rather than the end (so a disk-full failure cannot also block its own cleanup).
+# =============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: maniwani-updater-state
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani-updater
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: updater
+    maniwani.io/group: updater
+  annotations:
+    maniwani.io/contents: "git clone, rendered rollback baselines, pg_dump restore points, operator-visible deploy logs"
+    maniwani.io/readers: "Job/maniwani-updater-* (rw), Deployment/nginx (ro, subPath=logs)"
+spec:
+  accessModes: ["ReadWriteOnce"]
+  # SOFTWARE NODE. Not negotiable — see the header.
+  storageClassName: maniwani-local
+  resources:
+    requests:
+      storage: 20Gi
+# =============================================================================
+# ON-DISK LAYOUT (created by update.sh `init_dirs`, idempotently)
+# -----------------------------------------------------------------------------
+#   /state/
+#     lock                          flock target; serializes runs
+#     repo/                         git clone of origin/main (bare-ish worktree)
+#     render/<sha>/{app,aggregators,media,data,bootstrap}/...
+#     state/
+#       deployed.sha                the SHA the cluster is believed to be at.
+#                                   ADVANCED ONLY AFTER THE SMOKE TEST PASSES.
+#       phase                       GATE|BUILD|MIGRATE|ROLL_A..D|VERIFY|
+#                                   ROLLBACK|DONE|HALTED. A non-terminal value
+#                                   found at startup means the previous run died
+#                                   mid-flight; the next run resumes into
+#                                   ROLLBACK instead of starting a new deploy.
+#       applied.jsonl               {file,kind,name,ts} appended AS EACH OBJECT
+#                                   IS APPLIED. Rollback replays it in reverse.
+#       runs/<run-id>/pre.dump      pre-migration pg_dump -Fc  (kept: last 3)
+#       runs/<run-id>/aggdb/        sqlite3 .backup snapshots  (kept: last 3)
+#     logs/                         SERVED BY NGINX AT /_deploy/ — see 80-.
+#       index.html  status.json  latest.log  latest-failure.log  runs/*.log
+#
+# HOW TO READ IT WITHOUT A BROWSER (needs a kubeconfig, not SSH):
+#   kubectl -n maniwani get cm maniwani-deploy-status -o jsonpath='{.data.status\.json}'
+#
+# HOW TO READ IT WITH NEITHER (this is the point of the feature):
+#   https://<domain>/_deploy/latest-failure.log        (HTTP Basic)
+# =============================================================================

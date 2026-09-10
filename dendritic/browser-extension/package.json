@@ -1,0 +1,9 @@
+{
+  "name": "maniwani-remote-reply-extension",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build-manifest.js",
+    "test": "node tests/adapters.test.js"
+  }
+}

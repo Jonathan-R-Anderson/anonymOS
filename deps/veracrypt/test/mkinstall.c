@@ -67,8 +67,30 @@ static long write_bootloader(FILE *d, long region_lba, long region_cap_sec, cons
     return psec;
 }
 
+/* §E5d/§H1 Level 2 — write an ALREADY-WRAPPED decoy region ([descriptor-v2][UKI][squashfs], from
+ * wrap-decoy-payload.py) as the loader/init-crypt expect: byte 0 of the file lands at region_lba
+ * (XTS unit 0), so each sector's unit = its offset from region_lba. Unlike write_bootloader this
+ * adds NO descriptor of its own — the file already carries "ANOSBOOT"+uki_bytes+rootfs_sectors. */
+static long write_wrapped(FILE *d, long region_lba, long region_cap_sec, const uint8_t *payload, long plen, const uint8_t *mk){
+    long psec = (plen + SEC - 1)/SEC;
+    if (psec > region_cap_sec){ fprintf(stderr,"wrapped payload too big (%ld > %ld sectors)\n", psec, region_cap_sec); exit(2); }
+    uint8_t sec[SEC];
+    for (long i=0;i<psec;i++){
+        long chunk = (i==psec-1 && plen%SEC)? plen%SEC : SEC;
+        memset(sec,0,SEC);
+        memcpy(sec, payload + i*SEC, chunk);
+        vc_xts_encrypt(sec, SEC, (uint64_t)i, mk, mk+32);   /* unit = offset from region_lba */
+        fseek(d, (region_lba+i)*SEC, SEEK_SET); fwrite(sec,1,SEC,d);
+    }
+    return psec;
+}
+
 int main(int argc, char **argv){
-    if (argc < 8){ fprintf(stderr,"usage: %s disk payload.efi decoy-pw sysLBA sysSec outerLBA outerSec\n",argv[0]); return 2; }
+    if (argc < 8){ fprintf(stderr,"usage: %s disk payload.efi decoy-pw sysLBA sysSec outerLBA outerSec [wrapped]\n",argv[0]); return 2; }
+    /* "wrapped" mode: <payload.efi> is a pre-wrapped decoy region (descriptor+UKI+squashfs); write
+     * it raw-XTS at sysLBA+1 for the DECOY and lay only the headers for outer/hidden (enough for
+     * the loader's layout probe) — this proves the loader→UKI→init-crypt→dm-crypt→squashfs chain. */
+    int wrapped = (argc >= 9 && strcmp(argv[8], "wrapped") == 0);
     const char *disk=argv[1], *payloadPath=argv[2], *pw=argv[3];
     long sysLBA=atol(argv[4]), sysSec=atol(argv[5]), outerLBA=atol(argv[6]), outerSec=atol(argv[7]);
 
@@ -91,15 +113,17 @@ int main(int argc, char **argv){
      *    with the tail of the partition staying random. */
     uint8_t mkD[256];
     put_header(d, sysLBA, pw, 0, (uint64_t)sysSec*SEC, mkD);
-    long dsec = write_bootloader(d, sysLBA+1, sysSec-1, payload, plen, mkD);
+    long dsec = wrapped ? write_wrapped   (d, sysLBA+1, sysSec-1, payload, plen, mkD)
+                        : write_bootloader(d, sysLBA+1, sysSec-1, payload, plen, mkD);
 
     /* 3. outer + hidden headers overlaid on the random outer partition, then the hidden
      *    bootloader XTS-encrypted with the HIDDEN master key at hidden_lba+1 (= outerLBA+129),
-     *    matching efi_main.c's HIDDEN route. */
+     *    matching efi_main.c's HIDDEN route. (In wrapped mode we lay only the headers — the loader
+     *    just needs them for its layout probe; the decoy chain is what this test exercises.) */
     put_header(d, outerLBA, "outer-password", (uint64_t)256<<20, (uint64_t)outerSec*SEC, 0);
     uint8_t mkH[256];
     put_header(d, outerLBA + 128, "hidden-password", 0, (uint64_t)256<<20, mkH);
-    long hsec = write_bootloader(d, outerLBA+129, outerSec-129, payload, plen, mkH);
+    long hsec = wrapped ? 0 : write_bootloader(d, outerLBA+129, outerSec-129, payload, plen, mkH);
 
     fclose(d); fclose(g_urand); free(payload);
     printf("[mkinstall] system(%ld sec) + outer(%ld sec) filled with ciphertext/random; headers written; "

@@ -1,0 +1,166 @@
+{% macro render_board_form(action, board, source_config, allow_privacy_toggle=False, submit_label="Save") %}
+<form method="post" action="{{ action }}" enctype="multipart/form-data">
+    <div class="form-group">
+        <label for="name">Board URL</label>
+        <input type="text" id="name" name="name" class="form-control" value="{{ board.name }}">
+        <small class="form-text text-muted">Used as the board slug, for example `i` becomes `/i/`.</small>
+    </div>
+    <div class="form-group">
+        <label for="display-name">Board name</label>
+        <input type="text" id="display-name" name="display-name" class="form-control" value="{{ board.display_name or board.name }}">
+        <small class="form-text text-muted">Human-readable board title shown in admin and board cards.</small>
+    </div>
+    <div class="form-group">
+        <label for="board-type">Board mode</label>
+        <select id="board-type" name="board-type" class="form-control" {% if board.is_geo_generated %}disabled{% endif %}>
+            <option value="standard" {% if board.board_type == "standard" %}selected{% endif %}>Standard board</option>
+            <option value="geo-root" {% if board.board_type == "geo-root" %}selected{% endif %}>Nearby board</option>
+            {% if board.is_geo_generated %}
+            <option value="geo-generated" selected>Auto-generated nearby board</option>
+            {% endif %}
+        </select>
+        {% if board.is_geo_generated %}
+        <input type="hidden" name="board-type" value="geo-generated">
+        <small class="form-text text-muted">This board was generated automatically from {% if board.geo_parent %}/{{ board.geo_parent.name }}/{% endif %} for {{ board.geo_label or "a nearby area" }}.</small>
+        {% else %}
+        <small class="form-text text-muted">Nearby boards route visitors into a local board based on shared location.</small>
+        {% endif %}
+    </div>
+    <div class="form-row">
+        <div class="form-group col-md-6">
+            <label for="geo-strategy">Nearby matching</label>
+            <select id="geo-strategy" name="geo-strategy" class="form-control" {% if board.is_geo_generated %}disabled{% endif %}>
+                <option value="city" {% if board.geo_strategy == "city" or not board.geo_strategy %}selected{% endif %}>By city</option>
+                <option value="radius" {% if board.geo_strategy == "radius" %}selected{% endif %}>Within radius</option>
+            </select>
+        </div>
+        <div class="form-group col-md-6">
+            <label for="geo-radius-miles">Radius miles</label>
+            <input type="number" min="1" id="geo-radius-miles" name="geo-radius-miles" class="form-control" value="{{ board.geo_radius_miles or 50 }}" {% if board.is_geo_generated %}readonly{% endif %}>
+        </div>
+    </div>
+    <div class="form-group">
+        <label for="rules">Board rules</label>
+        <textarea id="rules" name="rules" class="form-control">{{ board.rules | safe }}</textarea>
+        <small class="form-text text-muted">Board rules are written in Markdown.</small>
+    </div>
+    <div class="form-group">
+        <label for="max-threads">Max threads</label>
+        <input type="text" id="max-threads" name="max-threads" class="form-control" value="{{ board.max_threads }}">
+    </div>
+    <div class="form-group">
+        <label for="mimetypes">Allowed MIME types</label>
+        <input type="text" id="mimetypes" name="mimetypes" class="form-control" value="{{ board.mimetypes | safe }}">
+    </div>
+    {% if allow_privacy_toggle %}
+    <div class="form-group">
+        <div class="form-check">
+            <input type="checkbox" id="is-private" name="is-private" class="form-check-input" {% if board.is_private %}checked{% endif %}>
+            <label for="is-private" class="form-check-label">Private board</label>
+        </div>
+        <small class="form-text text-muted">Nearby boards ignore this and stay location-gated instead.</small>
+    </div>
+    {% endif %}
+    <div class="form-group">
+        <div class="form-check">
+            <input type="checkbox" id="show-country-flags" name="show-country-flags" class="form-check-input" {% if board.show_country_flags %}checked{% endif %}>
+            <label for="show-country-flags" class="form-check-label">Show poster country flags</label>
+        </div>
+        <small class="form-text text-muted">Displays each poster's country flag (geolocated from their IP) next to their poster ID on this board.</small>
+    </div>
+    <div class="form-group">
+        <div class="form-check">
+            <input type="checkbox" id="api-only" name="api-only" class="form-check-input" {% if board.api_only %}checked{% endif %}>
+            <label for="api-only" class="form-check-label">API-only posting (bots only)</label>
+        </div>
+        <small class="form-text text-muted">When checked, this board can only be posted to through the authenticated bot API. Web-form posting &mdash; new threads and replies &mdash; is disabled for this board.</small>
+    </div>
+    <div class="form-group">
+        <div class="form-check">
+            {% if is_sysop %}
+            <input type="checkbox" id="nsfw-filter" name="nsfw-filter" class="form-check-input"
+                   {% if board.nsfw_filter is not defined or board.nsfw_filter %}checked{% endif %}>
+            <label for="nsfw-filter" class="form-check-label">NSFW image filter</label>
+            {% else %}
+            <input type="checkbox" id="nsfw-filter" class="form-check-input" checked disabled>
+            <label for="nsfw-filter" class="form-check-label">
+                NSFW image filter <span class="badge badge-secondary">always on</span>
+            </label>
+            {% endif %}
+        </div>
+        <small class="form-text text-muted">
+            Every uploaded image is scored by an NSFW classifier
+            (<a href="https://github.com/yahoo/open_nsfw" rel="nofollow noopener">open_nsfw</a>) and
+            rejected above the site-wide threshold.
+            {% if is_sysop %}
+            Only the sysop can turn this off; user-created boards always have it on.
+            {% else %}
+            This protection cannot be disabled on user-created boards.
+            {% endif %}
+        </small>
+    </div>
+    <div class="form-group">
+        <label for="api-description">Bot content description</label>
+        <textarea id="api-description" name="api-description" class="form-control" rows="2">{{ board.api_description or '' }}</textarea>
+        <small class="form-text text-muted">For API-only boards: a short description of what content belongs here. Bots read it from <code>GET /api/v1/bot/boards</code> to decide what to post.</small>
+    </div>
+    <div class="form-group">
+        <label for="source-config">Imported threads</label>
+        <textarea id="source-config" name="source-config" class="form-control" rows="6">{{ source_config }}</textarea>
+        <small class="form-text text-muted">One direct thread URL per line. Only the submitted threads are aggregated, for example `https://boards.4chan.org/g/thread/12345678`, `https://8chan.moe/t/res/1234.html`, or `https://www.reddit.com/r/example/comments/abc123/`. Nearby boards are local-only and should leave this blank.</small>
+    </div>
+    <div class="form-group">
+        <label for="custom-css">Custom board CSS</label>
+        <textarea id="custom-css" name="custom-css" class="form-control" rows="6" placeholder="/* Style your board's catalog page */&#10;body { background: #101014; }">{{ board.custom_css or "" }}</textarea>
+        <small class="form-text text-muted">CSS applied to this board's catalog page. Scripts don't run in CSS, so this is style-only.</small>
+    </div>
+    {% if viewer_is_admin() %}
+    <div class="form-group">
+        <label for="custom-html">Custom board HTML <span class="badge badge-warning">sysop only</span></label>
+        <textarea id="custom-html" name="custom-html" class="form-control" rows="6" placeholder="&lt;div class=&quot;welcome&quot;&gt;Welcome to the board!&lt;/div&gt;">{{ board.custom_html or "" }}</textarea>
+        <small class="form-text text-muted">HTML injected directly into the top of this board's catalog page.</small>
+    </div>
+    <div class="form-group">
+        <label for="custom-js">Custom board JavaScript <span class="badge badge-warning">sysop only</span></label>
+        <textarea id="custom-js" name="custom-js" class="form-control" rows="6" placeholder="// runs inline on the board page with full access&#10;document.querySelector('#catalog-root').classList.add('my-tweak');">{{ board.custom_js or "" }}</textarea>
+        <small class="form-text text-muted">
+            <strong>Runs inline on the board's catalog page with full access to it</strong> — it can read and
+            modify the page DOM, respond to events, and use the same APIs any site script has. Because it is not
+            sandboxed, only the sysop can set the Custom HTML and JavaScript. Board owners can still use Custom CSS
+            above to restyle their board.
+        </small>
+    </div>
+    {% endif %}
+    <div class="form-group">
+        <label for="board-banners">Board banners</label>
+        <input type="file" id="board-banners" name="board-banners" class="form-control-file" accept="image/*" multiple>
+        <small class="form-text text-muted">Upload one or more images sized exactly {{ config.BOARD_BANNER_WIDTH }}x{{ config.BOARD_BANNER_HEIGHT }}. A random banner is chosen each time the board page loads.</small>
+    </div>
+    <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
+</form>
+{% if board.banners %}
+<div class="form-group mt-4">
+    <label>Current banners</label>
+    <div class="d-flex flex-wrap" style="gap: 1rem;">
+        {% for banner in board.banners %}
+        <div class="card" style="width: {{ config.BOARD_BANNER_WIDTH + 24 }}px;">
+            <img
+                src="{{ banner.media_url }}"
+                alt="{{ board.title }} banner {{ loop.index }}"
+                class="card-img-top"
+                style="width: {{ config.BOARD_BANNER_WIDTH }}px; height: {{ config.BOARD_BANNER_HEIGHT }}px; object-fit: cover; margin: 12px auto 0;"
+            >
+            {# The delete-banner control pointed at `boards.delete_banner`, and
+               blueprints/boards.py no longer exists. url_for on a missing
+               endpoint raises BuildError, which would 500 the ADMIN DASHBOARD
+               (it imports this file) for any board that has a banner.
+
+               The control is removed rather than guarded: a button that cannot
+               submit anywhere is worse than no button. Restore it with the
+               blueprint, not before. #}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endmacro %}

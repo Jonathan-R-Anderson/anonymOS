@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}{{ proposal.title }} — DAO{% endblock %}
+{% block content %}
+<style>
+  .dao-wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 48px; color: inherit; }
+  .dao-pill { font-size: .7rem; border: 1px solid var(--sc-border); border-radius: 999px;
+              padding: 1px 8px; opacity: .8; }
+  .dao-muted { opacity: var(--sc-muted-alpha, .62); }
+  .dao-body { white-space: pre-wrap; }
+  .dao-bar { height: 10px; border-radius: 5px; background: var(--sc-surface-2);
+             overflow: hidden; display: flex; margin: 10px 0; }
+  .dao-for { background: #26de81; } .dao-against { background: #ff6b6b; }
+  .dao-vote { font-family: monospace; font-size: .78rem; }
+</style>
+
+<div class="dao-wrap">
+  <a class="small dao-muted" href="{{ url_for('dao.index') }}" style="color:inherit;">&larr; All proposals</a>
+
+  <div class="d-flex justify-content-between align-items-start mt-2" style="gap:.75rem;">
+    <div>
+      <span class="dao-pill">{{ house_labels[proposal.house] }}</span>
+      <h3 class="mt-2 mb-1">{{ proposal.title }}</h3>
+    </div>
+    <span class="dao-pill">{{ 'open' if proposal.is_open else 'closed' }}</span>
+  </div>
+  <p class="small dao-muted">
+    Opened {{ proposal.created_at.strftime('%Y-%m-%d') }} ·
+    {% if proposal.is_open %}closes {{ proposal.closes_at.strftime('%Y-%m-%d %H:%M') }} UTC
+    {% else %}closed {{ proposal.closes_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}
+    {% if proposal.author_wallet %}· by <code>{{ proposal.author_wallet[:10] }}…</code>{% endif %}
+  </p>
+
+  <div class="row">
+    <div class="col-md-8">
+      {% if proposal.body %}
+      <div class="card mb-3"><div class="card-body dao-body">{{ proposal.body }}</div></div>
+      {% endif %}
+
+      <div class="card mb-3">
+        <div class="card-header">Result</div>
+        <div class="card-body">
+          {% set decided = result['for'].weight + result['against'].weight %}
+          {% if decided > 0 %}
+          <div class="dao-bar">
+            <div class="dao-for" style="width: {{ (100 * result['for'].weight / decided)|round(1) }}%;"></div>
+            <div class="dao-against" style="width: {{ (100 * result['against'].weight / decided)|round(1) }}%;"></div>
+          </div>
+          {% endif %}
+          <table class="table table-sm mb-0" style="font-size:.85rem;">
+            <tr><td>For</td><td class="text-right">{{ result['for'].weight }} weight · {{ result['for'].count }} voter(s)</td></tr>
+            <tr><td>Against</td><td class="text-right">{{ result['against'].weight }} weight · {{ result['against'].count }} voter(s)</td></tr>
+            <tr><td>Abstain</td><td class="text-right">{{ result['abstain'].weight }} weight · {{ result['abstain'].count }} voter(s)</td></tr>
+          </table>
+          <p class="small dao-muted mt-2 mb-0">
+            {% if proposal.is_open %}Provisional — voting is still open.
+            {% else %}{{ 'Passed.' if result.passing else 'Did not pass.' }}{% endif %}
+            Abstentions record presence without counting against the proposal.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Votes ({{ votes|length }})</div>
+        <div class="card-body">
+          {% if not votes %}
+            <div class="small dao-muted">No votes yet.</div>
+          {% endif %}
+          {% for v in votes %}
+          <div class="d-flex justify-content-between align-items-center py-1"
+               style="border-top: {{ '0' if loop.first else '1px solid var(--sc-border)' }};">
+            <span class="dao-vote">{{ v.wallet_address[:12] }}…</span>
+            <span class="small">
+              <strong>{{ v.choice }}</strong>
+              <span class="dao-muted">· weight {{ v.weight }} · {{ v.created_at.strftime('%Y-%m-%d') }}</span>
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      {% if slip and weight %}
+        {% include "includes/dao-weight.html" %}
+      {% endif %}
+
+      <div class="card">
+        <div class="card-header">Cast your vote</div>
+        <div class="card-body">
+          {% if my_vote %}
+            <p class="small mb-1">You voted <strong>{{ my_vote.choice }}</strong> with weight {{ my_vote.weight }}.</p>
+            <p class="small dao-muted mb-0">One vote per slip — it cannot be changed.</p>
+          {% elif not slip %}
+            <p class="small mb-2">Log in to vote.</p>
+            <a class="btn btn-primary btn-sm" href="{{ url_for('slip.landing') }}">Log in</a>
+          {% elif not wallet %}
+            <p class="small mb-2">Link a MetaMask wallet to vote.</p>
+            <a class="btn btn-warning btn-sm" href="{{ url_for('profiles.edit') }}">Link a wallet</a>
+          {% elif not proposal.is_open %}
+            <p class="small dao-muted mb-0">Voting has closed.</p>
+          {% else %}
+            <p class="small dao-muted mb-2">
+              You will sign your choice with <code>{{ wallet[:10] }}…</code>. Free, and no transaction.
+            </p>
+            <div class="d-flex" style="gap:.4rem;">
+              <button class="btn btn-success btn-sm dao-cast" data-choice="for" style="flex:1;">For</button>
+              <button class="btn btn-danger btn-sm dao-cast" data-choice="against" style="flex:1;">Against</button>
+              <button class="btn btn-outline-secondary btn-sm dao-cast" data-choice="abstain" style="flex:1;">Abstain</button>
+            </div>
+            <div id="dao-vote-status" class="small mt-2" style="min-height:1.2em;"></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var buttons = document.querySelectorAll(".dao-cast");
+  if (!buttons.length) return;
+  var out = document.getElementById("dao-vote-status");
+  function say(msg, cls) { out.textContent = msg; out.className = "small mt-2 " + (cls || "text-muted"); }
+
+  buttons.forEach(function (btn) {
+    btn.onclick = async function () {
+      var choice = btn.getAttribute("data-choice");
+      if (!window.ethereum) {
+        say("No wallet detected in this browser.", "text-danger");
+        return;
+      }
+      buttons.forEach(function (b) { b.disabled = true; });
+      try {
+        var accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        var address = (accounts && accounts[0] || "").toLowerCase();
+        // The choice is baked into the message the server issues, so a
+        // signature for one option cannot be resubmitted as another.
+        var chal = await (await fetch("{{ url_for('dao.vote_challenge', proposal_id=proposal.id) }}", {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ choice: choice }),
+        })).json();
+        say("Confirm the signature in MetaMask…");
+        var signature = await window.ethereum.request({
+          method: "personal_sign", params: [chal.message, address],
+        });
+        var res = await fetch("{{ url_for('dao.vote', proposal_id=proposal.id) }}", {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ choice: choice, signature: signature }),
+        });
+        var body = await res.json();
+        if (!res.ok) {
+          say(body.error || "Vote failed.", "text-danger");
+          buttons.forEach(function (b) { b.disabled = false; });
+          return;
+        }
+        say("Vote recorded — reloading…", "text-success");
+        window.location = body.redirect;
+      } catch (e) {
+        say((e && (e.message || e.reason)) || "Vote failed.", "text-danger");
+        buttons.forEach(function (b) { b.disabled = false; });
+      }
+    };
+  });
+})();
+</script>
+{% endblock %}

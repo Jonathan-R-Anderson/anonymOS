@@ -1,0 +1,734 @@
+# =============================================================================
+# nginx -- THE PUBLIC EDGE. APP TIER, SOFTWARE NODE. Stateless.
+# =============================================================================
+# Build context: `docker build -t registry.local/maniwani-nginx:latest \
+#                    ./deploy-configs/nginx`
+#   (deploy-configs/nginx/Dockerfile). FROM nginx:1.27-alpine plus exactly three
+#   additions, all of which this manifest depends on:
+#     1. `apk add openssl`                      -- self-signed fallback only
+#     2. /etc/nginx/domain-guard/{allowed-host,default-deny}.conf seeded with
+#        permissive defaults, so nginx.conf's two `include` lines always resolve
+#     3. docker-entrypoint.sh copied to
+#        /docker-entrypoint.d/40-generate-self-signed-cert.sh
+#   THE STOCK `nginx:1.27-alpine` IMAGE WILL NOT WORK. Without (2) the config
+#   fails to load (`include /etc/nginx/domain-guard/default-deny.conf` -> no such
+#   file), and without (3) there is no domain guard at all. Build the real image.
+#
+# -----------------------------------------------------------------------------
+# WHAT THIS SERVICE ACTUALLY DOES (read deploy-configs/nginx.conf; the k3s copy
+# lives in the `nginx-conf` ConfigMap in 00-configmaps.yaml)
+# -----------------------------------------------------------------------------
+#   * TLS termination for the whole site (443, TLSv1.2+1.3, HSTS 1y)
+#   * :80 -> 301 https, EXCEPT ^~ /.well-known/acme-challenge/ which is served
+#     from the /acme-webroot mount so Let's Encrypt renewal keeps working
+#   * `location /` -> uwsgi_pass maniwani:3031  (BINARY uwsgi, not HTTP)
+#   * `location /api/v1/live` -> same, uwsgi_buffering off, 3600s read timeout (SSE)
+#   * `location = /upload/media` -> proxy_pass maniwani:3032 (HTTP, unbuffered-body
+#     path for 1 GiB video uploads; client_max_body_size 0)
+#   * `location /s3/` -> verified TLS proxy to syndichan-node:9000.
+#   * `location /stream-media/` -> `alias /rtmp-media/` -- STATIC file serving
+#     straight off the rtmp PVC (HLS .m3u8/.ts and .mp4)
+#   * /gun, /gun/ -> maniwani-frontend:3000 (websocket)
+#     /chat-ws/    -> ergo:8097 (websocket)
+#     /tracker/    -> tracker:8000
+#     /seedbox/    -> seedbox:8781
+#   * Anubis: `location /.within.website/` is proxied to anubis:8923, and /,
+#     /s3/, /gun, /gun/ and /api/v1/live carry
+#     `auth_request /.within.website/x/cmd/anubis/api/check` with
+#     `error_page 401 = @redirectToAnubis`.
+#   * `error_page 502 504 = @starting` on `location /` -- the graceful "Just a
+#     moment..." 503 page with Retry-After: 5 and a meta-refresh, covering the
+#     ~80s window while uWSGI imports the app. App-level 503s are deliberately
+#     NOT intercepted.
+#   * `location /videos/internal/ { return 404; }` -- A SECURITY CONTROL. The
+#     seedbox reaches that endpoint in-cluster on maniwani:3032; it must never be
+#     routable from the edge.
+#
+#   (!) DO NOT REPLACE THIS WITH A KUBERNETES INGRESS. Four things here have no
+#   Ingress equivalent: uwsgi_pass (the backend speaks the binary uwsgi protocol,
+#   not HTTP, on 3031), the @starting 502/504 interception (traefik/ingress-nginx
+#   substitute their own error page), `alias` static serving off a PVC, and the
+#   auth_request-plus-307-redirect Anubis dance. Also see the CUTOVER section:
+#   an Ingress controller would want :80/:443, which is the exact resource that
+#   is contended during the migration.
+#
+# -----------------------------------------------------------------------------
+# (!) LABEL CONTRACT -- `app: nginx` IS LOAD-BEARING, NOT DECORATION
+# -----------------------------------------------------------------------------
+# k8s/data/networkpolicy.yaml permits the media read path with:
+#       - podSelector: {matchLabels: {app: nginx}}   -> the storage gateway
+# The bare label below MUST be exactly `nginx`. A NetworkPolicy whose podSelector
+# matches nothing is SILENTLY INERT -- and here that is the fail-closed
+# direction: with the label missing, every /s3/ request (i.e. every image and
+# video on the site) hangs until proxy_read_timeout and the visitor sees broken
+# thumbnails, while `kubectl get netpol` looks perfectly healthy.
+# VERIFY AFTER APPLY:
+#   kubectl -n maniwani get pod -l app=nginx        # must return the edge pod
+#
+# Both labels are carried, per the house convention:
+#   app: nginx                      <- what the NetworkPolicies select on
+#   app.kubernetes.io/name: nginx   <- what the Service selector uses
+#
+# -----------------------------------------------------------------------------
+# (!) THE CUTOVER IS A PORT SWAP ON ONE HOST -- IT IS NOT A DNS SWITCH
+# -----------------------------------------------------------------------------
+# syndichan.org A -> 51.79.71.153 -> the SOFTWARE node, which is the same host
+# that runs the live compose stack AND this k3s app tier. Compose's nginx holds
+# :80 and :443 right now, and two processes cannot bind the same port. So:
+#
+#   PHASE 1 (parallel validation -- what this file ships as)
+#     hostIP 127.0.0.1, hostPort 8081 (http) and 8443 (https).
+#     Loopback-only: the half-migrated edge is NOT exposed to the internet, and
+#     it cannot collide with anything docker has published on 0.0.0.0.
+#     Smoke test ON THE SOFTWARE NODE (the --resolve form is REQUIRED: it sets
+#     both the Host header and the TLS SNI to the real domain, which the domain
+#     guard demands -- a plain `curl https://127.0.0.1:8443/` gets
+#     ssl_reject_handshake / 444, and that is the guard working, not a fault):
+#       curl -sSik --resolve syndichan.org:8443:127.0.0.1 https://syndichan.org:8443/
+#       curl -sSik --resolve syndichan.org:8443:127.0.0.1 https://syndichan.org:8443/s3/static/  # object store over WireGuard
+#       curl -sSik --resolve syndichan.org:8443:127.0.0.1 https://syndichan.org:8443/stream-media/  # rtmp PVC
+#     For BROWSER validation, comment out the two `hostIP:` lines to publish on
+#     0.0.0.0:8081/8443 -- and restrict them first, because the pod will then be
+#     serving the real certificate for the real domain on a public IP:
+#       nft add rule inet filter input tcp dport {8081,8443} ip saddr != <your.ip> drop
+#
+#   PHASE 2 (cutover -- ~10 seconds of edge downtime, no DNS change)
+#     a) drop the DNS TTL to 60s a day ahead anyway (name.com, both A records).
+#        Not needed for this plan, but it is the difference between a 5-minute
+#        and a 5-second rollback if you later decide to move the entry point.
+#     b) on the software node:  cd /home/ubuntu/maniwani && docker compose stop nginx
+#     c) edit THIS FILE -- delete the two `hostIP: 127.0.0.1` lines and change
+#        the two hostPorts:   hostPort: 8081 -> 80      hostPort: 8443 -> 443
+#        then:  kubectl apply -f k8s/app/40-nginx.yaml
+#        (`strategy: Recreate` below guarantees the old pod releases the host
+#        ports before the new one binds them.)
+#     d) kubectl -n maniwani rollout status deploy/nginx --timeout=120s
+#        curl -sSI https://syndichan.org/    # expect 200
+#
+#   ROLLBACK (one command, ~5 seconds, no DNS involved)
+#        kubectl -n maniwani scale deploy/nginx --replicas=0 \
+#          && docker compose -f /home/ubuntu/maniwani/docker-compose.yml start nginx
+#     The compose stack is otherwise untouched, so this restores the live site
+#     exactly as it was. Roll forward again by scaling back to 1 after stopping
+#     compose nginx. KEEP THE COMPOSE STACK INSTALLED UNTIL YOU HAVE HAD A FULL
+#     CLEAN DAY ON k3s.
+#
+# -----------------------------------------------------------------------------
+# WHY hostPort AND NOT NodePort / LoadBalancer / Ingress
+# -----------------------------------------------------------------------------
+# The whole application depends on the REAL CLIENT IP: IP bans, the geoip country
+# flags, the live-visitor world map, the bot-token IP lock, and Anubis's request
+# weighting. Each alternative loses it or cannot reach the port:
+#   * NodePort  -- the default node-port range is 30000-32767, so it can never
+#                  be 80/443 (and never 8443 either) without changing
+#                  --service-node-port-range on the API server. With
+#                  externalTrafficPolicy: Cluster it also SNATs.
+#   * k3s ServiceLB (klipper) -- its svclb pods MASQUERADE the DNAT'd connection,
+#                  so the backend sees the svclb pod IP for every visitor.
+#   * Ingress    -- cannot express uwsgi_pass / @starting / alias (see above).
+#   * hostNetwork -- would work, but the pod's source address then becomes the
+#                  NODE address, which means TRUSTED_PROXY_CIDRS in .env has to
+#                  gain the software node's WireGuard address (see the note in
+#                  10-maniwani.yaml) and every in-pod port becomes a host port.
+#                  More moving parts for no gain over hostPort.
+# hostPort goes through the CNI portmap plugin, which DNATs without SNAT for
+# external traffic, so nginx sees the true client address and the backend sees
+# X-Forwarded-For from a 10.42.0.0/16 pod IP -- which is exactly what
+# TRUSTED_PROXY_CIDRS=["10.42.0.0/16"] in .env is set to trust. The two halves of
+# that contract only line up because this is hostPort and not hostNetwork.
+#
+#   (!) DURING PHASE 1 ONLY, with hostIP 127.0.0.1, portmap DOES SNAT (loopback
+#   traffic has to be masqueraded for the reply to route back), so access.log
+#   will show 10.42.0.1 rather than a real client address. THAT IS EXPECTED AND
+#   IS NOT A CLIENT-IP FAILURE. Client-IP preservation can only be verified after
+#   Phase 2, and it MUST be verified then:
+#     kubectl -n maniwani logs deploy/nginx | tail   # expect real public IPs
+#
+# -----------------------------------------------------------------------------
+# TLS -- Secret `maniwani-tls`, imported, NEVER generated here
+# -----------------------------------------------------------------------------
+# The live certificate is a Let's Encrypt pair valid to 18 Oct 2026, issued by
+# certbot ON the software node and living at
+# /home/ubuntu/maniwani/deploy-configs/tls/{fullchain.pem,privkey.pem}.
+# Import it as a standard kubernetes.io/tls Secret (run on the software node;
+# no key material is ever echoed):
+#
+#   kubectl -n maniwani create secret tls maniwani-tls \
+#     --cert=/home/ubuntu/maniwani/deploy-configs/tls/fullchain.pem \
+#     --key=/home/ubuntu/maniwani/deploy-configs/tls/privkey.pem
+#
+# The volume below PROJECTS tls.crt -> default.crt and tls.key -> default.key,
+# because nginx.conf hardcodes /etc/nginx/tls/default.crt and default.key.
+# THIS PROJECTION IS DELIBERATE AND IS NOT INTERCHANGEABLE WITH fullchain.pem /
+# privkey.pem: the image entrypoint's "auto-detect" branch fires on
+# /etc/nginx/tls/fullchain.pem, and it then calls ensure_default_aliases(), which
+# runs `rm -f`/`ln -s` INSIDE /etc/nginx/tls. A Secret volume is read-only, the
+# ln fails, the entrypoint runs under `set -eu`, and the container dies before
+# nginx ever starts. Projecting straight onto default.crt/default.key takes the
+# `[ -s "$CERT_PATH" ] && [ -s "$KEY_PATH" ] && exit 0` branch instead: zero
+# writes. TLS_CERT_PATH/TLS_KEY_PATH are ALSO set explicitly below so a missing
+# or empty pair fails loudly with "Configured TLS files are missing" rather than
+# silently minting a self-signed cert.
+#
+# RENEWAL CHANGES SHAPE AFTER CUTOVER -- do this or the site breaks in ~90 days.
+# deploy-configs/certbot/renew-cert.sh currently drops the new pair into the TLS
+# dir and runs `docker compose restart nginx coturn`. Under k3s the last step has
+# to become a Secret update plus a rollout, and the webroot has to be the
+# hostPath this pod mounts:
+#   ACME_WEBROOT=/var/lib/maniwani/acme-webroot ... /path/to/renew-cert.sh
+#   kubectl -n maniwani create secret tls maniwani-tls \
+#     --cert=<tls-dir>/fullchain.pem --key=<tls-dir>/privkey.pem \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#   kubectl -n maniwani rollout restart deploy/nginx
+# The rollout restart is MANDATORY, not cosmetic: certificates are read once at
+# config load, and this is a subPath-free but still non-reloading mount. Add a
+# `kubectl -n maniwani get secret maniwani-tls -o json | ...` expiry check to
+# the existing systemd timer, or put a calendar reminder on 18 Sep 2026.
+#
+# -----------------------------------------------------------------------------
+# CONFIG -- ConfigMap, not baked into the image (mirrors today's :ro bind mount)
+# -----------------------------------------------------------------------------
+# compose bind-mounts ./deploy-configs/nginx.conf:/etc/nginx/nginx.conf:ro. That
+# property is preserved exactly: the config comes from the `nginx-conf` ConfigMap
+# defined in app/00-configmaps.yaml (three marked `# K3S:` diffs from the repo
+# copy -- CoreDNS resolver, the /upload/media variable upstream, and a note on
+# the rtmp PVC). Editing nginx.conf is:
+#     kubectl -n maniwani edit configmap nginx-conf
+#     kubectl -n maniwani rollout restart deploy/nginx
+# with NO image rebuild -- which is the whole point.
+#   (!) /etc/nginx/nginx.conf is a subPath mount, and subPath mounts NEVER
+#   receive ConfigMap updates. That is why the restart is required, and why the
+#   `maniwani.io/config-revision` annotation on the pod template below must be
+#   bumped in lockstep with the one on the ConfigMap -- otherwise a plain
+#   `kubectl apply` is a silent no-op. subPath is used (rather than mounting the
+#   ConfigMap as a directory) because mounting a directory at /etc/nginx would
+#   hide mime.types, uwsgi_params -- which nginx.conf `include`s -- and the
+#   entire conf.d tree.
+#
+# -----------------------------------------------------------------------------
+# STORAGE
+# -----------------------------------------------------------------------------
+#   rtmp-storage PVC, READ-ONLY at /rtmp-media -- backs `location /stream-media/`
+#     { alias /rtmp-media/; }, i.e. HLS playlists/segments and recorded MP4s are
+#     served as STATIC FILES straight off the volume, exactly as compose did with
+#     `rtmp-storage:/rtmp-media:ro`. The PVC is declared in k8s/media/10-rtmp.yaml
+#     on storageClassName maniwani-local, i.e. it is a local-path hostPath on the
+#     SOFTWARE node (~8.2 G measured, 20Gi requested) -- so mounting it here is
+#     free and correct, and it does NOT drag anything onto the 7 GB data node.
+#     Three pods share this one RWO claim (rtmp rw, maniwani ro, nginx ro); RWO
+#     in Kubernetes means one NODE, not one pod, so this is legal ONLY while all
+#     three keep nodeSelector maniwani.io/role=software. Do not relax it: live
+#     stream playback would break with no error message anywhere.
+#   No PVC is owned by this pod. It is fully stateless and safe to delete.
+#
+# NOTE: no priorityClassName. The only PriorityClasses that exist are
+# maniwani-data-critical / maniwani-data-cache (k8s/data/00-priorityclass.yaml),
+# and both are data-tier. Under memory pressure on the 22 GB software node the
+# edge would be evicted at the same priority as a scraper, which is backwards.
+# Adding a `maniwani-edge-critical` class is a one-object follow-up; it is left
+# out here rather than editing another group's file.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: edge
+    maniwani.io/group: app
+spec:
+  # ClusterIP, ALWAYS. Public traffic does NOT arrive through this Service -- it
+  # arrives on the node's hostPort (see the header). This object exists so the
+  # edge has a stable in-cluster name for smoke tests and for anything that ever
+  # needs to reach the site the way a visitor does, e.g.
+  #   kubectl -n maniwani run edge-probe --rm -it --restart=Never --image=curlimages/curl \
+  #     -- curl -sSik -H 'Host: localhost' http://nginx/
+  # (`Host: localhost` because the domain guard always allows localhost.)
+  #
+  # ------------------------------------------------------------------------
+  # NOT A NodePort, AND NOT type: LoadBalancer. Making it either is the single
+  # easiest way to silently break every IP-based feature in the application:
+  # NodePort/Cluster SNATs, and k3s's ServiceLB masquerades. Also note that k3s
+  # ServiceLB would spawn a 0.0.0.0 hostPort DaemonSet the moment this became a
+  # LoadBalancer -- publishing the edge on the DATA node's public IP too, which
+  # is precisely what the split is meant to prevent.
+  # ------------------------------------------------------------------------
+  type: ClusterIP
+  selector:
+    # House convention: Service selectors use app.kubernetes.io/name.
+    app.kubernetes.io/name: nginx
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: edge
+    maniwani.io/group: app
+spec:
+  # ---------------------------------------------------------------------------
+  # REPLICAS: 1 -- forced by hostPort. A hostPort is a node-exclusive resource,
+  # so a second replica on the software node would sit Pending forever, and the
+  # nodeSelector means there is nowhere else for it to go. This matches compose
+  # (one nginx container) and costs nothing: a single nginx worker handles the
+  # site's whole load today.
+  #
+  # DELIBERATELY NOT `replicas: 0`. media/10-rtmp.yaml and media/80-nntp-hub.yaml
+  # ship at 0 because their ports (1935, 119) are protocol-fixed and cannot be
+  # moved for a parallel test. HTTP can: this edge runs from day one on
+  # 127.0.0.1:8081/8443 and is fully testable while the live site is untouched.
+  # ---------------------------------------------------------------------------
+  replicas: 1
+  strategy:
+    # ------------------------------------------------------------------------
+    # Recreate, NOT RollingUpdate, AND THIS IS NOT NEGOTIABLE. The default
+    # RollingUpdate has maxSurge 1: Kubernetes would try to start the new pod
+    # BEFORE terminating the old one, the new pod would be unschedulable because
+    # the old one still holds the hostPort, and the rollout would hang forever
+    # while `kubectl get pod` shows one Running and one Pending. Recreate tears
+    # the old pod down first, which is exactly what a host-port-bound singleton
+    # needs -- and it is what makes the Phase 2 port swap a clean apply.
+    # The cost is ~5-10s with no edge; compose has the same gap on `restart`.
+    # ------------------------------------------------------------------------
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx
+  template:
+    metadata:
+      labels:
+        # (!) A NetworkPolicy SELECTS ON THIS EXACT STRING. See the LABEL
+        # CONTRACT block in the header before touching it.
+        app: nginx
+        app.kubernetes.io/name: nginx
+        app.kubernetes.io/part-of: maniwani
+        maniwani.io/group: app
+      annotations:
+        # Must be bumped in lockstep with the same annotation on the `nginx-conf`
+        # ConfigMap in 00-configmaps.yaml. /etc/nginx/nginx.conf is a subPath
+        # mount and will never hot-reload; without a change to the pod template
+        # `kubectl apply` does nothing at all and the edit appears to be ignored.
+        maniwani.io/config-revision: "6"
+        # Bump after re-importing the maniwani-tls Secret (renewal). Secret
+        # volumes DO eventually refresh in place, but nginx only reads
+        # certificates at config load, so a rollout is required either way.
+        maniwani.io/tls-revision: "1"
+    spec:
+      # K8s injects <SVC>_PORT=tcp://ip:port for every Service when this is
+      # true (the default). The backend coerces uppercase env keys to the type
+      # of the matching app.config entry, so REDIS_PORT becomes
+      # int("tcp://...") and the app dies at import. Everything here uses DNS.
+      enableServiceLinks: false
+      # ---------------------------------------------------------------------
+      # PINNED, THREE TIMES OVER, and every one of them is load-bearing:
+      #   1. the public IP that syndichan.org resolves to is this node's
+      #   2. the rtmp-storage PVC is a local-path hostPath on this node
+      #   3. the shared-logs hostPath lives on this node
+      # Placement is by LABEL, never by hostname.
+      # ---------------------------------------------------------------------
+      nodeSelector:
+        maniwani.io/role: software
+      # SIGTERM is a FAST shutdown for nginx (SIGQUIT is the graceful one), so
+      # this is a bound, not an expectation -- termination is normally instant.
+      # JUDGEMENT CALL: a `preStop: nginx -s quit` drain was considered and
+      # REJECTED. /api/v1/live (SSE) and /chat-ws/ (websocket) both carry 3600s
+      # timeouts, so a graceful drain would essentially never complete and EVERY
+      # restart would stall for the full grace period before being SIGKILLed.
+      # Fast shutdown is also exactly what `docker compose restart nginx` does
+      # today, so this is parity rather than a regression.
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        # Canonical shared-log initContainer, copied verbatim from
+        # 20-maniwani-frontend.yaml. REQUIRED HERE, not optional: nginx.conf's
+        # very first directive is `error_log /var/log/maniwani/nginx/error.log`,
+        # and nginx REFUSES TO START if it cannot open that path. log-init.sh
+        # creates the `nginx` subdirectory (and chmods 0777, because the workers
+        # run as uid nginx while other services in the same tree run as other
+        # uids). Without it the pod CrashLoops with "open() ... failed (2: No
+        # such file or directory)" and the site never comes up.
+        - name: log-init
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/scripts/log-init.sh"]
+          volumeMounts:
+            - name: log-init-script
+              mountPath: /scripts
+            - name: shared-logs
+              mountPath: /var/log/maniwani
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+      containers:
+        - name: nginx
+          # Build context: ./deploy-configs/nginx -- NOT stock nginx (see header).
+          image: registry.local/maniwani-nginx:latest
+          # IfNotPresent: registry.local does not resolve. Images are built
+          # elsewhere and imported with `ctr images import`, per the house
+          # convention; Always would make every pod start fail on an image pull.
+          imagePullPolicy: IfNotPresent
+          # ENTRYPOINT/CMD left to the image: the stock nginx entrypoint runs
+          # /docker-entrypoint.d/*.sh (including 40-generate-self-signed-cert.sh,
+          # which regenerates the domain-guard includes and validates the TLS
+          # pair) and then execs `nginx -g 'daemon off;'`. Do not override it --
+          # a `command:` here would skip the domain guard entirely and quietly
+          # turn the site into an open host for any Host header or SNI.
+          ports:
+            # -----------------------------------------------------------------
+            # containerPort stays 80/443 -- that is what nginx.conf `listen`s on
+            # and it never changes. ONLY the two hostPort values (and the two
+            # hostIP lines) move at cutover. See the CUTOVER block in the header.
+            # -----------------------------------------------------------------
+            - name: http
+              containerPort: 80
+              protocol: TCP
+              # PHASE 1: 8081, NOT 8080. The live compose stack publishes the store's
+              # RGW on 0.0.0.0:8080 (docker-compose.yml:128, `"8080:8080"`), and
+              # docker's publish is invisible to the kubelet's port-conflict
+              # check -- so a hostPort 8080 here would NOT fail cleanly as
+              # Pending. It would schedule, install a competing DNAT rule, and
+              # produce intermittent, maddening breakage across both stacks.
+              # CONFIRM BEFORE APPLYING:  ss -lntp | grep -E ':(8081|8443)\b'
+              # CUTOVER IS DONE -- this is the LIVE edge, so these are the real
+              # ports. They were 8081/8443 on hostIP 127.0.0.1 during parallel
+              # validation; leaving those values here meant any
+              # `kubectl apply -f k8s/app/` silently reverted the edge to
+              # loopback and took the public site down. Do not reintroduce a
+              # hostIP here.
+              hostPort: 80
+            - name: https
+              containerPort: 443
+              protocol: TCP
+              hostPort: 443
+            # Unadvertised origin listener for verified volunteer gateways.
+            # nginx requires PROXY v2 here and trusts it only from the
+            # explicitly listed gateway addresses in nginx-conf.
+            - name: gateway-origin
+              containerPort: 9443
+              protocol: TCP
+              hostPort: 9443
+          env:
+            # -----------------------------------------------------------------
+            # DOMAIN / DOMAIN_ALIASES drive the domain-only access guard. The
+            # entrypoint turns DOMAIN into `server_name <domain> localhost;` plus
+            # `default_server` blocks that answer 444 to any other Host and
+            # `ssl_reject_handshake on` to any other SNI -- which is what keeps
+            # the site from being served over a raw IP or a parked domain.
+            #
+            # They come from the maniwani-env Secret (NOT a ConfigMap) purely to
+            # honour the contract already documented in 10-maniwani.yaml, whose
+            # secret-creation command extracts exactly ANUBIS_ED25519_PRIVATE_KEY_HEX,
+            # FALCO_INGEST_TOKEN, DOMAIN and DOMAIN_ALIASES. A hostname is not a
+            # secret; the point is that there is ONE extraction command and one
+            # source of truth (/home/ubuntu/maniwani/.env), rather than the real
+            # domain being hardcoded into a manifest in git.
+            #
+            # optional: true on BOTH -- DOMAIN_ALIASES may legitimately not exist
+            # in .env, and a missing key in a non-optional secretKeyRef blocks
+            # the pod from starting with a CreateContainerConfigError.
+            #
+            # (!) SECURITY: if DOMAIN is absent or empty the guard goes
+            # PERMISSIVE (`server_name _`) and every Host is served. VERIFY WHICH
+            # MODE IS LIVE -- the entrypoint prints it to stderr on every start:
+            #   kubectl -n maniwani logs deploy/nginx -c nginx | grep 'Domain-only'
+            # Expect: "Domain-only access enabled for: syndichan.org localhost"
+            # -----------------------------------------------------------------
+            - name: DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: DOMAIN
+                  optional: true
+            - name: DOMAIN_ALIASES
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: DOMAIN_ALIASES
+                  optional: true
+            # -----------------------------------------------------------------
+            # Point the entrypoint at the projected Secret files EXPLICITLY.
+            # Two reasons, both deliberate:
+            #   1. It takes the branch that ERRORS OUT ("Configured TLS files are
+            #      missing: cert=... key=...") on an empty/absent pair, instead of
+            #      falling through to the openssl self-signed generator -- which
+            #      would otherwise leave the public edge serving a self-signed
+            #      certificate that every browser rejects, with no other symptom.
+            #   2. Because these values are IDENTICAL to the entrypoint's own
+            #      DEFAULT_CERT_PATH/DEFAULT_KEY_PATH, its ensure_default_aliases()
+            #      helper short-circuits both of its `rm -f`/`ln -s` calls. That
+            #      matters: the TLS volume is a read-only Secret mount, and any
+            #      write attempt would abort the entrypoint under `set -eu`.
+            # SSL_CERT_COMMON_NAME / SSL_ALT_NAMES are intentionally NOT set --
+            # they only feed the self-signed generator, which must never run here.
+            # -----------------------------------------------------------------
+            - name: TLS_CERT_PATH
+              value: /etc/nginx/tls/default.crt
+            - name: TLS_KEY_PATH
+              value: /etc/nginx/tls/default.key
+          volumeMounts:
+            # The bind-mount equivalent of compose's
+            # ./deploy-configs/nginx.conf:/etc/nginx/nginx.conf:ro
+            - name: nginx-conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            # kubernetes.io/tls Secret, projected onto the filenames nginx.conf
+            # hardcodes. See the TLS block in the header for why this projection
+            # (rather than fullchain.pem/privkey.pem) is mandatory.
+            - name: tls
+              mountPath: /etc/nginx/tls
+              readOnly: true
+            - name: storage-tls
+              mountPath: /etc/nginx/storage-tls
+              readOnly: true
+            # Let's Encrypt HTTP-01 challenge files, written on the NODE by
+            # deploy-configs/certbot/renew-cert.sh and served by the port-80
+            # server block at ^~ /.well-known/acme-challenge/.
+            - name: acme-webroot
+              mountPath: /acme-webroot
+              readOnly: true
+            # STATIC MEDIA: `location /stream-media/ { alias /rtmp-media/; }`.
+            # Read-only, written by the rtmp pod on the same node.
+            - name: rtmp-media
+              mountPath: /rtmp-media
+              readOnly: true
+            # error_log + access_log both write here (as well as to stderr/stdout
+            # so `kubectl logs` keeps working, exactly as today).
+            - name: shared-logs
+              mountPath: /var/log/maniwani
+            # --- writable paths required by readOnlyRootFilesystem, below ------
+            # The entrypoint REGENERATES both domain-guard includes on every
+            # start, so this must be writable. An emptyDir also means the guard
+            # is rebuilt from the current DOMAIN on every restart and can never
+            # be stale.
+            - name: domain-guard
+              mountPath: /etc/nginx/domain-guard
+            # nginx's compiled-in temp paths (client_body/proxy/uwsgi/fastcgi/scgi
+            # _temp) all live under /var/cache/nginx, and nginx creates any
+            # missing ones at startup. THIS IS NOT A CACHE -- no proxy_cache is
+            # configured. It matters because `client_max_body_size 0` plus the
+            # 1 GiB video limit means a large POST to /upload/media is spooled to
+            # client_temp before being forwarded.
+            - name: cache
+              mountPath: /var/cache/nginx
+            # /var/run is a symlink to /run on Alpine, and nginx writes
+            # /var/run/nginx.pid there.
+            - name: run
+              mountPath: /run
+            # Only the (never-taken) self-signed branch uses mktemp, but a
+            # read-only /tmp turns that fallback into an inscrutable failure.
+            - name: tmp
+              mountPath: /tmp
+          # -------------------------------------------------------------------
+          # PROBES. compose defined NO healthcheck for nginx, so all three of
+          # these are new. Design notes:
+          #
+          #  * `Host: localhost` IS REQUIRED, not stylistic. The kubelet sends
+          #    the pod IP as the Host header, which does not match server_name
+          #    when DOMAIN is set -- it would land in the default-deny block and
+          #    get 444 (connection closed, no response), failing every probe and
+          #    CrashLooping a perfectly healthy edge. The entrypoint always
+          #    appends `localhost` to the allowed server_name list
+          #    (SERVER_NAMES="$GUARD_DOMAIN localhost"), and when DOMAIN is unset
+          #    server_name is `_`, so this header works in BOTH modes.
+          #
+          #  * Port 80, path `/`, expecting the 301 to https. The kubelet does
+          #    not follow redirects and treats any status < 400 as success, so
+          #    this proves "nginx loaded its config and is routing" WITHOUT
+          #    touching a single upstream, and without needing TLS material or
+          #    the real hostname in a probe.
+          #
+          #  * DELIBERATELY NOT probing an upstream. Readiness here must reflect
+          #    NGINX's health, not the backend's. Gating on maniwani:3031 would
+          #    take the edge out of service during every backend deploy -- which
+          #    is precisely the window the @starting 503 page exists to cover.
+          #    An edge that reports NotReady cannot serve "Just a moment...".
+          # -------------------------------------------------------------------
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            # nginx binds in well under a second; 30s of headroom is plenty and
+            # keeps a genuinely broken config (bad ConfigMap edit) failing fast.
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            # Slack on purpose. A single nginx worker serving a 1 GiB upload or a
+            # burst of TLS handshakes can be briefly slow to accept; restarting
+            # the public edge is a far worse outcome than one late probe.
+            # 5 x 30s = 150s before a restart.
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            # -----------------------------------------------------------------
+            # SIZED FOR ONE WORKER PROCESS. deploy-configs/nginx.conf sets no
+            # `worker_processes` directive (it replaces the image's nginx.conf
+            # wholesale) and NGINX_ENTRYPOINT_WORKER_PROCESSES_AUTOTUNE is not
+            # set, so nginx falls back to worker_processes 1 with
+            # worker_connections 1024. That is today's production behaviour, and
+            # it means this pod cannot use more than ~1 core no matter what it is
+            # given. If TLS handshakes ever become the bottleneck on the 8 vCPU
+            # node, add `worker_processes auto;` to the nginx-conf ConfigMap AND
+            # raise these numbers -- in that order.
+            #
+            # Memory is modest: a 10m shared SSL session cache, proxy/uwsgi
+            # buffers, and no proxy_cache. Large request bodies go to disk
+            # (see the `cache` volume), not to the heap.
+            #
+            # NO CPU LIMIT, ON PURPOSE, and more strongly here than anywhere
+            # else in the stack: CFS throttling on the edge stalls EVERY request
+            # to the site simultaneously, including the SSE streams on
+            # /api/v1/live and the /chat-ws/ websockets. The 200m request still
+            # guarantees a share under contention.
+            # -----------------------------------------------------------------
+            requests:
+              cpu: 200m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            # The master process runs as root (it binds 80/443 in-container and
+            # reads the TLS key), then forks workers as uid `nginx`. That fork
+            # is the reason the capability list is not simply `drop: ["ALL"]`:
+            #   SETUID/SETGID -- master calls setuid()/setgid() to demote workers
+            #   CHOWN         -- master chowns the /var/cache/nginx temp dirs to
+            #                    the worker user at startup
+            #   NET_BIND_SERVICE -- binds the privileged ports 80 and 443
+            # Everything else is dropped.
+            # IF THE POD CRASHLOOPS ON FIRST APPLY, look for "setuid(101) failed"
+            # or "bind() to 0.0.0.0:80 failed" in the logs before assuming the
+            # config is wrong -- that is this list being too tight for a future
+            # base-image change, and adding the named capability back is the fix.
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "SETGID", "SETUID", "NET_BIND_SERVICE"]
+            # Every path nginx and its entrypoint write to is an explicit
+            # emptyDir above (/etc/nginx/domain-guard, /var/cache/nginx, /run,
+            # /tmp). The image's other entrypoint scripts are read-only-safe:
+            # 10-listen-on-ipv6-by-default.sh has an explicit `touch ... ||
+            # exit 0` guard, and 20-envsubst-on-templates.sh no-ops because
+            # /etc/nginx/templates does not exist.
+            # ESCAPE HATCH: if a future base image writes somewhere unexpected,
+            # set this to false. It is defence in depth on an internet-facing
+            # process, not a functional requirement.
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: nginx-conf          # defined in app/00-configmaps.yaml
+            defaultMode: 0444
+        - name: tls
+          secret:
+            secretName: maniwani-tls
+            # 0400: read by the root master process at config load only. Workers
+            # run as uid nginx and never need the private key.
+            defaultMode: 0400
+            # THE PROJECTION. See the TLS block in the header -- naming these
+            # fullchain.pem/privkey.pem instead would trip the entrypoint's
+            # auto-detect branch, which tries to write symlinks into this
+            # read-only mount and kills the container.
+            items:
+              - key: tls.crt
+                path: default.crt
+              - key: tls.key
+                path: default.key
+        - name: storage-tls
+          secret:
+            secretName: syndichan-node-tls
+            defaultMode: 0444
+            items:
+              - key: tls.crt
+                path: tls.crt
+        # ACME webroot. hostPath, because the WRITER is certbot running on the
+        # NODE (deploy-configs/certbot/renew-cert.sh, driven by a systemd timer)
+        # and the READER is this pod -- there is no in-cluster writer to give a
+        # PVC to. A node-neutral FHS path is used rather than
+        # /home/ubuntu/maniwani/deploy-configs/acme-webroot so that the manifest
+        # does not bake a user's home directory in and so it survives the compose
+        # tree being removed. RUNBOOK: the renew script must be invoked with
+        # ACME_WEBROOT=/var/lib/maniwani/acme-webroot (it already honours that
+        # variable), or HTTP-01 validation will write to the old directory, this
+        # pod will serve 404s for the challenge, and renewal will fail silently
+        # -- the script exits 0 on renewal failure by design.
+        - name: acme-webroot
+          hostPath:
+            path: /var/lib/maniwani/acme-webroot
+            type: DirectoryOrCreate
+        # Declared in k8s/media/10-rtmp.yaml (storageClassName maniwani-local ->
+        # SOFTWARE node). readOnly at BOTH levels: the volume is opened read-only
+        # and the mount is read-only, so a compromised edge cannot write to the
+        # stream store. Faithful to compose's `rtmp-storage:/rtmp-media:ro`.
+        - name: rtmp-media
+          persistentVolumeClaim:
+            claimName: rtmp-storage
+            readOnly: true
+        - name: log-init-script
+          configMap:
+            name: log-init-script     # defined in app/00-configmaps.yaml
+            defaultMode: 0555
+        # (!) CROSS-GROUP RECONCILIATION -- the three manifest groups currently
+        # disagree about the NODE-side path of this shared log directory
+        # (app: /var/log/maniwani, media: /var/lib/maniwani/logs, aggregators:
+        # /srv/maniwani/logs). The CONTAINER path is /var/log/maniwani everywhere
+        # and is correct. This file follows the app-tier value. If it is not
+        # unified before cutover nothing is lost or corrupted -- the folder just
+        # silently stops being shared, and the admin log viewer sees a third of
+        # the services. See the long note in 10-maniwani.yaml.
+        - name: shared-logs
+          hostPath:
+            path: /var/log/maniwani
+            type: DirectoryOrCreate
+        - name: domain-guard
+          emptyDir:
+            sizeLimit: 1Mi
+        - name: cache
+          # SIZED FOR UPLOADS, NOT FOR CACHING. MAX_CONTENT_LENGTH is 1 GiB + 32
+          # MiB and nginx spools request bodies to client_temp, so a handful of
+          # concurrent video uploads is the real driver. 8Gi on the software
+          # node's 97 GB free is cheap insurance.
+          # (!) emptyDir sizeLimit is enforced by EVICTION, not by ENOSPC: exceed
+          # it and the kubelet evicts the pod, taking the edge down. If uploads
+          # ever get bigger, raise this rather than discovering it at 3am.
+          emptyDir:
+            sizeLimit: 8Gi
+        - name: run
+          emptyDir:
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

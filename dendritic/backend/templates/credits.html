@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+{% block title %}Buy AXONCoins — {{ instance_name() }}{% endblock %}
+{% block content %}
+<style>
+  .cr-wrap { max-width: 780px; margin: 0 auto; padding: 24px 16px 52px; color: inherit; }
+  .cr-muted { opacity: var(--sc-muted-alpha, .62); }
+  .cr-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .cr-pack { border: 1px solid var(--sc-border); border-radius: 10px; background: var(--sc-surface);
+             padding: 18px 16px; text-align: center; }
+  .cr-credits { font-size: 1.5rem; font-weight: 700; }
+  .cr-usd { opacity: .7; font-size: .9rem; margin-bottom: 10px; }
+  .cr-out { font-family: monospace; font-size: .78rem; white-space: pre-wrap; margin-top: 12px; }
+  .cr-note { border: 1px solid var(--sc-border); border-radius: 10px; background: var(--sc-surface);
+             padding: 14px 16px; margin-bottom: 18px; }
+</style>
+
+<div class="cr-wrap">
+  <h2 class="mb-1">Buy AXONCoins</h2>
+  <p class="cr-muted">
+    {{ rate }} AXONCoins to the dollar. AXONCoins are spendable in the
+    store, and what you spend goes back to the
+    treasury to pay the people running the network.
+  </p>
+
+  {# Supply, read from the chain on every load rather than stored. "Circulating"
+     deducts everything still held by the project's own contracts — minted but
+     unsold in the Treasury, unclaimed in the RewardDistributor, bonded in the
+     StakeVault. None of it is in anybody's hands, and counting it would
+     overstate the float by whatever has not been distributed. #}
+  {% if supply and supply.ok %}
+    <div class="cr-note">
+      <div style="display:flex;flex-wrap:wrap;gap:26px">
+        <div>
+          <div style="font-size:1.6rem;font-weight:700">{{ "%.2f"|format(supply.circulating_pct) }}%</div>
+          <div class="cr-muted small">of supply in circulation</div>
+        </div>
+        <div>
+          <div style="font-size:1.6rem;font-weight:700">{{ "{:,}".format(supply.circulating) }}</div>
+          <div class="cr-muted small">AXONCoins held by people</div>
+        </div>
+        <div>
+          <div style="font-size:1.6rem;font-weight:700">{{ "{:,}".format(supply.total) }}</div>
+          <div class="cr-muted small">total ever minted</div>
+        </div>
+      </div>
+      {% if supply.held %}
+        <p class="cr-muted small mt-3 mb-0">
+          Not counted as circulating, because it is not in anybody's hands yet:
+          {% for name, amount in supply.held.items() %}
+            {% if amount is none %}<strong>{{ name }}</strong> (unreadable){% if not loop.last %},{% endif %}
+            {% else %}<strong>{{ "{:,}".format(amount) }}</strong> in the {{ name }}{% if not loop.last %},{% endif %}{% endif %}
+          {% endfor %}.
+          {% if not supply.exact %}One holding could not be read, so the circulating figure is an upper bound.{% endif %}
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if slip and wallet %}
+  <div class="cr-note">
+    <div style="display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;">
+      <span style="font-size:1.9rem;font-weight:700;">
+        {% if balance is not none %}{{ balance }}{% else %}&mdash;{% endif %}
+      </span>
+      <span>AXONCoins in your wallet</span>
+      {% if owed %}<span class="cr-muted">· <strong>{{ owed }}</strong> paid for, awaiting delivery</span>{% endif %}
+    </div>
+    <div class="small cr-muted mt-1">
+      {% if balance is none %}
+        Balance could not be read from the chain just now. It is held in your wallet, not by us,
+        so nothing here affects it.
+      {% else %}
+        Held at <code>{{ wallet }}</code> and read live from Ethereum — this is your wallet's own
+        balance, not an account we keep for you.
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# The welcome grant. Shown before the packs on purpose: somebody who has 20
+     AXONCoins waiting should find that out before being asked to buy any. #}
+  {% if signup and signup.exists and signup.status != 'refused' %}
+    <div class="cr-note">
+      <strong>{{ signup.credits }} AXONCoins for signing up</strong>
+      {% if signup.status == 'claimed' %}
+        <div class="small cr-muted mt-1">
+          Claimed. An operator sends this one by hand and it usually lands
+          within a day. Unlike a purchase, a welcome grant is reviewed before it
+          is paid — accounts here are free, so an automatic faucet would be
+          drained by whoever automated signups first.
+        </div>
+      {% elif signup.claimable %}
+        <form method="post" action="{{ url_for('credits.claim_signup') }}" class="mt-2">
+          <button class="btn btn-primary btn-sm" type="submit">Claim {{ signup.credits }} AXONCoins</button>
+        </form>
+      {% else %}
+        {# Each blocker says what to DO. "Not eligible" would tell somebody 8
+           hours into a 24-hour wait exactly nothing. #}
+        <ul class="small cr-muted mt-1 mb-0" style="padding-left:1.1rem">
+          {% for blocker in signup.blockers %}<li>{{ blocker }}</li>{% endfor %}
+        </ul>
+        <div class="small cr-muted mt-1">
+          These exist because accounts here are free — without them the grant is
+          a faucet for whoever automates signups first.
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if not configured %}
+    <div class="cr-note"><strong>Card payments are not switched on yet.</strong></div>
+  {% elif not slip %}
+    {# Guest checkout. Requiring an account was never protecting anything —
+       delivery goes to a wallet, and the buyer supplies a wallet either way, so
+       the login turned a card payment into a signup. The address is validated
+       server-side on its EIP-55 checksum before a card is charged, because a
+       guest has no account to recover through if it is mistyped. #}
+    <div class="cr-note">
+      <strong>Buy without an account</strong>
+      <p class="small cr-muted mt-1 mb-2">
+        Paste the wallet the AXONCoins should go to, pick a pack, and pay.
+        No signup. They are sent from the treasury straight to that address.
+      </p>
+      <input class="cr-input" id="cr-guest-wallet" placeholder="0x…"
+             style="width:100%;font-family:monospace;font-size:.85rem;padding:8px 10px;
+                    background:var(--sc-surface-2);color:inherit;
+                    border:1px solid var(--sc-border);border-radius:6px">
+      <p class="small cr-muted mt-2 mb-0">
+        Copy it from your wallet rather than typing it — a wrong address is a
+        real address belonging to somebody else, and a transfer to it cannot be
+        reversed. We check it before charging your card, but we cannot check
+        that it is <em>yours</em>.
+        <a href="{{ url_for('slip.landing') }}">Sign in</a> instead if you want
+        the purchase kept in an account.
+      </p>
+      <div class="cr-out cr-muted" id="cr-guest-out"></div>
+    </div>
+  {% elif not wallet %}
+    <div class="cr-note">
+      AXONCoins are delivered to your wallet, so
+      <a href="{{ url_for('profiles.edit') }}">link one first</a>.
+    </div>
+  {% else %}
+    <div class="cr-note small cr-muted">
+      Delivering to <code>{{ wallet }}</code>. Payment is handled by Stripe — card details
+      never reach this site.
+      {# What happens next, in plain terms. Somebody who has just paid and sees
+         nothing in their wallet has no way to tell a working queue from a
+         scam, and saying nothing is what makes them assume the worse one. #}
+      <div class="mt-2">
+        <strong>After you pay:</strong> your AXONCoins are sent from the treasury
+        automatically, usually within a minute or two. You will see the
+        transaction on Ethereum and the balance in your own wallet — we never
+        hold them for you.
+      </div>
+      <div class="mt-1">
+        If the network is congested or a transfer fails, it is queued for an
+        operator instead and sent by hand, normally the same day. Either way the
+        purchase is recorded against your account and nothing is lost — this
+        page will show it as awaiting delivery until it lands.
+      </div>
+      <div class="mt-1">
+        Seeing nothing in MetaMask? A wallet shows no token until you add it
+        once — <a href="{{ url_for('main.metamask_help') }}">how to add AXONCoins</a>.
+        That is the most common reason a delivered balance looks missing.
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="cr-membership" id="membership">
+    <div class="cr-mb-head">
+      <h5 class="mb-0">Membership</h5>
+      <span class="cr-mb-price">${{ membership_plan.price }}<small>/month</small></span>
+    </div>
+    <p class="small cr-muted mb-2">
+      Every machine in the lab, and <b>{{ membership_plan.credits_per_month }} AXONCoins</b>
+      deposited into your wallet each month. Without it you get one machine a month,
+      drawn for you.
+    </p>
+    {% if membership and membership.is_active %}
+      <div class="small">
+        {% if membership.cancel_at_period_end %}
+          <b>Cancelling.</b>
+          Your membership ends
+          {{ membership.renews_on.strftime('%d %b %Y') if membership.renews_on else 'at the end of this period' }},
+          and you keep every machine and this month's AXONCoins until then. Nothing
+          further will be charged.
+          <button class="btn btn-outline-primary btn-sm ml-2" id="cr-resume">Keep my membership</button>
+        {% else %}
+          <b>Active.</b>
+          Renews {{ membership.renews_on.strftime('%d %b %Y') if membership.renews_on else 'monthly' }}
+          at ${{ membership_plan.price }}.
+          <button class="btn btn-outline-secondary btn-sm ml-2" id="cr-cancel">Cancel membership</button>
+        {% endif %}
+      </div>
+    {% elif membership and membership.status == 'past_due' %}
+      <div class="small">
+        <b>Payment failed.</b> Stripe is retrying your card. Access continues for a
+        few days while it does; update your card with your bank or
+        <button class="btn btn-outline-secondary btn-sm ml-2" id="cr-cancel">cancel</button>.
+      </div>
+    {% elif membership and membership.stripe_subscription_id
+            and membership.status != 'canceled' %}
+      {# A subscription exists at Stripe but this row does not consider it
+         active. Almost always a webhook that never arrived, so offer the repair
+         before offering to sell a second one.
+
+         EXCLUDES 'canceled', and that exclusion is the whole point. A cancelled
+         subscription keeps its stripe_subscription_id — the row is a record of
+         what happened, not a live pointer — so without this check every
+         cancellation left the account permanently stuck here, being told to
+         "refresh from Stripe" over a subscription that was correctly recorded
+         as ended, with no Subscribe button ever shown again. Cancelling once
+         meant never being able to subscribe again. #}
+      <div class="small">
+        <b>Not active here.</b> Stripe has a subscription for this account
+        (<code>{{ membership.stripe_subscription_id }}</code>) but this site has it
+        recorded as <b>{{ membership.status }}</b>. That is usually a missed webhook.
+        <button class="btn btn-primary btn-sm ml-2" id="cr-refresh">Refresh from Stripe</button>
+      </div>
+    {% else %}
+      <button class="btn btn-primary btn-sm" id="cr-subscribe"
+              {% if not configured or not slip or not wallet %}disabled{% endif %}>
+        Subscribe
+      </button>
+      {% if slip and not wallet %}
+        <span class="small cr-muted ml-2">Link a wallet first — that is where the AXONCoins go.</span>
+      {% endif %}
+    {% endif %}
+    <div id="cr-mb-status" class="cr-out cr-muted"></div>
+  </div>
+
+  <h5 class="mt-4">Buy a pack</h5>
+  <div class="cr-grid">
+    {% for pack in packs %}
+    <div class="cr-pack">
+      <div class="cr-credits">{{ pack.credits }}</div>
+      <div class="cr-usd">AXONCoins · ${{ pack.dollars }}</div>
+      <button class="btn btn-primary btn-sm cr-buy" data-credits="{{ pack.credits }}"
+              {% if not configured or (slip and not wallet) %}disabled{% endif %}>Buy</button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h5 class="mt-4">Or get them another way</h5>
+  <div class="cr-ways">
+    <div class="cr-way">
+      <div class="cr-way-h">Earn them</div>
+      <p class="small cr-muted mb-2">
+        Run a node. Storage and bandwidth you contribute are recorded as receipts,
+        settled at the end of each epoch, and paid in AXONCoins &mdash; the only way
+        new AXONCoins are created.
+      </p>
+      <a class="btn btn-outline-primary btn-sm" href="{{ url_for('main.network_topology') }}">
+        Run a node
+      </a>
+      <a class="small mt-2" href="#claim">Already running one? Claim your rewards &rarr;</a>
+    </div>
+    <div class="cr-way">
+      <div class="cr-way-h">Spend them</div>
+      <p class="small cr-muted mb-2">
+        The store takes AXONCoins for everything it sells, and cards for the
+        physical and digital goods themselves.
+      </p>
+      Store
+    </div>
+    {#
+      Linked, not embedded. Stripe's onramp sells ETH, not AXONCoins, and a card
+      button on this page would be read as buying the token — which no card can
+      do. The wording carries that; the separate page carries it further.
+    #}
+    <div class="cr-way">
+      <div class="cr-way-h">No crypto at all?</div>
+      <p class="small cr-muted mb-2">
+        Every action here needs a wallet holding ETH to pay gas, AXONCoins or
+        not. Stripe sells you that ETH with a card, straight to your own wallet.
+        It does not sell AXONCoins &mdash; the packs above do that.
+      </p>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('credits.onramp') }}">
+        Get ETH with a card
+      </a>
+    </div>
+  </div>
+  <div id="cr-status" class="cr-out cr-muted"></div>
+
+  {% if ledger and ledger.entries %}
+  <h5 class="mt-4">Where your AXONCoins came from</h5>
+  {% if ledger.pending %}
+    <p class="small cr-muted mb-2">
+      <b>{{ ledger.credited }}</b> credited{% if ledger.pending %},
+      <b>{{ ledger.pending }}</b> not yet{% endif %}{% if ledger.pending_work %} ·
+      {{ ledger.pending_work }} node receipt(s) proven but not yet settled into
+      AXONCoins{% endif %}.
+    </p>
+  {% endif %}
+  <table class="table table-sm" style="font-size:.85rem;">
+    <thead><tr><th>Source</th><th>AXONCoins</th><th>Status</th><th>Detail</th></tr></thead>
+    <tbody>
+      {% for e in ledger.entries %}
+      <tr>
+        <td>
+          {% if e.kind == 'purchase' %}Card purchase
+          {% elif e.kind == 'membership' %}Membership
+          {% elif e.kind == 'grant' %}Granted
+          {% else %}Node work{% endif %}
+        </td>
+        <td>{% if e.credits %}{{ e.credits }}{% else %}&mdash;{% endif %}</td>
+        <td>
+          {% if e.settled %}<span style="color:#26de81">delivered</span>
+          {% else %}<span style="color:#ffaf00">{{ e.status }}</span>{% endif %}
+        </td>
+        <td class="cr-muted">{{ e.detail }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if purchases %}
+  <h5 class="mt-4">Your purchases</h5>
+  <table class="table table-sm" style="font-size:.85rem;">
+    <thead><tr><th>AXONCoins</th><th>Paid</th><th>Status</th><th>Delivery</th></tr></thead>
+    <tbody>
+      {% for p in purchases %}
+      <tr>
+        <td>{{ p.credits }}</td>
+        <td>${{ "%.2f"|format(p.amount_cents / 100.0) }}</td>
+        <td>{{ p.status }}</td>
+        <td>{% if p.delivery_tx %}<code style="font-size:.72rem;">{{ p.delivery_tx[:18] }}…</code>
+            {% elif p.status == 'paid' %}<span class="cr-muted">queued for delivery</span>
+            {% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="small cr-muted">
+    Paid AXONCoins are sent to your wallet by the treasury. Delivery is not instant — the
+    treasury key is deliberately not kept on the web server.
+  </p>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var out = document.getElementById("cr-status");
+  function say(msg, cls) { out.textContent = msg; out.className = "cr-out " + (cls || "cr-muted"); }
+  document.querySelectorAll(".cr-buy").forEach(function (btn) {
+    btn.onclick = async function () {
+      // A guest supplies the destination here; a signed-in buyer has one on
+      // their profile already. Same packs, same Stripe flow, different route —
+      // the guest one validates the address before charging anything.
+      var guestField = document.getElementById("cr-guest-wallet");
+      var guestOut = document.getElementById("cr-guest-out");
+      var isGuest = !!guestField;
+      if (isGuest && !guestField.value.trim()) {
+        if (guestOut) {
+          guestOut.textContent = "Enter the wallet address the AXONCoins should go to.";
+          guestOut.className = "cr-out text-danger";
+        }
+        guestField.focus();
+        return;
+      }
+
+      btn.disabled = true;
+      say("Opening secure checkout…");
+      try {
+        var url = isGuest ? "{{ url_for('credits.guest_checkout') }}"
+                          : "{{ url_for('credits.checkout') }}";
+        var payload = { credits: parseInt(btn.dataset.credits, 10) };
+        if (isGuest) payload.wallet = guestField.value.trim();
+        var res = await fetch(url, {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        var body = await res.json();
+        if (!res.ok) {
+          // A rejected ADDRESS belongs beside the field it came from, not in a
+          // status line further down the page.
+          var target = (isGuest && guestOut) ? guestOut : out;
+          target.textContent = body.error || "Could not start checkout.";
+          target.className = "cr-out text-danger";
+          btn.disabled = false;
+          return;
+        }
+        window.location = body.url;
+      } catch (e) {
+        say((e && e.message) || "Checkout failed.", "text-danger");
+        btn.disabled = false;
+      }
+    };
+  });
+})();
+</script>
+<style>
+  .cr-membership { border: 1px solid var(--sc-border); border-radius: 12px;
+                   padding: 16px 18px; margin: 18px 0; background: var(--sc-surface); }
+  .cr-mb-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .cr-mb-price { margin-left: auto; font-size: 1.35rem; font-weight: 700; }
+  .cr-mb-price small { font-size: .8rem; font-weight: 400; opacity: .7; }
+  .cr-ways { display: grid; gap: 14px; margin: 10px 0 4px;
+             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .cr-way { border: 1px solid var(--sc-border); border-radius: 10px;
+            padding: 14px 16px; background: var(--sc-surface); color: inherit;
+            display: flex; flex-direction: column; }
+  .cr-way-h { font-weight: 700; margin-bottom: 6px; }
+  .cr-way p { flex: 1 1 auto; }
+  .cr-way .btn { align-self: flex-start; }
+</style>
+<script>
+(function () {
+  function post(url, out, done) {
+    out.textContent = 'Talking to Stripe…';
+    fetch(url, { method: 'POST', credentials: 'same-origin',
+                 headers: { 'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest' }, body: '{}' })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok || res.body.error) { out.textContent = res.body.error || 'Something went wrong.'; return; }
+        done(res.body, out);
+      })
+      .catch(function (e) { out.textContent = 'Could not reach the server: ' + e; });
+  }
+
+  var out = document.getElementById('cr-mb-status');
+  var subscribe = document.getElementById('cr-subscribe');
+  if (subscribe) {
+    subscribe.onclick = function () {
+      subscribe.disabled = true;
+      post('{{ url_for("credits.subscribe") }}', out, function (body) {
+        if (body.url) { window.location = body.url; }
+        else { out.textContent = 'Stripe did not return a checkout page.'; subscribe.disabled = false; }
+      });
+    };
+  }
+  var cancel = document.getElementById('cr-cancel');
+  if (cancel) {
+    cancel.onclick = function () {
+      // Says what actually happens, because "cancel" reads to most people as
+      // "lose access now" and that is not what this does.
+      if (!window.confirm(
+          'Stop renewing your membership?\n\n' +
+          'You keep every machine and this month\'s AXONCoins until the end of the ' +
+          'period you have already paid for. Nothing further is charged, and you ' +
+          'can take this back any time before then.')) { return; }
+      cancel.disabled = true;
+      post('{{ url_for("credits.cancel_subscription") }}', out, function () {
+        window.location.reload();
+      });
+    };
+  }
+  var refresh = document.getElementById('cr-refresh');
+  if (refresh) {
+    refresh.onclick = function () {
+      refresh.disabled = true;
+      post('{{ url_for("credits.refresh_subscription") }}', out, function () {
+        window.location.reload();
+      });
+    };
+  }
+  var resume = document.getElementById('cr-resume');
+  if (resume) {
+    resume.onclick = function () {
+      resume.disabled = true;
+      post('{{ url_for("credits.resume_subscription") }}', out, function () {
+        window.location.reload();
+      });
+    };
+  }
+})();
+</script>
+
+{# Claiming used to be a separate page, which made earning read as a different
+   system from buying — somebody running a node had to know a second URL
+   existed. It is the same balance either way, so it lives here now and /claim
+   redirects in. #}
+<div id="claim">
+  {% include "claim-panel.html" %}
+</div>
+
+{% endblock %}

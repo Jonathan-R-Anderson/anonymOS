@@ -146,7 +146,7 @@ is lying.
 ## The backlog — every unimplemented item, by source roadmap
 
 The tiers above are the *ordered* plan. This is the *complete* one: the named, still-open
-milestones from all 37 other roadmaps in this directory, so work can continue down the list
+milestones from all 38 other roadmaps in this directory, so work can continue down the list
 without re-reading each file. **Items already delivered are omitted** — each roadmap keeps its own
 record of what it claimed.
 
@@ -180,6 +180,16 @@ Where a milestone is partly done, the remaining part is what is listed.
 - **U8** efficiency/scope · **U9** hardening tail
 - **D4/D5/D5a/D6** — the zkSync, I2P-router and updater-daemon design decisions
 - *All of the transport half is gated on 4.6's TBD decision.*
+
+### Anonymous overlay network (I2P replacement) — `DENDRITIC_NETWORK_ROADMAP`
+The `dendritic` node (`syndichan-node`, a static Go binary) is the system's native anonymizing
+layer — the I2P replacement, built around the **AXON** overlay. Phasing it into the OS:
+- **P0** ✅ — node builds as a static x86-64 ELF, wired into the build + staged as a boot module (opt-in `make syndichan-node`)
+- **P1** — Go runtime survives anonymOS: fix the thin syscalls (`nanosleep` is a no-op, plus epoll/futex/threads/signals) *(the gate — bring up a minimal Go binary first)*
+- **P2** — direct transport bring-up (interim, non-anonymous) so the node runs end to end
+- **P3** — auto-launch as an OS service (kernel hook beside dbus/sshd)
+- **P4** — the **AXON onion transport** — the actual I2P replacement; 110 items, built in the node, tracked upstream in `../dendritic/roadmap/`
+- **P5** — deniability + hardening: no hidden-OS tell, no clearnet leak *(with `INSTALLER` §H, `DECOY_SECURITY_REVIEW`)*
 
 ### Domains + templates — `domain_manager`, `DECOY_DISTRO_ROADMAP`
 - **DM6** templates/overlay tail · **DM9** template inheritance + least-privilege merge

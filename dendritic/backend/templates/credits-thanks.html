@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Thanks — {{ instance_name() }}{% endblock %}
+{% block content %}
+<div style="max-width:640px;margin:0 auto;padding:40px 16px;">
+  {% if purchase and purchase.status in ('paid', 'delivered') %}
+    <h2>Payment received</h2>
+    <p>{{ purchase.credits }} AXONCoins for ${{ "%.2f"|format(purchase.amount_cents / 100.0) }}.</p>
+    {% if purchase.status == 'delivered' %}
+      <p>They are in your wallet: <code>{{ purchase.delivery_tx }}</code></p>
+    {% else %}
+      <p class="text-muted">
+        They are queued for delivery to <code>{{ purchase.wallet }}</code>. The treasury sends
+        them shortly — its key is deliberately not kept on the web server, so this is not
+        instant.
+      </p>
+    {% endif %}
+  {% elif purchase %}
+    <h2>Waiting on Stripe</h2>
+    <p class="text-muted">
+      Payment has not confirmed yet. This page does not decide that — Stripe does, and it
+      usually takes seconds. Refresh in a moment.
+    </p>
+  {% else %}
+    <h2>Nothing to show</h2>
+    <p class="text-muted">No purchase matched that checkout session.</p>
+  {% endif %}
+  Go to the store
+  <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('credits.index') }}">Buy more</a>
+</div>
+{% endblock %}

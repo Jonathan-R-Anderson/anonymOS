@@ -1,0 +1,15 @@
+[Unit]
+Description=Renew the maniwani Let's Encrypt certificate if outdated
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# Adjust if the checkout lives elsewhere.
+Environment=COMPOSE_DIR=/home/ubuntu/maniwani
+ExecStart=/home/ubuntu/maniwani/deploy-configs/certbot/renew-cert.sh
+# Renewal waits for nginx and may restart containers; give it room.
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

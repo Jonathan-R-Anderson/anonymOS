@@ -1,0 +1,294 @@
+{%- extends "admin-shell.html" %}
+{% set admin_title = "Network directive" %}
+{% set admin_lede = "Fleet-wide instructions to volunteer nodes." %}
+{% block admin_content %}
+<style>
+  .nd-wrap { max-width: 1000px; margin: 0 auto; padding: 16px; color: inherit; }
+  .nd-card { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; padding: 16px; margin-bottom: 16px; color: inherit; }
+  .nd-card.danger { border-color: #ff6b6b; }
+  .nd-muted { opacity: var(--sc-muted-alpha, .62); }
+  .nd-mono { font-family: monospace; font-size: .78rem; word-break: break-all; }
+  .nd-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .nd-input { background: var(--sc-surface-2); color: inherit; border: 1px solid var(--sc-border);
+              border-radius: 6px; padding: 6px 8px; font-size: .82rem; }
+  .nd-pre { font-family: monospace; font-size: .76rem; white-space: pre; overflow-x: auto;
+            background: var(--sc-surface-2); border: 1px solid var(--sc-border);
+            border-radius: 6px; padding: 10px; margin-top: 8px; }
+  .nd-out { font-family: monospace; font-size: .76rem; white-space: pre-wrap; word-break: break-all;
+            background: var(--sc-surface-2); border: 1px solid var(--sc-border); border-radius: 6px;
+            padding: 8px; margin-top: 8px; display: none; }
+  .nd-out.show { display: block; }
+  .nd-ok { color: #26de81; } .nd-err { color: #ff6b6b; } .nd-warn { color: #ff9f43; }
+  .nd-badge { font-size: .7rem; border: 1px solid var(--sc-border); border-radius: 999px;
+              padding: 1px 8px; }
+  .nd-field { display: flex; flex-direction: column; gap: 3px; }
+  .nd-field label { font-size: .74rem; opacity: .7; margin: 0; }
+</style>
+
+<div class="nd-wrap">
+  <div class="d-flex justify-content-between align-items-baseline mb-3" style="gap:.75rem">
+    <h2 class="mb-0">Network directive</h2>
+    <a href="{{ url_for('admin.dashboard') }}" class="nd-muted" style="color:inherit">&larr; Admin</a>
+  </div>
+
+  <div class="nd-card">
+    <p style="font-size:.9rem;line-height:1.62;margin:0">
+      This is the signed statement of where the network lives. DNS is what breaks in every
+      situation this exists for, so DNS is not the authority &mdash; this document is. Nodes
+      hold the last directive they verified and prefer it over anything a name resolves to.
+    </p>
+    <p class="nd-muted" style="font-size:.85rem;line-height:1.6;margin:.7rem 0 0">
+      Nodes verify against a wallet address <strong>pinned in their own configuration</strong>,
+      not one fetched from here. Being logged in as admin is not enough to issue a directive:
+      the signature is the authority, because this travels to machines that have no session
+      with us.
+    </p>
+    <div class="nd-row" style="margin-top:.8rem">
+      <span class="nd-badge">pinned wallet</span>
+      <span class="nd-mono">{{ wallet or 'NOT CONFIGURED' }}</span>
+      {%- if not wallet %}
+      <span class="nd-err" style="font-size:.8rem">
+        Set ADMIN_WALLET_ADDRESS before issuing anything &mdash; nodes would refuse it.
+      </span>
+      {%- endif %}
+    </div>
+  </div>
+
+  <div class="nd-card">
+    <h4 style="font-size:1rem;margin:0 0 .5rem">In force</h4>
+    {%- if current %}
+    <div class="nd-row">
+      <span class="nd-badge {% if current.kind == 'freeze' %}nd-warn{% else %}nd-ok{% endif %}">
+        {{ current.kind }}</span>
+      <span class="nd-badge">sequence {{ current.sequence }}</span>
+      {%- if current.emergency %}<span class="nd-badge nd-err">EMERGENCY &mdash; no delay</span>{% endif %}
+    </div>
+    <div class="nd-mono nd-muted" style="margin-top:6px">
+      domain: {{ current.origin_domain or '—' }} ·
+      address: {{ current.origin_address or '—' }} ·
+      key: {{ (current.origin_key or '—')[:16] }}{% if current.origin_key %}…{% endif %}
+    </div>
+    <div class="nd-mono nd-muted">signed by {{ current.signer }}</div>
+    {%- if current.note %}<div class="nd-muted" style="font-size:.82rem;margin-top:4px">{{ current.note }}</div>{% endif %}
+    {%- else %}
+    <p class="nd-muted" style="font-size:.85rem;margin:0">
+      No directive has been issued. The network operates under its configured domain,
+      and nodes have nothing pinned yet.
+    </p>
+    {%- endif %}
+  </div>
+
+  {%- if frozen %}
+  <div class="nd-card danger">
+    <h4 style="font-size:1rem;margin:0 0 .4rem" class="nd-warn">The network is frozen</h4>
+    <p style="font-size:.86rem;line-height:1.6;margin:0">
+      Nodes are pinned where they are and will refuse anything except a <code>resume</code>.
+      This is the state to be in if a wallet may be compromised: it costs availability of
+      changes, not the project.
+    </p>
+  </div>
+  {%- endif %}
+
+  <div class="nd-card">
+    <h4 style="font-size:1rem;margin:0 0 .6rem">Issue a directive</h4>
+    <div class="nd-row" style="align-items:flex-end">
+      <div class="nd-field"><label for="nd-kind">Kind</label>
+        <select id="nd-kind" class="nd-input">
+          <option value="move">move — adopt a new domain / server / key</option>
+          <option value="freeze">freeze — pin here, refuse further directives</option>
+          <option value="resume">resume — lift a freeze</option>
+        </select>
+      </div>
+      <div class="nd-field"><label for="nd-sequence">Sequence</label>
+        <input id="nd-sequence" class="nd-input" type="number" min="1"
+               value="{{ next_sequence }}" style="width:7rem">
+      </div>
+      <div class="nd-field"><label for="nd-emergency">&nbsp;</label>
+        <label style="font-size:.82rem;font-weight:400">
+          <input type="checkbox" id="nd-emergency"> emergency (skip the
+          {{ (delay_seconds // 60) }}-minute delay)
+        </label>
+      </div>
+    </div>
+
+    <div class="nd-row" id="nd-move-fields" style="margin-top:.8rem;align-items:flex-end">
+      <div class="nd-field" style="flex:1 1 14rem"><label for="nd-domain">New domain</label>
+        <input id="nd-domain" class="nd-input" type="text" placeholder="dendritic.network">
+      </div>
+      <div class="nd-field" style="flex:1 1 12rem"><label for="nd-address">Origin address (host:port)</label>
+        <input id="nd-address" class="nd-input nd-mono" type="text" placeholder="203.0.113.9:443">
+      </div>
+      <div class="nd-field" style="flex:1 1 20rem"><label for="nd-key">New signing key (64 hex, optional)</label>
+        <input id="nd-key" class="nd-input nd-mono" type="text" placeholder="leave blank to keep the current key">
+      </div>
+    </div>
+    <div class="nd-field" style="margin-top:.7rem">
+      <label for="nd-note">Note (recorded, and shown in the signing prompt)</label>
+      <input id="nd-note" class="nd-input" type="text" maxlength="200"
+             placeholder="why this is being issued">
+    </div>
+
+    <div class="nd-row" style="margin-top:1rem">
+      <button id="nd-preview" class="btn btn-outline-secondary btn-sm">1 · Build the message</button>
+      <button id="nd-sign" class="btn btn-primary btn-sm" disabled>2 · Sign with wallet</button>
+      <button id="nd-submit" class="btn btn-danger btn-sm" disabled>3 · Put into force</button>
+    </div>
+    <p class="nd-muted" style="font-size:.8rem;margin:.6rem 0 0">
+      The text you sign is built by the server, not the page. The bytes signed have to be
+      the bytes the server verifies, and a page assembling its own message can drift by a
+      space and produce signatures that fail for reasons nobody can see.
+    </p>
+    <div id="nd-rehearsal" style="display:none;margin-top:.9rem">
+      <span class="nd-badge">what this will do</span>
+      <ul id="nd-effects" style="font-size:.85rem;line-height:1.6;margin:.5rem 0 0;padding-left:1.1rem"></ul>
+      <ul id="nd-warnings" class="nd-warn" style="font-size:.85rem;line-height:1.6;margin:.5rem 0 0;padding-left:1.1rem"></ul>
+    </div>
+    <div class="nd-pre" id="nd-canonical" style="display:none"></div>
+    <div class="nd-out" id="nd-status"></div>
+  </div>
+
+  {%- if history %}
+  <div class="nd-card">
+    <h4 style="font-size:1rem;margin:0 0 .5rem">History</h4>
+    {%- for entry in history %}
+    <div style="border-top:1px solid var(--sc-border);padding:6px 0;font-size:.8rem">
+      <span class="nd-badge">{{ entry.kind }}</span>
+      <span class="nd-badge">seq {{ entry.sequence }}</span>
+      {%- if entry.emergency %}<span class="nd-badge nd-err">emergency</span>{% endif %}
+      <span class="nd-mono nd-muted">{{ entry.origin_domain or '—' }}</span>
+      {%- if entry.note %}<span class="nd-muted"> · {{ entry.note }}</span>{% endif %}
+    </div>
+    {%- endfor %}
+  </div>
+  {%- endif %}
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var built = null, signature = null;
+
+  function el(id) { return document.getElementById(id); }
+  function say(message, kind) {
+    var out = el("nd-status");
+    out.textContent = message;
+    out.className = "nd-out show " + (kind || "");
+  }
+
+  function fields() {
+    return {
+      kind: el("nd-kind").value,
+      sequence: parseInt(el("nd-sequence").value, 10),
+      emergency: el("nd-emergency").checked,
+      origin_domain: el("nd-domain").value.trim(),
+      origin_address: el("nd-address").value.trim(),
+      origin_key: el("nd-key").value.trim(),
+      note: el("nd-note").value.trim()
+    };
+  }
+
+  function reset() {
+    // Any edit invalidates the built message AND the signature over it.
+    // Leaving a stale signature enabled would let a directive be submitted
+    // whose text no longer matches what was signed — the server refuses it,
+    // but the confusing failure is avoidable here.
+    built = null; signature = null;
+    el("nd-sign").disabled = true;
+    el("nd-submit").disabled = true;
+    el("nd-canonical").style.display = "none";
+    el("nd-rehearsal").style.display = "none";
+  }
+  ["nd-kind", "nd-sequence", "nd-emergency", "nd-domain", "nd-address",
+   "nd-key", "nd-note"].forEach(function (id) {
+    el(id).addEventListener("input", reset);
+    el(id).addEventListener("change", reset);
+  });
+
+  function moveOnly() {
+    var isMove = el("nd-kind").value === "move";
+    el("nd-move-fields").style.opacity = isMove ? "1" : ".4";
+    ["nd-domain", "nd-address", "nd-key"].forEach(function (id) {
+      el(id).disabled = !isMove;
+    });
+  }
+  el("nd-kind").addEventListener("change", moveOnly);
+  moveOnly();
+
+  el("nd-preview").addEventListener("click", function () {
+    reset();
+    say("Building…");
+    fetch("{{ url_for('admin.network_directive_preview') }}", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(fields())
+    }).then(function (r) {
+      return r.json().then(function (b) { return {ok: r.ok, body: b}; });
+    }).then(function (result) {
+      if (!result.ok) { say(result.body.error || "Could not build it.", "nd-err"); return; }
+      built = result.body;
+      // The rehearsal, shown BEFORE the wallet prompt. The first real use of
+      // this will be during an incident, by somebody who has never run it —
+      // "here is what will change" has to arrive before the irreversible step,
+      // not after it.
+      var rehearsal = built.rehearsal || {effects: [], warnings: []};
+      function fill(id, items) {
+        var list = el(id);
+        list.innerHTML = "";
+        (items || []).forEach(function (text) {
+          var li = document.createElement("li");
+          li.textContent = text;
+          list.appendChild(li);
+        });
+      }
+      fill("nd-effects", rehearsal.effects);
+      fill("nd-warnings", rehearsal.warnings);
+      el("nd-rehearsal").style.display = "block";
+      el("nd-canonical").textContent = built.canonical;
+      el("nd-canonical").style.display = "block";
+      el("nd-sign").disabled = false;
+      say("Read the text above. That is exactly what your wallet will sign and "
+          + "exactly what the server will verify.", "nd-ok");
+    }).catch(function (e) { say(String(e), "nd-err"); });
+  });
+
+  el("nd-sign").addEventListener("click", function () {
+    if (!built) { return; }
+    if (!window.ethereum) { say("No wallet found in this browser.", "nd-err"); return; }
+    say("Confirm in your wallet…");
+    window.ethereum.request({method: "eth_requestAccounts"}).then(function (accounts) {
+      return window.ethereum.request({
+        method: "personal_sign", params: [built.canonical, accounts[0]]
+      });
+    }).then(function (signed) {
+      signature = signed;
+      el("nd-submit").disabled = false;
+      say("Signed. Nothing has changed yet — press 3 to put it into force.", "nd-ok");
+    }).catch(function (e) { say(e.message || String(e), "nd-err"); });
+  });
+
+  el("nd-submit").addEventListener("click", function () {
+    if (!built || !signature) { return; }
+    var what = built.directive.kind === "move"
+      ? "move the network to " + built.directive.origin_domain
+      : built.directive.kind + " the network";
+    if (!confirm("This will " + what + " at sequence " + built.directive.sequence
+                 + (built.directive.emergency ? ", IMMEDIATELY (emergency)" : "")
+                 + ".\n\nEvery node that verifies it will follow. Continue?")) { return; }
+    say("Submitting…");
+    fetch("{{ url_for('admin.network_directive_issue') }}", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({directive: built.directive, signature: signature})
+    }).then(function (r) {
+      return r.json().then(function (b) { return {ok: r.ok, body: b}; });
+    }).then(function (result) {
+      if (!result.ok) { say(result.body.error || "Refused.", "nd-err"); return; }
+      say("In force at sequence " + result.body.directive.sequence
+          + ". Reload to see it listed.", "nd-ok");
+      el("nd-submit").disabled = true;
+    }).catch(function (e) { say(String(e), "nd-err"); });
+  });
+})();
+</script>
+{% endblock %}

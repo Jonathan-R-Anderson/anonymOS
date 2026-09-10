@@ -1,0 +1,137 @@
+# Headless Orange3 workflow engine for the /ml page.
+#
+# The page in front of this needs NO ACCOUNT, so this pod is reachable — through
+# the backend — by anyone on the internet. That is the whole reason the controls
+# below exist:
+#
+#   * the workflow engine bounds rows, columns, nodes and time before it
+#     computes anything;
+#   * this manifest bounds CPU and memory so that a workflow which slips past
+#     those bounds costs a slow response rather than a node;
+#   * the NetworkPolicy denies all egress, so the "no loading data from a URL"
+#     rule in the engine is enforced a second time by the network rather than
+#     resting on nobody adding the feature later.
+#
+# Nothing here is decoration.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-runner
+  namespace: maniwani
+  labels:
+    app: ml-runner
+    maniwani.io/tier: app
+spec:
+  selector:
+    app: ml-runner
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  # ClusterIP only: never reachable from outside, only from the backend.
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-runner
+  namespace: maniwani
+  labels:
+    app: ml-runner
+    maniwani.io/tier: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-runner
+  template:
+    metadata:
+      labels:
+        app: ml-runner
+        maniwani.io/tier: app
+    spec:
+      nodeSelector:
+        maniwani.io/role: software
+      # Nothing here needs to talk to the API server, and a token on disk is a
+      # thing an exploited numpy would find.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        fsGroup: 10002
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: registry.local/ml-runner:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - {name: ML_MAX_ROWS,     value: "20000"}
+            - {name: ML_MAX_COLUMNS,  value: "200"}
+            - {name: ML_MAX_NODES,    value: "40"}
+            - {name: ML_MAX_CSV_KB,   value: "2048"}
+            - {name: ML_WALL_SECONDS, value: "20"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # The only writable path. Orange wants somewhere to put a settings
+            # directory and a CSV upload needs a temp file; both live here, in
+            # memory, and never touch the node's disk.
+            - name: scratch
+              mountPath: /tmp
+          resources:
+            # A workflow is meant to feel interactive, so it gets real CPU —
+            # but bounded, because an anonymous caller decides how often to ask.
+            requests: {cpu: "100m", memory: "384Mi"}
+            limits:   {cpu: "2000m", memory: "1536Mi"}
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 40
+            periodSeconds: 30
+      volumes:
+        - name: scratch
+          emptyDir:
+            medium: Memory
+            # Larger than code-runner's: scikit-learn and Orange between them
+            # write a fair amount of cache on first use.
+            sizeLimit: 256Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ml-runner-isolation
+  namespace: maniwani
+  labels:
+    app: ml-runner
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-runner
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    # Only the backend may submit workflows.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: maniwani
+      ports:
+        - {port: 8000, protocol: TCP}
+  egress:
+    # Deliberately EMPTY. No DNS, no cluster services, no internet.
+    #
+    # The engine offers no way to load data from a URL, precisely because such a
+    # thing would be a server-side request forgery primitive pointed at the
+    # cluster's private network. This policy means that if somebody adds one
+    # later without thinking it through, it will not work — the feature fails
+    # instead of quietly becoming a scanner.

@@ -1,0 +1,83 @@
+#!/bin/busybox sh
+# deps/decoy-os/initramfs/init-crypt — PID 1 of the decoy DESKTOP UKI booted through the §E5
+# pre-boot loader (roadmap/INSTALLER.md §E5d/§H1, Level 2).
+#
+# The believable decoy is a full Alpine+XFCE rootfs (deps/decoy-os desktop-rootfs), too large to
+# embed in the UKI, so it lives XTS-encrypted on the install disk. The pre-boot loader decrypts
+# and StartImages THIS UKI (kernel + this initramfs), handing the decoy master key and the
+# rootfs's on-disk geometry forward on the kernel command line. We set up a dm-crypt mapping over
+# that region and switch_root into the real desktop.
+#
+# The installer encrypts each 512-byte sector as its own XTS data unit with a 64-bit little-endian
+# sector tweak (veracrypt_impl.d:xts_encrypt_sector) — i.e. exactly dm-crypt's aes-xts-plain64. So
+# a plain dm-crypt table (no LUKS header) reproduces it: key = data_key||tweak_key (64 bytes hex),
+# iv_offset = the region's first XTS unit, device offset = the region's first disk LBA.
+#
+# cmdline params handed over by the loader:
+#   decoykey=<128 hex chars>   the 64-byte XTS key (decoy master key)
+#   decoyrl=<lba>              first disk LBA (512B) of the encrypted rootfs
+#   decoyiv=<n>                XTS data-unit number of that first sector (dm-crypt iv_offset)
+#   decoysz=<sectors>          length of the rootfs region in 512B sectors
+B=/bin/busybox
+$B mount -t proc     proc /proc 2>/dev/null
+$B mount -t sysfs    sys  /sys  2>/dev/null
+$B mount -t devtmpfs dev  /dev  2>/dev/null
+
+# Alpine ships modules gzip'd; the build gunzips the needed set into /mod. Insmod in several
+# passes so dependency order does not matter (busybox insmod does no dep resolution).
+# dm-crypt's keyring dep chain (rng-core->tpm->asn1_encoder->trusted->encrypted-keys->dm-crypt)
+# is ~6 deep; insmod every module repeatedly until the set stops changing so order doesn't matter.
+for pass in 1 2 3 4 5 6 7 8; do for m in /mod/*.ko; do $B insmod "$m" 2>/dev/null; done; done
+
+key=""; rl=""; iv=""; sz=""
+for tok in $($B cat /proc/cmdline); do
+  case "$tok" in
+    decoykey=*) key=${tok#decoykey=} ;;
+    decoyrl=*)  rl=${tok#decoyrl=}   ;;
+    decoyiv=*)  iv=${tok#decoyiv=}   ;;
+    decoysz=*)  sz=${tok#decoysz=}   ;;
+  esac
+done
+
+# Find the install disk. VirtualBox/real hardware present it as an AHCI /dev/sda; QEMU virtio as
+# /dev/vda. Prefer the one that actually appeared.
+disk=""
+for i in $($B seq 1 100); do
+  for d in /dev/sda /dev/vda /dev/nvme0n1; do [ -b "$d" ] && disk="$d" && break; done
+  [ -n "$disk" ] && break
+  $B sleep 0.1
+done
+if [ -z "$disk" ]; then $B echo "[decoy-crypt] NO-DISK"; exec $B sh; fi
+$B echo "[decoy-crypt] disk=$disk rl=$rl iv=$iv sz=$sz"
+
+if [ -z "$key" ] || [ -z "$rl" ] || [ -z "$sz" ]; then
+  $B echo "[decoy-crypt] MISSING-CMDLINE-KEY"; exec $B sh
+fi
+[ -n "$iv" ] || iv=0
+
+# dm-crypt table: <start> <size> crypt <cipher> <key> <iv_offset> <dev> <dev_offset>
+# (busybox has no dmsetup applet; /bin/dmsetup is the static device-mapper binary.)
+if ! /bin/dmsetup create decoyroot --table "0 $sz crypt aes-xts-plain64 $key $iv $disk $rl"; then
+  $B echo "[decoy-crypt] DMSETUP-FAIL"; exec $B sh
+fi
+
+# Which AES-XTS driver got selected? "aesni" = hardware (fast); "generic"/"fixed-time" = software
+# (slow — every root read/write decrypts in software). Diagnostic for boot-speed triage.
+$B echo "[decoy-crypt] aes-xts driver: $($B grep -iE 'driver' /proc/crypto 2>/dev/null | $B grep -i aes | $B head -1)"
+
+# The decrypted region is a SQUASHFS holding the full desktop, compressed (so the installer's
+# in-RAM boot module stays ~1 GB instead of the 2.4 GB raw rootfs). Mount it read-only and stack a
+# tmpfs overlay so the live session can write (OpenRC/XFCE need /var, /run, $HOME). The overlay
+# pins the squashfs + tmpfs superblocks, so they survive switch_root freeing the initramfs.
+$B mkdir -p /squash /ovl /sysroot
+if ! $B mount -t squashfs -o ro /dev/mapper/decoyroot /squash; then
+  $B echo "[decoy-crypt] SQUASH-MOUNT-FAIL (bad key or not squashfs)"; exec $B sh
+fi
+$B mount -t tmpfs tmpfs /ovl
+$B mkdir -p /ovl/up /ovl/work
+if ! $B mount -t overlay overlay -o lowerdir=/squash,upperdir=/ovl/up,workdir=/ovl/work /sysroot; then
+  $B echo "[decoy-crypt] OVERLAY-FAIL"; exec $B sh
+fi
+
+$B echo "[decoy-crypt] DECOY-CRYPT-OK switch_root -> the believable Alpine+XFCE (squashfs+overlay)"
+exec $B switch_root /sysroot /sbin/init

@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}Epoch chain — {{ instance_name() }}{% endblock %}
+{% block content %}
+<style>
+  .ep-wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px 56px; color: inherit; }
+  .ep-muted { opacity: var(--sc-muted-alpha, .62); }
+  .ep-note { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+
+  /* The chain itself: each node sits on a rail, joined by a connector. */
+  .ep-chain { position: relative; margin-top: 8px; }
+  .ep-node { position: relative; padding-left: 34px; padding-bottom: 14px; }
+  .ep-node::before {           /* the dot */
+    content: ""; position: absolute; left: 7px; top: 16px; width: 11px; height: 11px;
+    border-radius: 50%; background: var(--sc-surface); border: 2px solid var(--sc-accent);
+  }
+  .ep-node::after {            /* the link to the next node */
+    content: ""; position: absolute; left: 12px; top: 27px; bottom: 0; width: 2px;
+    background: var(--sc-border);
+  }
+  .ep-node:last-child::after { display: none; }
+  .ep-node.is-final::before { background: #26de81; border-color: #26de81; }
+  .ep-node.is-disputed::before { background: #ff6b6b; border-color: #ff6b6b; }
+
+  .ep-card { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; overflow: hidden; }
+  .ep-card > summary { cursor: pointer; list-style: none; padding: 12px 14px;
+                       display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .ep-card > summary::-webkit-details-marker { display: none; }
+  .ep-card > summary:hover { background: var(--sc-surface-2); }
+  .ep-num { font-weight: 700; }
+  .ep-pill { font-size: .68rem; border: 1px solid var(--sc-border); border-radius: 999px;
+             padding: 1px 8px; opacity: .85; }
+  .ep-pill.ok { color: #26de81; border-color: #26de81; }
+  .ep-pill.warn { color: #ff6b6b; border-color: #ff6b6b; }
+  .ep-caret { margin-left: auto; opacity: .5; font-size: .8rem; }
+  .ep-card[open] .ep-caret { transform: rotate(90deg); }
+
+  .ep-body { border-top: 1px solid var(--sc-border); padding: 12px 14px; }
+  .ep-kv { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  .ep-kv th, .ep-kv td { text-align: left; padding: 6px 4px; vertical-align: top;
+                         border-top: 1px solid var(--sc-border); }
+  .ep-kv tr:first-child th, .ep-kv tr:first-child td { border-top: 0; }
+  .ep-kv th { width: 11rem; font-weight: 600; opacity: .7; white-space: nowrap; }
+  .ep-kv td { font-family: monospace; font-size: .78rem; word-break: break-all; }
+  .ep-empty { border: 1px dashed var(--sc-border); border-radius: 10px;
+              padding: 22px; text-align: center; }
+</style>
+
+<div class="ep-wrap">
+  <h2 class="mb-1">Epoch chain</h2>
+  <p class="ep-muted">
+    Each epoch commits the network's work to Ethereum Mainnet as a pair of Merkle roots.
+    Read live from the chain, not from this server — that independence is the point of
+    settling on-chain at all.
+  </p>
+
+  {% if epoch_manager %}
+  <div class="ep-note small">
+    <strong>EpochManager</strong>
+    <code>{{ epoch_manager }}</code>
+    <a href="{{ explorer_address_url(epoch_manager) }}" target="_blank" rel="noopener noreferrer">view on explorer &rarr;</a>
+    <div class="ep-muted mt-1">Ethereum Mainnet (chain 1)</div>
+  </div>
+  {% endif %}
+
+  {% if error %}
+    <div class="ep-note" style="border-color:#ff6b6b;">
+      <strong style="color:#ff6b6b;">Could not read the chain</strong>
+      <div class="small ep-muted mt-1">{{ error }}</div>
+    </div>
+  {% endif %}
+
+  {% if not epochs and not error %}
+    <div class="ep-empty">
+      <p class="mb-1"><strong>Nothing to show for this range.</strong></p>
+      <p class="small ep-muted mb-0">
+        Settled epochs appear here as they are committed, newest at the bottom.
+      </p>
+    </div>
+  {% endif %}
+
+  <div class="ep-chain">
+    {% for e in epochs %}
+    <div class="ep-node {% if e.finalized %}is-final{% elif e.open_disputes %}is-disputed{% endif %}">
+      <details class="ep-card" {% if loop.last %}open{% endif %}>
+        <summary>
+          <span class="ep-num">Epoch {{ e.epoch }}</span>
+          {% if e.epoch == 0 %}<span class="ep-pill">genesis</span>{% endif %}
+          {% if e.finalized %}
+            <span class="ep-pill ok">finalized</span>
+          {% elif e.open_disputes %}
+            <span class="ep-pill warn">{{ e.open_disputes }} open dispute(s)</span>
+          {% else %}
+            <span class="ep-pill">challenge window</span>
+          {% endif %}
+          <span class="ep-caret">&#9654;</span>
+        </summary>
+        <div class="ep-body">
+          <table class="ep-kv">
+            <tr><th>receiptRoot</th><td>{{ e.receipt_root }}</td></tr>
+            <tr><th>rewardRoot</th><td>{{ e.reward_root }}</td></tr>
+            <tr><th>nodeStateRoot</th><td>{{ e.node_state_root }}</td></tr>
+            <tr><th>randomness</th><td>{{ e.randomness }}</td></tr>
+            <tr><th>totalRewards</th><td>{{ e.total_rewards }} wei</td></tr>
+            <tr><th>submittedAt</th><td>{{ e.submitted_at }} (unix) &mdash; {{ e.submitted_when }}</td></tr>
+            <tr><th>challengeDeadline</th><td>{{ e.challenge_deadline }} (unix) &mdash; {{ e.deadline_when }}</td></tr>
+            <tr><th>openDisputes</th><td>{{ e.open_disputes }}</td></tr>
+            <tr><th>finalized</th><td>{{ 'yes' if e.finalized else 'no' }}</td></tr>
+          </table>
+          <p class="small ep-muted mt-2 mb-0">
+            {% if e.finalized %}
+              Settled. Rewards are claimable against <code>rewardRoot</code> with a Merkle proof &mdash;
+              <a href="{{ url_for('main.claim') }}">claim yours &rarr;</a>
+            {% elif e.open_disputes %}
+              Disputed. It cannot finalize until every dispute is resolved, however long
+              that takes &mdash; a deadline that expired mid-argument would settle the
+              argument in favour of whoever was accused.
+            {% elif e.finalizable %}
+              The challenge window has closed with no disputes, so this epoch can be
+              settled now. It takes no permission, because a settlement that only its
+              author can complete is one its author can also withhold. Until someone
+              does it, <code>rewardRootOf</code> returns zero and nothing is claimable.
+              </p>
+              <p class="ep-note">
+              {%- if e.total_rewards %}
+              <button class="ep-finalize" data-epoch="{{ e.epoch }}">
+                Finalize epoch {{ e.epoch }}
+              </button>
+              <span class="ep-finalize-status" data-epoch="{{ e.epoch }}"></span>
+              {%- else %}
+              <strong>Finalizing this epoch would pay nobody.</strong> Its
+              <code>rewardRoot</code> is zero and it carries 0&nbsp;wei, which means no
+              receipt in it could be settled &mdash; not that settlement failed. A claim
+              needs witnesses drawn from nodes other than the provider, so it takes more
+              participating nodes than this network has before a single receipt becomes
+              payable. Finalizing changes the flag and nothing else; the fix is more
+              nodes, not another transaction.
+              <button class="ep-finalize" data-epoch="{{ e.epoch }}">
+                Finalize anyway
+              </button>
+              <span class="ep-finalize-status" data-epoch="{{ e.epoch }}"></span>
+              {%- endif %}
+            {% else %}
+              Still challengeable for {{ e.deadline_when }}: anyone holding the same
+              receipts can re-compute these roots and dispute a mismatch until then.
+              This wait is deliberate &mdash; it is the window in which being wrong is
+              cheap to fix.
+            {% endif %}
+          </p>
+        </div>
+      </details>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="small ep-muted mt-4 mb-0">
+    A dot is green once an epoch is finalized, red while a dispute is open.
+    How settlement works &rarr;
+  </p>
+</div>
+
+<style>
+  .ep-finalize { font: inherit; font-size: .82rem; padding: .3rem .7rem; border-radius: 6px;
+                 border: 1px solid var(--sc-border, rgba(128,128,128,.45));
+                 background: var(--sc-surface-2, #f4f6f8); color: inherit; cursor: pointer; }
+  .ep-finalize[disabled] { opacity: .5; cursor: not-allowed; }
+  .ep-finalize-status { font-size: .8rem; margin-left: .5rem; opacity: .85; }
+</style>
+<script>
+(function () {
+  "use strict";
+  // finalize(uint64). Permissionless, so this needs no admin session — but it
+  // is a transaction, so it needs a wallet and gas. The page cannot do it for
+  // you: this server holds no signing key, which is deliberate.
+  var SELECTOR = "0x359bc19e";
+  var MANAGER = {{ (epoch_manager or "") | tojson }};
+  var CHAIN_ID = "0x1";  // Ethereum mainnet, 1
+
+  function encode(epoch) {
+    var hex = Number(epoch).toString(16);
+    return SELECTOR + "0".repeat(64 - hex.length) + hex;
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".ep-finalize"), function (button) {
+    button.addEventListener("click", function () {
+      var epoch = button.getAttribute("data-epoch");
+      var status = document.querySelector(
+        '.ep-finalize-status[data-epoch="' + epoch + '"]');
+      function say(text) { if (status) { status.textContent = text; } }
+
+      if (!MANAGER) { say("No EpochManager address is configured."); return; }
+      if (!window.ethereum) {
+        say("This needs a wallet. finalize() is a transaction, and this server "
+            + "holds no signing key on purpose.");
+        return;
+      }
+      button.disabled = true;
+      say("Confirm in your wallet\u2026");
+      window.ethereum.request({method: "eth_requestAccounts"}).then(function (accounts) {
+        return window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{chainId: CHAIN_ID}]
+        }).catch(function () { return null; }).then(function () {
+          return window.ethereum.request({
+            method: "eth_sendTransaction",
+            params: [{from: accounts[0], to: MANAGER, data: encode(epoch)}]
+          });
+        });
+      }).then(function (hash) {
+        say("Sent: " + hash + " \u2014 reload once it confirms.");
+      }).catch(function (error) {
+        button.disabled = false;
+        say(error && error.message ? error.message : String(error));
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

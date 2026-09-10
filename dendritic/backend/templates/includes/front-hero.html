@@ -1,0 +1,264 @@
+{# Front-page hero.
+   Text-scramble effect adapted from Hyperplexed (youtu.be/W5oawMJaXbU).
+
+   Scoped to .fp-hero throughout. The original demo styles `body` with
+   `height:100vh; overflow:hidden; display:grid`, which here would collapse the
+   site header, footer and every page below this one -- so none of that is
+   applied globally.
+
+   The figure is a transparent PNG layered OVER the theme's existing page
+   background, not a replacement for it. #}
+<section class="fp-hero" aria-labelledby="fp-hero-title">
+  <div class="fp-hero__figure" role="presentation"></div>
+
+  <div class="fp-hero__inner">
+    {# The whole title is the link: clicking it takes you to your own space.
+       With a slip that's your profile; without one it's where you get a slip,
+       because sending a stranger to a dashboard they cannot have is a dead end. #}
+    <a class="fp-hero__link"
+       href="{% if get_slip() %}{{ url_for('profiles.edit') }}{% else %}{{ url_for('slip.landing') }}{% endif %}"
+       {% if not get_slip() %}title="Get a slip to claim your dashboard"{% endif %}>
+      <h1 id="fp-hero-title" class="fp-hero__title" data-value="ANONYMOUS">ANONYMOUS</h1>
+    </a>
+    <p class="fp-hero__tagline">dendritic.network</p>
+  </div>
+</section>
+
+<style>
+  .fp-hero {
+    position: relative;
+    display: grid;
+    place-items: center;
+    /* Not 100vh: the header sits above this and the feed below it, so a full
+       viewport would push every bit of actual content off the first screen. */
+    min-height: min(72vh, 620px);
+    margin: 0 0 1.5rem;
+    overflow: hidden;
+    isolation: isolate;
+    background-color: #000;
+  }
+
+  /* The figure. Sized larger than the box and anchored high so the crop lands
+     around waist-up rather than showing the whole standing figure. */
+  .fp-hero__figure {
+    position: absolute;
+    inset: 0;
+    background-image: url("{{ url_for('static', filename='img/anonymous.png') }}");
+    background-repeat: no-repeat;
+    background-position: center 18%;
+    background-size: auto 165%;
+    z-index: 0;
+    /* Fade the base of the figure into the section instead of letting it end
+       on a hard horizontal edge where the crop happens to fall. */
+    -webkit-mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 68%, transparent 100%);
+  }
+
+  /* Keeps the title legible over the lighter parts of the mask. */
+  .fp-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center,
+                rgba(0, 0, 0, .55) 0%, rgba(0, 0, 0, .78) 70%, #000 100%);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .fp-hero__inner {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 1rem;
+  }
+
+  .fp-hero__link { text-decoration: none; display: inline-block; }
+  .fp-hero__link:hover, .fp-hero__link:focus { text-decoration: none; }
+
+  .fp-hero__title {
+    font-family: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: clamp(2.25rem, 9vw, 8rem);
+    font-weight: 700;
+    letter-spacing: .02em;
+    /* The scramble swaps letters of differing widths every 30ms; without a
+       fixed advance the whole line jitters horizontally while it resolves. */
+    font-variant-ligatures: none;
+    font-kerning: none;
+    color: #fff;
+    margin: 0;
+    padding: 0 clamp(1rem, 2vw, 3rem);
+    border-radius: clamp(0.4rem, 0.75vw, 1rem);
+    transition: background-color 120ms linear, color 120ms linear;
+    /* Reserve the widest state so the invert-on-hover box does not resize. */
+    white-space: nowrap;
+  }
+
+  .fp-hero__link:hover .fp-hero__title,
+  .fp-hero__link:focus-visible .fp-hero__title {
+    background-color: #fff;
+    color: #000;
+  }
+
+  .fp-hero__link:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 6px;
+    border-radius: clamp(0.4rem, 0.75vw, 1rem);
+  }
+
+  .fp-hero__tagline {
+    margin: .35rem 0 0;
+    font-family: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: clamp(.9rem, 2.4vw, 1.6rem);
+    letter-spacing: .35em;
+    text-transform: lowercase;
+    /* Deliberately a literal red rather than --sc-accent: this hero is a
+       self-contained black panel, and the accent colour changes per theme
+       (it is maroon on 711chan, green on cyberpunk) which would lose the
+       intended red-on-black. */
+    color: #e01b24;
+    text-shadow: 0 0 12px rgba(224, 27, 36, .45);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fp-hero__title { transition: none; }
+  }
+</style>
+
+<script>
+(function () {
+  var title = document.getElementById("fp-hero-title");
+  if (!title) { return; }
+
+  // Respect the OS "reduce motion" setting: this effect is rapid flicker,
+  // which is exactly what that setting exists to suppress. The word stays the
+  // English "Anonymous" the HTML already shows -- no scramble, no cycling.
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) { return; }
+
+  // "Anonymous" in many languages. English is FIRST, so the very first resolve
+  // is always the English word; after that the hero cycles through the rest.
+  // No language is ever named -- only the word itself, as asked. The list is
+  // kept faithful to the source (repeats and all) and de-duplicated at runtime
+  // so every scramble visibly lands on a different spelling rather than
+  // "resolving" onto the identical word two or three times in a row.
+  var WORDS_ALL = [
+    "Anonymous", "Anónimo", "Anônimo", "Anonyme", "Anonimo", "Anonym", "Anoniem",
+    "Anonym", "Anonym", "Anonym", "Anonyymi", "Nafnlaus", "Gan ainm", "Gun ainm",
+    "Dienw", "Anonimo", "Anònim", "Anónimo", "Anonim", "Anonimowy", "Anonymní",
+    "Anonymný", "Anonimen", "Anoniman", "Анониман", "Anoniman", "Anoniman",
+    "Анониман", "Анонимен", "Анонимен", "Анонимный", "Анонімний", "Ананімны",
+    "Ανώνυμος", "Anonim", "Névtelen", "Anonüümne", "Anonīms", "Anoniminis",
+    "Anonim", "Anonim", "Аноним", "Anonim", "Anonim", "Аноним", "Номаълум",
+    "Անանուն", "ანონიმური", "אנונימי", "مجهول", "ناشناس", "ناشناس", "بې نومه",
+    "نەناسراو", "Bênav", "گمنام", "गुमनाम", "अज्ञात", "বেনামী", "বেনামী",
+    "ਗੁਮਨਾਮ", "અનામી", "अनामिक", "गुमनाम", "නිර්නාමික", "பெயரில்லா", "అనామకుడు",
+    "ಅನಾಮಧೇಯ", "അജ്ഞാതൻ", "ଅଜ୍ଞାତ", "အမည်မသိ", "ไม่ระบุชื่อ", "ບໍ່ລະບຸຊື່",
+    "អនាមិក", "Vô danh", "Anonim", "Tanpa Nama", "Hindi Kilala", "匿名", "匿名",
+    "匿名", "익명", "Нэргүй", "མིང་མེད", "نامسىز", "アノニマス", "아노니머스",
+    "Bila Jina", "ስም የሌለው", "ስም ዘይብሉን", "Magac La'aan", "Marar Suna",
+    "Aláìlórúkọ", "Enweghị Aha", "Ongaziwa", "Ongaziwayo", "Anoniem",
+    "Tsy Fantatra", "Ingoakore", "Leiloa", "ʻAʻohe Inoa", "Sega ni Yaca"
+  ];
+
+  // Upper-case each word (to match the all-caps hero), then de-duplicate keeping
+  // first-appearance order so English stays index 0. toUpperCase() is a no-op for
+  // caseless scripts -- CJK, Arabic, Hebrew, Thai, Devanagari and the rest come
+  // through untouched -- and correctly capitalises the cased ones (Latin,
+  // Cyrillic, Greek, Armenian). Dedup runs AFTER casing so any words that differ
+  // only by case collapse together.
+  var WORDS = [];
+  (function () {
+    var seen = {};
+    for (var i = 0; i < WORDS_ALL.length; i++) {
+      var w = WORDS_ALL[i].toUpperCase();
+      if (!Object.prototype.hasOwnProperty.call(seen, w)) {
+        seen[w] = 1;
+        WORDS.push(w);
+      }
+    }
+  })();
+
+  // Grapheme-aware splitting: many of these words carry combining marks (Indic,
+  // Thai, Lao) or sit outside the Basic Multilingual Plane. Splitting by UTF-16
+  // code unit would tear those apart and paint dotted-circle fragments during
+  // the scramble; segmenting by grapheme keeps each visible character whole.
+  var segmenter = (typeof Intl !== "undefined" && Intl.Segmenter)
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+  function graphemes(str) {
+    if (segmenter) {
+      return Array.from(segmenter.segment(str), function (s) { return s.segment; });
+    }
+    // Array.from iterates by code point, so at least surrogate pairs survive.
+    return Array.from ? Array.from(str) : str.split("");
+  }
+
+  // The flicker pool for a word is drawn from its OWN characters, so a Cyrillic
+  // word scrambles in Cyrillic, a CJK word in CJK -- the resolve reads as the
+  // same script settling into place rather than Latin noise turning foreign.
+  function poolFor(chars) {
+    var seen = {}, pool = [];
+    for (var i = 0; i < chars.length; i++) {
+      var g = chars[i];
+      if (g === " " || g === " ") { continue; }
+      if (!Object.prototype.hasOwnProperty.call(seen, g)) {
+        seen[g] = 1;
+        pool.push(g);
+      }
+    }
+    return pool.length ? pool : chars;
+  }
+
+  var interval = null;
+  var dwellTimer = null;
+  var index = 0;                 // which word is on screen / being resolved
+  var currentWord = WORDS[0];
+  var DWELL_MS = 1500;           // how long a resolved word rests before the next
+
+  function scrambleTo(word, onDone) {
+    currentWord = word;
+    var target = graphemes(word);
+    var pool = poolFor(target);
+    var iteration = 0;
+    clearInterval(interval);
+    interval = setInterval(function () {
+      var out = "";
+      for (var i = 0; i < target.length; i++) {
+        if (i < iteration) { out += target[i]; }          // revealed, left to right
+        else if (target[i] === " " || target[i] === " ") { out += target[i]; }
+        else { out += pool[Math.floor(Math.random() * pool.length)]; }
+      }
+      title.innerText = out;
+
+      if (iteration >= target.length) {
+        clearInterval(interval);
+        title.innerText = word;   // snap to the exact word, never leave it scrambled
+        if (onDone) { onDone(); }
+      }
+      iteration += 1 / 3;
+    }, 30);
+  }
+
+  function scheduleNext() {
+    clearTimeout(dwellTimer);
+    dwellTimer = setTimeout(advance, DWELL_MS);
+  }
+
+  function advance() {
+    index = (index + 1) % WORDS.length;
+    scrambleTo(WORDS[index], scheduleNext);
+  }
+
+  // Hover / focus re-scrambles the word currently shown, then the loop resumes
+  // where it was -- it does not skip or repeat a language.
+  function onInteract() {
+    clearTimeout(dwellTimer);
+    scrambleTo(currentWord, scheduleNext);
+  }
+  title.parentElement.addEventListener("mouseenter", onInteract);
+  title.parentElement.addEventListener("focus", onInteract);
+
+  // First run: index 0 is English, so the opening scramble always lands on
+  // "Anonymous" before any other language is shown.
+  scrambleTo(WORDS[0], scheduleNext);
+})();
+</script>

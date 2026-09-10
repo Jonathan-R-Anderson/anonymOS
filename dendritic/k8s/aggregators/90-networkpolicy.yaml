@@ -1,0 +1,81 @@
+# =============================================================================
+# NetworkPolicy for the aggregators group — OPTIONAL, APPLY LAST.
+#
+# *** READ BEFORE APPLYING ***
+# k3s ships the kube-router network-policy controller ENABLED by default (unless
+# the server was started with --disable-network-policy), so unlike some vanilla
+# clusters these policies WILL be enforced the moment they are applied. Apply
+# them only after the group is up and verified, and roll back instantly with:
+#     kubectl -n maniwani delete -f 90-networkpolicy.yaml
+#
+# WHAT THIS DOES
+#   Restricts INGRESS only. Egress is deliberately left completely unrestricted:
+#   all five aggregators run an embedded Tor daemon and must reach arbitrary
+#   destinations on arbitrary ports (443, 9001, guard/bridge ports), plus direct
+#   HTTPS to nerv.8kun.top and the public redlib mirror list, plus DNS. Writing
+#   an egress policy for a Tor client is a good way to silently break every crawl
+#   for a security gain of roughly zero — these pods are outbound-only by design.
+#
+#   Because a NetworkPolicy only constrains the direction types it lists, and
+#   these declare `policyTypes: [Ingress]`, egress stays wide open. That is
+#   intentional, not an oversight.
+#
+# WHY THIS IS WORTH APPLYING
+#   In compose, every service on the default bridge network can reach every other
+#   one, and 8002-8006 were additionally published on 0.0.0.0 — meaning POST
+#   /reset (wipes a scraper's storage) and DELETE /sources/<name> were reachable
+#   from the public internet. Dropping the host publishes already fixes the
+#   internet exposure; this policy adds the second half: nothing outside the
+#   maniwani namespace can reach these pods at all.
+#
+# CALIBRATION
+#   The `from` clause is `podSelector: {}` — ANY pod in the maniwani namespace.
+#   That reproduces compose's flat network exactly, so it cannot break the
+#   backend, and it is still a real improvement over "reachable from anywhere".
+#   If you want to tighten it to the backend alone, replace the podSelector with
+#   the backend pod's actual labels, e.g.
+#       - podSelector:
+#           matchLabels:
+#             app.kubernetes.io/name: maniwani-backend
+#   and verify against the backend manifest FIRST — a label typo here silently
+#   cuts every scraper control call (register thread, monitored boards, retention,
+#   board discovery) with no error visible in the aggregator logs.
+#
+# KUBELET PROBE CAVEAT
+#   readiness/liveness probes originate from the NODE, not from a pod, so they
+#   are not matched by any `podSelector` rule. kube-router normally permits
+#   node-local traffic to pods for exactly this reason. VERIFY after applying:
+#       kubectl -n maniwani get pods -l maniwani.io/group=aggregators
+#   If pods start flapping to NotReady immediately after applying this file, that
+#   is the cause — delete the file (command above) and, if you want the policy
+#   back, add an `ipBlock` rule for the software node's host address to each
+#   policy below.
+# =============================================================================
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aggregators-ingress
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: aggregators
+spec:
+  # Every workload in this directory carries this label.
+  podSelector:
+    matchLabels:
+      maniwani.io/group: aggregators
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # Any pod in the maniwani namespace. In practice: the backend.
+        - podSelector: {}
+      ports:
+        # The four chan aggregators, reddit-aggregator and nsfw-classifier.
+        - protocol: TCP
+          port: 8000
+        # redlib (currently scaled to 0).
+        - protocol: TCP
+          port: 8080

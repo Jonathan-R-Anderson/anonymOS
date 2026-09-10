@@ -1,0 +1,166 @@
+# =============================================================================
+# maniwani data tier — NetworkPolicies
+# =============================================================================
+# WHY THESE ARE MANDATORY, NOT HARDENING THEATRE
+# All three data services are unauthenticated or trivially authenticated on the
+# wire:
+#   postgres  hardcoded weak credentials (dev/dev/dev in compose today)
+#   redis     NO requirepass, NO ACL, NO TLS
+#   the storage gateway  all four buckets carry an anonymous public-read policy
+# Under compose they sat on a host-local Docker bridge. After the split they are
+# CROSS-NODE services whose traffic crosses WireGuard, and the two nodes have
+# only /32 public addresses routed via the public gateway 51.79.64.1 — there is
+# no private interface. The overlay is the outer boundary; these policies are
+# the inner one. Nothing else stops a compromised aggregator pod from reading
+# every session token out of redis or dumping the database.
+#
+# =============================================================================
+# (!) PREREQUISITES — WITHOUT THESE, THIS FILE IS A NO-OP THAT LOOKS LIKE SECURITY
+# =============================================================================
+# 1. k3s must NOT be installed with --disable-network-policy. k3s ships
+#    kube-router as its policy controller by default; disabling it makes every
+#    NetworkPolicy silently inert while still showing up in `kubectl get netpol`.
+#    Verify on the server node:
+#      grep -o 'disable-network-policy' /etc/systemd/system/k3s.service    # expect NO match
+#    and confirm enforcement empirically after applying:
+#      kubectl -n maniwani run np-test --rm -it --restart=Never \
+#        --image=busybox -- nc -zvw3 redis 6379      # expect TIMEOUT, not "open"
+#    (An unlabelled test pod matches none of the allow rules below.)
+#
+# 2. (!) LABEL CONTRACT WITH THE APPLICATION TIER. These policies are FAIL-CLOSED
+#    and they select clients by `app: <compose service name>`. If the app-tier
+#    manifests label their pods differently, the site breaks in the most
+#    confusing possible way: DNS resolves, the Service exists, and connections
+#    just hang. Reconcile before applying. Expected client labels:
+#        app: maniwani   (backend)      -> postgres, redis, the object store
+#        app: anubis     (edge PoW)     -> redis
+#        app: nginx      (edge)         -> the object store
+#        app: seedbox                   -> the object store
+#    Escape hatches are provided so one-off Jobs (bucket sync, pg_restore) do
+#    not need policy edits — add the matching label to the Job's pod template:
+#        maniwani.io/postgres-client: "true"
+#        maniwani.io/redis-client: "true"
+#        maniwani.io/storage-client: "true"
+#
+# 3. APPLY THESE LAST in the cutover, or at least before DNS cutover but after
+#    the app tier is up and verified — so a label mismatch surfaces as a failed
+#    smoke test on the parallel stack, not as an outage on the live one.
+#
+# NOTES ON SCOPE
+#  * Ingress-only. Egress from the data pods is not restricted: none of the
+#    three needs to originate a connection, but locking egress down is a
+#    separate change with its own DNS/CoreDNS gotchas and is a post-cutover
+#    follow-up, not a cutover-day risk.
+#  * Every probe in this tier is an `exec` probe, which travels via the
+#    container runtime and is NOT subject to NetworkPolicy. If anyone converts a
+#    probe to httpGet/tcpSocket, they must also allow the node IP here or the
+#    pod will fail its own health check.
+#  * `kubectl exec` also bypasses these policies (it goes API server -> kubelet
+#    -> runtime), so an operator can always reach a wedged database.
+#  * A policy that selects a pod implicitly denies all other ingress to it, so
+#    no separate default-deny object is needed.
+# =============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress
+  namespace: maniwani
+  labels:
+    app: postgres
+    maniwani.io/tier: data
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        # SINGLE CONSUMER, verified by grep across the repo: only the maniwani
+        # backend speaks Postgres. The aggregators use per-service SQLite, ergo
+        # uses its own ircd.db (deploy-configs/ergo/ircd.yaml has
+        # datastore.postgresql.enabled=false), and seedbox/rtmp/nntp-hub have no
+        # DB at all. If a second client ever appears here, revisit the
+        # connection budget in backend/shared.py first — it assumes sole use of
+        # max_connections=100.
+        - podSelector:
+            matchLabels:
+              app: maniwani
+        # Escape hatch for migration/maintenance Jobs (pg_dump/pg_restore).
+        - podSelector:
+            matchLabels:
+              maniwani.io/postgres-client: "true"
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-ingress
+  namespace: maniwani
+  labels:
+    app: redis
+    maniwani.io/tier: data
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        # backend -> db 0 (cache, pub/sub, presence, analytics, jinja cache)
+        - podSelector:
+            matchLabels:
+              app: maniwani
+        # anubis -> db 1 (proof-of-work challenge store for the public edge).
+        # This is the only declared depends_on edge into the data tier in
+        # docker-compose.yml (`anubis: depends_on: [redis]`, start-order only).
+        # Anubis has no retry logic I could verify, so on a cold start it may
+        # CrashLoopBackOff until redis is up — that converges, but a wedged
+        # Anubis takes the whole public edge with it, so check it explicitly
+        # during the build rather than assuming.
+        - podSelector:
+            matchLabels:
+              app: anubis
+        - podSelector:
+            matchLabels:
+              maniwani.io/redis-client: "true"
+      ports:
+        - port: 6379
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: storage-node-ingress
+  namespace: maniwani
+  labels:
+    app: syndichan-node
+    maniwani.io/tier: storage
+spec:
+  podSelector:
+    matchLabels:
+      app: syndichan-node
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        # backend: uploads + deletes + the static-bucket refresh on every boot
+        - podSelector:
+            matchLabels:
+              app: maniwani
+        # nginx: the user-facing /s3/ media read path.
+        - podSelector:
+            matchLabels:
+              app: nginx
+        # seedbox: S3_ENDPOINT https://syndichan-node:9000
+        - podSelector:
+            matchLabels:
+              app: seedbox
+        # Escape hatch for the one-shot object-store-to-DHT migration Job.
+        - podSelector:
+            matchLabels:
+              maniwani.io/storage-client: "true"
+      ports:
+        - port: 9000
+          protocol: TCP

@@ -1,0 +1,457 @@
+{%- extends "admin-shell.html" %}
+{% set admin_title = "DHT purge" %}
+{% set admin_lede = "What the storage network holds, and how to recall it. Deletions here reach volunteer nodes." %}
+{% block admin_content %}
+<style>
+  .dp-wrap { max-width: 1040px; margin: 0 auto; padding: 16px; color: inherit; }
+  .dp-card { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; padding: 18px; margin-bottom: 18px; color: inherit; }
+  .dp-muted { opacity: var(--sc-muted-alpha, .62); }
+  .dp-mono { font-family: monospace; font-size: .82rem; word-break: break-all; }
+  .dp-in { background: var(--sc-surface-2); color: inherit; border: 1px solid var(--sc-border);
+           border-radius: 6px; padding: 8px 10px; width: 100%; }
+  .dp-warn { border-left: 3px solid #e0a800; padding: 8px 12px; margin: 8px 0;
+             background: var(--sc-surface-2); border-radius: 0 6px 6px 0; }
+  .dp-never { border-left: 3px solid #ff6b6b; padding: 12px; margin: 12px 0;
+              background: var(--sc-surface-2); border-radius: 0 6px 6px 0; }
+  .dp-table { width: 100%; font-size: .84rem; border-collapse: collapse; }
+  .dp-table th, .dp-table td { padding: 7px 8px; border-bottom: 1px solid var(--sc-border);
+                               text-align: left; vertical-align: top; }
+  .dp-table th { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; }
+  .dp-pill { display: inline-block; padding: 1px 8px; border-radius: 999px;
+             font-size: .72rem; font-weight: 700; border: 1px solid var(--sc-border); }
+  .dp-ok { color: #3fb950; border-color: #3fb950; }
+  .dp-bad { color: #ff6b6b; border-color: #ff6b6b; }
+  .dp-neutral { opacity: .7; }
+  .dp-num { font-size: 1.35rem; font-weight: 700; display: block; }
+  .dp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: 12px; }
+  .dp-stat { background: var(--sc-surface-2); border: 1px solid var(--sc-border);
+             border-radius: 8px; padding: 10px 12px; }
+  .dp-stat small { font-size: .72rem; }
+  .dp-scroll { overflow-x: auto; }
+</style>
+
+<div class="dp-wrap">
+  <div class="d-flex justify-content-between align-items-baseline mb-3" style="gap:.75rem">
+    <h2 class="mb-0">Purge data from the DHT</h2>
+    <a href="{{ url_for('admin.dashboard') }}" class="dp-muted" style="color:inherit">&larr; Admin</a>
+  </div>
+
+  {% if error %}
+    <div class="dp-card" style="border-color:#ff6b6b">
+      <strong style="color:#ff6b6b">Nothing was deleted.</strong>
+      <div style="margin-top:6px">{{ error }}</div>
+    </div>
+  {% endif %}
+
+  {# The limits are stated up front, not in a footnote. An operator who reads
+     only the first card must still come away knowing what a purge cannot do. #}
+  <div class="dp-card">
+    <h4 class="mb-2">What a purge here can and cannot reach</h4>
+    <div class="dp-warn">
+      <strong>Shards already placed on other peers are recalled — holder by holder,
+      and reported holder by holder.</strong>
+      <div class="dp-muted" style="margin-top:6px;font-size:.86rem">{{ remote_note }}</div>
+    </div>
+    <div class="dp-never">
+      <strong>A holder that never answers keeps its shard.</strong>
+      <div class="dp-muted" style="margin-top:6px;font-size:.86rem">
+        Nothing can reach a disk that is offline. Those holders are kept in the
+        node's recall ledger and retried in the background, and they are reported
+        as <code>unreachable</code> — never as deleted, and never rounded up into
+        an overall "purged".
+      </div>
+    </div>
+    <div class="dp-muted" style="font-size:.86rem">
+      What it does reach: shards on the peers that answer, the object on the storage
+      node's gateway, the copy in the site's own object store, the node's own shard
+      files for that object, this worker's read cache, the database rows that point
+      at it, and the content hash (blocklisted so the same bytes cannot be
+      re-uploaded).
+    </div>
+  </div>
+
+  {# THE LISTING. On the same page as the purge form on purpose: an operator who
+     has to carry a canonical target between two screens is an operator who will
+     eventually carry the wrong one. #}
+  <div class="dp-card">
+    <h4 class="mb-2">What the DHT holds</h4>
+    {% if ledger and ledger.available %}
+      <div class="dp-stats mb-3">
+        <div class="dp-stat"><span class="dp-num">{{ ledger.objects }}</span><small class="dp-muted">objects in the ledger</small></div>
+        <div class="dp-stat"><span class="dp-num">{{ ledger.fully_dispersed }}</span><small class="dp-muted">fully dispersed</small></div>
+        <div class="dp-stat"><span class="dp-num">{{ ledger.under_replicated }}</span><small class="dp-muted">under-replicated</small></div>
+        <div class="dp-stat"><span class="dp-num">{{ ledger.local_only }}</span><small class="dp-muted">no remote copy at all</small></div>
+        <div class="dp-stat"><span class="dp-num">{{ ledger.recalls_outstanding }}</span><small class="dp-muted">recalls outstanding</small></div>
+        <div class="dp-stat"><span class="dp-num">{{ ledger.recall_holders_left }}</span><small class="dp-muted">holders still to answer</small></div>
+        {% if ledger.recalls_deferred %}
+        <div class="dp-stat"><span class="dp-num">{{ ledger.recalls_deferred }}</span><small class="dp-muted">backed off to the long retry</small></div>
+        {% endif %}
+        {% if ledger.recalls_unreadable %}
+        <div class="dp-stat"><span class="dp-num">{{ ledger.recalls_unreadable }}</span><small class="dp-muted">tombstones that would not parse — their holders are unknown, not zero</small></div>
+        {% endif %}
+      </div>
+    {% elif ledger %}
+      <div class="dp-warn">
+        The node's placement ledger could not be read
+        (<span class="dp-mono">{{ ledger.error }}</span>). Counts below fall back to
+        arithmetic where they can and say so; nothing here is guessed at.
+      </div>
+    {% endif %}
+
+    <form method="get" action="{{ url_for('admin.dht_purge') }}" class="d-flex" style="gap:10px;flex-wrap:wrap">
+      <div style="min-width:12rem">
+        <label style="font-size:.8rem;font-weight:600">Bucket</label>
+        <select class="dp-in" name="bucket">
+          {% for name, purpose in buckets %}
+            <option value="{{ name }}" {% if name == list_bucket %}selected{% endif %}>{{ name }} — {{ purpose }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;min-width:12rem">
+        <label style="font-size:.8rem;font-weight:600">Key prefix (optional)</label>
+        <input class="dp-in dp-mono" name="prefix" value="{{ list_prefix }}" autocomplete="off">
+      </div>
+      <div style="align-self:flex-end"><button class="btn btn-secondary">List</button></div>
+    </form>
+
+    {% if listing and listing.available %}
+      <div class="dp-scroll" style="margin-top:14px">
+        <table class="dp-table">
+          <thead><tr>
+            <th>Object</th><th>Size</th><th>Chunks</th><th>Shards</th>
+            <th>Holders</th><th>Durability</th><th></th>
+          </tr></thead>
+          <tbody>
+          {% for o in listing.objects %}
+            <tr>
+              <td class="dp-mono">{{ o.key }}
+                {% if not o.object_present %}<div class="dp-muted" style="font-size:.72rem">manifest gone — shards still being recalled</div>{% endif %}
+              </td>
+              <td>{{ '%.2f'|format((o.plain_size or 0) / 1048576.0) }} MiB</td>
+              <td>{{ o.chunks }}</td>
+              <td>{{ o.shard_count }}
+                <div class="dp-muted" style="font-size:.72rem">{{ o.data_shards }}+{{ o.parity_shards }}, observed</div>
+              </td>
+              <td>{{ o.distinct_holders }}
+                {% if o.recall %}<div class="dp-muted" style="font-size:.72rem">recall: {{ o.recall.shards|length }} shard(s) outstanding</div>{% endif %}
+              </td>
+              <td>
+                {% if o.fully_dispersed %}<span class="dp-pill dp-ok">dispersed</span>
+                {% elif o.under_replicated %}<span class="dp-pill dp-bad">under-replicated</span>
+                {% else %}<span class="dp-pill dp-neutral">durable</span>{% endif %}
+                <div class="dp-muted" style="font-size:.72rem">weakest chunk {{ o.weakest_chunk }}/{{ o.durable_threshold }} holders</div>
+              </td>
+              <td style="white-space:nowrap">
+                <a class="dp-mono" style="font-size:.75rem"
+                   href="{{ url_for('admin.dht_purge_object', target=o.canonical) }}">shards &rarr;</a>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if listing.next_marker %}
+        <a class="dp-muted" style="font-size:.82rem"
+           href="{{ url_for('admin.dht_purge', bucket=listing.bucket, prefix=listing.prefix, marker=listing.next_marker) }}">next page &rarr;</a>
+      {% endif %}
+      {% if not listing.objects %}
+        <p class="dp-muted" style="margin-top:12px">No ledger rows in {{ listing.bucket }}{% if listing.prefix %} under {{ listing.prefix }}{% endif %}.</p>
+      {% endif %}
+    {% elif listing %}
+      <div class="dp-warn" style="margin-top:12px">
+        Could not list {{ listing.bucket }}: <span class="dp-mono">{{ listing.error }}</span>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if detail %}
+  <div class="dp-card">
+    <h4 class="mb-1">Shards of one object</h4>
+    <div class="dp-mono dp-muted mb-3">{{ detail.canonical }}</div>
+    {% if not detail.available %}
+      <div class="dp-warn">The ledger could not be read: <span class="dp-mono">{{ detail.error }}</span></div>
+    {% else %}
+      <div class="dp-stats mb-3">
+        <div class="dp-stat"><span class="dp-num">{{ detail.chunks }}</span><small class="dp-muted">chunks</small></div>
+        <div class="dp-stat"><span class="dp-num">{{ detail.shard_count }}</span><small class="dp-muted">shards</small></div>
+        <div class="dp-stat"><span class="dp-num">{{ detail.distinct_holders }}</span><small class="dp-muted">distinct holders</small></div>
+        <div class="dp-stat"><span class="dp-num">{{ detail.weakest_chunk }}</span><small class="dp-muted">weakest chunk (need {{ detail.durable_threshold }})</small></div>
+      </div>
+      <form method="post" action="{{ url_for('admin.dht_purge_recall') }}">
+        {{ csrf_input() }}
+        <input type="hidden" name="target" value="{{ detail.canonical }}">
+        <div class="dp-scroll">
+          <table class="dp-table">
+            <thead><tr><th></th><th>Shard</th><th>Chunk / index</th><th>Size</th><th>Local</th><th>Holders</th></tr></thead>
+            <tbody>
+            {% for s in detail.shards %}
+              <tr>
+                <td><input type="checkbox" name="shard" value="{{ s.shard_id }}"></td>
+                <td class="dp-mono" style="font-size:.7rem">{{ s.shard_id[:16] }}…</td>
+                <td>{{ s.chunk_index }} / {{ s.shard_index }}</td>
+                <td>{{ s.size }}</td>
+                <td>{% if s.local %}yes{% else %}<span class="dp-muted">no</span>{% endif %}</td>
+                <td class="dp-mono" style="font-size:.7rem">
+                  {% for h in s.holders %}<div>{{ h }}</div>{% else %}<span class="dp-muted">none confirmed</span>{% endfor %}
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="mb-2" style="margin-top:12px">
+          <label style="font-size:.8rem;font-weight:600">
+            To recall the ticked shards, type the object exactly: <code>{{ detail.canonical }}</code>
+          </label>
+          <input class="dp-in dp-mono" name="confirm" autocomplete="off" spellcheck="false"
+                 placeholder="{{ detail.canonical }}">
+        </div>
+        <div class="mb-2">
+          <label style="font-size:.8rem;font-weight:600">Reason (recorded in the audit log)</label>
+          <input class="dp-in" name="reason" value="{{ reason }}" autocomplete="off">
+        </div>
+        <button class="btn btn-danger">Recall the ticked shards</button>
+        <span class="dp-muted" style="font-size:.82rem;margin-left:8px">
+          Tick nothing to recall every shard. The object itself is not deleted, so the
+          node will place fresh shards for it — on other peers, because a holder that
+          honours a recall also blocklists the shard id.
+        </span>
+      </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="dp-card">
+    <h4 class="mb-2">Target</h4>
+    <form method="post" action="{{ url_for('admin.dht_purge_preview') }}">
+      {{ csrf_input() }}
+      <div class="d-flex" style="gap:10px;flex-wrap:wrap">
+        <div style="flex:2;min-width:16rem">
+          <label style="font-size:.8rem;font-weight:600">Object</label>
+          <input class="dp-in dp-mono" name="target" value="{{ target }}" autocomplete="off"
+                 placeholder="media:1234   or   attachments/1234.png">
+        </div>
+        <div style="flex:2;min-width:14rem">
+          <label style="font-size:.8rem;font-weight:600">Reason (recorded in the audit log)</label>
+          <input class="dp-in" name="reason" value="{{ reason }}" autocomplete="off">
+        </div>
+        <div style="align-self:flex-end"><button class="btn btn-primary">Preview</button></div>
+      </div>
+    </form>
+    <div class="dp-muted" style="margin-top:10px;font-size:.82rem">
+      <code>media:&lt;id&gt;</code> covers the attachment, its thumbnail and its hover
+      preview, plus the rows that reference them.
+      <code>&lt;bucket&gt;/&lt;key&gt;</code> targets exactly one object. Known buckets:
+      {% for name, purpose in buckets %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.
+      A bare number is refused as ambiguous.
+    </div>
+  </div>
+
+  {% if preview %}
+  <div class="dp-card">
+    <h4 class="mb-1">Preview — nothing has been deleted</h4>
+    <div class="dp-mono dp-muted mb-3">{{ preview.target }}</div>
+
+    <div class="dp-stats mb-3">
+      <div class="dp-stat"><span class="dp-num">{{ preview.totals.present }}/{{ preview.totals.objects }}</span><small class="dp-muted">objects found</small></div>
+      <div class="dp-stat"><span class="dp-num">{{ '%.1f'|format(preview.totals.bytes / 1048576.0) }} MiB</span><small class="dp-muted">stored bytes</small></div>
+      <div class="dp-stat"><span class="dp-num">{{ preview.totals.chunks }}</span><small class="dp-muted">chunks (1 MiB)</small></div>
+      <div class="dp-stat"><span class="dp-num">{{ preview.totals.shards }}</span><small class="dp-muted">shards (6+3)</small></div>
+      <div class="dp-stat">
+        <span class="dp-num">{% if preview.remote_holders.known %}{{ preview.remote_holders.count }}{% else %}?{% endif %}</span>
+        <small class="dp-muted">remote holders{% if not preview.remote_holders.known %} — unknown{% endif %}</small>
+      </div>
+    </div>
+
+    {% if preview.remote_holders.known %}
+      <div class="dp-warn">
+        <strong>{{ preview.remote_holders.count }} peer(s) hold shards of this, read from the node's placement ledger.</strong>
+        <div class="dp-muted" style="font-size:.85rem;margin-top:4px">
+          Each is asked to delete before the object is removed here, and each one's
+          answer — deleted, refused, or unreachable — is reported separately below.
+        </div>
+      </div>
+    {% else %}
+      <div class="dp-warn">
+        <strong>Remote holders: unknown, not zero.</strong>
+        <div class="dp-muted" style="font-size:.85rem;margin-top:4px">{{ preview.remote_holders.reason }}</div>
+      </div>
+    {% endif %}
+
+    {% for w in preview.warnings %}
+      <div class="dp-warn">{{ w }}</div>
+    {% endfor %}
+
+    <div class="dp-scroll">
+      <table class="dp-table">
+        <thead><tr><th>Object</th><th>Role</th><th>On the DHT gateway</th><th>In the primary store</th><th>Shards</th></tr></thead>
+        <tbody>
+        {% for o in preview.objects %}
+          <tr>
+            <td class="dp-mono">{{ o.canonical }}</td>
+            <td>{{ o.role }}<div class="dp-muted" style="font-size:.74rem">{{ o.bucket_purpose }}</div></td>
+            <td>
+              {% if o.dht.error == 'not_configured' %}<span class="dp-pill dp-neutral">no DHT configured</span>
+              {% elif o.dht.error %}<span class="dp-pill dp-bad">error</span><div class="dp-muted dp-mono">{{ o.dht.error }}</div>
+              {% elif o.dht.present %}<span class="dp-pill dp-ok">present</span>
+                <div class="dp-muted">{{ o.dht.size }} bytes</div>
+                <div class="dp-muted dp-mono" style="font-size:.7rem">object id {{ o.dht.object_id or '—' }}</div>
+              {% else %}<span class="dp-pill dp-neutral">absent</span>{% endif %}
+            </td>
+            <td>
+              {% if o.primary.error == 'not_configured' %}<span class="dp-pill dp-neutral">n/a</span>
+              {% elif o.primary.error %}<span class="dp-pill dp-bad">error</span>
+              {% elif o.primary.present %}<span class="dp-pill dp-ok">present</span><div class="dp-muted">{{ o.primary.size }} bytes</div>
+              {% else %}<span class="dp-pill dp-neutral">absent</span>{% endif %}
+            </td>
+            <td>
+              {% if o.shards.chunks %}{{ o.shards.shards }} across {{ o.shards.chunks }} chunk(s)
+                <div class="dp-muted" style="font-size:.74rem">
+                  {{ o.shards.data_shards }}+{{ o.shards.parity_shards }},
+                  {% if o.shards.derived %}computed from the stored size — the ledger did not answer{% else %}read from the node's placement ledger{% endif %}
+                </div>
+                {% if o.placement and o.placement.available %}
+                  <div class="dp-muted" style="font-size:.74rem">{{ o.placement.distinct_holders }} holder(s)</div>
+                  <a class="dp-mono" style="font-size:.72rem"
+                     href="{{ url_for('admin.dht_purge_object', target=o.canonical) }}">per-shard view &rarr;</a>
+                {% endif %}
+              {% else %}<span class="dp-muted">—</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if preview.media %}
+      <div style="margin-top:14px">
+        <strong>Media #{{ preview.media.id }}</strong> · .{{ preview.media.ext }}
+        {% if preview.media.offloaded %}· offloaded to the DHT{% else %}· never offloaded{% endif %}
+        <div class="dp-mono dp-muted">sha256 {{ preview.media.sha256 or '(none recorded)' }}</div>
+        <div class="dp-muted" style="margin-top:4px">
+          Referenced by {{ preview.media.references.posts }} post(s) and
+          {{ preview.media.references.videos }} video row(s).
+        </div>
+        {% for c in preview.media.references.examples %}
+          <div class="dp-muted" style="font-size:.8rem">/{{ c.board }}/ · thread {{ c.thread_id }} · post {{ c.post_id }}: {{ c.excerpt }}</div>
+        {% endfor %}
+      </div>
+    {% elif preview.media_hint %}
+      <div class="dp-warn" style="margin-top:14px">{{ preview.media_hint.note }}</div>
+    {% endif %}
+
+    <hr style="border-color:var(--sc-border)">
+    <form method="post" action="{{ url_for('admin.dht_purge_execute') }}">
+      {{ csrf_input() }}
+      <input type="hidden" name="target" value="{{ preview.target }}">
+      <input type="hidden" name="reason" value="{{ reason }}">
+      <div class="mb-2">
+        <label style="font-size:.8rem;font-weight:600">
+          To confirm, type the target exactly: <code>{{ preview.target }}</code>
+        </label>
+        <input class="dp-in dp-mono" name="confirm" autocomplete="off" spellcheck="false"
+               placeholder="{{ preview.target }}">
+      </div>
+      {% if preview.media %}
+      <div class="mb-2" style="font-size:.85rem">
+        <label style="display:block"><input type="checkbox" name="delete_rows" checked>
+          Delete the media row and the {{ preview.media.references.posts }} post(s) that embed it
+          <span class="dp-muted">(unchecked leaves rows pointing at bytes that are gone)</span></label>
+        <label style="display:block"><input type="checkbox" name="blocklist_hash" checked>
+          Blocklist the sha256 so these bytes cannot be re-uploaded or re-offloaded</label>
+      </div>
+      {% endif %}
+      <button class="btn btn-danger">Purge this target</button>
+      <span class="dp-muted" style="font-size:.82rem;margin-left:8px">
+        Irreversible. Remote shards are recalled first, and every holder that
+        refuses or does not answer is named in the report.
+      </span>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if result %}
+  <div class="dp-card">
+    <h4 class="mb-1">Result — reported per layer</h4>
+    <div class="dp-mono dp-muted mb-2">{{ result.target }} · outcome: <strong>{{ result.outcome }}</strong></div>
+    <div class="dp-muted mb-3" style="font-size:.83rem">
+      There is no single "success" here on purpose: this operation reaches some
+      layers fully, some partially, and some not at all.
+    </div>
+    <div class="dp-scroll">
+      <table class="dp-table">
+        <thead><tr><th>Layer</th><th>Status</th><th>What that means</th></tr></thead>
+        <tbody>
+        {% for l in result.layers %}
+          <tr>
+            <td class="dp-mono">{{ l.layer }}{% if l.object %}<div class="dp-muted" style="font-size:.72rem">{{ l.object }}</div>{% endif %}</td>
+            <td>
+              <span class="dp-pill {% if l.status in ('deleted','released','retired','evicted','blocked','recalled') %}dp-ok{% elif l.status in ('error','still_present','unavailable','ledger_unreadable','unreachable','left_dangling','unverified','partial') %}dp-bad{% else %}dp-neutral{% endif %}">{{ l.status }}</span>
+            </td>
+            <td>{{ l.detail }}
+              {% if l.counts %}
+                <div class="dp-muted" style="font-size:.76rem;margin-top:4px">
+                  deleted {{ l.counts.deleted }} ·
+                  already gone {{ l.counts.absent }} ·
+                  refused {{ l.counts.refused }} ·
+                  unreachable {{ l.counts.unreachable }} ·
+                  pending {{ l.counts.pending }}
+                </div>
+              {% endif %}
+              {% if l.shards %}
+                <details style="margin-top:6px">
+                  <summary class="dp-muted" style="font-size:.76rem;cursor:pointer">per shard, per holder</summary>
+                  <table class="dp-table" style="margin-top:6px">
+                    <thead><tr><th>Shard</th><th>Holder</th><th>Answer</th></tr></thead>
+                    <tbody>
+                    {% for s in l.shards %}{% for h in s.holders %}
+                      <tr>
+                        <td class="dp-mono" style="font-size:.68rem">{{ s.shard_id[:16] }}…</td>
+                        <td class="dp-mono" style="font-size:.68rem">{{ h.peer_id }}</td>
+                        <td><span class="dp-pill {% if h.state in ('deleted','absent') %}dp-ok{% elif h.state == 'refused' %}dp-bad{% else %}dp-neutral{% endif %}">{{ h.state }}</span>
+                          <div class="dp-muted" style="font-size:.7rem">{{ h.detail }}</div></td>
+                      </tr>
+                    {% endfor %}{% endfor %}
+                    </tbody>
+                  </table>
+                </details>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="dp-card">
+    <h4 class="mb-2">Audit log</h4>
+    {% if history %}
+    <div class="dp-scroll">
+      <table class="dp-table">
+        <thead><tr><th>When (UTC)</th><th>Target</th><th>Outcome</th><th>Who</th><th>Reason</th><th>Remote shards</th></tr></thead>
+        <tbody>
+        {% for row in history %}
+          <tr>
+            <td class="dp-mono">{{ row.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td class="dp-mono">{{ row.target }}</td>
+            <td><span class="dp-pill {% if row.outcome == 'purged' %}dp-ok{% elif row.outcome in ('failed','refused','partial') %}dp-bad{% else %}dp-neutral{% endif %}">{{ row.outcome }}</span></td>
+            <td class="dp-mono" style="font-size:.72rem">
+              {{ row.acting_wallet or 'slip %s'|format(row.acting_slip_id) }}
+              <div class="dp-muted">{{ row.acting_ip or '' }}</div>
+            </td>
+            <td>{{ row.reason or '' }}</td>
+            <td>{% if row.remote_shards_recalled %}recalled{% else %}<span class="dp-muted">not recalled</span>{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="dp-muted">No purge has been attempted yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

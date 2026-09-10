@@ -1,0 +1,186 @@
+# =============================================================================
+# maniwani / k3s migration -- MEDIA & AUXILIARY GROUP -- shared objects
+# =============================================================================
+#
+# Group members (all nine are SOFTWARE-node services):
+#   rtmp, seedbox, tracker, coturn, clamav, ergo, glados-tts, nntp-hub, falco
+#
+# -----------------------------------------------------------------------------
+# PLACEMENT
+# -----------------------------------------------------------------------------
+# Every workload in this group carries:
+#     nodeSelector: { maniwani.io/role: software }
+# and every PVC in this group uses:
+#     storageClassName: maniwani-local
+#
+# This is deliberate and is NOT derived from "does it have a volume".  Only
+# postgres, redis and the object store move to the data node.  rtmp (8.2 G), seedbox
+# (5.6 G), clamav (168 M), nntp-hub (48 M) and ergo (tiny) are stateful AND
+# stay on the software node, because the data node's 55 GB free is already
+# ~39% consumed by the object store's 21 G and cannot hold another 14 GB of media volumes.
+#
+# NOTHING in this group may use storageClassName: maniwani-data.
+#
+# -----------------------------------------------------------------------------
+# STORAGE BUDGET FOR THIS GROUP  (software node: 97 GB free)
+# -----------------------------------------------------------------------------
+#   PVC                measured   requested   why the headroom
+#   rtmp-storage        8.2 G      20Gi       recordings + HLS segments accrete
+#   seedbox-data        5.6 G      10Gi       torrent piece cache grows with media
+#   clamav-db           168 M       3Gi       a fully-populated ClamAV sig set is
+#                                             ~1 GB on disk and doubles during a
+#                                             freshclam swap
+#   ergo-data          tiny         1Gi       ircd.db (BoltDB), accounts/channels
+#   nntp-hub-data       48 M        2Gi       SQLite spool, grows with federation
+#                                 ------
+#                                  36Gi  nominal, of 97 GB free.  COMFORTABLE.
+#
+# NOTE: k3s local-path does not enforce capacity -- a PVC is a directory on the
+# node, so these numbers are planning ceilings, not quotas.  The real limit is
+# the node's free space, shared with the app/aggregator groups.  If those two
+# groups together claim more than ~60 GB, revisit this before cutover.
+#
+# -----------------------------------------------------------------------------
+# SECRETS
+# -----------------------------------------------------------------------------
+# Every value that lives in /home/ubuntu/maniwani/.env on the software node is
+# read from the Secret `maniwani-env` (created by the bootstrap layer from the
+# LIVE .env, never from the git checkout).  No secret VALUE appears in any file
+# in this directory.  Keys this group consumes, by name only:
+#
+#   TORRENT_TURN_PASSWORD      coturn  (+ backend ICE config -- one Secret, two
+#                                       consumers; do not fork it)
+#   TORRENT_TURN_HOST          coturn  (+ backend; also fixes the admin
+#                                       torrent-monitor probe, see 40-coturn)
+#   TORRENT_TURN_EXTERNAL_IP   coturn
+#   TORRENT_TURN_USERNAME      coturn
+#   TORRENT_TURN_PORT          coturn
+#   TORRENT_TURNS_PORT         coturn
+#   TORRENT_TURN_MIN_PORT      coturn
+#   TORRENT_TURN_MAX_PORT      coturn
+#   TORRENT_PUBLIC_HOST        seedbox (+ backend)
+#   TORRENT_PUBLIC_SECURE      seedbox (+ backend)
+#   FALCO_INGEST_TOKEN         falco   (+ backend /falco/ingest/<token>)
+#   S3_ACCESS_KEY              seedbox (+ maniwani + the object store)   -- NOT in .env today
+#   S3_SECRET_KEY              seedbox (+ maniwani + the object store)   -- NOT in .env today
+#   NNTP_HUB_ADMIN_TOKEN       nntp-hub -- NOT in .env today; setting it is a
+#                                          cheap hardening win at migration
+#   NNTP_HUB_ALLOW             nntp-hub -- NOT in .env today (allow-all + firewall)
+#
+# Two secrets are NOT in maniwani-env and are handled per-service:
+#   * ergo's oper password bcrypt hash lives inside ircd.yaml -> Secret
+#     `ergo-ircd-config`, created from the LIVE file (see 60-ergo.yaml).
+#   * the TLS private key stays on the host filesystem so the existing certbot
+#     renewal keeps working (see 40-coturn.yaml).
+#
+# -----------------------------------------------------------------------------
+# CUTOVER-ONLY SERVICES -- READ BEFORE APPLYING
+# -----------------------------------------------------------------------------
+# Three workloads claim host ports that the LIVE compose stack holds right now
+# on the software node.  They ship with `replicas: 0` so that `kubectl apply -f
+# k8s/media/` is safe to run today, in parallel, without touching production:
+#
+#     rtmp      hostPort 1935
+#     coturn    hostNetwork: 3478, 5349, 49152-49351
+#     nntp-hub  hostPort 119
+#
+# At cutover: stop the corresponding compose service, then
+#     kubectl -n maniwani scale statefulset/rtmp     --replicas=1
+#     kubectl -n maniwani scale deployment/coturn    --replicas=1
+#     kubectl -n maniwani scale statefulset/nntp-hub --replicas=1
+#
+# The other six (seedbox, tracker, clamav, ergo, glados-tts, falco) are safe to
+# run in parallel today.  Falco is the one caveat: two Falco instances tap the
+# same kernel, so expect duplicate alerts until the compose one is stopped.
+#
+# -----------------------------------------------------------------------------
+# POD SECURITY ADMISSION
+# -----------------------------------------------------------------------------
+# falco needs hostPID + host /etc and /usr mounts, and clamav/rtmp need to run
+# as root.  The `maniwani` namespace must therefore be labelled by the
+# bootstrap layer with:
+#     pod-security.kubernetes.io/enforce: privileged
+# (This file does not define the namespace -- bootstrap owns it.)
+#
+# -----------------------------------------------------------------------------
+# THE SHARED LOG DIRECTORY
+# -----------------------------------------------------------------------------
+# ./maniwani_logs is one host bind directory written by ~9 containers at once.
+# Kubernetes has no many-writer bind mount unless we add NFS/Longhorn, which
+# neither node can provide.  Translation chosen: keep it as a hostPath on the
+# software node (`/var/lib/maniwani/logs`), which is safe ONLY because every
+# writer in this group is nodeSelector-pinned there.
+#
+# The compose `log-init` one-shot becomes a per-pod initContainer that mkdirs
+# its own subdirectory and chmods it 0777.  Doing it per pod (rather than one
+# cluster-wide Job) removes the ordering dependency entirely.
+#
+# Moving these services to stdout-only logging is a FOLLOW-UP, not a migration
+# step: rtmp's supervisord, clamav's tee-to-FIFO entrypoint and the Node
+# logger.js all write files by design, and changing that is an application
+# change.
+#
+# The bootstrap layer must pre-create the directory on the software node:
+#     sudo mkdir -p /var/lib/maniwani/logs && sudo chmod 0777 /var/lib/maniwani/logs
+# (hostPath type DirectoryOrCreate also creates it, but as root:root 0755,
+# which the initContainers then widen.)
+# =============================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maniwani-media-config
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: media
+data:
+  # ---------------------------------------------------------------------------
+  # TRACKER_PORT is the single in-cluster source of truth for the BitTorrent
+  # tracker port.  It is consumed by two services that must never drift:
+  #   * tracker  -> PORT
+  #   * seedbox  -> interpolated into TRACKER_HTTP_ANNOUNCE_URL / _WS_ANNOUNCE_URL
+  # Compose derived both from ${TRACKER_PORT:-8000} in .env.  It is deliberately
+  # NOT read from the maniwani-env Secret here: seedbox builds its announce URLs
+  # with k8s $(VAR) expansion, and an *optional* secretKeyRef that turns out to
+  # be absent leaves the literal string "$(TRACKER_PORT)" in the URL.  A
+  # ConfigMap key is always present, so the expansion is guaranteed.
+  # If .env's TRACKER_PORT is ever changed, change it HERE too.
+  TRACKER_PORT: "8000"
+  # Mirrors ${TRACKER_INTERVAL_MS:-300000} -- announce re-request interval (5 min).
+  TRACKER_INTERVAL_MS: "300000"
+  # Mirrors ${TRACKER_ENABLE_UDP:-false}.  If this is ever flipped to "true",
+  # the tracker Service ALSO needs a second ServicePort with protocol: UDP on
+  # the same number (k8s requires two distinct named ports for TCP+UDP on one
+  # port number).  See the commented block in 30-tracker.yaml.
+  TRACKER_ENABLE_UDP: "false"
+
+  # Seedbox status/HTTP port.  Not in .env; compose used ${SEEDBOX_STATUS_PORT:-8781}.
+  SEEDBOX_STATUS_PORT: "8781"
+
+  # ---------------------------------------------------------------------------
+  # LOAD-BEARING: compose passed SCAN_MAX_SIZE=${CLAMAV_SCAN_MAX_SIZE:-52428800}
+  # (50 MB), but the clamav Dockerfile's own ENV default is only 26214400 (25 MB).
+  # Dropping this silently HALVES the effective upload scan limit.
+  # 512 MB, matching report_evidence.MAX_FILE_BYTES and the clamd limits baked
+  # into clamav/Dockerfile (MaxFileSize / MaxScanSize / StreamMaxLength).
+  #
+  # These four numbers have to agree. Civil-rights evidence fails CLOSED, so a
+  # file the scanner declines to examine is a file the site refuses -- and at
+  # the old 50 MB the attachment path would have rejected exactly the documents
+  # it exists to carry, since a hundred-page colour scan is well over it.
+  CLAMAV_SCAN_MAX_SIZE: "536870912"
+
+  # ---------------------------------------------------------------------------
+  # In-cluster DNS targets.  Compose service names are preserved verbatim as k8s
+  # Service names because they are hardcoded in nginx.conf and in the backend
+  # config; renaming any of them means editing those in the same change.
+  #   nginx.conf:  tracker:8000  seedbox:8781  ergo:8097  the storage gateway
+  #   backend:     CLAMAV_SCAN_URL=http://clamav:5000/scan
+  #                GLADOS_TTS_URL=http://glados-tts:5050
+  #   rtmp/seedbox/falco: http://maniwani:3032
+  MANIWANI_INTERNAL_URL: "http://maniwani.maniwani.svc.cluster.local:3032"
+  # The server storage node is now the primary S3 gateway. Its filesystem
+  # footprint follows the encrypted working set while the DHT carries the
+  # distributed shards.
+  STORAGE_S3_ENDPOINT: "https://syndichan-node.maniwani.svc.cluster.local:9000"

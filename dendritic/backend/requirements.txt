@@ -1,0 +1,25 @@
+# NOTE: the container image does NOT install from this file. backend/Dockerfile
+# installs from Pipfile.lock via pipenv, plus a few explicit pip lines. A package
+# added here alone will be missing at runtime — that happened with eth-account,
+# which looked declared for weeks while automatic delivery could not sign.
+# Add runtime dependencies to the Pipfile or to the Dockerfile's explicit lines.
+Flask
+Flask-RESTful
+Flask-SQLAlchemy
+Markdown
+Pillow
+# Strips the document-information dictionary from evidence PDFs
+# (services/report_evidence.py). Without it PDF attachments are REFUSED rather
+# than stored unscrubbed -- a PDF carries the author, the producing application
+# and often the full local path of the machine that made it.
+#
+# NOTE: the container does NOT install from this file -- see backend/Dockerfile,
+# which installs pypdf explicitly. This line is for local development and for
+# the record; listing something here alone does not put it in the image.
+pypdf
+SQLAlchemy
+eth-account
+psycopg2-binary
+requests
+PyNaCl
+cryptography

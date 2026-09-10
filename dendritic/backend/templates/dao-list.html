@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}DAO — {{ instance_name() }}{% endblock %}
+{% block content %}
+<style>
+  .dao-wrap { max-width: 900px; margin: 0 auto; padding: 20px 16px 48px; color: inherit; }
+  .dao-row { display: block; border: 1px solid var(--sc-border); border-radius: 10px;
+             background: var(--sc-surface); padding: 14px 16px; margin-bottom: 12px;
+             color: inherit; text-decoration: none; }
+  .dao-row:hover { border-color: var(--sc-accent); color: inherit; text-decoration: none; }
+  .dao-pill { font-size: .7rem; border: 1px solid var(--sc-border); border-radius: 999px;
+              padding: 1px 8px; opacity: .8; }
+  .dao-bar { height: 6px; border-radius: 3px; background: var(--sc-surface-2); overflow: hidden;
+             display: flex; margin-top: 8px; }
+  .dao-for { background: #26de81; } .dao-against { background: #ff6b6b; }
+  .dao-muted { opacity: var(--sc-muted-alpha, .62); }
+</style>
+
+<div class="dao-wrap">
+  <h2 class="mb-1">DAO</h2>
+  <p class="dao-muted">
+    Members set policy bounds; an autonomous controller adjusts the network within them.
+    Three councils each decide their own domain.
+  </p>
+
+  <div class="row">
+    <div class="col-md-8">
+      {% if not proposals %}
+        <div class="card"><div class="card-body dao-muted">
+          No proposals yet. If you have a linked wallet you can open the first one.
+        </div></div>
+      {% endif %}
+
+      {% for p in proposals %}
+      {% set t = tallies[p.id] %}
+      <a class="dao-row" href="{{ url_for('dao.proposal', proposal_id=p.id) }}">
+        <div class="d-flex justify-content-between align-items-start" style="gap:.75rem;">
+          <div>
+            <span class="dao-pill">{{ house_labels[p.house] }}</span>
+            <strong class="d-block mt-1">{{ p.title }}</strong>
+          </div>
+          <span class="dao-pill">{{ 'open' if p.is_open else 'closed' }}</span>
+        </div>
+        <div class="small dao-muted mt-2">
+          {{ t.total_count }} vote(s) · weight {{ t['for'].weight }} for / {{ t['against'].weight }} against
+          {% if p.is_open %}· closes {{ p.closes_at.strftime('%Y-%m-%d %H:%M') }} UTC
+          {% else %}· {{ 'passed' if t.passing else 'did not pass' }}{% endif %}
+        </div>
+        {% set decided = t['for'].weight + t['against'].weight %}
+        {% if decided > 0 %}
+        <div class="dao-bar">
+          <div class="dao-for" style="width: {{ (100 * t['for'].weight / decided)|round(1) }}%;"></div>
+          <div class="dao-against" style="width: {{ (100 * t['against'].weight / decided)|round(1) }}%;"></div>
+        </div>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="col-md-4">
+      {% if slip and weight %}
+        {% include "includes/dao-weight.html" %}
+      {% else %}
+        <div class="card mb-3"><div class="card-body">
+          <p class="small mb-2">Log in and link a MetaMask wallet to vote or open proposals.</p>
+          <a class="btn btn-primary btn-sm" href="{{ url_for('slip.landing') }}">Log in</a>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.metamask_help') }}">Get MetaMask</a>
+        </div></div>
+      {% endif %}
+
+      {% if slip and wallet %}
+      <div class="card">
+        <div class="card-header">Open a proposal</div>
+        <div class="card-body">
+          <form method="POST" action="{{ url_for('dao.create') }}">
+            <div class="form-group">
+              <label class="small font-weight-bold">Council</label>
+              <select name="house" id="dao-house" class="form-control form-control-sm">
+                {% for h in houses %}
+                <option value="{{ h }}" data-scope="{{ house_scope[h] }}">{{ house_labels[h] }}</option>
+                {% endfor %}
+              </select>
+              <small class="form-text text-muted" id="dao-house-scope">{{ house_scope[houses[0]] }}</small>
+            </div>
+            <div class="form-group">
+              <label class="small font-weight-bold">Title</label>
+              <input type="text" name="title" class="form-control form-control-sm" maxlength="200" required>
+            </div>
+            <div class="form-group">
+              <label class="small font-weight-bold">Detail</label>
+              <textarea name="body" class="form-control form-control-sm" rows="5"
+                        placeholder="What should change, and what measurable condition justifies it?"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="small font-weight-bold">Open for (days)</label>
+              <input type="number" name="days" class="form-control form-control-sm" value="7" min="1" max="30">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Open proposal</button>
+          </form>
+        </div>
+      </div>
+      {% elif slip %}
+      <div class="card"><div class="card-body small">
+        <a href="{{ url_for('profiles.edit') }}">Link a wallet</a> to vote or open proposals.
+      </div></div>
+      {% endif %}
+
+      <div class="card mt-3">
+        <div class="card-header">How this works</div>
+        <div class="card-body small dao-muted">
+          <p class="mb-2">
+            Votes are recorded here and signed by your wallet, so each one is verifiable
+            independently of this server.
+          </p>
+          <p class="mb-2">
+            On-chain execution arrives with the Governance contract; today a passing
+            proposal is a decision of record, not an automatic change.
+          </p>
+          Why crypto, and how it works &rarr;
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Keep the scope hint honest: it described the first council no matter which
+// one was selected.
+(function () {
+  var select = document.getElementById("dao-house");
+  var hint = document.getElementById("dao-house-scope");
+  if (!select || !hint) return;
+  function sync() {
+    var opt = select.options[select.selectedIndex];
+    hint.textContent = (opt && opt.getAttribute("data-scope")) || "";
+  }
+  select.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}

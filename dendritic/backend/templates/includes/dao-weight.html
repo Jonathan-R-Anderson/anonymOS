@@ -1,0 +1,39 @@
+{#- Governance-weight breakdown. Shown wherever someone can vote, because a
+    weighting they cannot inspect is indistinguishable from an arbitrary one. -#}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Your voting weight</span>
+    <strong>{{ weight }}</strong>
+  </div>
+  <div class="card-body">
+    <p class="small text-muted mb-3">
+      Governance here is <strong>not</strong> token-weighted — holding CREDIT buys no
+      influence. Weight comes from verified contribution, reputation, participation
+      and (least of all) stake.
+    </p>
+    <table class="table table-sm mb-2" style="font-size:.82rem;">
+      <tbody>
+        {% for c in components %}
+        <tr>
+          <td style="width:2.6rem;opacity:.7;">{{ c.weight }}%</td>
+          <td>
+            {{ c.label }}
+            <div class="small text-muted">{{ c.detail }}</div>
+          </td>
+          <td class="text-right" style="white-space:nowrap;">
+            {% if c.available %}
+              {{ '%.2f'|format(c.value) }}
+            {% else %}
+              <span class="text-muted">not measurable yet</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="small text-muted mb-0">
+      Until epochs settle and the reputation graph exists, weight floors at
+      <strong>one member, one vote</strong>, anchored to your linked wallet.
+    </p>
+  </div>
+</div>

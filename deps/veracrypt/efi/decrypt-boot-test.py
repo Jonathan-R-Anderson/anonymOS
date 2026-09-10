@@ -26,7 +26,10 @@ for p in (sock_path, log):
 subprocess.run(["dd","if=/dev/zero","of="+esp,"bs=1M","count=48","status=none"], check=True)
 subprocess.run(["mformat","-i",esp,"-F","::"], check=True)
 subprocess.run(["mmd","-i",esp,"::/EFI","::/EFI/BOOT"], check=True)
-subprocess.run(["mcopy","-i",esp,BLD+"/preboot.efi","::/EFI/BOOT/BOOTX64.EFI"], check=True)
+# Use the PROOF loader: it carries the routing/diagnostic markers this test greps for. The
+# production preboot.efi is deliberately silent about them (deniability), so it cannot be tested
+# by string-matching serial — that is the point.
+subprocess.run(["mcopy","-i",esp,BLD+"/preboot-proof.efi","::/EFI/BOOT/BOOTX64.EFI"], check=True)
 subprocess.run(["cp",OVMF_VARS,varsfd], check=True)
 
 qemu = subprocess.Popen([

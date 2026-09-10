@@ -1,0 +1,42 @@
+.idea/
+__pycache__/
+
+# Shared log folder (bind-mounted into every container at /var/log/maniwani)
+maniwani_logs/
+storage-client/
+*.db
+*.pyc
+uploads
+secret
+backend/node_modules/
+deploy-configs/tls/*.crt
+deploy-configs/tls/*.csr
+deploy-configs/tls/*.key
+deploy-configs/tls/*.pem
+deploy-configs/tls/*.srl
+
+# Emacs files
+*~
+
+.claude/
+.vscode/
+.codex
+
+# Bulk question/challenge exports. questions.json is 270 MB — the converted
+# form is ~14 MB and lives in the database and on the DHT, which is where it
+# belongs. Committing the raw export would put a quarter-gigabyte of per-user
+# rating arrays in every clone forever, to no purpose.
+questions.json
+*.export.json
+
+# ── committed-into-anonymOS hygiene: never track generated deps or secrets ──
+# (frontend/node_modules + .env slipped in when the tree was first added; see
+#  git push protection block. Removed from tracking + ignored here.)
+node_modules/
+**/node_modules/
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key

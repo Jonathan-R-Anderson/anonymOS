@@ -152,6 +152,11 @@ DBUSLAUNCH_BIN := build/hos-dbus-launch
 # block nor a shell wrapper can set a variable for a keybinding-launched app (see the source).
 WLTRACE_BIN   := build/hos-wl-trace
 SSHDLAUNCH_BIN := build/hos-sshd-launch        # SSH-in: AF_UNIX->dropbear -i launcher
+# AXON anonymous-overlay node (dendritic/syndichan-node) — the I2P replacement, a static Go binary.
+# OPT-IN: built by `make syndichan-node` and staged only if the binary exists (see stage-iso-tree),
+# so a normal build without a Go toolchain is unaffected.
+SYNDICHAN_NODE_SRC := dendritic/dendritic-node
+SYNDICHAN_NODE_BIN := build/syndichan-node
 DROPBEAR_SERVER_BIN := deps/dropbear/install/bin/dropbear   # SSH-in: the SSH server (inetd mode)
 DBUSTEST_BIN := build/hos-dbus-test
 INOTIFYTEST_BIN := build/inotify-test
@@ -591,6 +596,17 @@ $(SSHDLAUNCH_BIN): src/util/hos-sshd-launch.c
 	@echo "==== Building hos-sshd-launch (SSH-in: AF_UNIX -> dropbear -i per connection) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/hos-sshd-launch.c
 
+# AXON node (dendritic): a self-contained static Go binary (CGO_ENABLED=0), so it needs no C
+# runtime on anonymOS.  Opt-in — `make syndichan-node`.  Go's own build cache makes re-runs cheap,
+# so we key the target on go.mod and let `make syndichan-node` force a source re-check.
+.PHONY: syndichan-node
+syndichan-node: $(SYNDICHAN_NODE_BIN)
+$(SYNDICHAN_NODE_BIN): $(SYNDICHAN_NODE_SRC)/go.mod
+	@command -v go >/dev/null || { echo "[axon] Go toolchain required to build the AXON node (skipping)"; exit 1; }
+	@echo "==== Building syndichan-node (AXON anonymous-overlay node; static linux/amd64) ===="
+	cd $(SYNDICHAN_NODE_SRC) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o $(abspath $@) ./cmd/syndichan-node
+	@echo "[axon] built $@ ($$(du -h $@ | cut -f1), static $$(head -c20 $@ | od -An -tx1 | grep -q '7f 45 4c 46' && echo ELF64))"
+
 $(DROPBEAR_SERVER_BIN): deps/dropbear/Makefile
 	$(MAKE) -C deps/dropbear
 
@@ -907,6 +923,17 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 		echo "Included SSH-in (dropbear server + hos-sshd-launch; remote via lkl-boot tcp/22 bridge)"; \
 	else \
 		echo "SSH-in NOT staged (dropbear server or launcher missing)"; \
+	fi
+
+	@# AXON anonymous-overlay node (dendritic/syndichan-node) — the I2P replacement.  Staged as a
+	@# boot module so it is PRESENT in the image; launched on demand, NOT auto-started at boot yet
+	@# (it needs its anonymizing transport wired — see roadmap/DENDRITIC_NETWORK_ROADMAP.md).
+	@if [ -f $(SYNDICHAN_NODE_BIN) ]; then \
+		cp $(SYNDICHAN_NODE_BIN) cd/syndichan-node; \
+		printf '    module_path: boot():/syndichan-node\n' >> cd/boot/limine/limine.conf; \
+		echo "Included syndichan-node (AXON anonymous-overlay node, dendritic)"; \
+	else \
+		echo "AXON node NOT staged (build it: make syndichan-node)"; \
 	fi
 	@# M0: stage the REAL system dbus-daemon (dynamic musl) + libdbus-1.so.3 + dbus-send + launcher
 	@if [ -f deps/dbus-build/install/bin/dbus-daemon ]; then \

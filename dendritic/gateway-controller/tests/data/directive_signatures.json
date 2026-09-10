@@ -1,0 +1,47 @@
+{
+  "0000": {
+    "address": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+    "message": "hello",
+    "signature": "0xe5ddc160e4c8f92de507c7db9b982d4f9b7197bfa421864aeadc586bc96b09ae0ba0c5b131650ae4994cff1839341d00f3735ef5abc62ac8fe2cf50f65208e2a1b"
+  },
+  "0001": {
+    "address": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+    "message": "syndichan network directive v1\nkind: move\nsequence: 3\nissued_at: 0\nnot_before: 0\nemergency: no\norigin_domain: syndichan.net\norigin_address: -\norigin_key: -\nnote: -",
+    "signature": "0x51ce62bd0dab9615349a412c33893a3cc3fbf43906a497f40f0013a4ea135c1402fb7b9ce3e15d6596777e87b1c158b0285a66bdbbac398248cf9045e7d92bdd1b"
+  },
+  "0002": {
+    "address": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+    "message": "",
+    "signature": "0x0ac02a3eb3039b7a3ebb6a35f1e0dd31a4ed51781205a2c193354752a25edad50593868baf38c519b78bdc61a23c3f55e058c29f8b83d79ae48cc47d931afaed1b"
+  },
+  "0100": {
+    "address": "0x258f4ed0560e290a95066d9dee3628f2f179302b",
+    "message": "hello",
+    "signature": "0xc5213ec77383e942d26948acb105d2f5b01d89e0d45e8a754378b5a110f66e7d58aeba42a657ab674b951ba49254578c8a4e0a23eec7246f1e39e5e4c0520d6e1b"
+  },
+  "0101": {
+    "address": "0x258f4ed0560e290a95066d9dee3628f2f179302b",
+    "message": "syndichan network directive v1\nkind: move\nsequence: 3\nissued_at: 0\nnot_before: 0\nemergency: no\norigin_domain: syndichan.net\norigin_address: -\norigin_key: -\nnote: -",
+    "signature": "0x46d818bcb8ecb845bd66c84e6b7fda785459ea7373cfc89c5db98068d5f8c1b34685feb628bb9722d9bbdee7fe739055c3d9c68deeee6fbdae222518ae3f041c1b"
+  },
+  "0102": {
+    "address": "0x258f4ed0560e290a95066d9dee3628f2f179302b",
+    "message": "",
+    "signature": "0x51558c1ec9de487cb930a2a42f400bc711596d322a1847922a91a3d0a18c1ba624c848419d87116f115b5f6ed76c24aef9cd18026a6090e3ae03364041110c6c1c"
+  },
+  "0200": {
+    "address": "0x79959fa569d3c2f15cac4870bb6e24a8c3e8c7d9",
+    "message": "hello",
+    "signature": "0xf91f2d7d1ebc1da1372b3ca6c53811d63c9c034c7f3e79d72cfae2bd44efd448080093d0c8dc2b655cbf23200bde9d416babdc88811d4d23ef95a4e0ec5c182d1c"
+  },
+  "0201": {
+    "address": "0x79959fa569d3c2f15cac4870bb6e24a8c3e8c7d9",
+    "message": "syndichan network directive v1\nkind: move\nsequence: 3\nissued_at: 0\nnot_before: 0\nemergency: no\norigin_domain: syndichan.net\norigin_address: -\norigin_key: -\nnote: -",
+    "signature": "0x0d294afb2752a92ef1ce7c0fb6c5c3fdd5f5a027cf276856819b30edf35988830bf21e3a779382475b70324d17437cb3b3d0b5ae7802af27faa9a2a7c9965c921b"
+  },
+  "0202": {
+    "address": "0x79959fa569d3c2f15cac4870bb6e24a8c3e8c7d9",
+    "message": "",
+    "signature": "0x2c659594857b4e45df4c7013fc37b10ce2c8b63f839e423ae0331e09c804e56e526ae15951cb71fd5ccfd7aabff4ce48607bf0e2b30ce879bab4f6da0ad9bdf51b"
+  }
+}

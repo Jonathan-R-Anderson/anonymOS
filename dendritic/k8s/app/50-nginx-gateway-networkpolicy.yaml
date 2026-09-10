@@ -1,0 +1,23 @@
+# The public edge remains open on 80/443. The separate PROXY-protocol origin
+# listener is reachable only from verified volunteer gateways. The gateway
+# controller owns the 9443 rule and reconciles its exact /32 and /128 sources
+# from the healthy verified registry. This checked-in baseline intentionally
+# denies 9443 until that first successful reconciliation.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nginx-gateway-ingress
+  namespace: maniwani
+  labels:
+    app: nginx
+    maniwani.io/tier: edge
+spec:
+  podSelector:
+    matchLabels:
+      app: nginx
+  policyTypes: ["Ingress"]
+  ingress:
+    # Ordinary public site and ACME traffic.
+    - ports:
+        - {port: 80, protocol: TCP}
+        - {port: 443, protocol: TCP}

@@ -1,0 +1,119 @@
+{# Admin-authored updates, shown ONLY to signed-in slips as a small dismissible
+   pop-up. Replaces the old front-page "Updates" section.
+
+   The content is fetched from /updates.json (empty for anonymous visitors), so
+   base.html stays cheap on every page and the pop-up appears site-wide, not
+   just on the front page. Dismissal is per-update in localStorage, so a viewer
+   who closed an update never sees it again and is never nagged.
+
+   Theme-aware: --sc-* surfaces, text inherited. #}
+<div id="slip-update-popup" class="slip-update-popup" role="status" aria-live="polite" hidden>
+  <button type="button" class="slip-update-popup__close" aria-label="Dismiss">&times;</button>
+  <div class="slip-update-popup__title" id="slip-update-title"></div>
+  <div class="slip-update-popup__meta" id="slip-update-meta"></div>
+  <div class="slip-update-popup__body" id="slip-update-body"></div>
+</div>
+
+<style>
+  .slip-update-popup {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 11000;
+    width: min(360px, calc(100vw - 36px));
+    background: var(--sc-surface);
+    color: inherit;
+    border: 1px solid var(--sc-border);
+    border-left: 3px solid var(--sc-accent);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .28);
+    padding: 14px 16px 14px;
+    animation: slip-update-in 260ms ease;
+  }
+  @keyframes slip-update-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .slip-update-popup__close {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: .55;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 6px;
+  }
+  .slip-update-popup__close:hover { opacity: 1; }
+  .slip-update-popup__title { font-weight: 700; padding-right: 1.5rem; margin-bottom: .15rem; }
+  .slip-update-popup__meta { font-size: .74rem; opacity: var(--sc-muted-alpha); margin-bottom: .5rem; }
+  .slip-update-popup__body { line-height: 1.5; white-space: pre-wrap; }
+  .slip-update-popup__body img,
+  .slip-update-popup__body video,
+  .slip-update-popup__body iframe { max-width: 100%; height: auto; border-radius: 6px; }
+  @media (prefers-reduced-motion: reduce) {
+    .slip-update-popup { animation: none; }
+  }
+</style>
+
+<script>
+(function () {
+  // Anonymous visitors never see this: the endpoint returns [] for them, and
+  // base.html only includes this file when a slip is signed in. The endpoint
+  // guard is the real one; the template guard just avoids a wasted fetch.
+  var STORE_KEY = 'slip-updates-dismissed';
+
+  function dismissed() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
+    catch (e) { return []; }
+  }
+  function markDismissed(id) {
+    var list = dismissed();
+    if (list.indexOf(id) === -1) { list.push(id); }
+    // Keep the list bounded so it cannot grow without limit.
+    while (list.length > 200) { list.shift(); }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  var popup = document.getElementById('slip-update-popup');
+  if (!popup) { return; }
+  var titleEl = document.getElementById('slip-update-title');
+  var metaEl = document.getElementById('slip-update-meta');
+  var bodyEl = document.getElementById('slip-update-body');
+  var current = null;
+
+  function show(update) {
+    current = update;
+    titleEl.textContent = update.title || 'Update';
+    titleEl.hidden = !update.title;
+    metaEl.textContent = update.created_at_display || '';
+    // Body is admin-authored HTML (same trust model as the front-page greeting,
+    // which only admins can edit), so it is rendered as markup deliberately.
+    bodyEl.innerHTML = update.body || '';
+    popup.hidden = false;
+  }
+
+  function close() {
+    if (current) { markDismissed(current.id); }
+    popup.hidden = true;
+    current = null;
+  }
+  popup.querySelector('.slip-update-popup__close').addEventListener('click', close);
+
+  fetch('/updates.json', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !Array.isArray(data.updates)) { return; }
+      var seen = dismissed();
+      // Newest first; show the first the viewer has not already dismissed. One
+      // at a time, so it is a gentle nudge, not a wall.
+      for (var i = 0; i < data.updates.length; i++) {
+        if (seen.indexOf(data.updates[i].id) === -1) { show(data.updates[i]); return; }
+      }
+    })
+    .catch(function () {});
+})();
+</script>

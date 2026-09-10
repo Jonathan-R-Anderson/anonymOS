@@ -1,0 +1,415 @@
+{# The reward-claiming UI, lifted out of the old standalone /claim page so it
+   can live on the AXONCoins page instead.
+
+   Earning and spending were on separate URLs, which made claiming feel like a
+   different system from buying — somebody running a node had to know a second
+   page existed. It is the same balance either way, so it is now one page, and
+   /claim redirects here rather than 404ing links that already exist. #}
+<style>
+  .cl-wrap { max-width: 860px; margin: 0 auto; padding: 22px 16px 60px; color: inherit; }
+  .cl-muted { opacity: var(--sc-muted-alpha, .62); }
+  .cl-card { border: 1px solid var(--sc-border); border-radius: 10px; background: var(--sc-surface);
+             padding: 16px 18px; margin: 16px 0; }
+  .cl-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .cl-row label { margin: 0; font-size: .84rem; }
+  .cl-row input { flex: 1 1 260px; min-width: 0; }
+  .cl-out { font-family: monospace; font-size: .76rem; white-space: pre-wrap;
+            word-break: break-all; margin-top: 10px; }
+  .cl-err { color: #d9534f; }
+  .cl-ok { color: #3c9a5f; }
+  .cl-kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px;
+           font-size: .84rem; margin: 10px 0; }
+  .cl-kv code { word-break: break-all; }
+  .cl-steps { font-size: .86rem; line-height: 1.65; padding-left: 1.2rem; }
+  .cl-amount { font-size: 1.6rem; font-weight: 700; }
+  .cl-check { font-size: .84rem; margin: 3px 0; }
+  .cl-check b { font-weight: 600; }
+</style>
+
+<div class="cl-wrap">
+  <h2 class="mb-1">Claim your rewards</h2>
+  <p class="cl-muted">
+    Rewards are not sent to you &mdash; they are <strong>claimed</strong>. When an epoch
+    settles, the aggregator writes a Merkle root on-chain and your share becomes provable
+    against it, but nothing moves until somebody makes the call. This page makes it.
+  </p>
+
+  {# Supply, read from the chain on every load rather than stored. "Circulating"
+     deducts everything still held by the project's own contracts — minted but
+     unsold in the Treasury, minted but unclaimed in the RewardDistributor. That
+     deduction is the number most projects quietly get wrong in the flattering
+     direction, so what is held back is shown alongside rather than folded in. #}
+  {% if supply and supply.ok %}
+    <div class="cl-card mb-3">
+      <div class="d-flex flex-wrap" style="gap:26px">
+        <div>
+          <div style="font-size:1.6rem;font-weight:700">{{ "%.2f"|format(supply.circulating_pct) }}%</div>
+          <div class="cl-muted small">of supply in circulation</div>
+        </div>
+        <div>
+          <div style="font-size:1.6rem;font-weight:700">{{ "{:,}".format(supply.circulating) }}</div>
+          <div class="cl-muted small">AXONCoins held by people</div>
+        </div>
+        <div>
+          <div style="font-size:1.6rem;font-weight:700">{{ "{:,}".format(supply.total) }}</div>
+          <div class="cl-muted small">total ever minted</div>
+        </div>
+      </div>
+      {% if supply.held %}
+        <p class="cl-muted small mt-3 mb-0">
+          Not counted as circulating, because it is not in anybody's hands yet:
+          {% for name, amount in supply.held.items() %}
+            {% if amount is none %}
+              <strong>{{ name }}</strong> (unreadable){% if not loop.last %},{% endif %}
+            {% else %}
+              <strong>{{ "{:,}".format(amount) }}</strong> in the {{ name }}{% if not loop.last %},{% endif %}
+            {% endif %}
+          {% endfor %}.
+          {% if not supply.exact %}
+            One holding could not be read, so the circulating figure is an upper bound.
+          {% endif %}
+        </p>
+      {% endif %}
+    </div>
+  {% elif supply %}
+    <div class="cl-card mb-3">
+      <p class="cl-muted small mb-0">
+        Supply figures could not be read from the chain just now. They are read live
+        rather than stored, so this page shows nothing instead of showing something out
+        of date.
+      </p>
+    </div>
+  {% endif %}
+
+  {% if not reward_distributor %}
+    <div class="cl-card">
+      <strong>The contracts are not deployed yet.</strong>
+      <p class="cl-muted mb-0" style="font-size:.86rem">
+        No RewardDistributor address is on record, so there is nothing to claim from.
+      </p>
+    </div>
+  {% else %}
+
+  <div class="cl-card">
+    <h5>1. Which node, which epoch</h5>
+    <p class="cl-muted" style="font-size:.84rem">
+      Paste your node's <strong>public key</strong> (the one you registered) or its node id.
+      They are 64 hex characters either way &mdash; the id is the keccak-256 hash of the
+      key, and this tries both so you do not have to know which you have.
+    </p>
+    <div class="cl-row">
+      <label for="cl-node">Node</label>
+      <input id="cl-node" class="form-control form-control-sm" spellcheck="false"
+             placeholder="0x… or bare hex, 64 characters">
+    </div>
+    <div class="cl-row mt-2">
+      <label for="cl-epoch">Epoch</label>
+      <input id="cl-epoch" class="form-control form-control-sm" type="number" min="0" step="1"
+             style="max-width:140px" placeholder="0">
+      <button class="btn btn-primary btn-sm" id="cl-lookup">Look up my reward</button>
+    </div>
+    <div id="cl-lookup-out" class="cl-out cl-muted"></div>
+  </div>
+
+  <div class="cl-card" id="cl-result" style="display:none">
+    <h5>2. What you are owed</h5>
+    <div class="cl-amount"><span id="cl-amount">—</span> <span style="font-size:1rem">AXONCoins</span></div>
+    <div class="cl-kv">
+      <span class="cl-muted">Paid to</span><code id="cl-recipient">—</code>
+      <span class="cl-muted">Node id</span><code id="cl-nodeid">—</code>
+      <span class="cl-muted">Reward root</span><code id="cl-root">—</code>
+    </div>
+    <div id="cl-checks"></div>
+  </div>
+
+  <div class="cl-card" id="cl-act" style="display:none">
+    <h5>3. Send the transaction</h5>
+    <p class="cl-muted" style="font-size:.84rem">
+      The reward is paid to the recipient address recorded in the settlement, not to
+      whoever sends this. So anybody can submit it for you &mdash; if you have no ETH on
+      Ethereum Mainnet for gas, somebody else can press this and the tokens still land in your
+      wallet.
+    </p>
+    <div class="cl-row">
+      <button class="btn btn-outline-secondary btn-sm" id="cl-connect">Connect wallet</button>
+      <button class="btn btn-primary btn-sm" id="cl-claim" disabled>Claim</button>
+      <button class="btn btn-outline-primary btn-sm" id="cl-fund" style="display:none">
+        Fund this epoch first
+      </button>
+    </div>
+    <div id="cl-act-out" class="cl-out cl-muted"></div>
+  </div>
+
+  <div class="cl-card">
+    <h5>Why it takes three calls</h5>
+    <ol class="cl-steps mb-0">
+      <li><code>EpochManager.finalize(epoch)</code> &mdash; closes the challenge window.
+          Permissionless, so nobody can hold a settlement back.</li>
+      <li><code>Treasury.fundEpoch(epoch)</code> &mdash; mints exactly that epoch's rewards
+          into the distributor. Also permissionless, and bounded by the epoch itself, so
+          calling it gains the caller nothing except that people get paid.</li>
+      <li><code>RewardDistributor.claim(…)</code> &mdash; this page, with your proof.</li>
+    </ol>
+    <p class="cl-muted mt-2 mb-0" style="font-size:.82rem">
+      Each is a separate transaction because each is separately checkable. A single
+      button that did all three would also be a single button that could quietly skip one.
+      <a href="{{ url_for('main.epochs') }}">See the epoch chain &rarr;</a>
+    </p>
+  </div>
+
+  <p class="cl-muted" style="font-size:.82rem">
+    Your wallet will not <em>show</em> the AXONCoins until you add the token to it:
+    most wallets only display tokens they already know about.
+    {% if token %}Contract <code>{{ token }}</code>.{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{% if reward_distributor %}
+<script src="{{ static_resource('pof/chain-bundle.js') }}"></script>
+<script>
+(function () {
+  "use strict";
+  var DISTRIBUTOR = {{ reward_distributor | tojson }};
+  var TREASURY    = {{ treasury | tojson }};
+  var EPOCHS      = {{ epoch_manager | tojson }};
+  var TOKEN       = {{ token | tojson }};
+  var EXPLORER    = {{ explorer | tojson }};
+
+  var ZK = { chainIdHex: "0x1", chainId: 1n, chainName: "Ethereum Mainnet",
+    rpcUrls: ["https://eth.llamarpc.com"],
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    blockExplorerUrls: ["https://etherscan.io"] };
+
+  // Human-readable fragments rather than the full artifact bundle: this page
+  // needs six functions, and contracts.json is a fifth of a megabyte.
+  var DISTRIBUTOR_ABI = [
+    "function claim(uint64 epoch, bytes32 nodeId, address recipient, uint256 amount, bytes32 serviceBreakdownHash, bytes32[] proof)",
+    "function claimed(uint64, bytes32) view returns (bool)"
+  ];
+  var TREASURY_ABI = [
+    "function fundEpoch(uint64 epoch) returns (uint256)",
+    "function fundableAmount(uint64 epoch) view returns (uint256)"
+  ];
+  var EPOCHS_ABI = [
+    "function epochs(uint64) view returns (bytes32,bytes32,bytes32,bytes32,uint256,uint64,uint64,uint32,bool)"
+  ];
+  var TOKEN_ABI = ["function balanceOf(address) view returns (uint256)"];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var read = null, signer = null, account = null, claim = null;
+
+  function out(el, msg, cls) {
+    el.textContent = msg;
+    el.className = "cl-out " + (cls || "cl-muted");
+  }
+
+  function provider() {
+    if (!read) read = new PoFChain.ethers.JsonRpcProvider(ZK.rpcUrls[0]);
+    return read;
+  }
+
+  function normalise(value) {
+    var hex = (value || "").trim().toLowerCase();
+    if (hex.indexOf("0x") === 0) hex = hex.slice(2);
+    return /^[0-9a-f]{64}$/.test(hex) ? hex : null;
+  }
+
+  async function fetchClaim(epoch, nodeHex) {
+    var res = await fetch("/api/v1/pof/claim/" + epoch + "/0x" + nodeHex);
+    var body = await res.json();
+    return { ok: res.ok, status: res.status, body: body };
+  }
+
+  $("cl-lookup").onclick = async function () {
+    var log = $("cl-lookup-out");
+    var hex = normalise($("cl-node").value);
+    var epoch = parseInt($("cl-epoch").value, 10);
+    if (!hex) { out(log, "That does not look like 64 hex characters.", "cl-err"); return; }
+    if (!(epoch >= 0)) { out(log, "Enter an epoch number.", "cl-err"); return; }
+
+    $("cl-result").style.display = "none";
+    $("cl-act").style.display = "none";
+    out(log, "Looking up epoch " + epoch + "…");
+
+    try {
+      var attempt = await fetchClaim(epoch, hex);
+      // A registered node's id is keccak256 of its public key. Both are 64 hex
+      // characters, so which one somebody pasted is unknowable — try the value
+      // as an id, then as a key, rather than making them find out.
+      if (!attempt.ok) {
+        var derived = PoFChain.ethers.keccak256("0x" + hex).slice(2);
+        var second = await fetchClaim(epoch, derived);
+        if (second.ok) { attempt = second; hex = derived; }
+      }
+      if (!attempt.ok) {
+        var why = (attempt.body && (attempt.body.error || attempt.body.note)) || "No reward found.";
+        out(log, why, "cl-err");
+        return;
+      }
+
+      claim = attempt.body.claim;
+      claim.epoch = epoch;
+      claim.nodeIdHex = "0x" + hex;
+      out(log, "Found it.", "cl-ok");
+
+      $("cl-amount").textContent = PoFChain.ethers.formatUnits(claim.amount, 18);
+      $("cl-recipient").textContent = claim.recipient;
+      $("cl-nodeid").textContent = claim.nodeIdHex;
+      $("cl-root").textContent = attempt.body.reward_root || "—";
+      $("cl-result").style.display = "";
+      await preflight();
+    } catch (e) {
+      out(log, "Lookup failed: " + ((e && e.message) || e), "cl-err");
+    }
+  };
+
+  // Everything RewardDistributor.claim would revert on, checked BEFORE anybody
+  // spends gas discovering it. A bare "execution reverted" tells an operator
+  // nothing about which of four unrelated preconditions failed.
+  async function preflight() {
+    var box = $("cl-checks");
+    box.innerHTML = '<div class="cl-check cl-muted">Checking the chain…</div>';
+    var lines = [], blocked = false, needsFunding = false;
+    var p = provider();
+
+    try {
+      var em = new PoFChain.ethers.Contract(EPOCHS, EPOCHS_ABI, p);
+      var row = await em.epochs(claim.epoch);
+      var finalized = row[8];
+      var rewardRoot = row[1];
+      if (!finalized) {
+        lines.push(['<b>Not finalized yet.</b> The challenge window has to close and ' +
+                    '<code>finalize(' + claim.epoch + ')</code> has to be called. Anyone can do it.', true]);
+        blocked = true;
+      } else if (rewardRoot === PoFChain.ethers.ZeroHash) {
+        lines.push(['<b>Epoch invalidated.</b> Its reward root was zeroed by a dispute, ' +
+                    'so nothing from it is claimable.', true]);
+        blocked = true;
+      } else {
+        lines.push(["Epoch is finalized.", false]);
+      }
+    } catch (e) {
+      lines.push(["Could not read the epoch: " + ((e && e.message) || e), true]);
+      blocked = true;
+    }
+
+    try {
+      var rd = new PoFChain.ethers.Contract(DISTRIBUTOR, DISTRIBUTOR_ABI, p);
+      if (await rd.claimed(claim.epoch, claim.nodeIdHex)) {
+        lines.push(["<b>Already claimed.</b> This node's reward for this epoch has been paid.", true]);
+        blocked = true;
+      }
+    } catch (e) { /* an unreadable flag is not proof of anything; let the tx decide */ }
+
+    if (TOKEN) {
+      try {
+        var tk = new PoFChain.ethers.Contract(TOKEN, TOKEN_ABI, p);
+        var held = await tk.balanceOf(DISTRIBUTOR);
+        if (held < BigInt(claim.amount)) {
+          // The commonest cause of a confusing revert: the epoch settled but
+          // nobody minted its rewards in, so claim() fails on a bare ERC-20
+          // balance check that names nothing.
+          lines.push(['<b>The distributor has not been funded for this epoch.</b> ' +
+                      'It holds less than this claim is worth, so the transfer would fail.', true]);
+          blocked = true;
+          needsFunding = true;
+        }
+      } catch (e) { /* same reasoning */ }
+    }
+
+    box.innerHTML = lines.map(function (l) {
+      return '<div class="cl-check ' + (l[1] ? "cl-err" : "cl-ok") + '">' + l[0] + "</div>";
+    }).join("");
+
+    $("cl-act").style.display = "";
+    $("cl-claim").disabled = blocked || !signer;
+    $("cl-fund").style.display = (needsFunding && TREASURY) ? "" : "none";
+    if (needsFunding && !TREASURY) {
+      box.innerHTML += '<div class="cl-check cl-err">No Treasury is deployed, so ' +
+                       'nobody can mint this epoch\'s rewards yet.</div>';
+    }
+  }
+
+  async function connect() {
+    if (!window.ethereum) throw new Error("No wallet found. Install MetaMask or another Ethereum-compatible wallet.");
+    await window.ethereum.request({ method: "eth_requestAccounts" });
+    var browser = new PoFChain.ethers.BrowserProvider(window.ethereum);
+    var net = await browser.getNetwork();
+    if (net.chainId !== ZK.chainId) {
+      try {
+        await window.ethereum.request({ method: "wallet_switchEthereumChain",
+                                        params: [{ chainId: ZK.chainIdHex }] });
+      } catch (sw) {
+        if (sw.code === 4902) {
+          await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
+            chainId: ZK.chainIdHex, chainName: ZK.chainName, rpcUrls: ZK.rpcUrls,
+            nativeCurrency: ZK.nativeCurrency, blockExplorerUrls: ZK.blockExplorerUrls }] });
+        } else { throw sw; }
+      }
+      browser = new PoFChain.ethers.BrowserProvider(window.ethereum);
+    }
+    signer = await browser.getSigner();
+    account = await signer.getAddress();
+    return account;
+  }
+
+  $("cl-connect").onclick = async function () {
+    var log = $("cl-act-out");
+    try {
+      out(log, "Connecting…");
+      out(log, "Connected as " + (await connect()), "cl-ok");
+      if (claim) await preflight();
+    } catch (e) {
+      out(log, (e && e.message) || String(e), "cl-err");
+    }
+  };
+
+  $("cl-fund").onclick = async function () {
+    var log = $("cl-act-out");
+    try {
+      if (!signer) { out(log, "Connecting…"); await connect(); }
+      var treasury = new PoFChain.ethers.Contract(TREASURY, TREASURY_ABI, signer);
+      var mintable = await treasury.fundableAmount(claim.epoch);
+      if (mintable === 0n) {
+        out(log, "The Treasury will not fund this epoch: it is unfinalized, invalidated, " +
+                 "already funded, over its per-epoch budget, or past the supply cap.", "cl-err");
+        return;
+      }
+      out(log, "Confirm in your wallet — minting " +
+               PoFChain.ethers.formatUnits(mintable, 18) + " AXONCoins into the distributor…");
+      var tx = await treasury.fundEpoch(claim.epoch);
+      out(log, "Sent " + tx.hash + " — waiting…");
+      await tx.wait();
+      out(log, "Funded. " + EXPLORER + "/tx/" + tx.hash, "cl-ok");
+      await preflight();
+    } catch (e) {
+      out(log, (e && (e.shortMessage || e.message)) || String(e), "cl-err");
+    }
+  };
+
+  $("cl-claim").onclick = async function () {
+    var log = $("cl-act-out");
+    var button = $("cl-claim");
+    button.disabled = true;
+    try {
+      if (!signer) { out(log, "Connecting…"); await connect(); }
+      var rd = new PoFChain.ethers.Contract(DISTRIBUTOR, DISTRIBUTOR_ABI, signer);
+      out(log, "Confirm in your wallet…");
+      var tx = await rd.claim(
+        claim.epoch, claim.nodeIdHex, claim.recipient, claim.amount,
+        claim.service_breakdown_hash, claim.proof);
+      out(log, "Sent " + tx.hash + " — waiting for it to land…");
+      await tx.wait();
+      out(log, "Claimed. " + PoFChain.ethers.formatUnits(claim.amount, 18) +
+               " AXONCoins are now in " + claim.recipient + ".\n" +
+               EXPLORER + "/tx/" + tx.hash, "cl-ok");
+      await preflight();
+    } catch (e) {
+      out(log, (e && (e.shortMessage || e.message)) || String(e), "cl-err");
+      button.disabled = false;
+    }
+  };
+})();
+</script>
+{% endif %}

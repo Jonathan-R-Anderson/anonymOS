@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+{% block title %}Status — {{ instance_name() }}{% endblock %}
+{% block content %}
+<style>
+  .sb-wrap { max-width: 940px; margin: 0 auto; padding: 22px 16px 60px; color: inherit; }
+  .sb-muted { opacity: var(--sc-muted-alpha, .62); }
+  .sb-banner { border: 1px solid var(--sc-border); border-radius: 10px; padding: 18px 20px;
+               margin-bottom: 20px; display: flex; align-items: center; gap: 14px; }
+  .sb-banner h2 { margin: 0; font-size: 1.25rem; }
+  .sb-dot { width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto; }
+  .sb-operational .sb-dot { background: #3c9a5f; }
+  .sb-degraded   .sb-dot { background: #d9a13c; }
+  .sb-outage     .sb-dot { background: #d9534f; }
+  .sb-unknown    .sb-dot { background: var(--sc-border); }
+  .sb-operational { border-color: rgba(60,154,95,.5); }
+  .sb-degraded    { border-color: rgba(217,161,60,.55); }
+  .sb-outage      { border-color: rgba(217,83,79,.55); }
+
+  .sb-card { border: 1px solid var(--sc-border); border-radius: 10px;
+             background: var(--sc-surface); padding: 16px 18px; margin-bottom: 16px; }
+  .sb-comp + .sb-comp { border-top: 1px solid var(--sc-border); padding-top: 14px; margin-top: 14px; }
+  .sb-comp-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .sb-comp-name { font-weight: 600; }
+  .sb-state { font-size: .78rem; padding: 1px 8px; border-radius: 20px;
+              border: 1px solid var(--sc-border); }
+  .sb-uptime { margin-left: auto; font-size: .82rem; }
+
+  /* The bars. Flexed so 90 of them fit any width, and each keeps a minimum
+     tappable size on a phone rather than collapsing to a hairline. */
+  .sb-bars { display: flex; gap: 2px; margin: 8px 0 4px; height: 34px; align-items: stretch; }
+  .sb-bar { flex: 1 1 0; min-width: 2px; border-radius: 2px; background: var(--sc-border); }
+  .sb-bar-operational { background: #3c9a5f; }
+  .sb-bar-degraded    { background: #d9a13c; }
+  .sb-bar-outage      { background: #d9534f; }
+  .sb-bar-unknown     { background: var(--sc-border); opacity: .5; }
+  .sb-scale { display: flex; justify-content: space-between; font-size: .74rem; }
+
+  .sb-metrics { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .sb-metric { border: 1px solid var(--sc-border); border-radius: 8px; padding: 12px 14px; }
+  .sb-metric-v { font-size: 1.35rem; font-weight: 700; }
+  .sb-metric-k { font-size: .78rem; }
+
+  .sb-table { width: 100%; font-size: .84rem; border-collapse: collapse; }
+  .sb-table th, .sb-table td { text-align: left; padding: 5px 8px 5px 0; }
+  .sb-table th { font-weight: 600; }
+
+  .sb-inc { border-left: 3px solid var(--sc-border); padding-left: 12px; margin-bottom: 18px; }
+  .sb-inc-critical { border-left-color: #d9534f; }
+  .sb-inc-major    { border-left-color: #d9534f; }
+  .sb-inc-minor    { border-left-color: #d9a13c; }
+  .sb-inc-none     { border-left-color: var(--sc-border); }
+  .sb-inc h4 { font-size: 1rem; margin: 0 0 2px; }
+  .sb-upd { font-size: .86rem; margin: 6px 0; }
+  .sb-upd b { text-transform: capitalize; }
+
+  .sb-out { font-family: monospace; font-size: .76rem; margin-top: 8px; }
+  .sb-chart { height: 150px; margin: 6px 0 4px; }
+  .sb-chart svg { width: 100%; height: 100%; display: block; }
+  .sb-gap-key { color: var(--sc-border); font-weight: 700; }
+
+</style>
+
+<div class="sb-wrap">
+  {# The peer canvas now lives in an include shared with the front page, so the
+     two cannot drift. Full form here: this is the page you came to in order to
+     read the numbers. #}
+  {% include "includes/peer-canvas.html" %}
+
+  <div class="d-flex justify-content-between align-items-baseline" style="gap:.75rem">
+    <h2 class="mb-1">Status</h2>
+    <a class="small" href="{{ url_for('status.status_rss') }}">Subscribe by RSS &rarr;</a>
+  </div>
+
+  {% set state = status_board.state | default('unknown') %}
+  <div class="sb-banner sb-{{ state }}">
+    <span class="sb-dot"></span>
+    <div>
+      <h2>
+        {% if state == 'operational' %}All systems operational
+        {% elif state == 'degraded' %}Some systems degraded
+        {% elif state == 'outage' %}Major outage
+        {% else %}Status unknown{% endif %}
+      </h2>
+      <div class="small sb-muted">
+        {% if status_board.unavailable %}
+          This page could not read its own data. That is itself a fault, and it is being recorded.
+        {% elif state == 'unknown' %}
+          {# Not the same as "everything is fine". Said plainly, because a
+             status page that implies health it has not measured is worse than
+             no status page. #}
+          No monitor has reported recently, so nothing here is measured. Run a monitor node
+          and this fills in.
+        {% else %}
+          Checked continuously by independent monitor nodes, not by this server.
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if status_board.open_incidents %}
+    <div class="sb-card">
+      <h5>Open incidents</h5>
+      {% for incident in status_board.open_incidents %}
+        <div class="sb-inc sb-inc-{{ incident.impact }}" id="incident-{{ incident.id }}">
+          <h4>{{ incident.title }}</h4>
+          <div class="small sb-muted">
+            {{ incident.impact }} impact · started {{ incident.started_at[:16] | replace('T', ' ') }} UTC
+          </div>
+          {% for update in incident.updates %}
+            <p class="sb-upd"><b>{{ update.status }}</b> — {{ update.body }}
+              <span class="sb-muted">({{ update.at[:16] | replace('T', ' ') }} UTC)</span></p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="sb-card">
+    <h5>Components</h5>
+    {% if not status_board.components %}
+      <p class="small sb-muted mb-0">No components are being monitored yet.</p>
+    {% endif %}
+    {% for component in status_board.components %}
+      <div class="sb-comp">
+        <div class="sb-comp-head">
+          <span class="sb-comp-name">{{ component.name }}</span>
+          <span class="sb-state sb-{{ component.state }}">
+            {% if component.state == 'operational' %}Operational
+            {% elif component.state == 'degraded' %}Degraded
+            {% elif component.state == 'outage' %}Outage
+            {% else %}No data{% endif %}
+          </span>
+          <span class="sb-uptime sb-muted">
+            {% if component.uptime is not none %}
+              {{ '%.2f' | format(component.uptime * 100) }}% uptime
+            {% else %}
+              no measurements
+            {% endif %}
+          </span>
+        </div>
+        <div class="small sb-muted">{{ component.description }}</div>
+        <div class="sb-bars">
+          {% for bar in component.bars %}
+            <div class="sb-bar sb-bar-{{ bar.state }}"
+                 title="{{ bar.day }} — {% if bar.probes %}{{ '%.2f' | format(bar.uptime * 100) }}% of {{ bar.probes }} checks{% else %}no data{% endif %}"></div>
+          {% endfor %}
+        </div>
+        <div class="sb-scale sb-muted">
+          <span>{{ status_board.history_days }} days ago</span><span>today</span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="sb-card">
+    <h5>Network</h5>
+    <div class="sb-metrics">
+      <div class="sb-metric">
+        <div class="sb-metric-v">{{ status_board.network.nodes if status_board.network.nodes is not none else '—' }}</div>
+        <div class="sb-metric-k sb-muted">active nodes</div>
+      </div>
+      <div class="sb-metric">
+        <div class="sb-metric-v">{{ status_board.network.capacity_human or '—' }}</div>
+        <div class="sb-metric-k sb-muted">storage offered</div>
+      </div>
+      <div class="sb-metric">
+        <div class="sb-metric-v">
+          {% if status_board.network.traffic_reporting_nodes %}{{ status_board.network.traffic_human }}{% else %}&mdash;{% endif %}
+        </div>
+        <div class="sb-metric-k sb-muted">traffic right now</div>
+      </div>
+      <div class="sb-metric">
+        <div class="sb-metric-v">
+          {% if status_board.network.traffic_reporting_nodes %}{{ '%.1f' | format(status_board.network.requests_per_second) }}{% else %}&mdash;{% endif %}
+        </div>
+        <div class="sb-metric-k sb-muted">requests / second</div>
+      </div>
+      <div class="sb-metric">
+        <div class="sb-metric-v">{{ status_board.regions | length }}</div>
+        <div class="sb-metric-k sb-muted">regions reporting</div>
+      </div>
+    </div>
+    <p class="small sb-muted mt-2 mb-0">
+      Storage is self-reported by nodes, so it is an upper bound on what is offered
+      rather than a guarantee of free space.
+      {% if status_board.network.traffic_reporting_nodes %}
+        Traffic is summed from
+        {{ status_board.network.traffic_reporting_nodes }} node(s) reporting their own
+        throughput &mdash; this server never sees peer-to-peer shard transfers, so a
+        figure taken from its logs would describe the website and call it the network.
+      {% else %}
+        No node is reporting throughput yet, so traffic shows as &mdash; rather than
+        as zero: nothing measured is not the same as nothing moving.
+      {% endif %}
+    </p>
+  </div>
+
+  {% if status_board.traffic_history %}
+  <div class="sb-card">
+    <h5>Traffic, last 24 hours</h5>
+    <div id="sb-chart" class="sb-chart"></div>
+    <div class="sb-scale sb-muted"><span>24 hours ago</span><span>now</span></div>
+    <p class="small sb-muted mt-2 mb-0">
+      Summed from what nodes report about their own throughput, sampled every five
+      minutes. Stretches where nobody was reporting are drawn <span class="sb-gap-key">grey</span>
+      rather than as zero &mdash; an idle network and an unmeasured one produce the
+      same flat line and are completely different facts.
+    </p>
+  </div>
+  {% endif %}
+
+  {% if status_board.regions %}
+  <div class="sb-card">
+    <h5>Response time by region</h5>
+    <table class="sb-table">
+      <thead><tr><th>Region</th><th>Mean response</th><th>Checks</th><th>Failed</th></tr></thead>
+      <tbody>
+        {% for region in status_board.regions %}
+        <tr>
+          <td>{{ region.country }}</td>
+          <td>{% if region.mean_latency_ms is not none %}{{ region.mean_latency_ms }} ms{% else %}<span class="sb-muted">no successful check</span>{% endif %}</td>
+          <td>{{ region.probes }}</td>
+          <td>{% if region.failures %}<span style="color:#d9534f">{{ region.failures }}</span>{% else %}0{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="small sb-muted mt-2 mb-0">
+      Measured from monitor nodes in each region over the last hour. Only successful
+      checks contribute to the mean &mdash; a timeout would otherwise make an unreachable
+      region look like a merely slow one.
+    </p>
+  </div>
+  {% endif %}
+
+  <div class="sb-card">
+    <h5>Something broken that is not listed here?</h5>
+    <p class="small sb-muted">
+      Tell us what you are seeing. No account needed &mdash; asking somebody to log in to
+      report that they cannot use the site would be a joke at their expense. We record the
+      country your request came from to spot regional outages, and nothing else.
+    </p>
+    <form id="sb-report">
+      <div class="form-group mb-2">
+        <select class="form-control form-control-sm" id="sb-component" style="max-width:280px">
+          <option value="">Whole site / not sure</option>
+          {% for component in status_board.components %}
+            <option value="{{ component.key }}">{{ component.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group mb-2">
+        <textarea class="form-control form-control-sm" id="sb-body" rows="3" maxlength="1000"
+                  placeholder="What happens, and roughly when it started."></textarea>
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit">Send report</button>
+      <div id="sb-report-out" class="sb-out sb-muted"></div>
+    </form>
+  </div>
+
+  {% if status_board.incidents %}
+  <div class="sb-card">
+    <h5>Past incidents</h5>
+    {% for incident in status_board.incidents %}
+      {% if not incident.open %}
+      <div class="sb-inc sb-inc-{{ incident.impact }}" id="incident-{{ incident.id }}">
+        <h4>{{ incident.title }}</h4>
+        <div class="small sb-muted">
+          Resolved{% if incident.resolved_at %} {{ incident.resolved_at[:16] | replace('T', ' ') }} UTC{% endif %}
+          · {{ incident.impact }} impact
+        </div>
+        {% for update in incident.updates %}
+          <p class="sb-upd"><b>{{ update.status }}</b> — {{ update.body }}
+            <span class="sb-muted">({{ update.at[:16] | replace('T', ' ') }} UTC)</span></p>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <p class="small sb-muted">
+    {% if status_board.generated_at %}Generated {{ status_board.generated_at[:19] | replace('T', ' ') }} UTC.{% endif %}
+    Checks are made by independent monitor nodes rather than by this server, from several
+    networks at once &mdash; which is the only way to tell &ldquo;the site is down&rdquo;
+    apart from &ldquo;the site is unreachable from one place&rdquo;.
+    <a href="{{ url_for('status.status_json') }}">Raw JSON</a> ·
+    <a href="{{ url_for('status.status_rss') }}">RSS</a>
+  </p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // Traffic chart. Hand-drawn SVG rather than a charting library: the page has
+  // to render during an outage, and a CDN script is one more thing that can be
+  // the outage.
+  var series = {{ status_board.traffic_history | tojson }};
+  var host = document.getElementById("sb-chart");
+  if (!host || !series || !series.length) { return; }
+
+  var W = 1000, H = 150, PAD = 4;
+  var peak = 0;
+  series.forEach(function (p) { if (p.bytes_per_second > peak) { peak = p.bytes_per_second; } });
+  // A flat-zero series still needs a scale, or every point lands on the axis
+  // and the chart looks broken rather than quiet.
+  if (peak <= 0) { peak = 1; }
+
+  function x(i) {
+    return series.length === 1 ? W / 2 : PAD + (i * (W - PAD * 2)) / (series.length - 1);
+  }
+  function y(v) {
+    return H - PAD - (v / peak) * (H - PAD * 2);
+  }
+
+  var parts = [];
+  // Filled area under the measured line.
+  var area = "M " + x(0) + " " + H;
+  series.forEach(function (p, i) { area += " L " + x(i) + " " + y(p.bytes_per_second); });
+  area += " L " + x(series.length - 1) + " " + H + " Z";
+  parts.push('<path d="' + area + '" fill="rgba(59,130,246,.18)"/>');
+
+  // The line is drawn in runs so an unmeasured stretch can be grey. Splitting
+  // by `measured` rather than colouring points keeps the gap visible as a gap.
+  var run = [], runMeasured = null;
+  function flush() {
+    if (run.length < 2) { run = []; return; }
+    parts.push('<polyline points="' + run.join(" ") + '" fill="none" stroke="' +
+      (runMeasured ? "#3b82f6" : "var(--sc-border)") + '" stroke-width="2" ' +
+      'stroke-linejoin="round" stroke-linecap="round"' +
+      (runMeasured ? "" : ' stroke-dasharray="4 4"') + "/>");
+    run = [];
+  }
+  series.forEach(function (p, i) {
+    if (runMeasured === null) { runMeasured = p.measured; }
+    if (p.measured !== runMeasured) {
+      // Carry this point into both runs so the line has no hole at the seam.
+      run.push(x(i) + "," + y(p.bytes_per_second));
+      flush();
+      runMeasured = p.measured;
+      run.push(x(i) + "," + y(p.bytes_per_second));
+    } else {
+      run.push(x(i) + "," + y(p.bytes_per_second));
+    }
+  });
+  flush();
+
+  host.innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" ' +
+    'role="img" aria-label="Network traffic over the last 24 hours">' + parts.join("") + "</svg>";
+})();
+</script>
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("sb-report");
+  if (!form) return;
+  var out = document.getElementById("sb-report-out");
+  form.onsubmit = async function (event) {
+    event.preventDefault();
+    var body = document.getElementById("sb-body").value.trim();
+    if (!body) { out.textContent = "Say what is happening."; return; }
+    out.textContent = "Sending…";
+    try {
+      var res = await fetch("{{ url_for('status.submit_report') }}", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: body, component: document.getElementById("sb-component").value }),
+      });
+      var payload = await res.json();
+      if (!res.ok) { out.textContent = payload.error || "Could not send that."; return; }
+      out.textContent = "Thank you — recorded.";
+      document.getElementById("sb-body").value = "";
+    } catch (e) {
+      // The likeliest reason a report fails to send is the outage being
+      // reported, so say something more useful than "error".
+      out.textContent = "Could not reach the site to send that, which may itself be the problem.";
+    }
+  };
+})();
+</script>
+
+
+{% endblock %}

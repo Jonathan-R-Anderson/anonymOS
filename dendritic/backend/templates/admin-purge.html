@@ -1,0 +1,93 @@
+{%- extends "admin-shell.html" %}
+{% set admin_title = "Search & purge" %}
+{% set admin_lede = "Find content across the site and remove it. Actions here are not reversible." %}
+{% block admin_content %}
+<style>
+  .pg-wrap { max-width: 1000px; margin: 0 auto; padding: 16px; color: inherit; }
+  .pg-card { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; padding: 18px; margin-bottom: 18px; color: inherit; }
+  .pg-muted { opacity: var(--sc-muted-alpha, .62); }
+  .pg-form input, .pg-form select { background: var(--sc-surface-2); color: inherit;
+    border: 1px solid var(--sc-border); border-radius: 6px; padding: 7px 10px; }
+  .pg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 10px; align-items: end; }
+  .pg-grid label { font-size: .8rem; font-weight: 600; display: block; margin-bottom: 3px; }
+  .pg-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--sc-border); }
+  .pg-thumb { width: 84px; height: 84px; object-fit: cover; border-radius: 6px; border: 1px solid var(--sc-border); background: var(--sc-surface-2); flex: none; }
+  .pg-meta { font-size: .82rem; min-width: 0; }
+  .pg-mono { font-family: monospace; font-size: .76rem; word-break: break-all; }
+  .pg-nsfw { font-weight: 700; }
+  .pg-nsfw.hi { color: #ff6b6b; }
+</style>
+
+<div class="pg-wrap">
+  <div class="d-flex justify-content-between align-items-baseline mb-3" style="gap:.75rem">
+    <h2 class="mb-0">Search &amp; Purge Content</h2>
+    <a href="{{ url_for('admin.dashboard') }}" class="pg-muted" style="color:inherit">&larr; Admin</a>
+  </div>
+
+  <div class="pg-card">
+    <small class="pg-muted">
+      Find specific media across the network and purge it: the object is deleted from the
+      site's own store and from the DHT node gateway, every post/video that embeds it is
+      removed, and its SHA-256 is blocklisted so it can never be re-uploaded. Search runs
+      over the metadata the server still holds — hash, NSFW score, type, and post text — so
+      nothing has to be pulled back from the DHT to locate it.
+      <br><strong>Shards already placed on other peers are not recalled</strong> — the peer
+      protocol has no delete operation. Use
+      <a href="{{ url_for('admin.dht_purge') }}">DHT Purge</a> when you need the per-layer
+      report of exactly how far a purge got.
+    </small>
+    <form class="pg-form" method="get" action="{{ url_for('admin.purge_search') }}" style="margin-top:12px">
+      <div class="pg-grid">
+        <div style="grid-column: span 2;"><label>Keyword (post body / subject)</label><input name="q" value="{{ q }}" style="width:100%"></div>
+        <div><label>SHA-256 (exact)</label><input name="sha256" value="{{ sha256 }}" style="width:100%"></div>
+        <div><label>Media id</label><input name="media_id" value="{{ media_id }}" style="width:100%"></div>
+        <div><label>Min NSFW (0–1)</label><input name="min_nsfw" value="{{ min_nsfw }}" placeholder="e.g. 0.8" style="width:100%"></div>
+        <div><label>Type</label>
+          <select name="kind" style="width:100%">
+            <option value="" {% if not kind %}selected{% endif %}>any</option>
+            <option value="image" {% if kind=='image' %}selected{% endif %}>image</option>
+            <option value="video" {% if kind=='video' %}selected{% endif %}>video</option>
+          </select>
+        </div>
+        <div><button class="btn btn-primary" style="width:100%">Search</button></div>
+      </div>
+    </form>
+  </div>
+
+  {% if did_search %}
+  <div class="pg-card">
+    <h4>{{ results|length }} result(s)</h4>
+    {% if results %}
+    <form method="post" action="{{ url_for('admin.purge_execute') }}"
+          onsubmit="return confirm('PURGE the selected media? This deletes them from the DHT and the database and blocklists their hashes. This cannot be undone.');">
+      {{ csrf_input() }}
+      <div class="d-flex align-items-center" style="gap:.75rem;margin-bottom:8px">
+        <input name="reason" placeholder="reason (optional, recorded on the blocklist)" style="flex:1;background:var(--sc-surface-2);color:inherit;border:1px solid var(--sc-border);border-radius:6px;padding:7px 10px">
+        <button class="btn btn-danger">Purge selected</button>
+      </div>
+      {% for r in results %}
+        <div class="pg-row">
+          <input type="checkbox" name="media_ids" value="{{ r.id }}" style="margin-top:6px">
+          {% if r.thumb_url %}<img class="pg-thumb" src="{{ r.thumb_url }}" alt="media {{ r.id }}" loading="lazy">{% else %}<div class="pg-thumb"></div>{% endif %}
+          <div class="pg-meta">
+            <div><strong>media #{{ r.id }}</strong> · .{{ r.ext }}
+              {% if r.nsfw_score is not none %} · <span class="pg-nsfw {% if r.nsfw_score >= 0.8 %}hi{% endif %}">NSFW {{ '%.2f'|format(r.nsfw_score) }}</span>{% endif %}
+            </div>
+            <div class="pg-mono pg-muted">{{ r.sha256 or '(no hash)' }}</div>
+            {% for c in r.context %}
+              <div class="pg-muted" style="margin-top:3px">/{{ c.board }}/ · thread {{ c.thread_id }} · post {{ c.post_id }}: {{ c.excerpt }}</div>
+            {% else %}
+              <div class="pg-muted" style="margin-top:3px">(not referenced by any local post)</div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </form>
+    {% else %}
+      <p class="pg-muted">No media matched.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

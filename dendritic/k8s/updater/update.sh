@@ -1,0 +1,2746 @@
+#!/usr/bin/env bash
+# =============================================================================
+# maniwani k3s updater  --  /usr/local/lib/maniwani-updater/update.sh
+# =============================================================================
+#
+# WHAT THIS IS
+#   A host-side updater for the two-node maniwani k3s cluster. It is driven by
+#   systemd (maniwani-updater.timer, every 5 min) on the SOFTWARE node
+#   vps-8e766dc0. On a new commit on origin/main it:
+#
+#       preflight -> fetch -> detect-change -> restore-point -> gates ->
+#       render -> build -> import -> [migrate] -> apply -> verify -> prune
+#
+#   and on ANY failure at or after "apply" it rolls the cluster back to the
+#   restore point and writes a structured error log that is readable in a
+#   browser at https://<DOMAIN>/_deploy/ -- no SSH, which is the entire point
+#   of the feature.
+#
+#   The operator's workflow is: `git push`. That is all.
+#
+# WHY A HOST SYSTEMD UNIT AND NOT A PRIVILEGED POD
+#   Building images needs docker and importing them needs `k3s ctr`; both are
+#   HOST tools. A pod could get them by mounting /var/run/docker.sock, but
+#   docker.sock is root-on-the-node, and it would live in namespace `maniwani`
+#   -- the same namespace as the public nginx edge, a Flask app with an upload
+#   / image-proxy / scraper attack surface, and seven scrapers that parse
+#   hostile HTML. Anyone who reached `create pods` in that namespace would get
+#   `docker run -v /:/host --privileged` and own the node, including the
+#   WireGuard key that reaches the data node. That path does not exist today
+#   and this feature does not create it. Running on the host costs nothing --
+#   the tools are there either way.
+#
+#   BE HONEST ABOUT WHAT THIS DOES NOT AVOID: this script is by construction a
+#   remote-code-execution channel from GitHub `main` to root on the software
+#   node, because `docker build` runs the repo's own RUN lines as root. No
+#   sandbox fixes that while the repo defines its own Dockerfiles. Mitigate
+#   UPSTREAM: branch protection, required review, and REQUIRE_SIGNED=1 below.
+#
+# CLUSTER IDENTITY
+#   Uses /etc/maniwani-updater/kubeconfig (a namespaced ServiceAccount token),
+#   NEVER /etc/rancher/k3s/k3s.yaml. The Role deliberately has no `delete` verb
+#   on workloads, no write verbs on persistentvolumeclaims, and does not list
+#   postgres / redis / ceph. Two of the three landmines in this stack are
+#   therefore enforced by the API server, not by an `if` in this file.
+#
+# TAGGING -- the central constraint
+#   There is no registry. Images live in containerd as registry.local/<n>:<tag>
+#   with imagePullPolicy: IfNotPresent. Overwriting a tag in place is a one-way
+#   door: the old bits become unreachable and `rollout undo` would restore a
+#   pod spec naming a tag whose CONTENT already moved -- i.e. it would silently
+#   roll back to the broken image. So:
+#
+#     * every build is tagged registry.local/<name>:g<12-hex-git-sha>
+#     * this script NEVER writes registry.local/<name>:latest. (The design
+#       sketch had it moving :latest too; that is dropped deliberately. Any
+#       workload still on :latest -- e.g. one this updater has not yet had a
+#       reason to touch -- must keep a stable rollback target, and the only way
+#       to guarantee that is to never write that tag from here. Manual builds
+#       per bootstrap/README.md §7 are unaffected.)
+#     * manifests in git keep :latest verbatim so they stay hand-appliable;
+#       the updater renders a pinned copy and applies the copy, never the repo
+#       file.
+#
+# EXIT CODES
+#   0   nothing to do, or deployed and verified
+#   10  halted at a gate (nothing was changed)
+#   20  failed before apply (nothing was changed; e.g. build failure)
+#   30  failed after apply, rollback SUCCEEDED
+#   40  failed after apply, rollback FAILED -- site may be degraded
+#   50  internal/preflight error
+#
+# SUBCOMMANDS
+#   update.sh                 deploy (default; what the timer runs)
+#   update.sh rollback [RUN]  re-run the rollback for RUN (default: last run).
+#                             Idempotent -- safe to run any number of times.
+#   update.sh adopt           record origin/main as deployed without deploying
+#   update.sh status          print the current status JSON
+#
+# =============================================================================
+
+# -E so the ERR trap fires inside functions; -u so a typo'd variable is a hard
+# error rather than a silent empty `kubectl delete <nothing>`.
+# IFS is deliberately left at its default: every expansion here is quoted, and
+# a custom IFS silently changes how "${array[*]}" joins in log lines.
+set -Eeuo pipefail
+
+# -----------------------------------------------------------------------------
+# 0. Configuration
+# -----------------------------------------------------------------------------
+CONF_DIR=/etc/maniwani-updater
+CONF_FILE="$CONF_DIR/updater.env"
+
+# Defaults. Everything here is overridable from $CONF_FILE.
+DOMAIN="${DOMAIN:-syndichan.org}"
+# Key names match k8s/updater/README.md §2.5's updater.env verbatim; the older
+# GIT_* spellings stay accepted so an existing env file keeps working.
+# GIT_URL is accepted too: 40-cronjob.yaml sets that spelling, and until this
+# line existed it was silently ignored -- the URL in the manifest had no effect
+# and the hardcoded default below was always used. It only "worked" because the
+# two happened to match.
+REPO_URL="${REPO_URL:-${GIT_REMOTE:-${GIT_URL:-git@github.com:Jonathan-R-Anderson/syndichan.git}}}"
+BRANCH="${BRANCH:-${GIT_BRANCH:-main}}"
+NAMESPACE="${NAMESPACE:-maniwani}"
+DEPLOY_KEY_SECRET="${DEPLOY_KEY_SECRET:-maniwani-git-deploy-key}"
+# If the deploy key is delivered as a mounted file instead of read from the
+# Secret via the API, point this at it. Set automatically if it exists.
+DEPLOY_KEY_PATH="${DEPLOY_KEY_PATH:-$CONF_DIR/deploy-key}"
+KUBECONFIG_FILE="${KUBECONFIG_FILE:-${KUBECONFIG:-$CONF_DIR/kubeconfig}}"
+KNOWN_HOSTS="${KNOWN_HOSTS:-$CONF_DIR/known_hosts}"
+ALLOWED_SIGNERS="${ALLOWED_SIGNERS:-$CONF_DIR/allowed_signers}"
+REQUIRE_SIGNED="${REQUIRE_SIGNED:-0}"
+
+# MIGRATION_ROLLBACK: auto | manual.  See §5.3 of the design and the long
+# comment above rollback_migration() -- reverting the backend image after a
+# forward migration DETERMINISTICALLY crashes this codebase, so `auto` is the
+# recommended value even though a downgrade is lossy.
+MIGRATION_ROLLBACK="${MIGRATION_ROLLBACK:-auto}"
+
+# Rollout waits. sts/maniwani has startupProbe 10s x 60 = 600s of LEGITIMATE
+# startup (10-maniwani.yaml:502-510), and ensure_runtime.py blocks up to 300s on
+# a TCP connect to ceph before that. Anything under ~900s here rolls back
+# perfectly healthy deploys.
+TIMEOUT_APP="${TIMEOUT_APP:-${TIMEOUT_BACKEND:-900}}"
+TIMEOUT_AGG="${TIMEOUT_AGG:-300}"
+# 600, not 300: clamav loads its full signature database at startup and its own
+# manifest documents a ~600s window. At 300 a perfectly healthy clamav rollout
+# was declared failed, which rolls back the entire deploy.
+TIMEOUT_MEDIA="${TIMEOUT_MEDIA:-600}"
+TIMEOUT_EDGE="${TIMEOUT_EDGE:-120}"
+
+KEEP_RENDERS="${KEEP_RENDERS:-10}"      # rollback targets kept on disk
+KEEP_TAGS="${KEEP_TAGS:-4}"             # renders whose image tags survive prune
+KEEP_RUNS="${KEEP_RUNS:-20}"            # run logs kept (failures kept longer)
+KEEP_FAIL_DAYS="${KEEP_FAIL_DAYS:-90}"
+MAX_RUNS_MIB="${MAX_RUNS_MIB:-200}"
+MAX_LOG_BYTES="${MAX_LOG_BYTES:-5242880}"   # 5 MiB; build output is the fat part
+MIN_FREE_GB="${MIN_FREE_GB:-20}"
+
+# Paths.
+BASE=/var/lib/maniwani-updater
+REPO_DIR="$BASE/repo"
+RENDER_ROOT="$BASE/render"
+STATE_DIR="$BASE/state"
+# sha256 lines for gated files a human has reviewed and applied by hand.
+# See phase_gates(); written by the `ack` subcommand.
+GATE_ACK_FILE="${GATE_ACK_FILE:-$STATE_DIR/gates.ack}"
+# Per-run working dirs live directly under state/ (README §5.3 documents
+# /var/lib/maniwani-updater/state/<run-id>/pre.dump). rotate_logs() only ever
+# considers directories whose name matches the run-id shape, so deployed.sha
+# and friends sitting alongside them are never candidates for deletion.
+RUNS_DIR="$STATE_DIR"
+RUN_ID_GLOB='20*T*Z-*'
+LOCK_FILE="$BASE/lock"
+DEPLOYED_SHA_FILE="$STATE_DIR/deployed.sha"
+LAST_RUN_FILE="$STATE_DIR/last-run"
+PHASE_FILE="$STATE_DIR/phase"
+
+# The published (SSH-free) surface. hostPath, mounted read-only into the nginx
+# edge and served at /_deploy/ behind HTTP Basic. NOT a PVC -- deliberately, so
+# that no PVC lifecycle exists anywhere near the aggregator landmine.
+PUB_DIR="${PUB_DIR:-/var/lib/maniwani/deploy}"
+SHARED_LOG_DIR="${SHARED_LOG_DIR:-/var/log/maniwani/updater}"
+
+# Ephemeral, tmpfs-backed home for the deploy key. Never a persistent copy.
+KEY_DIR=/run/maniwani-updater
+KEY_FILE="$KEY_DIR/id_ed25519"
+
+# shellcheck disable=SC1090
+[ -r "$CONF_FILE" ] && . "$CONF_FILE"
+
+# Only export KUBECONFIG when the file is really there. Exporting a path that
+# does not exist makes every kubectl call fail outright, which is worse than
+# leaving it unset and letting kubectl find the in-cluster ServiceAccount.
+if [ -r "$KUBECONFIG_FILE" ]; then
+  export KUBECONFIG="$KUBECONFIG_FILE"
+else
+  unset KUBECONFIG || true
+fi
+KUBECTL=(kubectl -n "$NAMESPACE" --request-timeout=60s)
+
+# -----------------------------------------------------------------------------
+# 1. Static tables: images, workloads, tiers
+#    These mirror bootstrap/README.md §7.1 and the manifests. If a manifest is
+#    renamed or an image added, this is the one place to update.
+# -----------------------------------------------------------------------------
+
+# image|build context|dockerfile (empty = <context>/Dockerfile)|quarantined
+IMAGES=(
+  "maniwani|.|backend/Dockerfile|0"
+  # syndichan-node is NOT here. The storage client is a separate project with
+  # its own repository (github.com/Jonathan-R-Anderson/syndichan-node, where it
+  # lives at the repo root) and its own updater,
+  # storage-client/scripts/update-from-github.sh. Its source is no longer
+  # tracked here, so this updater has nothing to build and must not pretend it
+  # does. Build and import that image from its own repo.
+  "code-runner|code-runner||0"
+  "syndichan-gateway-controller|gateway-controller||0"
+  "maniwani-frontend|frontend||0"
+  "fourchan-aggregator-plus|board_aggregators/fourchan_aggregator_plus||0"
+  "reddit-aggregator|reddit-aggregator||0"
+  "nsfw-classifier|nsfw-classifier||0"
+  "tracker|tracker-server||0"
+  "seedbox|seedbox||0"
+  "rtmp|rtmp||0"
+  "clamav|clamav||0"
+  "nntp-hub|nntp-hub||0"
+  "maniwani-nginx|deploy-configs/nginx||0"
+  # QUARANTINED: glados-tts's Dockerfile `git clone --depth 1`s upstream at HEAD
+  # and curls ONNX models from a GitHub release AT BUILD TIME. It is not
+  # reproducible and it is multi-GB. Rebuilding it unattended, at 3am, on the
+  # node serving live traffic, is a self-inflicted outage. A change under
+  # glados-tts/ halts this script with instructions instead.
+  "glados-tts|glados-tts||1"
+)
+
+# kind|name|container|image (empty = third-party, never rebuilt)|manifest|tier|timeout-key
+#
+# TIERS, least-blast-radius first, edge last, so an early failure never costs a
+# public outage:
+#   A  aggregators   B  backend (+migration)   C  media/sidecars   D  nginx edge
+WORKLOADS=(
+  "statefulset|fourchan-aggregator|aggregator|fourchan-aggregator-plus|aggregators/10-fourchan-aggregator.yaml|A|agg"
+  "statefulset|eightchan-aggregator|aggregator|fourchan-aggregator-plus|aggregators/11-eightchan-aggregator.yaml|A|agg"
+  "statefulset|sevenchan-aggregator|aggregator|fourchan-aggregator-plus|aggregators/12-sevenchan-aggregator.yaml|A|agg"
+  "statefulset|generic-aggregator|aggregator|fourchan-aggregator-plus|aggregators/13-generic-aggregator.yaml|A|agg"
+  "statefulset|reddit-aggregator|aggregator|reddit-aggregator|aggregators/14-reddit-aggregator.yaml|A|agg"
+  "deployment|nsfw-classifier|classifier|nsfw-classifier|aggregators/20-nsfw-classifier.yaml|A|agg"
+  # Sandboxed judge for arcade code submissions. Without this row
+  # compute_apply_set() never adds app/60-code-runner.yaml, so a commit touching
+  # only code-runner/ builds and imports a new image that nothing is ever
+  # pointed at -- the build succeeds, the deploy reports ok, and the pod keeps
+  # running the old tag. Tier A: it has no dependants, so a failure here costs
+  # nothing else.
+  "deployment|code-runner|runner|code-runner|app/60-code-runner.yaml|A|app"
+  "deployment|redlib|redlib||aggregators/21-redlib.yaml|A|agg"
+  "statefulset|maniwani|maniwani|maniwani|app/10-maniwani.yaml|B|app"
+  "statefulset|syndichan-node|node|syndichan-node|storage/10-syndichan-node.yaml|C|media"
+  "deployment|gateway-controller|controller|syndichan-gateway-controller|gateway-controller/10-gateway-controller.yaml|C|media"
+  "deployment|maniwani-frontend|maniwani-frontend|maniwani-frontend|app/20-maniwani-frontend.yaml|C|media"
+  "deployment|anubis|anubis||app/30-anubis.yaml|C|media"
+  "statefulset|rtmp|rtmp|rtmp|media/10-rtmp.yaml|C|media"
+  "statefulset|seedbox|seedbox|seedbox|media/20-seedbox.yaml|C|media"
+  "deployment|tracker|tracker|tracker|media/30-tracker.yaml|C|media"
+  "deployment|coturn|coturn||media/40-coturn.yaml|C|media"
+  "statefulset|clamav|clamav|clamav|media/50-clamav.yaml|C|media"
+  "statefulset|ergo|ergo||media/60-ergo.yaml|C|media"
+  "deployment|glados-tts|glados-tts|glados-tts|media/70-glados-tts.yaml|C|media"
+  "statefulset|nntp-hub|nntp-hub|nntp-hub|media/80-nntp-hub.yaml|C|media"
+  "daemonset|falco|falco||media/90-falco.yaml|C|media"
+  # nginx is ALWAYS last and always alone in tier D. See apply_tier_D().
+  "deployment|nginx|nginx|maniwani-nginx|app/40-nginx.yaml|D|edge"
+)
+
+# StatefulSets whose PVC carries irreplaceable scraped state. The monitored
+# board list, retention config and thread registry live in runtime_settings
+# INSIDE each .db; an empty volume de-links every already-imported thread.
+# These names drive extra assertions -- see assert_aggregator_volumes().
+# ONE aggregator. The per-site scrapers (4chan, 8chan, 7chan, reddit) were
+# consolidated into the generic aggregator and their PVCs were deleted; this list
+# went on naming them, so assert_aggregator_volumes halted every run on a PVC
+# that is not merely unbound but absent. A gate that fires on something that no
+# longer exists protects nothing and blocks everything.
+AGGREGATOR_PVCS=(aggregator-generic)
+
+# -----------------------------------------------------------------------------
+# 2. Run state (set up in init_run)
+# -----------------------------------------------------------------------------
+RUN_ID=""; PUB_NAME=""; RUN_DIR=""; LOG_FILE=""; STATUS_ENV=""
+APPLIED_TSV=""; RESTORE_TSV=""; STEPS_DIR=""
+PHASE="init"
+OLD_SHA=""; NEW_SHA=""; SHORT_SHA=""; PREV_SHORT=""
+REND=""; REND_PREV=""
+RESULT="unknown"
+ROLLBACK_SUMMARY="not attempted"
+MIGRATION_RAN=0; MIGRATION_PREV_REV=""; PRE_DUMP=""
+LAST_FAIL_STEP=""; LAST_FAIL_RC=0; LAST_FAIL_OUT=""
+BUILT_IMAGES=(); APPLIED_FILES=(); TOUCHED_WORKLOADS=()
+HAVE_LOCK=0
+CAN_GET_SECRET=0; CAN_EXEC=0
+
+# -----------------------------------------------------------------------------
+# 3. Logging -- every step timestamped, teed to the run log and the shared tree
+# -----------------------------------------------------------------------------
+ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+log() {
+  local line
+  line="[$(ts)] [${PHASE}] $*"
+  if [ -n "$LOG_FILE" ]; then printf '%s\n' "$line" >>"$LOG_FILE"; fi
+  printf '%s\n' "$line" >&2
+}
+
+warn() { log "WARN  $*"; }
+
+set_phase() {
+  PHASE="$1"
+  if [ -d "$STATE_DIR" ]; then printf "%s %s\n" "${RUN_ID:-none}" "$PHASE" >"$PHASE_FILE" 2>/dev/null || true; fi
+  log "=== phase: $PHASE ==="
+}
+
+# Redact anything that looks like a secret VALUE before it lands in a log the
+# operator will read in a browser. This is a mitigation, not a guarantee: a
+# Dockerfile that deliberately echoes a secret can still leak it. It is also
+# not the weakest link -- anyone who can push to main can read those secrets by
+# other means (see the RCE note in the header).
+redact() {
+  sed -E \
+    -e 's/((PASSWORD|PASSWD|SECRET|TOKEN|APIKEY|API_KEY|PRIVATE_KEY|ACCESS_KEY|SIGNING_KEY|DSN|_URL)[A-Z_]*[=:"[:space:]]+)[^[:space:]"]{6,}/\1<redacted>/gI' \
+    -e 's#(postgres(ql)?://[^:]+:)[^@]+@#\1<redacted>@#g' \
+    -e 's#(redis://[^:]*:)[^@]+@#\1<redacted>@#g' \
+    -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----/<redacted private key>/g'
+}
+
+# run_step <name> <cmd...>
+#   Runs a command with its full output captured to steps/<name>.out. On
+#   failure it records the step, exit code and output path for the structured
+#   error log, then returns the exit code. Callers decide whether that is fatal.
+#   NOTE: invoked as `if ! run_step ...` in most places, which disables the ERR
+#   trap for the call -- that is intentional, those are handled failures.
+run_step() {
+  local name="$1"; shift
+  local out="$STEPS_DIR/${name}.out"
+  local rc=0
+  log "RUN   [$name] $*"
+  # `set +e` around the call so pipefail/errexit inside a subshell cannot skip
+  # the bookkeeping below.
+  set +e
+  "$@" >"$out" 2>&1
+  rc=$?
+  set -e
+  if [ "$rc" -eq 0 ]; then
+    log "OK    [$name]"
+  else
+    LAST_FAIL_STEP="$name"; LAST_FAIL_RC="$rc"; LAST_FAIL_OUT="$out"
+    log "FAIL  [$name] exit=$rc  (full output: $out)"
+    # A short excerpt inline so the main log is useful on its own; the
+    # structured error log carries the full 200 lines.
+    tail -n 25 "$out" 2>/dev/null | redact | while IFS= read -r l; do log "      | $l"; done
+  fi
+  return "$rc"
+}
+
+die() {  # unrecoverable, nothing was changed
+  RESULT="${2:-error}"
+  log "FATAL $1"
+  finish "${3:-50}"
+}
+
+# -----------------------------------------------------------------------------
+# 4. Publishing: status.json, index.html, ConfigMap mirror
+#    The log MUST be readable when the thing that failed is the backend, so it
+#    cannot live behind the Flask admin panel -- during a backend crashloop the
+#    admin panel is exactly what is down. nginx is the right host: it is the
+#    most stable component, rolled last and least often, and has no dependency
+#    on postgres / redis / ceph / the app.
+#    IMPORTANT: this script never edits nginx to publish a log. The /_deploy/
+#    location block is a one-time install step. Here we only drop files into a
+#    directory nginx is already serving -- so the log-publishing path has zero
+#    dependency on the update succeeding.
+# -----------------------------------------------------------------------------
+sv() {  # sv <key> <value>  -- record a status field
+  [ -n "$STATUS_ENV" ] || return 0
+  printf '%s\t%s\n' "$1" "$2" >>"$STATUS_ENV"
+}
+
+publish_status() {
+  [ -n "$RUN_DIR" ] || return 0
+  mkdir -p "$PUB_DIR/runs"
+
+  python3 - "$STATUS_ENV" "$APPLIED_TSV" "$RESTORE_TSV" "$PUB_DIR/status.json" <<'PY' || return 0
+import json, sys, os, time
+env_f, applied_f, restore_f, out_f = sys.argv[1:5]
+d = {}
+if os.path.exists(env_f):
+    for line in open(env_f, encoding='utf-8', errors='replace'):
+        if '\t' in line:
+            k, v = line.rstrip('\n').split('\t', 1)
+            d[k] = v                      # last write wins
+applied = []
+if os.path.exists(applied_f):
+    for line in open(applied_f, encoding='utf-8', errors='replace'):
+        p = line.rstrip('\n').split('\t')
+        if len(p) >= 3:
+            applied.append({"tier": p[0], "file": p[1], "at": p[2]})
+restore = []
+if os.path.exists(restore_f):
+    for line in open(restore_f, encoding='utf-8', errors='replace'):
+        p = line.rstrip('\n').split('\t')
+        if len(p) >= 7:
+            restore.append({"kind": p[0], "name": p[1], "container": p[2],
+                            "image": p[3], "generation": p[4],
+                            "revision": p[5], "replicas": p[6]})
+d["applied"] = applied
+d["restore_point"] = restore
+d["generated"] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+tmp = out_f + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as fh:
+    json.dump(d, fh, indent=2, sort_keys=True)
+    fh.write('\n')
+os.replace(tmp, out_f)
+PY
+
+  cp -f "$PUB_DIR/status.json" "$PUB_DIR/runs/${PUB_NAME}.json" 2>/dev/null || true
+
+  # Truncate before publishing: build output is unbounded and this directory is
+  # served to a browser.
+  if [ -f "$LOG_FILE" ]; then
+    local pub="$PUB_DIR/runs/${PUB_NAME}.log"
+    if [ "$(stat -c %s "$LOG_FILE" 2>/dev/null || echo 0)" -gt "$MAX_LOG_BYTES" ]; then
+      { head -c "$MAX_LOG_BYTES" "$LOG_FILE"; printf '\n[TRUNCATED at %s bytes]\n' "$MAX_LOG_BYTES"; } \
+        | redact >"$pub"
+    else
+      redact <"$LOG_FILE" >"$pub"
+    fi
+    chmod 0644 "$pub" 2>/dev/null || true
+    cp -f "$pub" "$PUB_DIR/latest.log" 2>/dev/null || true
+  fi
+  [ -f "$RUN_DIR/error.log" ] && { cp -f "$RUN_DIR/error.log" "$PUB_DIR/latest-failure.log"; \
+                                   cp -f "$RUN_DIR/error.log" "$PUB_DIR/runs/${PUB_NAME}.error.log"; }
+  chmod 0644 "$PUB_DIR/status.json" 2>/dev/null || true
+  write_index
+
+  # Secondary, convenience-only channel: same JSON in a ConfigMap so anyone
+  # with a kubeconfig (and later the admin panel) can read it. Never
+  # authoritative -- it needs the API server, which the browser path does not.
+  "${KUBECTL[@]}" create configmap maniwani-deploy-status \
+      --from-file=status.json="$PUB_DIR/status.json" \
+      --dry-run=client -o yaml 2>/dev/null \
+    | "${KUBECTL[@]}" apply -f - >/dev/null 2>&1 || true
+}
+
+write_index() {
+  local f="$PUB_DIR/index.html"
+  {
+    printf '<!doctype html><meta charset=utf-8><title>maniwani deploys</title>\n'
+    printf '<style>body{font:14px/1.5 monospace;margin:2rem;max-width:60rem}'
+    printf 'a{color:#06c}.f{color:#b00}.o{color:#070}pre{background:#f4f4f4;padding:1rem;overflow-x:auto}</style>\n'
+    printf '<h1>maniwani deploy status</h1>\n'
+    printf '<p>generated %s &middot; result <b class="%s">%s</b> &middot; run <code>%s</code></p>\n' \
+      "$(ts)" "$([ "$RESULT" = ok ] && echo o || echo f)" "$RESULT" "${RUN_ID:-none}"
+    printf '<ul>'
+    printf '<li><a href="status.json">status.json</a> (machine readable)</li>'
+    printf '<li><a href="latest.log">latest.log</a></li>'
+    printf '<li><a href="latest-failure.log">latest-failure.log</a> (most recent FAILED run)</li>'
+    printf '</ul>\n<h2>runs</h2><ul>\n'
+    ls -1t "$PUB_DIR/runs" 2>/dev/null | head -60 | while IFS= read -r r; do
+      printf '<li><a href="runs/%s">%s</a></li>\n' "$r" "$r"
+    done
+    printf '</ul>\n'
+    if [ -f "$PUB_DIR/latest-failure.log" ]; then
+      printf '<h2>most recent failure</h2><pre>'
+      head -c 200000 "$PUB_DIR/latest-failure.log" \
+        | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+      printf '</pre>\n'
+    fi
+  } >"$f.tmp" && mv -f "$f.tmp" "$f"
+  chmod 0644 "$f" 2>/dev/null || true
+}
+
+# The structured error log. Requirement: timestamp, phase, exit code, last 200
+# lines of the failing command, the restore point, and what rollback did.
+write_error_log() {
+  local rc="$1"
+  local f="$RUN_DIR/error.log"
+  {
+    printf '================================================================\n'
+    printf 'maniwani deploy FAILURE\n'
+    printf '================================================================\n'
+    printf 'run id          : %s\n' "$RUN_ID"
+    printf 'timestamp (UTC) : %s\n' "$(ts)"
+    printf 'phase           : %s\n' "$PHASE"
+    printf 'result          : %s\n' "$RESULT"
+    printf 'script exit code: %s\n' "$rc"
+    printf 'failing step    : %s\n' "${LAST_FAIL_STEP:-<none: failure was not a captured step>}"
+    printf 'step exit code  : %s\n' "${LAST_FAIL_RC:-n/a}"
+    printf 'deployed sha    : %s  (unchanged unless result=ok)\n' "${OLD_SHA:-<unknown>}"
+    printf 'attempted sha   : %s\n' "${NEW_SHA:-<unknown>}"
+    printf 'node            : %s\n' "$(hostname)"
+    printf '\n--- last 200 lines of the failing command ------------------------\n'
+    if [ -n "$LAST_FAIL_OUT" ] && [ -f "$LAST_FAIL_OUT" ]; then
+      tail -n 200 "$LAST_FAIL_OUT" | redact
+    else
+      printf '(no captured command output; see the run log below)\n'
+    fi
+    printf '\n--- restore point (captured BEFORE anything was touched) ---------\n'
+    printf '%-12s %-24s %-18s %-52s %-6s %-24s %s\n' KIND NAME CONTAINER IMAGE GEN REVISION REPLICAS
+    if [ -f "$RESTORE_TSV" ]; then
+      while IFS=$'\t' read -r k n c i g r rep; do
+        printf '%-12s %-24s %-18s %-52s %-6s %-24s %s\n' "$k" "$n" "$c" "$i" "$g" "$r" "$rep"
+      done <"$RESTORE_TSV"
+    else
+      printf '(restore point was never captured -- failure was before that step)\n'
+    fi
+    printf '\n--- objects applied this run (rollback replays these in reverse) --\n'
+    if [ -s "$APPLIED_TSV" ]; then cat "$APPLIED_TSV"; else printf '(none -- nothing was applied)\n'; fi
+    printf '\n--- what rollback did -------------------------------------------\n'
+    printf '%s\n' "$ROLLBACK_SUMMARY"
+    if [ -f "$RUN_DIR/rollback.log" ]; then printf '\n'; redact <"$RUN_DIR/rollback.log"; fi
+    if [ "$MIGRATION_RAN" = "1" ]; then
+      printf '\n--- DATABASE ----------------------------------------------------\n'
+      printf 'A forward migration RAN this deploy.\n'
+      printf 'pre-migration alembic revision : %s\n' "${MIGRATION_PREV_REV:-<unknown>}"
+      printf 'pre-migration dump             : %s\n' "${PRE_DUMP:-<none>}"
+      printf '\n'
+      printf 'READ THIS: there is NO schema rollback that preserves data written\n'
+      printf 'under the new schema. A downgrade DROPS the columns/tables the\n'
+      printf 'upgrade added, and anything written into them is gone. The dump\n'
+      printf 'above is PRE-migration -- restoring it destroys every post, vote and\n'
+      printf 'upload made since it was taken. That is a human decision; this\n'
+      printf 'script will never make it. To restore, by hand:\n'
+      printf '  kubectl -n %s scale sts/maniwani --replicas=0\n' "$NAMESPACE"
+      printf '  kubectl -n %s exec -i sts/postgres -- sh -c '"'"'exec pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists'"'"' < %s\n' \
+        "$NAMESPACE" "${PRE_DUMP:-<dump>}"
+      printf '  kubectl -n %s scale sts/maniwani --replicas=1\n' "$NAMESPACE"
+    fi
+    printf '\n--- full run log ------------------------------------------------\n'
+    if [ -f "$LOG_FILE" ]; then tail -c "$MAX_LOG_BYTES" "$LOG_FILE" | redact; fi
+  } >"$f" 2>/dev/null || true
+  chmod 0644 "$f" 2>/dev/null || true
+}
+
+# -----------------------------------------------------------------------------
+# 5. Exit paths
+# -----------------------------------------------------------------------------
+cleanup() {
+  # The deploy key lives on tmpfs and never survives the process.
+  [ -f "$KEY_FILE" ] && { shred -u "$KEY_FILE" 2>/dev/null || rm -f "$KEY_FILE"; }
+  [ "$HAVE_LOCK" = "1" ] && exec 9>&- 2>/dev/null || true
+}
+trap cleanup EXIT
+
+finish() {
+  local rc="${1:-0}"
+
+  # A no-change run must NOT republish. The timer fires 288x/day; if every one
+  # of those overwrote status.json with "no_change", the operator's browser view
+  # of the last REAL deploy would survive for five minutes and then vanish --
+  # and finding out what actually shipped would need SSH, which is the one thing
+  # this feature exists to avoid. Write a heartbeat instead, so "is the updater
+  # even alive?" is still answerable from the browser.
+  if [ "$RESULT" = "no_change" ]; then
+    mkdir -p "$PUB_DIR" 2>/dev/null || true
+    printf 'updater alive, last poll %s, deployed sha %s, no change\n' \
+      "$(ts)" "${OLD_SHA:-unknown}" >"$PUB_DIR/heartbeat.txt" 2>/dev/null || true
+    if [ -d "$STATE_DIR" ]; then printf '%s %s\n' "${RUN_ID:-none}" "done" >"$PHASE_FILE" 2>/dev/null || true; fi
+    rm -rf "${RUN_DIR:?}" 2>/dev/null || true   # nothing happened; keep no run dir
+    exit "$rc"
+  fi
+
+  sv result "$RESULT"
+  sv phase "$PHASE"
+  sv exit_code "$rc"
+  sv finished "$(ts)"
+  sv rollback "$ROLLBACK_SUMMARY"
+  if [ "$rc" -ne 0 ] && [ -n "$RUN_DIR" ]; then write_error_log "$rc"; fi
+  publish_status
+  if [ -n "$LOG_FILE" ] && [ -d "$SHARED_LOG_DIR" ]; then
+    redact <"$LOG_FILE" >>"$SHARED_LOG_DIR/updater.log" 2>/dev/null || true
+  fi
+  if [ -d "$STATE_DIR" ]; then printf '%s %s\n' "${RUN_ID:-none}" "done" >"$PHASE_FILE" 2>/dev/null || true; fi
+  log "exit $rc  (result=$RESULT)"
+  exit "$rc"
+}
+
+# ERR trap. Fires on any unhandled non-zero command. Anything at or after the
+# apply phase triggers a rollback; anything before it cannot have changed the
+# cluster, so it just reports.
+on_error() {
+  local rc="$1" line="$2" cmd="$3"
+  trap - ERR
+  set +e
+  log "UNHANDLED error at line $line: '$cmd' (exit $rc)"
+  case "$PHASE" in
+    apply|verify|migrate|prune)
+      RESULT="failed_${PHASE}"
+      do_rollback
+      finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+      ;;
+    *)
+      RESULT="failed_${PHASE}"
+      finish 20
+      ;;
+  esac
+}
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+
+# -----------------------------------------------------------------------------
+# 6. Small helpers
+# -----------------------------------------------------------------------------
+wl_field() { printf '%s' "$1" | cut -d'|' -f"$2"; }
+
+timeout_for() {
+  case "$1" in
+    app)   printf '%s' "$TIMEOUT_APP" ;;
+    edge)  printf '%s' "$TIMEOUT_EDGE" ;;
+    agg)   printf '%s' "$TIMEOUT_AGG" ;;
+    *)     printf '%s' "$TIMEOUT_MEDIA" ;;
+  esac
+}
+
+# find a workload record by "kind/name"
+wl_lookup() {
+  local want="$1" w
+  for w in "${WORKLOADS[@]}"; do
+    if [ "$(wl_field "$w" 1)/$(wl_field "$w" 2)" = "$want" ]; then printf '%s' "$w"; return 0; fi
+  done
+  return 1
+}
+
+in_list() {  # in_list <needle> <haystack...>
+  local n="$1"; shift
+  local x
+  for x in "$@"; do [ "$x" = "$n" ] && return 0; done
+  return 1
+}
+
+# Strip every PersistentVolumeClaim document out of a manifest before applying.
+#
+# HARD RULE: this updater never creates, patches, resizes or deletes a PVC.
+# The aggregator PVCs hold runtime_settings (monitored board list, retention,
+# thread registry) inside each .db; recreating one de-links every imported
+# thread and destroys scraped content. RBAC also denies PVC writes -- this is
+# belt and braces so an apply cannot even try and fail noisily mid-tier.
+# Drop documents this Role must not or cannot write.
+#
+# PersistentVolumeClaim: never applied (data safety -- see the landmine gate).
+#
+# Service / ServiceAccount / NetworkPolicy: 00-serviceaccount-rbac.yaml grants
+# these get/list/watch only, deliberately. But `kubectl apply -f <manifest>`
+# sends EVERY document in the file, and it issues the PATCH even when the merge
+# is empty -- so applying k8s/app/40-nginx.yaml (24 Services across the tree,
+# plus falco's ServiceAccount) 403s and fails the whole tier, which then rolls
+# back a healthy deploy.
+#
+# Stripping is the right call rather than widening RBAC: these objects are
+# stable, and a Service or ServiceAccount change is exactly the kind of edit
+# that should be a deliberate human `kubectl apply`. But it is NOT free -- a
+# genuinely changed Service silently would not deploy -- so skipped documents
+# are LOGGED by name, and silent drift is the one outcome not accepted.
+strip_pvcs() {
+  awk '
+    function flush(  ) {
+      if (doc != "" && kind != "PersistentVolumeClaim" \
+          && kind != "Service" && kind != "ServiceAccount" \
+          && kind != "NetworkPolicy") printf "---\n%s", doc
+      else if (doc != "" && kind != "" && kind != "PersistentVolumeClaim") \
+          printf "SKIPPED\t%s\t%s\n", kind, name > "/dev/stderr"
+      doc = ""; kind = ""; name = ""
+    }
+    /^---[[:space:]]*$/ { flush(); next }
+    {
+      doc = doc $0 "\n"
+      if ($0 ~ /^kind:[[:space:]]/) { k = $0; sub(/^kind:[[:space:]]*/, "", k); sub(/[[:space:]]+$/, "", k); kind = k }
+      if (name == "" && $0 ~ /^[[:space:]][[:space:]]name:[[:space:]]/) { n = $0; sub(/^[[:space:]]*name:[[:space:]]*/, "", n); sub(/[[:space:]]+$/, "", n); name = n }
+    }
+    END { flush() }
+  ' "$1"
+}
+
+# apply_manifest <tier> <render-root> <relpath>
+apply_manifest() {
+  local tier="$1" root="$2" rel="$3"
+  local src="$root/$rel"
+  [ -f "$src" ] || { warn "manifest missing in render: $rel"; return 0; }
+  local tmp="$RUN_DIR/apply/$(printf '%s' "$rel" | tr '/' '_')"
+  mkdir -p "$RUN_DIR/apply"
+  strip_pvcs "$src" >"$tmp" 2>"$tmp.skipped"
+  if [ -s "$tmp.skipped" ]; then
+    # Loud, not silent: these documents are in the commit but were NOT applied.
+    while IFS="$(printf '\t')" read -r _tag skind sname; do
+      [ -n "${skind:-}" ] && warn "not applied (Role is read-only for it): $skind/${sname:-?} in $rel"
+    done <"$tmp.skipped"
+  fi
+  # A manifest can strip down to NOTHING (k8s/aggregators/90-networkpolicy.yaml
+  # is a single NetworkPolicy). `kubectl apply -f` on an empty file fails with
+  # "error: no objects passed to apply" and would take the whole tier down with
+  # it, so treat "nothing left to apply" as success -- it is.
+  if ! grep -qE '^kind:[[:space:]]' "$tmp"; then
+    log "nothing applicable in $rel (all documents are read-only for this Role)"
+    return 0
+  fi
+  if ! run_step "apply-$(printf '%s' "$rel" | tr '/' '_')" "${KUBECTL[@]}" apply -f "$tmp"; then
+    return 1
+  fi
+  printf '%s\t%s\t%s\n' "$tier" "$rel" "$(ts)" >>"$APPLIED_TSV"
+  APPLIED_FILES+=("$tier|$rel")
+  return 0
+}
+
+# live_image <kind> <name> <container>
+live_image() {
+  "${KUBECTL[@]}" get "$1" "$2" \
+    -o "jsonpath={.spec.template.spec.containers[?(@.name=='$3')].image}" 2>/dev/null || true
+}
+
+live_replicas() {
+  "${KUBECTL[@]}" get "$1" "$2" -o jsonpath='{.spec.replicas}' 2>/dev/null || true
+}
+
+# wait_ready <kind> <name> <timeout>
+wait_ready() {
+  local kind="$1" name="$2" t="$3"
+  local reps
+  reps="$(live_replicas "$kind" "$name")"
+  # A workload shipped at replicas: 0 (rtmp until compose's 1935 is free,
+  # coturn, redlib) has no pods to become Ready. `rollout status` would return
+  # success anyway, but saying so explicitly keeps the log honest.
+  if [ "$kind" != "daemonset" ] && [ "${reps:-1}" = "0" ]; then
+    log "      $kind/$name has replicas=0 -- image patched, not running; no wait"
+    return 0
+  fi
+  run_step "rollout-${kind}-${name}" "${KUBECTL[@]}" rollout status "$kind/$name" --timeout="${t}s"
+}
+
+# Diagnostics dumped into the log on a rollout failure. This is the whole value
+# of the error log -- without it the operator has to SSH in, which is precisely
+# what the requirement forbids.
+capture_diagnostics() {
+  local kind="$1" name="$2"
+  log "collecting diagnostics for $kind/$name"
+  {
+    printf '\n##### describe %s/%s #####\n' "$kind" "$name"
+    "${KUBECTL[@]}" describe "$kind" "$name" 2>&1 | tail -n 80
+    printf '\n##### pods #####\n'
+    "${KUBECTL[@]}" get pods -o wide 2>&1 | head -n 40
+    printf '\n##### logs (current) #####\n'
+    "${KUBECTL[@]}" logs "$kind/$name" --all-containers --tail=200 2>&1 | tail -n 200
+    printf '\n##### logs (previous container, if it crashed) #####\n'
+    "${KUBECTL[@]}" logs "$kind/$name" --all-containers --tail=200 --previous 2>&1 | tail -n 200
+    printf '\n##### events #####\n'
+    "${KUBECTL[@]}" get events --field-selector "involvedObject.name=$name" \
+        --sort-by=.lastTimestamp 2>&1 | tail -n 30
+  } >"$STEPS_DIR/diag-${kind}-${name}.out" 2>&1 || true
+  LAST_FAIL_OUT="$STEPS_DIR/diag-${kind}-${name}.out"
+  tail -n 40 "$LAST_FAIL_OUT" | redact | while IFS= read -r l; do log "      | $l"; done
+}
+
+# -----------------------------------------------------------------------------
+# 7. init / lock
+# -----------------------------------------------------------------------------
+init_run() {
+  # Checked here, before anything writes: the updater needs docker and
+  # `k3s ctr`, both root-only. Failing at the first mkdir instead produces an
+  # unreadable pile of permission errors.
+  if [ "$(id -u)" != "0" ]; then
+    printf '[%s] FATAL: must run as root (needs docker and `k3s ctr`). systemd runs it as root; if you are testing by hand, use sudo.\n' \
+      "$(ts)" >&2
+    exit 50
+  fi
+  mkdir -p "$BASE" "$RENDER_ROOT" "$STATE_DIR" "$RUNS_DIR" "$PUB_DIR/runs" "$SHARED_LOG_DIR" 2>/dev/null || {
+    printf '[%s] FATAL: cannot create the updater state directories under %s and %s\n' "$(ts)" "$BASE" "$PUB_DIR" >&2
+    exit 50
+  }
+  chmod 0755 "$PUB_DIR" "$PUB_DIR/runs" 2>/dev/null || true
+
+  # flock: one deploy at a time. -n so a slow build does not queue up five
+  # timer firings behind it.
+  exec 9>"$LOCK_FILE"
+  if ! flock -n 9; then
+    printf '[%s] another updater run holds the lock; exiting\n' "$(ts)" >&2
+    exit 0
+  fi
+  HAVE_LOCK=1
+
+  # <UTC-timestamp>-<pid> until the target SHA is known; the PUBLISHED artefacts
+  # are renamed to <UTC-timestamp>-<sha> in phase_detect, which is the archive
+  # naming k8s/updater/README.md §6 documents.
+  RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  PUB_NAME="$RUN_ID"
+  RUN_DIR="$RUNS_DIR/$RUN_ID"
+  STEPS_DIR="$RUN_DIR/steps"
+  mkdir -p "$STEPS_DIR"
+  LOG_FILE="$RUN_DIR/run.log"
+  STATUS_ENV="$RUN_DIR/status.tsv"
+  APPLIED_TSV="$RUN_DIR/applied.tsv"
+  RESTORE_TSV="$RUN_DIR/restore-point.tsv"
+  : >"$LOG_FILE"; : >"$STATUS_ENV"; : >"$APPLIED_TSV"; : >"$RESTORE_TSV"
+  printf '%s\n' "$RUN_ID" >"$LAST_RUN_FILE"
+
+  sv run_id "$RUN_ID"
+  sv started "$(ts)"
+  sv node "$(hostname)"
+  sv namespace "$NAMESPACE"
+  log "maniwani updater starting, run $RUN_ID"
+
+  rotate_logs
+}
+
+# Rotation happens at the START of a run, before anything can fill the disk.
+rotate_logs() {
+  local keep="$KEEP_RUNS"
+  # 1. Keep the N most recent run directories, plus every FAILED run from the
+  #    last KEEP_FAIL_DAYS days (a failure log you deleted is a failure you
+  #    cannot diagnose without SSH).
+  #    ONLY run-shaped directory names are candidates -- deployed.sha, phase,
+  #    last-run and last-restore-point.tsv share this directory and must never
+  #    be swept up.
+  local d
+  # shellcheck disable=SC2012
+  ls -1td "$RUNS_DIR"/$RUN_ID_GLOB 2>/dev/null | sed "s#^$RUNS_DIR/##" \
+    | tail -n +"$((keep + 1))" | while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    [ -d "$RUNS_DIR/$d" ] || continue
+    if [ -f "$RUNS_DIR/$d/error.log" ]; then
+      if [ -n "$(find "$RUNS_DIR/$d/error.log" -mtime "-$KEEP_FAIL_DAYS" 2>/dev/null)" ]; then
+        continue
+      fi
+    fi
+    rm -rf "${RUNS_DIR:?}/$d"
+  done
+  # 2. Same policy for the published copies.
+  # `|| true` on the whole pipeline: under `set -o pipefail` this fails the run
+  # when $PUB_DIR/runs does not exist yet (first run) or when grep matches
+  # nothing (every run with only error logs). Log pruning must never be able to
+  # abort a deploy.
+  { ls -1t "$PUB_DIR/runs" 2>/dev/null | grep -v '\.error\.log$' | tail -n +"$((keep * 2 + 1))" \
+    | while IFS= read -r d; do [ -n "$d" ] && rm -f "$PUB_DIR/runs/$d"; done; } || true
+  # 3. Hard cap so a pathological build log cannot fill /var.
+  local mib
+  mib="$(du -sm "$PUB_DIR/runs" 2>/dev/null | cut -f1 || echo 0)"
+  while [ "${mib:-0}" -gt "$MAX_RUNS_MIB" ]; do
+    local oldest
+    oldest="$(ls -1tr "$PUB_DIR/runs" 2>/dev/null | grep -v '\.error\.log$' | head -1)"
+    [ -n "$oldest" ] || break
+    rm -f "$PUB_DIR/runs/$oldest"
+    mib="$(du -sm "$PUB_DIR/runs" 2>/dev/null | cut -f1 || echo 0)"
+  done
+  # 4. Renders are the rollback targets. Keep KEEP_RENDERS; they are ~KBs.
+  ls -1t "$RENDER_ROOT" 2>/dev/null | tail -n +"$((KEEP_RENDERS + 1))" \
+    | while IFS= read -r d; do if [ -n "$d" ]; then rm -rf "${RENDER_ROOT:?}/$d"; fi; done
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: preflight
+# -----------------------------------------------------------------------------
+# Probe the two optional-but-load-bearing permissions once, up front. Called
+# from preflight AND from the standalone `rollback` subcommand, which never
+# runs preflight but still needs to know whether it may downgrade the schema.
+probe_rbac() {
+  CAN_GET_SECRET=0; CAN_EXEC=0
+  "${KUBECTL[@]}" auth can-i get "secret/$DEPLOY_KEY_SECRET" >/dev/null 2>&1 && CAN_GET_SECRET=1
+  "${KUBECTL[@]}" auth can-i create pods/exec >/dev/null 2>&1 && CAN_EXEC=1
+  sv can_get_secret "$CAN_GET_SECRET"; sv can_exec "$CAN_EXEC"
+  log "RBAC: get secret/$DEPLOY_KEY_SECRET=$CAN_GET_SECRET  create pods/exec=$CAN_EXEC"
+}
+
+phase_preflight() {
+  set_phase preflight
+
+  [ "$(id -u)" = "0" ] || die "must run as root (needs docker + k3s ctr)" preflight_error 50
+
+  local b
+  for b in git docker kubectl flock python3 awk sed; do
+    command -v "$b" >/dev/null 2>&1 || die "missing required binary: $b" preflight_error 50
+  done
+  # k3s ctr is how images reach containerd; there is no registry.
+  command -v k3s >/dev/null 2>&1 || die "missing k3s (needed for 'k3s ctr images import')" preflight_error 50
+  # sqlite3 is only needed for the aggregator .db snapshot; warn, do not fail.
+  command -v sqlite3 >/dev/null 2>&1 || warn "sqlite3 not installed -- aggregator .db snapshots will be skipped (apt install sqlite3)"
+
+  # A kubeconfig file is only ONE of the two supported ways to reach the API.
+  # Running as a Pod, the manifest deliberately does NOT mount one (a k3s
+  # kubeconfig is cluster-admin, which is exactly what the updater's narrow Role
+  # exists to avoid); kubectl uses the projected ServiceAccount token instead.
+  # Requiring the file unconditionally made the in-cluster path — the one the
+  # CronJob actually uses — fail preflight every single run.
+  if [ -r "$KUBECONFIG_FILE" ]; then
+    log "using kubeconfig $KUBECONFIG_FILE"
+  elif [ -r /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
+    log "no kubeconfig at $KUBECONFIG_FILE; using the in-cluster ServiceAccount"
+    unset KUBECONFIG
+    KUBECONFIG_FILE=""
+    # The image ships a `kubectl` shim that execs `/host/k3s kubectl`. That is
+    # the right choice when a kubeconfig exists (exact server version, no skew),
+    # but `k3s kubectl` does NOT do in-cluster discovery: with no kubeconfig it
+    # falls back to http://localhost:8080 and every call dies with "connection
+    # refused". The distro kubectl DOES honour KUBERNETES_SERVICE_HOST plus the
+    # projected ServiceAccount token, so use it for the in-cluster path.
+    if [ -x /usr/bin/kubectl ]; then
+      KUBECTL=(/usr/bin/kubectl -n "$NAMESPACE" --request-timeout=60s)
+      log "in-cluster: using /usr/bin/kubectl (k3s kubectl cannot do SA discovery)"
+    fi
+    # BUILD AN EXPLICIT KUBECONFIG FROM THE PROJECTED SERVICEACCOUNT.
+    #
+    # Relying on client-go's implicit in-cluster detection did not work here:
+    # KUBERNETES_SERVICE_HOST was set (10.43.0.1:443) and the token was mounted,
+    # yet kubectl still fell back to http://localhost:8080 and every call failed
+    # with "connection refused" -- a message that looks like a networking fault
+    # and is actually "I never loaded a config". Rather than keep guessing at
+    # the detection heuristics, state the connection explicitly. This is also
+    # far easier to debug: the file can be catted.
+    local sa_dir=/var/run/secrets/kubernetes.io/serviceaccount
+    local api_host="${KUBERNETES_SERVICE_HOST:-kubernetes.default.svc}"
+    local api_port="${KUBERNETES_SERVICE_PORT:-443}"
+    if [ ! -s "$sa_dir/token" ]; then
+      die "ServiceAccount token missing or empty at $sa_dir/token" preflight_error 50
+    fi
+    if [ ! -s "$sa_dir/ca.crt" ]; then
+      die "ServiceAccount CA missing or empty at $sa_dir/ca.crt" preflight_error 50
+    fi
+    local generated="$STATE_DIR/kubeconfig-incluster"
+    install -d -m 0700 "$(dirname "$generated")"
+    # The token is a credential, so the file is chmod 0600 below. Deliberately
+    # NOT `umask 077`: umask is process-wide and would persist for the rest of
+    # the run, silently making the published status.json and failure log
+    # unreadable to the nginx container that serves them at /_deploy/.
+    cat >"$generated" <<KCFG
+apiVersion: v1
+kind: Config
+clusters:
+  - name: incluster
+    cluster:
+      server: https://${api_host}:${api_port}
+      certificate-authority: ${sa_dir}/ca.crt
+users:
+  - name: updater
+    user:
+      tokenFile: ${sa_dir}/token
+contexts:
+  - name: incluster
+    context:
+      cluster: incluster
+      user: updater
+      namespace: ${NAMESPACE}
+current-context: incluster
+KCFG
+    chmod 0600 "$generated"
+    export KUBECONFIG="$generated"
+    KUBECONFIG_FILE="$generated"
+    log "in-cluster: generated kubeconfig for https://${api_host}:${api_port} (SA token)"
+  else
+    die "no kubeconfig at $KUBECONFIG_FILE and no in-cluster ServiceAccount token" preflight_error 50
+  fi
+  [ -r "$KNOWN_HOSTS" ] || die "pinned known_hosts missing at $KNOWN_HOSTS (host-key TOFU is not acceptable here)" preflight_error 50
+
+  # Reachability + authentication check. Deliberately a NAMESPACED read.
+  #
+  # This used to be `get ns "$NAMESPACE"`, which cannot work: `namespaces` is a
+  # CLUSTER-scoped resource and 00-serviceaccount-rbac.yaml binds a namespaced
+  # Role on purpose (§2 -- the allowlist IS the security boundary). So the very
+  # first API call the updater ever made was guaranteed 403, and the fix is not
+  # to grant cluster-scoped reads for a liveness probe: it is to probe with
+  # something the updater legitimately needs anyway.
+  #
+  # `get configmaps` is already granted (read rule §1) and is required later to
+  # hash ConfigMap keys, so if this fails the run genuinely cannot proceed.
+  if ! run_step preflight-api "${KUBECTL[@]}" get configmaps -o name; then
+    die "cannot reach the k3s API as the updater ServiceAccount" preflight_error 50
+  fi
+  if ! run_step preflight-docker docker version --format '{{.Server.Version}}'; then
+    die "docker daemon not reachable" preflight_error 50
+  fi
+
+  # Disk gate. A build that dies on ENOSPC halfway through is worse than a
+  # build that never started: it leaves dangling layers and a half-populated
+  # containerd content store.
+  local free_gb
+  free_gb="$(df -BG --output=avail / | tail -1 | tr -dc '0-9')"
+  sv free_gb "$free_gb"
+  if [ "${free_gb:-0}" -lt "$MIN_FREE_GB" ]; then
+    RESULT="halted_disk"
+    log "HALT  only ${free_gb}G free on / (need ${MIN_FREE_GB}G). Nothing changed."
+    finish 10
+  fi
+  log "disk: ${free_gb}G free on /"
+
+  # ---------------------------------------------------------------------------
+  # RBAC capability probe. The updater's Role is deliberately minimal, and two
+  # capabilities are genuinely optional-but-load-bearing. Probing them here,
+  # once, turns "permission denied at 3am in the middle of a migration" into a
+  # line at the top of the log.
+  # ---------------------------------------------------------------------------
+  probe_rbac
+  # Migrations reach postgres over the network (see pg_exec), so pods/exec is
+  # irrelevant here and is deliberately NOT granted. What matters is whether the
+  # database answers. Say it out loud now rather than discovering it mid-deploy,
+  # because it is what decides whether a schema change can deploy unattended.
+  if pg_reachable; then
+    log "postgres reachable at $PGHOST:$PGPORT -- schema migrations can run unattended"
+  else
+    warn "postgres NOT reachable at $PGHOST:$PGPORT as \"${POSTGRES_USER:-<unset>}\"."
+    warn "ANY commit adding a file under backend/migrations/versions/ will HALT"
+    warn "instead of deploying. Check that POSTGRES_USER/POSTGRES_PASSWORD/"
+    warn "POSTGRES_DB reach this pod from Secret/maniwani-env and that this pod is"
+    warn 'labelled maniwani.io/postgres-client="true".'
+  fi
+
+  # ---------------------------------------------------------------------------
+  # The read-only deploy key.
+  #
+  # Preferred source is the cluster Secret, because then rotation is
+  # `kubectl create secret ... | kubectl apply -f -` with NO SSH -- which is the
+  # whole point of this feature. If the Role denies `get secrets` (it may: a
+  # namespace secret read is a real privilege), fall back to a 0400 file the
+  # operator placed on the host, and say which path was used.
+  #
+  # Either way: the repo is PRIVATE over SSH from the cluster's point of view.
+  # Anonymous HTTPS does NOT work and is not a fallback.
+  # ---------------------------------------------------------------------------
+  install -d -m 0700 "$KEY_DIR"
+  local key_source=""
+  if [ "$CAN_GET_SECRET" = "1" ] \
+     && "${KUBECTL[@]}" get secret "$DEPLOY_KEY_SECRET" -o jsonpath='{.data.id_ed25519}' 2>/dev/null \
+        | base64 -d >"$KEY_FILE" 2>/dev/null \
+     && [ -s "$KEY_FILE" ]; then
+    key_source="Secret/$DEPLOY_KEY_SECRET (rotatable with kubectl, no SSH)"
+  elif [ -s "$DEPLOY_KEY_PATH" ]; then
+    cp -f "$DEPLOY_KEY_PATH" "$KEY_FILE"
+    key_source="$DEPLOY_KEY_PATH (host file -- rotating it REQUIRES SSH; prefer the Secret)"
+  else
+    rm -f "$KEY_FILE"
+    die "no usable deploy key. Either grant the updater 'get' on Secret/$DEPLOY_KEY_SECRET (resourceNames-scoped to that one Secret) or install a 0400 key at $DEPLOY_KEY_PATH. The repo is private over SSH; anonymous HTTPS will NOT work." preflight_error 50
+  fi
+  chmod 0400 "$KEY_FILE"
+  log "deploy key source: $key_source"
+  # IdentitiesOnly=yes or ssh will helpfully offer every agent key it can find.
+  export GIT_SSH_COMMAND="ssh -i $KEY_FILE -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS -o BatchMode=yes -o ConnectTimeout=20"
+  export GIT_TERMINAL_PROMPT=0
+
+  # If a previous run died mid-flight, resume into ROLLBACK rather than
+  # starting a fresh deploy on top of a half-applied cluster.
+  if [ -f "$PHASE_FILE" ]; then
+    local prev_run prev_phase
+    read -r prev_run prev_phase <"$PHASE_FILE" || true
+    case "${prev_phase:-done}" in
+      apply|verify|migrate|prune)
+        warn "previous run $prev_run died in phase '$prev_phase' -- rolling it back before doing anything else"
+        rollback_run "$prev_run" || warn "resume-rollback reported problems; continuing to report only"
+        RESULT="halted_resumed_rollback"
+        log "HALT  recovered a crashed run; not deploying in the same pass. The timer will retry."
+        finish 10
+        ;;
+    esac
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: fetch
+# -----------------------------------------------------------------------------
+phase_fetch() {
+  set_phase fetch
+  if [ ! -d "$REPO_DIR/.git" ]; then
+    # Deliberately NOT /home/ubuntu/maniwani. The server checkout stays
+    # operator-owned and hand-editable; coupling the two would make a stray
+    # uncommitted edit on the box silently deployable.
+    log "cloning $REPO_URL into $REPO_DIR (first run)"
+    rm -rf "$REPO_DIR"
+    run_step git-clone git clone --branch "$BRANCH" "$REPO_URL" "$REPO_DIR" \
+      || die "git clone failed -- check the deploy key and known_hosts" fetch_failed 20
+  fi
+  git -C "$REPO_DIR" remote set-url origin "$REPO_URL"
+  run_step git-fetch git -C "$REPO_DIR" fetch --prune --tags origin "$BRANCH" \
+    || die "git fetch failed" fetch_failed 20
+  NEW_SHA="$(git -C "$REPO_DIR" rev-parse "origin/$BRANCH")"
+  SHORT_SHA="$(git -C "$REPO_DIR" rev-parse --short=12 "origin/$BRANCH")"
+  PUB_NAME="${RUN_ID%-*}-$SHORT_SHA"     # <UTC-timestamp>-<sha>, per README §6
+  sv target_sha "$NEW_SHA"
+  log "origin/$BRANCH is $NEW_SHA"
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: detect-change   (exit 0 early if HEAD is unchanged)
+# -----------------------------------------------------------------------------
+CHANGED_PATHS=""
+
+# Admin-triggered requests. backend/services/software_update.py drops tiny JSON
+# files here when the operator presses "Update now"; this is the SSH-free
+# trigger. The backend deliberately has no Kubernetes credentials, so a file
+# drop is the whole channel. Consumed (deleted) before any work starts, so a
+# crashed run never re-triggers itself in a loop.
+REQUEST_DIR="${REQUEST_DIR:-/deploy-requests}"
+REQUESTED=0
+REQUEST_FORCE=0
+# Set when a forced redeploy expands CHANGED_PATHS to every tracked file. The
+# gates below reason about a DIFF; with no diff at all their premise is false,
+# so they must not fire. Without this a "Force" request could never deploy: it
+# marked k8s/data/** as changed and halted on the data-tier gate every time.
+FORCED=0
+consume_requests() {
+  [ -d "$REQUEST_DIR" ] || return 0
+  local f found=0
+  for f in "$REQUEST_DIR"/request-*.json; do
+    [ -e "$f" ] || continue
+    found=1
+    # `force` means redeploy even when git HEAD has not moved.
+    if grep -q '"force"[[:space:]]*:[[:space:]]*true' "$f" 2>/dev/null; then REQUEST_FORCE=1; fi
+    log "admin request: $(basename "$f")"
+    rm -f "$f" 2>/dev/null || true
+  done
+  REQUESTED=$found
+  [ "$found" = "1" ] && sv triggered_by admin
+  return 0
+}
+
+phase_detect() {
+  set_phase detect-change
+
+  if [ -f "$DEPLOYED_SHA_FILE" ]; then OLD_SHA="$(cat "$DEPLOYED_SHA_FILE")"; fi
+  sv deployed_sha "${OLD_SHA:-<none>}"
+
+  if [ -z "$OLD_SHA" ]; then
+    # FIRST RUN. The cluster is already built and running at some commit; we do
+    # not know which. Diffing against nothing would mean "everything changed",
+    # which would rebuild all twelve images including the quarantined
+    # glados-tts. Adopt instead, and say so.
+    printf '%s\n' "$NEW_SHA" >"$DEPLOYED_SHA_FILE"
+    render_tree "$SHORT_SHA" >/dev/null   # so the NEXT run has a rollback target
+    RESULT="adopted"
+    log "First run: adopted $NEW_SHA as the deployed revision WITHOUT deploying."
+    log "Live workloads still referencing registry.local/...:latest cannot be"
+    log "rolled back by tag. They get pinned to :g<sha> the first time a change"
+    log "touches them. Nothing was changed."
+    report_unpinned
+    finish 0
+  fi
+
+  if [ "$OLD_SHA" = "$NEW_SHA" ] && [ "$REQUEST_FORCE" = "1" ]; then
+    # Operator asked for a redeploy of the SAME commit ("something is wedged,
+    # push the current code again"). Treat every path as changed so the normal
+    # build/apply/verify/rollback machinery runs unmodified.
+    log "forced redeploy of $NEW_SHA at admin request"
+    CHANGED_PATHS="$(git -C "$REPO_DIR" ls-files || true)"
+    FORCED=1
+    PREV_SHORT="$SHORT_SHA"
+    REND_PREV="$RENDER_ROOT/$SHORT_SHA"
+    sv previous_sha "$OLD_SHA"
+    sv forced 1
+    return 0
+  fi
+
+  if [ "$OLD_SHA" = "$NEW_SHA" ]; then
+    if [ "$REQUESTED" = "1" ]; then
+      # An ADMIN CLICKED A BUTTON. Consuming that request and returning
+      # "no_change" like a routine timer tick is what made the feature look
+      # broken: the request file disappeared, the card's "Queued" flipped back,
+      # and nothing anywhere recorded that the click had happened or why it did
+      # nothing. A human action always gets an answer.
+      log "admin requested an update, but $NEW_SHA is already deployed"
+      log "nothing to do -- tick 'Force' to redeploy the current commit anyway"
+      RESULT="up_to_date"
+      touch "$STATE_DIR/heartbeat"
+      finish 0
+    fi
+    # The overwhelmingly common path: 1440 timer firings a day, one git fetch
+    # each, no log entry, no work.
+    log "no change ($NEW_SHA already deployed)"
+    RESULT="no_change"
+    touch "$STATE_DIR/heartbeat"
+    finish 0
+  fi
+
+  CHANGED_PATHS="$(git -C "$REPO_DIR" diff --name-only "$OLD_SHA" "$NEW_SHA" || true)"
+  PREV_SHORT="$(git -C "$REPO_DIR" rev-parse --short=12 "$OLD_SHA")"
+  REND_PREV="$RENDER_ROOT/$PREV_SHORT"
+  sv previous_sha "$OLD_SHA"
+  local nchanged
+  nchanged="$(printf '%s\n' "$CHANGED_PATHS" | grep -c . || true)"
+  sv changed_files "$nchanged"
+  log "$nchanged file(s) changed between $PREV_SHORT and $SHORT_SHA"
+  printf '%s\n' "$CHANGED_PATHS" >"$RUN_DIR/changed-paths.txt"
+  printf '%s\n' "$CHANGED_PATHS" | head -50 | while IFS= read -r p; do if [ -n "$p" ]; then log "  ~ $p"; fi; done
+}
+
+changed_match() {  # changed_match <egrep pattern>
+  printf '%s\n' "$CHANGED_PATHS" | grep -qE "$1"
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: gates. Every gate is halt-and-log. None of them leaves the cluster
+#        changed, which is what makes "nothing was applied" a truthful claim.
+# -----------------------------------------------------------------------------
+phase_gates() {
+  set_phase gates
+
+  # HOLD / skip. Both control channels are git, so pausing deploys also needs
+  # no SSH.
+  if [ -f "$REPO_DIR/k8s/updater/HOLD" ] || \
+     git -C "$REPO_DIR" log -1 --format=%s "$NEW_SHA" | grep -qF '[skip deploy]'; then
+    RESULT="held"
+    log "HALT  k8s/updater/HOLD present or '[skip deploy]' in the subject. Nothing changed."
+    printf '%s\n' "$NEW_SHA" >"$DEPLOYED_SHA_FILE"   # do not re-evaluate every 5 min
+    finish 0
+  fi
+
+  # ANCESTRY. Without this, a `push --force` that rewinds main makes the
+  # updater deploy OLD code against the NEW schema -- which per the migration
+  # section is a guaranteed crashloop, dressed up as a normal update.
+  if ! git -C "$REPO_DIR" merge-base --is-ancestor "$OLD_SHA" "$NEW_SHA"; then
+    RESULT="halted_non_fastforward"
+    log "HALT  $NEW_SHA is not a descendant of the deployed $OLD_SHA."
+    log "      main was force-pushed or rewritten. Deploying it would run OLD code"
+    log "      against a NEWER schema. Resolve by hand, then: update.sh adopt"
+    finish 10
+  fi
+
+  # SIGNATURE. This is the only real defence against the RCE channel noted in
+  # the header. Off by default because it needs allowed_signers set up first.
+  if [ "$REQUIRE_SIGNED" = "1" ]; then
+    git -C "$REPO_DIR" config gpg.ssh.allowedSignersFile "$ALLOWED_SIGNERS"
+    if ! run_step git-verify git -C "$REPO_DIR" verify-commit "$NEW_SHA"; then
+      RESULT="halted_unsigned"
+      log "HALT  commit $NEW_SHA failed signature verification. Nothing changed."
+      finish 10
+    fi
+  fi
+
+  # DATA TIER. postgres is the site and ceph is a 7 GB swapless node's
+  # OOM-first suspect; a ceph/daemon that moved majors will not open the
+  # existing monmap/bluestore at all. These three get a human, always. This
+  # gate is also what makes "data tier updated, app tier failed" unreachable
+  # by construction rather than merely recoverable.
+  if [ "$FORCED" != "1" ] && changed_match '^k8s/data/'; then
+    RESULT="halted_data_tier"
+    log "HALT  the commit touches k8s/data/** :"
+    printf '%s\n' "$CHANGED_PATHS" | grep -E '^k8s/data/' | while IFS= read -r p; do log "        $p"; done
+    log "      postgres / redis / ceph are never updated unattended. Apply by hand,"
+    log "      in a window, then: update.sh adopt"
+    finish 10
+  fi
+
+  # BOOTSTRAP. Namespace, StorageClasses and PriorityClasses are install-time
+  # objects; a StorageClass edit that looks harmless can orphan volumes.
+  if [ "$FORCED" != "1" ] && changed_match '^k8s/bootstrap/[^/]*\.yaml$'; then
+    RESULT="halted_bootstrap"
+    log "HALT  the commit touches k8s/bootstrap/*.yaml (namespace/storageclass/priorityclass)."
+    log "      These are install-time objects. Apply by hand, then: update.sh adopt"
+    finish 10
+  fi
+
+  # THE UPDATER'S OWN PRIVILEGED OBJECTS. A commit that changes the Role
+  # bounding this script, the state PVC, or the CronJob/Job pod specs (which
+  # mount docker.sock and containerd.sock, i.e. root on the node) is applied by
+  # a human -- otherwise the updater can grant itself permissions straight from
+  # a git push, and the RBAC boundary in 00-serviceaccount-rbac.yaml is
+  # decorative.
+  #
+  # 30-configmap-updater.yaml is deliberately NOT gated, and that exclusion is
+  # the whole point of this list existing instead of a glob.
+  #
+  # The previous rule matched every k8s/updater/*.yaml, and its comment claimed
+  # a change to update.sh "is fine and is NOT gated: it is a host file installed
+  # separately". That stopped being true when the script moved INTO this
+  # ConfigMap (it is mounted at /etc/updater/update.sh and is what actually
+  # runs). So the glob caught the one file the comment promised it would not,
+  # and since update.sh is the file under active development, essentially every
+  # deploy halted here and needed a manual apply + adopt. It was not catching a
+  # privilege escalation; it was catching itself.
+  #
+  # Excluding it costs nothing defensively: the script cannot widen its own
+  # RBAC (the Role bounds it), and main is already an accepted remote-code
+  # channel -- this updater builds and runs Dockerfile RUN lines from main as
+  # root. Anyone able to push a malicious update.sh could equally push a
+  # malicious backend/Dockerfile, which no gate here inspects. The objects that
+  # DO change the privilege boundary are still gated, by name.
+  #
+  # ACKNOWLEDGEMENT. A halt does not advance DEPLOYED_SHA, so a gated file stays
+  # in the diff on every subsequent push. Without a way to say "I have reviewed
+  # and applied this exact content", the gate re-fires forever: the operator
+  # fixes the real problem, pushes, and gets the identical halt again. Each halt
+  # is individually correct and the system never makes progress.
+  #
+  # `update.sh ack` records the sha256 of each gated file at origin/main. A file
+  # whose CURRENT content hash is acknowledged is treated as already handled.
+  # Change one byte of it and the hash no longer matches, so it halts again --
+  # which is the security property we actually want. This is deliberately
+  # narrower than `adopt`, which marks an ENTIRE commit deployed without
+  # deploying it and therefore silently skips every app change riding along.
+  UNACKED_GATED=""
+  if [ "$FORCED" != "1" ]; then
+    while IFS= read -r gated; do
+      [ -n "$gated" ] || continue
+      want="$(git -C "$REPO_DIR" cat-file -p "$NEW_SHA:$gated" 2>/dev/null \
+              | sha256sum | cut -d' ' -f1)"
+      if [ -n "$want" ] && [ -f "$GATE_ACK_FILE" ] \
+         && grep -qxF "$want  $gated" "$GATE_ACK_FILE" 2>/dev/null; then
+        log "gate: $gated matches an acknowledged review (${want:0:12}) -- allowed"
+        continue
+      fi
+      UNACKED_GATED="$UNACKED_GATED$gated"$'\n'
+    # `|| true`: both greps exit 1 when they match nothing, which is the NORMAL
+    # case — most commits touch no k8s/updater yaml at all. Under `set -e` that
+    # non-match killed the gates phase with "UNHANDLED error", so a perfectly
+    # ordinary commit failed the run instead of passing the gate it satisfies.
+    done <<<"$(printf '%s\n' "$CHANGED_PATHS" \
+                | grep -E '^k8s/updater/.*\.yaml$' \
+                | grep -vE '^k8s/updater/(30-configmap-updater|90-configmap-deploy-status)\.yaml$' \
+                || true)"
+  fi
+
+  if [ -n "$(printf '%s' "$UNACKED_GATED" | tr -d '[:space:]')" ]; then
+    RESULT="halted_updater_objects"
+    log "HALT  this commit changes the updater's own privileged objects:"
+    # `[ -n "$g" ] && log ...` would make the loop exit 1 on the trailing blank
+    # line ($UNACKED_GATED always ends in a newline), and under `set -e` that
+    # killed the run right here -- replacing this documented halt with
+    # "UNHANDLED error at line 1283". Use `if`, which is 0 when the test fails.
+    printf '%s\n' "$UNACKED_GATED" | while IFS= read -r g; do
+      if [ -n "$g" ]; then log "        $g"; fi
+    done
+    log "      Applying those from an automated run would let a git push widen"
+    log "      the updater's own permissions, so a human applies them:"
+    log ""
+    log "        kubectl -n $NAMESPACE diff  -f <file>   # read it first"
+    log "        kubectl -n $NAMESPACE apply -f <file>"
+    log "        <this script> ack                       # record the review"
+    log ""
+    log "      THE ack STEP IS NOT OPTIONAL. Without it this halt repeats on"
+    log "      every future push, because a halt never advances deployed_sha and"
+    log "      the file therefore stays in the diff forever."
+    finish 10
+  fi
+
+  # QUARANTINED IMAGE.
+  if [ "$FORCED" != "1" ] && changed_match '^glados-tts/'; then
+    RESULT="halted_glados"
+    log "HALT  the commit touches glados-tts/. That Dockerfile clones upstream at"
+    log "      HEAD and curls multi-GB ONNX models from a GitHub release at BUILD"
+    log "      time -- it is not reproducible and rebuilding it on the node serving"
+    log "      live traffic is a self-inflicted outage. Build it by hand, off the"
+    log "      hot path:"
+    log "        docker build -t registry.local/glados-tts:g$SHORT_SHA ./glados-tts"
+    log "        docker save registry.local/glados-tts:g$SHORT_SHA | k3s ctr -n k8s.io images import -"
+    log "      then: update.sh adopt"
+    finish 10
+  fi
+
+  # PVC DRIFT. PVC specs are largely immutable; an 'update' that tries to
+  # recreate aggregator-4chan destroys runtime_settings and de-links every
+  # imported thread. We strip PVCs from every apply AND have no RBAC to write
+  # them, but detecting the intent early gives a far better error message than
+  # a mid-tier apply failure.
+  render_tree "$SHORT_SHA" >/dev/null
+  local pvcfile drift=0
+  for pvcfile in $(grep -rl '^kind: PersistentVolumeClaim' "$REND" 2>/dev/null || true); do
+    local rel="${pvcfile#"$REND"/}"
+    if ! git -C "$REPO_DIR" diff --quiet "$OLD_SHA" "$NEW_SHA" -- "k8s/$rel" 2>/dev/null; then
+      if git -C "$REPO_DIR" diff "$OLD_SHA" "$NEW_SHA" -- "k8s/$rel" \
+         | grep -qE '^[+-].*(storage:|storageClassName|accessModes|volumeName|kind: PersistentVolumeClaim)'; then
+        log "      PVC-affecting change in k8s/$rel"
+        drift=1
+      fi
+    fi
+  done
+  if [ "$drift" = "1" ]; then
+    RESULT="halted_pvc_drift"
+    log "HALT  the commit changes PersistentVolumeClaim specs."
+    log "      Aggregator volumes hold runtime_settings (monitored boards, retention,"
+    log "      thread registry) inside each .db. Recreating one de-links every"
+    log "      already-imported thread. Resizes and storage-class moves are manual,"
+    log "      with the scrapers stopped. Nothing changed."
+    finish 10
+  fi
+
+  # The five aggregator PVCs must be Bound and unchanged before we go anywhere
+  # near tier A. "Never scale an aggregator up onto an empty volume" is
+  # enforced here plus by never touching .spec.replicas anywhere in this file.
+  assert_aggregator_volumes
+}
+
+assert_aggregator_volumes() {
+  local p phase vol
+  for p in "${AGGREGATOR_PVCS[@]}"; do
+    phase="$("${KUBECTL[@]}" get pvc "$p" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    vol="$("${KUBECTL[@]}" get pvc "$p" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)"
+    if [ "$phase" != "Bound" ] || [ -z "$vol" ]; then
+      RESULT="halted_pvc_unbound"
+      log "HALT  PVC $p is '$phase' (volume '${vol:-none}')."
+      log "      An aggregator StatefulSet must NEVER boot on an empty volume: the"
+      log "      monitored-board list, retention and thread registry live in"
+      log "      runtime_settings inside each .db. Refusing to touch anything."
+      finish 10
+    fi
+    printf 'pvc\t%s\t%s\t%s\n' "$p" "$phase" "$vol" >>"$RUN_DIR/pvc-baseline.tsv"
+  done
+  log "all five aggregator PVCs Bound with stable volumeNames"
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: restore point -- recorded BEFORE anything is touched
+# -----------------------------------------------------------------------------
+# The schema revision the cluster is running RIGHT NOW, or empty if unknown.
+# Rollback needs this: update.py migrates forward at container boot, so a deploy
+# can advance the schema without the updater's migrate phase ever running (any
+# migration in a range that was `adopt`ed rather than deployed lands this way).
+# Reverting the image after that strands the database AHEAD of the code, and the
+# old image aborts with "Can't locate revision identified by <rev>" and
+# crashloops -- the rollback bricks the site it was supposed to save.
+live_alembic_revision() {
+  pg_exec 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]' || true
+}
+
+phase_restore_point() {
+  set_phase restore-point
+  : >"$RESTORE_TSV"
+  PRE_DEPLOY_REV="$(live_alembic_revision)"
+  sv pre_deploy_alembic "${PRE_DEPLOY_REV:-unknown}"
+  log "schema revision before deploy: ${PRE_DEPLOY_REV:-unknown}"
+  local w kind name container img gen rev reps
+  for w in "${WORKLOADS[@]}"; do
+    kind="$(wl_field "$w" 1)"; name="$(wl_field "$w" 2)"; container="$(wl_field "$w" 3)"
+    if ! "${KUBECTL[@]}" get "$kind" "$name" >/dev/null 2>&1; then
+      log "  restore-point: $kind/$name not present in the cluster; skipping"
+      continue
+    fi
+    img="$(live_image "$kind" "$name" "$container")"
+    gen="$("${KUBECTL[@]}" get "$kind" "$name" -o jsonpath='{.metadata.generation}' 2>/dev/null || true)"
+    case "$kind" in
+      deployment) rev="$("${KUBECTL[@]}" get "$kind" "$name" -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}' 2>/dev/null || true)" ;;
+      statefulset) rev="$("${KUBECTL[@]}" get "$kind" "$name" -o jsonpath='{.status.currentRevision}' 2>/dev/null || true)" ;;
+      *)          rev="$("${KUBECTL[@]}" get "$kind" "$name" -o jsonpath='{.status.observedGeneration}' 2>/dev/null || true)" ;;
+    esac
+    reps="$(live_replicas "$kind" "$name")"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$kind" "$name" "$container" "${img:-<none>}" "${gen:-?}" "${rev:-?}" "${reps:-n/a}" >>"$RESTORE_TSV"
+  done
+  # A stable copy outside the run dir so `update.sh rollback` still works if the
+  # run directory is ever pruned out from under it.
+  cp -f "$RESTORE_TSV" "$STATE_DIR/last-restore-point.tsv"
+  log "restore point captured for $(wc -l <"$RESTORE_TSV") workload(s) -> $RESTORE_TSV"
+  report_unpinned
+}
+
+# Any workload still on :latest has a rollback target whose content is whatever
+# was last built by hand. That is stable ONLY because this script never writes
+# the :latest tag. Say so out loud rather than quietly relying on it.
+report_unpinned() {
+  local n=0 line kind name container img
+  while IFS=$'\t' read -r kind name container img _rest; do
+    case "$img" in
+      registry.local/*:latest) n=$((n + 1)); log "  unpinned: $kind/$name -> $img" ;;
+    esac
+  done <"${RESTORE_TSV:-/dev/null}" 2>/dev/null || true
+  if [ "$n" -gt 0 ]; then
+    sv unpinned_workloads "$n"
+    log "$n workload(s) still reference :latest. They get pinned to :g<sha> the"
+    log "first time a change touches them. This script never writes the :latest"
+    log "tag, so their rollback target stays byte-stable in the meantime."
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# render: pinned copy of k8s/ -- the updater NEVER applies a repo file
+# -----------------------------------------------------------------------------
+render_tree() {
+  local short="$1"
+  REND="$RENDER_ROOT/$short"
+  if [ -d "$REND" ] && [ -f "$REND/.rendered" ]; then printf '%s' "$REND"; return 0; fi
+  rm -rf "$REND"; mkdir -p "$REND"
+  # Render from the target COMMIT, not from the working tree -- a stray file
+  # left in $REPO_DIR by an aborted run must never become deployable.
+  local at="${NEW_SHA:-HEAD}"
+  # Explicit existence check: `git archive <sha> k8s` on a commit with no k8s/
+  # directory fails with "pathspec did not match", which then reaches tar as an
+  # empty stream and reports "This does not look like a tar archive" -- a
+  # thoroughly misleading error for "you have not committed the manifests yet".
+  if ! git -C "$REPO_DIR" cat-file -e "$at:k8s" 2>/dev/null; then
+    die "commit $at has no k8s/ directory -- there are no manifests to render. Commit the k8s tree before enabling the updater." render_failed 20
+  fi
+  git -C "$REPO_DIR" archive "$at" k8s | tar -x -C "$REND" --strip-components=1
+  # One sed, auditable, touching ONLY registry.local/*. Third-party pins
+  # (ghcr.io/techarohq/anubis:v1.25.0, ceph/daemon, postgres:17, alpine:3.20,
+  # falcosecurity/falco:0.44.1, coturn, ergo, redlib) are left exactly as they
+  # are -- README §7.3's warning that a moved ceph/daemon major will not open
+  # the existing monmap stays honoured because we never rewrite it.
+  find "$REND" -name '*.yaml' -print0 \
+    | xargs -0 -r sed -i -E "s#(image:[[:space:]]*registry\.local/[a-z0-9-]+):latest#\1:g${short}#"
+  if grep -rqE 'image:[[:space:]]*registry\.local/[a-z0-9-]+:latest' "$REND"; then
+    die "render left an unpinned registry.local image -- refusing to apply" render_failed 20
+  fi
+  touch "$REND/.rendered"
+  printf '%s' "$REND"
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: build
+#   Only images whose build CONTEXT changed are rebuilt. Note the backend
+#   Dockerfile COPYs frontend/, deploy-configs/ and board_aggregators/ into the
+#   image, so changes there rebuild `maniwani` as well as their own image.
+# -----------------------------------------------------------------------------
+image_needs_build() {
+  local name="$1"
+  case "$name" in
+    maniwani)
+      # The context is the repo ROOT (`docker build -f backend/Dockerfile .`),
+      # but only the COPYed paths actually change the image. Read
+      # backend/Dockerfile: the dev stage COPYs backend/**, frontend/** (the
+      # react sidecar) and deploy-configs/**, and the prod stage inherits from
+      # dev; board_aggregators/ is COPYed too. So a *frontend* change rebuilds
+      # BOTH maniwani and maniwani-frontend -- that is not a bug.
+      changed_match '^(backend|frontend|deploy-configs|board_aggregators)/' && return 0
+      changed_match '^(requirements|Pipfile)' && return 0
+      # Catch-all for repo-root files (Pipfile, requirements, a new top-level
+      # package) that land in the root context. Everything with its OWN build
+      # context, and everything that is documentation, is excluded -- otherwise
+      # a one-line change to the tracker would trigger a ~10 minute
+      # ubuntu:20.04 + node rebuild of the backend for nothing.
+      printf '%s\n' "$CHANGED_PATHS" \
+        | grep -vE '^(k8s|doc|roadmap|browser-extension|maniwani_logs|scripts|\.vscode|\.github|remote_site_favicons|gateway-controller|storage-client|glados-tts|nsfw-classifier|reddit-aggregator|tracker-server|seedbox|rtmp|clamav|nntp-hub)/' \
+        | grep -vE '^[^/]*\.(md|png|txt|cfg)$' \
+        | grep -vE '^(LICENSE|\.gitignore|\.dockerignore|docker-compose\.yml)$' \
+        | grep -q . && return 0
+      return 1 ;;
+    # No syndichan-node case: its source lives in a separate repository and is
+    # not tracked here, so no diff can ever select it. See the IMAGES list.
+    code-runner)                changed_match '^code-runner/' ;;
+    syndichan-gateway-controller) changed_match '^gateway-controller/' ;;
+    maniwani-frontend)          changed_match '^frontend/' ;;
+    fourchan-aggregator-plus)   changed_match '^board_aggregators/fourchan_aggregator_plus/' ;;
+    reddit-aggregator)          changed_match '^reddit-aggregator/' ;;
+    nsfw-classifier)            changed_match '^nsfw-classifier/' ;;
+    tracker)                    changed_match '^tracker-server/' ;;
+    seedbox)                    changed_match '^seedbox/' ;;
+    rtmp)                       changed_match '^rtmp/' ;;
+    clamav)                     changed_match '^clamav/' ;;
+    nntp-hub)                   changed_match '^nntp-hub/' ;;
+    maniwani-nginx)             changed_match '^deploy-configs/nginx/' ;;
+    glados-tts)                 return 1 ;;   # quarantined; gate already halted
+    *)                          return 1 ;;
+  esac
+}
+
+phase_build() {
+  set_phase build
+  local rec name ctx dockerfile quarantined tag
+  local worktree="$RUN_DIR/src"
+
+  # Build from a clean export of the target commit, never from $REPO_DIR's
+  # working tree -- a leftover file from an aborted run must not end up in an
+  # image.
+  mkdir -p "$worktree"
+  git -C "$REPO_DIR" archive "$NEW_SHA" | tar -x -C "$worktree"
+
+  for rec in "${IMAGES[@]}"; do
+    name="$(printf '%s' "$rec" | cut -d'|' -f1)"
+    ctx="$(printf '%s' "$rec" | cut -d'|' -f2)"
+    dockerfile="$(printf '%s' "$rec" | cut -d'|' -f3)"
+    quarantined="$(printf '%s' "$rec" | cut -d'|' -f4)"
+    [ "$quarantined" = "1" ] && continue
+    image_needs_build "$name" || continue
+
+    tag="registry.local/${name}:g${SHORT_SHA}"
+    # If the tag already exists (a retried run on the same commit), reuse it.
+    if docker image inspect "$tag" >/dev/null 2>&1; then
+      log "reusing existing $tag"
+      BUILT_IMAGES+=("$name")
+      continue
+    fi
+
+    local -a cmd
+    cmd=(docker build --progress=plain --pull=false -t "$tag")
+    [ -n "$dockerfile" ] && cmd+=(-f "$worktree/$dockerfile")
+    cmd+=("$worktree/$ctx")
+
+    # NOTE the deliberate absence of --target: backend/Dockerfile is multi-stage
+    # (dev -> prod) and the final stage `prod` is what must ship. --target dev
+    # keeps nodejs, runs as root and points MANIWANI_CFG at devmode.cfg
+    # (sqlite + file storage). Never pass it.
+    if ! run_step "build-$name" "${cmd[@]}"; then
+      # Nothing has been applied yet. This is the cheap, clean failure -- but it
+      # is also the most common one, so it must produce a readable log or the
+      # whole feature has failed its requirement.
+      RESULT="build_failed"
+      log "build of $name failed; nothing was applied, deployed sha stays $OLD_SHA"
+      docker image prune -f >/dev/null 2>&1 || true   # dangling only, never -a
+      ROLLBACK_SUMMARY="not needed -- failure was before any cluster mutation"
+      finish 20
+    fi
+    BUILT_IMAGES+=("$name")
+  done
+
+  sv built_images "$(printf '%s ' "${BUILT_IMAGES[@]:-}" | sed 's/ $//')"
+  if [ "${#BUILT_IMAGES[@]}" -eq 0 ]; then log "no image needed rebuilding"; else
+    log "built: ${BUILT_IMAGES[*]}"
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# NEVER APPLY A TAG THAT DOES NOT EXIST
+# -----------------------------------------------------------------------------
+# render_tree() rewrites EVERY `registry.local/<name>:latest` in the rendered
+# tree to `:g<sha>`, but image_needs_build() only rebuilds contexts whose SOURCE
+# paths changed. A manifest-only commit (say k8s/app/40-nginx.yaml, which the
+# updater's own README tells operators to commit) therefore applied
+# `registry.local/maniwani-nginx:g<newsha>` -- a tag nothing ever created.
+#
+# With imagePullPolicy: IfNotPresent and no registry, the kubelet cannot pull it:
+# ErrImagePull / "failed to resolve reference". For nginx that is fatal rather
+# than degraded -- it is replicas:1 with strategy Recreate and the hostPort edge,
+# so the old pod is torn down BEFORE the new one fails, and the public site is
+# hard down until a human intervenes.
+#
+# So: after import, walk the render and demote any pinned tag that is not
+# actually in containerd back to the tag the cluster is already running. An
+# unbuilt image keeps whatever it had, which is exactly right -- nothing about
+# it changed in this commit.
+unpin_unbuilt_images() {
+  local rend="$1"
+  [ -d "$rend" ] || return 0
+  local ref name live demoted=0
+
+  # Every distinct pinned ref the render is about to apply.
+  for ref in $(grep -rhoE "registry\.local/[A-Za-z0-9_.-]+:g${SHORT_SHA}" "$rend" 2>/dev/null | sort -u); do
+    if k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -qxF "$ref"; then
+      continue                      # built and imported this run, or already present
+    fi
+    name="${ref#registry.local/}"; name="${name%%:*}"
+    # What is actually running right now? Prefer that over a guess at :latest,
+    # so a previous run's pin is preserved rather than silently unpinned.
+    live="$(live_image_for "$name")"
+    [ -n "$live" ] || live="registry.local/${name}:latest"
+    warn "$ref was never built -- applying $live instead (nothing in this commit changed that image)"
+    grep -rlF "$ref" "$rend" 2>/dev/null | while IFS= read -r f; do
+      if [ -n "$f" ]; then sed -i "s|${ref}|${live}|g" "$f"; fi
+    done
+    demoted=$((demoted + 1))
+  done
+  [ "$demoted" = "0" ] || log "demoted $demoted unbuilt image tag(s) to their live values"
+  return 0
+}
+
+# The image a workload is running right now, or empty. Used so an unbuilt image
+# keeps its CURRENT tag instead of being reset to :latest and losing a pin.
+live_image_for() {
+  local name="$1" out
+  # Image names and workload names are not necessarily equal (for example,
+  # image syndichan-gateway-controller runs in Deployment/gateway-controller).
+  # Search every workload/container by exact image repository instead of
+  # guessing a Kubernetes object name from the image name.
+  out="$("${KUBECTL[@]}" get deployments,statefulsets,daemonsets -o json 2>/dev/null \
+    | jq -r --arg prefix "registry.local/${name}:" \
+        '[.items[].spec.template.spec.containers[].image
+          | select(startswith($prefix))][0] // empty' 2>/dev/null || true)"
+  case "$out" in
+    registry.local/"${name}":*) printf '%s' "$out" ;;
+  esac
+  return 0
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: import into containerd
+#   k3s uses containerd, not docker, for the kubelet. There is no registry, so
+#   this is the ONLY way an image becomes runnable.
+# -----------------------------------------------------------------------------
+phase_import() {
+  set_phase import
+  local name tag
+  for name in "${BUILT_IMAGES[@]:-}"; do
+    [ -n "$name" ] || continue
+    tag="registry.local/${name}:g${SHORT_SHA}"
+    if k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -qxF "$tag"; then
+      log "$tag already in containerd"
+      continue
+    fi
+    # bash -c with pipefail, NOT sh -c: dash has no pipefail, so a failed
+    # `docker save` feeding a successful `ctr import` of a truncated stream
+    # would report success and leave a corrupt image in containerd.
+    if ! run_step "import-$name" bash -c "set -o pipefail; docker save '$tag' | k3s ctr -n k8s.io images import -"; then
+      RESULT="import_failed"
+      log "import of $tag into containerd failed; nothing applied"
+      ROLLBACK_SUMMARY="not needed -- failure was before any cluster mutation"
+      finish 20
+    fi
+  done
+  # Verify every tag we are about to reference actually exists in containerd.
+  # With IfNotPresent and no registry, a missing tag is an unrecoverable
+  # ImagePullBackOff, so this check is not paranoia.
+  for name in "${BUILT_IMAGES[@]:-}"; do
+    [ -n "$name" ] || continue
+    tag="registry.local/${name}:g${SHORT_SHA}"
+    k3s ctr -n k8s.io images ls -q 2>/dev/null | grep -qxF "$tag" \
+      || die "$tag missing from containerd after import" import_failed 20
+  done
+}
+
+# -----------------------------------------------------------------------------
+# Which manifests must be applied?
+#   = manifests of workloads whose image was rebuilt (they need the new pinned
+#     tag) UNION changed k8s/ manifests (excluding data/ and bootstrap/, both
+#     already gated).
+# -----------------------------------------------------------------------------
+FILES_TO_APPLY=()
+compute_apply_set() {
+  local w img rel f
+  for w in "${WORKLOADS[@]}"; do
+    img="$(wl_field "$w" 4)"; rel="$(wl_field "$w" 5)"
+    if [ -n "$img" ] && in_list "$img" "${BUILT_IMAGES[@]:-}"; then
+      in_list "$rel" "${FILES_TO_APPLY[@]:-}" || FILES_TO_APPLY+=("$rel")
+    fi
+  done
+  while IFS= read -r f; do
+    case "$f" in
+      # data/ and bootstrap/ are gated upstream and never reach here.
+      # k8s/updater/** is THIS TOOL'S OWN objects -- the ServiceAccount/Role
+      # that bounds it, the state PVC, and an EXAMPLE secret file. An updater
+      # that applies its own RBAC can widen its own permissions from a git
+      # commit, and applying 10-secrets.example.yaml would overwrite the real
+      # deploy key with a placeholder. Never self-apply; the gate below says so
+      # to the operator.
+      k8s/data/*|k8s/bootstrap/*|k8s/updater/*|"") continue ;;
+      k8s/*.yaml) rel="${f#k8s/}"; in_list "$rel" "${FILES_TO_APPLY[@]:-}" || FILES_TO_APPLY+=("$rel") ;;
+    esac
+  done <<<"$CHANGED_PATHS"
+  sv apply_files "$(printf '%s ' "${FILES_TO_APPLY[@]:-}" | sed 's/ $//')"
+}
+
+# tier for a manifest path (defaults to C for shared/common files)
+tier_for_file() {
+  local rel="$1" w
+  for w in "${WORKLOADS[@]}"; do
+    [ "$(wl_field "$w" 5)" = "$rel" ] && { wl_field "$w" 6; return; }
+  done
+  case "$rel" in
+    aggregators/*) printf 'A' ;;
+    app/00-configmaps.yaml) printf 'C' ;;
+    app/*) printf 'C' ;;
+    media/*) printf 'C' ;;
+    *) printf 'C' ;;
+  esac
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: migrate
+#   backend/docker-entrypoint.sh (prod branch) -> ensure_runtime.py ->
+#   update.py:update_db() -> command.upgrade("head"), AT POD BOOT. So by the
+#   time a readiness failure is visible, the schema is already forward.
+#   Hoisting the migration into a discrete Job buys the cheap, clean failure:
+#   a Job that fails leaves the schema untouched and nothing has rolled.
+# -----------------------------------------------------------------------------
+migration_pending() { changed_match '^backend/migrations/versions/'; }
+
+# Postgres is reached over the NETWORK, not with `kubectl exec`.
+#
+# This is what 00-serviceaccount-rbac.yaml (e) already describes as the design:
+# k8s/data/networkpolicy.yaml admits any pod labelled
+# maniwani.io/postgres-client="true" to postgres:5432, this CronJob carries that
+# label (40-cronjob.yaml), and the image installs postgresql17-client. The
+# credentials arrive as POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB via
+# secretKeyRef.
+#
+# The exec-based version this replaces required `create` on pods/exec -- a shell
+# inside the database pod, on the DATA node -- which the Role deliberately does
+# not grant. The result was that phase_migrate() halted on every commit
+# containing an alembic revision, so no schema change could ever deploy
+# unattended. One label instead of one shell, exactly as documented.
+PGHOST="${PGHOST:-postgres}"
+PGPORT="${PGPORT:-5432}"
+
+pg_exec() {  # pg_exec <sql>
+  PGPASSWORD="${POSTGRES_PASSWORD:-}" psql -qtAX \
+    -h "$PGHOST" -p "$PGPORT" \
+    -U "${POSTGRES_USER:-}" -d "${POSTGRES_DB:-}" \
+    -c "$1"
+}
+
+# Can we actually talk to postgres? Replaces the pods/exec capability probe.
+pg_reachable() {
+  [ -n "${POSTGRES_USER:-}" ] && [ -n "${POSTGRES_DB:-}" ] || return 1
+  PGPASSWORD="${POSTGRES_PASSWORD:-}" psql -qtAX \
+    -h "$PGHOST" -p "$PGPORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c 'SELECT 1' >/dev/null 2>&1
+}
+
+phase_migrate() {
+  migration_pending || { log "no new alembic revisions in this commit"; return 0; }
+  set_phase migrate
+
+  # 0. Both of the steps below need `create` on pods/exec. If the Role denies
+  #    it (the shipped Role does), halt HERE -- tier A has been applied and
+  #    verified Ready, tier B has not been touched, and the rollback below puts
+  #    tier A back. Refusing is the right answer: running a schema migration
+  #    with no pre-migration dump and no recorded starting revision leaves the
+  #    failure path with nothing to roll back to.
+  # Gate on whether postgres is actually REACHABLE, not on pods/exec. The
+  # reasoning behind the original halt is unchanged and still right: running a
+  # schema migration with no pre-migration dump and no recorded starting
+  # revision leaves the failure path with nothing to roll back to. Only the
+  # mechanism changed, from a shell in the DB pod to a network client.
+  if ! pg_reachable; then
+    RESULT="halted_no_postgres"
+    log "HALT  this commit adds alembic revisions but postgres is not reachable at"
+    log "      $PGHOST:$PGPORT as \"${POSTGRES_USER:-<unset>}\", so the updater can"
+    log "      neither read alembic_version nor take a pre-migration dump."
+    log "      Check: POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB reach this pod"
+    log "      from Secret/maniwani-env, and that this pod is labelled"
+    log '      maniwani.io/postgres-client="true" (k8s/data/networkpolicy.yaml).'
+    do_rollback
+    finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+  fi
+
+  # 1. Record the pre-state BEFORE anything mutates.
+  if ! MIGRATION_PREV_REV="$(pg_exec 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]')" \
+     || [ -z "$MIGRATION_PREV_REV" ]; then
+    RESULT="halted_no_alembic_read"
+    log "HALT  could not read alembic_version from postgres at $PGHOST:$PGPORT."
+    log "      The connection succeeded earlier, so this is most likely an empty"
+    log "      or missing alembic_version table (a database that has never been"
+    log "      stamped), not a permissions problem."
+    log "      No pre-migration state, no migration. Nothing changed."
+    finish 10
+  fi
+  log "pre-migration alembic revision: $MIGRATION_PREV_REV"
+  sv migration_prev_revision "$MIGRATION_PREV_REV"
+
+  # 2. Logical dump, custom format. ~349 MB logical compresses to ~60-100 MB.
+  #    NO DUMP, NO MIGRATION -- the run aborts before any mutation.
+  PRE_DUMP="$RUN_DIR/pre.dump"
+  if ! run_step pg-dump sh -c \
+      "PGPASSWORD='${POSTGRES_PASSWORD:-}' pg_dump -h '$PGHOST' -p '$PGPORT' -U '${POSTGRES_USER:-}' -d '${POSTGRES_DB:-}' -Fc > '$PRE_DUMP'" \
+     || [ ! -s "$PRE_DUMP" ]; then
+    RESULT="halted_no_dump"
+    rm -f "$PRE_DUMP"; PRE_DUMP=""
+    log "HALT  pg_dump failed. Refusing to run a migration without a pre-image."
+    finish 10
+  fi
+  log "pre-migration dump: $PRE_DUMP ($(du -h "$PRE_DUMP" | cut -f1))"
+  sv pre_dump "$PRE_DUMP"
+
+  # 3. Run the migration as a discrete Job on the NEW image.
+  #    The Job spec is derived from the LIVE StatefulSet's pod template so it
+  #    inherits ~100 env vars / secretKeyRefs without this script having to
+  #    know them. Limitation, stated: if this same commit ADDS an env key the
+  #    migration needs, the Job runs without it and fails -- which is the
+  #    correct, safe failure (halt before any rollout).
+  local jobname="maniwani-migrate-${SHORT_SHA}"
+  "${KUBECTL[@]}" delete job "$jobname" --ignore-not-found >/dev/null 2>&1 || true
+  make_job_yaml "$jobname" "registry.local/maniwani:g${SHORT_SHA}" migrate "" >"$RUN_DIR/job-migrate.yaml" \
+    || die "could not derive the migration Job from sts/maniwani" migrate_failed 20
+
+  if ! run_step migrate-apply "${KUBECTL[@]}" apply -f "$RUN_DIR/job-migrate.yaml"; then
+    RESULT="migrate_failed"; log "could not create the migration Job"; finish 20
+  fi
+  if ! run_step migrate-wait "${KUBECTL[@]}" wait --for=condition=complete "job/$jobname" --timeout=900s; then
+    "${KUBECTL[@]}" logs "job/$jobname" --tail=200 >"$STEPS_DIR/migrate-job.log" 2>&1 || true
+    LAST_FAIL_OUT="$STEPS_DIR/migrate-job.log"
+    RESULT="migration_failed"
+    log "The migration Job failed. Alembic runs each revision in its own"
+    log "transaction on postgres, so a failed revision rolled itself back."
+    log "The schema is at or before $MIGRATION_PREV_REV, NOTHING has been"
+    log "rolled out, and the running site is untouched."
+    ROLLBACK_SUMMARY="not needed -- migration Job failed before any workload changed; schema self-rolled-back per-revision"
+    finish 20
+  fi
+  MIGRATION_RAN=1
+  sv migration_ran 1
+  local newrev
+  newrev="$(pg_exec 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]' || true)"
+  sv migration_new_revision "${newrev:-unknown}"
+  log "migration complete: $MIGRATION_PREV_REV -> ${newrev:-unknown}"
+  log "NOTE: between now and the end of the backend rollout (~60-120s) the OLD"
+  log "code serves the NEW schema. Additive migrations are invisible; destructive"
+  log "ones will error for that window. The alternative is scaling the backend to"
+  log "0 first, i.e. a deliberate outage on every schema change."
+}
+
+# make_job_yaml <name> <image> <migrate|downgrade> <target-rev>
+#
+# Derives a Job from the live sts/maniwani pod template: overrides the image
+# and the command, drops probes, drops the aggregator/rtmp PVC volumes (a
+# migration has no business mounting scraper volumes), drops initContainers.
+make_job_yaml() {
+  local jobname="$1" image="$2" mode="$3" targetrev="$4"
+  # The live spec goes through a FILE, not a pipe: `python3 - ... <<'PY'` takes
+  # its program from stdin, so a piped payload would never reach json.load().
+  local src="$RUN_DIR/sts-maniwani.json"
+  "${KUBECTL[@]}" get statefulset maniwani -o json >"$src" 2>/dev/null || return 1
+  [ -s "$src" ] || return 1
+  python3 - "$src" "$jobname" "$image" "$mode" "$targetrev" "$NAMESPACE" <<'PY'
+import json, sys
+src, name, image, mode, target, ns = sys.argv[1:7]
+with open(src, encoding='utf-8') as fh:
+    sts = json.load(fh)
+tpl = sts["spec"]["template"]
+spec = tpl["spec"]
+
+spec.pop("initContainers", None)          # they wait on ceph; irrelevant here
+spec["restartPolicy"] = "Never"
+# nodeSelector/tolerations/serviceAccountName/securityContext are inherited
+# as-is: the backend image must run on the software node either way.
+
+keep_vols, drop_names = [], set()
+for v in spec.get("volumes", []):
+    if "persistentVolumeClaim" in v:
+        drop_names.add(v["name"])         # never mount a scraper PVC
+    else:
+        keep_vols.append(v)
+spec["volumes"] = keep_vols
+
+# volumeClaimTemplates are the trap. They produce volumes that are MOUNTED by
+# the container but never appear in spec.template.spec.volumes, because the
+# StatefulSet controller materialises them per replica. Copy the pod spec into a
+# Job and every such mount is suddenly orphaned, and the API rejects the whole
+# Job:
+#
+#   volumeMounts[6].name: Not found: "maniwani-uploads"
+#
+# which fails the migrate phase before a single statement runs. Same reasoning
+# as the PVC drop above — a Job has no per-replica claims — but the names are
+# somewhere the loop above cannot see them.
+for vct in sts["spec"].get("volumeClaimTemplates", []):
+    drop_names.add(vct["metadata"]["name"])
+
+cs = [c for c in spec["containers"] if c["name"] == "maniwani"]
+if not cs:
+    sys.exit("sts/maniwani has no container named 'maniwani'")
+c = cs[0]
+c["image"] = image
+c["imagePullPolicy"] = "IfNotPresent"
+for p in ("livenessProbe", "readinessProbe", "startupProbe", "lifecycle", "ports"):
+    c.pop(p, None)
+c["volumeMounts"] = [m for m in c.get("volumeMounts", []) if m["name"] not in drop_names]
+
+if mode == "migrate":
+    # docker-entrypoint.sh's `update` branch is exactly `python3 update.py`.
+    c.pop("command", None)
+    c["args"] = ["update"]
+else:
+    # DOWNGRADE MUST RUN ON THE NEW IMAGE. The old image does not contain the
+    # new revision script and therefore physically cannot downgrade it.
+    #
+    # This mirrors backend/update.py exactly, and every line of it is load
+    # bearing:
+    #   * gevent.monkey.patch_all() + psycogreen must run FIRST, before
+    #     anything imports socket/ssl -- update.py:1-4 does the same.
+    #   * backend/migrations/env.py does `from flask import current_app` and
+    #     reads SQLALCHEMY_DATABASE_URI plus current_app.extensions['migrate']
+    #     off it. WITHOUT `with app.app_context():` this raises "Working
+    #     outside of application context" and the rollback path is dead.
+    #     (`migrate = Migrate(app, db)` lives at shared.py:644.)
+    #   * WORKDIR is /maniwani in the prod stage, so the relative
+    #     'migrations/alembic.ini' resolves -- same as update.py:89.
+    c.pop("args", None)
+    c["command"] = ["python3", "-c",
+        "import gevent.monkey; gevent.monkey.patch_all()\n"
+        "import psycogreen.gevent; psycogreen.gevent.patch_psycopg()\n"
+        "from alembic import command\n"
+        "from alembic.config import Config\n"
+        "from shared import app, db\n"
+        "c = Config('migrations/alembic.ini')\n"
+        "c.set_main_option('script_location', 'migrations')\n"
+        "with app.app_context():\n"
+        "    command.downgrade(config=c, revision=%r)\n"
+        "    db.session.commit()\n"
+        "print('downgraded to %s')\n" % (target, target)]
+spec["containers"] = [c]
+
+job = {
+    "apiVersion": "batch/v1", "kind": "Job",
+    "metadata": {"name": name, "namespace": ns,
+                 "labels": {"app.kubernetes.io/part-of": "maniwani",
+                            "maniwani.io/managed-by": "updater"}},
+    # maniwani.io/storage-client is REQUIRED, not decorative. update.py does the
+    # alembic upgrade AND uploads static assets to the storage node, and
+    # storage-node-ingress admits port 9000 only from app=maniwani, app=nginx,
+    # app=seedbox or maniwani.io/storage-client=true.
+    #
+    # A Job derived from the StatefulSet inherits its pod SPEC but not its
+    # LABELS, so the migrate pod arrived carrying only job-name/controller-uid
+    # and the NetworkPolicy dropped it. Nothing reports that as a denial: the
+    # packets simply stop, boto3 waits, and the failure surfaces minutes later
+    # as
+    #   ReadTimeoutError: https://syndichan-node:9000/static/logo.png
+    # which reads like a slow storage node rather than a label that is absent.
+    #
+    # storage-client rather than app=maniwani deliberately: app=maniwani is the
+    # StatefulSet's Service selector, and a Job wearing it would start receiving
+    # site traffic.
+    "spec": {"backoffLimit": 0, "ttlSecondsAfterFinished": 86400,
+             "template": {"metadata": {"labels": {
+                 "maniwani.io/job": name,
+                 "maniwani.io/storage-client": "true",
+                 # postgres-client too, and for the same reason: postgres-ingress
+                 # admits 5432 only from app=maniwani or
+                 # maniwani.io/postgres-client=true. A migrate Job without it is
+                 # refused, which surfaces as
+                 #   psycopg2.OperationalError: Connection refused
+                 # while the updater's own pg_dump works, because the updater pod
+                 # is not the one being denied.
+                 #
+                 # Both labels are needed because update.py talks to BOTH. Adding
+                 # only the storage one hid this: update_storage() ran first and
+                 # timed out, so the database refusal never got reached.
+                 "maniwani.io/postgres-client": "true"}}, "spec": spec}},
+}
+json.dump(job, sys.stdout, indent=2)
+PY
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: apply  (tiers A -> B -> C -> D). Everything from here on can fail into
+#               a rollback.
+# -----------------------------------------------------------------------------
+phase_apply() {
+  set_phase apply
+  compute_apply_set
+
+  if [ "${#FILES_TO_APPLY[@]}" -eq 0 ]; then
+    RESULT="no_op"
+    log "nothing to apply (docs / roadmap / extension only). Recording $SHORT_SHA as deployed."
+    printf '%s\n' "$NEW_SHA" >"$DEPLOYED_SHA_FILE"
+    finish 0
+  fi
+  log "will apply: ${FILES_TO_APPLY[*]}"
+
+  snapshot_aggregator_dbs
+  apply_tier A
+  phase_migrate            # migration sits between tier A and tier B, by design
+  set_phase apply
+  apply_tier B
+  apply_tier C
+  apply_tier D
+}
+
+# A hot `cp` of a live SQLite file tears. `.backup` is the only consistent
+# read. This does NOT protect against an aggregator image that migrates its own
+# .db on boot -- reverting the image would leave an upgraded database under old
+# code -- but it means the operator has a consistent file to restore by hand.
+# The updater NEVER writes into a PVC.
+snapshot_aggregator_dbs() {
+  local any=0 w
+  for w in "${WORKLOADS[@]}"; do
+    [ "$(wl_field "$w" 6)" = "A" ] || continue
+    [ -n "$(wl_field "$w" 4)" ] || continue
+    in_list "$(wl_field "$w" 4)" "${BUILT_IMAGES[@]:-}" && any=1
+  done
+  [ "$any" = "1" ] || return 0
+  command -v sqlite3 >/dev/null 2>&1 || { warn "sqlite3 missing; skipping aggregator .db snapshot"; return 0; }
+  local dst="$RUN_DIR/aggdb"; mkdir -p "$dst"
+  local f n
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    n="$(printf '%s' "$f" | tr '/' '_')"
+    sqlite3 "$f" ".backup '$dst/$n'" 2>/dev/null && log "  snapshot $f" || warn "  could not snapshot $f"
+    # /aggregator-data/<site>, where 40-cronjob.yaml mounts the aggregator PVC
+    # read-only — one now, formerly five. This used to scan /var/lib/rancher/k3s/storage -- the
+    # local-path provisioner's directory ON THE HOST, which is not mounted into
+    # this pod. find returned nothing every time, so the pre-roll snapshot
+    # silently never happened and the log still claimed it had.
+    #
+    # maxdepth 3, not 2: the generic aggregator keeps one .db per site under
+    # /aggregator-data/generic/sites/<host>.db.
+  done < <(find /aggregator-data -maxdepth 3 -name '*.db' 2>/dev/null | head -50)
+  log "aggregator .db snapshots in $dst (restore is a MANUAL step with the sts at replicas 0)"
+}
+
+apply_tier() {
+  local tier="$1" rel w kind name container img
+  local applied_any=0
+
+  # nginx (tier D) is special enough to get its own function.
+  if [ "$tier" = "D" ]; then apply_tier_D; return; fi
+
+  for rel in "${FILES_TO_APPLY[@]}"; do
+    [ "$(tier_for_file "$rel")" = "$tier" ] || continue
+    log "tier $tier: applying $rel"
+    # ConfigMap -> restart. nginx.conf, maniwani.cfg and botPolicy.yaml are
+    # subPath mounts, and subPath mounts NEVER receive ConfigMap updates -- the
+    # kubelet does not propagate them. Applying the ConfigMap alone therefore
+    # does exactly nothing. app/00-configmaps.yaml carries a
+    # maniwani.io/config-revision annotation that the consuming pod templates
+    # mirror, so a correct commit already forces the roll; if it did not, say
+    # so loudly rather than silently shipping a config nobody is reading.
+    if [ "$rel" = "app/00-configmaps.yaml" ]; then
+      warn "app/00-configmaps.yaml changed. subPath ConfigMap mounts do NOT update"
+      warn "in place -- if the commit did not also bump maniwani.io/config-revision"
+      warn "on the consuming pod template, the new config is NOT live."
+    fi
+    if ! apply_manifest "$tier" "$REND" "$rel"; then
+      RESULT="apply_failed"
+      log "apply of $rel failed"
+      do_rollback
+      finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+    fi
+    applied_any=1
+  done
+  [ "$applied_any" = "1" ] || return 0
+
+  # Verify the tier before moving on. Least-blast-radius first means a failure
+  # here has not yet touched the edge.
+  for w in "${WORKLOADS[@]}"; do
+    [ "$(wl_field "$w" 6)" = "$tier" ] || continue
+    rel="$(wl_field "$w" 5)"
+    in_list "$rel" "${FILES_TO_APPLY[@]}" || continue
+    kind="$(wl_field "$w" 1)"; name="$(wl_field "$w" 2)"
+    "${KUBECTL[@]}" get "$kind" "$name" >/dev/null 2>&1 || continue
+    TOUCHED_WORKLOADS+=("$kind|$name")
+    if ! wait_ready "$kind" "$name" "$(timeout_for "$(wl_field "$w" 7)")"; then
+      capture_diagnostics "$kind" "$name"
+      RESULT="rollout_failed_${kind}_${name}"
+      log "tier $tier: $kind/$name never became Ready"
+      do_rollback
+      finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+    fi
+  done
+}
+
+# nginx: replicas 1, strategy Recreate, hostPort 8081/8443 on 127.0.0.1.
+#
+# That combination is CORRECT and must not change: a RollingUpdate Deployment
+# holding a hostPort deadlocks forever -- the new pod cannot bind a port the
+# old pod still holds, and the old pod is not torn down until the new one is
+# Ready. The unavoidable consequence, stated honestly:
+#
+#   EVERY nginx update is a hard 5-15 s outage on 80/443. The @starting 503
+#   page does not help, because nginx IS the thing that is down -- clients get
+#   connection-refused, not a friendly page.
+#
+# Therefore nginx is rolled ONLY when nginx actually changed, always last, and
+# never as a side effect of a backend-only push.
+apply_tier_D() {
+  in_list "app/40-nginx.yaml" "${FILES_TO_APPLY[@]:-}" || {
+    log "edge unchanged -- not touching nginx (no 80/443 interruption this deploy)"
+    return 0
+  }
+
+  # Refuse to apply an edge manifest that has lost the Recreate/replicas:1
+  # invariant; that mistake produces a permanently wedged rollout.
+  local strat reps
+  strat="$(grep -A2 '^  strategy:' "$REND/app/40-nginx.yaml" | grep -oE 'Recreate|RollingUpdate' | head -1 || true)"
+  reps="$(grep -oE '^  replicas: [0-9]+' "$REND/app/40-nginx.yaml" | grep -oE '[0-9]+' | head -1 || true)"
+  if [ "$strat" != "Recreate" ] || [ "${reps:-1}" != "1" ]; then
+    RESULT="halted_edge_invariant"
+    log "HALT  app/40-nginx.yaml has strategy='$strat' replicas='$reps'."
+    log "      The edge holds hostPort 8081/8443. Anything other than"
+    log "      'Recreate' + 'replicas: 1' deadlocks on the port forever."
+    do_rollback
+    finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+  fi
+
+  log "EDGE UPDATE: this causes a 5-15s hard outage on 80/443 (Recreate + hostPort)."
+  if ! apply_manifest D "$REND" "app/40-nginx.yaml"; then
+    RESULT="apply_failed_nginx"; do_rollback; finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+  fi
+  TOUCHED_WORKLOADS+=("deployment|nginx")
+  if ! wait_ready deployment nginx "$TIMEOUT_EDGE"; then
+    capture_diagnostics deployment nginx
+    RESULT="rollout_failed_nginx"
+    do_rollback
+    finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: verify
+# -----------------------------------------------------------------------------
+phase_verify() {
+  set_phase verify
+
+  # Backend health goes to the SERVICE, not the edge: `location /` sits behind
+  # an Anubis auth_request, so a bare curl through the edge gets a 401/redirect
+  # and would look like a failure.
+  if "${KUBECTL[@]}" get statefulset maniwani >/dev/null 2>&1 && \
+     [ "$(live_replicas statefulset maniwani)" != "0" ]; then
+    # Probe the Service DIRECTLY from this pod rather than borrowing nginx's
+    # network with `kubectl exec`. The exec needed `create` on pods/exec, which
+    # Role/maniwani-updater deliberately does not grant (a shell in any pod in
+    # the namespace, including postgres). It therefore returned 403 on EVERY
+    # run, and because a failed verify calls do_rollback and never advances
+    # deployed.sha, the next tick rebuilt and rolled back again -- a permanent
+    # build/apply/rollback oscillation on a perfectly healthy commit.
+    #
+    # There is no NetworkPolicy over the app tier (only k8s/data and
+    # k8s/aggregators have one), so the updater pod can reach the Service.
+    # -f is essential: without it curl exits 0 on an HTTP 500 and a broken
+    # backend would pass the health gate.
+    if ! run_step verify-backend curl -fsS --max-time 10 -o /dev/null \
+           "http://maniwani.${NAMESPACE}.svc:3032/health"; then
+      RESULT="verify_failed_backend"
+      log "post-deploy smoke test failed: http://maniwani.${NAMESPACE}.svc:3032/health"
+      do_rollback
+      finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+    fi
+  fi
+
+  # Edge reachability THROUGH THE SERVICE.
+  #
+  # This used to curl https://127.0.0.1:8443/. The CronJob has no hostNetwork,
+  # so 127.0.0.1 is this pod's OWN loopback namespace -- nginx's hostPort lives
+  # on the NODE's loopback and is unreachable from here. The probe could only
+  # ever return 000, which falls to the `*)` arm below and rolls back. Combined
+  # with the backend exec above, that meant a healthy deploy was guaranteed to
+  # be reverted at the final step, with the log blaming the edge.
+  #
+  # --resolve rather than an IP-literal URL: curl sends no SNI for an IP, and
+  # the TLS vhost needs the servername to match $DOMAIN.
+  local edge_ip=""
+  if command -v getent >/dev/null 2>&1; then
+    edge_ip="$(getent hosts "nginx.${NAMESPACE}.svc" 2>/dev/null | awk '{print $1; exit}')"
+  fi
+  if [ -z "$edge_ip" ]; then
+    # Could not resolve the edge Service. That is a fault in THIS pod's DNS, not
+    # evidence that the deploy is bad, so warn and skip rather than rolling back
+    # a rollout that may be perfectly healthy.
+    warn "could not resolve nginx.${NAMESPACE}.svc -- skipping the edge smoke test"
+  elif command -v curl >/dev/null 2>&1; then
+    # RETRY. The backend is replicas:1, so the edge legitimately serves 502/503
+    # for a while after the rollout reports Ready -- uWSGI is up but the app is
+    # still finishing its startup work. Probing once and rolling back on the
+    # first 503 reverts a deploy that was about to be fine.
+    #
+    # Note `-w` already prints 000 when curl fails, so there is NO `|| echo 000`
+    # here: with one, a failure produced the string "000000", which matched
+    # nothing and fell through to the failure arm with a nonsense code.
+    local code="" attempt
+    for attempt in $(seq 1 12); do
+      # `|| true` is REQUIRED, not decoration: under `set -Eeuo pipefail` a
+      # non-zero curl (exit 28 on timeout, 7 on refused) fires the ERR trap and
+      # aborts the whole run as an UNHANDLED error -- which then rolls back a
+      # healthy deploy. The previous `|| echo 000` did suppress errexit, but it
+      # also APPENDED a second code to the `-w` output, producing "000000".
+      # This keeps the suppression without the duplicate.
+      code="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 10 \
+               --resolve "${DOMAIN}:443:${edge_ip}" "https://${DOMAIN}/" 2>/dev/null || true)"
+      case "$code" in
+        200|301|302|303|307|308|401|403) break ;;      # Anubis challenge/redirect is fine
+        000|502|503|504) sleep 10 ;;                   # still coming up -- retry
+        *) break ;;                                    # a real, settled answer
+      esac
+    done
+    log "edge https://${DOMAIN}/ (via nginx.${NAMESPACE}.svc ${edge_ip}) -> HTTP ${code:-000} after ${attempt} attempt(s)"
+    case "$code" in
+      200|301|302|303|307|308|401|403) : ;;
+      *)
+        RESULT="verify_failed_edge"
+        log "edge still '${code:-000}' after ${attempt} attempts -- treating as a failed deploy"
+        do_rollback
+        finish $([ "$ROLLBACK_RC" = "0" ] && echo 30 || echo 40)
+        ;;
+    esac
+  fi
+
+  # Landmine assertion: the five aggregator PVCs must be exactly as they were.
+  local line p ph vol nowph nowvol
+  if [ -f "$RUN_DIR/pvc-baseline.tsv" ]; then
+    while IFS=$'\t' read -r _t p ph vol; do
+      nowph="$("${KUBECTL[@]}" get pvc "$p" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+      nowvol="$("${KUBECTL[@]}" get pvc "$p" -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)"
+      if [ "$nowph" != "$ph" ] || [ "$nowvol" != "$vol" ]; then
+        RESULT="verify_failed_pvc"
+        log "PVC $p CHANGED during this deploy: $ph/$vol -> $nowph/$nowvol"
+        log "This must never happen -- scraped content is at risk. Rolling back."
+        do_rollback
+        finish 40
+      fi
+    done <"$RUN_DIR/pvc-baseline.tsv"
+    log "aggregator PVCs verified unchanged"
+  fi
+
+  # Only NOW does the render become the rollback baseline.
+  printf '%s\n' "$NEW_SHA" >"$DEPLOYED_SHA_FILE"
+  RESULT="ok"
+  log "deployed and verified: $OLD_SHA -> $NEW_SHA"
+}
+
+# -----------------------------------------------------------------------------
+# PHASE: prune  (only after a SUCCESSFUL run; never during a failed one)
+# -----------------------------------------------------------------------------
+phase_prune() {
+  set_phase prune
+  local keep="$RUN_DIR/keepset.txt"
+  : >"$keep"
+
+  # 1. Every image referenced by any live pod, INCLUDING init containers.
+  #    Derived from live pods, not from bookkeeping: with IfNotPresent and no
+  #    registry, deleting a tag a pod still uses turns its next restart into an
+  #    unrecoverable ImagePullBackOff with no way out.
+  #
+  #    NAMESPACED, not `-A`: the updater's Role is a namespace Role, so a
+  #    cluster-wide pod list is forbidden and would silently yield an EMPTY
+  #    keep-set -- which is precisely the input that makes a pruner delete
+  #    something it must not. Only namespace `maniwani` runs registry.local
+  #    images anyway.
+  if ! "${KUBECTL[@]}" get pods \
+       -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{range .spec.initContainers[*]}{.image}{"\n"}{end}{end}' \
+       2>/dev/null >>"$keep" || [ ! -s "$keep" ]; then
+    # No live-pod keep-set means no safe prune. Skipping costs disk; guessing
+    # costs the site.
+    warn "could not enumerate live pod images -- SKIPPING the prune entirely."
+    warn "Disk grows; nothing breaks. Investigate before the MIN_FREE_GB gate trips."
+    sv pruned_tags "skipped"
+    return 0
+  fi
+  # 2. Every registry.local ref in the last N renders (current + rollback targets).
+  local d
+  for d in $(ls -1t "$RENDER_ROOT" 2>/dev/null | head -n "$KEEP_TAGS"); do
+    grep -rhoE 'registry\.local/[a-z0-9-]+:[a-zA-Z0-9._-]+' "$RENDER_ROOT/$d" 2>/dev/null >>"$keep" || true
+  done
+  sort -u -o "$keep" "$keep"
+
+  # ALLOWLIST DELETION ONLY. Eligible == registry.local/<name>:g<12 hex>.
+  #
+  #  * Nothing outside registry.local/ is EVER touched. Deleting ceph/daemon is
+  #    unrecoverable (README §7.3: a moved major will not open the existing
+  #    monmap/bluestore), and postgres:17 / redis are pinned-by-digest copies
+  #    that no longer exist under those tags upstream.
+  #  * `docker system prune -a` is FORBIDDEN in this codebase: it would delete
+  #    registry.local/glados-tts, which cannot be deterministically rebuilt.
+  #  * :latest never matches the pattern, so it is never deleted -- and this
+  #    script never writes it either.
+  local eligible="$RUN_DIR/prune-eligible.txt"
+  k3s ctr -n k8s.io images ls -q 2>/dev/null \
+    | grep -E '^registry\.local/[a-z0-9-]+:g[0-9a-f]{12}$' \
+    | grep -vxF -f "$keep" >"$eligible" || true
+
+  local img n=0
+  while IFS= read -r img; do
+    [ -n "$img" ] || continue
+    log "prune containerd: $img"
+    k3s ctr -n k8s.io images rm "$img" >/dev/null 2>&1 || warn "  containerd rm failed for $img"
+    docker image rm -f "$img" >/dev/null 2>&1 || true
+    n=$((n + 1))
+  done <"$eligible"
+  # containerd's `images rm` removes the REFERENCE; its periodic GC reclaims
+  # the blobs asynchronously, so `df` will not move immediately.
+  log "pruned $n image tag(s); containerd GC reclaims the blobs asynchronously"
+  docker image prune -f >/dev/null 2>&1 || true   # dangling only, never -a
+  sv pruned_tags "$n"
+}
+
+# -----------------------------------------------------------------------------
+# ROLLBACK
+#
+# Two mechanisms, both idempotent, applied together:
+#
+#   1. Re-apply render/<prev-sha>/<file> for exactly the files this run applied,
+#      in REVERSE of the order they went in. Declarative, so it converges; it
+#      also restores non-image fields (env, resources, annotations) that a
+#      tag patch would miss.
+#   2. Patch each workload's container image back to the RESTORE POINT tag.
+#      This is authoritative and works even when there is no previous render
+#      (e.g. the run right after `adopt`), and it is a `patch`, which is all the
+#      updater's RBAC Role grants -- no delete verb exists anywhere.
+#
+# `kubectl rollout undo` is deliberately NOT used: it fights apply's field
+# ownership, means nothing for a bare ConfigMap, and would restore a pod spec
+# naming a tag whose CONTENT may have moved.
+#
+# Nothing here deletes a PVC, deletes a workload, or changes .spec.replicas.
+# -----------------------------------------------------------------------------
+ROLLBACK_RC=0
+do_rollback() {
+  local saved_phase="$PHASE"
+  set_phase rollback
+  ROLLBACK_RC=0
+  local rb="$RUN_DIR/rollback.log"
+  : >"$rb"
+
+  # Did the schema move during this deploy? If so, the previous backend image
+  # cannot run against it (update.py is forward-only), and reverting it would
+  # replace a working site with a crashloop.
+  SKIP_BACKEND_REVERT=0
+  local now_rev; now_rev="$(live_alembic_revision)"
+  if [ -n "${PRE_DEPLOY_REV:-}" ] && [ -n "$now_rev" ] && [ "$now_rev" != "$PRE_DEPLOY_REV" ]; then
+    SKIP_BACKEND_REVERT=1
+  fi
+
+  {
+    printf '[%s] rollback starting (failed in phase: %s)\n' "$(ts)" "$saved_phase"
+    printf 'previous render: %s (%s)\n' "${REND_PREV:-<none>}" \
+           "$([ -d "${REND_PREV:-/nonexistent}" ] && echo present || echo MISSING)"
+    printf 'schema: %s -> %s\n' "${PRE_DEPLOY_REV:-unknown}" "${now_rev:-unknown}"
+    if [ "$SKIP_BACKEND_REVERT" = "1" ]; then
+      printf '\n*** NOT reverting the backend image. ***\n'
+      printf 'The schema advanced during this deploy (%s -> %s). update.py migrates\n' \
+             "$PRE_DEPLOY_REV" "$now_rev"
+      printf 'forward at boot, so the PREVIOUS image has never heard of revision %s and\n' "$now_rev"
+      printf 'would abort with "Cannot locate revision identified by %s" and crashloop.\n' "$now_rev"
+      printf 'Reverting here would turn a failed verification into a hard outage.\n'
+      printf 'Everything else is reverted; the backend stays on the new image, which\n'
+      printf 'is the only one that can run this schema. To go back properly, downgrade\n'
+      printf 'the schema first (update.sh rollback) and then revert the image.\n\n'
+    fi
+  } >>"$rb"
+
+  # STEP 0 -- schema first, and this ordering is NOT optional.
+  rollback_migration
+
+  # STEP 1 -- re-apply the previous render for every file we applied, reversed.
+  local rel tier
+  if [ -s "$APPLIED_TSV" ]; then
+    while IFS=$'\t' read -r tier rel _at; do
+      [ -n "$rel" ] || continue
+      if [ -d "${REND_PREV:-/nonexistent}" ] && [ -f "$REND_PREV/$rel" ]; then
+        printf '[%s] re-applying previous render: %s\n' "$(ts)" "$rel" >>"$rb"
+        strip_pvcs "$REND_PREV/$rel" >"$RUN_DIR/rb-$(printf '%s' "$rel" | tr '/' '_')"
+        if ! "${KUBECTL[@]}" apply -f "$RUN_DIR/rb-$(printf '%s' "$rel" | tr '/' '_')" >>"$rb" 2>&1; then
+          printf '[%s] WARN apply of previous %s failed\n' "$(ts)" "$rel" >>"$rb"
+          ROLLBACK_RC=1
+        fi
+      else
+        printf '[%s] no previous render for %s -- relying on the image patch below\n' "$(ts)" "$rel" >>"$rb"
+      fi
+    done < <(tac "$APPLIED_TSV")
+  else
+    printf '[%s] nothing was applied; rollback is a no-op\n' "$(ts)" >>"$rb"
+  fi
+
+  # STEP 2 -- patch images back to the restore point, and wait for Ready.
+  #
+  # This runs over EVERY workload in the restore point, not just the ones this
+  # run touched: the previous-render apply in step 1 can move a workload we did
+  # not list (a shared file), and re-asserting a workload that is already
+  # correct is a no-op. That is what makes the whole rollback idempotent.
+  local kind name container img reps rest cur
+  local -a rb_wait=()
+  while IFS=$'\t' read -r kind name container img _gen _rev reps; do
+    [ -n "$kind" ] || continue
+    [ "$img" = "<none>" ] && continue
+    # See SKIP_BACKEND_REVERT above: the schema moved, so the old backend image
+    # cannot run and reverting it would crashloop the site.
+    if [ "${SKIP_BACKEND_REVERT:-0}" = "1" ] && [ "$name" = "maniwani" ]; then
+      printf '[%s] SKIPPING %s/%s image revert (schema advanced this deploy)\n' \
+             "$(ts)" "$kind" "$name" >>"$rb"
+      continue
+    fi
+    "${KUBECTL[@]}" get "$kind" "$name" >/dev/null 2>&1 || continue
+    cur="$(live_image "$kind" "$name" "$container")"
+    if [ "$cur" = "$img" ]; then
+      printf '[%s] %s/%s already at %s\n' "$(ts)" "$kind" "$name" "$img" >>"$rb"
+      # Only wait on it if this run actually moved it -- otherwise a rollback
+      # would serially block on all ~20 workloads for no reason.
+      in_list "$kind|$name" "${TOUCHED_WORKLOADS[@]:-}" && rb_wait+=("$kind|$name|$reps")
+    else
+      printf '[%s] patching %s/%s: %s -> %s\n' "$(ts)" "$kind" "$name" "$cur" "$img" >>"$rb"
+      # `set image` is a PATCH. The updater's Role grants get/patch/update on
+      # workloads and no `delete` verb at all -- rollback stays inside that.
+      if ! "${KUBECTL[@]}" set image "$kind/$name" "$container=$img" >>"$rb" 2>&1; then
+        printf '[%s] WARN set image failed for %s/%s\n' "$(ts)" "$kind" "$name" >>"$rb"
+        ROLLBACK_RC=1
+      fi
+      rb_wait+=("$kind|$name|$reps")
+    fi
+  done <"$RESTORE_TSV"
+
+  # STEP 3 -- wait for Ready, with a nudge for a wedged StatefulSet pod.
+  local entry k n r t w
+  for entry in "${rb_wait[@]:-}"; do
+    [ -n "$entry" ] || continue
+    k="${entry%%|*}"; rest="${entry#*|}"; n="${rest%%|*}"; r="${rest##*|}"
+    [ "$k" != "daemonset" ] && [ "${r:-1}" = "0" ] && continue
+    w="$(wl_lookup "$k/$n" || true)"
+    t="$TIMEOUT_MEDIA"; [ -n "$w" ] && t="$(timeout_for "$(wl_field "$w" 7)")"
+    printf '[%s] waiting for %s/%s (timeout %ss)\n' "$(ts)" "$k" "$n" "$t" >>"$rb"
+    if ! "${KUBECTL[@]}" rollout status "$k/$n" --timeout="${t}s" >>"$rb" 2>&1; then
+      # A StatefulSet's sole pod wedged in CrashLoopBackOff/ImagePullBackOff is
+      # not replaced by the reverted template on its own. A PLAIN delete lets
+      # the controller recreate it -- never --force --grace-period=0, which
+      # risks a second pod on an RWO volume.
+      if [ "$k" = "statefulset" ]; then
+        local podimg
+        podimg="$("${KUBECTL[@]}" get pod "${n}-0" -o jsonpath='{.spec.containers[0].image}' 2>/dev/null || true)"
+        printf '[%s] %s/%s still not Ready (pod image: %s); deleting pod %s-0 to force the reverted template\n' \
+          "$(ts)" "$k" "$n" "${podimg:-?}" "$n" >>"$rb"
+        "${KUBECTL[@]}" delete pod "${n}-0" --ignore-not-found >>"$rb" 2>&1 || true
+        "${KUBECTL[@]}" rollout status "$k/$n" --timeout="${t}s" >>"$rb" 2>&1 || ROLLBACK_RC=1
+      else
+        ROLLBACK_RC=1
+      fi
+    fi
+  done
+
+  if [ "$ROLLBACK_RC" = "0" ]; then
+    ROLLBACK_SUMMARY="rollback SUCCEEDED: $( [ -s "$APPLIED_TSV" ] && wc -l <"$APPLIED_TSV" || echo 0 ) manifest(s) re-applied from render/${PREV_SHORT:-?} and every workload patched back to its restore-point image; all Ready."
+    log "rollback succeeded"
+  else
+    ROLLBACK_SUMMARY="rollback INCOMPLETE -- see the rollback log below. The site may be degraded. Re-running 'update.sh rollback' is safe and idempotent."
+    log "ROLLBACK INCOMPLETE -- manual attention needed"
+  fi
+  # deployed.sha is NEVER advanced on a failed run; the next timer firing will
+  # see the same new commit and try again from a known state.
+  sv rollback_rc "$ROLLBACK_RC"
+  tail -n 60 "$rb" | redact | while IFS= read -r l; do log "  rb| $l"; done
+}
+
+# The migration half of the rollback.
+#
+# READ THIS BEFORE CHANGING IT.
+#
+# backend/update.py:105-122 only ever moves the alembic stamp FORWARD, and then
+# calls command.upgrade("head"). After a forward migration, alembic_version
+# holds a revision id that does not exist in the OLD image's
+# migrations/versions/ directory and is not in its SCHEMA_REVISION_MARKERS. The
+# re-stamp guard therefore does not fire, and upgrade("head") asks Alembic to
+# resolve a revision it has never heard of:
+#
+#     Can't locate revision identified by '<new>'
+#
+# So reverting the backend image alone after a successful forward migration
+# does not "risk incompatibility" -- it DETERMINISTICALLY crashes at boot. Any
+# design claiming "roll the image back and you're fine" is wrong for this
+# codebase. The downgrade must run FIRST, and it must run on the NEW image,
+# because the old image does not contain the new revision script.
+#
+# What is NOT recoverable, plainly: there is no schema rollback that preserves
+# data written under the new schema. downgrade() DROPS what upgrade() added.
+# The pre.dump narrows the loss to a restore decision a human makes.
+rollback_migration() {
+  [ "$MIGRATION_RAN" = "1" ] || return 0
+  local rb="$RUN_DIR/rollback.log"
+
+  if [ "$MIGRATION_ROLLBACK" != "auto" ]; then
+    {
+      printf '[%s] MIGRATION_ROLLBACK=manual -- schema left at the NEW revision.\n' "$(ts)"
+      printf '  The backend CANNOT boot on the old image against this schema\n'
+      printf '  (update.py only stamps forward; upgrade("head") will raise\n'
+      printf "  \"Can't locate revision identified by ...\").\n"
+      printf '  Run these two, in this order:\n'
+      printf '    kubectl -n %s apply -f %s   # downgrade Job on the NEW image\n' "$NAMESPACE" "$RUN_DIR/job-downgrade.yaml"
+      printf '    kubectl -n %s apply -f %s/app/10-maniwani.yaml\n' "$NAMESPACE" "${REND_PREV:-<prev-render>}"
+    } >>"$rb"
+    make_job_yaml "maniwani-downgrade-${SHORT_SHA}" "registry.local/maniwani:g${SHORT_SHA}" \
+      downgrade "$MIGRATION_PREV_REV" >"$RUN_DIR/job-downgrade.yaml" 2>/dev/null || true
+    ROLLBACK_RC=1
+    return 0
+  fi
+
+  local jobname="maniwani-downgrade-${SHORT_SHA}"
+  printf '[%s] downgrading schema to %s using the NEW image (the old image does not contain the new revision script)\n' \
+    "$(ts)" "$MIGRATION_PREV_REV" >>"$rb"
+  "${KUBECTL[@]}" delete job "$jobname" --ignore-not-found >>"$rb" 2>&1 || true
+  if ! make_job_yaml "$jobname" "registry.local/maniwani:g${SHORT_SHA}" \
+        downgrade "$MIGRATION_PREV_REV" >"$RUN_DIR/job-downgrade.yaml"; then
+    printf '[%s] FATAL could not build the downgrade Job\n' "$(ts)" >>"$rb"
+    ROLLBACK_RC=1; return 0
+  fi
+  if ! "${KUBECTL[@]}" apply -f "$RUN_DIR/job-downgrade.yaml" >>"$rb" 2>&1 \
+     || ! "${KUBECTL[@]}" wait --for=condition=complete "job/$jobname" --timeout=600s >>"$rb" 2>&1; then
+    "${KUBECTL[@]}" logs "job/$jobname" --tail=200 >>"$rb" 2>&1 || true
+    {
+      printf '\n[%s] THE DOWNGRADE FAILED.\n' "$(ts)"
+      printf '  Alembic downgrade() functions exist for all revisions in this repo\n'
+      printf '  but are UNTESTED CODE -- nothing in CI proves they run.\n'
+      printf '  The schema is still at the NEW revision and NO image can serve it.\n'
+      printf '  This script stops here. It will NOT restore the pre-migration dump:\n'
+      printf '  that is a DROP/recreate of the whole database and destroys every\n'
+      printf '  post, vote and upload written since the dump was taken. That is a\n'
+      printf '  human decision, made with eyes open, never an unattended script.\n'
+      printf '  The exact restore commands are in the error log.\n'
+    } >>"$rb"
+    ROLLBACK_RC=1
+    return 0
+  fi
+  local now
+  now="$(pg_exec 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]' || true)"
+  printf '[%s] schema downgraded; alembic_version is now %s (expected %s)\n' \
+    "$(ts)" "${now:-?}" "$MIGRATION_PREV_REV" >>"$rb"
+  printf '[%s] NOTE: a downgrade is lossy -- anything written into the new columns/tables since the migration is gone.\n' "$(ts)" >>"$rb"
+  [ "$now" = "$MIGRATION_PREV_REV" ] || ROLLBACK_RC=1
+}
+
+# `update.sh rollback [RUN_ID]` -- replay a past run's rollback. Idempotent.
+rollback_run() {
+  local run="${1:-}"
+  [ -n "$run" ] || run="$(cat "$LAST_RUN_FILE" 2>/dev/null || true)"
+  [ -n "$run" ] && [ -d "$RUNS_DIR/$run" ] || die "no such run: ${run:-<none>}" rollback_error 50
+  log "replaying rollback for run $run"
+  # Point the run-state globals at the old run so do_rollback() operates on its
+  # applied list and restore point. Everything it does is declarative, so a
+  # second or third replay simply converges.
+  APPLIED_TSV="$RUNS_DIR/$run/applied.tsv"
+  [ -f "$RUNS_DIR/$run/restore-point.tsv" ] \
+    && RESTORE_TSV="$RUNS_DIR/$run/restore-point.tsv" \
+    || RESTORE_TSV="$STATE_DIR/last-restore-point.tsv"
+  # rollback_migration() builds the downgrade Job from
+  # registry.local/maniwani:g$SHORT_SHA -- the NEW image. On a replay nothing
+  # has set SHORT_SHA, so recover it from the old run's recorded target.
+  # Without this the Job would reference the tag "…:g" and never schedule.
+  if [ -z "${SHORT_SHA:-}" ]; then
+    SHORT_SHA="$(grep -m1 "^target_sha	" "$RUNS_DIR/$run/status.tsv" 2>/dev/null | cut -f2 | cut -c1-12 || true)"
+    [ -n "$SHORT_SHA" ] && log "replay: recovered target sha $SHORT_SHA from the run record"
+  fi
+  # Derive the previous render from the restore point's image tags if we can.
+  if [ -z "${REND_PREV:-}" ] || [ ! -d "${REND_PREV:-/nonexistent}" ]; then
+    local guess
+    guess="$(grep -oE 'registry\.local/[a-z0-9-]+:g[0-9a-f]{12}' "$RESTORE_TSV" 2>/dev/null | head -1 | sed 's/.*:g//' || true)"
+    [ -n "$guess" ] && [ -d "$RENDER_ROOT/$guess" ] && { REND_PREV="$RENDER_ROOT/$guess"; PREV_SHORT="$guess"; }
+  fi
+  # MIGRATION_RAN is read from the old run's status so a replay does not
+  # re-downgrade an already-downgraded schema (the downgrade Job itself is
+  # idempotent-ish, but re-running it after a successful revert would step the
+  # schema back a second time -- so only replay it if the old run recorded it
+  # AND the live revision still differs).
+  if grep -q "^migration_ran	1" "$RUNS_DIR/$run/status.tsv" 2>/dev/null; then
+    MIGRATION_PREV_REV="$(grep -m1 '^migration_prev_revision' "$RUNS_DIR/$run/status.tsv" | cut -f2 || true)"
+    PRE_DUMP="$(grep -m1 '^pre_dump' "$RUNS_DIR/$run/status.tsv" | cut -f2 || true)"
+    local live=""
+    [ "$CAN_EXEC" = "1" ] && live="$(pg_exec 'SELECT version_num FROM alembic_version' 2>/dev/null | tr -d '[:space:]' || true)"
+    if [ "$CAN_EXEC" = "0" ]; then
+      # Cannot read the live revision, so cannot tell whether the schema is
+      # still forward. Guessing either way is worse than refusing: a spurious
+      # second downgrade steps the schema back past where it should be.
+      MIGRATION_RAN=0
+      warn "replay: no pods/exec, cannot read alembic_version -- NOT touching the schema."
+      warn "        If the backend is crashlooping on 'Can't locate revision', run the"
+      warn "        downgrade Job in $RUNS_DIR/$run/job-downgrade.yaml by hand FIRST."
+    elif [ -n "$MIGRATION_PREV_REV" ] && [ "$live" != "$MIGRATION_PREV_REV" ]; then
+      MIGRATION_RAN=1
+      log "schema is at '$live', restore point wants '$MIGRATION_PREV_REV' -- will downgrade"
+    else
+      MIGRATION_RAN=0
+      log "schema already at '$live' -- no downgrade needed on replay"
+    fi
+  fi
+  do_rollback
+  return "$ROLLBACK_RC"
+}
+
+# -----------------------------------------------------------------------------
+# main
+# -----------------------------------------------------------------------------
+main_deploy() {
+  # Claim any pending admin request FIRST, before anything that can fail.
+  #
+  # This used to live in phase_detect, i.e. after preflight and fetch. Any
+  # preflight failure therefore left the request file on the node forever, and
+  # because request_update() refuses to queue a second one
+  # (services/software_update.py), every later click returned 409 "already
+  # queued" and the card stuck on "Queued -- waiting for the updater" with no
+  # way to clear it short of SSH: the exact thing this feature exists to avoid.
+  #
+  # Deliberately NOT in init_run(): that is shared with the `rollback` and
+  # `adopt` subcommands, which would then silently eat an operator's pending
+  # "Update now" and never deploy it. init_run() has already taken the flock and
+  # set STATUS_ENV by the time we get here, so `sv triggered_by admin` still
+  # works and a lock-contended tick still consumes nothing.
+  consume_requests
+  phase_preflight
+  phase_fetch
+  phase_detect          # exits 0 early when HEAD is unchanged
+  phase_gates
+  phase_restore_point
+  render_tree "$SHORT_SHA" >/dev/null
+  phase_build
+  phase_import
+  # Must run AFTER import (so freshly built tags count as present) and BEFORE
+  # any apply, so no manifest can reference a tag containerd does not have.
+  unpin_unbuilt_images "$REND"
+  phase_apply           # includes phase_migrate between tiers A and B
+  phase_verify
+  phase_prune
+  finish 0
+}
+
+case "${1:-deploy}" in
+  deploy|"")
+    init_run
+    main_deploy
+    ;;
+  rollback)
+    # Idempotent by construction: it re-applies a fixed directory and patches
+    # images to recorded values. Running it twice, or after a partial rollback,
+    # converges. Safe at any time.
+    init_run
+    set_phase rollback
+    # Same either/or as preflight(): kubeconfig file OR in-cluster ServiceAccount.
+    [ -r "$KUBECONFIG_FILE" ] || [ -r /var/run/secrets/kubernetes.io/serviceaccount/token ] \
+      || die "no kubeconfig and no in-cluster ServiceAccount token" rollback_error 50
+    probe_rbac    # decides whether the schema half of the rollback may run
+    if rollback_run "${2:-}"; then RESULT="rolled_back"; finish 0; else RESULT="rollback_failed"; finish 40; fi
+    ;;
+  adopt|--seed-render|seed-render)
+    # Records origin/main as "already deployed" and writes its render, so the
+    # NEXT run has a rollback target. Use after any manual apply, after a
+    # gate-halted commit has been handled by hand, and once at install time
+    # (README §2.6 calls this `--seed-render`).
+    init_run
+    phase_preflight
+    phase_fetch
+    printf '%s\n' "$NEW_SHA" >"$DEPLOYED_SHA_FILE"
+    render_tree "$SHORT_SHA" >/dev/null
+    RESULT="adopted"
+    log "adopted $NEW_SHA as deployed without deploying (render written to $REND so the next run has a rollback target)"
+    finish 0
+    ;;
+  ack)
+    # Record the current origin/main content hash of every gated file, marking
+    # it reviewed. Scoped on purpose: unlike `adopt` this does NOT claim the
+    # commit is deployed, so the rest of the commit still deploys normally on
+    # the next tick.
+    init_run
+    phase_preflight
+    phase_fetch
+    mkdir -p "$STATE_DIR"
+
+    # ONLY the gated files that actually CHANGED since the deployed revision.
+    #
+    # An earlier version of this blessed every gated file at origin/main, which
+    # quietly defeated the gate: an operator reviewing a one-line RBAC edit
+    # would also acknowledge, unseen, a modified 40-cronjob.yaml -- the pod spec
+    # that mounts docker.sock and containerd.sock, i.e. root on the node. Only
+    # what is in front of the operator gets signed off.
+    [ -f "$DEPLOYED_SHA_FILE" ] && OLD_SHA="$(cat "$DEPLOYED_SHA_FILE")"
+    if [ -z "${OLD_SHA:-}" ]; then
+      die "no deployed revision recorded yet; nothing to acknowledge against" ack_failed 10
+    fi
+    changed_gated="$(git -C "$REPO_DIR" diff --name-only "$OLD_SHA" "$NEW_SHA" -- k8s/updater \
+                     | grep -E '\.yaml$' \
+                     | grep -vE '^k8s/updater/(30-configmap-updater|90-configmap-deploy-status)\.yaml$' \
+                     || true)"
+    if [ -z "$(printf '%s' "$changed_gated" | tr -d '[:space:]')" ]; then
+      RESULT="acked"
+      log "no gated file changed between ${OLD_SHA:0:12} and ${NEW_SHA:0:12}; nothing to acknowledge."
+      finish 0
+    fi
+
+    # Carry forward existing acknowledgements for files we are NOT reviewing now.
+    : >"$GATE_ACK_FILE.tmp"
+    if [ -f "$GATE_ACK_FILE" ]; then
+      while IFS= read -r line; do
+        keep=1
+        while IFS= read -r g; do
+          if [ -n "$g" ]; then case "$line" in *"  $g") keep=0 ;; esac; fi
+        done <<<"$changed_gated"
+        [ "$keep" = "1" ] && printf '%s\n' "$line" >>"$GATE_ACK_FILE.tmp"
+      done <"$GATE_ACK_FILE"
+    fi
+
+    acked=0
+    while IFS= read -r gated; do
+      [ -n "$gated" ] || continue
+      # A gated file DELETED in this commit has no content to hash; there is
+      # nothing left to apply by hand, so simply drop any stale acknowledgement.
+      if ! git -C "$REPO_DIR" cat-file -e "$NEW_SHA:$gated" 2>/dev/null; then
+        log "ack $gated -- deleted in this commit; acknowledgement dropped"
+        continue
+      fi
+      h="$(git -C "$REPO_DIR" cat-file -p "$NEW_SHA:$gated" | sha256sum | cut -d' ' -f1)"
+      printf '%s  %s\n' "$h" "$gated" >>"$GATE_ACK_FILE.tmp"
+      log "ack $gated ${h:0:12}"
+      acked=$((acked + 1))
+    done <<<"$changed_gated"
+
+    mv -f "$GATE_ACK_FILE.tmp" "$GATE_ACK_FILE"
+    RESULT="acked"
+    log "acknowledged $acked gated file(s) changed between ${OLD_SHA:0:12} and ${NEW_SHA:0:12}."
+    log "Anything NOT listed above keeps whatever state it already had."
+    log "These will no longer halt a deploy until their content changes again."
+    finish 0
+    ;;
+  status)
+    cat "${PUB_DIR}/status.json" 2>/dev/null || { echo '{"result":"unknown"}'; exit 1; }
+    ;;
+  *)
+    printf 'usage: %s [deploy|rollback [RUN_ID]|adopt|ack|status]\n' "$0" >&2
+    exit 2
+    ;;
+esac

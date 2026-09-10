@@ -1,0 +1,654 @@
+{% extends "base.html" %}
+{% block title %}Profile Settings{% endblock %}
+{% block content %}
+<div class="container mt-4">
+    <h1>Profile Settings</h1>
+    <hr>
+
+    <div class="row">
+        <div class="col-md-8">
+            <form action="{{ url_for('profiles.edit') }}" method="POST" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="slug" class="form-label">Custom URL Slug</label>
+                    <div class="input-group">
+                        <span class="input-group-text">{{ request.host_url }}profile/u/</span>
+                        <input type="text" class="form-control" id="slug" name="slug" value="{{ profile.slug if profile else suggested_slug }}" placeholder="your-name">
+                    </div>
+                    <div class="form-text">Choose a unique name for your profile URL.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="avatar" class="form-label">Profile picture</label>
+                    <div class="d-flex align-items-center" style="gap:.75rem;">
+                        {% if profile and profile.avatar_url %}
+                        <img src="{{ profile.avatar_url }}" alt="Current profile picture"
+                             style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:1px solid rgba(0,0,0,.15);">
+                        {% endif %}
+                        <input type="file" class="form-control" id="avatar" name="avatar" accept="image/*">
+                    </div>
+                    <div class="form-text">Upload a square image for best results.</div>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="show_avatar" name="show_avatar" {% if profile and profile.show_avatar %}checked{% endif %}>
+                    <label class="form-check-label" for="show_avatar">
+                        Show my profile picture on my posts, comments and uploads
+                    </label>
+                    <div class="form-text">When on, your profile picture appears next to your name across the site.</div>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="is_public" name="is_public" {% if profile is none or profile.is_public %}checked{% endif %}>
+                    <label class="form-check-label" for="is_public">
+                        Publicly visible
+                    </label>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="embed_stream" name="embed_stream" {% if profile and profile.embed_stream %}checked{% endif %}>
+                    <label class="form-check-label" for="embed_stream">
+                        Embed my live stream on my profile page
+                    </label>
+                    <div class="form-text">Shows your live player at the top of your profile so people have one place to find your stream. Set up your stream.</div>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="link_on_comments" name="link_on_comments" {% if profile is none or profile.link_on_comments %}checked{% endif %}>
+                    <label class="form-check-label" for="link_on_comments">
+                        Link my name to this profile on my thread posts
+                    </label>
+                    <div class="form-text">When on, your name on posts you make links here, and hovering it shows a preview of your profile. Requires your profile to be public.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="channel_endpoint">Payment-channel address <span class="text-muted">(optional)</span></label>
+                    <input class="form-control" type="url" id="channel_endpoint" name="channel_endpoint"
+                           placeholder="https://your-node.example/scpp/v1"
+                           value="{{ profile.channel_endpoint or '' if profile else '' }}">
+                    <div class="form-text">
+                        If you run a Dendritic Network node, put its payment address here and awards on your
+                        posts are paid straight to you over a payment channel — no transaction, so no
+                        gas fee for whoever is thanking you. Leave it blank and awards keep arriving
+                        as ordinary transfers, which is what most people want. Must start with
+                        <code>https://</code>.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="pool_enabled" name="pool_enabled"
+                               {% if profile and profile.pool_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="pool_enabled">Accept pooled tips</label>
+                    </div>
+                    <div class="form-text">
+                        Shows a <strong>Tip</strong> button next to your name on posts, articles,
+                        streams and your profile, so readers can send you something directly.
+                        <br>
+                        <strong>Tips are received through your existing payment channels. The pool
+                        does not hold your money; it aggregates eligible channels.</strong>
+                        Nothing is stored on this site — no balance, no list of who tipped you, no
+                        history. Your node works out what you have; this server only knows the
+                        switch is on.
+                        <br>
+                        Turning this on does <em>not</em> open a channel or move any funds. It needs
+                        a linked wallet and a payment-channel address above; without both, the Tip
+                        button stays hidden rather than failing when somebody clicks it.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="pool_name">Tip pool name <span class="text-muted">(optional)</span></label>
+                    <input class="form-control" type="text" id="pool_name" name="pool_name" maxlength="64"
+                           placeholder="Tips"
+                           value="{{ profile.pool_name or '' if profile else '' }}">
+                    <div class="form-text">What to call it — &ldquo;Coffee fund&rdquo;, &ldquo;Beer money&rdquo;. Defaults to &ldquo;Tips&rdquo;.</div>
+                </div>
+
+                {#
+                  Who carries your tips, and on what terms (roadmap P15).
+
+                  The two modes are presented as a real choice with the safer one
+                  first and preselected, because they are genuinely different
+                  amounts of trust and a settings page that blurred them would be
+                  choosing on the user's behalf.
+                #}
+                <div class="mb-3">
+                    <label class="form-label" for="pool_volunteer">Who carries your tips</label>
+                    <input class="form-control" type="text" id="pool_volunteer" name="pool_volunteer"
+                           maxlength="128" placeholder="volunteer node id"
+                           value="{{ profile.pool_volunteer or '' if profile else '' }}">
+                    <div class="form-text">
+                        You do <strong>not</strong> need to run a node. A volunteer holds your
+                        incoming tips until you collect them, at the address in
+                        <em>Payment-channel address</em> above. Leave this blank and no Tip
+                        button appears — better than one that cannot deliver.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="pool_volunteer_endpoint">Their mailbox address</label>
+                    <input class="form-control" type="url" id="pool_volunteer_endpoint"
+                           name="pool_volunteer_endpoint" maxlength="255"
+                           placeholder="https://volunteer.example"
+                           value="{{ profile.pool_volunteer_endpoint or '' if profile else '' }}">
+                    <div class="form-text">
+                        Where that volunteer keeps your incoming tips. This is <em>not</em> the
+                        same as your own payment-channel address above &mdash; one is your node,
+                        the other is theirs. Must start with <code>https://</code>.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="form-label">How your tips are signed</div>
+
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="pool_signing_mode"
+                               id="pool_mode_mailbox" value="mailbox"
+                               {% if not profile or (profile.pool_signing_mode or 'mailbox') == 'mailbox' %}checked{% endif %}>
+                        <label class="form-check-label" for="pool_mode_mailbox">
+                            <strong>Mailbox &mdash; I stay in control</strong>
+                        </label>
+                        <div class="form-text">
+                            The volunteer only carries messages. It holds no key of yours and
+                            cannot approve anything. Tips finish when you next open your wallet,
+                            so they can arrive while you are away but complete when you return.
+                        </div>
+                    </div>
+
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="radio" name="pool_signing_mode"
+                               id="pool_mode_delegate" value="delegate"
+                               {% if profile and profile.pool_signing_mode == 'delegate' %}checked{% endif %}>
+                        <label class="form-check-label" for="pool_mode_delegate">
+                            <strong>Delegated &mdash; tips complete while I am offline</strong>
+                        </label>
+                        <div class="form-text">
+                            You authorise the volunteer, <strong>on the blockchain</strong>, to
+                            approve incoming tips for you. It still cannot be paid, cannot take
+                            money out, and cannot close your channel &mdash; the contract refuses
+                            all three. You can withdraw the authorisation at any time and it stops
+                            immediately.
+                            <br>
+                            <strong>What you are trusting it with:</strong> a volunteer whose
+                            machine is compromised could take part in agreements about tips you
+                            have not collected yet. It can never touch your wallet.
+                            <br>
+                            Choosing this here records your preference; the authorisation itself
+                            is a transaction you sign with your own wallet below.
+                        </div>
+                    </div>
+
+                    {#
+                      NO AUTHORISE BUTTON YET, deliberately.
+
+                      The browser flow that would send setDelegate to
+                      ChannelManagerV2 is not built. A button here would either
+                      do nothing or fake a success, and a control that appears
+                      to grant signing authority and does not is worse than no
+                      control at all — the creator would believe tips complete
+                      while they sleep, and they would not.
+
+                      The mode radio above still records a real preference, and
+                      it grants nothing on its own: authority comes from the
+                      contract, which has heard nothing until the transaction
+                      below is actually sent.
+                    #}
+                    <div class="alert alert-secondary py-2 px-3 mt-2 small" role="note">
+                        <strong>Delegated mode is not finished yet.</strong>
+                        Choosing it here records your preference but does
+                        <em>not</em> authorise anyone &mdash; that needs a
+                        blockchain transaction signed by your wallet, and the
+                        button for it is not built. Until then your tips are
+                        carried in <strong>mailbox</strong> mode, which needs no
+                        authorisation and is what the setting above defaults to.
+                    </div>
+                </div>
+
+
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="enable_chat" name="enable_chat" {% if profile and profile.enable_chat %}checked{% endif %}>
+                    <label class="form-check-label" for="enable_chat">
+                        Enable an anonymous chat room on my profile
+                    </label>
+                    <div class="form-text">Adds a live chat box to your profile page. Visitors join automatically with a random anonymous name; IP addresses are hidden.</div>
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="enable_place" name="enable_place" {% if profile and profile.enable_place %}checked{% endif %}>
+                    <label class="form-check-label" for="enable_place">
+                        Enable a graffiti wall behind my profile
+                    </label>
+                    <div class="form-text">Turns your profile background into a collaborative r/place-style pixel wall visitors can paint on: toggle paint mode, zoom in, and watch active painters live (their fresh pixels blink). A time-lapse scrubber along the bottom replays the most recent days. You can clear it anytime.</div>
+                </div>
+                <div class="form-group mb-3">
+                    <label for="place_timelapse_days">Graffiti time-lapse days</label>
+                    <input type="number" class="form-control" id="place_timelapse_days" name="place_timelapse_days" min="1" max="60" style="max-width:8rem;" value="{{ profile.place_timelapse_days if profile else 7 }}">
+                    <div class="form-text">How many recent days of daily snapshots the time-lapse scrubber shows (1–60).</div>
+                </div>
+                <div class="form-group mb-3">
+                    <label for="session_timeout_minutes">Auto-logout after inactivity (minutes)</label>
+                    <input type="number" class="form-control" id="session_timeout_minutes" name="session_timeout_minutes" min="0" max="43200" style="max-width:10rem;" value="{{ profile.session_timeout_minutes if profile else 0 }}">
+                    <div class="form-text">Log me out of my account after this many minutes of inactivity. <strong>0</strong> = stay logged in (default). Max 43200 (30 days).</div>
+                </div>
+
+                <div class="mb-3 p-3" style="border:1px solid rgba(0,0,0,.1); border-radius:.5rem;">
+                    <div class="fw-bold mb-1">Chatroom appearance</div>
+                    <div class="form-text mb-3">Colours for your chat room. Only applies when the chat room above is enabled.</div>
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label for="chat_theme" class="form-label">Theme</label>
+                            <select class="form-select" id="chat_theme" name="chat_theme">
+                                <option value="light" {% if not profile or profile.chat_theme != 'dark' %}selected{% endif %}>Light</option>
+                                <option value="dark" {% if profile and profile.chat_theme == 'dark' %}selected{% endif %}>Dark</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-6">
+                            <label for="chat_accent" class="form-label">Accent colour</label>
+                            <input type="color" class="form-control form-control-color" id="chat_accent" name="chat_accent" value="{{ profile.chat_accent_css if profile else '#b07274' }}" title="Chat accent colour">
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">The accent colours the Send button, your own name, and the online dots.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="custom_html" class="form-label">Custom HTML (MySpace-style)</label>
+                    <textarea class="form-control" id="custom_html" name="custom_html" rows="10" placeholder="<div>Hello world!</div>">{{ profile.custom_html if profile else '' }}</textarea>
+                    <div class="form-text">Custom HTML tags like &lt;div&gt;, &lt;table&gt;, &lt;marquee&gt; are allowed. Scripts are stripped.</div>
+                    <div class="form-text">
+                        <strong>Placing your stream &amp; chat:</strong> put
+                        <code>&lt;div id="stream-slot"&gt;&lt;/div&gt;</code> or
+                        <code>&lt;div id="chat-slot"&gt;&lt;/div&gt;</code> anywhere in your HTML, and your
+                        stream player / chat box moves into that spot and fills it (style the slot with CSS
+                        to control size). Without a slot they stay at the top / bottom as before.
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="custom_css" class="form-label">Custom CSS</label>
+                    <textarea class="form-control" id="custom_css" name="custom_css" rows="10" placeholder="body { background-color: pink; }">{{ profile.custom_css if profile else '' }}</textarea>
+                    <div class="form-text">Custom CSS to style your profile page.</div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Save Profile</button>
+            </form>
+
+                {#
+                  YOUR pooled tips (roadmap P15).
+
+                  Deliberately OUTSIDE the settings <form>. Nothing below is
+                  submitted anywhere: the node address and access key are kept in
+                  this browser's local storage and are used only to call your own
+                  node directly. Posting them to this site would hand it the
+                  ability to read your balance whenever it liked, which is the
+                  one thing this whole design exists to prevent.
+                #}
+                <fieldset class="border rounded p-3 mb-3" id="pool-dashboard" hidden>
+                    <legend class="h6 px-2">Your pooled tips</legend>
+
+                    <p class="text-muted small">
+                        These figures come from <strong>your own node</strong>, read by this browser.
+                        They are not sent to this site and are not stored here.
+                    </p>
+
+                    <div class="row mb-2">
+                        <div class="col">
+                            <div class="text-muted small">Available to withdraw</div>
+                            <div class="h4 mb-0"><span id="pool-available">—</span> AXON</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">Still being delivered</div>
+                            <div class="h4 mb-0"><span id="pool-inflight">—</span> AXON</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">People tipping you</div>
+                            <div class="h4 mb-0" id="pool-contributors">—</div>
+                        </div>
+                    </div>
+
+                    <p id="pool-status" class="small mb-2" role="status"></p>
+
+                    {#
+                      Tips waiting (P15 mailbox collection).
+
+                      The recipient's NODE countersigns; this page never signs
+                      and never asks for a key. Accepting is an OFF-CHAIN state
+                      transition — the wording below avoids "claim", "withdraw",
+                      "transfer" and "pay" precisely because none of them happen
+                      here. Withdrawing is the separate control above.
+
+                      The volunteer endpoint and the recipient's own address are
+                      rendered from the profile's own public configuration; no
+                      balance, channel or contributor identity comes from this
+                      server.
+                    #}
+                    <div id="pool-waiting" class="border rounded p-2 mt-2"
+                         data-volunteer="{{ profile.pool_volunteer_endpoint or '' if profile else '' }}"
+                         {# The volunteer's node id. It is half of the mailbox
+                            challenge, so a read signed without it recovers
+                            correctly and is still refused. #}
+                         data-node-id="{{ profile.pool_volunteer or '' if profile else '' }}"
+                         data-recipient="{{ profile.eth_address or '' if profile else '' }}">
+                        <div class="small text-muted">Tips waiting</div>
+                        <div id="pool-waiting-status" class="small">Checking…</div>
+
+                        <div id="pool-waiting-detail" class="mt-2" hidden>
+                            <div class="h5 mb-1"><span id="pool-waiting-amount">—</span> AXON</div>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    id="pool-waiting-review">Review</button>
+                        </div>
+
+                        <div id="pool-waiting-confirm" class="mt-2" hidden>
+                            <p class="small mb-2">
+                                Your node will countersign this tip so it becomes part of your
+                                pooled balance. <strong>This does not withdraw anything</strong> —
+                                no transaction is sent and your wallet is not involved.
+                            </p>
+                            <button type="button" class="btn btn-sm btn-primary"
+                                    id="pool-waiting-accept">Accept tip</button>
+                            <button type="button" class="btn btn-sm btn-link"
+                                    id="pool-waiting-cancel">Cancel</button>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-primary" id="pool-withdraw" disabled>Withdraw pooled tips</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pool-refresh">Refresh</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="pool-connect">Connect my node</button>
+
+                    <div id="pool-connect-form" class="mt-3" hidden>
+                        <label class="form-label small" for="pool-node-url">Your node address</label>
+                        <input class="form-control form-control-sm mb-2" type="url" id="pool-node-url"
+                               placeholder="http://127.0.0.1:8547" autocomplete="off">
+                        <label class="form-label small" for="pool-node-token">Access key</label>
+                        <input class="form-control form-control-sm mb-2" type="password" id="pool-node-token"
+                               autocomplete="off">
+                        <label class="form-label small" for="pool-node-console">Your node&rsquo;s console</label>
+                        <input class="form-control form-control-sm mb-2" type="url" id="pool-node-console"
+                               placeholder="http://127.0.0.1:19190" autocomplete="off">
+                        <div class="form-text mb-2">
+                            Kept in this browser only. It is never sent to this site.
+                            The console address is where you review and accept tips
+                            &mdash; only your node can accept them, because only your
+                            node holds the key.
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary" id="pool-node-save">Save</button>
+                        <button type="button" class="btn btn-sm btn-link" id="pool-node-forget">Forget</button>
+                    </div>
+                </fieldset>
+                <script type="module" src="{{ url_for('serve_static', path='pof/pool-init.js') }}"></script>
+            {% if profile %}
+            <hr>
+            <form action="{{ url_for('profiles.delete') }}" method="POST" onsubmit="return confirm('Delete your custom profile page? This removes the public page and custom styling.');">
+                <button type="submit" class="btn btn-outline-danger">Delete Profile Page</button>
+            </form>
+            {% endif %}
+        </div>
+
+        <div class="col-md-4">
+            <div class="card mb-3">
+                <div class="card-header">Membership</div>
+                <div class="card-body">
+                    {% if membership and membership.is_active %}
+                        {% if membership.cancel_at_period_end %}
+                            <p class="mb-2">
+                                <strong>Cancelling.</strong> Your membership ends
+                                {{ membership.renews_on.strftime('%d %b %Y') if membership.renews_on else 'at the end of this period' }}.
+                                You keep every lab machine until then, and nothing further
+                                will be charged.
+                            </p>
+                            <form method="POST" action="{{ url_for('credits.resume_subscription') }}" class="d-inline">
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Keep my membership</button>
+                            </form>
+                        {% else %}
+                            <p class="mb-2">
+                                <strong>Active</strong> &mdash; every lab machine, and
+                                {{ membership_plan.credits_per_month }} AXONCoins a month.
+                                Renews {{ membership.renews_on.strftime('%d %b %Y') if membership.renews_on else 'monthly' }}
+                                at ${{ membership_plan.price }}.
+                            </p>
+                            {# A plain form, not a fetch: cancelling must work even
+                               if the page's JavaScript did not load. Somebody trying
+                               to stop being charged should never be stopped by us. #}
+                            <form method="POST" action="{{ url_for('credits.cancel_subscription') }}" class="d-inline"
+                                  onsubmit="return confirm('Stop renewing your membership?\n\nYou keep every machine and this month\'s AXONCoins until the end of the period you have already paid for. Nothing further is charged, and you can take this back any time before then.');">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm">Cancel membership</button>
+                            </form>
+                        {% endif %}
+                    {% elif membership and membership.status == 'past_due' %}
+                        <p class="mb-2">
+                            <strong>Payment failed.</strong> Stripe is retrying your card, and
+                            access continues for a few days while it does.
+                        </p>
+                        <form method="POST" action="{{ url_for('credits.cancel_subscription') }}" class="d-inline">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm">Cancel membership</button>
+                        </form>
+                    {% elif membership and membership.stripe_subscription_id %}
+                        <p class="mb-2">
+                            <strong>Not active here.</strong> Stripe has a subscription for
+                            this account but this site has it recorded as
+                            <b>{{ membership.status }}</b> &mdash; usually a missed webhook.
+                        </p>
+                        <form method="POST" action="{{ url_for('credits.refresh_subscription') }}" class="d-inline">
+                            <button type="submit" class="btn btn-primary btn-sm">Refresh from Stripe</button>
+                        </form>
+                    {% else %}
+                        <p class="mb-2">
+                            No membership. You get one lab machine a month, drawn for you.
+                            A membership is ${{ membership_plan.price }} a month for every
+                            machine plus {{ membership_plan.credits_per_month }} AXONCoins.
+                        </p>
+                        <a class="btn btn-primary btn-sm" href="{{ url_for('credits.index') }}#membership">See membership</a>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-header">Live stream</div>
+                <div class="card-body">
+                    <p>Broadcast over RTMP from OBS or ffmpeg. Manage your ingest server, stream key, and watch page.</p>
+                    Manage your stream
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">MetaMask wallet</div>
+                <div class="card-body">
+                    {% if wallet_address %}
+                        <p class="mb-2">Linked wallet: <code style="word-break:break-all;">{{ wallet_address }}</code></p>
+                        <form method="POST" action="{{ url_for('profiles.unlink_wallet') }}" class="d-inline">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Unlink wallet</button>
+                        </form>
+                        <small class="form-text text-muted mt-2">
+                            Used for signing in (if enabled below), receiving AXONCoins, and DAO voting.
+                        </small>
+                    {% else %}
+                        <p class="mb-2">Link a wallet to sign in without a password, receive AXONCoins, and vote in the DAO.</p>
+                        <button id="link-wallet-btn" class="btn btn-warning btn-sm d-inline-flex align-items-center" style="gap:.4rem;">
+                            {% include "includes/metamask-icon.svg" %}
+                            <span>Link MetaMask</span>
+                        </button>
+                        <small class="form-text text-muted mt-2">
+                            You will sign a short message to prove you own the wallet. It is free and moves no funds.
+                            New to this? <a href="{{ url_for('main.metamask_help') }}">Install MetaMask &amp; connect to Ethereum</a>.
+                        </small>
+                    {% endif %}
+                    <div id="link-wallet-status" class="small mt-2" style="min-height:1.2em;"></div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-header">Username &amp; password</div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">
+                        Your username is the name everybody sees &mdash; on posts, on the
+                        moderator list, on your profile. There is no separate display name,
+                        so changing it here changes it everywhere.
+                    </p>
+                    <form method="POST" action="{{ url_for('profiles.account_update') }}">
+                        <div class="form-group">
+                            <label class="small mb-1" for="acct-name">Username</label>
+                            <input class="form-control form-control-sm" id="acct-name"
+                                   name="new_name" maxlength="20" value="{{ slip.name }}">
+                        </div>
+                        {# Matches the route exactly: it keys on how THIS session
+                           was proved, not on auth_mode. An "either" account
+                           signed in by wallet may never have had a password to
+                           type here, and asking anyway is what stopped the
+                           wallet admin renaming itself. #}
+                        {% if auth_mode != 'wallet' and not proved_by_wallet %}
+                        <div class="form-group">
+                            <label class="small mb-1" for="acct-current">Current password</label>
+                            <input class="form-control form-control-sm" id="acct-current"
+                                   type="password" name="current_password" autocomplete="current-password">
+                            <small class="text-muted">
+                                Required for either change: a borrowed session that can rename this
+                                account can impersonate you on every post you have made.
+                            </small>
+                        </div>
+                        {% else %}
+                        <p class="small text-muted">
+                            You signed in with your wallet, so no current password is asked for &mdash;
+                            your signature already proved the session, which is not a weaker proof.
+                            {% if auth_mode != 'wallet' %}
+                              Setting a password below gives you a second way in; leaving it blank
+                              keeps this account wallet-only in practice.
+                            {% endif %}
+                        </p>
+                        {% endif %}
+                        <div class="form-group">
+                            <label class="small mb-1" for="acct-new">New password <span class="text-muted">(leave blank to keep)</span></label>
+                            <input class="form-control form-control-sm" id="acct-new"
+                                   type="password" name="new_password" autocomplete="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label class="small mb-1" for="acct-confirm">Confirm new password</label>
+                            <input class="form-control form-control-sm" id="acct-confirm"
+                                   type="password" name="confirm_password" autocomplete="new-password">
+                        </div>
+                        <button class="btn btn-primary btn-sm" type="submit">Save</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header">Sign-in method</div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">
+                        Choose which credentials unlock this slip. There is no password recovery here,
+                        so pick something you can still use tomorrow.
+                    </p>
+                    <form method="POST" action="{{ url_for('slip.auth_mode') }}">
+                        {% for mode in auth_modes %}
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="auth_mode"
+                                   id="auth-mode-{{ mode }}" value="{{ mode }}"
+                                   {% if auth_mode == mode %}checked{% endif %}
+                                   {% if mode == 'wallet' and not wallet_address %}disabled{% endif %}>
+                            <label class="form-check-label" for="auth-mode-{{ mode }}">
+                                {{ auth_mode_labels[mode] }}
+                                {% if mode == 'wallet' and not wallet_address %}
+                                <span class="text-muted small">— link a wallet first</span>
+                                {% endif %}
+                            </label>
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-primary btn-sm mt-2">Save sign-in method</button>
+                    </form>
+                    {% if auth_mode == 'wallet' %}
+                    <div class="alert alert-warning py-2 small mt-3 mb-0">
+                        Your password no longer works. Keep access to
+                        <code style="word-break:break-all;">{{ wallet_address }}</code> — losing that wallet
+                        means losing this slip.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card mt-3">
+                <div class="card-header">Bot API</div>
+                <div class="card-body">
+                    <p class="small text-muted mb-2">Register the IP address your bot posts from to mint an API token, then have your bot POST to the bot endpoint <em>from that IP</em>. See the API documentation for the request format.</p>
+                    {% if new_bot_token %}
+                    <div class="alert alert-success py-2 small">
+                        <strong>New bot token — copy it now, it will not be shown again:</strong><br>
+                        <code style="word-break:break-all;">{{ new_bot_token }}</code>
+                    </div>
+                    {% endif %}
+                    <form action="{{ url_for('profiles.bot_register') }}" method="POST" class="mb-2">
+                        <div class="form-group mb-2">
+                            <input type="text" name="ip" class="form-control form-control-sm" placeholder="Bot IP address (e.g. 203.0.113.5)" required>
+                        </div>
+                        <div class="form-group mb-2">
+                            <input type="text" name="label" class="form-control form-control-sm" placeholder="Label (optional)" maxlength="80">
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">Register bot IP</button>
+                    </form>
+                    {% if bot_tokens %}
+                    <ul class="list-unstyled small mb-0">
+                        {% for t in bot_tokens %}
+                        <li class="d-flex justify-content-between align-items-center border-top py-1">
+                            <span><code>{{ t.ip_address }}</code>{% if t.label %} <span class="text-muted">&mdash; {{ t.label }}</span>{% endif %}</span>
+                            <form action="{{ url_for('profiles.bot_revoke', token_id=t.id) }}" method="POST" onsubmit="return confirm('Revoke this bot credential?');">
+                                <button type="submit" class="btn btn-outline-danger btn-sm py-0">Revoke</button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Talks to window.ethereum directly. The previous version pulled ethers from a
+// CDN purely to call signMessage — a third-party request on a settings page,
+// which also fails outright for anyone browsing over I2P/Tor.
+(function () {
+    const linkBtn = document.getElementById('link-wallet-btn');
+    const out = document.getElementById('link-wallet-status');
+    if (!linkBtn) return;
+    const say = (msg, cls) => { out.textContent = msg; out.className = 'small mt-2 ' + (cls || 'text-muted'); };
+
+    linkBtn.addEventListener('click', async () => {
+        if (!window.ethereum) {
+            say('No wallet detected in this browser.', 'text-danger');
+            window.location = "{{ url_for('main.metamask_help') }}";
+            return;
+        }
+        linkBtn.disabled = true;
+        try {
+            say('Waiting for your wallet…');
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const address = (accounts && accounts[0] || '').toLowerCase();
+
+            // The nonce is minted per attempt: signing a message the server did
+            // not just issue would make the signature replayable.
+            const chal = await (await fetch("{{ url_for('profiles.wallet_challenge') }}",
+                { method: 'POST', credentials: 'same-origin' })).json();
+
+            say('Confirm the signature request in MetaMask…');
+            const signature = await window.ethereum.request({
+                method: 'personal_sign', params: [chal.message, address],
+            });
+
+            const res = await fetch("{{ url_for('profiles.link_wallet') }}", {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ address, signature }),
+            });
+            const result = await res.json();
+            if (!res.ok || !result.success) {
+                say(result.error || 'Linking failed.', 'text-danger');
+                linkBtn.disabled = false;
+                return;
+            }
+            say('Wallet linked — reloading…', 'text-success');
+            location.reload();
+        } catch (err) {
+            say((err && (err.message || err.reason)) || 'Linking failed.', 'text-danger');
+            linkBtn.disabled = false;
+        }
+    });
+})();
+</script>
+{% endblock %}

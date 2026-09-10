@@ -1,0 +1,676 @@
+# =============================================================================
+# maniwani APP TIER — shared ConfigMaps
+# =============================================================================
+# Namespace `maniwani` is created by the bootstrap layer; it is not defined here.
+#
+# Contents:
+#   1. log-init-script   — the log-init one-shot, re-homed as an initContainer script
+#   2. nginx-conf        — deploy-configs/nginx.conf, PATCHED for k3s (see diff below)
+#   3. maniwani-cfg      — deploy-configs/maniwani.cfg (verbatim)
+#   4. anubis-policy     — deploy-configs/anubis-policy.yaml (verbatim)
+#
+# SECRETS ARE NOT IN THIS FILE AND MUST NOT BE. See 10-maniwani.yaml for the
+# two-Secret scheme (`maniwani-dotenv` + `maniwani-env`) and the exact,
+# value-never-echoed commands that create them on the software node.
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-init-script
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: app
+data:
+  # ---------------------------------------------------------------------------
+  # JUDGEMENT CALL: the compose service `log-init` is NOT ported as a Job.
+  #
+  # compose used `depends_on: log-init: {condition: service_completed_successfully}`.
+  # Kubernetes has no equivalent for Deployments/StatefulSets, and a Job runs
+  # exactly once — it would not re-run after a node reboot, a fresh volume, or a
+  # cluster rebuild, leaving nginx unable to open its error_log and dying at
+  # startup. So the script becomes an idempotent initContainer executed by EVERY
+  # pod that mounts the shared log volume.
+  #
+  # CROSS-GROUP CONTRACT — other groups (tracker, seedbox, the four aggregators)
+  # MUST mount this same ConfigMap and run the same initContainer. Copy the
+  # `log-init` initContainer + the `shared-logs` volume verbatim out of
+  # 20-maniwani-frontend.yaml, which is the smallest example.
+  #
+  # `chmod -R 0777` is preserved verbatim: the backend image ends with
+  # `USER maniwani` (non-root) and the aggregators run as assorted uids, so the
+  # shared directory genuinely has to be world-writable. fsGroup cannot replace
+  # it here because a hostPath volume is not fsGroup-managed.
+  # ---------------------------------------------------------------------------
+  log-init.sh: |
+    #!/bin/sh
+    set -e
+    for svc in backend frontend tracker seedbox nginx \
+               generic-aggregator; do
+      mkdir -p "/var/log/maniwani/$svc"
+    done
+    chmod -R 0777 /var/log/maniwani
+    echo "shared log folder ready at /var/log/maniwani"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-conf
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: app
+  annotations:
+    # Bump this when you edit nginx.conf below; 40-nginx.yaml carries a matching
+    # pod-template annotation so `kubectl apply` actually rolls the Deployment.
+    # (nginx.conf is a subPath mount, and subPath mounts NEVER receive ConfigMap
+    # updates — without the annotation an edit here is silently ignored until
+    # the pod happens to restart.)
+    maniwani.io/config-revision: "6"
+data:
+  # ---------------------------------------------------------------------------
+  # Source: deploy-configs/nginx.conf. THREE deliberate diffs from the repo copy,
+  # all marked inline with `# K3S:`. Everything else — including the exact 503
+  # @starting HTML, `client_max_body_size 0`, the Anubis auth_request pattern,
+  # the /videos/internal/ 404 security control, and the 3600s SSE/websocket
+  # timeouts — is byte-for-byte the production behaviour.
+  #
+  #   K3S-1  resolver 127.0.0.11 -> 10.43.0.10
+  #          127.0.0.11 is Docker's embedded DNS and does not exist in k3s.
+  #          EVERY upstream except one is referenced through a `set $x` variable,
+  #          which forces runtime resolution — with a dead resolver every proxied
+  #          location returns 502 while nginx itself looks perfectly healthy.
+  #          10.43.0.10 is CoreDNS's ClusterIP for the k3s default service CIDR
+  #          10.43.0.0/16. VERIFY BEFORE FIRST APPLY:
+  #            kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}'
+  #          and if your bootstrap layer chose a different --service-cidr, change
+  #          it here. This single line is the #1 migration landmine.
+  #
+  #   K3S-2  location = /upload/media: literal `proxy_pass http://maniwani:3032`
+  #          becomes `set $maniwani_http_upstream maniwani:3032` +
+  #          `proxy_pass http://$maniwani_http_upstream`.
+  #          A literal upstream is resolved once at nginx STARTUP, so nginx would
+  #          refuse to start whenever the `maniwani` Service did not yet exist —
+  #          reintroducing compose's hard `depends_on` ordering that Kubernetes
+  #          cannot express. With the variable form nginx starts regardless and
+  #          re-resolves every 30s, so pod IP churn is picked up too.
+  #          Semantics are unchanged: a proxy_pass with no URI component passes
+  #          the original request URI, variable or not.
+  #
+  #   K3S-3  location /stream-media/ gains `alias /rtmp-media/;` unchanged, but
+  #          note the backing volume is now the shared `rtmp-storage` PVC
+  #          (storageClassName maniwani-local, owned by the rtmp group) rather
+  #          than a docker named volume. No config change — recorded here so the
+  #          dependency is not lost.
+  # ---------------------------------------------------------------------------
+  nginx.conf: |
+    # Write errors to the shared log folder and still echo to the container's
+    # stderr (so `kubectl logs nginx` keeps working).
+    error_log /var/log/maniwani/nginx/error.log warn;
+    error_log /dev/stderr warn;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        # Access logs go to the shared log folder and to stdout.
+        access_log /var/log/maniwani/nginx/access.log;
+        access_log /dev/stdout;
+
+        client_max_body_size 0;
+        # K3S-1: was `resolver 127.0.0.11 valid=30s ipv6=off;` (Docker embedded DNS).
+        resolver 10.43.0.10 valid=30s ipv6=off;
+        resolver_timeout 5s;
+        map $http_upgrade $connection_upgrade {
+            default upgrade;
+            '' close;
+        }
+
+        # Domain-only access. When DOMAIN is configured, the nginx entrypoint fills
+        # allowed-host.conf with `server_name <domain> ...;` and default-deny.conf
+        # with default_server blocks that reject any other Host/SNI (raw IP, parked
+        # domains). When DOMAIN is unset the files stay permissive (server_name _)
+        # and this include is empty, so behavior is unchanged.
+        include /etc/nginx/domain-guard/default-deny.conf;
+
+        server {
+            listen 80;
+            include /etc/nginx/domain-guard/allowed-host.conf;
+            # ACME HTTP-01 challenges must stay on plain HTTP. A server-level
+            # `return` would run before location matching, so the HTTPS redirect
+            # lives in `location /` instead.
+            location ^~ /.well-known/acme-challenge/ {
+                root /acme-webroot;
+            }
+            location / {
+                return 301 https://$host$request_uri;
+            }
+        }
+
+        server {
+            listen 443 ssl http2;
+            # Dedicated volunteer-gateway ingress. Only verified gateway
+            # addresses belong in set_real_ip_from: a trusted PROXY sender can
+            # claim any visitor address. The ordinary :443 listener remains
+            # compatible with direct traffic because it does not require the
+            # PROXY preamble.
+            listen 9443 ssl proxy_protocol;
+            # This listener's entire source set is constrained by
+            # NetworkPolicy/nginx-gateway-ingress, which the gateway controller
+            # reconciles from its healthy verified registry. Trust is broad
+            # only inside this isolated listener; ordinary :443 never accepts
+            # a PROXY preamble.
+            set_real_ip_from 0.0.0.0/0;
+            set_real_ip_from ::/0;
+            real_ip_header proxy_protocol;
+            real_ip_recursive on;
+            # Keep every redirect relative. This block listens on BOTH 443 and
+            # 9443, and nginx's default absolute_redirect stamps $server_port
+            # into the Location — so a reader arriving through a gateway was
+            # sent to https://syndichan.org:9443/..., a port NetworkPolicy
+            # restricts to gateway addresses. Their browser then could not
+            # connect, and the site looked down to exactly the people the
+            # gateways exist to serve.
+            #
+            # Relative Location has been valid since RFC 7231; the browser
+            # resolves it against the URL it actually used, which is the only
+            # thing here that knows the real public port.
+            absolute_redirect off;
+            port_in_redirect off;
+            include /etc/nginx/domain-guard/allowed-host.conf;
+            ssl_certificate /etc/nginx/tls/default.crt;
+            ssl_certificate_key /etc/nginx/tls/default.key;
+            ssl_session_timeout 1d;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_tickets off;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_prefer_server_ciphers off;
+            add_header Strict-Transport-Security "max-age=31536000" always;
+
+            # Primary object storage is the S3 gateway exposed by
+            # syndichan-node. Its local working set lives on a thin
+            # directory-backed PVC while encrypted shards are distributed by
+            # the DHT.
+            set $storage_upstream syndichan-node.maniwani.svc.cluster.local:9000;
+            set $storage_host syndichan-node;
+            set $maniwani_upstream maniwani.maniwani.svc.cluster.local:3031;
+            set $maniwani_http_upstream maniwani.maniwani.svc.cluster.local:3032;
+            set $frontend_upstream maniwani-frontend.maniwani.svc.cluster.local:3000;
+            set $anubis_upstream anubis.maniwani.svc.cluster.local:8923;
+            set $tracker_upstream tracker.maniwani.svc.cluster.local:8000;
+            set $seedbox_upstream seedbox.maniwani.svc.cluster.local:8781;
+            set $ergo_upstream ergo.maniwani.svc.cluster.local:8097;
+            set $gateway_controller_upstream gateway-controller.maniwani.svc.cluster.local:8080;
+
+            # --- native storage nodes -------------------------------------
+            # syndichan-node (storage-client/) bootstraps, takes coordinator
+            # leases, and posts its presence heartbeat here. These are NOT
+            # browsers: Anubis would serve them a proof-of-work challenge that a
+            # Go client cannot solve, so each one turns auth_request off.
+            #
+            # These blocks live in the K8S config, not only in
+            # deploy-configs/nginx.conf. That file is the COMPOSE config and
+            # carries `resolver 127.0.0.11` (Docker embedded DNS); copying it
+            # over this ConfigMap breaks every variable-based upstream here.
+            location = /.well-known/syndichan/storage-node.json {
+                auth_request off;
+                include uwsgi_params;
+                uwsgi_param HTTPS on;
+                uwsgi_param X-Forwarded-Proto $scheme;
+                uwsgi_pass $maniwani_upstream;
+            }
+
+            location = /api/v1/storage/leases {
+                auth_request off;
+                client_max_body_size 8k;
+                include uwsgi_params;
+                uwsgi_param HTTPS on;
+                uwsgi_param X-Forwarded-Proto $scheme;
+                uwsgi_pass $maniwani_upstream;
+            }
+
+            location = /api/v1/storage/nodes/heartbeat {
+                auth_request off;
+                client_max_body_size 8k;
+                include uwsgi_params;
+                uwsgi_param HTTPS on;
+                uwsgi_param X-Forwarded-Proto $scheme;
+                uwsgi_pass $maniwani_upstream;
+            }
+
+            location = /api/v1/storage/nodes/status {
+                auth_request off;
+                include uwsgi_params;
+                uwsgi_param HTTPS on;
+                uwsgi_param X-Forwarded-Proto $scheme;
+                uwsgi_pass $maniwani_upstream;
+            }
+
+            # Gateway candidates authenticate with their persistent Ed25519
+            # node identity. nginx overwrites X-Forwarded-For so the controller
+            # can safely derive and probe the candidate's actual public IP.
+            location = /api/v1/gateways/reserve {
+                auth_request off;
+                client_max_body_size 64k;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $remote_addr;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_pass http://$gateway_controller_upstream;
+            }
+
+            location = /api/v1/gateways/register {
+                auth_request off;
+                client_max_body_size 512k;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $remote_addr;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_pass http://$gateway_controller_upstream;
+            }
+
+            location = /api/v1/gateways/unregister {
+                auth_request off;
+                client_max_body_size 512k;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $remote_addr;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_pass http://$gateway_controller_upstream;
+            }
+
+            location = /api/v1/gateways {
+                auth_request off;
+                proxy_set_header Host $host;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_pass http://$gateway_controller_upstream;
+            }
+
+            location /.within.website/ {
+                proxy_pass http://$anubis_upstream;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_pass_request_body off;
+                proxy_set_header content-length "";
+                auth_request off;
+            }
+
+            location @redirectToAnubis {
+                # RELATIVE, and it must stay that way. nginx's absolute_redirect
+                # is on by default, so it rewrites a relative Location to
+                # $scheme://$host:$server_port/... — and $server_port on this
+                # block is 9443 for anything arriving through a volunteer
+                # gateway. That sent readers to
+                # https://syndichan.org:9443/.within.website/?redir=...
+                # which NetworkPolicy/nginx-gateway-ingress restricts to gateway
+                # addresses, so their browser could not connect at all.
+                #
+                # Invisible from the origin: on :443 the port matches the scheme
+                # default and nginx omits it, so direct traffic was always fine
+                # and only readers coming via a gateway saw a dead site.
+                #
+                # absolute_redirect is turned off for the whole server block
+                # (see above) rather than only here, because every other
+                # redirect nginx generates — directory redirects included —
+                # carries the same port.
+                return 307 /.within.website/?redir=$scheme://$host$request_uri;
+                auth_request off;
+            }
+
+            # Friendly "starting up" page for the ~80s window after a deploy/restart
+            # while the uwsgi app imports and has no ready workers. The proxied
+            # locations route gateway failures (502/504) here via error_page instead
+            # of surfacing a raw Bad Gateway. Returns 503 + Retry-After and
+            # auto-refreshes. Named location => not directly routable by clients.
+            # DO NOT replace this edge with a Kubernetes Ingress: an Ingress would
+            # swallow the 502 and serve its own error page instead.
+            location @starting {
+                auth_request off;
+                default_type text/html;
+                add_header Retry-After 5 always;
+                add_header Cache-Control "no-store" always;
+                return 503 "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><meta http-equiv='refresh' content='5'><title>Starting up…</title><style>html{background:#111;color:#ddd;font-family:system-ui,-apple-system,sans-serif}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center}main{max-width:32rem;padding:2rem}h1{font-size:1.4rem;margin:0 0 .6rem}p{opacity:.7;line-height:1.55;margin:0}.sp{width:2.2rem;height:2.2rem;margin:0 auto 1.4rem;border:3px solid #333;border-top-color:#9ab;border-radius:50%;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><main><div class='sp'></div><h1>Just a moment…</h1><p>The server is starting back up after an update. This page refreshes automatically.</p></main></body></html>";
+            }
+
+            location /s3/ {
+                auth_request /.within.website/x/cmd/anubis/api/check;
+                error_page 401 = @redirectToAnubis;
+                rewrite ^/s3/(.*)$ /$1 break;
+                proxy_pass https://$storage_upstream;
+                proxy_set_header Host $storage_host;
+                proxy_ssl_server_name on;
+                proxy_ssl_name syndichan-node;
+                proxy_ssl_verify on;
+                proxy_ssl_trusted_certificate /etc/nginx/storage-tls/tls.crt;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location = /upload/media {
+                auth_request off;
+                # K3S-2: was the literal `proxy_pass http://maniwani:3032;`.
+                proxy_pass http://$maniwani_http_upstream;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                client_max_body_size 0;
+            }
+
+            location /stream-media/ {
+                auth_request off;
+                # K3S-3: backed by the `rtmp-storage` PVC (maniwani-local), read-only.
+                alias /rtmp-media/;
+                add_header Cache-Control "no-store";
+                types {
+                    application/vnd.apple.mpegurl m3u8;
+                    video/mp2t ts;
+                    video/mp4 mp4;
+                }
+            }
+
+            location /seedbox/ {
+                auth_request off;
+                rewrite ^/seedbox/(.*)$ /$1 break;
+                proxy_pass http://$seedbox_upstream;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location /api/v1/live {
+                auth_request /.within.website/x/cmd/anubis/api/check;
+                error_page 401 = @redirectToAnubis;
+                include uwsgi_params;
+                uwsgi_param HTTPS on;
+                uwsgi_param X-Forwarded-Proto $scheme;
+                uwsgi_param X-Forwarded-Port $server_port;
+                uwsgi_pass $maniwani_upstream;
+                uwsgi_read_timeout 3600s;
+                uwsgi_buffering off;
+            }
+
+            # Anonymous per-profile chat: browser wss -> nginx -> plain ws to ergo.
+            # auth_request off so Anubis never challenges the socket handshake.
+            location /chat-ws/ {
+                auth_request off;
+                rewrite ^/chat-ws/(.*)$ /$1 break;
+                proxy_pass http://$ergo_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection $connection_upgrade;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_read_timeout 3600s;
+            }
+
+            location /tracker/ {
+                auth_request off;
+                rewrite ^/tracker/(.*)$ /$1 break;
+                proxy_pass http://$tracker_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection $connection_upgrade;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location /gun/ {
+                auth_request /.within.website/x/cmd/anubis/api/check;
+                error_page 401 = @redirectToAnubis;
+                proxy_pass http://$frontend_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection $connection_upgrade;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            location = /gun {
+                auth_request /.within.website/x/cmd/anubis/api/check;
+                error_page 401 = @redirectToAnubis;
+                proxy_pass http://$frontend_upstream;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection $connection_upgrade;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            # Internal-only origin-restore endpoint. The seedbox reaches it over
+            # the cluster network (http://maniwani:3032); it must never be routable
+            # from the public edge. THIS IS A SECURITY CONTROL — do not remove it,
+            # and do not publish port 3032 outside the cluster.
+            location /videos/internal/ {
+                auth_request off;
+                return 404;
+            }
+
+            # `curl -fsSL https://syndichan.org/install.sh | sh` and the binaries it
+            # then fetches. A bare curl cannot solve an Anubis challenge, and the
+            # failure mode is not a 403: it is a shell script that pipes an HTML
+            # challenge page into sh, or an "executable" that is a challenge page.
+            location = /install.sh {
+                auth_request off;
+                include uwsgi_params;
+                uwsgi_param HTTPS on;
+                uwsgi_param X-Forwarded-Proto $scheme;
+                uwsgi_pass $maniwani_upstream;
+            }
+
+            location /dl/ {
+                auth_request off;
+                include uwsgi_params;
+                uwsgi_param HTTPS on;
+                uwsgi_param X-Forwarded-Proto $scheme;
+                uwsgi_pass $maniwani_upstream;
+                # ~30 MB out of the object store on a slow link.
+                uwsgi_read_timeout 300s;
+            }
+
+            location / {
+                auth_request /.within.website/x/cmd/anubis/api/check;
+                error_page 401 = @redirectToAnubis;
+                # Deploy/restart boot window: show the "starting up" page, not a raw
+                # 502/504. App-level 503 (e.g. unconfigured TTS) is deliberately NOT
+                # intercepted so those pass through unchanged.
+                error_page 502 504 = @starting;
+                include uwsgi_params;
+                uwsgi_param HTTPS on;
+                uwsgi_param X-Forwarded-Proto $scheme;
+                uwsgi_param X-Forwarded-Port $server_port;
+                uwsgi_pass $maniwani_upstream;
+            }
+        }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maniwani-cfg
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: app
+  annotations:
+    maniwani.io/config-revision: "1"
+data:
+  # ---------------------------------------------------------------------------
+  # Source: deploy-configs/maniwani.cfg, VERBATIM. This is a python module the
+  # backend imports via MANIWANI_CFG; it is mounted at /maniwani/runtime-config.cfg.
+  #
+  # No k3s edits are needed — every service name it embeds (postgres, redis,
+  # syndichan-node, maniwani-frontend) is preserved as a Service name of exactly that
+  # spelling, which is precisely why renaming any Service would break the site
+  # at runtime rather than at apply time.
+  #
+  # RESOLVED (was: plaintext credentials preserved for parity):
+  # SQLALCHEMY_DATABASE_URI, S3_ACCESS_KEY and
+  # S3_SECRET_KEY are plaintext here exactly as
+  # they are in the repo today, so this ConfigMap is not a NEW disclosure. They
+  # are nonetheless credentials sitting in a ConfigMap. FOLLOW-UP (deliberately
+  # NOT bundled into the migration, to keep the cutover diff auditable): all
+  # three are uppercase keys in app.config, so they are "managed env keys" and
+  # can be moved into the .env Secret verbatim, after which these lines should be
+  # deleted. Do that as a separate change once the cluster is serving.
+  # ---------------------------------------------------------------------------
+  maniwani.cfg: |
+    # Configuration template for the production Docker target
+    # Make sure to change these settings before triggering a build intended to be public-facing!
+    import os
+    INSTANCE_NAME = "Syndichan"
+    DEV_MODE = os.environ.get("DEV_MODE", os.environ.get("MANIWANI_DEV", os.environ.get("dev_mode", "false"))).lower() not in ("false", "0", "no", "off", "")
+    # Built from the environment, which the pod populates via secretKeyRef from
+    # `maniwani-env`. The backend and storage node read the SAME S3 keys,
+    # so rotating there rotates here — a literal would silently keep the backend
+    # on the old credentials while the database moved on.
+    SQLALCHEMY_DATABASE_URI = "postgresql://%s:%s@postgres/%s" % (
+        os.environ["POSTGRES_USER"], os.environ["POSTGRES_PASSWORD"], os.environ["POSTGRES_DB"])
+    RENDERER_HOST = "http://maniwani-frontend:3000"
+    STORAGE_PROVIDER = "S3"
+    S3_ENDPOINT = "https://syndichan-node:9000"
+    S3_CA_BUNDLE = "/dht-tls/tls.crt"
+    CDN_REWRITE = "/s3/{BUCKET}/{PATH}"
+    S3_ACCESS_KEY = os.environ["S3_ACCESS_KEY"]
+    S3_SECRET_KEY = os.environ["S3_SECRET_KEY"]
+    STORE_PROVIDER = "REDIS"
+    REDIS_HOST = "redis"
+    SERVE_STATIC = False
+    SERVE_REST = True
+    PREFERRED_URL_SCHEME = "https"
+    SESSION_COOKIE_SECURE = True
+    MAX_CONTENT_LENGTH = 1024 ** 3 + 32 * (1024 ** 2)  # 1 GiB (video) + headroom for multipart overhead
+    CAPTCHA_COOLDOWN = 10 * 60
+    FFMPEG_PATH = "./ffmpeg/ffmpeg"
+    AGGREGATOR_SYNC_INTERVAL = 300
+    AGGREGATOR_REQUEST_SYNC = False
+    FOURCHAN_AGGREGATOR_DB = "./board_aggregators/fourchan_aggregator_plus/data/4chan.db"
+    EIGHTCHAN_AGGREGATOR_DB = "./board_aggregators/fourchan_aggregator_plus/data/8chan.db"
+    SEVENCHAN_AGGREGATOR_DB = "./board_aggregators/fourchan_aggregator_plus/data/7chan.db"
+    ADMIN_WALLET_ADDRESS = os.environ.get("ADMIN_WALLET_ADDRESS", "0xB2b36AaD18d7be5d4016267BC4cCec2f12a64b6e")
+    # Stripe. Mirrors deploy-configs/maniwani.cfg — this ConfigMap is the file
+    # the pod actually imports (MANIWANI_CFG=/maniwani/runtime-config.cfg), so a
+    # setting added only to the repo copy silently does nothing in the cluster.
+    STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+    STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+    STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+    # Origin content signing (roadmap/gateway-validation.md, phase 1). Absent is
+    # a valid state: content is served unsigned, which is where the site was
+    # before this existed. It must never be a startup failure.
+    ORIGIN_SIGNING_KEY = os.environ.get("ORIGIN_SIGNING_KEY", "")
+    ORIGIN_PUBLIC_KEY = os.environ.get("ORIGIN_PUBLIC_KEY", "")
+    TORRENT_PUBLIC_HOST = os.environ.get("TORRENT_PUBLIC_HOST") or None
+    TORRENT_PUBLIC_SECURE = os.environ.get("TORRENT_PUBLIC_SECURE", "true").lower() not in ("false", "0", "no")
+    TORRENT_TURN_HOST = os.environ.get("TORRENT_TURN_HOST") or None
+    TORRENT_TURN_PORT = int(os.environ.get("TORRENT_TURN_PORT", "3478"))
+    TORRENT_TURNS_PORT = int(os.environ.get("TORRENT_TURNS_PORT", "5349"))
+    TORRENT_TURN_USERNAME = os.environ.get("TORRENT_TURN_USERNAME", "")
+    TORRENT_TURN_PASSWORD = os.environ.get("TORRENT_TURN_PASSWORD", "")
+    TORRENT_FORCE_TURN_RELAY = os.environ.get("TORRENT_FORCE_TURN_RELAY", "false").lower() not in ("false", "0", "no")
+
+    # Dark theme by default (near-black + off-white text).
+    DEFAULT_THEME = "midnight"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: anubis-policy
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: app
+  annotations:
+    maniwani.io/config-revision: "1"
+data:
+  # ---------------------------------------------------------------------------
+  # Source: deploy-configs/anubis-policy.yaml, VERBATIM.
+  #
+  # CROSS-NODE HOT PATH: `store.parameters.url` is redis://redis:6379/1 — redis
+  # lives on the DATA node, so Anubis touches it over WireGuard on every
+  # challenged request, and nginx auth_requests Anubis for `location /`. At the
+  # measured 0.44 ms RTT that is fine, but it makes the entire public edge
+  # hard-dependent on data-node reachability: if the overlay drops, `/` returns
+  # 401 -> redirect loops rather than serving. Deliberately NOT changed as part
+  # of this migration (an edge-local redis for DB 1 is a separate decision).
+  #
+  # Anubis uses redis DB **1**; the app's STORE_PROVIDER=REDIS uses DB 0 on the
+  # SAME instance. Whoever writes the redis manifest must not enable a
+  # single-database-only configuration or Anubis breaks.
+  #
+  # SECURITY: because this store IS the bot wall's state, the `redis` Service
+  # must be ClusterIP-only and must never bind a public interface.
+  # ---------------------------------------------------------------------------
+  botPolicy.yaml: |
+    bots:
+      - import: (data)/bots/_deny-pathological.yaml
+      - import: (data)/meta/ai-block-aggressive.yaml
+      - import: (data)/crawlers/_allow-good.yaml
+      - import: (data)/clients/x-firefox-ai.yaml
+      - import: (data)/common/keep-internet-working.yaml
+      - name: generic-browser
+        user_agent_regex: >-
+          Mozilla|Opera
+        action: WEIGH
+        weight:
+          adjust: 10
+
+    dnsbl: false
+
+    status_codes:
+      CHALLENGE: 200
+      DENY: 403
+
+    store:
+      backend: valkey
+      parameters:
+        url: "redis://redis:6379/1"
+
+    thresholds:
+      - name: minimal-suspicion
+        expression: weight <= 0
+        action: ALLOW
+      - name: mild-suspicion
+        expression:
+          all:
+            - weight > 0
+            - weight < 10
+        action: CHALLENGE
+        challenge:
+          algorithm: metarefresh
+          difficulty: 1
+      - name: moderate-suspicion
+        expression:
+          all:
+            - weight >= 10
+            - weight < 20
+        action: CHALLENGE
+        challenge:
+          algorithm: fast
+          difficulty: 2
+      - name: mild-proof-of-work
+        expression:
+          all:
+            - weight >= 20
+            - weight < 30
+        action: CHALLENGE
+        challenge:
+          algorithm: fast
+          difficulty: 4
+      - name: extreme-suspicion
+        expression: weight >= 30
+        action: CHALLENGE
+        challenge:
+          algorithm: fast
+          difficulty: 6

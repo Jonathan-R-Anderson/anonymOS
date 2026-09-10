@@ -1,0 +1,481 @@
+# =============================================================================
+# maniwani UPDATER — THE POLLER. CronJob, every 5 minutes, software node.
+# =============================================================================
+# This is the object that satisfies the requirement:
+#
+#   "make a way to pull updates from github without me needing to log in via
+#    ssh. it should try and update but if it fails to then it needs to roll back
+#    and produce an error log file of what went wrong."
+#
+# The operator's entire deploy procedure becomes: `git push`. Within 5 minutes
+# this Job wakes up, sees a new commit on origin/main, builds only the images
+# whose build context changed, pins them to :g<short-sha>, migrates, rolls the
+# changed workloads in tier order, verifies, and on ANY failure re-applies the
+# previous pinned render. The log lands at https://<domain>/_deploy/ behind HTTP
+# Basic — readable in a browser, with no SSH, and specifically readable while
+# the backend is crashlooping (see 80-nginx-deploy-status.yaml).
+#
+# =============================================================================
+# (!!) THE SECURITY TRADEOFF. READ THIS BEFORE APPLYING. (!!)
+# =============================================================================
+# This pod mounts /var/run/docker.sock and the k3s containerd socket.
+#
+#   >>> ANYTHING THAT CAN TALK TO EITHER SOCKET IS ROOT ON THE SOFTWARE NODE. <<<
+#
+# Not "has elevated permissions". Root. `docker run -v /:/host --privileged` is
+# one API call away, and that includes the WireGuard key that reaches the data
+# node where postgres and the object store live. `readOnly: true` on a unix socket restricts
+# the INODE, NOT THE CONVERSATION — it is not a mitigation and is not claimed as
+# one here. (Falco's manifest, media/90-falco.yaml, states the same thing about
+# the same two sockets.)
+#
+# WHY IT IS HERE ANYWAY: k3s cannot build images, there is no registry, and the
+# repo defines its own Dockerfiles. `docker build` and the containerd import are
+# HOST operations. Something has to hold those sockets or the feature cannot
+# exist. The choices were:
+#
+#   (A) THIS. A privileged CronJob in namespace maniwani.
+#       + one artifact, versioned in git, installed with kubectl, no host state
+#       + schedule/pause/trigger are all kubectl or git operations — no SSH,
+#         which is the literal requirement
+#       + the log, the rollback baseline and the lock live on a PVC that is
+#         visible in `kubectl get pvc` like everything else
+#       - adds a root-on-node path to a namespace that ALSO runs the public
+#         edge, a Flask app with an upload/image-proxy/scraper attack surface,
+#         and seven scrapers that parse hostile HTML. If anyone gets
+#         `create pods` in this namespace — leaked kubeconfig, stolen SA token,
+#         container escape from the backend — they get the node.
+#       - it is a standing Falco false-positive; a pod opening docker.sock is
+#         exactly what its rules should scream about.
+#
+#   (B) A host systemd oneshot + timer on the software node.
+#       + no new root-on-node path inside the cluster: the tools stay on the
+#         host where they already are, and nothing in namespace maniwani gains
+#         anything
+#       + not subject to eviction or node pressure while halfway through
+#         mutating its own namespace
+#       - the updater itself then lives OUTSIDE git and outside kubectl:
+#         installing it, fixing a bug in it, or rotating its config needs the
+#         SSH login this feature exists to remove
+#       - needs a long-lived SA token in a file on disk (a projected 1h token
+#         is a pod feature), i.e. a credential this design otherwise does not
+#         create
+#
+# (A) IS WHAT THIS DIRECTORY SHIPS, because (B) reintroduces the exact problem
+# the user asked to remove. README §1 carries the full argument and the exact
+# steps to convert to (B) if you would rather pay the SSH cost. If you do
+# convert, revisit the `create jobs` grant in 00-serviceaccount-rbac.yaml — with
+# the socket gone, that becomes the largest remaining privilege rather than a
+# rounding error next to it.
+#
+# THE PART NO ARRANGEMENT FIXES, stated plainly rather than buried:
+#
+#   >>> THIS IS A REMOTE-CODE-EXECUTION CHANNEL FROM GITHUB `main` TO ROOT ON
+#   >>> THE SOFTWARE NODE. `docker build` runs `RUN` lines as root at build
+#   >>> time. There is no sandbox that changes that while still letting the repo
+#   >>> define its own images.
+#
+# The mitigation is UPSTREAM, not in container isolation: branch protection on
+# main, required review, and REQUIRE_SIGNED=1 with a filled-in allowed_signers
+# (30-configmap-updater.yaml). Turn those on. They are the actual control.
+#
+# NARROWING THAT IS REAL, and is enforced by the API server rather than by an
+# `if` in a shell script (see 00-serviceaccount-rbac.yaml):
+#   * no verb on secrets at all — the two credentials this pod needs arrive by
+#     kubelet-resolved volume/secretKeyRef, not by `kubectl get secret`
+#   * no write verb on persistentvolumeclaims  -> cannot destroy scraped content
+#   * postgres / redis / the object store absent from every resourceNames list -> cannot
+#     touch the data tier, so it cannot restart the object store on the 7 GB node
+#   * no `delete` on any workload, no `create` on any workload
+#   * /etc/rancher/k3s/k3s.yaml (cluster-admin) is never mounted or read
+#
+# =============================================================================
+# THE IMAGE
+# =============================================================================
+# registry.local/maniwani-updater:latest — the 13th repo-adjacent image, built
+# and imported exactly like the other twelve (bootstrap README §7):
+#
+#   docker build -t registry.local/maniwani-updater:latest ./k8s/updater
+#   docker save registry.local/maniwani-updater:latest | sudo k3s ctr images import -
+#
+# The Dockerfile is in README §3.2. It is deliberately tiny (docker CLI, kubectl,
+# git+openssh, yq, jq, coreutils, sqlite, postgresql17-client) and it is
+# deliberately the ONE image the updater never rebuilds or re-tags:
+#
+#   >>> THE UPDATER DOES NOT UPDATE ITSELF. <<<
+#   A self-replacing updater that ships a broken version of itself is
+#   unrecoverable without the SSH login this whole feature removes. update.sh
+#   never rebuilds this image, the Role has no verbs on cronjobs, and a commit
+#   touching k8s/updater/** is logged as a NOTICE and skipped. Same reasoning
+#   that quarantines glados-tts, for a different reason.
+#
+# PINNED TO :latest ON PURPOSE, and it is the only workload in the rendered tree
+# that keeps a floating tag — because it is never rendered. update.sh's `render`
+# step rewrites registry.local/*:latest, but it only ever renders k8s/{app,
+# aggregators,media,data,bootstrap}; this file is applied by hand.
+#
+# pg_dump MAJOR MUST BE >= THE SERVER MAJOR. data/10-postgres.yaml runs
+# postgres:17, so the image needs postgresql17-client. A 16 client refuses with
+# "server version 17, pg_dump version 16", which update.sh surfaces as
+# "refusing to migrate without a restore point" — correct behaviour, confusing
+# root cause. Bump the client when you bump the server.
+# =============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: maniwani-updater
+  namespace: maniwani
+  labels:
+    app: maniwani-updater
+    app.kubernetes.io/name: maniwani-updater
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: updater
+    maniwani.io/group: updater
+spec:
+  # Every 5 minutes. An unchanged origin/main costs exactly one `git fetch` and
+  # then exits — no log entry, no build, no kubectl call. 288 fetches/day is
+  # nothing. The poll interval IS the deploy latency: push, then wait <=5 min.
+  schedule: "*/1 * * * *"   # 1 min: the admin "Update now" button queues a request and waits for this tick
+  timeZone: "Etc/UTC"
+  # Forbid, not Replace. Two updaters mutating the same namespace is the worst
+  # possible failure mode, and Replace would KILL A RUN MID-ROLLOUT — leaving a
+  # half-applied tier with no process left to roll it back. update.sh also takes
+  # an flock on the PVC, because a manually-created Job (see 50-job-manual.yaml)
+  # is NOT covered by concurrencyPolicy.
+  concurrencyPolicy: Forbid
+  # If the node was busy and a firing was missed by more than 2 minutes, skip it
+  # rather than stacking. Without this, a node that was down for an hour queues
+  # up a burst on recovery. (Omitting it entirely has an even worse edge: the
+  # controller gives up permanently after 100 missed schedules.)
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  # Deliberately generous: a failed Job's pod is where `kubectl logs` still
+  # works. The authoritative record is on the PVC, but during an incident people
+  # reach for kubectl logs first and it should be there.
+  failedJobsHistoryLimit: 10
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: maniwani-updater
+        app.kubernetes.io/part-of: maniwani
+        app.kubernetes.io/component: updater
+    spec:
+      # NEVER RETRY A FAILED DEPLOY AUTOMATICALLY. backoffLimit: 0 is the single
+      # most important field in this block. A retry loop against a broken commit
+      # turns one failed rollout into a rollback/redeploy oscillation that keeps
+      # the site flapping. update.sh rolls back once, writes the log, and stops;
+      # the next SCHEDULED run sees deployed.sha unchanged and (because the SHA
+      # is unchanged) does nothing at all until a human pushes a fix.
+      backoffLimit: 0
+      # Hard ceiling. The long pole is a `maniwani` rebuild (multi-minute) plus a
+      # 900 s backend rollout plus, in the worst case, a downgrade Job and a
+      # revert rollout. 3600 s covers it with room. If this fires mid-run the
+      # pod is killed and the phase file is left non-terminal — the NEXT run
+      # detects that and resumes straight into ROLLBACK.
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 172800   # 48 h, then the Job object is reaped
+      template:
+        metadata:
+          labels:
+            # Both label families, per the house convention.
+            app: maniwani-updater
+            app.kubernetes.io/name: maniwani-updater
+            app.kubernetes.io/part-of: maniwani
+            app.kubernetes.io/component: updater
+            maniwani.io/group: updater
+            # (!) LABEL CONTRACT WITH THE DATA TIER — DO NOT REMOVE.
+            # k8s/data/networkpolicy.yaml (postgres-ingress) is FAIL-CLOSED and
+            # permits exactly two client shapes: `app: maniwani`, and anything
+            # carrying this label. It is how the pre-migration pg_dump reaches
+            # postgres:5432 over WireGuard WITHOUT granting `create pods/exec`
+            # (a shell inside the database pod) to this ServiceAccount.
+            # Without the label, pg_dump HANGS until timeout and every schema
+            # migration halts at "pg_dump failed" with a perfectly healthy
+            # -looking `kubectl get netpol`.
+            maniwani.io/postgres-client: "true"
+        spec:
+          serviceAccountName: maniwani-updater
+          restartPolicy: Never
+          # SOFTWARE NODE. Mandatory, three separate reasons, each fatal alone:
+          #   1. docker and containerd run here; the data node has neither
+          #   2. the state PVC is storageClassName maniwani-local (this node)
+          #   3. the five aggregator PVCs mounted below are local-path claims on
+          #      this node
+          # It is also a protection: the data node has 4 vCPU / 7 GB and already
+          # carries the object store, and a docker build there would be an OOM event.
+          nodeSelector:
+            maniwani.io/role: software
+          # No priorityClassName. If the software node is under memory pressure,
+          # losing the updater is the correct thing to lose. It is idempotent and
+          # the next firing picks up where it left off.
+          terminationGracePeriodSeconds: 30
+          securityContext:
+            # runAsUser 0. Required, not aspirational: the docker socket is
+            # root-owned (root:docker, 0660) and there is no docker group inside
+            # this image to join. Given the socket is root-on-node anyway (see
+            # the header), running the pod as a non-root uid would be security
+            # theatre that only breaks the build.
+            runAsUser: 0
+            runAsGroup: 0
+          containers:
+            - name: updater
+              image: registry.local/maniwani-updater:latest
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/bash", "/etc/updater/update.sh"]
+              env:
+                - name: NAMESPACE
+                  value: maniwani
+                - name: GIT_URL
+                  # SSH, because the repo is PRIVATE from the cluster's point of
+                  # view. Anonymous HTTPS does not work and is not a fallback —
+                  # see 10-secrets.example.yaml. The key arrives at /secrets/git.
+                  # Repo was renamed maniwani -> syndichan; the old URL only
+                  # works via GitHub's redirect, so name the real one.
+                  value: "git@github.com:Jonathan-R-Anderson/syndichan.git"
+                - name: GIT_BRANCH
+                  value: "main"
+                # --- where the mounted files ACTUALLY land --------------------
+                # update.sh defaults these to $CONF_DIR (/etc/maniwani-updater),
+                # but this manifest mounts the script ConfigMap at /etc/updater
+                # and the git Secret at /secrets/git. Without these three the
+                # updater looked for known_hosts, allowed_signers and the deploy
+                # key in a directory that is never mounted, and died in preflight
+                # with "pinned known_hosts missing".
+                - name: KNOWN_HOSTS
+                  value: /etc/updater/known_hosts
+                - name: ALLOWED_SIGNERS
+                  value: /etc/updater/allowed_signers
+                - name: DEPLOY_KEY_PATH
+                  value: /secrets/git/id_ed25519
+                # --- rollback policy -------------------------------------------
+                # auto: on a failed rollout AFTER a successful migration, run the
+                #   downgrade Job (on the NEW image — the old one cannot; see
+                #   update.sh §9a) and then revert the image.
+                # manual: revert nothing, halt, and print the exact two commands
+                #   into the web log.
+                # `auto` is the recommended default and it is not the timid
+                # choice: given update.py's forward-only stamp, NOT downgrading
+                # means the site stays down, so `manual` is safer only in a
+                # bookkeeping sense.
+                - name: MIGRATION_ROLLBACK
+                  value: "auto"
+                # Set to "1" once allowed_signers is filled in. This is the only
+                # real control on the RCE channel described in the header.
+                - name: REQUIRE_SIGNED
+                  value: "0"
+                # glados-tts is not reproducible (upstream cloned at HEAD +
+                # release-asset ONNX models) and is multi-GB. Leave at 0.
+                - name: REBUILD_GLADOS
+                  value: "0"
+                - name: TIMEOUT_APP
+                  # 900, NOT 300. sts/maniwani's startupProbe alone allows 600 s
+                  # (10 s x 60), and ensure_runtime.py blocks up to 300 s on a
+                  # TCP connect to the object store before that. A shorter timeout rolls back
+                  # HEALTHY deploys, which is worse than waiting.
+                  value: "900"
+                - name: TIMEOUT_AGG
+                  value: "300"
+                - name: TIMEOUT_MEDIA
+                  # 600, not 300. This env value BINDS (update.sh uses
+                  # ${TIMEOUT_MEDIA:-600}), so changing only the script default
+                  # would have had no effect. clamav loads its signature
+                  # database at startup and needs ~600s; at 300 a healthy
+                  # rollout was declared failed and rolled the deploy back.
+                  value: "600"
+                - name: TIMEOUT_EDGE
+                  # deploy/nginx is Recreate + replicas:1 + hostPort; the cycle
+                  # is old-pod-gone then new-pod-binds. 120 s is generous.
+                  value: "120"
+                - name: MIN_FREE_GB
+                  value: "20"
+                - name: KEEP_TAGS
+                  # current + 3 rollback targets. Tags of one image share every
+                  # unchanged layer, so 4 tags is roughly one image plus three
+                  # small deltas — not 4x the disk.
+                  value: "4"
+                - name: DOCKER_HOST
+                  value: "unix:///var/run/docker.sock"
+                - name: CTR_BIN
+                  # The HOST's k3s binary, bind-mounted below. Using the host's
+                  # own binary removes any containerd client/server version skew
+                  # — `ctr` from an alpine package can be a different minor than
+                  # k3s's embedded containerd, and image import is exactly the
+                  # kind of API where that bites once a year.
+                  value: "/host/k3s"
+                # --- credentials, resolved BY THE KUBELET, not by the SA -------
+                # This is why 00-serviceaccount-rbac.yaml grants no verb on
+                # secrets at all. secretKeyRef is evaluated by the kubelet on
+                # this pod's behalf; the ServiceAccount is never involved and
+                # cannot enumerate the 114-key Secret it is drawing from.
+                - name: DOMAIN
+                  valueFrom:
+                    secretKeyRef: {name: maniwani-env, key: DOMAIN}
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef: {name: maniwani-env, key: POSTGRES_USER}
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: maniwani-env, key: POSTGRES_PASSWORD}
+                - name: POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef: {name: maniwani-env, key: POSTGRES_DB}
+              volumeMounts:
+                - name: state
+                  # MUST match BASE in update.sh (/var/lib/maniwani-updater).
+                  # This was /state, which nothing in update.sh ever reads: BASE
+                  # is hardcoded to /var/lib/maniwani-updater, so repo/, render/,
+                  # deployed.sha and the lock all lived in the container's
+                  # ephemeral filesystem and vanished when the Job pod exited.
+                  # Every run re-cloned from scratch, and -- the real damage --
+                  # rollback re-applies $BASE/render/<prev-sha>, which was never
+                  # there, so the "fall back to the last version" guarantee could
+                  # not have worked on any second run.
+                  mountPath: /var/lib/maniwani-updater
+                - name: deploy-requests
+                  mountPath: /deploy-requests
+                - name: deploy-status
+                  # PUB_DIR in update.sh. THE operator-visible surface: status.json
+                  # and latest-failure.log. The backend hostPath-mounts this same
+                  # directory READ-ONLY at /deploy and the admin card renders it
+                  # (backend/services/software_update.py STATUS_DIR).
+                  # Without this mount the updater published into its own
+                  # ephemeral filesystem, so the admin page could never show a
+                  # result or a failure log -- the whole point of the feature.
+                  mountPath: /var/lib/maniwani/deploy
+                - name: script
+                  mountPath: /etc/updater
+                  readOnly: true
+                - name: templates
+                  mountPath: /templates
+                  readOnly: true
+                - name: git-key
+                  mountPath: /secrets/git
+                  readOnly: true
+                # --- HOST SOCKETS. See the header. Root on the node. ----------
+                # Not marked readOnly, and that is honest rather than sloppy:
+                # readOnly on a unix socket restricts the inode, not the
+                # conversation, so marking it would imply a protection that does
+                # not exist. `docker build` needs to write to the socket anyway.
+                - name: docker-sock
+                  mountPath: /var/run/docker.sock
+                - name: containerd-sock
+                  mountPath: /run/k3s/containerd/containerd.sock
+                - name: k3s-bin
+                  mountPath: /host/k3s
+                  readOnly: true
+                # --- scraper volumes, READ-ONLY -------------------------------
+                # Only so `sqlite3 .backup` can take a consistent snapshot before
+                # an aggregator image roll (an image revert does NOT undo a .db
+                # the new image migrated in place). readOnly at the mount AND
+                # mode=ro at the SQLite handle: the updater must never hold a
+                # writable handle on 22 GB of unreproducible scraped content.
+                # Restore is a documented MANUAL step with the StatefulSet at 0
+                # replicas — update.sh never writes into these.
+                # ONE aggregator, not five. The per-site scrapers (4chan, 8chan,
+                # 7chan, reddit) were consolidated into the generic aggregator and
+                # their PVCs no longer exist. This manifest went on mounting them,
+                # and a volume naming a missing PVC does not warn — the pod stays
+                # Pending forever. So every deploy silently stopped, and the
+                # CronJob ended up suspended rather than repaired.
+                #
+                # Nothing here needs a list kept in step: update.sh locates
+                # databases with `find /aggregator-data`, not by name.
+                - {name: agg-generic, mountPath: /aggregator-data/generic, readOnly: true}
+              resources:
+                # Modest ON PURPOSE. The expensive work — `docker build` — runs
+                # in the DAEMON on the host, not in this cgroup, so the pod only
+                # pays for git, yq/jq, kubectl and streaming a ~100 MB pg_dump to
+                # disk. Sizing this large would just reserve memory away from the
+                # 15 other services on a 22 GB node for no benefit.
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+          volumes:
+            # Admin "Update now" drop-box. The backend writes tiny JSON request
+            # files here; consume_requests() in update.sh deletes them as it
+            # picks them up. hostPath (not a PVC) so the backend and the updater
+            # Job — different pods, both pinned to the software node — see the
+            # same directory without an RWO conflict.
+            - name: deploy-status
+              hostPath:
+                path: /var/lib/maniwani/deploy
+                type: DirectoryOrCreate
+            - name: deploy-requests
+              hostPath:
+                path: /var/lib/maniwani/deploy-requests
+                type: DirectoryOrCreate
+            - name: state
+              persistentVolumeClaim:
+                claimName: maniwani-updater-state
+            - name: script
+              configMap:
+                name: maniwani-updater-script
+                # 0555: update.sh is invoked via `bash <path>`, so the exec bit
+                # is not strictly required — set anyway so a future
+                # `command: ["/etc/updater/update.sh"]` does not fail mysteriously.
+                defaultMode: 0555
+            - name: templates
+              configMap:
+                name: maniwani-updater-templates
+                defaultMode: 0444
+            - name: git-key
+              secret:
+                secretName: maniwani-git-deploy-key
+                # 0400 is not decoration: OpenSSH REFUSES a private key whose
+                # permissions are group- or world-readable and exits with
+                # "UNPROTECTED PRIVATE KEY FILE", which presents as an
+                # unexplained clone failure. Secret volumes are tmpfs, so the key
+                # never touches the PVC or the node's disk.
+                defaultMode: 0400
+                items:
+                  - key: id_ed25519
+                    path: id_ed25519
+            # `type: Socket` on both, deliberately: a wrong path FAILS THE MOUNT
+            # and the pod never starts. With an empty type the runtime happily
+            # creates a DIRECTORY at the path and the build fails much later with
+            # a far worse error. Same choice media/90-falco.yaml made.
+            - name: docker-sock
+              hostPath:
+                path: /var/run/docker.sock
+                type: Socket
+            - name: containerd-sock
+              # k3s's embedded containerd. A stock containerd install would be
+              # /run/containerd/containerd.sock — change BOTH this and the
+              # --address in update.sh's $CTR if the node ever stops using k3s's
+              # bundled runtime.
+              hostPath:
+                path: /run/k3s/containerd/containerd.sock
+                type: Socket
+            - name: k3s-bin
+              # VERIFY THE PATH ON YOUR NODE: `command -v k3s`. The standard
+              # install script puts it at /usr/local/bin/k3s. type: File means a
+              # wrong path fails the mount loudly instead of producing an empty
+              # directory that then fails as "permission denied" at import time.
+              hostPath:
+                path: /usr/local/bin/k3s
+                type: File
+            - {name: agg-generic, persistentVolumeClaim: {claimName: aggregator-generic, readOnly: true}}
+# =============================================================================
+# CONTROLLING IT — every control channel is kubectl or git. None is SSH.
+# -----------------------------------------------------------------------------
+#   deploy now            git push                       (<=5 min latency)
+#   deploy immediately    kubectl -n maniwani create job --from=cronjob/maniwani-updater \
+#                             updater-manual-$(date +%s)
+#   pause deploys         kubectl -n maniwani patch cronjob maniwani-updater \
+#                             -p '{"spec":{"suspend":true}}'
+#                         ...or commit an empty file k8s/updater/HOLD, which
+#                         works even for someone who has git but no kubeconfig
+#   skip one commit       put [skip deploy] in the commit subject
+#   resume                kubectl -n maniwani patch cronjob maniwani-updater \
+#                             -p '{"spec":{"suspend":false}}'
+#   what happened         https://<domain>/_deploy/            (browser, no SSH)
+#                         kubectl -n maniwani get cm maniwani-deploy-status \
+#                             -o jsonpath='{.data.status\.json}'
+#
+# FIRST RUN SEEDS, IT DOES NOT DEPLOY. With no state/deployed.sha on the PVC the
+# updater adopts origin/main as its rollback baseline, renders it, and applies
+# NOTHING. Make sure the cluster actually matches main before the first firing —
+# see README §3.4.
+# =============================================================================

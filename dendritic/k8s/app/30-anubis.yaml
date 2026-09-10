@@ -1,0 +1,177 @@
+# =============================================================================
+# anubis — proof-of-work bot wall. APP TIER, SOFTWARE NODE. Stateless.
+# =============================================================================
+# Upstream image, no build: ghcr.io/techarohq/anubis:v1.25.0 (pinned tag, kept).
+#
+# nginx uses Anubis ONLY in auth_request mode (`auth_request
+# /.within.website/x/cmd/anubis/api/check` on /, /s3/, /gun, /gun/ and
+# /api/v1/live, with `error_page 401 = @redirectToAnubis`) and proxies
+# /.within.website/ to it. It is never a reverse proxy in front of anything.
+#
+# NAME IS LOAD-BEARING: nginx.conf hardcodes `set $anubis_upstream anubis:8923`.
+#
+# BLAST RADIUS: because `location /` auth_requests this service, anubis being
+# unready means the front page returns 401 -> redirect loops rather than 502.
+# It is on the critical path for every human visitor.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: anubis
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: anubis
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: app
+spec:
+  # ClusterIP only. compose never published 8923 and neither do we.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: anubis
+  ports:
+    - name: http
+      port: 8923
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anubis
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: anubis
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: app
+    app.kubernetes.io/component: app
+spec:
+  # Challenge state lives in redis, so this is genuinely horizontally scalable —
+  # but nothing here needs the capacity, and every extra replica adds another
+  # cross-WireGuard redis client. Start at 1.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable 0: never let the edge lose its only auth_request backend
+      # mid-rollout, or `location /` starts 401-looping for real visitors.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: anubis
+  template:
+    metadata:
+      labels:
+        app: anubis
+        app.kubernetes.io/name: anubis
+        app.kubernetes.io/part-of: maniwani
+        maniwani.io/group: app
+      annotations:
+        # botPolicy.yaml is a subPath mount and will not hot-reload; bump to roll.
+        maniwani.io/policy-revision: "1"
+    spec:
+      # K8s injects <SVC>_PORT=tcp://ip:port for every Service when this is
+      # true (the default). The backend coerces uppercase env keys to the type
+      # of the matching app.config entry, so REDIS_PORT becomes
+      # int("tcp://...") and the app dies at import. Everything here uses DNS.
+      enableServiceLinks: false
+      # App tier lives with nginx on the software node; keeping the auth_request
+      # hop node-local avoids adding a WireGuard round trip to every request that
+      # already has to make one for redis.
+      nodeSelector:
+        maniwani.io/role: software
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: anubis
+          image: ghcr.io/techarohq/anubis:v1.25.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8923
+              protocol: TCP
+          env:
+            - name: BIND
+              value: ":8923"
+            # -----------------------------------------------------------------
+            # THIS IS A LITERAL SINGLE SPACE, NOT AN EMPTY STRING, AND NOT A
+            # MISTAKE. Anubis is used purely in auth_request mode, so there is no
+            # upstream for it to target; a genuinely empty/absent value can make
+            # it try to proxy and fail. YAML will happily eat an unquoted space,
+            # hence the explicit quotes. VERIFY AFTER EVERY APPLY:
+            #   kubectl -n maniwani get deploy anubis \
+            #     -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TARGET")].value}' | xxd | head -1
+            # You must see 0x20 (a single space), not an empty result.
+            # -----------------------------------------------------------------
+            - name: TARGET
+              value: " "
+            - name: POLICY_FNAME
+              value: /data/cfg/botPolicy.yaml
+            # REAL SECRET. Sourced from ANUBIS_ED25519_PRIVATE_KEY_HEX in .env;
+            # never a ConfigMap, never an inline value. It signs the
+            # proof-of-work challenge cookies.
+            # DELIBERATE DECISION REQUIRED AT CUTOVER: copy the EXISTING value
+            # (see 10-maniwani.yaml for the non-echoing secret-creation command)
+            # and outstanding visitor cookies keep working; generate a fresh key
+            # and every visitor is re-challenged the moment DNS flips. Annoying,
+            # not fatal — but decide it on purpose rather than by accident.
+            - name: ED25519_PRIVATE_KEY_HEX
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: ANUBIS_ED25519_PRIVATE_KEY_HEX
+            - name: SLOG_LEVEL
+              value: WARN
+          volumeMounts:
+            - name: policy
+              mountPath: /data/cfg/botPolicy.yaml
+              subPath: botPolicy.yaml
+              readOnly: true
+          # -------------------------------------------------------------------
+          # compose healthcheck: ["CMD", "anubis", "--healthcheck"],
+          # interval 5s / timeout 30s / retries 5 / start_period 500ms.
+          # Ported as exec probes with the same command. DEVIATION: the compose
+          # timeout (30s) exceeded its own interval (5s), which is pathological
+          # under Kubernetes' probe scheduler; timeouts are brought below the
+          # period. The 500ms start_period becomes a short startupProbe.
+          # -------------------------------------------------------------------
+          startupProbe:
+            exec:
+              command: ["anubis", "--healthcheck"]
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 15
+          readinessProbe:
+            exec:
+              command: ["anubis", "--healthcheck"]
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["anubis", "--healthcheck"]
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            # Small Go service. The proof-of-work is computed by the CLIENT's
+            # browser, not here; Anubis only verifies. Its real cost is one redis
+            # round trip per challenged request, which is I/O, not CPU. No CPU
+            # limit — it sits in front of every page load.
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: policy
+          configMap:
+            name: anubis-policy
+            defaultMode: 0444

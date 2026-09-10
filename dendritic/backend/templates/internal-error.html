@@ -1,0 +1,27 @@
+{%- extends "base.html" %}
+{% block title %}Something went wrong{% endblock %}
+{% block content %}
+{#
+  Recreated after the network-only strip removed it. The 500 handler in app.py
+  renders this template, so its absence turned every server error into a
+  TemplateNotFound inside the error handler itself -- which hid the original
+  exception behind a second, unrelated one. An error page that is missing is
+  worse than an ugly error page.
+
+  Deliberately extends base.html but assumes nothing else: no context
+  processors, no board, no slip. A 500 page that needs the app to be healthy in
+  order to render is a 500 page that will not render when it is needed.
+#}
+<div class="container" style="max-width: 40rem; padding: 3rem 1rem;">
+  <h1 style="font-size: 1.6rem; margin: 0 0 .75rem;">Something went wrong</h1>
+  <p class="text-muted" style="line-height: 1.6; margin: 0 0 1.25rem;">
+    The server hit an unexpected error handling that request. The failure has
+    been logged. Nothing you did caused it, and trying again in a moment is
+    usually enough.
+  </p>
+  <p style="margin: 0;">
+    <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary btn-sm">Back to the front page</a>
+    <a href="{{ url_for('status.status_page') }}" class="btn btn-outline-secondary btn-sm">Network status</a>
+  </p>
+</div>
+{% endblock %}

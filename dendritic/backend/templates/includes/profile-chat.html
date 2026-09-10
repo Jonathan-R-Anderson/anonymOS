@@ -1,0 +1,340 @@
+{# Per-profile chat room. A self-contained minimal IRC-over-WebSocket client (no
+   third-party libraries or branding) that auto-connects over wss to the site's
+   chat backend and auto-joins this profile's room (#profile-<slug>). Logged-in
+   visitors chat under their slip name; everyone else gets a throwaway
+   anon-<digits> nick. It shows who is in the room with a live count, and the
+   profile owner can theme it (light/dark + accent colour) from profile settings.
+   It looks like a plain chat box; the IRC backend cloaks every user so real IP
+   addresses are never exposed. #}
+<div id="profile-chat" class="{{ profile.chat_theme_class }}" style="--pc-accent: {{ profile.chat_accent_css }};">
+    <div id="pchat-head">
+      <span id="pchat-title">Stream Chat</span>
+      <button type="button" id="pchat-members-btn" title="Users in chat">👥 <span id="pchat-count">…</span></button>
+    </div>
+    <div id="pchat-body">
+      <div id="pchat-log" aria-live="polite"></div>
+      <div id="pchat-members" aria-label="People in the room" hidden></div>
+    </div>
+    <div id="pchat-follow">Followers-Only Chat</div>
+    <form id="pchat-form" autocomplete="off">
+      <input id="pchat-input" type="text" maxlength="400" placeholder="Send a message" disabled>
+      <button type="submit" disabled>Chat</button>
+    </form>
+    <div id="pchat-status">connecting…</div>
+</div>
+<style>
+  /* Twitch-style dark chat panel by default. The owner's accent is injected as
+     --pc-accent; if they picked the light theme (.pc-light) the palette lightens. */
+  #profile-chat {
+      --pc-bg: #18181b;
+      --pc-panel-bg: #1f1f23;
+      --pc-text: #efeff1;
+      --pc-muted: #adadb8;
+      --pc-sys: #8a8a94;
+      --pc-accent: #b07274;
+      --pc-border: rgba(255,255,255,.10);
+      --pc-input-bg: #2a2a2e;
+      --pc-btn-text: #fff;
+      display: flex; flex-direction: column; height: 100%; min-height: 420px;
+      border: 1px solid var(--pc-border); border-radius: .35rem; overflow: hidden;
+      background: var(--pc-bg); color: var(--pc-text);
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  #profile-chat.pc-light {
+      --pc-bg: #fff; --pc-panel-bg: #f7f7f9; --pc-text: #1a1a1a; --pc-muted: #777;
+      --pc-sys: #9aa; --pc-border: rgba(0,0,0,.12); --pc-input-bg: #efeff1;
+  }
+  #pchat-head {
+      display: flex; align-items: center; justify-content: center; position: relative;
+      padding: 10px 12px; border-bottom: 1px solid var(--pc-border); background: var(--pc-panel-bg);
+      font: 700 13px/1 -apple-system, "Segoe UI", sans-serif; color: var(--pc-text);
+  }
+  #pchat-members-btn {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      border: 0; background: transparent; color: var(--pc-muted); cursor: pointer;
+      font-size: 12px; font-weight: 600;
+  }
+  #pchat-members-btn:hover { color: var(--pc-text); }
+  #pchat-body { flex: 1; display: flex; min-height: 0; }
+  #pchat-log { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 10px; font-size: 13px; line-height: 1.5; color: var(--pc-text); }
+  #pchat-log .r { margin: 2px 0; padding: 2px 4px; border-radius: 3px; overflow-wrap: anywhere; word-break: break-word; }
+  #pchat-log .r:hover { background: rgba(255,255,255,.04); }
+  #pchat-log .ts { color: var(--pc-muted); font-size: 11px; margin-right: 5px; }
+  #pchat-log .sys { color: var(--pc-sys); font-style: italic; }
+  #pchat-log .nk { font-weight: 700; }
+  #pchat-log .cln { margin: 0 4px 0 0; }
+  #pchat-members { width: 150px; flex-shrink: 0; overflow-y: auto; border-left: 1px solid var(--pc-border); background: var(--pc-panel-bg); padding: 8px 0; font-size: 13px; }
+  #pchat-members[hidden] { display: none; }
+  #pchat-members .pchat-member { padding: 3px 12px; color: var(--pc-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #pchat-members .pchat-member::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #2d9e5a; margin-right: 7px; vertical-align: middle; }
+  #pchat-members .pchat-member.me { color: var(--pc-accent); font-weight: 700; }
+  #pchat-follow { padding: 6px 12px; font-size: 12px; color: var(--pc-muted); background: var(--pc-panel-bg); border-top: 1px solid var(--pc-border); }
+  #pchat-form { display: flex; gap: 8px; padding: 10px; align-items: stretch; }
+  #pchat-form input { flex: 1; border: 0; border-radius: 4px; padding: 9px 10px; font-size: 13px; outline: none; background: var(--pc-input-bg); color: var(--pc-text); }
+  #pchat-form input:focus { box-shadow: 0 0 0 2px var(--pc-accent) inset; }
+  #pchat-form button { border: 0; border-radius: 4px; background: var(--pc-accent); color: var(--pc-btn-text); padding: 0 16px; cursor: pointer; font-weight: 700; font-size: 13px; }
+  #pchat-form button:disabled { opacity: .55; cursor: default; }
+  #pchat-status { font-size: 11px; color: var(--pc-muted); padding: 0 12px 8px; }
+</style>
+<script>
+(function () {
+    var log = document.getElementById('pchat-log');
+    var form = document.getElementById('pchat-form');
+    var input = document.getElementById('pchat-input');
+    var button = form ? form.querySelector('button') : null;
+    var status = document.getElementById('pchat-status');
+    var countEl = document.getElementById('pchat-count');
+    var membersEl = document.getElementById('pchat-members');
+    if (!log || !form || !input || !button || form.dataset.wired) { return; }
+    form.dataset.wired = '1';
+
+    var membersBtn = document.getElementById('pchat-members-btn');
+    if (membersBtn && membersEl) {
+        membersBtn.addEventListener('click', function () { membersEl.hidden = !membersEl.hidden; });
+    }
+
+    var slug = {{ profile.slug | tojson }};
+    var channel = '#profile-' + String(slug).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+    // Logged-in visitors chat under their PUBLIC profile handle (the profile
+    // slug that everyone sees on their posts) — never the private account/login
+    // name (e.g. the "wallet-admin" account). Visitors without a public profile
+    // stay anonymous.
+    {% set _chat_viewer = get_slip() %}
+    var slipName = {{ (_chat_viewer.profile.slug if (_chat_viewer and _chat_viewer.profile and _chat_viewer.profile.is_public) else None) | tojson }};
+    function anonNick() { return 'anon-' + Math.floor(100000 + Math.random() * 900000); }
+    // Reduce a slip name to a safe IRC nick: keep letters/digits/_/-, then drop
+    // any leading non-letter (IRC nicks must start with a letter) and cap the
+    // length. Returns '' for a name with nothing usable, so we fall back to anon.
+    function slipNick(name) {
+        var s = String(name || '').replace(/[^A-Za-z0-9_\-]/g, '');
+        s = s.replace(/^[^A-Za-z]+/, '');
+        return s.slice(0, 20);
+    }
+    var baseNick = slipName ? slipNick(slipName) : '';
+    var nickSuffix = 0;
+    var nick = baseNick || anonNick();
+    var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/chat-ws/';
+    var ws = null;
+    var joined = false;
+    var closedByUs = false;
+
+    // Live membership of the channel, keyed by lowercased nick (IRC nicks are
+    // case-insensitive) -> display nick. Seeded from the NAMES burst on join and
+    // kept current from JOIN/PART/QUIT/NICK/KICK events.
+    var members = {};
+    function memberKey(name) { return String(name || '').toLowerCase(); }
+    function stripPrefix(name) { return String(name || '').replace(/^[@+%~&]+/, ''); }
+    function addMember(name) { name = stripPrefix(name); if (name) { members[memberKey(name)] = name; } }
+    function removeMember(name) { name = stripPrefix(name); if (name) { delete members[memberKey(name)]; } }
+    function renderMembers() {
+        var names = [];
+        for (var key in members) {
+            if (Object.prototype.hasOwnProperty.call(members, key)) { names.push(members[key]); }
+        }
+        names.sort(function (a, b) {
+            var la = a.toLowerCase(), lb = b.toLowerCase();
+            return la < lb ? -1 : (la > lb ? 1 : 0);
+        });
+        if (countEl) { countEl.textContent = names.length; }
+        if (membersEl) {
+            membersEl.innerHTML = '';
+            names.forEach(function (name) {
+                var isSelf = memberKey(name) === memberKey(nick);
+                var item = document.createElement('div');
+                item.className = 'pchat-member' + (isSelf ? ' me' : '');
+                item.textContent = isSelf ? (name + ' (you)') : name;
+                membersEl.appendChild(item);
+            });
+        }
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    function nickColor(name) {
+        var h = 0; name = String(name || '');
+        for (var i = 0; i < name.length; i++) { h = (h * 31 + name.charCodeAt(i)) % 360; }
+        return 'hsl(' + h + ',62%,66%)';
+    }
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function addLine(who, text, isSystem, isSelf) {
+        var atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
+        var row = document.createElement('div');
+        row.className = 'r' + (isSystem ? ' sys' : '') + (isSelf ? ' me' : '');
+        if (isSystem) {
+            row.innerHTML = escapeHtml(text);
+        } else {
+            var now = new Date();
+            var color = isSelf ? 'var(--pc-accent)' : nickColor(who);
+            row.innerHTML = '<span class="ts">' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + '</span>'
+                + '<span class="nk" style="color:' + color + '">' + escapeHtml(who) + '</span>'
+                + '<span class="cln">:</span>' + escapeHtml(text);
+        }
+        log.appendChild(row);
+        if (atBottom) { log.scrollTop = log.scrollHeight; }
+    }
+    function sendLine(line) {
+        if (ws && ws.readyState === 1) { ws.send(line + '\r\n'); }
+    }
+    function setEnabled(on) {
+        input.disabled = !on;
+        button.disabled = !on;
+    }
+
+    function handle(line) {
+        var prefix = '', rest = line;
+        if (line.charAt(0) === ':') {
+            var sp = line.indexOf(' ');
+            prefix = line.slice(1, sp);
+            rest = line.slice(sp + 1);
+        }
+        var trailing = null;
+        if (rest.charAt(0) === ':') {
+            trailing = rest.slice(1);
+            rest = '';
+        } else {
+            var ti = rest.indexOf(' :');
+            if (ti !== -1) { trailing = rest.slice(ti + 2); rest = rest.slice(0, ti); }
+        }
+        var params = rest.length ? rest.split(' ') : [];
+        var command = params.shift() || '';
+        var sender = prefix.indexOf('!') !== -1 ? prefix.slice(0, prefix.indexOf('!')) : prefix;
+
+        if (command === 'PING') { sendLine('PONG :' + (trailing || '')); return; }
+        if (command === '001') { status.textContent = 'joining…'; sendLine('JOIN ' + channel); return; }
+        if (command === '433' || command === '432') {
+            // Nick taken/invalid: retry. Logged-in visitors keep their slip name
+            // with a numeric suffix (name, name2, name3…) rather than dropping to
+            // an anon nick; anonymous visitors just reroll.
+            if (baseNick) {
+                nickSuffix += 1;
+                var suffix = String(nickSuffix + 1);
+                nick = baseNick.slice(0, 20 - suffix.length) + suffix;
+            } else {
+                nick = anonNick();
+            }
+            sendLine('NICK ' + nick);
+            return;
+        }
+        if (command === '353') {
+            // RPL_NAMREPLY: params = [me, symbol, channel], trailing = space-separated nicks.
+            if (trailing) {
+                trailing.split(' ').forEach(function (name) { if (name) { addMember(name); } });
+            }
+            return;
+        }
+        if (command === '366') { renderMembers(); return; }  // RPL_ENDOFNAMES
+        if (command === 'PRIVMSG') {
+            var target = params[0] || '';
+            if (target.toLowerCase() === channel.toLowerCase() && trailing !== null) {
+                addLine(sender, ' ' + trailing, false, sender === nick);
+            }
+            return;
+        }
+        if (command === 'JOIN') {
+            if (sender === nick) {
+                joined = true;
+                members = {};            // fresh join; the 353 NAMES burst repopulates the list
+                addMember(nick);
+                setEnabled(true);
+                status.textContent = 'connected as ' + nick;
+                renderMembers();
+                input.focus();
+            } else if (sender) {
+                addMember(sender);
+                renderMembers();
+                addLine('', sender + ' joined', true);
+            }
+            return;
+        }
+        if (command === 'PART' || command === 'QUIT') {
+            if (sender) {
+                removeMember(sender);
+                renderMembers();
+                if (sender !== nick) { addLine('', sender + ' left', true); }
+            }
+            return;
+        }
+        if (command === 'KICK') {
+            // params = [channel, target]
+            var kicked = params[1] || '';
+            if (kicked) {
+                removeMember(kicked);
+                renderMembers();
+                addLine('', kicked + ' was removed', true);
+            }
+            return;
+        }
+        if (command === 'NICK') {
+            var newNick = trailing || params[0] || '';
+            if (sender && newNick) {
+                removeMember(sender);
+                addMember(newNick);
+                if (memberKey(sender) === memberKey(nick)) { nick = newNick; }
+                renderMembers();
+                addLine('', sender + ' is now ' + newNick, true);
+            }
+            return;
+        }
+        // Everything else (MOTD, mode noise) is intentionally ignored.
+    }
+
+    function connect() {
+        status.textContent = 'connecting…';
+        try {
+            ws = new WebSocket(url, 'text.ircv3.net');
+        } catch (error) {
+            ws = new WebSocket(url);
+        }
+        ws.onopen = function () {
+            sendLine('NICK ' + nick);
+            sendLine('USER ' + nick + ' 0 * :' + nick);
+        };
+        ws.onmessage = function (event) {
+            String(event.data).split('\n').forEach(function (raw) {
+                var line = raw.replace(/\r$/, '');
+                if (line) { handle(line); }
+            });
+        };
+        ws.onclose = function () {
+            joined = false;
+            setEnabled(false);
+            members = {};
+            renderMembers();
+            if (closedByUs) { return; }
+            status.textContent = 'reconnecting…';
+            window.setTimeout(connect, 4000);
+        };
+        ws.onerror = function () { try { ws.close(); } catch (error) { /* ignore */ } };
+    }
+
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var raw = input.value.replace(/[\r\n]+/g, ' ');
+        // Traditional IRC commands are disabled: a leading "/" is blocked so
+        // nobody can /nick, /join, /quit, etc. A doubled "//" escapes it for
+        // a message that legitimately starts with a slash.
+        if (raw.charAt(0) === '/' && raw.charAt(1) !== '/') {
+            addLine('', 'Commands are not available in this chat.', true);
+            input.value = '';
+            return;
+        }
+        var message = (raw.charAt(0) === '/' ? raw.slice(1) : raw).trim();
+        if (!message || !joined) { return; }
+        // Always a plain channel message — the client never emits raw IRC
+        // commands, and newlines are stripped above, so no command injection.
+        sendLine('PRIVMSG ' + channel + ' :' + message);
+        addLine(nick, ' ' + message, false, true);
+        input.value = '';
+    });
+    window.addEventListener('beforeunload', function () {
+        closedByUs = true;
+        try { if (ws) { sendLine('QUIT'); ws.close(); } } catch (error) { /* ignore */ }
+    });
+
+    connect();
+})();
+</script>

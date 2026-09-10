@@ -185,6 +185,83 @@ desktop-boot-check: desktop-image
 	@echo "--- §H1 decoy XFCE desktop boot (direct kernel boot, QMP screendump) ---"
 	@$(SELF)/desktop-boot-check.sh $(BLD)
 
+# ── §E5d/§H1 Level 2 — the decoy XFCE desktop booted through the pre-boot loader ────────────
+# The believable rootfs is too big to embed, so it stays XTS-encrypted on the install disk and a
+# dm-crypt-capable UKI (init-crypt) mounts it after the loader hands the master key + geometry
+# forward on the kernel command line. These targets build that UKI and prove the crypt-mount →
+# XFCE boot HEADLESS (direct kernel boot, key passed on -append) before any real install.
+
+# static dmsetup for the initramfs (busybox has no dmsetup applet)
+$(BLD)/dmsetup.static: | $(BLD)
+	@DM=$$(curl -fsSL $(APKMAIN)/$(ALPINE_ARCH)/ | grep -oE 'device-mapper-static-[0-9][0-9.p_r-]+\.apk' | head -1); \
+	  test -n "$$DM" || { echo "[decoy-os] cannot find device-mapper-static in repo index"; exit 1; }; \
+	  echo "[decoy-os] fetching $$DM"; \
+	  rm -rf $(BLD)/dmtmp && mkdir -p $(BLD)/dmtmp; \
+	  curl -fsSL "$(APKMAIN)/$(ALPINE_ARCH)/$$DM" | tar -xz -C $(BLD)/dmtmp 2>/dev/null || true; \
+	  f=$$(find $(BLD)/dmtmp \( -name 'dmsetup.static' -o -name 'dmsetup' \) -type f 2>/dev/null | head -1); \
+	  test -n "$$f" || { echo "[decoy-os] dmsetup not found inside device-mapper-static apk"; exit 1; }; \
+	  cp "$$f" $@; chmod +x $@; echo "[decoy-os] dmsetup.static ready ($$(du -h $@|cut -f1))"
+
+# crypt initramfs: busybox + static dmsetup + init-crypt + the storage/crypt/fs modules needed to
+# reach an ENCRYPTED ext4 root on AHCI (VirtualBox/real HW) or virtio (QEMU test).
+# dm-crypt's FULL load-time closure (from modules.dep) + the storage + the runtime crypto for
+# aes-xts-plain64. NB dm-crypt.ko hard-depends on encrypted-keys/trusted/asn1_encoder/tpm/rng-core
+# (kernel keyring), which must all insmod before it, or the "crypt" target never registers.
+CRYPT_MODS = virtio virtio_ring virtio_pci_modern_dev virtio_pci_legacy_dev virtio_pci virtio_blk \
+  ata_piix ahci libahci libata scsi_mod sd_mod \
+  crc16 crc32c_generic crc32c-intel libcrc32c mbcache jbd2 ext4 \
+  rng-core tpm asn1_encoder trusted encrypted-keys dm-mod dm-crypt \
+  libaes aes_generic aesni-intel crypto_simd cryptd xts ecb gf128mul \
+  squashfs overlay loop
+$(BLD)/initramfs-crypt.gz: $(BLD)/busybox.static $(BLD)/dmsetup.static initramfs/init-crypt desktop-rootfs | $(BLD)
+	@$(SUDO) rm -rf $(BLD)/crdir && mkdir -p $(BLD)/crdir/bin $(BLD)/crdir/mod $(BLD)/crdir/proc $(BLD)/crdir/sys $(BLD)/crdir/dev $(BLD)/crdir/sysroot
+	@cp $(BLD)/busybox.static $(BLD)/crdir/bin/busybox
+	@cp $(BLD)/dmsetup.static $(BLD)/crdir/bin/dmsetup
+	@cp $(SELF)/initramfs/init-crypt $(BLD)/crdir/init && chmod +x $(BLD)/crdir/init
+	@# Modules are a MIX of .ko.gz (drivers) and .ko (crypto) in this rootfs — handle both.
+	@set -e; M=$(DROOT)/lib/modules/$(KVER)/kernel; for name in $(CRYPT_MODS); do \
+	   f=$$($(SUDO) find $$M -name "$$name.ko.gz" 2>/dev/null | head -1); \
+	   if [ -n "$$f" ]; then $(SUDO) sh -c "gunzip -c '$$f' > $(BLD)/crdir/mod/$$name.ko"; \
+	   else f=$$($(SUDO) find $$M -name "$$name.ko" 2>/dev/null | head -1); \
+	        [ -n "$$f" ] && $(SUDO) cp "$$f" $(BLD)/crdir/mod/$$name.ko || echo "  [warn] module not found: $$name"; fi; done
+	@$(SUDO) chown -R $(UGID) $(BLD)/crdir
+	@( cd $(BLD)/crdir && find . | $(BLD)/busybox.static cpio -o -H newc 2>/dev/null | gzip > $(BLD)/initramfs-crypt.gz )
+	@echo "[decoy-os] built initramfs-crypt.gz ($$(du -h $(BLD)/initramfs-crypt.gz|cut -f1)), $$(ls $(BLD)/crdir/mod|wc -l) modules"
+
+# The production decoy desktop UKI: vmlinuz + crypt initramfs. No key in the embedded cmdline —
+# the pre-boot loader appends decoykey=/decoyrl=/decoyiv=/decoysz= via EFI LoadOptions.
+$(BLD)/decoy-crypt-uki.efi: $(BLD)/initramfs-crypt.gz | $(BLD)
+	@test -f $(UKI_STUB) || { echo "[decoy-os] missing $(UKI_STUB) — apt install systemd-boot-efi systemd-ukify"; exit 1; }
+	ukify build --linux=$(BLD)/vmlinuz-decoy --initrd=$(BLD)/initramfs-crypt.gz \
+	    --cmdline="console=tty0 console=ttyS0,115200 rw rdinit=/init loglevel=4" --stub=$(UKI_STUB) --output=$@
+	@echo "[decoy-os] built decoy-crypt-uki.efi ($$(du -h $@|cut -f1)) — the believable XFCE decoy, dm-crypt on-disk root"
+crypt-uki: $(BLD)/decoy-crypt-uki.efi
+
+# The decoy region the installer writes at sysFirst+1: [ANOSBOOT descriptor][desktop UKI][encrypted
+# rootfs]. The installer XTS-encrypts these bytes as-is (no code change — it already streams this
+# module), the pre-boot loader decrypts the UKI and hands init-crypt the rootfs geometry. This
+# replaces the old raw-ext4 decoy image as cd/decoy-linux.ext4 for a Level-2 (desktop) install.
+# Compress the full desktop rootfs into a squashfs so the installer's in-RAM boot module is ~1 GB
+# instead of the 2.4 GB raw ext4 (limine cannot practically load a 3 GB module — OOM/stall). The
+# Linux kernel decompresses squashfs at mount time (init-crypt), so the decoy keeps every file.
+$(BLD)/decoy-desktop.squashfs: desktop-rootfs | $(BLD)
+	@command -v mksquashfs >/dev/null || { echo "[decoy-os] need squashfs-tools (apt install squashfs-tools)"; exit 1; }
+	$(SUDO) rm -f $@
+	$(SUDO) mksquashfs $(DROOT) $@ -comp zstd -noappend -no-progress -quiet
+	$(SUDO) chown $(UGID) $@
+	@echo "[decoy-os] built decoy-desktop.squashfs ($$(du -h $@|cut -f1)) — full desktop, compressed"
+squashfs: $(BLD)/decoy-desktop.squashfs
+
+$(BLD)/decoy-boot.img: $(BLD)/decoy-crypt-uki.efi $(BLD)/decoy-desktop.squashfs wrap-decoy-payload.py | $(BLD)
+	python3 $(SELF)/wrap-decoy-payload.py $(BLD)/decoy-crypt-uki.efi $(BLD)/decoy-desktop.squashfs $@
+decoy-boot: $(BLD)/decoy-boot.img
+
+# Prove it headless: encrypt decoy-desktop.ext4 with dm-crypt (definitionally aes-xts-plain64),
+# direct-kernel-boot the crypt initramfs with the key on the cmdline, assert XFCE rendered.
+crypt-boot-check: $(BLD)/initramfs-crypt.gz $(BLD)/decoy-desktop.squashfs
+	@echo "--- §H1 Level 2: decoy XFCE from an ENCRYPTED squashfs root (dm-crypt+overlay, QMP screendump) ---"
+	@$(SELF)/crypt-boot-check.sh $(BLD)
+
 # Pack the rootfs into an ext4 image for the installer to encrypt into the decoy system partition.
 # DECOY_IMG_MB sizes the filesystem the decoy will believe it owns (§H3 disk-illusion — the
 # installer passes the visible-disk size so `df` shows the whole disk, no hidden-volume gap).

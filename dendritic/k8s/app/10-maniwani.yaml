@@ -1,0 +1,747 @@
+# =============================================================================
+# maniwani — the Flask/uWSGI backend. APP TIER, SOFTWARE NODE.
+# =============================================================================
+# Build context: `docker build -f backend/Dockerfile -t registry.local/maniwani:latest .`
+#   from the repo root. The Dockerfile is multi-stage (`dev` then `prod`) and
+#   compose sets no `target:`, so the FINAL stage `prod` is what ships. Do NOT
+#   pass --target dev: the dev stage keeps nodejs, runs as root, and points
+#   MANIWANI_CFG at devmode.cfg (sqlite + file storage).
+#
+# -----------------------------------------------------------------------------
+# SECRETS — TWO Secrets, both built ON THE SOFTWARE NODE from the existing
+# /home/ubuntu/maniwani/.env. No value is ever typed, echoed, or committed.
+# -----------------------------------------------------------------------------
+#   (1) maniwani-dotenv — the WHOLE .env file as a single key named `.env`.
+#       This is the app's PRIMARY CONFIG CHANNEL, not decoration:
+#         backend/shared.py:619  `_load_env_file(".env")` at import, from CWD /maniwani
+#         backend/shared.py:573  `reload_runtime_environment(env_path=".env")` re-reads
+#                                it at runtime (admin/devmode dashboard "reload env")
+#       All ~126 keys — including NEWS_API_KEY, BRAVE_SEARCH_API_KEY and
+#       TORRENT_TURN_PASSWORD — reach the backend this way and MUST NOT be
+#       duplicated into `env:` below.
+#
+#         kubectl -n maniwani create secret generic maniwani-dotenv \
+#           --from-file=.env=/home/ubuntu/maniwani/.env
+#
+#   (2) maniwani-env — the same file parsed into one Secret key per variable,
+#       for the handful of values consumed via secretKeyRef (FALCO_INGEST_TOKEN
+#       here; ANUBIS_ED25519_PRIVATE_KEY_HEX in 30-anubis.yaml; DOMAIN /
+#       DOMAIN_ALIASES in 40-nginx.yaml). Only the needed keys are extracted, and
+#       the intermediate file never reaches a terminal or a shell argv:
+#
+#         umask 077 && d="$(mktemp -d)" && cd "$d"
+#         grep -E '^(ANUBIS_ED25519_PRIVATE_KEY_HEX|FALCO_INGEST_TOKEN|DOMAIN|DOMAIN_ALIASES)=' \
+#           /home/ubuntu/maniwani/.env > subset.env
+#         kubectl -n maniwani create secret generic maniwani-env --from-env-file=subset.env
+#         shred -u subset.env && cd / && rmdir "$d"
+#
+#       (Checked on the live file: these values are UNQUOTED, so kubectl's
+#       --from-env-file parser — which does not strip quotes — is safe here.
+#       Re-check with `grep -c '="' ` if you ever add a key to the subset.)
+#
+# -----------------------------------------------------------------------------
+# PRECEDENCE TRAP — READ BEFORE ADDING ANYTHING TO `env:` BELOW
+# -----------------------------------------------------------------------------
+#   * At IMPORT, `_load_env_file(path, override=False)` skips any key that is
+#     already a non-empty environment variable. So every entry in `env:` SILENTLY
+#     WINS over the .env file.
+#   * At RUNTIME, `reload_runtime_environment()` does the opposite AND WORSE
+#     (shared.py:576-582): it iterates every "reloadable" key — which is every
+#     uppercase key in app.config plus _RUNTIME_ENV_ONLY_KEYS — and
+#     `os.environ.pop()`s any that is ABSENT from .env, then applies the file.
+#   * Net effect: a key set only in `env:` is authoritative at boot and then
+#     DELETED the first time an admin hits "reload env".
+#
+#   This trap already exists under compose (which also sets these via `env:`),
+#   so the entries below are preserved as-is for parity. The ONE exception is
+#   TRUSTED_PROXY_CIDRS: it is security-critical AND its value must change for
+#   k3s, so it is deliberately moved into the .env file where both code paths
+#   agree. The `config-guard` initContainer below refuses to start the pod if
+#   it is missing, turning a silent security failure into a loud CrashLoop.
+#
+# -----------------------------------------------------------------------------
+# .env EDITS REQUIRED BEFORE CREATING maniwani-dotenv
+# -----------------------------------------------------------------------------
+#   TRUSTED_PROXY_CIDRS=["10.42.0.0/16"]
+#       MANDATORY. The compose default is ["172.16.0.0/12"] — the Docker bridge
+#       range, which matches nothing in k3s (pod CIDR 10.42.0.0/16, service CIDR
+#       10.43.0.0/16). Left wrong, the site looks perfectly healthy while every
+#       X-Forwarded-For from the nginx pod is untrusted and EVERY visitor IP
+#       collapses to the nginx pod's IP — silently breaking IP bans, geoip
+#       country flags, the live-visitor world map and the bot-token IP lock.
+#       If you later switch nginx to hostNetwork (see 40-nginx.yaml), the source
+#       address becomes the NODE's address and you must add the software node's
+#       WireGuard address here as well, or XFF breaks again.
+#   RTMP_INGEST_URL=rtmp://<DOMAIN>:1935/live
+#   TORRENT_PUBLIC_HOST=<DOMAIN>
+#       compose synthesised these from ${DOMAIN} at parse time. Kubernetes has no
+#       manifest-time interpolation, and hardcoding the domain into a manifest is
+#       worse than putting it in the file the app already reads, so they move to
+#       .env. If omitted, torrent/stream URLs built by the background sync
+#       greenlet (which has no request context) fall back to `localhost`.
+#
+# -----------------------------------------------------------------------------
+# STORAGE — read this before touching a claimName
+# -----------------------------------------------------------------------------
+# This pod OWNS exactly one volume (maniwani-uploads, via volumeClaimTemplates).
+# Every other PVC below is SHARED and is DEFINED BY ANOTHER GROUP. They are
+# referenced by claimName so the two manifests cannot fight over an immutable
+# PVC spec. CROSS-GROUP CONTRACT — these must exist in namespace `maniwani`
+# with EXACTLY these names, and all on storageClassName maniwani-local:
+#
+#   claimName                       measured  owner (writer)        shape
+#   aggregator-4chan      4.3 G     fourchan-aggregator   volumeClaimTemplate
+#   aggregator-8chan     560 M     eightchan-aggregator  volumeClaimTemplate
+#   aggregator-7chan     666 M     sevenchan-aggregator  volumeClaimTemplate
+#   aggregator-reddit        7 M       reddit-aggregator     volumeClaimTemplate
+#   aggregator-generic       8.5 G     generic-aggregator    volumeClaimTemplate
+#   rtmp-storage                    8.2 G     rtmp                  standalone PVC
+#                                                                   (mounted READ-ONLY here)
+#
+# (!) THE `data-*-aggregator-0` NAMES ARE NOT A STYLE CHOICE. The aggregators
+# group declares its volumes with `volumeClaimTemplates: [{metadata: {name: data}}]`
+# on a StatefulSet, and Kubernetes derives the PVC name as
+# `<template-name>-<statefulset-name>-<ordinal>`. There is no PVC called
+# `aggregator-4chan` anywhere in the cluster; referencing one here would leave
+# this pod stuck in Pending on an unbound claim, with the site down and the
+# cause invisible in the pod logs. Verify before the first apply:
+#     kubectl -n maniwani get pvc
+#
+# RWO IS FINE FOR THIS SHARING. In Kubernetes ReadWriteOnce means "mountable by
+# a single NODE", not a single pod: the aggregator pod and this pod both run on
+# the software node and may hold the same claim simultaneously. That is exactly
+# what compose did with a named volume, and it is why the nodeSelector below is
+# load-bearing rather than decorative.
+#
+# NOTE THAT "STATEFUL" DOES NOT MEAN "DATA NODE" HERE. Per the placement
+# decision, only postgres/redis move to the data node; these ~22 GB of
+# aggregator + rtmp volumes deliberately stay on the software node, because the
+# data node's 55 GB free cannot hold them alongside the rest.
+#
+# BUDGET: this group adds 5Gi (maniwani-uploads) to the software node's 97 GB
+# free. Including the shared claims above the software node's total app-tier
+# demand is ~50 GiB of 97 GB — comfortable, and local-path is thin-provisioned
+# so nothing is reserved up front. NEITHER NODE BUDGET IS BREACHED BY THIS GROUP.
+#
+# Because k3s local-path PVCs are node-local hostPaths, mounting any of them
+# PINS this pod to the software node. That is why nodeSelector is mandatory and
+# not merely a preference.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: maniwani
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: app
+spec:
+  # NAME IS LOAD-BEARING. nginx.conf (`set $maniwani_upstream maniwani:3031`),
+  # the falco http_output URL, rtmp and seedbox all hardcode the short name
+  # `maniwani`. Renaming this Service breaks the site at runtime, not at apply.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: maniwani
+  ports:
+    # uWSGI BINARY protocol (nginx `uwsgi_pass`), NOT HTTP.
+    - name: uwsgi
+      port: 3031
+      targetPort: uwsgi
+      protocol: TCP
+    # Plain HTTP listener for health checks and in-cluster sidecars (falco
+    # ingest, rtmp, seedbox, nginx's /upload/media).
+    # SECURITY: compose published this as 127.0.0.1:3032 — loopback only. It is
+    # an UNAUTHENTICATED internal origin (it serves /videos/internal/, which
+    # nginx explicitly 404s at the edge). Keep this Service ClusterIP; never
+    # give it a NodePort, hostPort, or Ingress.
+    - name: http
+      port: 3032
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maniwani-headless
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani
+    app.kubernetes.io/part-of: maniwani
+spec:
+  # Governing Service required by the StatefulSet. Separate from `maniwani` so
+  # the traffic Service can stay a normal ClusterIP (nginx resolves it to one
+  # stable VIP) while the StatefulSet still gets a valid serviceName.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: maniwani
+  ports:
+    - name: uwsgi
+      port: 3031
+    - name: http
+      port: 3032
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: maniwani
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: app
+    app.kubernetes.io/component: app
+spec:
+  serviceName: maniwani-headless
+  # ---------------------------------------------------------------------------
+  # REPLICAS: 1 — NOT NEGOTIABLE WITHOUT CODE CHANGES.
+  # `ensure_runtime.py` guards migrations/bootstrap with a plain FILE lock at
+  # /tmp/maniwani_init.lock, which is per-container: two pods would run
+  # update_db()/bootstrap concurrently against the same database.
+  # (The long-running background workers — aggregator sync, news sync, nntpchan
+  # sync, chan board discovery, media rescan, scraped-thread retire, analytics,
+  # recommender training — ARE safe for multiple replicas, via
+  # services/singleton_worker.is_maintenance_leader() + pg_try_advisory_lock.
+  # It is only the INIT path that is unguarded.)
+  # Also: the PVCs are RWO, and local-path RWO cannot be attached twice.
+  # ---------------------------------------------------------------------------
+  replicas: 1
+  # A StatefulSet RollingUpdate at replicas=1 deletes the pod and only then
+  # creates its replacement — i.e. it already gives us the Deployment `Recreate`
+  # semantics that RWO volumes require. No `strategy:` field exists here.
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: maniwani
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: maniwani
+        app.kubernetes.io/part-of: maniwani
+        maniwani.io/group: app
+        # (!) LABEL CONTRACT WITH THE DATA TIER — DO NOT REMOVE.
+        # k8s/data/networkpolicy.yaml is FAIL-CLOSED and selects its permitted
+        # clients by the short label `app: <compose service name>`:
+        #     app: maniwani -> postgres(5432), redis(6379), storage gateway
+        # Without this label the policies deny this pod, and the failure mode is
+        # maximally confusing: DNS resolves, the Services exist, and every
+        # connection simply hangs until SQLALCHEMY_POOL_TIMEOUT. The selector
+        # above (app.kubernetes.io/name) is unaffected — this is an ADDITIONAL
+        # label, and adding pod-template labels is legal on an existing
+        # StatefulSet because only `spec.selector` is immutable.
+        app: maniwani
+      annotations:
+        # /maniwani/.env and /maniwani/runtime-config.cfg are subPath mounts, and
+        # subPath mounts NEVER receive Secret/ConfigMap updates. Bump these two
+        # values whenever you rotate the Secret or edit maniwani.cfg, so that
+        # `kubectl apply` actually rolls the pod instead of silently no-opping.
+        maniwani.io/dotenv-revision: "1"
+        maniwani.io/cfg-revision: "1"
+    spec:
+      # K8s injects <SVC>_PORT=tcp://ip:port for every Service when this is
+      # true (the default). The backend coerces uppercase env keys to the type
+      # of the matching app.config entry, so REDIS_PORT becomes
+      # int("tcp://...") and the app dies at import. Everything here uses DNS.
+      enableServiceLinks: false
+      # PINNED: every PVC below is a node-local local-path volume on the
+      # software node, and maniwani reads the aggregators' SQLite files directly
+      # off their volumes. Placement is by LABEL, never by hostname.
+      nodeSelector:
+        maniwani.io/role: software
+      # compose had `extra_hosts: host.docker.internal:host-gateway`. Two code
+      # paths use it: blueprints/admin.py:3810 (coturn health check, when
+      # TORRENT_TURN_HOST is unset) and services/news_sync/api.py:972 (rewriting
+      # a localhost OLLAMA_BASE_URL to reach a host-installed Ollama). Both mean
+      # "the node this pod runs on". coturn stays hostNetwork on the software
+      # node, so the correct target is the software node's WIREGUARD address —
+      # never its public address.
+      # >>> OPERATOR: replace 10.10.0.1 with the software node's overlay IP as
+      # >>> assigned by the bootstrap layer. Left as an obvious placeholder on
+      # >>> purpose; a wrong value degrades the admin coturn health card only.
+      hostAliases:
+        - ip: "10.10.0.1"
+          hostnames:
+            - host.docker.internal
+      securityContext:
+        # The prod image ends with `USER maniwani` (created by
+        # `adduser --disabled-login` on ubuntu:20.04, so uid/gid 1000).
+        # runAsUser is deliberately NOT set — the image's own USER is left
+        # authoritative, so a future uid change in the Dockerfile cannot silently
+        # mismatch this manifest. fsGroup alone is sufficient: it adds gid 1000
+        # as a supplemental group and group-owns the volumes, which makes them
+        # writable whatever the uid turns out to be.
+        # VERIFY ONCE: docker run --rm registry.local/maniwani:latest id
+        fsGroup: 1000
+        # CRITICAL FOR STARTUP TIME: without OnRootMismatch the kubelet
+        # recursively chowns EVERY mounted volume on EVERY pod start. That is
+        # ~22 GB across the aggregator + rtmp claims and would add minutes to
+        # each restart. OnRootMismatch checks the top-level dir and skips.
+        fsGroupChangePolicy: OnRootMismatch
+      # die-on-term=true in uwsgi.ini makes SIGTERM — exactly what Kubernetes
+      # sends — a clean immediate exit. 60s is headroom for in-flight uploads;
+      # long-lived SSE streams are severed either way, as they are today.
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        # --- replaces the compose `log-init` service (see 00-configmaps.yaml) ---
+        - name: log-init
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/scripts/log-init.sh"]
+          volumeMounts:
+            - name: log-init-script
+              mountPath: /scripts
+            - name: shared-logs
+              mountPath: /var/log/maniwani
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+        # --- fail loudly instead of silently mis-trusting proxies ------------
+        - name: config-guard
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
+          # Reads only the KEY NAMES; never prints a value, never cats the file.
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              if [ ! -s /secret/.env ]; then
+                echo "FATAL: /secret/.env is empty or missing. The maniwani-dotenv" >&2
+                echo "Secret is the app's primary config channel (shared.py:619)." >&2
+                exit 1
+              fi
+              if ! grep -q '^TRUSTED_PROXY_CIDRS=' /secret/.env; then
+                echo "FATAL: TRUSTED_PROXY_CIDRS is not set in .env." >&2
+                echo "On k3s it MUST be the pod CIDR, e.g. [\"10.42.0.0/16\"]." >&2
+                echo "Without it every visitor IP collapses to the nginx pod IP," >&2
+                echo "breaking IP bans, geoip flags, the visitor map and bot tokens." >&2
+                exit 1
+              fi
+              if grep -q '^TRUSTED_PROXY_CIDRS=.*172\.16\.0\.0/12' /secret/.env; then
+                echo "FATAL: TRUSTED_PROXY_CIDRS still holds the Docker bridge range" >&2
+                echo "172.16.0.0/12, which matches nothing in k3s." >&2
+                exit 1
+              fi
+              echo "config-guard: .env present, TRUSTED_PROXY_CIDRS set for k3s."
+          volumeMounts:
+            - name: dotenv
+              mountPath: /secret
+              readOnly: true
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+      containers:
+        - name: maniwani
+          # WARNING: this literal tag is what `kubectl apply` writes back.
+          #
+          # Applying this file for an unrelated reason (an env change, a mount)
+          # therefore RESETS a pinned :g<sha> image to :latest. That is not
+          # cosmetic: if the newer image already ran a migration, :latest cannot
+          # find that revision and the pod crashloops with
+          # "Can't locate revision identified by <rev>" -- the site goes down
+          # from a change that had nothing to do with the image.
+          #
+          # Always re-assert the intended tag after applying this file:
+          #   kubectl -n maniwani set image sts/maniwani maniwani=registry.local/maniwani:g<sha>
+          # The updater does this correctly on its own (it renders a pinned tree
+          # and applies that); this note is for hand-applies.
+          image: registry.local/maniwani:latest
+          imagePullPolicy: IfNotPresent
+          # ENTRYPOINT is `sh ./docker-entrypoint.sh` with no argument, which
+          # takes the prod branch: `python3 ensure_runtime.py` (blocks on a TCP
+          # connect to the storage gateway for up to 300s, then runs
+          # migrations + media import) and then `uwsgi --ini deploy-configs/uwsgi.ini`.
+          # Left unset here so the image stays authoritative. The same script
+          # accepts `bootstrap` and `update` — see 50-maniwani-migrate-job.yaml.
+          ports:
+            - name: uwsgi
+              containerPort: 3031
+              protocol: TCP
+            - name: http
+              containerPort: 3032
+              protocol: TCP
+          env:
+            # --- faithful port of the compose `environment:` block ------------
+            # Anything NOT listed here comes from the .env file mount. Do not
+            # add keys here casually: see the PRECEDENCE TRAP at the top.
+            - name: SERVICE_NAME
+              value: backend
+            # The backend opens these SQLite files DIRECTLY off the crawler's
+            # own volume — this is what forces maniwani and the aggregator pod
+            # onto the same node. ONE volume now, not five: the per-site
+            # aggregators were collapsed into the generic crawler, which keeps
+            # one SQLite per site under this directory.
+            - name: GENERIC_AGGREGATOR_SITES_DIR
+              value: /aggregator-data/generic/sites
+            - name: MANIWANI_CFG
+              value: /maniwani/runtime-config.cfg
+            # MANIWANI_DEV / DEV_MODE are intentionally OMITTED. compose resolved
+            # both to the empty string in production, and an empty value is
+            # treated as unset by _load_env_file anyway, so setting them would be
+            # a no-op that only adds confusion.
+            - name: MIRROR_REQUEST_DELAY_SECONDS
+              value: "0.30"
+            - name: MIRROR_MAX_RETRIES
+              value: "4"
+            - name: MIRROR_RETRY_BACKOFF_SECONDS
+              value: "30.0"
+            # The node's own IP, for services that use hostNetwork and so are
+            # NOT reachable via a ClusterIP -- coturn binds 3478/5349 plus a
+            # ~200-port UDP relay range directly on the host to avoid the DNAT
+            # fan-out. Without this the torrent-monitor probed
+            # host.docker.internal (a compose-era name that does not resolve
+            # here) and always reported coturn unreachable.
+            # Signs the short-lived coordinator leases that let a storage node
+            # accept remotely supplied bytes -- i.e. the trust root of the whole
+            # shard network. It lives in the Secret, NOT inline here: anything
+            # inline is readable by anyone who can `get sts -o yaml`, which is a
+            # much wider audience than those who can read Secrets.
+            # --- storage DHT offload target -------------------------------
+            # The server's own syndichan-node. Its S3 gateway is TLS with a
+            # self-signed cert (config.go:128 requires TLS off loopback), so the
+            # CA bundle points at that same cert -- verification stays ON rather
+            # than being disabled.
+            - name: DHT_S3_ENDPOINT
+              value: https://syndichan-node:9000
+            # Stripe. Adding a key to the maniwani-env Secret is NOT enough —
+            # this pod names each variable explicitly, so an unreferenced key
+            # is simply invisible to the app. optional:true so a cluster that
+            # has not set them starts anyway with card payments switched off.
+            - name: STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: maniwani-env, key: STRIPE_SECRET_KEY, optional: true}
+            - name: STRIPE_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef: {name: maniwani-env, key: STRIPE_PUBLISHABLE_KEY, optional: true}
+            # The private half of the origin signing key. It never leaves this
+            # pod: gateways serve signed bytes, they do not produce them.
+            - name: ORIGIN_SIGNING_KEY
+              valueFrom:
+                secretKeyRef: {name: maniwani-env, key: ORIGIN_SIGNING_KEY, optional: true}
+            - name: STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef: {name: maniwani-env, key: STRIPE_WEBHOOK_SECRET, optional: true}
+            - name: DHT_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef: {name: maniwani-env, key: S3_ACCESS_KEY}
+            - name: DHT_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef: {name: maniwani-env, key: S3_SECRET_KEY}
+            - name: DHT_S3_CA_BUNDLE
+              value: /dht-tls/tls.crt
+            # The server's own node, published in the well-known document so
+            # volunteer nodes have something to dial. Without at least one entry
+            # bootstrap_peers() returns [] and no node can discover another.
+            - name: STORAGE_BOOTSTRAP_PEERS
+              valueFrom:
+                secretKeyRef: {name: maniwani-env, key: STORAGE_BOOTSTRAP_PEERS}
+            # Where the background peer-liveness prober dials from. The site was
+            # publishing garlic destinations whose LeaseSet no longer resolved,
+            # because a heartbeat is CLEARNET and says nothing about a node's
+            # I2P side; this is the only transport it has to check.
+            #
+            # Same cni0 bridge address as the HTTP proxy above and for the same
+            # reason: the i2pd sidecar runs hostNetwork, so its loopback is the
+            # HOST's, which this pod cannot reach. Matches the
+            # --socksproxy.address argument in k8s/storage/10-syndichan-node.yaml.
+            #
+            # If this is wrong or the listener is missing, the prober records
+            # NOTHING and every peer stays advertised — it fails open by design.
+            - name: I2P_SOCKS_PROXY
+              value: "10.42.0.1:4447"
+            # Peer IDs allowed to ASK for a lease. Empty means the coordinator
+            # refuses every request with "requester is not an authorized storage
+            # origin", which is what stopped shard placement dead: the node was
+            # peered and backfilling, but every shard failed with HTTP 403 and
+            # nothing ever reached a volunteer.
+            - name: STORAGE_LEASE_REQUESTER_PEERS
+              valueFrom:
+                secretKeyRef: {name: maniwani-env, key: STORAGE_LEASE_REQUESTER_PEERS}
+            - name: STORAGE_COORDINATOR_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: STORAGE_COORDINATOR_SIGNING_KEY
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # ONE crawler for every source. The four per-site aggregators were
+            # collapsed into it: 4chan, 8kun and 7chan differed only by a
+            # ConfigMap, and Reddit needed its own program only because parsing
+            # selectors were module constants. Selectors are per-site profiles
+            # now, and Reddit's mirror rotation and proof-of-work solving moved
+            # across with it.
+            #
+            # The per-site variables are deliberately NOT set. scraper_client
+            # falls back to the generic URL when they are absent, so removing
+            # them here is what actually routes those sources to the one
+            # crawler — leaving them would silently keep pointing at Services
+            # that no longer exist.
+            - name: GENERIC_AGGREGATOR_URL
+              value: http://generic-aggregator:8000
+            - name: GLADOS_TTS_URL
+              value: http://glados-tts:5050
+            - name: NSFW_CLASSIFIER_URL
+              value: http://nsfw-classifier:8000
+            - name: CLAMAV_SCAN_URL
+              value: http://clamav:5000/scan
+            # postgres is on the DATA node; every query crosses WireGuard.
+            # PARITY WART: dev/dev is the current credential (it is already
+            # plaintext in deploy-configs/maniwani.cfg, so this is not a new
+            # disclosure). STRONGLY RECOMMENDED: the data-node postgres is a
+            # brand-new instance, which makes the cutover the single cheapest
+            # moment this project will ever have to rotate these — do it there
+            # and move both the URI and these four keys into the .env Secret.
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: POSTGRES_DB
+            # The primary store is the server's syndichan-node S3 gateway.
+            # Objects are encrypted and erasure-coded before DHT distribution.
+            - name: STORAGE_PROVIDER
+              value: S3
+            - name: S3_ENDPOINT
+              value: https://syndichan-node:9000
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: S3_ACCESS_KEY
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: S3_SECRET_KEY
+            - name: S3_UUID_PREFIX
+              value: ""
+            - name: S3_CA_BUNDLE
+              value: /dht-tls/tls.crt
+            - name: TORRENT_PUBLIC_SECURE
+              value: "true"
+            - name: RTMP_STORAGE_ROOT
+              value: /rtmp-storage
+            - name: RTMP_PLAYBACK_BASE
+              value: /stream-media
+            # RTMP_INGEST_URL / TORRENT_PUBLIC_HOST / TRUSTED_PROXY_CIDRS live in
+            # .env (see the header) because compose derived them from ${DOMAIN}
+            # at parse time and Kubernetes has no manifest-time interpolation.
+            #
+            # Shared secret that Falco carries in its ingest webhook URL
+            # (http://maniwani:3032/falco/ingest/${FALCO_INGEST_TOKEN}); the
+            # /falco/ingest/<token> endpoint validates against it. The falco
+            # DaemonSet MUST read the same Secret key or ingestion silently 403s.
+            - name: FALCO_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: maniwani-env
+                  key: FALCO_INGEST_TOKEN
+          volumeMounts:
+            # Software-update control surface (admin page "Update now").
+            # STATUS is read-only: the updater owns it. REQUESTS is the only
+            # thing this pod may write, and it is a directory of tiny JSON files
+            # — deliberately NOT the Kubernetes API, so an RCE here cannot drive
+            # the updater's docker/containerd sockets. See
+            # backend/services/software_update.py.
+            - name: dht-tls
+              mountPath: /dht-tls
+              readOnly: true
+            - name: deploy-status
+              mountPath: /deploy
+              readOnly: true
+            - name: deploy-requests
+              mountPath: /deploy-requests
+            # The vulhub checkout the lab importer reads. Read-only and mounted
+            # rather than baked into the image: it is 112 MiB of third-party
+            # compose projects that change on their schedule, not ours, and an
+            # image that carried them would have to be rebuilt to update them.
+            #
+            # The importer only ever READS it. Marking that here means a bug in
+            # the import path cannot rewrite somebody's git checkout.
+            - name: vulhub
+              mountPath: /vulhub
+              readOnly: true
+            # THE PRIMARY CONFIG CHANNEL. subPath is mandatory: mounting a
+            # directory at /maniwani would hide the entire application.
+            - name: dotenv
+              mountPath: /maniwani/.env
+              subPath: .env
+              readOnly: true
+            - name: cfg
+              mountPath: /maniwani/runtime-config.cfg
+              subPath: maniwani.cfg
+              readOnly: true
+            # Shared read/write with the aggregator pods (they write, the
+            # backend reads the SQLite files and also writes import state).
+            - name: aggregator-generic
+              mountPath: /aggregator-data/generic
+            # Owned by this pod (volumeClaimTemplates).
+            - name: maniwani-uploads
+              mountPath: /maniwani/uploads
+            # Written by the rtmp pod, read here and by nginx.
+            - name: rtmp-storage
+              mountPath: /rtmp-storage
+              readOnly: true
+            - name: shared-logs
+              mountPath: /var/log/maniwani
+            # ensure_runtime.py writes /tmp/maniwani_init.lock, and ffmpeg
+            # scratch files land in /tmp. An emptyDir keeps both off the
+            # container writable layer and is a prerequisite if you ever set
+            # readOnlyRootFilesystem (not set today — the app also writes
+            # relative paths under its WORKDIR).
+            - name: tmp
+              mountPath: /tmp
+          # -------------------------------------------------------------------
+          # PROBES. compose healthcheck was:
+          #   curl -fsS http://127.0.0.1:3032/health
+          #   interval 10s / timeout 5s / retries 30 / start_period 120s
+          # Ported as an httpGet (cheaper than exec; /health is a bare
+          # `return "OK", 200` at app.py:605 and is explicitly excluded from the
+          # ban-redirect before_request hook, so it stays reachable even for a
+          # banned source address).
+          # -------------------------------------------------------------------
+          startupProbe:
+            # First boot: ensure_runtime blocks up to 300s waiting for the object store on
+            # the DATA node, then runs migrations and the media import. compose
+            # allowed 120s start_period + 30x10s. 600s here is the same order of
+            # magnitude with margin for the added cross-node hop.
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            # Deliberately slack. Four uWSGI processes each run a gevent hub with
+            # 200 greenlets; a burst of thumbnailing or a slow object-store read can
+            # delay the hub briefly. 5 x 30s = 150s before a restart.
+            httpGet: {path: /health, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            # uwsgi.ini: processes=4, gevent=200 (800 concurrent greenlets),
+            # listen=1024, lazy-apps=true. lazy-apps means each of the four
+            # workers imports the app separately — four independent Python heaps,
+            # no copy-on-write sharing. ~1.5Gi request / 4Gi limit on a 22 GB
+            # node leaves room for the ~15 other software-node services.
+            requests:
+              cpu: 500m
+              memory: 1536Mi
+            limits:
+              # NO CPU LIMIT ON PURPOSE. CFS throttling stalls a gevent hub for
+              # the remainder of the quota period, which is visible as stuttering
+              # SSE streams on /api/v1/live and long-tail request latency. The
+              # CPU request still guarantees a share under contention.
+              memory: 4Gi
+      volumes:
+        - name: dht-tls
+          secret:
+            secretName: syndichan-node-tls
+        - name: deploy-status
+          hostPath:
+            path: /var/lib/maniwani/deploy
+            type: DirectoryOrCreate
+        - name: deploy-requests
+          hostPath:
+            path: /var/lib/maniwani/deploy-requests
+            type: DirectoryOrCreate
+        - name: vulhub
+          hostPath:
+            path: /home/ubuntu/vulhub
+            # Directory, not DirectoryOrCreate: an empty directory conjured by
+            # the kubelet would make the admin page's Import button ENABLE and
+            # then import nothing, which is a worse failure than the button
+            # staying greyed out with "no checkout found" next to it.
+            type: Directory
+        - name: dotenv
+          secret:
+            secretName: maniwani-dotenv
+            # 0444, not 0440+fsGroup, on purpose: if fsGroup ownership were not
+            # applied to this subPath mount for any reason, 0440 root:root would
+            # make the app's ENTIRE config channel silently unreadable. The file
+            # is only readable inside this single-application pod.
+            defaultMode: 0444
+            items:
+              - key: .env
+                path: .env
+        - name: cfg
+          configMap:
+            name: maniwani-cfg
+            defaultMode: 0444
+        - name: log-init-script
+          configMap:
+            name: log-init-script
+            defaultMode: 0555
+        # SHARED, DEFINED BY OTHER GROUPS — see the CROSS-GROUP CONTRACT header.
+        # claimName = <vct name>-<statefulset name>-<ordinal>, i.e. the PVCs the
+        # aggregators group's volumeClaimTemplates actually create. See the
+        # CROSS-GROUP CONTRACT header before changing any of these five.
+        - name: aggregator-generic
+          persistentVolumeClaim: {claimName: aggregator-generic}
+        - name: rtmp-storage
+          persistentVolumeClaim:
+            claimName: rtmp-storage
+            readOnly: true
+        # The shared log folder. hostPath is the most faithful port of today's
+        # `./maniwani_logs` bind mount: ELEVEN services write into it, i.e. it is
+        # RWX-shaped, and k3s local-path only offers RWO. RWO in Kubernetes means
+        # single-NODE, so same-node pods could legitimately share one PVC — but a
+        # hostPath keeps the directory inspectable from the node exactly as it is
+        # today (`ls /var/log/maniwani`) and needs no cross-group claim to exist
+        # first. Every mounter MUST carry nodeSelector maniwani.io/role=software.
+        #
+        # (!) CROSS-GROUP RECONCILIATION REQUIRED BEFORE APPLY — the three groups
+        # currently disagree about the HOST side of this bind:
+        #     app tier (this file, 20-, 40-)  /var/log/maniwani
+        #     media tier                      /var/lib/maniwani/logs
+        #     aggregators tier                /srv/maniwani/logs
+        # The CONTAINER path is /var/log/maniwani everywhere and is correct — it
+        # is what LOG_DIR and every logger writes to. Only the node-side path
+        # differs, but if it is not unified the "shared" folder silently becomes
+        # three unrelated directories: `docker compose logs`-style aggregation and
+        # the admin log viewer would then see only a third of the services.
+        # Nothing is lost or corrupted by the disagreement — it just stops being
+        # shared. Pick ONE (this file proposes /var/log/maniwani, because it is
+        # the FHS location for logs and makes the node path identical to the
+        # in-pod path) and sed the other two groups to match.
+        - name: shared-logs
+          hostPath:
+            path: /var/log/maniwani
+            type: DirectoryOrCreate
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+  volumeClaimTemplates:
+    # The ONLY volume this pod owns. Measured "tiny" — STORAGE_PROVIDER=S3 means
+    # real media lives in the object store and this is the local staging/fallback directory.
+    # 5Gi is generous headroom for transient upload staging.
+    - metadata:
+        name: maniwani-uploads
+        labels:
+          app.kubernetes.io/part-of: maniwani
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # SOFTWARE NODE. Using maniwani-data here would drag the whole app tier
+        # onto the 7 GB data node and defeat the migration.
+        storageClassName: maniwani-local
+        resources:
+          requests:
+            storage: 5Gi

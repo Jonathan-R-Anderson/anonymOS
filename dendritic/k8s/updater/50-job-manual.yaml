@@ -1,0 +1,177 @@
+# =============================================================================
+# maniwani UPDATER — MANUAL TRIGGER. Two ways; prefer the first.
+# =============================================================================
+#
+# -----------------------------------------------------------------------------
+# WAY 1 (PREFERRED) — clone the CronJob. No file, no drift.
+# -----------------------------------------------------------------------------
+#   kubectl -n maniwani create job --from=cronjob/maniwani-updater \
+#       updater-manual-$(date -u +%Y%m%d-%H%M%S)
+#
+# `--from=cronjob/...` copies spec.jobTemplate VERBATIM, so the manual run is
+# byte-identical to a scheduled one: same image, same mounts, same env, same
+# ServiceAccount, same backoffLimit: 0. Nothing can drift between "how it runs at
+# 3am" and "how it runs when I poke it", which is the whole reason this is the
+# preferred path.
+#
+#   kubectl -n maniwani logs -f job/updater-manual-<stamp>
+#
+# Use it when: you just pushed and do not want to wait up to 5 minutes; or you
+# are re-running a rollback that reported PARTIAL (that is idempotent and safe).
+#
+#   (!) `--from` DOES NOT ACCEPT ENV OVERRIDES. If you need FORCE, DRY_RUN or
+#   REBUILD_GLADOS, use Way 2 below. Do not "just edit the CronJob" to get them:
+#   an env var left set on the CronJob applies to every future scheduled run,
+#   and a permanently-set FORCE=1 means every 5-minute poll redeploys the same
+#   SHA forever.
+#
+#   (!) concurrencyPolicy: Forbid DOES NOT COVER THIS. It only serialises Jobs
+#   the CronJob controller creates. A hand-made Job can start while a scheduled
+#   one is mid-rollout. update.sh takes an flock on the state PVC precisely for
+#   this case and the second process exits 0 immediately with
+#   "another updater run holds the lock" — but do not rely on that as a habit.
+#
+# -----------------------------------------------------------------------------
+# WAY 2 — this file. For the three cases Way 1 cannot express.
+# -----------------------------------------------------------------------------
+#   FORCE=1        redeploy the SHA that is already deployed. For: an image was
+#                  rebuilt by hand, or containerd was pruned too aggressively and
+#                  a workload needs its manifest re-pushed.
+#   DRY_RUN=1      run every gate, render, and build — then STOP before the first
+#                  kubectl apply. This is the safe way to answer "what would this
+#                  commit actually do?" and it is how you should test a change to
+#                  the tier map. Nothing is mutated; the plan is printed into the
+#                  run log.
+#   REBUILD_GLADOS=1  one-shot permission to rebuild the non-reproducible
+#                  multi-GB glados-tts image. Read the warning in update.sh
+#                  before using it, and never set it on the CronJob.
+#
+# EDIT THE ENV BELOW, THEN:
+#   kubectl -n maniwani create -f k8s/updater/50-job-manual.yaml
+#     ^^^^^^ `create`, not `apply`: Job specs are immutable, so a second
+#     `apply` against an existing Job fails with a confusing field-conflict
+#     error. Change metadata.name (or use generateName, as here) each time.
+#
+# THE COST OF WAY 2: this pod spec is a COPY of 40-cronjob.yaml's jobTemplate and
+# will drift from it. Before trusting a manual run in an incident, diff them:
+#   kubectl -n maniwani get cronjob maniwani-updater -o yaml \
+#     | yq '.spec.jobTemplate.spec.template.spec' > /tmp/a
+#   yq '.spec.template.spec' k8s/updater/50-job-manual.yaml > /tmp/b
+#   diff /tmp/a /tmp/b        # expect: only the env additions below
+# =============================================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: maniwani-updater-manual-
+  namespace: maniwani
+  labels:
+    app: maniwani-updater
+    app.kubernetes.io/name: maniwani-updater
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: updater
+    maniwani.io/group: updater
+    maniwani.io/trigger: manual
+spec:
+  backoffLimit: 0            # never auto-retry a deploy. See 40-cronjob.yaml.
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 172800
+  template:
+    metadata:
+      labels:
+        app: maniwani-updater
+        app.kubernetes.io/name: maniwani-updater
+        app.kubernetes.io/part-of: maniwani
+        app.kubernetes.io/component: updater
+        maniwani.io/group: updater
+        # (!) Required for the pre-migration pg_dump to reach postgres.
+        # k8s/data/networkpolicy.yaml is fail-closed. Dropping this label makes
+        # every schema migration halt at "pg_dump failed" with no obvious cause.
+        maniwani.io/postgres-client: "true"
+    spec:
+      serviceAccountName: maniwani-updater
+      restartPolicy: Never
+      nodeSelector:
+        maniwani.io/role: software
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: updater
+          image: registry.local/maniwani-updater:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/etc/updater/update.sh"]
+          env:
+            # ---------------------------------------------------------------
+            # THE THREE OVERRIDES. This is why this file exists. Set exactly the
+            # one you need and leave the others at 0.
+            # ---------------------------------------------------------------
+            - name: FORCE
+              value: "0"
+            - name: DRY_RUN
+              value: "0"
+            - name: REBUILD_GLADOS
+              value: "0"
+            # ---------------------------------------------------------------
+            # Everything below MUST stay identical to 40-cronjob.yaml.
+            # ---------------------------------------------------------------
+            - {name: NAMESPACE,           value: "maniwani"}
+            - {name: GIT_URL,             value: "git@github.com:Jonathan-R-Anderson/syndichan.git"}
+            - {name: GIT_BRANCH,          value: "main"}
+            - {name: KNOWN_HOSTS,         value: "/etc/updater/known_hosts"}
+            - {name: ALLOWED_SIGNERS,     value: "/etc/updater/allowed_signers"}
+            - {name: DEPLOY_KEY_PATH,     value: "/secrets/git/id_ed25519"}
+            - {name: MIGRATION_ROLLBACK,  value: "auto"}
+            - {name: REQUIRE_SIGNED,      value: "0"}
+            - {name: TIMEOUT_APP,         value: "900"}
+            - {name: TIMEOUT_AGG,         value: "300"}
+            - {name: TIMEOUT_MEDIA,       value: "300"}
+            - {name: TIMEOUT_EDGE,        value: "120"}
+            - {name: MIN_FREE_GB,         value: "20"}
+            - {name: KEEP_TAGS,           value: "4"}
+            - {name: DOCKER_HOST,         value: "unix:///var/run/docker.sock"}
+            - {name: CTR_BIN,             value: "/host/k3s"}
+            - name: DOMAIN
+              valueFrom: {secretKeyRef: {name: maniwani-env, key: DOMAIN}}
+            - name: POSTGRES_USER
+              valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_USER}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_PASSWORD}}
+            - name: POSTGRES_DB
+              valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_DB}}
+          volumeMounts:
+            - {name: state,           mountPath: /state}
+            - {name: script,          mountPath: /etc/updater, readOnly: true}
+            - {name: templates,       mountPath: /templates,   readOnly: true}
+            - {name: git-key,         mountPath: /secrets/git, readOnly: true}
+            # ROOT ON THE NODE. See the header of 40-cronjob.yaml.
+            - {name: docker-sock,     mountPath: /var/run/docker.sock}
+            - {name: containerd-sock, mountPath: /run/k3s/containerd/containerd.sock}
+            - {name: k3s-bin,         mountPath: /host/k3s, readOnly: true}
+            # One aggregator, not five — see the note in 40-cronjob.yaml. This
+            # file must stay byte-compatible with the CronJob's pod spec, so a
+            # volume added or removed there belongs here too.
+            - {name: agg-generic, mountPath: /aggregator-data/generic, readOnly: true}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits:   {memory: 1Gi}
+      volumes:
+        - name: state
+          persistentVolumeClaim: {claimName: maniwani-updater-state}
+        - name: script
+          configMap: {name: maniwani-updater-script, defaultMode: 0555}
+        - name: templates
+          configMap: {name: maniwani-updater-templates, defaultMode: 0444}
+        - name: git-key
+          secret:
+            secretName: maniwani-git-deploy-key
+            defaultMode: 0400       # OpenSSH refuses anything looser
+            items:
+              - {key: id_ed25519, path: id_ed25519}
+        - name: docker-sock
+          hostPath: {path: /var/run/docker.sock, type: Socket}
+        - name: containerd-sock
+          hostPath: {path: /run/k3s/containerd/containerd.sock, type: Socket}
+        - name: k3s-bin
+          hostPath: {path: /usr/local/bin/k3s, type: File}
+        - {name: agg-generic, persistentVolumeClaim: {claimName: aggregator-generic, readOnly: true}}

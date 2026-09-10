@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Maniwani Remote Reply Assistant",
+  "version": "0.1.0",
+  "description": "Fills supported source reply forms while leaving CAPTCHA and submission to the visitor.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["__MANIWANI_MATCH__", "__SOURCE_MATCHES__"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["__MANIWANI_MATCH__"],
+      "js": ["maniwani-content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["__SOURCE_MATCHES__"],
+      "js": ["adapter-registry.js", "source-content.js"],
+      "css": ["source-banner.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

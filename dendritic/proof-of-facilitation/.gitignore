@@ -1,0 +1,12 @@
+node_modules/
+artifacts/
+artifacts-zk/
+cache/
+cache-zk/
+deployments-zk/
+typechain-types/
+dist/
+.env
+*.log
+# Go build output
+node/**/*.test

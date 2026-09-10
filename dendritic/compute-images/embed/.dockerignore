@@ -1,0 +1,12 @@
+# Nothing that was produced on the HOST may enter this image.
+#
+# The premise of slice 1 is bit-exactness: two nodes run this image and their
+# stdout digests are compared. A stray __pycache__ from the developer's machine
+# is host-python bytecode (3.13 here, 3.12 in the image) baked into a layer —
+# untracked, unreproducible, and invisible until the day it is loaded in
+# preference to the source. The image sets PYTHONDONTWRITEBYTECODE=1 so it never
+# creates its own; this stops it inheriting one.
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

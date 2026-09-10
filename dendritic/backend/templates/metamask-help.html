@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}MetaMask &amp; Ethereum — {{ instance_name() }}{% endblock %}
+{% block content %}
+<style>
+  .mm-wrap { max-width: 780px; margin: 0 auto; padding: 24px 16px 48px; color: inherit; }
+  .mm-card { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; color: inherit; }
+  .mm-muted { opacity: var(--sc-muted-alpha, .62); }
+  .mm-step { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0;
+             border-top: 1px solid var(--sc-border); }
+  .mm-step:first-of-type { border-top: 0; }
+  .mm-num { flex: 0 0 1.8rem; height: 1.8rem; border-radius: 999px; display: flex;
+            align-items: center; justify-content: center; font-weight: 700; font-size: .85rem;
+            background: var(--sc-surface-2); border: 1px solid var(--sc-border); }
+  .mm-kv { width: 100%; border-collapse: collapse; font-size: .85rem; margin-top: 6px; }
+  .mm-kv th, .mm-kv td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--sc-border);
+                         vertical-align: top; }
+  .mm-kv th { white-space: nowrap; opacity: .7; font-weight: 600; }
+  .mm-kv td { font-family: monospace; word-break: break-all; }
+  .mm-out { font-size: .85rem; margin-top: 10px; min-height: 1.3em; }
+  /* The contract address is meant to be read character by character and
+     copied by hand when the one-click path fails, so it gets a monospace
+     face and wraps rather than overflowing on a phone. */
+  .mm-mono { font-family: monospace; word-break: break-all;
+             background: var(--sc-surface-2); border: 1px solid var(--sc-border);
+             border-radius: 6px; padding: 8px 10px; }
+  .mm-ok { color: #26de81; } .mm-err { color: #ff6b6b; }
+</style>
+
+<div class="mm-wrap">
+  <div class="d-flex align-items-center mb-3" style="gap:.6rem;">
+    {% include "includes/metamask-icon.svg" %}
+    <h2 class="mb-0">MetaMask &amp; Ethereum Mainnet</h2>
+  </div>
+  <p class="mm-muted">
+    A wallet lets you sign in without a password, hold <strong>AXONCoins</strong> earned by
+    running a node, and vote in the DAO. It is optional — password sign-in keeps working.
+    New to any of this? Start with
+    why crypto, and how it works.
+  </p>
+
+  <div class="mm-card">
+    <h5 class="mb-3">1 — Install MetaMask</h5>
+    <div class="mm-step">
+      <div class="mm-num">1</div>
+      <div>
+        <strong>Get the browser extension.</strong>
+        <div class="mm-muted small">Chrome, Firefox, Brave and Edge are all supported. Install only from the official site — wallet extensions are a common phishing target.</div>
+        <a class="btn btn-warning btn-sm mt-2 d-inline-flex align-items-center" style="gap:.4rem;"
+           href="https://metamask.io/download/" target="_blank" rel="noopener noreferrer">
+          {% include "includes/metamask-icon.svg" %}
+          <span>Install MetaMask</span>
+        </a>
+      </div>
+    </div>
+    <div class="mm-step">
+      <div class="mm-num">2</div>
+      <div>
+        <strong>Create a wallet and write down the recovery phrase.</strong>
+        <div class="mm-muted small">
+          Store those 12 words offline. Anyone who has them owns the wallet, and nobody —
+          not MetaMask, not this site — can restore them for you.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mm-card">
+    <h5 class="mb-3">2 — Connect to Ethereum Mainnet</h5>
+    <p class="mm-muted small">
+      AXONCoins settle on Ethereum Mainnet, an Ethereum layer-2. MetaMask ships with
+      Ethereum mainnet only, so the network has to be added once.
+    </p>
+    <button id="mm-add-network" class="btn btn-primary btn-sm">Add Ethereum Mainnet to MetaMask</button>
+    <div id="mm-add-status" class="mm-out mm-muted"></div>
+
+    <details class="mt-3">
+      <summary class="small">Add it by hand instead</summary>
+      <table class="mm-kv">
+        <tr><th>Network name</th><td>Ethereum Mainnet</td></tr>
+        <tr><th>RPC URL</th><td>https://eth.llamarpc.com</td></tr>
+        <tr><th>Chain ID</th><td>1</td></tr>
+        <tr><th>Currency symbol</th><td>ETH</td></tr>
+        <tr><th>Block explorer</th><td>https://etherscan.io</td></tr>
+      </table>
+      <div class="mm-muted small mt-2">
+        MetaMask → network dropdown → <em>Add network</em> → <em>Add a network manually</em>.
+      </div>
+    </details>
+  </div>
+
+  <div class="mm-card">
+    <h5 class="mb-3">3 — Fund it (only if you plan to transact)</h5>
+    <p class="mm-muted small mb-2">
+      Signing in and voting cost nothing — a signature is not a transaction and never
+      touches the chain. You only need ETH on Ethereum Mainnet to send transactions, and it must
+      be ETH <em>on Ethereum Mainnet</em>, not on Ethereum mainnet: same address, different network.
+    </p>
+    <a class="btn btn-outline-secondary btn-sm" href="https://etherscan.io/bridge"
+       target="_blank" rel="noopener noreferrer">Bridge ETH at etherscan.io</a>
+  </div>
+
+  <div class="mm-card">
+    <h5 class="mb-3">4 — Link it to your slip</h5>
+    <p class="mm-muted small mb-2">
+      Log in with your password, open profile settings, and press <em>Link MetaMask</em>.
+      You will be asked to sign a short message proving you control the wallet — free, and
+      it moves no funds. After that you can choose whether this slip accepts your password,
+      the wallet, or either.
+    </p>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('profiles.edit') }}">Open profile settings</a>
+  </div>
+
+  {# AXONCoins are an ERC-20. MetaMask shows no ERC-20 until it is told the
+     contract exists, so a balance that has genuinely arrived still reads as
+     zero — which looks exactly like a delivery that failed. This section is
+     here so that "where are my tokens" has an answer on the page people are
+     already sent to. #}
+  <div class="mm-card">
+    <h5 class="mb-3">5 — See your AXONCoins</h5>
+    <p class="mm-muted small mb-2">
+      MetaMask does not show a token until you tell it the token exists. Until you add
+      AXONCoins once, your balance reads as nothing even when the coins have arrived —
+      that is MetaMask, not a missing delivery.
+    </p>
+    {% if token_address %}
+      <p class="small mb-1">AXONCoins contract address:</p>
+      <div class="mm-out mm-mono" id="mm-token">{{ token_address }}</div>
+      <div class="mt-2">
+        <button class="btn btn-primary btn-sm" id="mm-add-token">Add AXONCoins to MetaMask</button>
+        <button class="btn btn-outline-secondary btn-sm" id="mm-copy-token">Copy address</button>
+      </div>
+      <div id="mm-token-status" class="mm-out mm-muted"></div>
+      <p class="mm-muted small mt-3 mb-0">
+        Or by hand: in MetaMask scroll to the bottom of your token list, press
+        <em>Import tokens</em>, paste the address above, and the symbol and decimals fill
+        themselves in. Make sure you are on Ethereum Mainnet and on the account you linked
+        to your slip — a different account will correctly show nothing.
+      </p>
+    {% else %}
+      <p class="mm-muted small mb-0">
+        The token has not been deployed yet, so there is nothing to add. This section will
+        show the contract address once it is live.
+      </p>
+    {% endif %}
+  </div>
+
+  <p class="mm-muted small">
+    This site will never ask for your recovery phrase or private key, and never asks you to
+    sign a transaction in order to log in. If a page does either, it is not us.
+  </p>
+</div>
+
+<script>
+(function () {
+  var ZK = {
+    chainId: "0x1",                       // 1
+    chainName: "Ethereum Mainnet",
+    rpcUrls: ["https://eth.llamarpc.com"],
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    blockExplorerUrls: ["https://etherscan.io"]
+  };
+  var btn = document.getElementById("mm-add-network");
+  var out = document.getElementById("mm-add-status");
+  function say(msg, cls) { out.textContent = msg; out.className = "mm-out " + (cls || "mm-muted"); }
+
+  if (!window.ethereum) {
+    say("No wallet detected in this browser — install MetaMask first, then reload this page.");
+    btn.disabled = true;
+    return;
+  }
+  btn.onclick = async function () {
+    btn.disabled = true;
+    try {
+      say("Approve the network in MetaMask…");
+      // Try switching first: if the user already added Ethereum Mainnet, adding it
+      // again is a pointless prompt.
+      try {
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain", params: [{ chainId: ZK.chainId }],
+        });
+        say("Already added — you are now on Ethereum Mainnet.", "mm-ok");
+        btn.disabled = false;
+        return;
+      } catch (switchErr) {
+        if (switchErr && switchErr.code !== 4902) throw switchErr;  // 4902 = unknown chain
+      }
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [ZK] });
+      say("Ethereum Mainnet added and selected.", "mm-ok");
+    } catch (e) {
+      say((e && (e.message || e.reason)) || "Could not add the network.", "mm-err");
+    }
+    btn.disabled = false;
+  };
+})();
+</script>
+
+{% if token_address %}
+<script>
+(function () {
+  // wallet_watchAsset is the one-click path. It is offered ALONGSIDE the
+  // written steps rather than instead of them: the method is not implemented by
+  // every wallet, and somebody whose wallet refuses it still needs to know they
+  // can paste the address by hand.
+  var TOKEN = {{ token_address|tojson }};
+  var status = document.getElementById("mm-token-status");
+  function say(msg, cls) { status.textContent = msg; status.className = "mm-out " + (cls || "mm-muted"); }
+
+  document.getElementById("mm-copy-token").onclick = async function () {
+    try {
+      await navigator.clipboard.writeText(TOKEN);
+      say("Address copied. Paste it into MetaMask's Import tokens box.", "mm-ok");
+    } catch (e) {
+      say("Could not copy automatically — select the address above and copy it.", "mm-muted");
+    }
+  };
+
+  document.getElementById("mm-add-token").onclick = async function () {
+    if (!window.ethereum) {
+      say("No wallet detected. Install MetaMask first, then come back.", "mm-err");
+      return;
+    }
+    this.disabled = true;
+    try {
+      var added = await window.ethereum.request({
+        method: "wallet_watchAsset",
+        params: {type: "ERC20", options: {address: TOKEN, symbol: "AXON", decimals: 18}},
+      });
+      say(added ? "AXONCoins added. Your balance will show on this account."
+                : "MetaMask declined to add it — you can still paste the address by hand.",
+          added ? "mm-ok" : "mm-muted");
+    } catch (e) {
+      say((e && (e.message || e.reason)) ||
+          "Could not add it automatically — paste the address into Import tokens instead.",
+          "mm-err");
+    }
+    this.disabled = false;
+  };
+})();
+</script>
+{% endif %}
+{% endblock %}

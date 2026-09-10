@@ -1,0 +1,268 @@
+# =============================================================================
+# maniwani DATA TIER — Redis
+# =============================================================================
+# Source: docker-compose.yml `redis` service (lines 59-63).
+# Placement: DATA NODE (nodeSelector maniwani.io/role=data).
+#
+# NO PVC. THIS IS NOT AN OVERSIGHT.
+# ---------------------------------
+# Despite living in the "data tier", redis has NO named volume in
+# docker-compose.yml and NO entry in the measured 49 GB volume inventory. Its
+# command actively deletes any RDB at boot and disables snapshotting
+# (`redis-server --save ''`), and there is no AOF. Redis here is a pure cache
+# plus pub/sub bus, and every restart is a designed-for full state loss.
+# Creating a PVC would give it a persistent /data that the very first command in
+# the container then deletes — pure waste, and it would consume the data node's
+# storage budget for nothing.
+#
+# That is also why this is a Deployment and not a StatefulSet: there is no
+# state, so there is no identity worth keeping stable. Contribution to the data
+# node's storage budget: 0. (See 10-postgres.yaml for the tier total.)
+#
+# =============================================================================
+# THINGS THAT WILL BREAK IF YOU CHANGE THEM
+# =============================================================================
+# 1. THE SERVICE MUST BE NAMED EXACTLY `redis`, IN THIS NAMESPACE.
+#    TWO independent consumers hardcode that hostname, in two different files:
+#      - the backend, via REDIS_HOST=redis in .env and REDIS_HOST = "redis" in
+#        deploy-configs/maniwani.cfg (with STORE_PROVIDER = "REDIS")
+#      - ANUBIS, via deploy-configs/anubis-policy.yaml line 23:
+#            url: "redis://redis:6379/1"
+#        That policy file is mounted as a ConfigMap by the app tier, so renaming
+#        this Service means editing the public edge's proof-of-work config — and
+#        a wedged Anubis takes the whole site down with it.
+#
+# 2. TWO LOGICAL DBs, AND THE SPLIT MATTERS.
+#      db 0 -> maniwani backend (backend/keystore.py make_redis(): db=0,
+#              verified). Keystore get/set/delete (cache.py, cooldown.py),
+#              pub/sub fan-out for live thread and catalog updates (thread.py,
+#              post.py, blueprints/live.py, aggregator_sync/api.py), stream and
+#              per-video viewer counts plus seek histograms, live typing
+#              indicators, the admin live-visitor presence set, the geo/place
+#              cache, analytics rate limiting and the feature store, and the
+#              Jinja bytecode cache.
+#      db 1 -> Anubis proof-of-work challenge store for the entire public edge.
+#    The backend's Keystore.clear() calls flushdb(), which is db 0 ONLY, so an
+#    admin "clear cache" does not currently nuke every visitor's PoW challenge.
+#    If a future change consolidates both onto db 0, an admin cache clear will
+#    silently re-challenge every visitor on the site. Preserve the split.
+#
+# 3. THE COMMAND MUST BE CARRIED ACROSS VERBATIM, INCLUDING `--save ''`.
+#    That empty quoted argument is what disables RDB snapshotting. Retype it as
+#    a bare `--save`, or drop the quotes, and redis silently reverts to the
+#    image's default save points and starts writing RDB files again.
+#
+# 4. NO AUTH, NO TLS. There is no requirepass, no ACL, no --tls-port. Under
+#    compose that was defensible: redis sat on a host-local bridge. It is now a
+#    CROSS-NODE service and every command crosses the wire between two hosts
+#    that have only /32 public addresses and route to each other via the public
+#    gateway. The WireGuard overlay, this ClusterIP Service and
+#    90-networkpolicy.yaml are the ONLY things protecting session, cache and PoW
+#    state. Never add nodePort / hostPort / externalIPs / LoadBalancer here.
+#    Adding `requirepass` is a worthwhile follow-up but is a coordinated change
+#    across .env, maniwani.cfg AND anubis-policy.yaml — do it after cutover, not
+#    during.
+#
+# 5. THE IMAGE IS UNPINNED IN COMPOSE (`redis`, i.e. :latest). `latest` now
+#    resolves to Redis 8.x, whose defaults — and licence — differ from whatever
+#    is actually running in production. Do NOT let the tag re-resolve: pre-load
+#    the exact running image into the data node's containerd and keep
+#    imagePullPolicy: IfNotPresent.
+#      # software node:
+#      docker image inspect --format '{{index .RepoDigests 0}}' redis
+#      # data node:
+#      docker pull redis@sha256:<digest>
+#      docker tag  redis@sha256:<digest> redis:latest
+#      docker save redis:latest | sudo ctr -n k8s.io images import -
+#    Better still: replace the `image:` value below with redis@sha256:<digest>
+#    once the digest is known. This is the single easiest hardening step left in
+#    this file.
+#
+# DECOY — DO NOT "FIX" IT:
+#   rtmp/rtmp/extensions.py constructs Redis(host="localhost", port=6379, db=0)
+#   inside the rtmp container, where nothing listens on 6379. It always fails,
+#   the failure is caught (redis_client = None), and it is dead code. Nobody
+#   should turn it into a third cross-node redis consumer during the migration.
+#
+# RESTART BLAST RADIUS (for the cutover runbook): bouncing redis invalidates
+# every Anubis challenge (a wave of re-challenges at the edge), drops all cached
+# pages and fragments (a CPU spike on the backend), empties the presence map and
+# resets live-typing indicators. The backend's pub/sub pump (keystore.py
+# _redis_pump / _reconnect_redis_pubsub) reconnects automatically with a warning
+# log, so SSE live updates blip rather than break. Nothing is permanently lost.
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: cache
+    maniwani.io/group: data
+spec:
+  # ClusterIP ONLY — see note 4. An unauthenticated redis on a routable address
+  # is an immediate full compromise of session, cache and PoW state.
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: cache
+    maniwani.io/group: data
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    # Recreate, not RollingUpdate. With no persistence a second pod cannot
+    # corrupt anything, but a rollout window with TWO redis pods behind one
+    # Service splits the pub/sub bus: publishers land on one pod, subscribers on
+    # the other, and live thread/catalog updates silently stop for whoever is on
+    # the wrong side. There is no error anywhere — updates just never arrive.
+    # Recreate turns that into a clean ~2 s blip that the backend's reconnect
+    # loop already handles.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/part-of: maniwani
+        app.kubernetes.io/component: cache
+        maniwani.io/group: data
+    spec:
+      # K8s injects <SVC>_PORT=tcp://ip:port for every Service when this is
+      # true (the default). The backend coerces uppercase env keys to the type
+      # of the matching app.config entry, so REDIS_PORT becomes
+      # int("tcp://...") and the app dies at import. Everything here uses DNS.
+      enableServiceLinks: false
+      priorityClassName: maniwani-data-cache
+      nodeSelector:
+        maniwani.io/role: data
+      automountServiceAccountToken: false
+      # compose sets `hostname: redis`. It is cosmetic here (the Service
+      # provides DNS) and is carried over only for parity — unlike the object store, nothing
+      # in redis derives on-disk state or identity from its hostname.
+      hostname: redis
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: redis
+          image: redis
+          imagePullPolicy: IfNotPresent
+          # ---- Command --------------------------------------------------------
+          # compose: [sh, -c, "rm -f /data/dump.rdb && redis-server --save ''"]
+          #
+          # TWO deliberate deltas from compose, both flagged:
+          #  (a) `exec` before redis-server. Because the shell runs two commands
+          #      joined by &&, sh cannot apply its usual exec optimisation and
+          #      would remain PID 1, swallowing SIGTERM — every pod delete would
+          #      then wait out the full grace period and end in SIGKILL. With
+          #      exec, redis is PID 1 and shuts down promptly.
+          #  (b) --maxmemory / --maxmemory-policy are ADDED. See the resources
+          #      block for the full reasoning; this is a new risk created by the
+          #      move to a 7 GB node.
+          #
+          # The empty quoted argument in `--save ''` is load-bearing (note 3).
+          # Do not reformat this line. No $(...) appears here, so no kubelet
+          # escaping is needed.
+          command: ["sh", "-c"]
+          args:
+            - rm -f /data/dump.rdb && exec redis-server --save '' --maxmemory 512mb --maxmemory-policy allkeys-lru
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          # No env. REDIS_HOST / REDIS_PORT are CONSUMER-side keys (they live in
+          # .env and deploy-configs/maniwani.cfg and are read by the backend);
+          # the redis server itself takes none, and Anubis's URL is hardcoded in
+          # anubis-policy.yaml rather than passed as an env var.
+          volumeMounts:
+            # NOT a PVC. /data is the image WORKDIR; an emptyDir keeps the
+            # (already disabled) RDB path off the container's writable layer and
+            # makes the pod's writable surface explicit. State is still lost on
+            # every restart, exactly as designed.
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            # compose defines no healthcheck; this is an addition, and it is safe
+            # here precisely because persistence is off: there is no RDB fork and
+            # no AOF rewrite, so redis has no legitimate long unresponsive phase.
+            # A sustained failed PING really does mean wedged.
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            # NEW RISK CREATED BY THE MOVE — READ BEFORE CHANGING.
+            # Redis had no maxmemory and no eviction policy on a 22 GB node
+            # where it was never the biggest thing. It now shares a 7 GB node
+            # with NO SWAP alongside postgres and a the object store demo cluster limited to
+            # 4 GiB. The presence sorted sets, per-video seek histograms and the
+            # Jinja bytecode cache all grow with traffic, so an unbounded redis
+            # can OOM the data node and take the OSD holding every image on the
+            # site down with it.
+            #
+            # Hence BOTH controls: an in-process cap (--maxmemory 512mb, in the
+            # args above) so redis evicts before it grows, and a cgroup ceiling
+            # (768Mi) with ~256Mi of slack for redis's own allocator overhead
+            # and fragmentation. maxmemory alone would not stop fragmentation
+            # from crossing the limit; the cgroup limit alone would turn growth
+            # into an OOM-kill instead of an eviction.
+            #
+            # Accepted consequences of allkeys-lru, both self-healing:
+            #   - Anubis challenge state on db 1 can be evicted under pressure:
+            #     visitors get re-challenged, not broken.
+            #   - Presence keys can be evicted: map dots vanish and return on the
+            #     next heartbeat.
+            # A silent host OOM is NOT acceptable. This trade is deliberate.
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              # redis is single-threaded; 1 core is a ceiling, not a target.
+              cpu: "1"
+              memory: 768Mi
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            # /data is the emptyDir; the rootfs stays writable for parity with
+            # compose. Nothing in this container needs to write elsewhere, so
+            # flipping this to true is a safe post-cutover hardening step.
+            readOnlyRootFilesystem: false
+            capabilities:
+              # Safe to drop everything: the explicit `command:` bypasses the
+              # image's docker-entrypoint.sh, so there is no gosu privilege-drop
+              # step needing CAP_SETUID/SETGID (unlike postgres).
+              drop: ["ALL"]
+      volumes:
+        - name: data
+          emptyDir:
+            # Nothing should ever be written here (snapshotting is off). The
+            # limit is a tripwire: if this pod is ever evicted for ephemeral
+            # storage, someone has re-enabled persistence.
+            sizeLimit: 64Mi

@@ -1,0 +1,56 @@
+$body-bg: #0b0e14;
+$body-color: #d1d1d1;
+$theme-colors: (
+    "primary": #3a4b6b,
+    // Deep Blue
+    "secondary": #4d5d7e,
+    "success": #2d5a27,
+    "danger": #7c3a3a,
+    "info": #4a6fa5
+);
+
+$navbar-light-color: #a1a1a1;
+$navbar-light-hover-color: #ffffff;
+
+@import "bootstrap";
+@import "media-grid";
+@import "board-index";
+@import "catalog";
+@import "../../base/post";
+@import "styling";
+@import "captcha";
+@import "navbar";
+
+// Midnight Customizations
+.post {
+    background-color: #1a1f29;
+    border: 1px solid #2d3446;
+    color: #e0e0e0;
+}
+
+.reply {
+    background-color: #151921;
+}
+
+.navbar {
+    background-color: #1a1f29 !important;
+    border-bottom:
+        1px solid #2d3446;
+
+    .navbar-brand,
+    .nav-link {
+        color: #a1a1a1 !important;
+
+        &:hover {
+            color: #ffffff !important;
+        }
+    }
+}
+
+a {
+    color: #6a9fb5;
+
+    &:hover {
+        color: #8fcae7;
+    }
+}

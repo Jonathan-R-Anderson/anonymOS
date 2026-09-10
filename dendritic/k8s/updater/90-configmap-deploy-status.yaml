@@ -1,0 +1,108 @@
+# =============================================================================
+# maniwani UPDATER — STATUS MIRROR. The kubectl-readable copy.
+# =============================================================================
+# A SEED OBJECT. It ships with placeholder content and update.sh patches it at
+# the end of every run (success, failure, halt — every exit path calls
+# write_status).
+#
+# WHY IT MUST EXIST BEFORE THE FIRST RUN: the updater's Role grants
+# `get/patch/update` on this ConfigMap by name, and DELIBERATELY NOT `create`
+# (see 00-serviceaccount-rbac.yaml (b) — `create` cannot be name-restricted, so
+# granting it would grant creation of arbitrary ConfigMaps). If this object is
+# missing, every patch 404s, update.sh logs
+#     warn: could not mirror status into ConfigMap/maniwani-deploy-status
+# and carries on. Nothing breaks; you just lose the kubectl channel.
+#
+# THIS IS NOT THE AUTHORITATIVE RECORD. The file on the PVC, served by nginx at
+# /_deploy/, is. Two reasons this is only a convenience:
+#   1. it requires a kubeconfig, which is a higher bar than a browser and a
+#      password — and the requirement is explicitly "without me needing to log
+#      in via ssh"
+#   2. it is capped: `latest.log` here is the last 60 KB of the run log, because
+#      a ConfigMap has a hard ~1 MiB limit (etcd's value ceiling) and a build
+#      failure can produce megabytes. The full, untruncated log is only ever on
+#      the PVC.
+#
+# WHAT IT IS GENUINELY GOOD FOR:
+#   * scripting and alerting:
+#       kubectl -n maniwani get cm maniwani-deploy-status \
+#         -o jsonpath='{.data.status\.json}' | jq -r .result
+#   * a future ~20-line admin-panel blueprint that renders deploy state in the
+#     dashboard — WITH THE CAVEAT that the admin panel is down during exactly
+#     the failure mode this data describes, which is why it can never replace
+#     the nginx-served copy
+#   * confirming the updater ran at all when the edge is the thing that broke
+#
+# The content below is overwritten on the first run; it is written out in full
+# here so the SHAPE of status.json is documented somewhere greppable.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maniwani-deploy-status
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani-updater
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: updater
+    maniwani.io/group: updater
+  annotations:
+    maniwani.io/authoritative-copy: "https://<domain>/_deploy/status.json"
+    maniwani.io/written-by: "ConfigMap/maniwani-updater-script -> update.sh write_status()"
+data:
+  status.json: |
+    {
+      "run_id":        "never-run",
+      "result":        "never-run",
+      "phase":         "INIT",
+      "deployed_sha":  "",
+      "attempted_sha": "",
+      "finished":      "",
+      "rolled_back":   false,
+      "migration_ran": false,
+      "next_action":   "seed the updater: apply k8s/updater/ and let the first CronJob firing adopt origin/main as the rollback baseline",
+      "notes":         []
+    }
+  latest.log: |
+    (no run yet)
+# =============================================================================
+# FIELD REFERENCE — `result` is the one to alert on.
+# -----------------------------------------------------------------------------
+#   never-run                seed object, untouched
+#   seeded                   FIRST RUN. Adopted origin/main as the rollback
+#                            baseline and applied NOTHING. Expected exactly once.
+#   no_op                    origin/main unchanged, or a docs-only commit
+#   held                     k8s/updater/HOLD present, or [skip deploy]
+#   dry_run                  DRY_RUN=1; gates + build ran, nothing applied
+#   ok                       deployed AND the smoke tests passed
+#
+#   --- halts: NOTHING WAS MUTATED. Fix and push again. -----------------------
+#   no_deploy_key            Secret maniwani-git-deploy-key missing/empty
+#   clone_failed             deploy key wrong or revoked
+#   fetch_failed             network, or deploy key revoked
+#   non_fast_forward         someone force-pushed and rewound main
+#   unsigned_commit          REQUIRE_SIGNED=1 and verify-commit failed
+#   low_disk                 < MIN_FREE_GB free; refused to start a build
+#   data_tier_change         commit touches k8s/data/** (postgres/redis/ceph)
+#   bootstrap_change         commit touches k8s/bootstrap/** (cluster-scoped)
+#   pvc_change               commit changes a PVC -> would destroy scraped content
+#   unwritable_change        commit changes an object the updater may not write
+#   new_object               commit adds a workload; the updater has no `create`
+#   glados_change            glados-tts changed; that image is not reproducible
+#   render_unpinned          a registry.local:latest survived rendering
+#   no_baseline              no render tree for the deployed SHA to roll back to
+#   build_failed             docker build failed. Cluster untouched.
+#   migration_failed         migration Job failed AND alembic_version is unchanged
+#   pg_unreachable / dump_failed   no restore point could be taken; refused
+#
+#   --- failures: something WAS mutated ---------------------------------------
+#   failed_rolled_back       rolled back cleanly. Cluster is on deployed_sha.
+#                            Read latest-failure.log for the real cause.
+#   failed_rollback_failed   HUMAN REQUIRED. Read next_action. If the schema
+#                            downgrade failed, the pre-migration pg_dump path
+#                            and the exact pg_restore command are in the log.
+#
+# A reasonable alert is simply:
+#     result NOT IN (ok, no_op, held, seeded, dry_run)
+# with `failed_rollback_failed` paged rather than emailed.
+# =============================================================================

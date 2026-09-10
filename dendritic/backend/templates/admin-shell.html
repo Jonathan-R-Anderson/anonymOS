@@ -1,0 +1,146 @@
+{%- extends "base.html" %}
+{# The frame every admin screen sits in.
+
+   WHAT IT FIXES. Navigation used to exist only on the dashboard, so every
+   journey between two admin screens went through a 3,300-line page. This puts
+   the same grouped nav on every screen, which turns a star into a map.
+
+   HOW TO USE IT. Extend this instead of base.html and fill:
+
+     {% set admin_title = "Scrapers" %}
+     {% set admin_lede  = "One line saying what this screen is for." %}
+     {% block admin_content %} ... {% endblock %}
+
+   The active item is resolved from request.endpoint, so nothing has to be
+   passed in and a screen cannot disagree with the nav about where it is.
+
+   THEMES. Every colour is a --sc-* token with a neutral fallback and text
+   inherits, so this reads correctly on midnight and cyberpunk. A hardcoded
+   background here is the standing way an admin panel becomes black on black. #}
+
+{% block title %}{{ admin_title|default("admin") }}{% endblock %}
+
+{% block content %}
+<style>
+  .adm { display: flex; align-items: flex-start; gap: 1.5rem; padding: 0 1rem; }
+
+  .adm-nav {
+    flex: 0 0 15rem;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    border: 1px solid var(--sc-border, rgba(127,127,127,.28));
+    border-radius: .5rem;
+    background: var(--sc-surface, transparent);
+    padding: .75rem;
+  }
+  .adm-nav__group + .adm-nav__group { margin-top: .9rem; }
+  .adm-nav__label {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .08em;
+    opacity: .6; font-weight: 700; padding: 0 .4rem .25rem;
+  }
+  .adm-nav a {
+    display: block; padding: .3rem .45rem; border-radius: .3rem;
+    font-size: .92rem; text-decoration: none; color: inherit;
+    border-left: 3px solid transparent;
+  }
+  .adm-nav a:hover { background: var(--sc-fill, rgba(127,127,127,.08)); }
+  .adm-nav a.is-active {
+    background: var(--sc-fill-strong, rgba(127,127,127,.16));
+    border-left-color: var(--sc-accent, #b3202e);
+    font-weight: 700;
+  }
+  /* Destructive destinations are marked ONCE, consistently. The old button row
+     used six colours where outline-danger meant both "deletes things" and
+     "seemed important", which taught operators to ignore the colour. */
+  .adm-nav a.is-danger::after {
+    content: "•"; color: var(--sc-accent, #b3202e);
+    margin-left: .35rem; font-weight: 700;
+  }
+
+  .adm-main { flex: 1 1 auto; min-width: 0; }
+  .adm-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 1rem; margin-bottom: 1rem;
+  }
+  .adm-head h1 { margin: 0 0 .15rem; font-size: 1.6rem; }
+  .adm-lede { opacity: .8; margin: 0; }
+  .adm-who { font-size: .8rem; opacity: .65; text-align: right; white-space: nowrap; }
+
+  /* In-page jumps for the dashboard's sections. A long page with unlabelled
+     sections is not navigable by scrolling. */
+  .adm-jump {
+    border: 1px solid var(--sc-border, rgba(127,127,127,.28));
+    border-radius: .5rem; padding: .6rem .75rem; margin-bottom: 1.25rem;
+    background: var(--sc-fill, rgba(127,127,127,.05));
+  }
+  .adm-jump__title {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .08em;
+    opacity: .6; font-weight: 700; margin-bottom: .35rem;
+  }
+  .adm-jump a {
+    display: inline-block; font-size: .86rem; margin: 0 .7rem .25rem 0;
+    color: inherit; text-decoration: underline; text-decoration-style: dotted;
+  }
+
+  /* Anchored sections land below the sticky nav rather than under it. */
+  .adm-main [id] { scroll-margin-top: 1rem; }
+
+  @media (max-width: 62rem) {
+    .adm { flex-direction: column; }
+    .adm-nav { position: static; flex: 1 1 auto; width: 100%; max-height: none; }
+    .adm-nav__group { display: inline-block; vertical-align: top; margin: 0 1rem .6rem 0; }
+  }
+</style>
+
+<div class="adm">
+
+  <nav class="adm-nav" aria-label="Admin sections">
+    {% for group in admin_site_map %}
+      <div class="adm-nav__group">
+        <div class="adm-nav__label">{{ group.label }}</div>
+        {% for item in group.items %}
+          {# A destination whose endpoint does not resolve is skipped rather than
+             raising: a nav entry for a route that was renamed should not take
+             down every admin page. #}
+          {% set href = admin_url(item.endpoint) %}
+          {% if href %}
+            <a href="{{ href }}"
+               class="{% if item.endpoint == request.endpoint %}is-active{% endif %} {% if item.danger %}is-danger{% endif %}"
+               {% if item.endpoint == request.endpoint %}aria-current="page"{% endif %}
+               {% if item.description %}title="{{ item.description }}"{% endif %}>
+              {{ item.label }}
+            </a>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endfor %}
+
+    <div class="adm-nav__group">
+      <div class="adm-nav__label">Session</div>
+      <a href="{{ url_for('admin.dashboard') }}"
+         class="{% if request.endpoint == 'admin.dashboard' %}is-active{% endif %}">Dashboard</a>
+      <a href="{{ url_for('main.index') }}">View site</a>
+      <a href="{{ url_for('admin.logout') }}">Log out</a>
+    </div>
+  </nav>
+
+  <div class="adm-main">
+    <div class="adm-head">
+      <div>
+        <h1>{{ admin_title|default("Admin") }}</h1>
+        {% if admin_lede %}<p class="adm-lede">{{ admin_lede }}</p>{% endif %}
+      </div>
+      {% if admin_wallet_address %}
+        <div class="adm-who">
+          signed in as<br><code>{{ admin_wallet_address }}</code>
+        </div>
+      {% endif %}
+    </div>
+
+    {% block admin_content %}{% endblock %}
+  </div>
+
+</div>
+{% endblock %}

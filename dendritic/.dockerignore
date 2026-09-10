@@ -1,0 +1,26 @@
+# The maniwani app image uses the repo root as its build context, so without
+# this every unrelated subtree (the Go node, the roadmap, the new axon module)
+# would be shipped to the daemon and slow every build. Keep the context to what
+# the app actually needs.
+.git
+**/node_modules
+**/__pycache__
+**/*.pyc
+dendritic-node/
+axon/
+roadmap/
+doc/
+proof-of-facilitation/
+compute-images/
+code-runner/
+browser-extension/
+k8s/
+maniwani_logs/
+remote_site_favicons/
+frontend/build/
+frontend/node_modules/
+*.iso
+*.log
+.env
+.env.deploy
+deploy-configs/nginx.conf.imageboard.bak

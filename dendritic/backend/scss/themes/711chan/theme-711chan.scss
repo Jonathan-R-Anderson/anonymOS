@@ -1,0 +1,36 @@
+$body-bg: #ffffee;
+$theme-colors: (
+	"primary": #008163, // 7-Eleven Green
+	"success": #F4811F, // 7-Eleven Orange
+	"danger": #EE3124,   // 7-Eleven Red
+	"info": #d6daf0     // Light blue for contrast
+);
+
+$navbar-light-color: rgba(#0000, .8);
+$navbar-light-hover-color: rgba(#0000, .9);
+
+@import "bootstrap";
+@import "media-grid";
+@import "board-index";
+@import "catalog";
+@import "../../base/post";
+@import "styling";
+@import "captcha";
+@import "navbar";
+
+// Custom 711chan overrides
+.post {
+	background-color: #f0e0d6;
+	border: 1px solid #d9bfb7;
+}
+
+.reply {
+	background-color: #f0e0d6;
+}
+
+.navbar {
+	background-color: #008163 !important;
+	.navbar-brand, .nav-link {
+		color: white !important;
+	}
+}

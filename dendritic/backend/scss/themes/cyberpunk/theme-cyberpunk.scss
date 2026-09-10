@@ -1,0 +1,77 @@
+$body-bg: #050505;
+$body-color: #00ff00;
+$theme-colors: (
+    "primary": #ff00ff,
+    // Neon Pink
+    "secondary": #00ffff,
+    // Cyber Cyan
+    "success": #39ff14,
+    // Neon Green
+    "danger": #ff3131,
+    // Neon Red
+    "info": #bc13fe // Neon Purple
+);
+
+$navbar-light-color: #00ff00;
+$navbar-light-hover-color: #ffffff;
+
+@import "bootstrap";
+@import "media-grid";
+@import "board-index";
+@import "catalog";
+@import "../../base/post";
+@import "styling";
+@import "captcha";
+@import "navbar";
+
+// Cyberpunk Customizations
+.post {
+    background-color: #1a1a1a;
+    border: 1px solid #ff00ff;
+    box-shadow: 0 0 5px #ff00ff;
+    color: #00ffff;
+}
+
+.reply {
+    background-color: #000000;
+    border-left: 3px solid #ff00ff;
+}
+
+.navbar {
+    background-color: #000000 !important;
+    border-bottom: 2px solid #00ffff;
+
+    .navbar-brand {
+        color: #ff00ff !important;
+        text-shadow: 0 0 10px #ff00ff;
+    }
+
+    .nav-link {
+        color: #00ffff !important;
+
+        &:hover {
+            color: #ffffff !important;
+            text-shadow: 0 0 10px #00ffff;
+        }
+    }
+}
+
+a {
+    color: #ff00ff;
+
+    &:hover {
+        color: #ffffff;
+        text-shadow: 0 0 5px #ff00ff;
+    }
+}
+
+.btn-primary {
+    background-color: #ff00ff;
+    border-color: #ff00ff;
+    color: #000;
+
+    &:hover {
+        background-color: #ff33ff;
+        box-shadow: 0 0 15px #ff00ff;
+    }
+}

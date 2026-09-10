@@ -1,0 +1,194 @@
+# =============================================================================
+# maniwani UPDATER — PUBLISHING THE ERROR LOG. Edge wiring, applied ONCE.
+# =============================================================================
+# This is the half of the requirement that is easy to get wrong:
+#
+#   "...produce an error log file of what went wrong."
+#
+# An error log that can only be read over SSH does not meet the requirement. The
+# whole feature exists so the operator never has to log in; a failure report
+# gated behind the login is the same problem wearing a hat.
+#
+# -----------------------------------------------------------------------------
+# WHY THE EDGE, AND NOT THE ADMIN PANEL
+# -----------------------------------------------------------------------------
+# The single most important failure this log has to explain is
+# "the backend updated and now it crashloops" (update.sh §5.3). In that state
+# the Flask app IS DOWN — so an admin-panel log viewer, a database-backed audit
+# table, and anything else served by `maniwani` are all unavailable at exactly
+# the moment they are needed. They are disqualified by construction, not by
+# preference.
+#
+# nginx is the only component in the stack with the right dependency shape:
+#   * no dependency on postgres, redis, the object store or the backend
+#   * it already stays up and serves the @starting 503 while the backend is dead
+#   * it is rolled LAST and LEAST OFTEN of anything the updater touches
+#
+# So: the updater writes plain files to a PVC; nginx serves that PVC read-only at
+# /_deploy/ behind HTTP Basic. The log-publishing path has ZERO dependency on the
+# update succeeding, which is the property that actually matters.
+#
+# -----------------------------------------------------------------------------
+# (!!) THIS IS A ONE-TIME, BY-HAND CHANGE — AND IT MUST BE COMMITTED (!!)
+# -----------------------------------------------------------------------------
+# Applying the patch below with `kubectl patch` gets you the endpoint TODAY. It
+# is NOT durable:
+#
+#   >>> THE UPDATER APPLIES k8s/app/40-nginx.yaml FROM GIT. THE FIRST DEPLOY
+#   >>> THAT TOUCHES THE EDGE WILL OVERWRITE A LIVE-PATCHED nginx AND SILENTLY
+#   >>> DELETE /_deploy/ — TYPICALLY THE SAME DEPLOY YOU WERE ABOUT TO NEED IT
+#   >>> FOR. <<<
+#
+# THE DURABLE FIX, do both, then commit:
+#   1. add the `deploy-status` and `deploy-auth` volumes + mounts to
+#      k8s/app/40-nginx.yaml  (the block is reproduced verbatim below)
+#   2. add the `location ^~ /_deploy/` block to the `nginx-conf` key in
+#      k8s/app/00-configmaps.yaml, inside the `listen 443` server, ABOVE
+#      `location /`
+#
+# Applying it costs ONE nginx Recreate cycle: replicas:1 + strategy:Recreate +
+# hostPort means the old pod must fully release :80/:443 before the new one
+# binds, so this is a hard 5-15 second connection-refused window on the public
+# edge. Do it once, deliberately, at a quiet moment — not during an incident.
+# After that the updater never edits nginx to publish a log again; it only writes
+# files into a directory nginx is already serving.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# STEP 1 — THE DEPLOYMENT PATCH (strategic merge)
+#
+#   kubectl -n maniwani patch deployment nginx \
+#     --patch-file <(sed -n '/^# ---8<--- PATCH/,/^# ---8<--- END/p' \
+#                    k8s/updater/80-nginx-deploy-status.yaml | grep -v '^#')
+#
+# ...or simply copy the block into k8s/app/40-nginx.yaml, which is what you
+# should be doing anyway.
+#
+# Strategic-merge semantics note: `volumes` and `volumeMounts` are merged BY NAME
+# (patchMergeKey), so this patch ADDS two entries and leaves the existing seven
+# (nginx-conf, tls, acme-webroot, rtmp-media, log-init-script, shared-logs,
+# domain-guard, cache) untouched. It does not replace the list.
+# -----------------------------------------------------------------------------
+# ---8<--- PATCH
+spec:
+  template:
+    spec:
+      containers:
+        - name: nginx
+          volumeMounts:
+            # READ-ONLY, AND subPath: logs.
+            # subPath is load-bearing here, not tidiness: the PVC ALSO holds the
+            # git clone, the rendered rollback baselines and the pre-migration
+            # pg_dump restore points. `alias`ing the volume root would publish a
+            # full database dump on the public internet behind one Basic-auth
+            # password. Only logs/ is ever exposed.
+            - name: deploy-status
+              mountPath: /deploy-status
+              subPath: logs
+              readOnly: true
+            - name: deploy-auth
+              mountPath: /etc/nginx/deploy-auth
+              readOnly: true
+      volumes:
+        # THE SAME PVC THE UPDATER WRITES. RWO, and legal: ReadWriteOnce means
+        # single-NODE, not single-pod, and both this Deployment and the updater
+        # Job carry nodeSelector maniwani.io/role=software. This is the identical
+        # arrangement 10-maniwani.yaml already uses for the five aggregator
+        # claims.
+        #   >>> IF THE nginx nodeSelector IS EVER RELAXED, THIS PVC WILL PIN THE
+        #   >>> EDGE POD TO WHICHEVER NODE HOLDS IT, OR STICK IT IN
+        #   >>> ContainerCreating WITH "Multi-Attach error" — i.e. the site down
+        #   >>> for what looked like a logging change. <<<
+        - name: deploy-status
+          persistentVolumeClaim:
+            claimName: maniwani-updater-state
+            readOnly: true
+        - name: deploy-auth
+          secret:
+            secretName: maniwani-deploy-auth
+            # 0444: read by nginx workers (uid nginx), per request.
+            defaultMode: 0444
+            items:
+              - key: htpasswd
+                path: htpasswd
+# ---8<--- END
+
+# =============================================================================
+# STEP 2 — THE nginx.conf LOCATION BLOCK
+# =============================================================================
+# Goes in the `nginx-conf` ConfigMap key in k8s/app/00-configmaps.yaml, inside
+# the `listen 443 ssl` server, ABOVE `location /`.
+#
+# `^~` is not decoration: it makes this a prefix match that BEATS any regex
+# location, so nothing later in the file can accidentally capture /_deploy/.
+#
+#     location ^~ /_deploy/ {
+#         # (!) MUST BYPASS ANUBIS.
+#         # `location /` carries
+#         #   auth_request /.within.website/x/cmd/anubis/api/check;
+#         # A JavaScript proof-of-work challenge makes this endpoint unreadable
+#         # from curl, from a browser with cookies cleared, and from a phone at
+#         # 3am — i.e. unreadable in every situation it exists for. `auth_request
+#         # off` here is a deliberate, scoped exception, and it is why the Basic
+#         # auth below is mandatory rather than belt-and-braces.
+#         auth_request off;
+#
+#         auth_basic           "maniwani deploy";
+#         auth_basic_user_file /etc/nginx/deploy-auth/htpasswd;
+#
+#         alias /deploy-status/;
+#         autoindex on;
+#
+#         # The logs are .log/.txt; without this they download instead of
+#         # rendering, which is a small thing that becomes annoying fast.
+#         default_type text/plain;
+#         types {
+#             text/html   html;
+#             application/json json;
+#             text/plain  log txt;
+#         }
+#
+#         # Never cache a status page whose entire value is being current.
+#         add_header Cache-Control "no-store" always;
+#         # Not secret, but it must not end up in a search index.
+#         add_header X-Robots-Tag  "noindex, nofollow, noarchive" always;
+#         # It is plain text served from a shared origin; do not let it be framed
+#         # or sniffed into something executable.
+#         add_header X-Frame-Options       "DENY"    always;
+#         add_header X-Content-Type-Options "nosniff" always;
+#     }
+#
+# DO NOT ALSO ADD THIS TO THE `listen 80` SERVER. Port 80 is a 301 to https with
+# a single exception for ^~ /.well-known/acme-challenge/. Leave it that way: a
+# Basic-auth password must never be sent in cleartext, and the redirect already
+# does the right thing.
+#
+# =============================================================================
+# WHAT THE OPERATOR ACTUALLY USES
+# -----------------------------------------------------------------------------
+#   https://<domain>/_deploy/                    index: last 40 runs
+#   https://<domain>/_deploy/status.json         machine-readable current state
+#   https://<domain>/_deploy/latest.log          the most recent run
+#   https://<domain>/_deploy/latest-failure.log  THE ONE THAT MATTERS. Sticky:
+#                                                it is not rotated away while it
+#                                                is the most recent failure, so
+#                                                a later successful run does not
+#                                                erase the evidence.
+#   https://<domain>/_deploy/runs/<ts>-<sha>.log full history
+#
+# Secondary channels — convenience, never authoritative:
+#   kubectl -n maniwani get cm maniwani-deploy-status -o jsonpath='{.data.status\.json}'
+#   /var/log/maniwani/updater/  (the shared log tree from LOGGING.md, if you
+#                                mount `shared-logs` into the updater too)
+#
+# PERMISSIONS: the updater runs as uid 0 and writes 0644 files; nginx runs as uid
+# nginx and mounts read-only at both the volume and the mount level. A compromised
+# edge cannot forge or delete a deploy log.
+#
+# VERIFY AFTER APPLY (from anywhere, no SSH):
+#   curl -u ops:<pw> -sSI https://<domain>/_deploy/status.json     # 200
+#   curl        -sSI https://<domain>/_deploy/status.json          # 401, not a
+#                                                                  # challenge page
+# The second one is the real test: a 200 means auth_basic is not in effect, and a
+# 307 to Anubis means `auth_request off` did not take.
+# =============================================================================

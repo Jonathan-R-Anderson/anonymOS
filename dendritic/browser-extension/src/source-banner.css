@@ -1,0 +1,28 @@
+#maniwani-remote-reply-banner {
+  position: fixed;
+  z-index: 2147483647;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border: 2px solid #245c8a;
+  border-radius: 6px;
+  background: #eef7ff;
+  color: #102a43;
+  font: 600 14px/1.4 system-ui, sans-serif;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .25);
+}
+#maniwani-remote-reply-banner[data-kind="error"] {
+  border-color: #a61b1b;
+  background: #fff1f1;
+  color: #6b1010;
+}
+.maniwani-filled-field {
+  outline: 3px solid #2879bd !important;
+  outline-offset: 2px !important;
+}
+.maniwani-visitor-action {
+  outline: 3px solid #d98200 !important;
+  outline-offset: 3px !important;
+}

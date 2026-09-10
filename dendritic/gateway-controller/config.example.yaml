@@ -1,0 +1,27 @@
+# Public, non-secret settings only. Copy to config.yaml.
+domain: syndichan.org
+public_hostname: syndichan.org
+subdomain_prefix: gw
+ttl: 300
+health_check_interval: 60
+dns_sync_interval: 900
+gateway_timeout: 15
+registration_lifetime: 600
+reservation_lifetime: 900
+max_gateways: 1000
+max_answers: 8
+network_policy_sync_enabled: false
+network_policy_sync_interval: 30
+network_policy_namespace: maniwani
+network_policy_name: nginx-gateway-ingress
+network_policy_gateway_port: 9443
+expected_gateway_header: X-Gateway-Version
+expected_gateway_path: /readyz
+
+# Only addresses of reverse proxies that overwrite (not append untrusted input
+# to) X-Forwarded-For belong here.
+trusted_proxy_cidrs:
+  - 10.42.0.0/16
+
+# NAMECOM_USERNAME, NAMECOM_API_TOKEN and DATABASE_URL are deliberately absent.
+# Inject them through Kubernetes Secrets or another server-side secret manager.

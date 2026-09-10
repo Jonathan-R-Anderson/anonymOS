@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Get ETH with a card — {{ instance_name() }}{% endblock %}
+{% block content %}
+{#
+  Stripe's embedded crypto onramp.
+
+  This page exists to solve one problem and says so: somebody with a card and no
+  crypto cannot take a single action here, because every path needs a wallet that
+  can pay gas. It sells ETH — Stripe's product, Stripe's KYC — and it is NOT the
+  credit packs on /credits/. The two must not read as the same thing, which is
+  why they are on separate pages and why the disclaimer below is the first thing
+  after the heading rather than a footnote.
+#}
+<style>
+  .or-wrap { max-width: 720px; margin: 0 auto; padding: 32px 16px; color: inherit; }
+  .or-card { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; padding: 18px; margin-bottom: 18px; color: inherit; }
+  .or-muted { opacity: var(--sc-muted-alpha, .62); }
+  .or-note { border-left: 3px solid var(--sc-accent); padding: 2px 0 2px 12px; margin: 14px 0; }
+  .or-steps { list-style: none; padding: 0; margin: 14px 0 0; counter-reset: step; }
+  .or-steps li { position: relative; padding: 0 0 14px 34px; counter-increment: step; }
+  .or-steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 22px; height: 22px; border-radius: 50%; text-align: center;
+    line-height: 22px; font-size: .75rem;
+    background: var(--sc-surface-2); border: 1px solid var(--sc-border);
+  }
+  .or-steps li.now::before { background: var(--sc-accent); border-color: var(--sc-accent); color: #fff; }
+  .or-mono { font-family: monospace; font-size: .82rem; word-break: break-all; }
+  .or-amounts { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .or-amt { background: var(--sc-surface-2); color: inherit; border: 1px solid var(--sc-border);
+            border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: .88rem; }
+  .or-amt.sel { border-color: var(--sc-accent); }
+  .or-err { color: #ff6b6b; white-space: pre-wrap; }
+  #or-widget { margin-top: 16px; min-height: 0; }
+</style>
+
+<div class="or-wrap">
+  <h2>Get ETH with a card</h2>
+
+  <div class="or-note or-muted">
+    This does <strong>not</strong> buy AXONCoins. Stripe sells mainstream
+    cryptocurrencies, and ours is not one of them — no card can buy it here or
+    anywhere else. What this does is put ETH in your own wallet, which is the
+    step everything else on this site is waiting on.
+  </div>
+
+  <div class="or-card">
+    <strong>Where this fits</strong>
+    {#
+      Deliberately does NOT say "swap it for AXONCoins". That needs a market
+      that does not exist yet — there is no pool on mainnet — and sending
+      somebody to a DEX to find out is how they end up buying a lookalike token
+      at the same ticker. The two paths named here are the two that work today.
+    #}
+    <ol class="or-steps">
+      <li class="now">Buy ETH with a card. It arrives in <em>your</em> wallet, on
+        Ethereum — the same chain AXONCoins live on, so nothing needs bridging.</li>
+      <li>Get AXONCoins: <a href="{{ url_for('credits.index') }}">buy a pack</a>,
+        which the treasury delivers to that wallet, or
+        <a href="{{ url_for('main.claim') }}">earn them by running a node</a>,
+        which is the only way new ones are created.</li>
+      <li>Spend them in the store, on bounties, or on post awards.</li>
+    </ol>
+    <p class="or-muted mt-3" style="font-size:.86rem">
+      You need ETH for step 3 regardless of how you get AXONCoins: every
+      transaction on Ethereum costs gas, and gas is paid in ETH. A wallet holding
+      only tokens cannot move them.
+    </p>
+  </div>
+
+  {% if not slip %}
+    <div class="or-card">
+      <p><a href="{{ url_for('slip.landing') }}">Sign in with your slip</a> to continue.</p>
+    </div>
+  {% elif not wallet %}
+    <div class="or-card">
+      <p>Link a wallet to your profile first — that is the address the ETH is
+         delivered to.</p>
+      <p class="or-muted" style="font-size:.86rem">
+        It is read from your profile and never typed here on purpose. An address
+        entered into a form is an address that can be pasted from a phishing
+        message, and a crypto transfer has no chargeback: Stripe would have
+        delivered exactly what it was asked to.
+      </p>
+      <a class="btn btn-sm btn-primary mt-2" href="{{ url_for('profiles.edit') }}">Link a wallet</a>
+    </div>
+  {% elif not configured %}
+    <div class="or-card">
+      <p>Card purchases are not configured on this server yet.</p>
+    </div>
+  {% else %}
+    <div class="or-card">
+      <div class="or-muted" style="font-size:.86rem">Delivering to</div>
+      <div class="or-mono">{{ wallet }}</div>
+
+      <div class="or-amounts" id="or-amounts">
+        <button class="or-amt" data-amount="0.01">0.01 ETH</button>
+        <button class="or-amt" data-amount="0.05">0.05 ETH</button>
+        <button class="or-amt" data-amount="0.1">0.1 ETH</button>
+        <button class="or-amt sel" data-amount="">Let me choose</button>
+      </div>
+
+      <button class="btn btn-primary" id="or-start">Continue to payment</button>
+      <div class="or-err mt-2" id="or-error"></div>
+      <div id="or-widget"></div>
+    </div>
+  {% endif %}
+
+  <p class="or-muted" style="font-size:.82rem">
+    Payment, identity checks and the exchange rate are Stripe's. This site never
+    sees your card details and does not take a fee on the purchase.
+    <a href="{{ url_for('credits.index') }}">Back to AXONCoins</a>.
+  </p>
+</div>
+
+{% if slip and wallet and configured %}
+{#
+  Both scripts, in this order, and both from Stripe's own hosts.
+
+  @stripe/crypto's loadStripeOnramp() injects crypto-onramp-outer.js and expects
+  Stripe.js to be present alongside it — the package lists @stripe/stripe-js as
+  a peer for exactly that reason. Using the npm loader here would pull a bundler
+  into a page that otherwise needs none, and it would inject these same two
+  URLs, so the script tags are the same integration with fewer moving parts.
+
+  Neither may be bundled or self-hosted: Stripe.js has to be loaded from
+  js.stripe.com to stay within PCI scope.
+#}
+<script src="https://js.stripe.com/dahlia/stripe.js"></script>
+<script src="https://crypto-js.stripe.com/crypto-onramp-outer.js"></script>
+<script>
+(function () {
+  var startBtn = document.getElementById("or-start");
+  var errEl = document.getElementById("or-error");
+  var amounts = document.getElementById("or-amounts");
+  var chosen = "";
+
+  amounts.addEventListener("click", function (e) {
+    var btn = e.target.closest(".or-amt");
+    if (!btn) return;
+    Array.prototype.forEach.call(amounts.children, function (b) { b.classList.remove("sel"); });
+    btn.classList.add("sel");
+    chosen = btn.getAttribute("data-amount") || "";
+  });
+
+  function fail(msg) {
+    errEl.textContent = msg;
+    startBtn.disabled = false;
+    startBtn.textContent = "Continue to payment";
+  }
+
+  // Stripe's widget takes "light" or "dark", and the site has several themes
+  // carried as a theme-<name> class on <body>. Measuring the rendered
+  // background instead of listing which names are dark means a theme added
+  // later is handled without anybody remembering this file exists.
+  function pageIsDark() {
+    try {
+      var bg = getComputedStyle(document.body).backgroundColor || "";
+      var m = bg.match(/(\d+)\D+(\d+)\D+(\d+)/);
+      if (!m) return true;
+      var r = +m[1], g = +m[2], b = +m[3];
+      // Rec. 601 luma, which is close enough for a binary light/dark choice.
+      return (0.299 * r + 0.587 * g + 0.114 * b) < 128;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  startBtn.addEventListener("click", async function () {
+    errEl.textContent = "";
+    startBtn.disabled = true;
+    startBtn.textContent = "Starting…";
+
+    // The onramp script is loaded from Stripe and can fail to arrive — an
+    // adblocker, a strict extension, a captive portal. Say which thing broke
+    // rather than throwing "StripeOnramp is not defined" at somebody who is
+    // trying to give us money.
+    if (typeof StripeOnramp === "undefined") {
+      fail("Stripe's payment widget did not load. An ad blocker or privacy " +
+           "extension is the usual cause — allow crypto-js.stripe.com and reload.");
+      return;
+    }
+
+    var body = {};
+    if (chosen) body.amount = chosen;
+
+    var res, data;
+    try {
+      res = await fetch("{{ url_for('credits.onramp_session') }}", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        body: JSON.stringify(body),
+      });
+      data = await res.json();
+    } catch (e) {
+      fail("Could not reach the server to start the purchase. Check your connection and try again.");
+      return;
+    }
+    if (!res.ok || !data.client_secret) {
+      fail(data && data.error ? data.error : "Could not start the purchase.");
+      return;
+    }
+
+    try {
+      var onramp = StripeOnramp("{{ publishable_key }}");
+      var widget = onramp.createSession({
+        clientSecret: data.client_secret,
+        appearance: { theme: pageIsDark() ? "dark" : "light" },
+      });
+      widget.mount("#or-widget");
+      // The button has done its job; leaving it live would open a second
+      // session on top of the mounted one.
+      startBtn.style.display = "none";
+      errEl.textContent = "";
+    } catch (e) {
+      fail("Stripe's widget could not start: " + (e && e.message ? e.message : e));
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

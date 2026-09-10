@@ -1,0 +1,3174 @@
+{%- extends "admin-shell.html" %}
+{# `with context` is REQUIRED: the form gates its nsfw-filter checkbox on
+   `is_sysop`, which comes from a context processor (app.py), and a macro
+   imported without context cannot see it. Without this the checkbox never
+   rendered and every admin save set nsfw_filter=False. #}
+{% import "board-form.html" as board_form with context %}
+{% set admin_title = "Dashboard" %}
+{% set admin_lede = "Site settings, moderation and content controls. Use the jump list to reach a section." %}
+{% block admin_content %}
+<style>
+    #admin-shell { max-width: 1120px; margin: 0 auto; }
+    /* Collapse the scattered card grid into one clean column of accordion sections. */
+    #admin-shell .row > [class*="col-"] { flex: 0 0 100%; max-width: 100%; }
+    /* Sticky command nav (jump to + expand a section). */
+    .admin-nav { position: sticky; top: 0; z-index: 40; display: flex; flex-wrap: wrap; gap: .4rem;
+        padding: .55rem .2rem; margin-bottom: 1.1rem;
+        background: var(--sc-surface, #fff); border-bottom: 1px solid var(--sc-border, rgba(0,0,0,.12)); }
+    .admin-nav button { font-size: .8rem; padding: .22rem .72rem; border-radius: 999px; line-height: 1.4;
+        border: 1px solid var(--sc-border, rgba(0,0,0,.15)); background: var(--sc-fill, transparent);
+        color: inherit; cursor: pointer; }
+    .admin-nav button:hover { background: var(--sc-fill-strong, rgba(0,0,0,.07)); }
+    /* Accordion sections. */
+    .admin-section .admin-head { cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+        margin: -.25rem 0 0; }
+    .admin-section .admin-head > :first-child { margin-bottom: 0; }
+    .admin-caret { transition: transform .15s ease; opacity: .55; }
+    .admin-section.collapsed .admin-caret { transform: rotate(-90deg); }
+    .admin-section.collapsed .card-body > :not(.admin-head) { display: none; }
+    /* Live composition monitor (the centerpiece). */
+    .live-monitor { border-radius: 12px; padding: 1rem 1.1rem 1.15rem; margin-bottom: 1.5rem;
+        background: #0d1117; color: #e6edf3; box-shadow: 0 6px 22px rgba(0,0,0,.22); }
+    .live-monitor h3 { margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: .5rem; }
+    .lm-status { font-size: .72rem; font-weight: 400; color: #8b949e; margin-left: auto; }
+    .live-monitor .lm-sub { color: #8b949e; font-size: .8rem; margin: .25rem 0 0; }
+    .lm-dot { width: .6rem; height: .6rem; border-radius: 50%; background: #f85149; box-shadow: 0 0 8px #f85149;
+        animation: lm-pulse 1.4s ease-in-out infinite; }
+    @keyframes lm-pulse { 50% { opacity: .35; } }
+    .lm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .8rem; margin-top: .9rem; }
+    .lm-card { background: #0b0f14; border: 1px solid #1f2630; border-radius: 9px; padding: .6rem .7rem; }
+    .lm-ip { font-family: monospace; font-weight: 700; color: #58a6ff; font-size: .95rem; }
+    .lm-meta { font-size: .7rem; color: #8b949e; margin-top: .05rem; }
+    .lm-text { font-family: monospace; white-space: pre-wrap; word-break: break-word; margin-top: .45rem;
+        font-size: .86rem; color: #d1e7dd; min-height: 1.2em; }
+    .lm-cursor { display: inline-block; width: .55ch; background: #7ee787; animation: lm-blink 1s steps(1) infinite; }
+    @keyframes lm-blink { 50% { opacity: 0; } }
+    .lm-empty { color: #8b949e; font-size: .9rem; padding: .7rem 0 .2rem; }
+    /* Live visitor world map — a pulsing red dot per current visitor, real-time. */
+    .lm-map-wrap { margin-top: .95rem; }
+    .lm-map-head { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap;
+        font-size: .78rem; color: #8b949e; margin-bottom: .45rem; }
+    .lm-map-head b { color: #ff6b61; font-weight: 700; }
+    .lm-map { position: relative; width: 100%; aspect-ratio: 2 / 1; border: 1px solid #1f2630;
+        border-radius: 9px; overflow: hidden; background: #060a0f; }
+    .lm-map-bg { position: absolute; inset: 0;
+        background-image: url("{{ url_for('static', filename='img/world-equirect.jpg') }}");
+        background-size: 100% 100%; filter: grayscale(.55) brightness(.5) contrast(1.05) saturate(.7); }
+    .lm-map-bg::after { content: ''; position: absolute; inset: 0;
+        background: radial-gradient(120% 90% at 50% 45%, rgba(10,22,40,0) 55%, rgba(3,6,12,.55) 100%); }
+    .lm-map-dots { position: absolute; inset: 0; }
+    .lm-map-empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+        color: #6b7684; font-size: .82rem; pointer-events: none; }
+    /* Every pin's colour is one pair of custom properties the JS sets: a single
+       role paints them once, several roles cycle them on a shared 1.2s ticker.
+       This replaced a per-combination keyframe set that could not scale past
+       three roles -- the DCS (yellow) role would have needed a dozen more. */
+    .lm-pin { position: absolute; width: 14px; height: 14px; transform: translate(-50%, -50%); cursor: pointer;
+        --lm-role: #ff3b30; --lm-glow: rgba(255,59,48,.9); }
+    .lm-pin-core { position: absolute; inset: 4px; border-radius: 50%; background: var(--lm-role);
+        box-shadow: 0 0 8px 2px var(--lm-glow); transition: background .18s linear, box-shadow .18s linear; }
+    .lm-pin-ring { position: absolute; inset: 4px; border-radius: 50%; border: 2px solid var(--lm-role);
+        animation: lm-radiate 1.8s ease-out infinite; }
+    @keyframes lm-radiate { 0% { transform: scale(.5); opacity: .95; } 100% { transform: scale(4); opacity: 0; } }
+    .lm-pin-ip { position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%); white-space: nowrap;
+        max-width: 240px; text-align: center; background: #0b0f14; color: #ff6b61; border: 1px solid #ff3b30;
+        border-radius: 5px; padding: .2rem .45rem; font: 700 .72rem/1.25 monospace; opacity: 0;
+        pointer-events: none; transition: opacity .12s ease; z-index: 6; }
+    .lm-pin-ipline { display: block; }
+    .lm-pin-page { display: block; margin-top: 1px; max-width: 228px; overflow: hidden; text-overflow: ellipsis;
+        color: #9aa4b0; font-weight: 400; font-size: .66rem; }
+    .lm-pin:hover { z-index: 7; }
+    .lm-pin:hover .lm-pin-ip { opacity: 1; }
+    .lm-pin:hover .lm-pin-core { box-shadow: 0 0 12px 5px var(--lm-glow); }
+</style>
+<div class="container-fluid py-3" id="admin-shell">
+
+  {# Delivery-wallet gas. Placed at the very top rather than inside a section,
+     because an empty wallet is silent: the delivery fails, the purchase stays
+     queued, and the first sign is a customer asking where their tokens went.
+     A warning nobody scrolls to is not a warning. #}
+  {% if delivery_gas and delivery_gas.configured %}
+    {% if delivery_gas.unknown %}
+      <div class="alert alert-secondary py-2 mb-3" style="font-size:.85rem">
+        <strong>Delivery wallet:</strong> balance could not be read
+        {% if delivery_gas.reason %}({{ delivery_gas.reason }}){% endif %}.
+        This is not the same as empty — deliveries may still be working.
+      </div>
+    {% elif delivery_gas.empty %}
+      <div class="alert alert-danger py-2 mb-3" style="font-size:.85rem">
+        <strong>Delivery wallet is out of gas.</strong>
+        Token deliveries are failing and purchases are queueing unsent.
+        Send ETH to <code>{{ delivery_gas.address }}</code> on Ethereum Mainnet.
+      </div>
+    {% elif delivery_gas.low %}
+      <div class="alert alert-warning py-2 mb-3" style="font-size:.85rem">
+        <strong>Delivery wallet is running low</strong> —
+        {{ "%.5f"|format(delivery_gas.eth) }} ETH, about
+        {{ delivery_gas.deliveries_left }} more deliveries.
+        Top up <code>{{ delivery_gas.address }}</code> before it empties; when it
+        does, purchases queue silently rather than failing visibly.
+      </div>
+    {% endif %}
+  {% endif %}
+
+    {# Was: a hardcoded row of fifteen buttons, the only navigation in the whole
+       admin panel. That now lives in the shell's sidebar, generated from
+       services/admin_nav.py, so it appears on every screen and cannot drift from
+       the routes. What is left here is the thing the sidebar cannot do -- reach a
+       section WITHIN this page. #}
+    <div class="adm-jump">
+      <div class="adm-jump__title">Jump to a section on this page</div>
+      {% for anchor, label in admin_dashboard_sections %}
+        <a href="#{{ anchor }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+
+    <div class="live-monitor">
+        <h3><span class="lm-dot"></span> Live composition monitor <span id="lm-status" class="lm-status">● connecting…</span></h3>
+        <p class="lm-sub">Text being typed on the imageboard right now, by IP address — it populates as they type. A visitor's card lingers ~25s after they stop. Keep this open and type a post in another tab to see it live.</p>
+        <div class="lm-map-wrap">
+            <div class="lm-map-head">
+                <span>Every dot is one participant, coloured by the roles it holds right now:
+                <b class="lm-key-v">red</b> visitor, <b class="lm-key-s">blue</b> DHT storage node,
+                <b class="lm-key-g">green</b> verified HTTPS gateway, <b class="lm-key-d">yellow</b>
+                DCS container host, <b class="lm-key-m">purple</b> status monitor,
+                <b class="lm-key-c">orange</b> GPU compute, <b class="lm-key-p">pink</b> CPU compute,
+                <b class="lm-key-n">cyan</b> settles through a payment channel,
+                <b class="lm-key-i">white</b> offers hardware isolation (can run arbitrary code). A machine
+                holding several roles is ONE dot that alternates between its role colours —
+                blue/green for a gateway that also stores shards, orange/pink for a machine
+                offering both its GPU and its spare cores. Compute colours mean
+                <em>available</em>, not busy: a node paused because its owner started a game is
+                still a provider. Hover for details.</span>
+                <span id="lm-storage" class="ml-2 text-info small"></span>
+                <style>
+                    /* Legend swatches. Pin colours themselves are driven entirely
+                       by the --lm-role/--lm-glow custom properties the JS sets
+                       (see applyRoles + the cycle ticker), so there is no
+                       per-combination CSS to maintain as roles are added. */
+                    .lm-key-v { color: #ff6b61; } .lm-key-s { color: #3b82f6; }
+                    .lm-key-g { color: #22c55e; } .lm-key-d { color: #ffd60a; }
+                    .lm-key-m { color: #a855f7; }
+                    .lm-key-c { color: #f97316; } .lm-key-p { color: #ec4899; }
+                    .lm-key-n { color: #22d3ee; }
+                    .lm-key-i { color: #f5f5f5; }
+                </style>
+                <span id="lm-map-count"></span>
+            </div>
+            <div class="lm-map" id="lm-map">
+                <div class="lm-map-bg"></div>
+                <div class="lm-map-dots" id="lm-map-dots"></div>
+                <div class="lm-map-empty" id="lm-map-empty">Waiting for visitors…</div>
+            </div>
+            <div class="mt-2 p-2 rounded" style="background:#0b0f14;border:1px solid #1f2630;">
+                <div class="d-flex justify-content-between align-items-center flex-wrap">
+                    <strong class="small" style="color:#22c55e;">Verified gateway status</strong>
+                    <span id="lm-gateway-registry-state" class="small text-muted">Loading controller registry…</span>
+                </div>
+                <div class="table-responsive mt-1">
+                    <table class="table table-dark table-sm mb-0 small">
+                        <thead>
+                            <tr>
+                                <th>Gateway</th>
+                                <th>Address</th>
+                                <th>Controller status</th>
+                                <th>Latency</th>
+                                <th>Registration expires</th>
+                                <th>Direct check</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lm-gateway-rows">
+                            <tr><td colspan="6" class="text-muted">Waiting for the gateway controller…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="mt-2 p-2 rounded" style="background:#0b0f14;border:1px solid #1f2630;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
+                <strong class="small" style="color:#3b82f6;">Distributed storage</strong>
+                <span id="lm-storage-stat" class="small text-muted">&mdash;</span>
+            </div>
+            <!-- Dispersal health. The panel above says how much disk the network
+                 offers; this says whether shards are actually reaching other
+                 machines, which is a different question and the one that was
+                 invisible. Every figure arrives on each node's five-minute signed
+                 heartbeat — nothing here dials a node. See roadmap phase 4.3. -->
+            <div class="d-flex justify-content-between align-items-center flex-wrap mt-3">
+                <strong class="small" style="color:#3b82f6;">Dispersal health
+                    <span class="text-muted" style="font-weight:400;">— is anything reaching other machines?</span>
+                </strong>
+                <span id="lm-disp-state" class="small text-muted">Waiting for node reports…</span>
+            </div>
+            <div id="lm-disp-refusals" class="small mt-1"></div>
+            <div class="table-responsive mt-1">
+                <table class="table table-dark table-sm mb-0 small">
+                    <thead>
+                        <tr>
+                            <th>Node</th><th>Objects</th><th>Under-replicated</th>
+                            <th>No remote copy</th><th>Last pass</th><th>Peers</th>
+                            <th>Refusing this node</th><th>Recalls out</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lm-disp-rows">
+                        <tr><td colspan="8" class="text-muted">Waiting for node reports…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-wrap mt-3">
+                <strong class="small" style="color:#ffd60a;">Running containers <span id="lm-cn-count" class="text-muted"></span></strong>
+            </div>
+            <div class="table-responsive mt-1">
+                <table class="table table-dark table-sm mb-0 small">
+                    <thead>
+                        <tr><th>Machine</th><th>Status</th><th>Worker</th><th>Private address</th><th>Time left</th></tr>
+                    </thead>
+                    <tbody id="lm-cn-rows">
+                        <tr><td colspan="5" class="text-muted">No containers running.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="lm-empty" class="lm-empty">No one is composing a post right now.</div>
+        <div id="lm-grid" class="lm-grid"></div>
+    </div>
+
+    <div id="admin-nav" class="admin-nav"></div>
+
+    {# Software update. The button queues a request for the in-cluster updater;
+       the backend deliberately holds no Kubernetes credentials (see
+       services/software_update.py). Status and the failure log are read back
+       from what the updater publishes, so a failed deploy is diagnosable here
+       rather than over SSH. #}
+
+    <div class="card mb-4" id="lab-registry">
+      <div class="card-body">
+        <h4 id="lab-registry">Lab Image Registry</h4>
+        <small class="text-muted">
+          The catalog of challenge images users can spin up on the container
+          network. Worker nodes never choose images — this catalog is the single
+          source of what exists. Upload new challenges (Dockerfile + files),
+          retire old ones.
+        </small>
+      </div>
+    </div>
+
+    <div class="card mb-4" id="arcade">
+      <div class="card-body">
+        <h4 id="arcade-section">Arcade</h4>
+        <small class="text-muted">
+          Coding practice, battles and the skill charts. Content inventory, code-judge
+          health, leaderboard, and a reset for a slip that has gamed its score.
+        </small>
+      </div>
+    </div>
+
+    <div class="card mb-4" id="software-update">
+      <div class="card-body">
+        <h4 id="software-update">Software update</h4>
+        <small class="text-muted">
+          Pulls the latest code from GitHub, rebuilds the images, applies them to
+          both servers and restarts. If the new version fails to come up it is
+          rolled back to the previous one automatically, and the reason appears
+          below — no SSH needed.
+        </small>
+
+        <div id="su-unavailable" class="alert alert-secondary mt-3" hidden>
+          No updater is attached to this deployment, so there is nothing to trigger.
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center mt-3" style="gap:.6rem">
+          <button type="button" id="su-run" class="btn btn-primary">Update now</button>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="su-force">
+            <label class="form-check-label" for="su-force" title="Redeploy even when GitHub has no new commits">
+              Force (redeploy current commit)
+            </label>
+          </div>
+          <button type="button" id="su-cancel" class="btn btn-outline-secondary btn-sm" hidden
+                  title="Delete the pending request so the button works again">
+            Cancel queued request
+          </button>
+          <span id="su-state" class="ml-2"></span>
+        </div>
+
+        <div id="su-diagnosis" class="alert py-2 px-3 mt-3 mb-0" style="font-size:.85rem" hidden></div>
+
+        <div id="su-detail" class="mt-3" hidden>
+          <table class="table table-sm mb-2" style="max-width:640px">
+            <tbody>
+              <tr><th style="width:9rem">Result</th><td id="su-result">—</td></tr>
+              <tr><th>Commit</th><td id="su-commit">—</td></tr>
+              <tr><th>Finished</th><td id="su-finished">—</td></tr>
+              <tr><th>Phase</th><td id="su-phase">—</td></tr>
+              <tr><th>Updater seen</th><td id="su-seen">—</td></tr>
+              <tr id="su-queued-row" hidden><th>Queued for</th><td id="su-queued">—</td></tr>
+              <tr><th>Request dir</th><td id="su-reqdir" style="font-size:.8rem">—</td></tr>
+              <tr><th>Status dir</th><td id="su-statusdir" style="font-size:.8rem">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="su-failbox" class="mt-2" hidden>
+          <strong class="text-danger">Last failure</strong>
+          <pre id="su-faillog" style="max-height:20rem;overflow:auto;font-size:.78rem;white-space:pre-wrap;"></pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    (function () {
+      var statusUrl = {{ url_for('admin.software_update_status') | tojson }};
+      var runUrl    = {{ url_for('admin.software_update') | tojson }};
+      var cancelUrl = {{ url_for('admin.software_update_cancel') | tojson }};
+      var btn   = document.getElementById('su-run');
+      var cancelBtn = document.getElementById('su-cancel');
+      var state = document.getElementById('su-state');
+      var poll  = null;
+
+      function text(id, v) { document.getElementById(id).textContent = v || '—'; }
+
+      function render(d) {
+        if (!d.available) {
+          document.getElementById('su-unavailable').hidden = false;
+          btn.disabled = true;
+          state.textContent = '';
+          return;
+        }
+        var s = d.status || {};
+        document.getElementById('su-detail').hidden = false;
+        text('su-result', d.result || 'never run');
+        text('su-commit', s.commit || s.sha || s.head || '—');
+        text('su-finished', s.finished_at || s.ended_at || s.time || '—');
+        text('su-phase', s.phase || '—');
+        text('su-seen', d.updater_seen ? d.updater_age : 'never');
+        text('su-reqdir', d.request_dir);
+        text('su-statusdir', d.status_dir);
+        document.getElementById('su-queued-row').hidden = !d.queued;
+        text('su-queued', d.queued_age);
+
+        // A stuck queue is the common failure, and "Queued" alone could not
+        // distinguish "wait 40 more seconds" from "this will never happen".
+        // The updater's own liveness is what separates them.
+        var stuck = d.queued && d.updater_stale;
+        if (d.running)      { state.textContent = 'Update running…'; state.className = 'text-info'; btn.disabled = true; }
+        else if (stuck)     { state.textContent = 'Queued ' + d.queued_age + ' — the updater is not running'; state.className = 'text-danger'; btn.disabled = true; }
+        else if (d.queued)  { state.textContent = 'Queued ' + d.queued_age + ' — waiting for the updater'; state.className = 'text-info'; btn.disabled = true; }
+        else if (d.failed)  { state.textContent = 'Last update FAILED and was rolled back'; state.className = 'text-danger'; btn.disabled = false; }
+        else if (d.result)  { state.textContent = 'Last update: ' + d.result; state.className = 'text-success'; btn.disabled = false; }
+        else                { state.textContent = ''; btn.disabled = false; }
+
+        // Offer the escape hatch as soon as anything is queued, so a wedged
+        // request never leaves the card with no available action.
+        cancelBtn.hidden = !d.queued;
+
+        var diag = document.getElementById('su-diagnosis');
+        if (d.diagnosis) {
+          var tone = { error: 'alert-danger', warn: 'alert-warning', info: 'alert-info' };
+          diag.className = 'alert py-2 px-3 mt-3 mb-0 ' + (tone[d.diagnosis_severity] || 'alert-info');
+          diag.textContent = d.diagnosis;
+          if (d.updater_heartbeat) { diag.textContent += '\n\n' + d.updater_heartbeat; }
+          diag.style.whiteSpace = 'pre-wrap';
+          diag.hidden = false;
+        } else { diag.hidden = true; }
+
+        var fb = document.getElementById('su-failbox');
+        if (d.failure_log) {
+          // textContent, never innerHTML: this is a build log, i.e. attacker-
+          // adjacent text (commit messages, compiler output).
+          document.getElementById('su-faillog').textContent = d.failure_log;
+          fb.hidden = false;
+        } else { fb.hidden = true; }
+
+        // Poll faster only while something is in flight.
+        var busy = d.running || d.queued;
+        if (busy && !poll) { poll = window.setInterval(refresh, 5000); }
+        if (!busy && poll) { window.clearInterval(poll); poll = null; }
+      }
+
+      function refresh() {
+        fetch(statusUrl, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { if (d) { render(d); } })
+          .catch(function () {});
+      }
+
+      btn.addEventListener('click', function () {
+        if (!window.confirm('Pull the latest code, rebuild and restart both servers?\n\nIf the new version fails to boot it is rolled back automatically.')) { return; }
+        btn.disabled = true;
+        state.textContent = 'Queueing…'; state.className = 'text-info';
+        var body = new URLSearchParams();
+        if (document.getElementById('su-force').checked) { body.set('force', '1'); }
+        fetch(runUrl, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest',
+                     'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString()
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            state.textContent = res.j.message || (res.ok ? 'Queued.' : 'Could not queue.');
+            state.className = res.ok ? 'text-info' : 'text-warning';
+            if (!poll) { poll = window.setInterval(refresh, 5000); }
+            refresh();
+          })
+          .catch(function () {
+            state.textContent = 'Could not reach the server.'; state.className = 'text-danger';
+            btn.disabled = false;
+          });
+      });
+
+      cancelBtn.addEventListener('click', function () {
+        if (!window.confirm('Delete the queued update request?\n\nUse this when the updater is not picking it up. Nothing is deployed either way.')) { return; }
+        cancelBtn.disabled = true;
+        fetch(cancelUrl, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            state.textContent = j.message || 'Cleared.'; state.className = 'text-muted';
+            cancelBtn.disabled = false;
+            refresh();
+          })
+          .catch(function () {
+            state.textContent = 'Could not reach the server.'; state.className = 'text-danger';
+            cancelBtn.disabled = false;
+          });
+      });
+
+      refresh();
+      window.setInterval(refresh, 30000);
+    })();
+    </script>
+
+    {% if chan_requests %}
+    <div class="card mb-4" id="chan-requests">
+        <div class="card-body">
+            <h4 id="chan-requests">Chan add/remove requests <span class="badge badge-secondary">{{ chan_requests|length }}</span></h4>
+            <small class="text-muted">Operator requests submitted from the public Chans page. "Apply" updates the aggregation list; "Dismiss" just clears the request.</small>
+            <ul class="list-unstyled mt-3 mb-0">
+                {% for req in chan_requests %}
+                <li class="d-flex justify-content-between align-items-start border-top py-2">
+                    <div class="mr-2" style="min-width:0;">
+                        <span class="badge {{ 'badge-success' if req.action == 'add' else 'badge-danger' }}">{{ req.action }}</span>
+                        <a href="{{ req.url }}" target="_blank" rel="noopener nofollow noreferrer" style="word-break:break-all;">{{ req.name or req.url }}</a>
+                        {% if req.name %}<span class="text-muted small"> — {{ req.url }}</span>{% endif %}
+                        {% if req.message %}<div class="small text-muted mt-1" style="white-space:pre-wrap;">{{ req.message }}</div>{% endif %}
+                    </div>
+                    <div class="text-nowrap">
+                        <form method="post" action="{{ url_for('admin.chan_request_apply', request_id=req.id) }}" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
+                        </form>
+                        <form method="post" action="{{ url_for('admin.chan_request_dismiss', request_id=req.id) }}" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Dismiss</button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-lg-7 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h4 id="front-page">Front Page</h4>
+                    <form method="post" action="{{ url_for('admin.save_front_page') }}">
+                        <div class="form-group">
+                            <label for="front-page-html">Front-page HTML</label>
+                            <textarea id="front-page-html" name="front-page-html" class="form-control"
+                                rows="14">{{ front_page_html }}</textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save front page</button>
+                    </form>
+                    <hr>
+                    <small class="text-muted">
+                        This stored copy wins over the one shipped in the build, so your edits
+                        survive deploys &mdash; and improvements to the shipped default stay
+                        invisible until you take them. Resetting discards everything in the box
+                        above.
+                    </small>
+                    <form method="post" action="{{ url_for('admin.reset_front_page') }}" class="mt-2"
+                          onsubmit="return confirm('Replace the stored front page with this build\'s default? Anything you have edited above is lost.');">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm">
+                            Reset to this build&rsquo;s default
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="card mt-4" id="front-page-updates">
+                <div class="card-body">
+                    <h4 id="front-page-updates">Front Page Updates</h4>
+                    <small class="text-muted">Post an announcement / current-events update &mdash; shown to signed-in users as a dismissible pop-up, newest first. HTML is allowed, so you can embed images/gifs (e.g. <code>&lt;img src="…"&gt;</code>) or video.</small>
+                    <form method="post" action="{{ url_for('admin.create_front_page_update_route') }}" class="mt-3">
+                        <div class="form-group">
+                            <label for="fpu-title">Title (optional)</label>
+                            <input type="text" id="fpu-title" name="title" class="form-control" maxlength="200" placeholder="Headline">
+                        </div>
+                        <div class="form-group">
+                            <label for="fpu-body">Update</label>
+                            <textarea id="fpu-body" name="body" class="form-control" rows="4" placeholder="What's happening… (HTML allowed — paste e.g. &lt;img src=&quot;https://…/thing.gif&quot;&gt; to embed a gif)" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Post update</button>
+                    </form>
+                    {% if front_page_updates %}
+                    <hr>
+                    <ul class="list-unstyled mb-0">
+                        {% for update in front_page_updates %}
+                        <li class="d-flex justify-content-between align-items-start mb-3">
+                            <div class="mr-2">
+                                <div class="font-weight-bold">{{ update.title or 'Update' }}</div>
+                                <small class="text-muted">{{ update.created_at_display }}</small>
+                                <div class="small">{{ update.body[:160] }}{% if update.body|length > 160 %}…{% endif %}</div>
+                            </div>
+                            <form method="post" action="{{ url_for('admin.delete_front_page_update_route', update_id=update.id) }}"
+                                  onsubmit="return confirm('Remove this update?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card mt-4" id="ban-page">
+                <div class="card-body">
+                    <a href="{{ url_for('main.banned') }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-info float-right">Preview ban page ↗</a>
+                    <h4 id="ban-page">Ban Page</h4>
+                    <small class="text-muted">The "annoying" content shown to <strong>permanently</strong>-banned visitors (they are redirected here; timed bans get a plain notice instead). Add pop-up page URLs, embedded video URLs, audio URLs, image URLs, or message text, then use <strong>Preview ban page</strong> to see it as you build it out.</small>
+                    <form method="post" action="{{ url_for('admin.add_ban_page_asset_route') }}" class="form-inline mt-3 mb-2">
+                        <select name="kind" class="form-control form-control-sm mr-2 mb-2">
+                            {% for k in ban_asset_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+                        </select>
+                        <input type="text" name="value" class="form-control form-control-sm mr-2 mb-2" placeholder="URL, or message text" style="min-width:220px;" required>
+                        <button type="submit" class="btn btn-sm btn-primary mb-2">Add</button>
+                    </form>
+                    {% if ban_page_assets %}
+                    <ul class="list-unstyled mb-0">
+                        {% for asset in ban_page_assets %}
+                        <li class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="mr-2 text-truncate">
+                                <span class="badge badge-secondary">{{ asset.kind }}</span>
+                                <span class="small">{{ asset.value }}</span>
+                            </div>
+                            <form method="post" action="{{ url_for('admin.delete_ban_page_asset_route', asset_id=asset.id) }}"
+                                  onsubmit="return confirm('Remove this ban-page item?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                            </form>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="form-text">No items yet — the ban page shows a default message.</div>
+                    {% endif %}
+
+                    <hr>
+                    <h5 class="mb-2">Look &amp; feel</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="board-metrics-panel">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <h4 id="board-metrics" class="mb-1">Board Metrics</h4>
+                    <small class="text-muted">Traffic and time-spent breakdown for board and thread visits over the last
+                        30 days.</small>
+                    <small class="text-muted d-block d-none" id="board-metrics-chart-warning">Charts are unavailable
+                        because the chart library did not load. Numeric metrics below are still live.</small>
+                </div>
+                <span class="badge badge-light" id="board-metrics-window">30-day window</span>
+            </div>
+
+            <div class="row mb-3" id="board-metrics-summary-row"></div>
+
+            <div class="row">
+                <div class="col-lg-6 mb-4">
+                    <h6 class="mb-2">Traffic Share</h6>
+                    <canvas id="board-traffic-pie-chart" height="220"></canvas>
+                </div>
+                <div class="col-lg-6 mb-4">
+                    <h6 class="mb-2">Time Share</h6>
+                    <canvas id="board-time-pie-chart" height="220"></canvas>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <h6 class="mb-2">Traffic Trend</h6>
+                <canvas id="board-traffic-line-chart" height="110"></canvas>
+            </div>
+
+            <div class="mb-4">
+                <h6 class="mb-2">Most Popular Boards</h6>
+                <canvas id="board-popularity-chart" height="140"></canvas>
+            </div>
+
+            <div class="table-responsive" style="max-height:360px;overflow-y:auto;">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Board</th>
+                            <th>Visits</th>
+                            <th>Unique visitors</th>
+                            <th>Total time</th>
+                            <th>Avg time</th>
+                            <th>Last seen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="board-metrics-table-body">
+                        <tr>
+                            <td colspan="6"><small class="text-muted">Loading board metrics…</small></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="falco">
+        <div class="card-body">
+            <h4 id="falco" class="mb-1">Falco Runtime Security <small class="text-muted" style="font-size:0.75rem;">(container threat detection)</small></h4>
+            <p class="text-muted" style="font-size:0.85rem;">
+                Falco watches kernel syscalls across every container on this host and flags suspicious runtime
+                behaviour — a shell opened inside a container, reads/writes of sensitive files, package installs,
+                unexpected outbound connections, privilege escalation and more — using its maintained rule set.
+                Each match is pushed here over the internal network. Detection rules live in the Falco container
+                (add your own under <code>deploy-configs/falco/rules.d/</code>); below you control what maniwani
+                keeps and shows.
+            </p>
+
+            <p style="font-size:0.85rem;">
+                Status:
+                {% if falco.token_set %}<span class="badge badge-success">ingest token set</span>{% else %}<span class="badge badge-danger">no ingest token</span> <span class="text-muted">— set <code>FALCO_INGEST_TOKEN</code> in <code>.env</code></span>{% endif %}
+                {% if falco.enabled %}<span class="badge badge-success">storing alerts</span>{% else %}<span class="badge badge-secondary">ingest paused</span>{% endif %}
+                <span id="falco-status" class="text-muted ml-2"></span>
+            </p>
+
+            <h6 class="mb-2 mt-3">Settings</h6>
+            <form method="post" action="{{ url_for('admin.falco_save_settings') }}" class="form-inline mb-3">
+                <label class="mr-3"><input type="checkbox" name="ingest_enabled" {{ "checked" if falco.enabled else "" }}> Store incoming alerts</label>
+                <label class="mr-2" title="Only store alerts at this severity or worse. Falco emits everything; maniwani keeps from here up. Changing this needs no Falco restart.">Minimum severity</label>
+                <select name="min_priority" class="form-control mr-3" style="width:11rem;">
+                    {% for p in falco.priorities %}<option value="{{ p }}" {{ "selected" if p == falco.min_priority else "" }}>{{ p }}</option>{% endfor %}
+                </select>
+                <label class="mr-2" title="Delete stored alerts older than this. 0 keeps them until you clear manually.">Retention (days, 0 = keep)</label>
+                <input type="number" min="0" name="retention_days" value="{{ falco.retention_days }}" class="form-control mr-3" style="width:7rem;">
+                <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            </form>
+
+            <h6 class="mb-2 mt-3">Muted rules</h6>
+            <p class="text-muted" style="font-size:0.82rem;">Muted rules are dropped on ingest — silence a noisy rule without touching Falco or restarting it. Use the exact rule name (shown in the Rule column below).</p>
+            <form method="post" action="{{ url_for('admin.falco_mute') }}" class="form-inline mb-2">
+                <input type="text" name="rule" placeholder="exact rule name, e.g. Read sensitive file untrusted" class="form-control mr-2" style="width:26rem;" required>
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Mute rule</button>
+            </form>
+            {% if falco.muted_rules %}
+            <ul class="list-inline mb-2">
+                {% for r in falco.muted_rules %}
+                <li class="list-inline-item mb-1">
+                    <span class="badge badge-secondary" style="font-weight:normal;">{{ r }}
+                        <form method="post" action="{{ url_for('admin.falco_mute') }}" style="display:inline">
+                            <input type="hidden" name="rule" value="{{ r }}"><input type="hidden" name="action" value="unmute">
+                            <button type="submit" class="btn btn-link btn-sm p-0 ml-1" style="text-decoration:none;color:inherit;" title="unmute">✕</button>
+                        </form>
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}<p class="text-muted">No muted rules.</p>{% endif %}
+
+            <h6 class="mb-2 mt-3">Alerts</h6>
+            <div class="form-inline mb-2">
+                <label class="mr-1">Severity ≥</label>
+                <select id="falco-filter-priority" class="form-control form-control-sm mr-3">
+                    <option value="">any</option>
+                    {% for p in falco.priorities %}<option value="{{ p }}" {{ "selected" if p == 'notice' else "" }}>{{ p }}</option>{% endfor %}
+                </select>
+                <label class="mr-3"><input type="checkbox" id="falco-filter-unacked"> unacknowledged only</label>
+                <button type="button" id="falco-refresh" class="btn btn-outline-secondary btn-sm mr-2">Refresh</button>
+                <label class="mr-2"><input type="checkbox" id="falco-autorefresh"> auto&nbsp;(10s)</label>
+                <span id="falco-alerts-status" class="text-muted" style="font-size:0.82rem;"></span>
+                <form method="post" action="{{ url_for('admin.falco_ack_all') }}" style="display:inline" class="ml-auto mr-1"><button class="btn btn-outline-secondary btn-sm">Ack all</button></form>
+                <form method="post" action="{{ url_for('admin.falco_clear') }}" style="display:inline" onsubmit="return confirm('Delete ALL stored Falco alerts?');"><button class="btn btn-outline-danger btn-sm">Clear all</button></form>
+            </div>
+            <div id="falco-alerts-table" class="table-responsive"></div>
+
+            <script>
+            (function () {
+                var refreshBtn = document.getElementById('falco-refresh');
+                if (!refreshBtn) { return; }
+                var tableEl = document.getElementById('falco-alerts-table');
+                var statusEl = document.getElementById('falco-alerts-status');
+                var prioEl = document.getElementById('falco-filter-priority');
+                var unackedEl = document.getElementById('falco-filter-unacked');
+                var autoEl = document.getElementById('falco-autorefresh');
+                var headStatus = document.getElementById('falco-status');
+                var timer = null;
+                function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+                function badge(p) {
+                    var r = (p || '').toLowerCase(), cls = 'secondary';
+                    if (['emergency', 'alert', 'critical', 'error'].indexOf(r) >= 0) cls = 'danger';
+                    else if (r === 'warning') cls = 'warning';
+                    else if (r === 'notice') cls = 'info';
+                    return '<span class="badge badge-' + cls + '">' + esc(p || '?') + '</span>';
+                }
+                function post(url, then) {
+                    fetch(url, { method: 'POST', credentials: 'same-origin' }).then(function () { if (then) then(); });
+                }
+                function render(data) {
+                    var alerts = (data && data.alerts) || [];
+                    if (headStatus) {
+                        var li = (data && data.last_ingest_at)
+                            ? ('Falco last reported ' + esc(String(data.last_ingest_at).replace('T', ' ').slice(0, 19)) + ' UTC')
+                            : 'no reports received yet';
+                        headStatus.textContent = '· ' + li + ' · ' + ((data && data.unacknowledged) || 0) + ' unacknowledged';
+                    }
+                    if (!alerts.length) { tableEl.innerHTML = '<p class="text-muted">No alerts match.</p>'; return; }
+                    var html = '<table class="table table-sm"><thead><tr><th>When (UTC)</th><th>Sev</th><th>Rule</th><th>Container</th><th>Detail</th><th></th></tr></thead><tbody>';
+                    alerts.forEach(function (a) {
+                        var when = esc(String(a.occurred_at || a.created_at || '').replace('T', ' ').slice(0, 19));
+                        var cont = a.container_name
+                            ? (esc(a.container_name) + (a.container_id ? ' <span class="text-muted">' + esc(a.container_id) + '</span>' : ''))
+                            : '<span class="text-muted">host</span>';
+                        var rowStyle = a.acknowledged ? ' style="opacity:0.5"' : '';
+                        var actions = '<button class="btn btn-outline-secondary btn-sm falco-ack" data-id="' + a.id + '" title="acknowledge">✓</button> '
+                                    + '<button class="btn btn-outline-danger btn-sm falco-del" data-id="' + a.id + '" title="delete">✕</button>';
+                        html += '<tr' + rowStyle + '>'
+                              + '<td style="white-space:nowrap;font-size:0.8rem;">' + when + '</td>'
+                              + '<td>' + badge(a.priority) + '</td>'
+                              + '<td style="font-size:0.82rem;">' + esc(a.rule) + '</td>'
+                              + '<td style="font-size:0.8rem;">' + cont + '</td>'
+                              + '<td style="font-size:0.8rem;max-width:34rem;"><span title="' + esc(a.output) + '">' + esc(String(a.output || '').slice(0, 240)) + '</span></td>'
+                              + '<td style="white-space:nowrap;">' + actions + '</td>'
+                              + '</tr>';
+                    });
+                    html += '</tbody></table>';
+                    tableEl.innerHTML = html;
+                    Array.prototype.forEach.call(tableEl.querySelectorAll('.falco-ack'), function (b) {
+                        b.addEventListener('click', function () { post('/admin/falco/alerts/' + b.getAttribute('data-id') + '/ack', load); });
+                    });
+                    Array.prototype.forEach.call(tableEl.querySelectorAll('.falco-del'), function (b) {
+                        b.addEventListener('click', function () { post('/admin/falco/alerts/' + b.getAttribute('data-id') + '/delete', load); });
+                    });
+                }
+                function load() {
+                    var params = new URLSearchParams();
+                    if (prioEl && prioEl.value) { params.set('priority', prioEl.value); }
+                    if (unackedEl && unackedEl.checked) { params.set('unacked', '1'); }
+                    params.set('limit', '150');
+                    statusEl.textContent = 'loading…';
+                    fetch('{{ url_for('admin.falco_alerts_json') }}?' + params.toString(), { credentials: 'same-origin' })
+                        .then(function (r) { return r.ok ? r.json() : null; })
+                        .then(function (d) { statusEl.textContent = d ? ('showing ' + ((d.alerts || []).length) + ' alert(s)') : 'load failed'; render(d || {}); })
+                        .catch(function () { statusEl.textContent = 'error contacting server'; });
+                }
+                refreshBtn.addEventListener('click', load);
+                if (prioEl) { prioEl.addEventListener('change', load); }
+                if (unackedEl) { unackedEl.addEventListener('change', load); }
+                if (autoEl) {
+                    autoEl.addEventListener('change', function () {
+                        if (autoEl.checked) { timer = window.setInterval(load, 10000); load(); }
+                        else if (timer) { window.clearInterval(timer); timer = null; }
+                    });
+                }
+                load();
+            })();
+            </script>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="nntpchan">
+        <div class="card-body">
+            <h4 id="nntpchan" class="mb-1">NNTPChan Federation <small class="text-muted" style="font-size:0.75rem;">(NNTP peering)</small></h4>
+            <p class="text-muted" style="font-size:0.85rem;">
+                Peer with one NNTP node and the overchan mesh feeds you the rest — no site directory needed.
+                Map a peer's <code>overchan.*</code> newsgroup onto one of your boards; its threads import as
+                local posts. Attachments are auto-blocked by SHA-256 against the media blocklist, and content
+                from blocked addresses (pubkey, From, domain, or a Path host) is dropped on import.
+            </p>
+
+            {% if nntp_preflight and nntp_preflight.checks %}
+            <div class="alert {{ 'alert-success' if nntp_preflight.ready else 'alert-warning' }} py-2 mb-3"
+                 style="font-size:0.85rem;">
+              <strong>{% if nntp_preflight.ready %}Ready to sync.{% else %}Not ready to sync.{% endif %}</strong>
+              <ul class="mb-0 mt-1" style="padding-left:1.1rem;">
+                {% for check in nntp_preflight.checks %}
+                <li>
+                  <strong>{{ "OK" if check.ok else "MISSING" }}</strong> &mdash; {{ check.name }}:
+                  {{ check.detail }}
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+
+            <h6 class="mb-2 mt-3">Sync</h6>
+            <form method="post" action="{{ url_for('admin.nntp_save_settings') }}" class="form-inline mb-2">
+                <label class="mr-2">Interval (minutes, 0 disables)</label>
+                <input type="number" min="0" name="interval_minutes" value="{{ nntp_sync_interval_minutes }}"
+                       class="form-control mr-2" style="width:8rem;">
+                <label class="mr-2" title="Publish this server's own local posts (with attachments, threaded) to the mapped newsgroup so the peer imports them">
+                    <input type="checkbox" name="publish_content" {{ "checked" if nntp_publish_content else "" }}>
+                    Federate local posts (outbound)
+                </label>
+                <button type="submit" class="btn btn-primary btn-sm mr-2">Save</button>
+                <div class="w-100 mt-2"></div>
+                <label class="mr-2" title="Shown on posts this server federates, so remote viewers can tell where a post came from">Source label</label>
+                <input type="text" name="source_label" value="{{ nntp_source_label }}" placeholder="e.g. SyndiChan" class="form-control mr-2" style="width:12rem;">
+                <label class="mr-2" title="One image used as this site's source watermark: a URL (e.g. https://your.site/favicon.ico) OR a container file path (e.g. /maniwani/static/logo.png). It is shrunk and embedded in every published post (self-contained); if it's a URL it is also sent as a fallback header. Provide it once.">Watermark image (URL or /path)</label>
+                <input type="text" name="source_watermark_url" value="{{ nntp_source_watermark_url }}" placeholder="/maniwani/static/logo.png  or  https://your.site/favicon.ico" class="form-control mr-2" style="width:30rem;">
+                <label class="mr-2" title="Drop incoming federated posts that arrive with no source watermark. Leave off until peers are sending watermarks, or their content will be rejected.">
+                    <input type="checkbox" name="require_watermark" {{ "checked" if nntp_require_watermark else "" }}>
+                    Require a watermark on imported posts
+                </label>
+                <div class="w-100 mt-2"></div>
+                <label class="mr-2" title="When a moderator deletes an imported thread, block that thread from re-importing for this many days (0 disables the block). Prevents deleted threads from re-populating on the next sync.">Deleted-thread block (days)</label>
+                <input type="number" min="0" name="tombstone_days" value="{{ nntp_tombstone_days }}" class="form-control mr-2" style="width:7rem;">
+                <label class="mr-2" title="Optional shared secret required to delete newsgroups from the hub — must equal the hub's NNTP_HUB_ADMIN_TOKEN. Leave blank to keep the current value; enter '-' to clear.">Hub admin token {% if nntp_hub_admin_token_set %}<small class="text-success">(set)</small>{% endif %}</label>
+                <input type="text" name="hub_admin_token" placeholder="{{ 'blank = keep' if nntp_hub_admin_token_set else 'optional' }}" class="form-control mr-2" style="width:14rem;">
+            </form>
+            <form method="post" action="{{ url_for('admin.nntp_sync_now') }}" class="mb-3">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Sync now</button>
+            </form>
+
+            <h6 class="mb-2 mt-3">Peers</h6>
+            <p class="text-muted" style="font-size:0.82rem;">
+                A <code>.b32.i2p</code> host is reached through the I2P SOCKS proxy and never
+                reveals this server's address to the peer. Anything else is dialled directly
+                over the open internet &mdash; which works without an I2P router, and means
+                the peer sees your server's IP. The transport is decided by the address, so a
+                peer written as I2P can never be contacted in the clear by mistake.
+            </p>
+            <form method="post" action="{{ url_for('admin.nntp_add_peer') }}" class="form-inline mb-2">
+                <input type="text" name="host" placeholder="news.example.org  or  52-char-name.b32.i2p"
+                       class="form-control mr-2" style="min-width:22rem;" required>
+                <input type="number" name="port" value="119" class="form-control mr-2" style="width:6rem;"
+                       title="119 for plain NNTP, 563 for NNTPS">
+                <label class="mr-2"><input type="checkbox" name="use_tls"> TLS</label>
+                <input type="text" name="description" placeholder="label (optional)" class="form-control mr-2">
+                <button type="submit" class="btn btn-primary btn-sm">Add peer</button>
+            </form>
+            {% if nntp_peers %}
+            <table class="table table-sm">
+                <thead><tr><th>Host</th><th>Transport</th><th>Port</th><th>TLS</th><th>Last sync</th><th>Last error</th><th></th></tr></thead>
+                <tbody>
+                {% for peer in nntp_peers %}
+                    <tr>
+                        <td>{{ peer.host }}{% if peer.description %} <small class="text-muted">({{ peer.description }})</small>{% endif %}</td>
+                        <td>
+                          {% if peer.is_anonymous %}
+                            <span class="badge badge-success">I2P</span>
+                          {% else %}
+                            <span class="badge badge-warning" title="This peer sees your server's IP address.">clearnet</span>
+                          {% endif %}
+                        </td>
+                        <td>{{ peer.port }}</td>
+                        <td>{{ "yes" if peer.use_tls else "no" }}</td>
+                        <td>{{ peer.last_sync_at.strftime("%Y-%m-%d %H:%M") if peer.last_sync_at else "—" }}</td>
+                        <td><small class="text-danger">{{ peer.last_error or "" }}</small></td>
+                        <td>
+                            <form method="post" action="{{ url_for('admin.nntp_delete_peer', peer_id=peer.id) }}"
+                                  onsubmit="return confirm('Remove this peer?');">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}<p class="text-muted">No peers configured. Add one NNTP host above &mdash; the overchan mesh floods articles between nodes, so a single reachable peer carries the rest.</p>{% endif %}
+
+            <h6 class="mb-2 mt-3">Newsgroup → board</h6>
+            <form method="post" action="{{ url_for('admin.nntp_add_group_map') }}" class="form-inline mb-2">
+                <input type="text" name="newsgroup" placeholder="overchan.random" class="form-control mr-2" required>
+                <select name="board_id" class="form-control mr-2" required>
+                    <option value="">Choose a board…</option>
+                    {% for b in boards %}<option value="{{ b.id }}">/{{ b.name }}/ — {{ b.title }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm">Map</button>
+            </form>
+            {% if nntp_group_maps %}
+            <table class="table table-sm">
+                <thead><tr><th>Newsgroup</th><th>Board</th><th></th></tr></thead>
+                <tbody>
+                {% for m in nntp_group_maps %}
+                    <tr>
+                        <td>{{ m.newsgroup }}</td>
+                        <td>{% for b in boards %}{% if b.id == m.board_id %}/{{ b.name }}/{% endif %}{% endfor %}</td>
+                        <td>
+                            <form method="post" action="{{ url_for('admin.nntp_delete_group_map', map_id=m.id) }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}<p class="text-muted">No newsgroups mapped.</p>{% endif %}
+
+            <h6 class="mb-2 mt-3">All newsgroups on peer</h6>
+            <p class="text-muted" style="font-size:0.85rem;">
+                Every group the peer carries — including ones you didn't create locally. Shows how many
+                articles are on the peer, how many you've imported, and the mapped board. Map any group onto
+                a local board, or unmap it.
+            </p>
+            <button type="button" id="nntp-ng-load" class="btn btn-outline-secondary btn-sm mb-2">Load / refresh from peer</button>
+            <span id="nntp-ng-status" class="text-muted ml-2" style="font-size:0.85rem;"></span>
+            <div id="nntp-ng-table" class="table-responsive"></div>
+            <script>
+            (function () {
+                var boards = [{% for b in boards %}{"id": {{ b.id }}, "name": {{ b.name|tojson }}}{{ "," if not loop.last else "" }}{% endfor %}];
+                var loadBtn = document.getElementById('nntp-ng-load');
+                var statusEl = document.getElementById('nntp-ng-status');
+                var tableEl = document.getElementById('nntp-ng-table');
+                if (!loadBtn) { return; }
+                function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+                function boardOptions() { return boards.map(function (b) { return '<option value="' + b.id + '">/' + esc(b.name) + '/</option>'; }).join(''); }
+                function render(data) {
+                    var groups = (data && data.groups) || [];
+                    var errs = (data && data.errors) || [];
+                    var html = '';
+                    if (errs.length) { html += '<div class="text-danger mb-1" style="font-size:0.8rem;">peer errors: ' + esc(errs.join('; ')) + '</div>'; }
+                    if (!groups.length) { tableEl.innerHTML = html + '<p class="text-muted">No newsgroups reported.</p>'; return; }
+                    html += '<table class="table table-sm"><thead><tr><th>Newsgroup</th><th>On peer</th><th>Imported</th><th>Board</th><th>Action</th></tr></thead><tbody>';
+                    groups.forEach(function (g) {
+                        var badge = g.is_banlist ? ' <span class="badge badge-info">banlist</span>' : '';
+                        var action;
+                        if (g.mapped) {
+                            action = '<form method="post" action="/admin/nntpchan/groups/' + g.map_id + '/delete" style="display:inline">'
+                                   + '<button class="btn btn-outline-danger btn-sm">Unmap</button></form>';
+                        } else {
+                            action = '<form method="post" action="{{ url_for('admin.nntp_add_group_map') }}" class="form-inline" style="display:inline">'
+                                   + '<input type="hidden" name="newsgroup" value="' + esc(g.newsgroup) + '">'
+                                   + '<select name="board_id" class="form-control form-control-sm mr-1"><option value="">board…</option>' + boardOptions() + '</select>'
+                                   + '<button class="btn btn-primary btn-sm">Map</button></form>';
+                        }
+                        action += '<form method="post" action="/admin/nntpchan/hub/delete-group" style="display:inline"'
+                                + ' onsubmit="return confirm(\'Delete this newsgroup and its articles from the hub? This affects every server sharing the hub.\');">'
+                                + '<input type="hidden" name="newsgroup" value="' + esc(g.newsgroup) + '">'
+                                + '<button class="btn btn-outline-danger btn-sm ml-1">Delete from hub</button></form>';
+                        var board = g.board_name ? ('/' + esc(g.board_name) + '/') : '<span class="text-muted">—</span>';
+                        html += '<tr><td><code>' + esc(g.newsgroup) + '</code>' + badge + '</td><td>' + g.articles + '</td><td>' + g.imported + '</td><td>' + board + '</td><td>' + action + '</td></tr>';
+                    });
+                    html += '</tbody></table>';
+                    tableEl.innerHTML = html;
+                }
+                loadBtn.addEventListener('click', function () {
+                    statusEl.textContent = 'loading from peer…';
+                    fetch('{{ url_for('admin.nntp_newsgroups_json') }}', { credentials: 'same-origin' })
+                        .then(function (r) { return r.ok ? r.json() : null; })
+                        .then(function (d) { statusEl.textContent = d ? ('loaded ' + ((d.groups || []).length) + ' group(s)') : 'load failed'; render(d || {}); })
+                        .catch(function () { statusEl.textContent = 'error contacting server'; });
+                });
+            })();
+            </script>
+
+            <h6 class="mb-2 mt-3">Address blocklist</h6>
+            <form method="post" action="{{ url_for('admin.nntp_add_address_block') }}" class="form-inline mb-2">
+                <input type="text" name="address" placeholder="pubkey / from@host / domain / path host" class="form-control mr-2" required>
+                <input type="text" name="reason" placeholder="reason (optional)" class="form-control mr-2">
+                <button type="submit" class="btn btn-primary btn-sm">Block address</button>
+            </form>
+            {% if nntp_address_blocks %}
+            <table class="table table-sm">
+                <thead><tr><th>Address</th><th>Reason</th><th></th></tr></thead>
+                <tbody>
+                {% for blk in nntp_address_blocks %}
+                    <tr>
+                        <td><code>{{ blk.address }}</code></td>
+                        <td>{{ blk.reason or "" }}</td>
+                        <td>
+                            <form method="post" action="{{ url_for('admin.nntp_delete_address_block', block_id=blk.id) }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Unblock</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}<p class="text-muted">No addresses blocked.</p>{% endif %}
+
+            <h6 class="mb-2 mt-4">Distance-based image bans (federated)</h6>
+            <p class="text-muted" style="font-size:0.85rem;">
+                Ban an image by <em>perceptual fingerprint</em>: any upload or imported image whose
+                fingerprint is within the Manhattan-distance threshold is auto-blocked — so re-encoded or
+                rescaled near-duplicates are caught, not just byte-identical files. Local bans broadcast to
+                peers over the banlist newsgroup; bans learned from peers are applied here too. Use the
+                <strong>Remove</strong> button to undo a fingerprint that was banned by mistake.
+            </p>
+            <form method="post" action="{{ url_for('admin.nntp_save_fingerprint_settings') }}" class="form-inline mb-3">
+                <label class="mr-2">Threshold (avg diff 0–255)</label>
+                <input type="number" step="0.5" min="0" name="threshold" value="{{ nntp_fp_settings.threshold }}"
+                       class="form-control mr-2" style="width:7rem;">
+                <label class="mr-2">Banlist group</label>
+                <input type="text" name="banlist_group" value="{{ nntp_fp_settings.banlist_group }}"
+                       class="form-control mr-2" style="width:14rem;">
+                <label class="mr-2">Node id</label>
+                <input type="text" name="node_id" value="{{ nntp_fp_settings.node_id }}"
+                       class="form-control mr-2" style="width:9rem;">
+                <label class="mr-2"><input type="checkbox" name="ingest" {{ "checked" if nntp_fp_settings.ingest else "" }}> Ingest peer bans</label>
+                <label class="mr-2">Shared secret {% if nntp_fp_settings.secret_set %}<small class="text-success">(set)</small>{% endif %}</label>
+                <input type="text" name="secret" placeholder="leave blank to keep, '-' to clear"
+                       class="form-control mr-2" style="width:16rem;">
+                <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            </form>
+            {% if nntp_fingerprints %}
+            <table class="table table-sm">
+                <thead><tr><th>Fingerprint</th><th>Origin</th><th>Reason</th><th>Added</th><th></th></tr></thead>
+                <tbody>
+                {% for fp in nntp_fingerprints %}
+                    <tr>
+                        <td><code>{{ fp.fingerprint[:16] }}…</code> <small class="text-muted">{{ fp.algorithm }}/{{ fp.dims }}</small></td>
+                        <td>{{ fp.origin }}{% if fp.origin == "local" and not fp.broadcasted %} <small class="text-warning">(queued)</small>{% endif %}</td>
+                        <td>{{ fp.reason or "" }}</td>
+                        <td>{{ fp.created_at.strftime("%Y-%m-%d %H:%M") if fp.created_at else "" }}</td>
+                        <td>
+                            <form method="post" action="{{ url_for('admin.nntp_delete_fingerprint', fp_id=fp.id) }}"
+                                  onsubmit="return confirm('Remove this fingerprint from the banlist?');">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}<p class="text-muted">No image fingerprints banned. Use “Ban image (distance)” on a post to add one.</p>{% endif %}
+        </div>
+    </div>
+
+    <div class="card mb-4" id="slips">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <h4 id="slip-moderation" class="mb-1">Slip Moderation</h4>
+                    <small class="text-muted">Manage sitewide moderators by slip, or open a board below to add and
+                        remove multiple board moderators. The wallet-backed admin slip is managed separately.</small>
+                </div>
+            </div>
+
+            <h5>Sitewide moderators</h5>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Slip</th>
+                            <th>Sitewide access</th>
+                            <th style="width:140px">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for slip in slips %}
+                        <tr>
+                            <td style="width:220px;">
+                                <div><strong>{{ slip.name }}</strong></div>
+                                <small class="text-muted">Slip #{{ slip.id }}</small>
+                            </td>
+                            <td>
+                                <form method="post"
+                                    action="{{ url_for('admin.update_slip_sitewide_permission', slip_id=slip.id) }}"
+                                    class="mb-0" id="slip-sitewide-{{ slip.id }}">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="true" name="is-mod"
+                                            id="slip-mod-{{ slip.id }}" {% if slip.is_mod %}checked{% endif %}>
+                                        <label class="form-check-label" for="slip-mod-{{ slip.id }}">
+                                            Sitewide moderator
+                                        </label>
+                                        <small class="d-block text-muted">Remove spam and abuse on any board.</small>
+                                    </div>
+                                    {# A separate grant, not a rank above moderator. Marked present
+                                       so an unchecked box is distinguishable from a form that never
+                                       carried the field -- see update_slip_sitewide_permission. #}
+                                    <input type="hidden" name="editor-field-present" value="1">
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" value="true" name="is-editor"
+                                            id="slip-editor-{{ slip.id }}" {% if slip.is_editor %}checked{% endif %}>
+                                        <label class="form-check-label" for="slip-editor-{{ slip.id }}">
+                                            Newsroom editor
+                                        </label>
+                                        <small class="d-block text-muted">
+                                            Approve, publish, correct and retract stories. A publishing
+                                            decision about named people, not a moderation one.
+                                        </small>
+                                    </div>
+                                </form>
+                            </td>
+                            <td class="align-middle">
+                                <button type="submit" form="slip-sitewide-{{ slip.id }}"
+                                    class="btn btn-sm btn-outline-primary">Save</button>
+                                <form method="post" action="{{ url_for('admin.delete_slip', slip_id=slip.id) }}"
+                                    class="d-inline mb-0"
+                                    data-confirm="Delete slip {{ slip.name }}? This removes their account, profile, stream and uploaded videos. This cannot be undone."
+                                    onsubmit="return confirm(this.dataset.confirm);">
+                                    {{ csrf_input() }}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3"><small class="text-muted">No user-created slips yet.</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <hr>
+            <h5>Board moderators</h5>
+            <p class="small text-muted">Open a board, check every slip that should moderate it, then save. Unchecking a
+                slip removes its explicit assignment from that board.</p>
+            <div class="accordion" id="board-moderator-list">
+                {% for board in boards %}
+                <details class="border rounded mb-2">
+                    <summary class="px-3 py-2">
+                        <strong>{{ board.title }}</strong> <span class="text-muted">(/{{ board.name }}/)</span>
+                    </summary>
+                    <form method="post" action="{{ url_for('admin.update_board_moderators', board_id=board.id) }}"
+                        class="border-top p-3 mb-0">
+                        <div class="row">
+                            {% for slip in slips %}
+                            <div class="col-sm-6 col-lg-4 mb-2">
+                                <div class="form-check">
+                                    {% if board.owner_slip_id == slip.id %}
+                                    <input class="form-check-input" type="checkbox"
+                                        id="board-{{ board.id }}-slip-{{ slip.id }}" checked disabled>
+                                    <label class="form-check-label" for="board-{{ board.id }}-slip-{{ slip.id }}">
+                                        {{ slip.name }} <span class="badge badge-secondary">owner</span>
+                                    </label>
+                                    {% elif slip.is_mod %}
+                                    <input class="form-check-input" type="checkbox"
+                                        id="board-{{ board.id }}-slip-{{ slip.id }}" checked disabled>
+                                    <label class="form-check-label" for="board-{{ board.id }}-slip-{{ slip.id }}">
+                                        {{ slip.name }} <span class="badge badge-warning">sitewide</span>
+                                    </label>
+                                    {% else %}
+                                    <input class="form-check-input" type="checkbox" name="moderator-slip-ids"
+                                        value="{{ slip.id }}" id="board-{{ board.id }}-slip-{{ slip.id }}"
+                                        {% if board.id in slip.moderated_board_ids %}checked{% endif %}>
+                                    <label class="form-check-label" for="board-{{ board.id }}-slip-{{ slip.id }}">
+                                        {{ slip.name }}
+                                    </label>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="col"><small class="text-muted">No user-created slips are available.</small></div>
+                            {% endfor %}
+                        </div>
+                        <small class="form-text text-muted">Board owners and sitewide moderators are checked automatically
+                            and must be changed through ownership or sitewide permissions.</small>
+                        <button type="submit" class="btn btn-sm btn-outline-primary mt-2">Save board moderators</button>
+                    </form>
+                </details>
+                {% else %}
+                <small class="text-muted">No boards exist yet.</small>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="wordfilters">
+        <div class="card-body">
+            <h4 id="wordfilters">Website Wordfilters</h4>
+            <p class="text-muted">Sysop filters apply to new post bodies and subjects. Choose every current and future board, or select multiple specific boards.</p>
+            <form method="post" action="{{ url_for('admin.create_site_word_filter') }}" class="border rounded p-3 mb-3">
+                <div class="form-row">
+                    <div class="form-group col-md-5">
+                        <label for="sysop-wordfilter-pattern">Word or phrase</label>
+                        <input id="sysop-wordfilter-pattern" name="pattern" class="form-control" maxlength="128" required>
+                    </div>
+                    <div class="form-group col-md-5">
+                        <label for="sysop-wordfilter-replacement">Replace with</label>
+                        <input id="sysop-wordfilter-replacement" name="replacement" class="form-control" maxlength="512" placeholder="Leave blank to remove it">
+                    </div>
+                    <div class="form-group col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary btn-block">Create</button>
+                    </div>
+                </div>
+                <div class="form-group mb-2">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="scope" id="wordfilter-scope-all" value="all" checked>
+                        <label class="form-check-label" for="wordfilter-scope-all">All boards</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="scope" id="wordfilter-scope-specific" value="boards">
+                        <label class="form-check-label" for="wordfilter-scope-specific">Specific boards</label>
+                    </div>
+                </div>
+                <div class="border rounded p-2 mb-2" style="max-height:180px;overflow:auto;">
+                    <div class="row">
+                        {% for board in boards %}
+                        <div class="col-sm-6 col-lg-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="board-ids" value="{{ board.id }}" id="wordfilter-board-{{ board.id }}">
+                                <label class="form-check-label" for="wordfilter-board-{{ board.id }}">/{{ board.name }}/ — {{ board.title }}</label>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="col text-muted">No boards exist.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="sysop-wordfilter-whole" name="whole-word" value="true" checked>
+                    <label class="form-check-label" for="sysop-wordfilter-whole">Whole words only</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="sysop-wordfilter-case" name="case-sensitive" value="true">
+                    <label class="form-check-label" for="sysop-wordfilter-case">Case-sensitive</label>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <thead><tr><th>Match</th><th>Replacement</th><th>Scope</th><th>Options</th><th></th></tr></thead>
+                    <tbody>
+                        {% for word_filter in word_filters %}
+                        <tr>
+                            <td><code>{{ word_filter.pattern }}</code></td>
+                            <td>{% if word_filter.replacement %}<code>{{ word_filter.replacement }}</code>{% else %}<em class="text-muted">remove</em>{% endif %}</td>
+                            <td>
+                                {% if word_filter.is_global %}
+                                <span class="badge badge-danger">All boards</span>
+                                {% else %}
+                                {% for board_id in word_filter.board_ids %}<span class="badge badge-secondary">/{{ word_filter_board_names.get(board_id, 'deleted') }}/</span>{% endfor %}
+                                {% endif %}
+                                {% if not word_filter.created_by_sysop %}<span class="badge badge-light">board owner</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if word_filter.whole_word %}whole word{% else %}substring{% endif %}
+                                {% if word_filter.case_sensitive %}, case-sensitive{% endif %}
+                            </td>
+                            <td class="text-right">
+                                <form method="post" action="{{ url_for('admin.delete_site_word_filter', word_filter_id=word_filter.id) }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-muted">No wordfilters configured.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="upload-filetypes">
+        <div class="card-body">
+            <h4 id="upload-filetypes">Upload file types</h4>
+            <p class="text-muted">Control which file types can be uploaded. Enter MIME types separated by commas or
+                <code>|</code> (e.g. <code>video/mp4, video/webm</code>).</p>
+            <form method="post" action="{{ url_for('admin.save_upload_filetypes') }}">
+                <div class="form-group">
+                    <label for="video-allowed-mimetypes">Allowed <strong>video</strong> upload types</label>
+                    <input type="text" id="video-allowed-mimetypes" name="video-allowed-mimetypes"
+                           class="form-control" value="{{ video_allowed_mimetypes }}"
+                           placeholder="video/mp4, video/webm, video/ogg">
+                    <small class="form-text text-muted">Applies to the Videos section. Leave blank to allow any
+                        <code>video/*</code> file.</small>
+                </div>
+                <div class="form-group">
+                    <label for="board-default-mimetypes">Default <strong>board</strong> upload types (new boards)</label>
+                    <input type="text" id="board-default-mimetypes" name="board-default-mimetypes"
+                           class="form-control" value="{{ board_default_mimetypes }}"
+                           placeholder="image/jpeg|image/png|image/gif|image/webp|video/webm">
+                    <small class="form-text text-muted">The default allow-list new boards start with. Each board's own
+                        allowed types can still be changed in that board's settings.</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Save file types</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="board-inactivity">
+        <div class="card-body">
+            <h4 id="board-inactivity">Inactive board deletion</h4>
+            <p class="text-muted">
+                Hard limit on how many days a <strong>user-created</strong> board may go with no new post
+                before it is automatically deleted. Admin-created boards are never deleted this way.
+                Set to <code>0</code> to disable automatic deletion.
+            </p>
+            <form method="post" action="{{ url_for('admin.save_board_inactivity') }}" class="form-inline">
+                <label class="mr-2" for="board-inactivity-days">Delete after</label>
+                <input type="number" min="0" id="board-inactivity-days" name="board-inactivity-days"
+                       class="form-control mr-2" style="max-width:8rem;" value="{{ board_inactivity_days }}">
+                <span class="mr-3">days without a new post</span>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="video-retention">
+        <div class="card-body">
+            <h4 id="video-retention">Unwatched video pruning</h4>
+            <p class="text-muted">
+                Videos not watched for this many days are automatically deleted to reclaim server space.
+                Opening a video's watch page resets its timer. Set to <code>0</code> to disable pruning.
+            </p>
+            <form method="post" action="{{ url_for('admin.save_video_retention') }}" class="form-inline">
+                <label class="mr-2" for="video-inactivity-days">Prune after</label>
+                <input type="number" min="0" id="video-inactivity-days" name="video-inactivity-days"
+                       class="form-control mr-2" style="max-width:8rem;" value="{{ video_inactivity_days }}">
+                <span class="mr-3">days without being watched</span>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="overlay-image">
+        <div class="card-body">
+            <h4 id="overlay-image" class="mb-1">Replacement image for blocked media</h4>
+            <small class="text-muted d-block mb-3">
+                One image, used in two places:
+            </small>
+            <ul class="small text-muted mb-3">
+                <li><strong>Automatically</strong>, for every image the NSFW filter
+                    rejects &mdash; on upload, on import, and on the periodic re-scan.
+                    Those are replaced for everyone, since the original usually was
+                    never stored at all.</li>
+                <li><strong>Manually</strong>, for media you overlay-block: the file is
+                    <strong>kept</strong> and stays visible to anyone signed into a slip
+                    account, while everyone else sees this image.</li>
+            </ul>
+            <small class="text-muted d-block mb-3">
+                Both run in the serving routes &mdash; thumbnail, full file, hover
+                preview and image proxy &mdash; so the real URL is not fetchable by
+                guessing it or following an old link. Remote scraped images are routed
+                through the proxy for the same reason.
+                {% if overlay_summary and overlay_summary.blocked_count %}
+                <br><strong>{{ overlay_summary.blocked_count }}</strong> file(s) currently blocked.
+                {% else %}
+                <br>Nothing is currently overlay-blocked.
+                {% endif %}
+            </small>
+
+            {% if overlay_summary and overlay_summary.thumb_url %}
+            <div class="d-flex align-items-center mb-3">
+                <img src="{{ overlay_summary.thumb_url }}" alt="Overlay image"
+                     style="max-height:96px;border:1px solid var(--sc-border,#444);border-radius:4px;"
+                     class="mr-3">
+                <div>
+                    <div class="small text-muted">Currently in use (media #{{ overlay_summary.media_id }}).</div>
+                    <form method="POST" action="{{ url_for('admin.clear_overlay_image') }}" class="mt-1"
+                          data-confirm="Remove the overlay image? Blocked media will fall back to a generated placeholder — it will NOT revert to showing the real image."
+                          onsubmit="return confirm(this.dataset.confirm);">
+                        <button class="btn btn-sm btn-outline-danger" type="submit">Remove overlay image</button>
+                    </form>
+                </div>
+            </div>
+            {% elif overlay_summary and overlay_summary.missing %}
+            <div class="alert alert-warning py-2">
+                The configured overlay image (media #{{ overlay_summary.media_id }}) no longer
+                exists. Blocked media falls back to a generated placeholder until you upload a new one.
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('admin.save_overlay_image') }}"
+                  enctype="multipart/form-data">
+                <div class="form-row align-items-end">
+                    <div class="col-md-7">
+                        <label class="small text-muted mb-1" for="overlay-image-file">
+                            Overlay image (PNG, JPEG, GIF or WebP)
+                        </label>
+                        <input type="file" name="overlay-image" id="overlay-image-file"
+                               accept="image/*" class="form-control-file form-control-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-primary btn-sm" type="submit">Upload overlay</button>
+                    </div>
+                </div>
+                <small class="form-text text-muted">
+                    Until one is uploaded, blocked media shows a generated
+                    &ldquo;BLOCKED&rdquo; placeholder &mdash; blocking never falls back to
+                    showing the original.
+                </small>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="nsfw-filter">
+        <div class="card-body">
+            <h4 id="nsfw-filter">NSFW image filter</h4>
+            <p class="text-muted mb-2">
+                Every uploaded image is scored 0&ndash;1 by
+                <a href="https://github.com/yahoo/open_nsfw" rel="nofollow noopener">Yahoo open_nsfw</a>
+                running in the <code>nsfw-classifier</code> sidecar, and rejected at or above the
+                threshold. Boards carry their own on/off toggle &mdash; user-created boards are
+                always filtered, only sysop-created boards can opt out.
+            </p>
+            {% if not nsfw_configured %}
+            <div class="alert alert-warning py-2">
+                <strong>Classifier not configured.</strong>
+                Set <code>NSFW_CLASSIFIER_URL=http://nsfw-classifier:8000</code> and start the
+                container. Until then images are stored unscored and nothing is rejected.
+            </div>
+            {% endif %}
+            <form method="post" action="{{ url_for('admin.save_nsfw_filter') }}">
+                <div class="form-row align-items-end">
+                    <div class="col-md-3">
+                        <label class="small text-muted mb-1" for="nsfw-threshold">
+                            Reject at score &ge;
+                        </label>
+                        <input type="number" step="0.01" min="0" max="1" id="nsfw-threshold"
+                               name="nsfw-threshold" class="form-control"
+                               value="{{ "%.2f"|format(nsfw_threshold) }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small text-muted mb-1" for="nsfw-timeout">
+                            Classifier timeout (s)
+                        </label>
+                        <input type="number" step="0.5" min="0.5" max="60" id="nsfw-timeout"
+                               name="nsfw-timeout" class="form-control"
+                               value="{{ "%.1f"|format(nsfw_timeout) }}">
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="nsfw-enabled"
+                                   name="nsfw-enabled" value="1" {{ "checked" if nsfw_enabled else "" }}>
+                            <label class="form-check-label" for="nsfw-enabled">
+                                Filter enabled site-wide
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="nsfw-fail-closed"
+                                   name="nsfw-fail-closed" value="1"
+                                   {{ "checked" if nsfw_fail_closed else "" }}>
+                            <label class="form-check-label" for="nsfw-fail-closed">
+                                Block uploads when the classifier is down
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="nsfw-scan-video"
+                                   name="nsfw-scan-video" value="1"
+                                   {{ "checked" if nsfw_scan_video else "" }}>
+                            <label class="form-check-label" for="nsfw-scan-video">
+                                Scan video by extracting a frame
+                            </label>
+                            <small class="form-text text-muted">
+                                open_nsfw only reads still images, so video is checked by
+                                pulling one frame through ffmpeg first. Without this, video
+                                is stored unscored &mdash; scraped video in particular then
+                                bypasses the filter entirely. A video whose frame cannot be
+                                decoded is allowed through with a warning rather than
+                                blocked, so a codec problem cannot stop all video.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn btn-outline-secondary ml-2"
+                            onclick="nsfwSelftest()">Test classifier</button>
+                    <span id="nsfw-selftest-result" class="ml-2 small text-muted"></span>
+                </div>
+            </form>
+            <small class="text-muted d-block mt-2">
+                Lower the threshold to catch more (and produce more false positives); raise it to be
+                permissive. <strong>0.80 is a starting point, not a tuned value</strong> &mdash; check
+                it against your own material. Leaving "block uploads when the classifier is down"
+                off means a sidecar outage lets images through unscored rather than halting uploads.
+            </small>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="warrant-canary">
+        <div class="card-body">
+            <h4 id="warrant-canary">Warrant Canary</h4>
+            <p class="text-muted">Homepage trust notice — entirely data-driven from the fields below. Uncheck <strong>Enabled</strong> to hide it completely.</p>
+            <form method="post" action="{{ url_for('admin.save_warrant_canary') }}">
+                <div class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" id="wc_enabled" name="wc_enabled" {% if warrant_canary.enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="wc_enabled">Enabled (show on homepage)</label>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label for="wc_status">Status</label>
+                        <select class="form-control" id="wc_status" name="wc_status">
+                            {% for s in warrant_canary_statuses %}<option value="{{ s }}" {% if warrant_canary.status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+                        </select>
+                        <small class="form-text text-muted">active = green/yellow · warning = amber · inactive = gray</small>
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label for="wc_active_label">Active badge label</label>
+                        <input type="text" class="form-control" id="wc_active_label" name="wc_active_label" maxlength="32" value="{{ warrant_canary.active_label }}" placeholder="Active / Verified">
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label for="wc_theme">Theme</label>
+                        <select class="form-control" id="wc_theme" name="wc_theme">
+                            {% for t in warrant_canary_themes %}<option value="{{ t }}" {% if warrant_canary.theme == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+                        </select>
+                        <small class="form-text text-muted">auto = match site theme</small>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="wc_title">Title</label>
+                    <input type="text" class="form-control" id="wc_title" name="wc_title" maxlength="120" value="{{ warrant_canary.title }}">
+                </div>
+                <div class="form-group">
+                    <label for="wc_statement">Statement</label>
+                    <textarea class="form-control" id="wc_statement" name="wc_statement" rows="4">{{ warrant_canary.statement }}</textarea>
+                    <small class="form-text text-muted">Use <code>{lastUpdated}</code> and <code>{nextUpdate}</code> to insert the dates. Line breaks are preserved.</small>
+                </div>
+                <div class="form-row align-items-end">
+                    <div class="form-group col-md-4">
+                        <label for="wc_last_updated">Last Updated</label>
+                        <input type="date" class="form-control" id="wc_last_updated" name="wc_last_updated" value="{{ warrant_canary.last_updated }}">
+                    </div>
+                    <div class="form-group col-md-4">
+                        <label for="wc_next_update">Next Scheduled Verification</label>
+                        <input type="date" class="form-control" id="wc_next_update" name="wc_next_update" value="{{ warrant_canary.next_update }}">
+                    </div>
+                    <div class="form-group col-md-4">
+                        <div class="form-check"><input type="checkbox" class="form-check-input" id="wc_show_next_update" name="wc_show_next_update" {% if warrant_canary.show_next_update %}checked{% endif %}><label class="form-check-label" for="wc_show_next_update">Show next verification</label></div>
+                        <div class="form-check"><input type="checkbox" class="form-check-input" id="wc_show_history" name="wc_show_history" {% if warrant_canary.show_history %}checked{% endif %}><label class="form-check-label" for="wc_show_history">Show verification timeline</label></div>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Save canary</button>
+            </form>
+            <hr>
+            <h6 class="mb-2">Verification timeline</h6>
+            <form method="post" action="{{ url_for('admin.add_warrant_canary_history') }}" class="form-inline mb-2">
+                <input type="date" name="date" class="form-control form-control-sm mr-2 mb-2" required>
+                <input type="text" name="status" class="form-control form-control-sm mr-2 mb-2" maxlength="64" placeholder="Verified" value="Verified" required>
+                <button type="submit" class="btn btn-sm btn-secondary mb-2">Add entry</button>
+            </form>
+            {% if warrant_canary.history %}
+            <ul class="list-unstyled mb-0">
+                {% for h in warrant_canary.history %}
+                <li class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small">{{ h.date_display or h.date }} &mdash; {{ h.status }}</span>
+                    <form method="post" action="{{ url_for('admin.delete_warrant_canary_history', entry_id=h.id) }}" onsubmit="return confirm('Remove this entry?');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card mb-4" id="captcha">
+        <div class="card-body">
+            <h4 id="captcha">CAPTCHA challenges</h4>
+            <p class="text-muted">
+                Each challenge is a prompt plus a pool of images. When a user posts, {{ captcha_questions_per_challenge }}
+                images are drawn at random from one active challenge; they must select exactly the <strong>correct</strong>
+                images. A challenge needs at least {{ captcha_questions_per_challenge }} images total to be usable.
+                If no challenges are active, the built-in defaults are used so posting is never locked out.
+            </p>
+
+            <form method="post" action="{{ url_for('admin.create_captcha_challenge') }}" class="border rounded p-3 mb-4">
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label for="captcha-category">Category slug</label>
+                        <input id="captcha-category" name="category" class="form-control" maxlength="64"
+                               placeholder="e.g. cats" pattern="[a-z0-9][a-z0-9-]*" required>
+                        <small class="form-text text-muted">Lowercase letters, numbers, hyphens. Must be unique.</small>
+                    </div>
+                    <div class="form-group col-md-8">
+                        <label for="captcha-title">Prompt / title</label>
+                        <input id="captcha-title" name="title" class="form-control" maxlength="255"
+                               placeholder="Select images with &lt;b&gt;cats&lt;/b&gt;" required>
+                        <small class="form-text text-muted">Shown above the grid. Simple inline HTML like &lt;b&gt; is allowed.</small>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-6">
+                        <label for="captcha-correct">Correct image URLs</label>
+                        <textarea id="captcha-correct" name="correct-images" class="form-control" rows="6"
+                                  placeholder="One image URL per line — these SHOULD be selected"></textarea>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label for="captcha-decoy">Decoy image URLs</label>
+                        <textarea id="captcha-decoy" name="decoy-images" class="form-control" rows="6"
+                                  placeholder="One image URL per line — these should NOT be selected"></textarea>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Add challenge</button>
+            </form>
+
+            {% for challenge in captcha_challenges %}
+            {% set usable = (challenge.questions|length) >= captcha_questions_per_challenge %}
+            <div class="border rounded p-3 mb-3">
+                <div class="d-flex justify-content-between align-items-start flex-wrap">
+                    <div>
+                        <h5 class="mb-1">
+                            {{ challenge.title | safe }}
+                            {% if challenge.is_active %}<span class="badge badge-success">active</span>
+                            {% else %}<span class="badge badge-secondary">disabled</span>{% endif %}
+                            {% if not usable %}<span class="badge badge-warning" title="Needs at least {{ captcha_questions_per_challenge }} images">too few images</span>{% endif %}
+                        </h5>
+                        <small class="text-muted">
+                            <code>{{ challenge.category }}</code> —
+                            {{ challenge.correct_count }} correct, {{ challenge.decoy_count }} decoy
+                            ({{ challenge.questions|length }} total)
+                        </small>
+                    </div>
+                    <div class="text-right">
+                        <form method="post" action="{{ url_for('admin.toggle_captcha_challenge', challenge_id=challenge.id) }}" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                {% if challenge.is_active %}Disable{% else %}Enable{% endif %}
+                            </button>
+                        </form>
+                        <form method="post" action="{{ url_for('admin.delete_captcha_challenge', challenge_id=challenge.id) }}" class="d-inline"
+                              data-confirm="Delete challenge {{ challenge.category }} and all its images?"
+                              onsubmit="return confirm(this.dataset.confirm);">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="border rounded mt-2 p-2" style="max-height:260px;overflow:auto;">
+                    <div class="row no-gutters">
+                        {% for question in challenge.questions %}
+                        <div class="col-6 col-md-3 col-lg-2 p-1 text-center">
+                            <div style="position:relative;">
+                                <img src="{{ question.image_url }}" alt="" loading="lazy"
+                                     style="width:100%;height:70px;object-fit:cover;border-radius:.25rem;border:2px solid {% if question.answer %}#28a745{% else %}#dc3545{% endif %};">
+                                <form method="post" action="{{ url_for('admin.delete_captcha_question', question_id=question.id) }}"
+                                      style="position:absolute;top:2px;right:2px;margin:0;"
+                                      onsubmit="return confirm('Remove this image from the challenge?');">
+                                    <button type="submit" class="btn btn-danger btn-sm py-0 px-1" title="Remove this image"
+                                            style="line-height:1;border-radius:.2rem;">&times;</button>
+                                </form>
+                            </div>
+                            <span class="badge badge-{% if question.answer %}success{% else %}danger{% endif %} d-block mt-1">
+                                {% if question.answer %}correct{% else %}decoy{% endif %}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <form method="post" action="{{ url_for('admin.add_captcha_questions', challenge_id=challenge.id) }}" class="mt-2">
+                    <div class="form-row">
+                        <div class="form-group col-md-6 mb-1">
+                            <label class="small mb-1" for="captcha-add-correct-{{ challenge.id }}">Add correct image URLs</label>
+                            <textarea id="captcha-add-correct-{{ challenge.id }}" name="correct-images" class="form-control form-control-sm" rows="2"
+                                      placeholder="One URL per line — should be selected"></textarea>
+                        </div>
+                        <div class="form-group col-md-6 mb-1">
+                            <label class="small mb-1" for="captcha-add-decoy-{{ challenge.id }}">Add decoy image URLs</label>
+                            <textarea id="captcha-add-decoy-{{ challenge.id }}" name="decoy-images" class="form-control form-control-sm" rows="2"
+                                      placeholder="One URL per line — should NOT be selected"></textarea>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Add images to /{{ challenge.category }}/</button>
+                </form>
+            </div>
+            {% else %}
+            <p class="text-muted">No CAPTCHA challenges configured. The built-in defaults are in use.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h4 id="boards">Boards</h4>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>Board</th>
+                            <th>Mode</th>
+                            <th>Visibility</th>
+                            <th>Sources</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for board in boards %}
+                        <tr>
+                            <td>
+                                <div><strong>{{ board.title }}</strong></div>
+                                <small class="text-muted">/{{ board.name }}/</small>
+                                {% if board.geo_parent %}
+                                <div><small class="text-muted">child of /{{ board.geo_parent.name }}/</small></div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if board.board_type == "geo-root" %}
+                                <span class="badge badge-info">nearby root</span>
+                                <div><small class="text-muted">{{ board.geo_scope_label }}</small></div>
+                                {% elif board.board_type == "geo-generated" %}
+                                <span class="badge badge-secondary">generated nearby</span>
+                                <div><small class="text-muted">{{ board.geo_label or board.geo_scope_label }}</small>
+                                </div>
+                                {% else %}
+                                <span class="badge badge-light">standard</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if board.board_type == "geo-generated" %}
+                                local-only
+                                {% elif board.board_type == "geo-root" %}
+                                location-gated
+                                {% elif board.is_private %}
+                                private
+                                {% else %}
+                                public
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if board.sources %}
+                                <pre class="mb-0"><small>{{ format_source_config(board.sources) }}</small></pre>
+                                {% else %}
+                                <small class="text-muted">none</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                Edit
+                                Open
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h4 id="bans">Sitewide Bans</h4>
+            <small class="text-muted d-block mb-3">Board-scoped bans are managed from each board's moderation
+                page.</small>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>IP</th>
+                            <th>Reason</th>
+                            <th>Created</th>
+                            <th>Expires</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ban in bans %}
+                        <tr>
+                            <td><code>{{ ban.ip_address }}</code></td>
+                            <td>{{ ban.reason or "no reason" }}</td>
+                            <td>{{ ban.created_at.strftime("%Y-%m-%d %H:%M UTC") }}</td>
+                            <td>{% if ban.is_permanent %}<span class="badge badge-secondary">Permanent</span>{% else %}<small>{{ ban.expires_at.strftime("%Y-%m-%d %H:%M UTC") }}</small>{% endif %}</td>
+                            <td>
+                                <form method="post"
+                                    action="{{ url_for('admin.delete_ban', ip_address=ban.ip_address) }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Unban</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5"><small class="text-muted">No active bans.</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="shadowbans">
+        <div class="card-body">
+            <h4 id="shadowbans">Shadowbans</h4>
+            <small class="text-muted d-block mb-3">Shadowbanned posters can still post, stream, and upload, but
+                their content is hidden from everyone else (they still see it themselves). Apply a shadowban from any
+                post's moderation menu. Both the poster's IP and account are matched.</small>
+            <form method="post" action="{{ url_for('admin.save_content_retention') }}" class="form-inline mb-3" id="content-retention">
+                <label class="mr-2 mb-2">Delete shadowbanned content after</label>
+                <input type="number" min="0" name="shadowban-delete-days" value="{{ shadowban_delete_days }}" class="form-control form-control-sm mr-2 mb-2" style="width:5rem;">
+                <label class="mr-3 mb-2">days</label>
+                <label class="mr-2 mb-2">Flush threads unviewed for</label>
+                <input type="number" min="0" name="thread-unviewed-days" value="{{ thread_unviewed_days }}" class="form-control form-control-sm mr-2 mb-2" style="width:5rem;">
+                <label class="mr-3 mb-2">days</label>
+                <label class="mr-2 mb-2">Retire dead scraped threads after</label>
+                <input type="number" min="0" name="scraped-retire-days" value="{{ scraped_retire_days }}" class="form-control form-control-sm mr-2 mb-2" style="width:5rem;">
+                <label class="mr-3 mb-2">days idle, or</label>
+                <input type="number" min="0" name="scraped-retire-failures" value="{{ scraped_retire_failures }}" class="form-control form-control-sm mr-2 mb-2" style="width:5rem;">
+                <label class="mr-3 mb-2">failed fetches</label>
+                <button type="submit" class="btn btn-sm btn-primary mb-2">Save</button>
+                <small class="form-text text-muted w-100">
+                    0 disables each. Shadowbanned posts/videos are hidden immediately and permanently deleted once
+                    older than the limit; threads with no direct view (and no new activity) past the limit are removed.
+                    <strong>Scraped source threads stop being monitored</strong> when they go idle past the day limit,
+                    or immediately once the crawler sees a <strong>404</strong> — plus after the given number of
+                    consecutive failed fetches. Errors that mean the <em>site</em> is blocking us (403/429/Cloudflare)
+                    never retire a thread, so a site pushing back does not cost you its sources.
+                    <strong>Retiring only stops scraping &mdash; already-imported threads and posts are kept.</strong>
+                </small>
+            </form>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped">
+                    <thead>
+                        <tr>
+                            <th>IP</th>
+                            <th>Account</th>
+                            <th>Reason</th>
+                            <th>Created</th>
+                            <th>Expires</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sb in shadowbans %}
+                        <tr class="{{ '' if sb.is_active else 'text-muted' }}">
+                            <td><code>{{ sb.ip_address or "—" }}</code></td>
+                            <td>{{ sb.slip_id or "—" }}</td>
+                            <td>{{ sb.reason or "no reason" }}{% if not sb.is_active %} <span class="badge badge-light">expired</span>{% endif %}</td>
+                            <td>{{ sb.created_at.strftime("%Y-%m-%d %H:%M UTC") }}</td>
+                            <td>{% if sb.is_permanent %}<span class="badge badge-secondary">Permanent</span>{% else %}<small>{{ sb.expires_at.strftime("%Y-%m-%d %H:%M UTC") }}</small>{% endif %}</td>
+                            <td>
+                                <form method="post" action="{{ url_for('admin.delete_shadowban', shadowban_id=sb.id) }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Lift</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6"><small class="text-muted">No shadowbans.</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4" id="blocked-media-hashes">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <h4 id="blocked-media" class="mb-1">Blocked Media Hashes</h4>
+                    <small class="text-muted">Store SHA-256 hashes for media that must never be uploaded, mirrored,
+                        proxied, or re-served. Matching attempts are logged with a <code>FAIL2BAN</code> prefix.</small>
+                </div>
+            </div>
+
+            <form method="post" action="{{ url_for('admin.add_blocked_media_hash') }}" class="mb-4">
+                <div class="form-row">
+                    <div class="col-lg-5 mb-2">
+                        <input type="text" name="sha256" class="form-control form-control-sm"
+                            placeholder="64-character SHA-256 hash" required>
+                    </div>
+                    <div class="col-lg-3 mb-2">
+                        <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason">
+                    </div>
+                    <div class="col-lg-3 mb-2">
+                        <input type="url" name="source_url" class="form-control form-control-sm"
+                            placeholder="Optional source URL">
+                    </div>
+                    <div class="col-lg-1 mb-2">
+                        <button type="submit" class="btn btn-sm btn-outline-danger w-100">Block</button>
+                    </div>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>SHA-256</th>
+                            <th>Reason</th>
+                            <th>Source URL</th>
+                            <th>Created</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for blocked in blocked_media_hashes %}
+                        <tr>
+                            <td><code style="font-size:0.72rem;">{{ blocked.sha256 }}</code></td>
+                            <td>{{ blocked.reason or "no reason" }}</td>
+                            <td>
+                                {% if blocked.source_url %}
+                                <a href="{{ blocked.source_url }}" target="_blank" rel="noopener noreferrer"><small>{{
+                                        blocked.source_url }}</small></a>
+                                {% else %}
+                                <small class="text-muted">n/a</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ blocked.created_at.strftime("%Y-%m-%d %H:%M UTC") }}</td>
+                            <td>
+                                <form method="post"
+                                    action="{{ url_for('admin.delete_blocked_media_hash', sha256=blocked.sha256) }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Unblock</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5"><small class="text-muted">No blocked media hashes yet.</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    // =====================================================================
+    // Board metrics charts
+    // (scraper analytics + the reddit panel now live on /admin/scrapers)
+    // =====================================================================
+    const _boardMetricCharts = {};
+    const BOARD_METRIC_CANVAS_IDS = [
+        "board-traffic-pie-chart",
+        "board-time-pie-chart",
+        "board-traffic-line-chart",
+        "board-popularity-chart",
+    ];
+
+    function installMiniChartFallback() {
+        if (typeof window === "undefined") {
+            return null;
+        }
+        if (typeof window.Chart === "function") {
+            return window.Chart;
+        }
+        if (window.Chart && typeof window.Chart.Chart === "function") {
+            window.Chart = window.Chart.Chart;
+            return window.Chart;
+        }
+        if (window.Chart && typeof window.Chart.default === "function") {
+            window.Chart = window.Chart.default;
+            return window.Chart;
+        }
+
+        function trimLabel(value, maxLength) {
+            const text = String(value || "");
+            if (text.length <= maxLength) return text;
+            return text.slice(0, Math.max(0, maxLength - 1)).trim() + "…";
+        }
+
+        function niceStep(maxValue) {
+            const safeValue = Math.max(1, Number(maxValue || 1));
+            const roughStep = safeValue / 4;
+            const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
+            const normalized = roughStep / magnitude;
+            let step = magnitude;
+            if (normalized > 5) step = 10 * magnitude;
+            else if (normalized > 2) step = 5 * magnitude;
+            else if (normalized > 1) step = 2 * magnitude;
+            return step;
+        }
+
+        function niceMax(maxValue) {
+            const step = niceStep(maxValue);
+            return Math.max(step, Math.ceil((maxValue || 0) / step) * step);
+        }
+
+        function collectLegendItems(config) {
+            const data = config && config.data ? config.data : {};
+            const datasets = data.datasets || [];
+            if (config.type === "doughnut") {
+                const colors = datasets[0] ? datasets[0].backgroundColor || [] : [];
+                return (data.labels || []).map((label, index) => ({
+                    label: trimLabel(label, 22),
+                    color: Array.isArray(colors) ? colors[index] : colors || "#64748b"
+                }));
+            }
+            return datasets
+                .filter(dataset => dataset && dataset.label)
+                .map(dataset => ({
+                    label: trimLabel(dataset.label, 22),
+                    color: dataset.borderColor || dataset.backgroundColor || "#64748b"
+                }));
+        }
+
+        function measureLegend(ctx, items, maxWidth) {
+            if (!items.length) {
+                return { lines: [], height: 0 };
+            }
+            const lines = [];
+            let currentLine = [];
+            let currentWidth = 0;
+            items.forEach(item => {
+                const itemWidth = 18 + ctx.measureText(item.label).width + 14;
+                if (currentLine.length && currentWidth + itemWidth > maxWidth) {
+                    lines.push(currentLine);
+                    currentLine = [];
+                    currentWidth = 0;
+                }
+                currentLine.push(item);
+                currentWidth += itemWidth;
+            });
+            if (currentLine.length) {
+                lines.push(currentLine);
+            }
+            return {
+                lines,
+                height: lines.length * 18
+            };
+        }
+
+        function drawLegend(ctx, items, x, y, width) {
+            const layout = measureLegend(ctx, items, width);
+            ctx.save();
+            ctx.font = "12px sans-serif";
+            ctx.textBaseline = "top";
+            ctx.fillStyle = "#475569";
+            layout.lines.forEach((line, lineIndex) => {
+                let cursorX = x;
+                const baselineY = y + (lineIndex * 18);
+                line.forEach(item => {
+                    ctx.fillStyle = item.color;
+                    ctx.fillRect(cursorX, baselineY + 3, 10, 10);
+                    ctx.strokeStyle = "rgba(15, 23, 42, 0.12)";
+                    ctx.strokeRect(cursorX, baselineY + 3, 10, 10);
+                    ctx.fillStyle = "#475569";
+                    ctx.fillText(item.label, cursorX + 14, baselineY);
+                    cursorX += 18 + ctx.measureText(item.label).width + 14;
+                });
+            });
+            ctx.restore();
+            return layout.height;
+        }
+
+        function drawNoData(ctx, width, height) {
+            ctx.save();
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "13px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("No chart data yet.", width / 2, height / 2);
+            ctx.restore();
+        }
+
+        function drawDoughnutChart(ctx, width, height, config) {
+            const data = config.data || {};
+            const dataset = (data.datasets || [])[0] || {};
+            const values = (dataset.data || []).map(value => Math.max(0, Number(value || 0)));
+            const total = values.reduce((sum, value) => sum + value, 0);
+            if (!total) {
+                drawNoData(ctx, width, height);
+                return;
+            }
+
+            ctx.save();
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = "12px sans-serif";
+
+            const legendItems = collectLegendItems(config);
+            const legendHeight = drawLegend(ctx, legendItems, 10, height - 46, width - 20);
+            const chartHeight = Math.max(100, height - legendHeight - 18);
+            const centerX = width / 2;
+            const centerY = Math.max(54, chartHeight / 2);
+            const outerRadius = Math.min(width * 0.28, chartHeight * 0.38);
+            const innerRadius = outerRadius * 0.58;
+
+            let startAngle = -Math.PI / 2;
+            values.forEach((value, index) => {
+                const angle = (value / total) * Math.PI * 2;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.fillStyle = Array.isArray(dataset.backgroundColor)
+                    ? (dataset.backgroundColor[index] || "#64748b")
+                    : (dataset.backgroundColor || "#64748b");
+                ctx.arc(centerX, centerY, outerRadius, startAngle, startAngle + angle);
+                ctx.arc(centerX, centerY, innerRadius, startAngle + angle, startAngle, true);
+                ctx.closePath();
+                ctx.fill();
+                startAngle += angle;
+            });
+
+            ctx.fillStyle = "#0f172a";
+            ctx.font = "600 18px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(String(total), centerX, centerY - 2);
+            ctx.fillStyle = "#64748b";
+            ctx.font = "12px sans-serif";
+            ctx.fillText("Total", centerX, centerY + 16);
+            ctx.restore();
+        }
+
+        function drawLineChart(ctx, width, height, config) {
+            const data = config.data || {};
+            const labels = data.labels || [];
+            const datasets = (data.datasets || []).filter(dataset => Array.isArray(dataset.data));
+            const allValues = datasets.flatMap(dataset => dataset.data).map(value => Number(value || 0));
+            const maxValue = niceMax(Math.max(1, ...allValues, 0));
+            if (!labels.length || !datasets.length) {
+                drawNoData(ctx, width, height);
+                return;
+            }
+
+            ctx.save();
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = "12px sans-serif";
+
+            const legendHeight = drawLegend(ctx, collectLegendItems(config), 10, 8, width - 20);
+            const margin = { top: 12 + legendHeight, right: 16, bottom: 30, left: 42 };
+            const chartWidth = Math.max(80, width - margin.left - margin.right);
+            const chartHeight = Math.max(60, height - margin.top - margin.bottom);
+            const originX = margin.left;
+            const originY = margin.top + chartHeight;
+
+            ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+            ctx.lineWidth = 1;
+            for (let tickIndex = 0; tickIndex <= 4; tickIndex += 1) {
+                const y = margin.top + (chartHeight * (tickIndex / 4));
+                ctx.beginPath();
+                ctx.moveTo(originX, y);
+                ctx.lineTo(originX + chartWidth, y);
+                ctx.stroke();
+                const value = Math.round(maxValue - ((maxValue / 4) * tickIndex));
+                ctx.fillStyle = "#94a3b8";
+                ctx.textAlign = "right";
+                ctx.textBaseline = "middle";
+                ctx.fillText(String(value), originX - 8, y);
+            }
+
+            ctx.strokeStyle = "rgba(100, 116, 139, 0.55)";
+            ctx.beginPath();
+            ctx.moveTo(originX, margin.top);
+            ctx.lineTo(originX, originY);
+            ctx.lineTo(originX + chartWidth, originY);
+            ctx.stroke();
+
+            const labelStep = Math.max(1, Math.ceil(labels.length / 5));
+            ctx.fillStyle = "#94a3b8";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            labels.forEach((label, index) => {
+                if (index % labelStep !== 0 && index !== labels.length - 1) return;
+                const x = labels.length === 1
+                    ? originX + (chartWidth / 2)
+                    : originX + ((chartWidth * index) / Math.max(1, labels.length - 1));
+                ctx.fillText(trimLabel(String(label).slice(5), 8), x, originY + 6);
+            });
+
+            datasets.forEach(dataset => {
+                ctx.strokeStyle = dataset.borderColor || "#2563eb";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                dataset.data.forEach((value, index) => {
+                    const x = labels.length === 1
+                        ? originX + (chartWidth / 2)
+                        : originX + ((chartWidth * index) / Math.max(1, labels.length - 1));
+                    const y = originY - ((Number(value || 0) / maxValue) * chartHeight);
+                    if (index === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+
+                ctx.fillStyle = dataset.borderColor || "#2563eb";
+                dataset.data.forEach((value, index) => {
+                    const x = labels.length === 1
+                        ? originX + (chartWidth / 2)
+                        : originX + ((chartWidth * index) / Math.max(1, labels.length - 1));
+                    const y = originY - ((Number(value || 0) / maxValue) * chartHeight);
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            });
+
+            ctx.restore();
+        }
+
+        function drawHorizontalBarChart(ctx, width, height, config) {
+            const data = config.data || {};
+            const labels = data.labels || [];
+            const dataset = (data.datasets || [])[0] || {};
+            const values = (dataset.data || []).map(value => Number(value || 0));
+            const maxValue = niceMax(Math.max(1, ...values, 0));
+            if (!labels.length || !values.length) {
+                drawNoData(ctx, width, height);
+                return;
+            }
+
+            ctx.save();
+            ctx.clearRect(0, 0, width, height);
+            ctx.font = "12px sans-serif";
+
+            const margin = { top: 10, right: 16, bottom: 28, left: Math.min(190, Math.max(96, width * 0.28)) };
+            const chartWidth = Math.max(80, width - margin.left - margin.right);
+            const chartHeight = Math.max(60, height - margin.top - margin.bottom);
+            const originX = margin.left;
+            const originY = margin.top + chartHeight;
+            const rowHeight = chartHeight / labels.length;
+            const barHeight = Math.min(20, rowHeight * 0.56);
+
+            ctx.strokeStyle = "rgba(148, 163, 184, 0.35)";
+            ctx.lineWidth = 1;
+            for (let tickIndex = 0; tickIndex <= 4; tickIndex += 1) {
+                const x = originX + (chartWidth * (tickIndex / 4));
+                ctx.beginPath();
+                ctx.moveTo(x, margin.top);
+                ctx.lineTo(x, originY);
+                ctx.stroke();
+                ctx.fillStyle = "#94a3b8";
+                ctx.textAlign = tickIndex === 4 ? "right" : "center";
+                ctx.textBaseline = "top";
+                ctx.fillText(String(Math.round((maxValue / 4) * tickIndex)), x, originY + 6);
+            }
+
+            labels.forEach((label, index) => {
+                const yCenter = margin.top + (rowHeight * index) + (rowHeight / 2);
+                const barY = yCenter - (barHeight / 2);
+                const barWidth = (Math.max(0, values[index]) / maxValue) * chartWidth;
+                const fillColor = Array.isArray(dataset.backgroundColor)
+                    ? (dataset.backgroundColor[index] || "#93c5fd")
+                    : (dataset.backgroundColor || "#93c5fd");
+                const strokeColor = Array.isArray(dataset.borderColor)
+                    ? (dataset.borderColor[index] || "#2563eb")
+                    : (dataset.borderColor || "#2563eb");
+
+                ctx.fillStyle = "#334155";
+                ctx.textAlign = "right";
+                ctx.textBaseline = "middle";
+                ctx.fillText(trimLabel(label, 22), originX - 10, yCenter);
+
+                ctx.fillStyle = fillColor;
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = 1.2;
+                ctx.fillRect(originX, barY, barWidth, barHeight);
+                ctx.strokeRect(originX, barY, barWidth, barHeight);
+            });
+
+            ctx.restore();
+        }
+
+        class MiniChart {
+            constructor(canvas, config) {
+                this.canvas = canvas;
+                this.ctx = canvas && canvas.getContext ? canvas.getContext("2d") : null;
+                this.config = config || {};
+                this._destroyed = false;
+                this._render = this.render.bind(this);
+                if (typeof window !== "undefined") {
+                    window.addEventListener("resize", this._render);
+                    if (typeof window.ResizeObserver === "function" && canvas && canvas.parentElement) {
+                        this._observer = new window.ResizeObserver(this._render);
+                        this._observer.observe(canvas.parentElement);
+                    }
+                }
+                this.render();
+            }
+
+            destroy() {
+                this._destroyed = true;
+                if (typeof window !== "undefined") {
+                    window.removeEventListener("resize", this._render);
+                }
+                if (this._observer) {
+                    this._observer.disconnect();
+                }
+                if (this.ctx && this.canvas) {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                }
+            }
+
+            render() {
+                if (this._destroyed || !this.canvas || !this.ctx) {
+                    return;
+                }
+                const parentRect = this.canvas.parentElement
+                    ? this.canvas.parentElement.getBoundingClientRect()
+                    : this.canvas.getBoundingClientRect();
+                const displayWidth = Math.max(260, Math.floor(parentRect.width || this.canvas.clientWidth || 320));
+                const displayHeight = Math.max(110, parseInt(this.canvas.getAttribute("height"), 10) || this.canvas.clientHeight || 160);
+                const dpr = (typeof window !== "undefined" && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+
+                this.canvas.width = Math.floor(displayWidth * dpr);
+                this.canvas.height = Math.floor(displayHeight * dpr);
+                this.canvas.style.width = displayWidth + "px";
+                this.canvas.style.height = displayHeight + "px";
+                this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+                if (this.config.type === "doughnut") {
+                    drawDoughnutChart(this.ctx, displayWidth, displayHeight, this.config);
+                    return;
+                }
+                if (this.config.type === "line") {
+                    drawLineChart(this.ctx, displayWidth, displayHeight, this.config);
+                    return;
+                }
+                if (this.config.type === "bar" && this.config.options && this.config.options.indexAxis === "y") {
+                    drawHorizontalBarChart(this.ctx, displayWidth, displayHeight, this.config);
+                    return;
+                }
+                drawNoData(this.ctx, displayWidth, displayHeight);
+            }
+        }
+
+        MiniChart.__maniwaniFallback = true;
+        window.Chart = MiniChart;
+        return window.Chart;
+    }
+
+    installMiniChartFallback();
+
+    function escHtml(s) {
+        if (!s) return "";
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function formatDuration(totalSeconds) {
+        const seconds = Math.max(0, Number(totalSeconds || 0));
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainder = seconds % 60;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        if (minutes > 0) return `${minutes}m ${remainder}s`;
+        return `${remainder}s`;
+    }
+
+    function boardColor(label, alpha) {
+        let hash = 0;
+        String(label || "").split("").forEach(ch => {
+            hash = ((hash << 5) - hash) + ch.charCodeAt(0);
+            hash |= 0;
+        });
+        const hue = Math.abs(hash) % 360;
+        const saturation = 62;
+        const lightness = alpha ? 54 : 46;
+        if (alpha) return `hsla(${hue}, ${saturation}%, ${lightness}%, ${alpha})`;
+        return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    }
+
+    function chartLibraryAvailable() {
+        return typeof installMiniChartFallback === "function" && typeof installMiniChartFallback() === "function";
+    }
+
+    function setCanvasVisibility(canvasIds, visible) {
+        canvasIds.forEach(canvasId => {
+            const canvas = document.getElementById(canvasId);
+            if (canvas) {
+                canvas.style.display = visible ? "" : "none";
+            }
+        });
+    }
+
+    function setChartWarning(noteId, canvasIds, message) {
+        const available = chartLibraryAvailable();
+        const note = document.getElementById(noteId);
+        if (note) {
+            note.textContent = message;
+            note.classList.toggle("d-none", available);
+        }
+        setCanvasVisibility(canvasIds, available);
+        return available;
+    }
+
+    function destroyBoardMetricCharts() {
+        Object.keys(_boardMetricCharts).forEach(slotName => {
+            if (_boardMetricCharts[slotName]) {
+                _boardMetricCharts[slotName].destroy();
+                _boardMetricCharts[slotName] = null;
+            }
+        });
+    }
+
+    function fetchJson(url, options) {
+        // Guard against a request that never settles — e.g. a privacy/ad-block
+        // extension that STALLS a blocked XHR instead of failing it — so a panel
+        // can never get stuck on "Loading…" forever. Abort after 15s so the
+        // caller's .catch runs and shows an error instead of hanging silently.
+        const controller = ("AbortController" in window) ? new AbortController() : null;
+        const timer = controller ? window.setTimeout(function () { controller.abort(); }, 15000) : null;
+        const requestOptions = Object.assign(
+            { credentials: "same-origin" },
+            options || {},
+            controller ? { signal: controller.signal } : {}
+        );
+        return fetch(url, requestOptions).then(async response => {
+            if (!response.ok) {
+                const body = (await response.text()).trim();
+                throw new Error(body || `HTTP ${response.status}`);
+            }
+            const contentType = response.headers.get("content-type") || "";
+            if (!contentType.toLowerCase().includes("json")) {
+                const body = (await response.text()).trim();
+                throw new Error(body || "Expected a JSON response.");
+            }
+            return response.json();
+        }).finally(function () { if (timer) window.clearTimeout(timer); });
+    }
+
+    function createOrReplaceChart(slotName, canvasId, config) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || !chartLibraryAvailable()) return null;
+        if (_boardMetricCharts[slotName]) _boardMetricCharts[slotName].destroy();
+        _boardMetricCharts[slotName] = new window.Chart(canvas, config);
+        return _boardMetricCharts[slotName];
+    }
+
+    function loadBoardMetrics() {
+        fetchJson("{{ url_for('admin.board_metrics') }}")
+            .then(renderBoardMetrics)
+            .catch(err => {
+                console.error("board_metrics error:", err);
+                const tbody = document.getElementById("board-metrics-table-body");
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="6"><small class="text-danger">Board metrics could not be loaded.</small></td></tr>';
+                }
+            });
+    }
+
+    function renderBoardMetrics(payload) {
+        const summary = payload.summary || {};
+        const boards = payload.boards || [];
+        const charts = payload.charts || {};
+        const activeBoards = boards.filter(board => board.visits > 0);
+        const topBoards = activeBoards.slice(0, 8);
+        const trafficLabels = topBoards.map(board => board.title);
+        const trafficValues = topBoards.map(board => board.visits);
+        const timeValues = topBoards.map(board => board.total_seconds);
+        const colors = topBoards.map(board => boardColor(board.name));
+        const translucentColors = topBoards.map(board => boardColor(board.name, 0.22));
+
+        const summaryRow = document.getElementById("board-metrics-summary-row");
+        if (summaryRow) {
+            const cards = [
+                ["Total visits", summary.total_visits || 0],
+                ["Unique visitors", summary.unique_visitors || 0],
+                ["Total time", formatDuration(summary.total_seconds || 0)],
+                [
+                    "Most popular board",
+                    summary.most_popular_board
+                        ? `${summary.most_popular_board.title} (${summary.most_popular_board.visits})`
+                        : "No traffic yet"
+                ]
+            ];
+            summaryRow.innerHTML = cards.map(([label, value]) =>
+                `<div class="col-lg-3 col-md-6 mb-2"><div class="card h-100"><div class="card-body py-3">
+                <div class="text-muted small text-uppercase">${escHtml(label)}</div>
+                <div class="font-weight-bold" style="font-size:1.15rem;">${escHtml(value)}</div>
+            </div></div></div>`
+            ).join("");
+        }
+
+        const windowBadge = document.getElementById("board-metrics-window");
+        if (windowBadge && payload.window_days) {
+            windowBadge.textContent = `${payload.window_days}-day window`;
+        }
+
+        if (setChartWarning(
+            "board-metrics-chart-warning",
+            BOARD_METRIC_CANVAS_IDS,
+            "Charts are unavailable because the chart library did not load. Numeric metrics below are still live."
+        )) {
+            createOrReplaceChart("_boardTrafficPieChart", "board-traffic-pie-chart", {
+                type: "doughnut",
+                data: {
+                    labels: trafficLabels,
+                    datasets: [{ data: trafficValues, backgroundColor: colors }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: "bottom" } }
+                }
+            });
+
+            createOrReplaceChart("_boardTimePieChart", "board-time-pie-chart", {
+                type: "doughnut",
+                data: {
+                    labels: trafficLabels,
+                    datasets: [{ data: timeValues, backgroundColor: colors }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: "bottom" },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return `${context.label}: ${formatDuration(context.raw || 0)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            createOrReplaceChart("_boardTrafficLineChart", "board-traffic-line-chart", {
+                type: "line",
+                data: {
+                    labels: charts.daily_labels || [],
+                    datasets: (charts.daily_series || []).map(series => ({
+                        label: series.label,
+                        data: series.data,
+                        borderColor: boardColor(series.label),
+                        backgroundColor: boardColor(series.label, 0.14),
+                        tension: 0.28,
+                        fill: false
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: "top" } },
+                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+
+            createOrReplaceChart("_boardPopularityChart", "board-popularity-chart", {
+                type: "bar",
+                data: {
+                    labels: trafficLabels,
+                    datasets: [{
+                        label: "Visits",
+                        data: trafficValues,
+                        backgroundColor: translucentColors,
+                        borderColor: colors,
+                        borderWidth: 1.5
+                    }]
+                },
+                options: {
+                    indexAxis: "y",
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+        } else {
+            destroyBoardMetricCharts();
+        }
+
+        const tableBody = document.getElementById("board-metrics-table-body");
+        if (tableBody) {
+            tableBody.innerHTML = boards.map(board =>
+                `<tr>
+                <td><strong>${escHtml(board.title)}</strong> <small class="text-muted">/${escHtml(board.name)}/</small></td>
+                <td>${board.visits || 0}</td>
+                <td>${board.unique_visitors || 0}</td>
+                <td>${formatDuration(board.total_seconds || 0)}</td>
+                <td>${formatDuration(board.average_seconds || 0)}</td>
+                <td><small>${escHtml(board.last_seen_at || "—")}</small></td>
+            </tr>`
+            ).join("") || '<tr><td colspan="6"><small class="text-muted">No board traffic recorded yet.</small></td></tr>';
+        }
+    }
+
+    function nsfwSelftest() {
+        const out = document.getElementById("nsfw-selftest-result");
+        out.textContent = "testing...";
+        fetch("{{ url_for('admin.nsfw_selftest') }}")
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) { out.textContent = "unavailable: " + (d.detail || "?"); return; }
+                const s = d.scores || {};
+                const parts = Object.keys(s).map(k => k + "=" + s[k]);
+                out.textContent = "ok (" + d.detail + ") threshold " + d.threshold +
+                    (parts.length ? " | " + parts.join(", ") : "");
+            })
+            .catch(e => { out.textContent = "error: " + e; });
+    }
+
+    loadBoardMetrics();
+</script>
+<script>
+(function () {
+  try {
+    // ===== Accordion + command nav: unify the scattered feature cards into one
+    // clean, collapsible column with a sticky jump-nav. Progressive enhancement,
+    // so every existing section keeps working. =====
+    var shell = document.getElementById('admin-shell');
+    var nav = document.getElementById('admin-nav');
+    if (shell) {
+        Array.prototype.slice.call(shell.querySelectorAll('.card'))
+            .filter(function (c) { return !(c.parentElement && c.parentElement.closest('.card')); })
+            .forEach(function (card, i) {
+                var body = card.querySelector('.card-body');
+                if (!body) { return; }
+                var heading = body.querySelector('h4, h5');
+                if (!heading) { return; }
+                card.classList.add('admin-section');
+                if (!card.id) { card.id = 'sec-' + i; }
+                var title = (heading.textContent || 'Section').trim();
+                var head = document.createElement('div');
+                head.className = 'admin-head';
+                body.insertBefore(head, body.firstChild);
+                head.appendChild(heading);
+                var caret = document.createElement('span');
+                caret.className = 'admin-caret';
+                caret.textContent = '▾';
+                head.appendChild(caret);
+                card.classList.add('collapsed');
+                function reflow() { window.setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 60); }
+                head.addEventListener('click', function () {
+                    card.classList.toggle('collapsed');
+                    if (!card.classList.contains('collapsed')) { reflow(); }  // re-fit any charts revealed
+                });
+                if (nav) {
+                    var chip = document.createElement('button');
+                    chip.type = 'button';
+                    chip.textContent = title.length > 26 ? (title.slice(0, 25) + '…') : title;
+                    chip.title = title;
+                    chip.addEventListener('click', function () {
+                        card.classList.remove('collapsed');
+                        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        reflow();
+                    });
+                    nav.appendChild(chip);
+                }
+            });
+    }
+  } catch (accordionError) {
+    /* The accordion is cosmetic — never let an error here stop the monitor. */
+    if (window.console) { console.error('admin accordion error:', accordionError); }
+  }
+})();
+
+// ===== Live composition monitor: its OWN IIFE so nothing above can stop it. =====
+(function () {
+    var grid = document.getElementById('lm-grid');
+    var emptyEl = document.getElementById('lm-empty');
+    var statusEl = document.getElementById('lm-status');
+    if (grid) {
+        var shown = {};
+        function render(s) {
+            s.txt.textContent = s.displayed;
+            var cur = document.createElement('span');
+            cur.className = 'lm-cursor';
+            cur.innerHTML = ' ';
+            s.txt.appendChild(cur);
+        }
+        function typeTo(s, target) {
+            if (s.target === target) { return; }
+            s.target = target;
+            if (target.indexOf(s.displayed) !== 0) {
+                s.displayed = target;   // edit/backspace: jump to the current text
+                render(s);
+                return;
+            }
+            if (s.timer) { return; }    // already revealing appended characters
+            (function step() {
+                if (s.displayed.length >= s.target.length) { s.timer = null; return; }
+                var add = Math.max(1, Math.ceil((s.target.length - s.displayed.length) / 6));
+                s.displayed = s.target.slice(0, s.displayed.length + add);
+                render(s);
+                s.timer = window.setTimeout(step, 18);
+            })();
+        }
+        function ensure(t) {
+            var s = shown[t.comp_id];
+            if (!s) {
+                var card = document.createElement('div'); card.className = 'lm-card';
+                var ip = document.createElement('div'); ip.className = 'lm-ip'; ip.textContent = t.ip || '?';
+                var meta = document.createElement('div'); meta.className = 'lm-meta';
+                var txt = document.createElement('div'); txt.className = 'lm-text';
+                card.appendChild(ip); card.appendChild(meta); card.appendChild(txt);
+                grid.appendChild(card);
+                s = shown[t.comp_id] = { card: card, meta: meta, txt: txt, displayed: '', target: '', timer: null };
+            }
+            s.meta.textContent = (t.board ? ('/' + t.board + '/ · ') : '') + (t.path || '');
+            typeTo(s, t.text || '');
+        }
+        function poll() {
+            fetch('{{ url_for("admin.live_typing_feed") }}', { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : { typists: [] }; })
+                .then(function (data) {
+                    var list = (data && data.typists) || [];
+                    var live = {};
+                    list.forEach(function (t) { live[t.comp_id] = 1; ensure(t); });
+                    Object.keys(shown).forEach(function (id) {
+                        if (!live[id]) {
+                            if (shown[id].timer) { window.clearTimeout(shown[id].timer); }
+                            if (shown[id].card) { shown[id].card.remove(); }
+                            delete shown[id];
+                        }
+                    });
+                if (emptyEl) { emptyEl.style.display = list.length ? 'none' : ''; }
+                    if (statusEl) { statusEl.textContent = '● watching · ' + list.length + ' composing now'; statusEl.style.color = '#7ee787'; }
+                })
+                .catch(function () {
+                    if (statusEl) { statusEl.textContent = '⚠ monitor connection issue'; statusEl.style.color = '#f0b849'; }
+                });
+        }
+        poll();
+        // 1s is plenty for a live-typing feed (the text still animates in
+        // between polls) and avoids flooding the workers — a single open admin
+        // tab at 400ms was ~a third of ALL site requests.
+        window.setInterval(poll, 1000);
+    } else if (window.console) {
+        console.error('live monitor: #lm-grid not found');
+    }
+})();
+
+// ===== Live visitor world map: its OWN IIFE, independent of everything above. =====
+(function () {
+    var layer = document.getElementById('lm-map-dots');
+    var emptyEl = document.getElementById('lm-map-empty');
+    var countEl = document.getElementById('lm-map-count');
+    if (!layer) { if (window.console) { console.error('visitor map: #lm-map-dots not found'); } return; }
+    var pins = {};   // ip -> pin element (reconciled each poll)
+
+    // Plate-carrée (equirectangular) projection: the background map spans the full
+    // globe linearly, so lon/lat map straight to x/y percentages.
+    function project(lat, lon) {
+        var x = (Number(lon) + 180) / 360 * 100;
+        var y = (90 - Number(lat)) / 180 * 100;
+        return [Math.max(0, Math.min(100, x)), Math.max(0, Math.min(100, y))];
+    }
+    function ensure(v) {
+        var pin = pins[v.ip];
+        if (!pin) {
+            pin = document.createElement('div'); pin.className = 'lm-pin';
+            var ring = document.createElement('span'); ring.className = 'lm-pin-ring';
+            var core = document.createElement('span'); core.className = 'lm-pin-core';
+            var tip = document.createElement('span'); tip.className = 'lm-pin-ip';
+            var ipLine = document.createElement('span'); ipLine.className = 'lm-pin-ipline';
+            var pageLine = document.createElement('span'); pageLine.className = 'lm-pin-page';
+            tip.appendChild(ipLine); tip.appendChild(pageLine);
+            pin.appendChild(ring); pin.appendChild(core); pin.appendChild(tip);
+            layer.appendChild(pin);
+            pins[v.ip] = pin;
+        }
+        // Role classes are NOT set here. A visitor pin only knows it is a
+        // visitor; whether the same IP is also a storage node or a verified
+        // gateway is decided in poll(), once the node list has been read.
+        var p = project(v.lat, v.lon);
+        pin.style.left = p[0] + '%';
+        pin.style.top = p[1] + '%';
+        // textContent ONLY — ip and page are untrusted visitor input; never innerHTML.
+        pin.querySelector('.lm-pin-ipline').textContent = v.ip + (v.cc ? ('  ·  ' + v.cc) : '');
+        pin.querySelector('.lm-pin-page').textContent = v.page ? v.page : '—';
+    }
+    // A pin's colour is the --lm-role/--lm-glow pair. A single role paints it
+    // once; several roles are cycled by lmRoleTick below, so a node that also
+    // runs containers alternates blue/yellow without any per-combination CSS.
+    // Order is fixed (v, s, g, d) so the alternation reads the same every cycle.
+    // c = GPU compute (orange), p = CPU compute (pink), n = settles through a
+    // payment channel (cyan). Pink rather than another blue or green: the map
+    // already carries blue, green and purple, and a colour that is merely NEAR
+    // an existing one is worse than no colour at all when a node is four pixels
+    // across. Cyan is the last hue left that is unambiguous against all of them.
+    var ROLE_COLOR = { v: '#ef4444', s: '#3b82f6', g: '#22c55e', d: '#ffd60a',
+                       m: '#a855f7', c: '#f97316', p: '#ec4899', n: '#22d3ee', i: '#f5f5f5' };
+    var ROLE_GLOW = { v: 'rgba(239,68,68,.9)', s: 'rgba(59,130,246,.9)',
+                      g: 'rgba(34,197,94,.9)', d: 'rgba(255,214,10,.9)',
+                      m: 'rgba(168,85,247,.9)', c: 'rgba(249,115,22,.9)',
+                      p: 'rgba(236,72,153,.9)', n: 'rgba(34,211,238,.9)',
+                      i: 'rgba(245,245,245,.95)' };
+    function paintPin(pin, role) {
+        pin.style.setProperty('--lm-role', ROLE_COLOR[role] || '#ff3b30');
+        pin.style.setProperty('--lm-glow', ROLE_GLOW[role] || 'rgba(255,59,48,.9)');
+    }
+    // Takes a flags OBJECT rather than positional booleans. With eight roles a
+    // positional signature is eight bare booleans in a row at every call site,
+    // where transposing two is invisible in review and produces a map that is
+    // confidently wrong about which node does what.
+    // Order is fixed so the alternation reads the same on every cycle.
+    var ROLE_ORDER = ['v', 's', 'g', 'd', 'm', 'c', 'p', 'n', 'i'];
+    function applyRoles(pin, flags) {
+        if (!pin) { return; }
+        flags = flags || {};
+        var roles = [];
+        ROLE_ORDER.forEach(function (key) { if (flags[key]) { roles.push(key); } });
+        pin._roles = roles;
+        pin._phase = 0;
+        paintPin(pin, roles.length ? roles[0] : 'v');
+    }
+    // One ticker for every multi-role pin: advance the shared phase and repaint.
+    // 1.2s per colour matches the old keyframe cadence.
+    function lmRoleTick(collection) {
+        Object.keys(collection).forEach(function (key) {
+            var pin = collection[key];
+            if (pin && pin._roles && pin._roles.length > 1) {
+                pin._phase = (pin._phase + 1) % pin._roles.length;
+                paintPin(pin, pin._roles[pin._phase]);
+            }
+        });
+    }
+    function roleLabel(storage, gateway, dcs, monitor) {
+        var parts = [];
+        if (storage) { parts.push('storage'); }
+        if (gateway) { parts.push('verified gateway'); }
+        if (dcs) { parts.push('container host'); }
+        if (monitor) { parts.push('status monitor'); }
+        return parts.length ? parts.join(' + ') : 'node';
+    }
+    function renderGatewayStatus(data) {
+        var body = document.getElementById('lm-gateway-rows');
+        var state = document.getElementById('lm-gateway-registry-state');
+        if (!body || !state) { return; }
+        var gateways = (data && data.gateways) || [];
+        var registryError = data && data.gateway_registry_error;
+        state.textContent = registryError
+            ? 'Controller unavailable — showing last known state'
+            : ('Controller reachable · ' + gateways.length + ' healthy');
+        state.className = registryError ? 'small text-warning' : 'small text-success';
+        while (body.firstChild) { body.removeChild(body.firstChild); }
+        if (!gateways.length) {
+            var emptyRow = document.createElement('tr');
+            var emptyCell = document.createElement('td');
+            emptyCell.colSpan = 6;
+            emptyCell.className = registryError ? 'text-warning' : 'text-muted';
+            emptyCell.textContent = registryError
+                ? 'The gateway registry could not be queried.'
+                : 'No independently verified healthy gateways are registered.';
+            emptyRow.appendChild(emptyCell);
+            body.appendChild(emptyRow);
+            return;
+        }
+        gateways.forEach(function (gateway) {
+            var row = document.createElement('tr');
+            function cell(text) {
+                var td = document.createElement('td');
+                td.textContent = text == null ? '—' : String(text);
+                row.appendChild(td);
+                return td;
+            }
+            cell(gateway.hostname);
+            cell(gateway.ip);
+            var status = [];
+            if (gateway.healthy) { status.push('healthy'); }
+            if (gateway.verified) { status.push('verified'); }
+            if (gateway.tls_valid) { status.push('TLS valid'); }
+            var statusCell = cell(status.join(' · ') || 'unknown');
+            statusCell.className = gateway.healthy && gateway.verified && gateway.tls_valid
+                ? 'text-success' : 'text-warning';
+            var latency = Number(gateway.latency_ms);
+            cell(Number.isFinite(latency) ? latency.toFixed(1) + ' ms' : '—');
+            var expiry = gateway.expires_at ? new Date(gateway.expires_at) : null;
+            cell(expiry && !isNaN(expiry.getTime()) ? expiry.toLocaleString() : '—');
+            var checkCell = document.createElement('td');
+            var check = document.createElement('a');
+            check.href = gateway.status_url;
+            check.target = '_blank';
+            check.rel = 'noopener noreferrer';
+            check.textContent = '/readyz';
+            check.className = 'text-success';
+            checkCell.appendChild(check);
+            row.appendChild(checkCell);
+            body.appendChild(row);
+        });
+    }
+    // Nodes are keyed by node id so they never collide with the visitor pins,
+    // which are keyed by IP (the same machine may well be both).
+    var nodePins = {};
+    function ensureNode(n) {
+        var pin = nodePins[n.id];
+        if (!pin) {
+            pin = document.createElement('div'); pin.className = 'lm-pin';
+            var ring = document.createElement('span'); ring.className = 'lm-pin-ring';
+            var core = document.createElement('span'); core.className = 'lm-pin-core';
+            var tip = document.createElement('span'); tip.className = 'lm-pin-ip';
+            var idLine = document.createElement('span'); idLine.className = 'lm-pin-ipline';
+            var capLine = document.createElement('span'); capLine.className = 'lm-pin-page';
+            tip.appendChild(idLine); tip.appendChild(capLine);
+            pin.appendChild(ring); pin.appendChild(core); pin.appendChild(tip);
+            layer.appendChild(pin);
+            nodePins[n.id] = pin;
+        }
+        var p = project(n.lat, n.lon);
+        pin.style.left = p[0] + '%';
+        pin.style.top = p[1] + '%';
+        var gib = (n.capacity_bytes || 0) / 1073741824;
+        var storage = n.storage !== false;
+        // textContent ONLY — node id, platform and country are client-supplied.
+        pin.querySelector('.lm-pin-ipline').textContent =
+            'node ' + n.id + (n.country ? ('  ·  ' + n.country) : '');
+        pin.querySelector('.lm-pin-page').textContent =
+            roleLabel(storage, !!n.gateway, !!n.dcs, !!n.monitor)
+            + (storage ? ('  ·  ' + gib.toFixed(1) + ' GiB offered') : '')
+            + (n.platform ? ('  ·  ' + n.platform) : '');
+    }
+    // ---- Dispersal health -------------------------------------------------
+    //
+    // ONE RULE, and it is the reason this panel exists: a value the fleet did
+    // not report is drawn as "not reporting", never as a number. A node with no
+    // dispersal report and a node with zero failures look identical the moment
+    // you print 0 for both, and that substitution is what let five faults
+    // survive for days behind an admin page that looked fine.
+    var DISP_UNKNOWN = 'not reporting';
+    function dispCell(row, value, cls) {
+        var td = document.createElement('td');
+        if (value === null || value === undefined) {
+            td.textContent = '—';
+            td.className = 'text-muted';
+        } else {
+            td.textContent = String(value);
+            if (cls) { td.className = cls; }
+        }
+        row.appendChild(td);
+        return td;
+    }
+    function dispAge(seconds) {
+        if (seconds === null || seconds === undefined) { return null; }
+        var s = Math.max(0, seconds | 0);
+        if (s < 90) { return s + 's ago'; }
+        if (s < 5400) { return Math.round(s / 60) + 'm ago'; }
+        return Math.round(s / 3600) + 'h ago';
+    }
+    function renderDispersalRefusals(list) {
+        var box = document.getElementById('lm-disp-refusals');
+        if (!box) { return; }
+        while (box.firstChild) { box.removeChild(box.firstChild); }
+        if (!list || !list.length) { return; }
+        var label = document.createElement('span');
+        label.className = 'text-warning';
+        label.textContent = 'Peers refusing shards: ';
+        box.appendChild(label);
+        // The reason, always. "3 refusals" sends someone to a journal; "3
+        // refusals: storage capacity exceeded" is a disk to free, and
+        // "invalid coordinator lease signature" is a key to check.
+        list.forEach(function (entry, index) {
+            var part = document.createElement('span');
+            part.textContent = (index ? ' · ' : '')
+                + entry.count + '× ' + entry.reason
+                + ' (' + entry.peers + ' peer' + (entry.peers === 1 ? '' : 's')
+                + ', seen by ' + entry.nodes + ' node' + (entry.nodes === 1 ? '' : 's') + ')';
+            box.appendChild(part);
+        });
+    }
+    function renderDispersal(summary) {
+        var state = document.getElementById('lm-disp-state');
+        var body = document.getElementById('lm-disp-rows');
+        if (!body) { return; }
+        var d = summary ? summary.dispersal : undefined;
+        while (body.firstChild) { body.removeChild(body.firstChild); }
+        function placeholder(text, cls) {
+            var tr = document.createElement('tr');
+            var td = document.createElement('td');
+            td.colSpan = 8; td.className = cls || 'text-muted'; td.textContent = text;
+            tr.appendChild(td); body.appendChild(tr);
+        }
+        // null is "the site could not work it out", which is NOT "the fleet is
+        // fine". The endpoint sends null rather than {} for exactly this.
+        if (d === null || d === undefined) {
+            if (state) {
+                state.textContent = 'dispersal health unavailable';
+                state.className = 'small text-warning';
+            }
+            renderDispersalRefusals([]);
+            placeholder('No dispersal health could be read. This is not the same as healthy.',
+                        'text-warning');
+            return;
+        }
+        if (state) {
+            var head = d.reporting + ' of ' + (d.reporting + d.silent)
+                + ' active node' + ((d.reporting + d.silent) === 1 ? '' : 's') + ' reporting';
+            if (d.under_replicated !== null && d.under_replicated !== undefined) {
+                head += ' · ' + d.under_replicated + ' under-replicated';
+            }
+            if (d.local_only !== null && d.local_only !== undefined) {
+                head += ' · ' + d.local_only + ' with no remote copy';
+            }
+            if (d.silent) { head += ' · ' + d.silent + ' NOT REPORTING'; }
+            if (d.isolated) { head += ' · ' + d.isolated + ' with no peers'; }
+            state.textContent = head;
+            state.className = 'small ' + ((d.silent || d.isolated || d.local_only) ? 'text-warning' : 'text-info');
+        }
+        renderDispersalRefusals(d.refusals);
+        var nodes = d.nodes || [];
+        if (!nodes.length) { placeholder('No active storage nodes.'); return; }
+        nodes.forEach(function (n) {
+            var tr = document.createElement('tr');
+            var idCell = document.createElement('td');
+            idCell.style.fontFamily = 'monospace';
+            idCell.textContent = n.node_id;   // textContent: node ids are client-supplied
+            tr.appendChild(idCell);
+            if (!n.reporting) {
+                // Every cell says so. A single "—" in one column would let the
+                // eye read the rest of the row as measured.
+                var td = document.createElement('td');
+                td.colSpan = 7; td.className = 'text-warning';
+                td.textContent = DISP_UNKNOWN + ' (' + (n.why_not || 'unknown') + ')';
+                tr.appendChild(td);
+                body.appendChild(tr);
+                return;
+            }
+            dispCell(tr, n.objects);
+            dispCell(tr, n.under_replicated, n.under_replicated ? 'text-warning' : null);
+            dispCell(tr, n.local_only, n.local_only ? 'text-danger' : null);
+            // The pass itself. "placed 0, failed 9" was the signature of leases
+            // dying before they left the box, and it never reached this page.
+            var pass = document.createElement('td');
+            if (n.placed === null && n.failed === null) {
+                pass.textContent = '—'; pass.className = 'text-muted';
+            } else {
+                pass.textContent = 'placed ' + (n.placed === null ? '?' : n.placed)
+                    + ', failed ' + (n.failed === null ? '?' : n.failed)
+                    + (dispAge(n.age_seconds) ? ' · ' + dispAge(n.age_seconds) : '');
+                pass.className = n.failed ? 'text-warning' : 'text-success';
+            }
+            tr.appendChild(pass);
+            // Zero peers with a completed pass is an isolated node — what a dead
+            // I2P router looks like from here.
+            dispCell(tr, n.peers, n.peers === 0 ? 'text-danger' : null);
+            var refCell = document.createElement('td');
+            if (!n.refusals || !n.refusals.length) {
+                refCell.textContent = '—'; refCell.className = 'text-muted';
+            } else {
+                refCell.className = 'text-warning';
+                refCell.textContent = n.refusals.map(function (r) {
+                    return r.peer + ' ×' + r.count + ' ' + r.reason;
+                }).join('; ');
+            }
+            tr.appendChild(refCell);
+            dispCell(tr, n.recalls_outstanding, n.recalls_outstanding ? 'text-warning' : null);
+            body.appendChild(tr);
+        });
+    }
+    function fmtCtSecs(s) {
+        if (s == null) { return '—'; }
+        s = Math.max(0, s | 0);
+        var h = (s / 3600) | 0, m = ((s % 3600) / 60) | 0;
+        return (h ? h + 'h ' : '') + m + 'm';
+    }
+    function renderContainers(list) {
+        var body = document.getElementById('lm-cn-rows');
+        var count = document.getElementById('lm-cn-count');
+        if (!body) { return; }
+        if (count) { count.textContent = list.length ? ('(' + list.length + ')') : ''; }
+        while (body.firstChild) { body.removeChild(body.firstChild); }
+        if (!list.length) {
+            var tr0 = document.createElement('tr');
+            var td0 = document.createElement('td');
+            td0.colSpan = 5; td0.className = 'text-muted';
+            td0.textContent = 'No containers running.';
+            tr0.appendChild(td0); body.appendChild(tr0);
+            return;
+        }
+        list.forEach(function (c) {
+            var tr = document.createElement('tr');
+            function cell(text, cls, mono) {
+                var td = document.createElement('td');
+                td.textContent = (text === null || text === undefined || text === '') ? '—' : String(text);
+                if (cls) { td.className = cls; }
+                if (mono) { td.style.fontFamily = 'monospace'; td.style.wordBreak = 'break-all'; }
+                tr.appendChild(td);
+            }
+            cell(c.machine);
+            cell(c.status === 'queued' ? ('queued #' + (c.queue_position || '?')) : c.status,
+                 c.status === 'running' ? 'text-success' : 'text-warning');
+            cell(c.worker);
+            cell(c.address, null, true);
+            cell(c.status === 'running' ? fmtCtSecs(c.seconds_remaining) : '—');
+            body.appendChild(tr);
+        });
+    }
+    function poll() {
+        fetch('{{ url_for("admin.live_visitors_feed") }}', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : { visitors: [] }; })
+            .then(function (data) {
+                var list = (data && data.visitors) || [];
+                var live = {};
+                list.forEach(function (v) { if (v && v.ip) { live[v.ip] = 1; ensure(v); } });
+                Object.keys(pins).forEach(function (ip) {
+                    if (!live[ip]) { pins[ip].remove(); delete pins[ip]; }
+                });
+                // Nodes. MUST stay in the visitor-map IIFE: pins, nodePins and
+                // ensureNode are scoped here. A first-match replace previously
+                // spliced this into the live-typing poll, where ensureNode is
+                // undefined -- and that poll's empty .catch() swallowed the
+                // ReferenceError, so the dots silently never rendered.
+                //
+                // It is also deliberately NOT nested inside `if (countEl)`, as
+                // it used to be: a missing #lm-map-count would have taken every
+                // node dot down with it for no reason.
+                var nodes = (data && data.storage_nodes) || [];
+                renderGatewayStatus(data);
+                var nodeIPs = {};
+                nodes.forEach(function (n) { if (n && n.ip) { nodeIPs[n.ip] = n; } });
+                // Co-located roles collapse into ONE alternating dot rather
+                // than stacking two pins on the same coordinates.
+                Object.keys(pins).forEach(function (ip) {
+                    var n = nodeIPs[ip];
+                    applyRoles(pins[ip], {
+                        v: true,
+                        s: !!n && n.storage !== false,
+                        g: !!n && !!n.gateway,
+                        d: !!n && !!n.dcs,
+                        m: !!n && !!n.monitor,
+                        c: !!n && !!n.gpu,
+                        p: !!n && !!n.cpu,
+                        n: !!n && !!n.channel,
+                        i: !!n && !!n.microvm
+                    });
+                });
+                var liveNodes = {};
+                nodes.forEach(function (n) {
+                    if (!n || !n.id) { return; }
+                    if (n.ip && pins[n.ip]) {   // folded into the visitor pin above
+                        if (nodePins[n.id]) { nodePins[n.id].remove(); delete nodePins[n.id]; }
+                        return;
+                    }
+                    liveNodes[n.id] = 1;
+                    ensureNode(n);
+                    applyRoles(nodePins[n.id], {
+                        v: false,
+                        s: n.storage !== false,
+                        g: !!n.gateway,
+                        d: !!n.dcs,
+                        m: !!n.monitor,
+                        c: !!n.gpu,
+                        p: !!n.cpu,
+                        n: !!n.channel,
+                        i: !!n.microvm
+                    });
+                });
+                Object.keys(nodePins).forEach(function (id) {
+                    if (!liveNodes[id]) { nodePins[id].remove(); delete nodePins[id]; }
+                });
+                // Dots exist for visitors AND for nodes, so the placeholder must
+                // consider both or a gateway-only map still reads as empty.
+                if (emptyEl) {
+                    var drawn = Object.keys(pins).length + Object.keys(nodePins).length;
+                    emptyEl.style.display = drawn ? 'none' : '';
+                }
+                var sum = (data && data.storage_summary) || null;
+                var capEl = document.getElementById('lm-storage');
+                if (capEl && sum) {
+                    var gateways = ((data && data.gateways) || []).length;
+                    capEl.textContent = sum.nodes + ' storage node' + (sum.nodes === 1 ? '' : 's')
+                        + ' · ' + sum.capacity_human + ' offered'
+                        + ' · ' + gateways + ' verified gateway' + (gateways === 1 ? '' : 's');
+                }
+                // Distributed-storage stat in the container-network panel: just
+                // how much the network is contributing, no graph.
+                var storStat = document.getElementById('lm-storage-stat');
+                if (storStat && sum) {
+                    storStat.textContent = (sum.capacity_human || '0 B') + ' contributed by '
+                        + sum.nodes + ' node' + (sum.nodes === 1 ? '' : 's');
+                }
+                // Whether dispersal is WORKING, as opposed to how much disk is
+                // offered. Rides on this same poll deliberately: it is read out
+                // of node heartbeats already in the database, so it costs the
+                // request handler nothing and needs no second endpoint.
+                //
+                // `sum` may be null when the storage block failed entirely, and
+                // renderDispersal must be told that rather than skipped —
+                // skipping would leave the previous poll's numbers on screen.
+                renderDispersal(sum);
+                // Running containers listing.
+                renderContainers((data && data.containers) || []);
+                if (countEl) {
+                    var total = (data && typeof data.total === 'number') ? data.total : list.length;
+                    countEl.innerHTML = '<b>' + total + '</b> online · ' + list.length + ' on the map';
+                }
+            })
+            .catch(function (err) {
+                // NOT silent. An empty catch here hid a ReferenceError for two
+                // deploys: the storage-node block had been spliced into the
+                // wrong IIFE, ensureNode was undefined, and the dots simply
+                // never appeared with nothing logged anywhere.
+                if (window.console && console.warn) { console.warn('live map poll failed:', err); }
+            });
+    }
+    poll();
+    window.setInterval(poll, 3000);
+    // Alternate the colours of every multi-role dot on one shared clock.
+    window.setInterval(function () { lmRoleTick(pins); lmRoleTick(nodePins); }, 1200);
+})();
+
+</script>
+{% endblock %}

@@ -1528,7 +1528,7 @@ public bool installBootableToDisk(int idx, ulong dsec) {
 // big to write in one syscall without freezing the UI).
 @nogc nothrow
 public bool installControlWrite(const(char)* cmd, size_t len) {
-    import drivers.block.disk : diskFindTarget, diskIndexCapacity;
+    import drivers.block.disk : diskFindTarget, diskIndexCapacity, diskFindBootDisk;
     enum uint BATCH = 8192;                          // 4 MiB / write → ~60 bar updates
     static immutable string C = "config ";
     static immutable string P = "install";
@@ -1556,7 +1556,8 @@ public bool installControlWrite(const(char)* cmd, size_t len) {
             }
             idx = n; dsec = sec;
         } else {
-            idx = diskFindTarget(dsec);              // a spare disk distinct from the object store
+            idx = diskFindBootDisk(dsec);            // the disk UEFI boots first (lowest port)
+            if (idx < 0) idx = diskFindTarget(dsec); // else a spare disk distinct from the store
             if (idx < 0) idx = diskStoreIndex(dsec); // single-disk: install onto the only disk
         }
         if (idx < 0) { klog("[install] control: no disk to install to\n"); g_instFailed = true; return false; }
@@ -1579,11 +1580,12 @@ public bool bootHasInstallPayload() {
 
 @nogc nothrow
 public void installBootableProof() {
-    import drivers.block.disk : diskFindTarget, diskStoreIndex;
+    import drivers.block.disk : diskFindTarget, diskStoreIndex, diskFindBootDisk;
     ulong phys, size;
     if (!instFindModule("esp-image", phys, size)) { klog("[install] not an INSTALL image (no esp-image module)\n"); return; }
     ulong dsec;
-    int idx = diskFindTarget(dsec);
+    int idx = diskFindBootDisk(dsec);                // the disk UEFI boots first
+    if (idx < 0) idx = diskFindTarget(dsec);
     if (idx < 0) idx = diskStoreIndex(dsec);         // single-disk: the only disk is the target
     if (idx < 0) { klog("[install] READY: payload present, but no disk attached\n"); return; }
     klog("[install] READY: esp-image=0x"); klog_hex(size);
@@ -1614,7 +1616,7 @@ __gshared bool g_autoInstallDone = false;
 // freeze (or confirms it is fixed) headlessly on the serial.
 @nogc nothrow
 public bool installBeginHiddenTest() {
-    import drivers.block.disk : diskFindTarget, diskStoreIndex;
+    import drivers.block.disk : diskFindTarget, diskStoreIndex, diskFindBootDisk;
     void setpw(ref char[INST_SECRET_MAX] dst, ref uint dlen, string s) @nogc nothrow {
         uint n = 0; foreach (c; s) { if (n < INST_SECRET_MAX) dst[n++] = c; } dlen = n;
     }
@@ -1623,7 +1625,8 @@ public bool installBeginHiddenTest() {
     setpw(g_instOuterPassword,     g_instOuterPasswordLen,     "outer-password");
     setpw(g_instDecoyBootPassword, g_instDecoyBootPasswordLen, "decoy-boot-pw");
     ulong dsec = 0;
-    int idx = diskFindTarget(dsec);
+    int idx = diskFindBootDisk(dsec);                // the disk UEFI boots first
+    if (idx < 0) idx = diskFindTarget(dsec);
     if (idx < 0) idx = diskStoreIndex(dsec);
     if (idx < 0) { klog("[install] TEST hidden: no disk\n"); return false; }
     return installBegin(idx, dsec);
@@ -1650,9 +1653,10 @@ public void installAutoIfRequested() {
     ulong phys, size;
     if (!instFindModule("autoinstall", phys, size)) return;   // not a test image: do nothing
 
-    import drivers.block.disk : diskStoreIndex, diskFindTarget;
+    import drivers.block.disk : diskStoreIndex, diskFindTarget, diskFindBootDisk;
     ulong dsec = 0;
-    int idx = diskFindTarget(dsec);
+    int idx = diskFindBootDisk(dsec);                // the disk UEFI boots first
+    if (idx < 0) idx = diskFindTarget(dsec);
     if (idx < 0) idx = diskStoreIndex(dsec);
     if (idx < 0) {
         klog("[install] AUTOINSTALL requested but no disk to install to\n");

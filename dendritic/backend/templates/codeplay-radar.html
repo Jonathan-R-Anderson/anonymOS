@@ -1,0 +1,47 @@
+{# Spider/radar chart of what a slip has accomplished.
+
+   Deliberately plain SVG rendered from server-computed geometry: no charting
+   library, no extra request, and it works with JavaScript off. Every colour is
+   a --sc-* variable or `currentColor`, so switching the site theme restyles it
+   with no work here -- the same rule the news cards and chat follow. #}
+<div class="cp-radar">
+  <svg viewBox="0 0 {{ radar.size }} {{ radar.size }}" role="img"
+       aria-label="Skill chart"
+       style="width:100%;max-width:{{ radar.size }}px;height:auto;overflow:visible">
+    <title>Skill breakdown</title>
+
+    {# Rings, faintest first. #}
+    {% for ring in radar.rings %}
+      <polygon points="{{ ring }}" fill="none"
+               stroke="var(--sc-border)" stroke-width="1"></polygon>
+    {% endfor %}
+
+    {# Spokes out to each axis. #}
+    {% for spoke in radar.spokes %}
+      <line x1="{{ '%.1f'|format(radar.centre) }}" y1="{{ '%.1f'|format(radar.centre) }}"
+            x2="{{ '%.1f'|format(spoke[0]) }}" y2="{{ '%.1f'|format(spoke[1]) }}"
+            stroke="var(--sc-border)" stroke-width="1"></line>
+    {% endfor %}
+
+    {# The score polygon. #}
+    <polygon points="{{ radar.polygon }}"
+             fill="var(--sc-accent)" fill-opacity=".28"
+             stroke="var(--sc-accent)" stroke-width="2"
+             stroke-linejoin="round"></polygon>
+
+    {% for vertex in radar.vertices %}
+      <circle cx="{{ '%.1f'|format(vertex[0]) }}" cy="{{ '%.1f'|format(vertex[1]) }}"
+              r="3" fill="var(--sc-accent)"></circle>
+    {% endfor %}
+
+    {# Labels inherit the theme's text colour rather than setting one. #}
+    {% for label in radar.labels %}
+      <text x="{{ '%.1f'|format(label.x) }}" y="{{ '%.1f'|format(label.y) }}"
+            text-anchor="{{ label.anchor }}" fill="currentColor"
+            style="font-size:11px;font-weight:600">{{ label.label }}</text>
+      <text x="{{ '%.1f'|format(label.x) }}" y="{{ '%.1f'|format(label.y + 12) }}"
+            text-anchor="{{ label.anchor }}" fill="currentColor"
+            style="font-size:10px;opacity:var(--sc-muted-alpha)">{{ label.value }}</text>
+    {% endfor %}
+  </svg>
+</div>

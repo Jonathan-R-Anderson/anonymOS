@@ -1,0 +1,137 @@
+# =============================================================================
+# maniwani BOOTSTRAP — kustomization
+# =============================================================================
+# `kubectl apply -k k8s/bootstrap` creates the namespace and the two
+# node-pinned StorageClasses. That is ALL it creates, and that is deliberate.
+#
+# -----------------------------------------------------------------------------
+# WHY THE OTHER FIVE DIRECTORIES ARE NOT `resources:` ENTRIES
+# -----------------------------------------------------------------------------
+# Two hard constraints, neither of which is a style opinion:
+#
+#  1. Kustomize's load restrictor refuses to read a FILE outside the
+#     kustomization root. `resources: [../data/10-postgres.yaml]` fails with
+#         "security; file '../data/10-postgres.yaml' is not in or below '.../bootstrap'"
+#     and kubectl exposes no --load-restrictor flag to override it.
+#  2. A DIRECTORY may be referenced upward (that is the standard overlay
+#     pattern), but only if it contains its own kustomization.yaml. None of
+#     k8s/data, k8s/app, k8s/aggregators or k8s/media does, and adding files to
+#     those directories is not this layer's business.
+#
+# So the ordering below is documented as a runnable command sequence rather than
+# faked as a resource list. If you later add a kustomization.yaml to each group
+# directory, uncomment the block at the bottom of this file and the whole tree
+# becomes one `kubectl apply -k`.
+#
+# -----------------------------------------------------------------------------
+# APPLY ORDER — RUN FROM THE REPO ROOT, ON THE SOFTWARE NODE
+# -----------------------------------------------------------------------------
+# Each step's dependency is stated. Steps 3 and 10 are the two that people skip
+# and then spend an afternoon debugging.
+#
+#   1.  kubectl apply -k  k8s/bootstrap/
+#         namespace + both StorageClasses. Everything else hardcodes
+#         `namespace: maniwani` and names one of these two classes.
+#
+#   2.  kubectl apply -f  k8s/data/00-priorityclass.yaml
+#         CLUSTER-SCOPED. postgres names maniwani-data-critical and redis names
+#         maniwani-data-cache. A pod that references a PriorityClass
+#         which does not exist is REJECTED by the API server — it does not fall
+#         back to priority zero.
+#
+#   3.  ---- SECRETS, imperatively, from the LIVE files. README §5. ----
+#         maniwani-env  maniwani-dotenv  maniwani-tls  ergo-ircd-config
+#         Applying steps 4-9 first is not fatal (pods sit in
+#         CreateContainerConfigError and recover once the Secret appears), but
+#         you will spend the wait reading the wrong logs.
+#
+#   4.  kubectl apply -f  k8s/app/00-configmaps.yaml
+#         MUST precede the aggregator and media groups: every pod that mounts
+#         the shared log tree runs the initContainer from the `log-init-script`
+#         ConfigMap defined here. Without it they sit in ContainerCreating with
+#         `configmap "log-init-script" not found`. Also carries nginx-conf,
+#         maniwani-cfg and anubis-policy.
+#
+#   5.  kubectl apply -f  k8s/data/10-postgres.yaml
+#       kubectl apply -f  k8s/data/20-redis.yaml
+#       kubectl apply -f  k8s/storage/10-syndichan-node.yaml
+#         Bring these up and verify them BEFORE the app tier. The storage node
+#         replaces the object store and can take several minutes for its I2P router to
+#         integrate on first start.
+#
+#   6.  kubectl apply -f  k8s/aggregators/
+#         (00 first by filename order; `apply -f <dir>` sorts lexically, which
+#         is why every file in this repo is numbered.) The five scraper
+#         StatefulSets ship replicas: 1 — see README §8.3 before letting them
+#         start against EMPTY volumes.
+#
+#   7.  kubectl apply -f  k8s/app/10-maniwani.yaml
+#       kubectl apply -f  k8s/app/20-maniwani-frontend.yaml
+#       kubectl apply -f  k8s/app/30-anubis.yaml
+#         Needs steps 3, 4, 5 and the aggregator PVCs from step 6 (the backend
+#         mounts all five scraper volumes plus rtmp-storage).
+#
+#   8.  kubectl apply -f  k8s/media/
+#         rtmp, coturn and nntp-hub ship replicas: 0 because the live compose
+#         stack holds their host ports (1935 / 3478+5349+49152-49351 / 119).
+#         The other six start immediately and are safe alongside production.
+#
+#   9.  k8s/app/40-nginx.yaml — THE EDGE. NOT WRITTEN YET (referenced by
+#         app/00-configmaps.yaml and by 10-maniwani.yaml). The cutover in
+#         README §10 is a hostPort swap on this Deployment; without it there is
+#         nothing to cut over TO. Same for a falco DaemonSet, which
+#         media/00-media-common.yaml lists as a group member.
+#
+#   10. kubectl apply -f  k8s/data/networkpolicy.yaml
+#       kubectl apply -f  k8s/aggregators/90-networkpolicy.yaml
+#         LAST, AND ONLY AFTER THE TIERS ABOVE ARE VERIFIED HEALTHY. k3s
+#         enforces NetworkPolicy by default (kube-router), so these bite
+#         instantly. They are fail-closed and select clients by the `app:` label
+#         — a label mismatch presents as "DNS resolves, Service exists,
+#         connection hangs". Roll back with `kubectl delete -f <file>`.
+#         Note: a policy whose podSelector matches NOTHING is silently inert, so
+#         "it applied cleanly" proves nothing. Verify by experiment:
+#           kubectl -n maniwani run np-test --rm -it --restart=Never \
+#             --image=busybox -- nc -zvw3 redis 6379     # expect TIMEOUT
+#
+# -----------------------------------------------------------------------------
+# ORDERING WITHIN THIS FILE
+# -----------------------------------------------------------------------------
+# kustomize's default (legacy) sort emits Namespace before StorageClass
+# regardless of the order below, which is what we want. The list is written in
+# logical order anyway so it reads correctly.
+#
+# The Secrets are NOT here and must never be: this file is committed to git.
+# See secret.example.yaml for the key inventory.
+# =============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Cluster-scoped and namespace-defining objects only. Do not add workloads here.
+resources:
+  - namespace.yaml
+  - storageclass.yaml
+
+# Applied to both objects above. `namespace:` is deliberately NOT set — a
+# Namespace object must not carry one, and StorageClass is cluster-scoped.
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: maniwani
+      maniwani.io/layer: bootstrap
+
+# -----------------------------------------------------------------------------
+# FUTURE: one-command apply of the whole tree.
+# Add a kustomization.yaml to each group directory listing its own files in
+# order, then uncomment this. Until then the numbered sequence above is the
+# contract. Note that even with this uncommented, step 3 (Secrets) stays
+# imperative and step 10 (NetworkPolicies) should stay a separate, deliberate,
+# easily-reversed apply.
+# -----------------------------------------------------------------------------
+# resources:
+#   - namespace.yaml
+#   - storageclass.yaml
+#   - ../data
+#   - ../app
+#   - ../aggregators
+#   - ../media

@@ -1,0 +1,2143 @@
+{%- extends "admin-shell.html" %}
+{% set admin_title = "Contracts" %}
+{% set admin_lede = "On-chain treasury and token console." %}
+{% block admin_content %}
+<style>
+  .cx-wrap { max-width: 1000px; margin: 0 auto; padding: 16px; color: inherit; }
+  .cx-card { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; padding: 16px; margin-bottom: 16px; color: inherit; }
+  .cx-muted { opacity: var(--sc-muted-alpha, .62); }
+  .cx-mono { font-family: monospace; font-size: .8rem; word-break: break-all; }
+  .cx-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .cx-input { background: var(--sc-surface-2); color: inherit; border: 1px solid var(--sc-border);
+              border-radius: 6px; padding: 6px 8px; font-size: .82rem; }
+  .cx-input.mono { font-family: monospace; }
+  .cx-fn { border-top: 1px solid var(--sc-border); padding: 8px 0; }
+  .cx-fn h5 { margin: 0 0 4px; font-size: .9rem; }
+  .cx-fn.read h5::before { content: "read "; color: var(--sc-accent); font-size: .7rem; }
+  .cx-fn.write h5::before { content: "write "; color: #ff9f43; font-size: .7rem; }
+  .cx-out { font-family: monospace; font-size: .78rem; white-space: pre-wrap; word-break: break-all;
+            background: var(--sc-surface-2); border: 1px solid var(--sc-border); border-radius: 6px;
+            padding: 6px 8px; margin-top: 6px; display: none; }
+  .cx-out.show { display: block; }
+  .cx-badge { font-size: .72rem; border: 1px solid var(--sc-border); border-radius: 999px; padding: 1px 8px; }
+  .cx-ok { color: #26de81; } .cx-err { color: #ff6b6b; }
+</style>
+
+<div class="cx-wrap">
+  <div class="d-flex justify-content-between align-items-baseline mb-3" style="gap:.75rem">
+    <h2 class="mb-0">Proof-of-Facilitation Contracts</h2>
+    <a href="{{ url_for('admin.dashboard') }}" class="cx-muted" style="color:inherit">&larr; Admin</a>
+  </div>
+
+  <div class="cx-card">
+    <div class="cx-row">
+      <button id="cx-connect" class="btn btn-primary btn-sm">Connect wallet</button>
+      <span id="cx-account" class="cx-mono cx-muted">not connected</span>
+      <span id="cx-network" class="cx-badge"></span>
+    </div>
+    <div class="cx-muted mt-2" style="font-size:.82rem">
+      Deploying sets each contract's owner to <strong>your connected wallet</strong> — you sign every
+      deploy and every write, so you hold ownership. Target network: <strong>Ethereum Mainnet</strong>
+      (chainId 1). <strong style="color:#ff6b6b">This is MAINNET</strong> — gas is real ETH and
+      <code>mintGenesis</code> creates real AXONCoins. Your wallet needs Ethereum&nbsp;Era ETH.
+    </div>
+    <div id="cx-status" class="cx-out"></div>
+  </div>
+
+  <div class="cx-card">
+    <h4>Getting started — kickstart the economy</h4>
+    <ol style="font-size:.9rem;line-height:1.6;margin:0;padding-left:1.2rem">
+      <li>Connect your wallet (it becomes the <strong>owner</strong> of every contract you deploy).</li>
+      <li>Deploy <strong>AxonToken</strong> first. On-chain it is <code>AXON</code>; the site calls the
+          network token &mdash; Anonymous, ticker AXON, written AXONCoins on the site.</li>
+      <li>Deploy the rest in order (they reference AxonToken/EpochManager/StakeVault by address).
+          <strong>Treasury</strong> comes after RewardDistributor, because it mints into it.</li>
+      <li>Hand supply to the Treasury: <code>AxonToken.setTreasury(&lt;Treasury&gt;)</code>. Until this is
+          done nothing can mint at all, including epoch rewards.</li>
+      <li>Seed the allocation: <code>AxonToken.mintGenesis(&lt;Treasury&gt;, amount)</code> mints the supply
+          the Treasury will sell, grant and airdrop from. <span class="cx-muted">(amount is in wei &mdash;
+          18 decimals; e.g. 1,000,000 credits = <code>1000000000000000000000000</code>.)</span></li>
+      <li>Wire roles: <code>EpochManager.setDisputeManager(DisputeManager, true)</code>,
+          <code>StakeVault.setSlasher(DisputeManager, true)</code>,
+          <code>EpochManager.setAggregator(&lt;aggregator&gt;, true)</code>.
+          <span class="cx-muted">RewardDistributor no longer needs funding by hand &mdash; anyone can call
+          <code>Treasury.fundEpoch(epoch)</code> once an epoch settles, and it mints exactly that epoch&rsquo;s
+          rewards into it.</span></li>
+      <li>When bootstrapping is done, call <code>AxonToken.closeGenesis()</code> to permanently lock
+          owner-minting &mdash; supply is then governed only by the Treasury, bounded by its per-epoch
+          budget and its immutable cap.</li>
+    </ol>
+  </div>
+
+  <div class="cx-card">
+    <h4>Deploy</h4>
+    <div class="cx-muted" style="font-size:.82rem;margin-bottom:8px">
+      Deploy in order (AxonToken first — others reference it). Addresses are saved server-side on success.
+    </div>
+    <div id="cx-est-total" class="cx-out"></div>
+    <div id="cx-deploy"></div>
+  </div>
+
+  <div class="cx-card">
+    <h4>Settle an epoch</h4>
+    <div class="cx-muted" style="font-size:.82rem;margin-bottom:10px">
+      An epoch whose challenge window has closed with no disputes can be finalized by
+      <strong>anyone</strong> &mdash; no owner, no role. That is deliberate: a settlement
+      only its author can complete is one its author can also withhold. Until somebody
+      makes the call, <code>rewardRootOf</code> returns zero and nothing from that epoch
+      is claimable by the nodes that earned it.
+      <br><br>
+      Nothing on this server does it for you, and that is also deliberate: this is a
+      transaction, and automating it would mean a funded hot wallet sitting on the origin.
+      The admin bell now tells you when one is waiting.
+      <br><br>
+      <strong>Or deploy the SettlementKeeper</strong> (below, after EpochManager) and fund
+      it, so the call stops depending on anybody remembering. It pays whoever finalizes an
+      epoch a flat bounty, first caller wins.
+      <br><br>
+      <strong>Fund it with ETH, not AXONCoins.</strong> The bounty reimburses gas,
+      and gas is priced in ETH &mdash; so it is a flat amount rather than a share of the
+      epoch, because finalizing a large epoch costs exactly the same gas as finalizing a
+      small one. Rewards themselves are AXONCoins and are untouched by this: the keeper never
+      moves them, it only closes the epoch that releases them. An epoch that pays nobody
+      pays no bounty either &mdash; correct, since it does not need urgent settling, and
+      today every epoch is empty, so a funded keeper would sit idle until the witness pool
+      grows. <code>finalize()</code> stays permissionless either way; a keeper that became
+      the only route could withhold settlements exactly as an operator could.
+    </div>
+    <div id="cx-finalize-list" class="cx-muted" style="font-size:.82rem">Checking the chain&hellip;</div>
+    <div class="cx-row" style="margin-top:10px">
+      <label style="margin:0;font-size:.82rem">Epoch
+        <input id="cx-finalize-epoch" class="cx-input" type="number" min="0" style="width:7rem">
+      </label>
+      <button id="cx-finalize" class="btn btn-primary btn-sm">Finalize</button>
+    </div>
+    <div id="cx-finalize-out" class="cx-out"></div>
+  </div>
+
+  <div class="cx-card">
+    <h4>Genesis epoch</h4>
+    <div class="cx-muted" style="font-size:.82rem;margin-bottom:10px">
+      Witness selection is seeded from <code>EpochManager.randomnessOf(epoch)</code>, which
+      only exists once an epoch is on-chain — so the first epoch has nothing to draw from.
+      Genesis fills that gap: one epoch with empty roots whose only payload is the seed.
+      <strong>It can only be launched once</strong>; the button disables itself as soon as the
+      chain reports epoch&nbsp;0 submitted, because a second submission would revert
+      (<code>EpochExists</code>) after spending gas.
+    </div>
+    <div class="cx-row" style="margin-bottom:8px">
+      <button id="cx-genesis-arm" class="btn btn-outline-secondary btn-sm">1 — Arm seed</button>
+      <button id="cx-genesis-auth" class="btn btn-outline-warning btn-sm">2 — Authorise this wallet</button>
+      <button id="cx-genesis-submit" class="btn btn-warning btn-sm" disabled>3 — Launch genesis on-chain</button>
+      <a class="cx-muted" href="{{ url_for('main.epochs') }}" style="font-size:.8rem">view the epoch chain &rarr;</a>
+    </div>
+    <div class="cx-muted" style="font-size:.78rem;margin-bottom:6px">
+      Step 2 calls <code>setAggregator(you, true)</code>. Deploying a contract makes you its
+      <em>owner</em>, which is not the same as being an <em>aggregator</em> — only addresses on
+      that allowlist may submit epochs, so without it <code>submitEpoch</code> reverts with
+      <code>NotAggregator()</code>. It is skipped automatically once you are on the list.
+    </div>
+    <div class="cx-muted" style="font-size:.78rem">
+      The seed is served to nodes at
+      <code>{{ url_for('main.pof_genesis_seed') }}</code> so they can derive the same
+      witness sets you can.
+    </div>
+    <div id="cx-genesis-out" class="cx-out"></div>
+  </div>
+
+  <div class="cx-card">
+    <h4>Submit an epoch</h4>
+    <div class="cx-muted" style="font-size:.82rem;margin-bottom:10px">
+      Run <code>pof-settle -epoch N</code> and POST its JSON to
+      <code>/admin/contracts/settlement</code>, then submit it here. Computing and posting are
+      separate on purpose: you can read what a run produced — including who it refused to pay
+      and why — before spending gas committing to it. Anyone can re-run the same command and
+      must get the same roots; that is what the challenge window is for.
+    </div>
+    <div class="cx-row" style="margin-bottom:8px">
+      <input id="cx-epoch-num" class="cx-input" type="number" min="0" step="1" value="0"
+             style="width:8rem" placeholder="epoch">
+      <button id="cx-epoch-load" class="btn btn-outline-secondary btn-sm">Load settlement</button>
+      <button id="cx-epoch-submit" class="btn btn-warning btn-sm" disabled>Submit roots on-chain</button>
+    </div>
+    <div id="cx-epoch-out" class="cx-out"></div>
+  </div>
+
+  <div class="cx-card">
+    <h4>AXONCoins deliveries</h4>
+    <div class="cx-muted" style="font-size:.82rem;margin-bottom:10px">
+      Card payments that succeeded and are still owed AXONCoins. Sending is a
+      a <code>Treasury.release</code> to each buyer (or <code>AxonToken.transfer</code> from
+      your own wallet if no Treasury is deployed yet) — the treasury key is
+      deliberately not on the web server, so a break-in there costs nobody their money.
+      Each delivery is recorded as it lands, so stopping halfway loses nothing.
+    </div>
+    <div class="cx-muted" style="font-size:.82rem;margin-bottom:10px">
+      AXONCoins have to <em>exist</em> before they can be delivered. Until the supply is seeded
+      the token's total supply is zero, every wallet on the network correctly reads
+      <code>0</code>, and a paid buyer sees nothing — the delivery has nowhere to come from.
+      Seeding is <code>mintGenesis</code>, owner-only, and permanently disabled once
+      <code>closeGenesis()</code> is called.
+    </div>
+    <div id="cx-supply" class="cx-out show cx-muted" style="margin-bottom:8px">Supply not read yet.</div>
+    <div class="cx-row" style="margin-bottom:8px">
+      <button id="cx-mint" class="btn btn-warning btn-sm" disabled>Mint what is owed</button>
+      <button id="cx-del-refresh" class="btn btn-outline-secondary btn-sm">Refresh queue</button>
+      <button id="cx-del-send" class="btn btn-warning btn-sm" disabled>Deliver all</button>
+      {# Server-side delivery. The browser path signs with whatever MetaMask is
+         connected as, which stopped working when Treasury ownership moved to a
+         dedicated wallet — a personal account is no longer the owner, so
+         releaseOrder reverts with OwnableUnauthorizedAccount. Correctly: that
+         separation is the whole point of the move. The server holds the owner
+         key, so it does the sending. #}
+      <button id="cx-del-server" class="btn btn-primary btn-sm" disabled>Deliver from server</button>
+    </div>
+    <div id="cx-del-out" class="cx-out"></div>
+
+    <details style="margin-top:12px">
+      <summary class="cx-muted" style="font-size:.82rem;cursor:pointer">
+        Mint or burn a specific amount (advanced)
+      </summary>
+      <div class="cx-muted" style="font-size:.82rem;margin:8px 0 10px">
+        A hand-typed supply figure is one missing or extra zero away from being wrong, and
+        genesis minting cannot be undone by minting again — only by burning, which needs the
+        treasury role. Both actions below spell out the amount and its value at the current
+        sale rate before asking you to confirm.
+      </div>
+      <div class="cx-row" style="margin-bottom:8px">
+        <input id="cx-mint-amount" class="cx-input" type="number" min="1" step="1"
+               style="width:10rem" placeholder="AXONCoins">
+        <input id="cx-mint-to" class="cx-input" type="text" style="min-width:24rem"
+               placeholder="destination (defaults to the connected wallet)">
+        <button id="cx-mint-manual" class="btn btn-outline-warning btn-sm" disabled>Mint</button>
+        <button id="cx-burn" class="btn btn-outline-danger btn-sm" disabled>Burn</button>
+      </div>
+      <div class="cx-muted" style="font-size:.78rem">
+        Once the Treasury contract is wired, burning destroys AXONCoins the <em>Treasury</em>
+        holds &mdash; <code>burn</code> takes no <code>from</code> address, so nobody can burn
+        a holder's AXONCoins, including you. Before that, it burns from your own wallet and
+        takes the treasury role first if needed. It will refuse to rotate that role away from
+        a deployed Treasury, because doing so would silently stop epoch rewards being mintable.
+      </div>
+    </details>
+  </div>
+
+  <div class="cx-card">
+    <h4>Send AXONCoins by hand</h4>
+    <div class="cx-muted" style="font-size:.82rem;margin-bottom:10px">
+      For when an automatic path got it wrong &mdash; a delivery that credited the wrong
+      amount, a refund, a goodwill payment. A reason is required, because an unexplained
+      movement out of the treasury is indistinguishable from a theft, and the only person
+      who can explain it is you, now.
+      <span id="cx-grant-total"></span>
+    </div>
+    <div class="cx-row" style="margin-bottom:8px">
+      <input id="cx-grant-wallet" class="cx-input" type="text" style="min-width:26rem"
+             placeholder="recipient 0x…">
+      <input id="cx-grant-credits" class="cx-input" type="number" min="1" step="1"
+             style="width:8rem" placeholder="AXONCoins">
+    </div>
+    <div class="cx-row" style="margin-bottom:8px">
+      <input id="cx-grant-reason" class="cx-input" type="text" style="min-width:30rem"
+             placeholder="why (e.g. 'short-delivered 4 AXONCoins on purchase 3')">
+      <button id="cx-grant-send" class="btn btn-warning btn-sm" disabled>Send AXONCoins</button>
+    </div>
+    <div id="cx-grant-out" class="cx-out"></div>
+  </div>
+
+  <div class="cx-card">
+    <h4>Node registrations</h4>
+    <div class="cx-muted" style="font-size:.82rem;margin-bottom:10px">
+      Nodes register themselves at <code>{{ url_for('main.pof_register') }}</code>; each one
+      proves ownership of its p2p key with an ed25519 signature before it is queued, so this
+      is <strong>not an approval queue</strong> — it is a list of registrations waiting on gas.
+      Submitting sends one <code>registerWithSig</code> per node from your wallet. Until a node
+      is registered on-chain it has no payout address, and settlement rejects its receipts.
+    </div>
+    <div class="cx-row" style="margin-bottom:8px">
+      <button id="cx-reg-refresh" class="btn btn-outline-secondary btn-sm">Refresh queue</button>
+      <button id="cx-reg-submit" class="btn btn-warning btn-sm" disabled>Register all pending</button>
+    </div>
+    <div id="cx-reg-out" class="cx-out"></div>
+
+    <div class="cx-muted" style="font-size:.82rem;margin:14px 0 10px">
+      <strong>Register a node you run yourself.</strong> The queue above is for nodes owned by
+      other people, who cannot spend your gas — they sign an intent and wait. A node you own
+      needs none of that: <code>NodeRegistry.register</code> takes the wallet that sends the
+      transaction as the owner, so connecting your wallet <em>is</em> the proof.
+      The node prints its p2p public key on startup
+      (<code>proof-of-facilitation: p2p public key …</code>).
+    </div>
+    <div class="cx-row" style="margin-bottom:8px">
+      <input id="cx-reg-key" class="cx-input" type="text" style="min-width:34rem"
+             placeholder="p2p public key (64 hex characters)">
+      <select id="cx-reg-caps" class="cx-input">
+        <option value="69">storage node (DHT + storage + witness)</option>
+        <option value="65">no storage offered (DHT + witness)</option>
+        <option value="67">gateway (DHT + gateway + witness)</option>
+        <option value="127">everything</option>
+      </select>
+      <button id="cx-reg-self" class="btn btn-warning btn-sm" disabled>Register</button>
+    </div>
+    <div id="cx-reg-self-out" class="cx-out"></div>
+  </div>
+
+  <div class="cx-card">
+    <h4>Interact</h4>
+    <div id="cx-interact"><div class="cx-muted">Connect a wallet and deploy (or load saved) contracts to interact.</div></div>
+  </div>
+</div>
+
+<script src="{{ static_resource('pof/chain-bundle.js') }}"></script>
+<script>
+(function () {
+  const ZK = { chainIdHex: "0x1", chainId: 1n, chainName: "Ethereum Mainnet",
+    rpcUrls: ["https://eth.llamarpc.com"], nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    blockExplorerUrls: ["https://etherscan.io"] };
+
+  // Constructor specs: which args each contract takes. `owner` auto-fills the
+  // connected wallet; `ref` auto-fills a previously-deployed address.
+  const CTORS = {
+    AxonToken: [{ n: "initialOwner", k: "owner" }],
+    NodeRegistry: [{ n: "initialOwner", k: "owner" }],
+    StakeVault: [{ n: "initialOwner", k: "owner" }, { n: "axonToken", k: "addr", ref: "AxonToken" }, { n: "withdrawDelaySeconds", k: "uint", def: "86400" }],
+    EpochManager: [{ n: "initialOwner", k: "owner" }, { n: "challengeWindowSeconds", k: "uint", def: "86400" }],
+    // Deployed AFTER EpochManager and pointed at it. Deliberately a separate
+    // contract: changing EpochManager would mean redeploying it, and every
+    // epoch on record lives in the existing one.
+    //
+    // 0.002 ETH flat, in wei. Sized against gas rather than against the epoch:
+    // a finalize call on Ethereum Mainnet costs a fraction of a cent, so this only
+    // has to beat that by enough to be worth somebody's automation. Fund the
+    // deployed contract with ETH; CREDIT sent here does nothing.
+    SettlementKeeper: [
+      { n: "initialOwner", k: "owner" },
+      { n: "epochManager", k: "addr", ref: "EpochManager" },
+      { n: "initialBountyWei", k: "uint", def: "2000000000000000" }
+    ],
+    // AxonChannels is the CHANNEL CONTRACT, and it replaces both ChannelManager
+    // and ChannelManagerV2 -- V1 was removed and V2 renamed, so offering either
+    // of the old names here would offer a mainnet deploy of a contract that no
+    // longer exists in `contracts/`. challengePeriodSeconds is IMMUTABLE once
+    // deployed and every channel inherits it. 28800 s (8 h) is not a preference:
+    // it is what DeployableChallengePeriod() derived from six measured mainnet
+    // terms, and it is what the live predecessor at the address above carries.
+    AxonChannels: [
+      { n: "token", k: "addr", ref: "AxonToken" },
+      { n: "challengePeriodSeconds", k: "uint", def: "28800" }
+    ],
+    // The naming registry, carrying §93's seizure machine. It was ABSENT from
+    // this console entirely, so the contract that item 1.5 exists to deploy
+    // could not be deployed from the panel built to deploy it.
+    //
+    // The array arguments are grouped as the constructor groups them, because
+    // Solidity's 16-local limit is why they are arrays at all. Order inside each
+    // is fixed by the constructor and is the one thing here that cannot be
+    // guessed from the field name -- so it is spelled out in every label.
+    //
+    // seizeQuarantine (the last `times` entry) MUST NOT BE ZERO: the constructor
+    // reverts on it, because a deployment that passed zero would look correct
+    // and make every seizure a no-op (R-93.3).
+    AxonRegistry: [
+      { n: "initialOwner", k: "owner" },
+      { n: "token", k: "addr", ref: "AxonToken" },
+      { n: "treasury", k: "addr", ref: "Treasury" },
+      { n: "tldNode", k: "bytes32", def: "0x0000000000000000000000000000000000000000000000000000000000000000" },
+      { n: "times", hint: "grace, commitMin, commitMax, term, epoch, seizeQuarantine", k: "uintarr", len: 6, def: "7776000,60,86400,31536000,604800,2592000" },
+      { n: "money", hint: "basePrice, bondPerName", k: "uintarr", len: 2, def: "10000000000000000000,100000000000000000000" },
+      { n: "limits", hint: "levyBps, burstFree, revealsPerBlock", k: "uintarr", len: 3, def: "500,3,8" },
+      { n: "levyHalfLife", k: "uint", def: "2592000" }
+    ],
+    RewardDistributor: [{ n: "initialOwner", k: "owner" }, { n: "axonToken", k: "addr", ref: "AxonToken" }, { n: "epochManager", k: "addr", ref: "EpochManager" }],
+    // epochBudget 100,000 credits: the ceiling on ONE epoch, not a target — an
+    // epoch asking for more is refused loudly rather than part-funded, because a
+    // half-funded reward tree pays early claimants and strands the last one.
+    // supplyCap 100,000,000 is immutable once deployed. A cap the owner can
+    // raise is not a cap, so this is the number to think hardest about here.
+    Treasury: [
+      { n: "initialOwner", k: "owner" },
+      { n: "axonToken", k: "addr", ref: "AxonToken" },
+      { n: "epochManager", k: "addr", ref: "EpochManager" },
+      { n: "rewardDistributor", k: "addr", ref: "RewardDistributor" },
+      { n: "initialEpochBudget", k: "uint", def: "100000000000000000000000" },
+      { n: "supplyCap", k: "uint", def: "100000000000000000000000000" }
+    ],
+    DisputeManager: [{ n: "initialOwner", k: "owner" }, { n: "axonToken", k: "addr", ref: "AxonToken" }, { n: "epochManager", k: "addr", ref: "EpochManager" }, { n: "stakeVault", k: "addr", ref: "StakeVault" }, { n: "bondAmount", k: "uint", def: "100000000000000000000" }],
+    ServicePolicyRegistry: [{ n: "initialOwner", k: "owner" }],
+    // The DAO vote, on chain. Until this exists, AxonRegistry's governance
+    // paths all revert (NoGovernor) and no PRUNED or SEIZED state can be
+    // written at all — which is F-94.1's sequencing ruling, enforced by the
+    // registry rather than trusted to a process.
+    //
+    // minCoverageBps is THE NUMBER TO THINK ABOUT and the constructor refuses
+    // anything at or below 2000. Participation is worth 20 of SCORE_WEIGHTS'
+    // 100 and is the ONLY source measurable today, so a floor of 2000 or less
+    // lets a one-member-one-vote DAO seize names. 5000 means: no name may be
+    // pruned until at least half the weighting scheme is actually live.
+    AxonGovernance: [
+      { n: "initialOwner", k: "owner" },
+      { n: "votingPeriodSeconds", k: "uint", def: "604800" },
+      { n: "passThresholdBps", k: "uint", def: "6000" },
+      { n: "quorumWeight", k: "uint", def: "0" },
+      { n: "minCoverageBps", k: "uint", def: "5000" }
+    ],
+  };
+  // Deploy order. AxonToken first because everything references it; AxonRegistry
+  // after Treasury because it takes one. ChannelManager, ChannelManagerV2 and
+  // CryptoZombies are GONE: the first two no longer exist in `contracts/` (V1
+  // removed, V2 renamed to AxonChannels) and the third is a vendored tutorial
+  // contract that had no business being one click from a mainnet deployment.
+  const ORDER = ["AxonToken", "NodeRegistry", "StakeVault", "EpochManager", "RewardDistributor", "Treasury", "AxonRegistry", "DisputeManager", "ServicePolicyRegistry", "SettlementKeeper", "AxonGovernance", "AxonChannels"];
+
+  // CANONICAL MAINNET DEPLOYMENTS.
+  //
+  // Every other address on this console is per-operator: you deploy it, you own
+  // it, and the address lives in this installation's settings. These are the
+  // opposite — deployed once by the project, the same address for everyone, so
+  // the address belongs in the repository where it can be reviewed rather than
+  // in each installation's database where it cannot.
+  //
+  // Consequences, both deliberate:
+  //   - the address is filled in below when settings carry nothing for it, so a
+  //     fresh install knows the contract without an operator transcribing it;
+  //   - `renderDeploy` offers NO deploy button for these. `challengePeriod` is
+  //     immutable, the deployed value was derived from measured mainnet
+  //     evidence, and a second deployment would spend real gas to produce a
+  //     contract nobody's channels are in.
+  // Recording a different address by hand still works and still wins.
+  const DEPLOYED = {
+    // KEYED UNDER ITS SUCCESSOR'S NAME so the live deployment stays visible on
+    // the card that replaces it. The `note` says plainly that the deployed
+    // contract is ChannelManagerV2 and NOT AxonChannels -- a badge reading
+    // "mainnet" over an address that is a different contract would be the
+    // worst possible thing for this page to imply.
+    AxonChannels: {
+      address: "0x2a2a1b58d5cdb1e89b385e51681658e663a1a03c",
+      tx: "0x2bfa5d16e3a7bda76282c11aaf3048c3be2e4cfb54ec16552f03bd9e5a425caa",
+      block: 25757314,
+      note: "THE ADDRESS ABOVE IS ChannelManagerV2, THIS CONTRACT\u2019S PREDECESSOR \u2014 not AxonChannels, which is not deployed. Ethereum Mainnet, chain 1. challengePeriod 28800 s (8 h), immutable. Token: ANON \u2014 the deployed contract references the pre-rename token, and this note describes what is on chain, not what the source now calls it. Tipping runs on it today; deploying AxonChannels does not migrate anything.",
+    },
+  };
+  const EXPLORER = "https://etherscan.io";
+
+  // Plain-language explanation of each contract, shown on the console.
+  const DOCS = {
+    AxonToken: "The network token: Anonymous, ticker AXON. Supply is controlled solely by the Treasury; nodes never mint. To launch, the owner uses mintGenesis(to, amount) to seed an allocation, then closeGenesis() to lock bootstrap minting forever.",
+    Treasury: "The only address that can change AXONCoins supply. Minting is PERMISSIONLESS but bounded — anyone may call fundEpoch(epoch) for a settled epoch, and it mints exactly that epoch's rewards into the RewardDistributor, refusing anything over the per-epoch budget or the supply cap. Spending is owner-only and CANNOT mint: release(to, amount) moves an allocation that was already minted. That split is what makes the cap mean anything.",
+    NodeRegistry: "Binds a wallet to a node's P2P (Ed25519) identity and records the services it may earn for (capabilities bitmap). Nodes register directly, or via a relayer with registerWithSig; they can rotate keys or deactivate.",
+    StakeVault: "Holds slashable bonds (in AXONCoins) posted by providers, witnesses, and aggregators. Withdrawals are delayed so a bond can't be pulled the instant fraud is reported; the DisputeManager can slash a bond to a beneficiary.",
+    EpochManager: "Records each epoch's receipt/reward/state Merkle roots + randomness, enforces the optimistic challenge window, and finalizes epochs (which unlocks reward claims). A dispute can freeze or invalidate an epoch.",
+    RewardDistributor: "Nodes claim their epoch reward with a Merkle proof against the finalized epoch's rewardRoot, once per (epoch, node). Paid from this contract's AXONCoins balance, which the Treasury mints into it — anyone may call Treasury.fundEpoch(epoch) once an epoch settles, so this no longer has to be funded by hand.",
+    DisputeManager: "Optimistic fraud challenges: a challenger bonds AXONCoins and names a fraudulent epoch, freezing it. The arbiter resolves — uphold (invalidate the epoch + slash the aggregator to the challenger) or reject (lift the freeze, forfeit the bond).",
+    AxonChannels: "Bilateral AXON payment channels plus hash-locked transfers, checkpoints and delegation \u2014 the contract tipping runs on. It REPLACES ChannelManager (removed) and ChannelManagerV2 (renamed); the mainnet address shown above is that predecessor, still live and still carrying today\u2019s tips. Its challenge period is immutable once deployed and 28800 s was derived from measured mainnet evidence, not chosen. UNAUDITED: reading costs nothing, funding a channel puts real AXON behind it.",
+    AxonRegistry: "Names and their ownership, plus \u00a793\u2019s seizure machine: a name is ACTIVE, PRUNED, SEIZED or RECYCLABLE, and a seizure ROTATES the domain key to zero rather than handing it to anyone \u2014 the DAO never possesses a domain key. Governance paths all revert until setGovernor() is called, so no PRUNED or SEIZED state can be written before a Governance contract exists. seizeQuarantine cannot be zero; the constructor refuses it, because a deployment carrying zero would look correct and make every seizure a no-op.",
+    AxonGovernance: "The DAO vote, ON CHAIN \u2014 proposals, votes and tallies are storage here, so a tally is reconstructible with the web server stopped (E-G8). Before this existed the vote was rows in one server\u2019s Postgres, which made \u2018the blockchain is authoritative\u2019 mean \u2018whatever that server writes is authoritative\u2019. Jurisdictional categories (ILLEGAL, EXTREMIST, COPYRIGHT) are refused at proposal time and permanently out of scope (R-94.1): a majority vote does not resolve a conflict of laws, it exports one jurisdiction\u2019s answer to everyone. Registry actions additionally require the weighting scheme to be at least minCoverageBps live \u2014 only participation is measurable today, so a fresh deployment can VOTE but cannot PRUNE. After deploying, call AxonRegistry.setGovernor() with this address. UNAUDITED.",
+    ServicePolicyRegistry: "The versioned scoring/budget policy the aggregator reads: the epoch budget, per-service reward split, witness thresholds, per-node cap, and the scoring-formula hash. New versions activate only at an epoch boundary.",
+  };
+
+  // `chain` is the read side (balances, nonces, gas, view calls) and `signer`
+  // the write side. On mainnet both come from the wallet's own provider, so
+  // they cannot disagree about state — which is why there is no separate L2
+  // provider here the way there was on ZKsync.
+  let CONTRACTS = {}, addresses = {}, provider = null, signer = null, account = null, chain = null;
+  const $ = (id) => document.getElementById(id);
+  function status(msg, cls) { const e = $("cx-status"); e.textContent = msg; e.className = "cx-out show " + (cls || ""); }
+
+  function jsonSafe(v) {
+    return JSON.stringify(v, (_k, val) => typeof val === "bigint" ? val.toString() : val, 2);
+  }
+
+  // Wrapper messages that mean "ethers gave up parsing the RPC error" — they
+  // carry no information, so they must never win over a nested real message.
+  const VAGUE = /could not coalesce|missing revert data|unknown error|internal error|internal json-rpc error|^error$|^request failed/i;
+
+  // MetaMask and the ethereum RPC bury the real cause at varying depths
+  // (e.info.error.data.message, e.error.message, e.cause.cause.message, …).
+  // Collect every message in the tree and prefer the most specific one.
+  function collectMessages(e, depth, out, seen) {
+    out = out || []; seen = seen || new Set(); depth = depth || 0;
+    if (!e || typeof e !== "object" || depth > 6 || seen.has(e)) return out;
+    seen.add(e);
+    ["shortMessage", "reason", "message", "details"].forEach((k) => {
+      if (typeof e[k] === "string" && e[k].trim()) out.push(e[k].trim());
+    });
+    ["info", "error", "cause", "data", "body", "value", "originalError"].forEach((k) => {
+      collectMessages(e[k], depth + 1, out, seen);
+    });
+    return out;
+  }
+
+  function errMsg(e) {
+    const named = customErrorName(e);
+    if (named) {
+      const hint = ERROR_HINTS[named];
+      return "reverted: " + named + (hint ? " — " + hint : "");
+    }
+    const msgs = collectMessages(e);
+    const picked = msgs.find((m) => !VAGUE.test(m)) || msgs[0] || String(e);
+    // A chain rejecting the transaction's *format* is a network mismatch, not
+    // a bad transaction: the wallet is on a chain that does not speak the type
+    // it was handed. Worth saying, because the raw wording sounds like the
+    // transaction itself was malformed.
+    if (/unsupported transaction type|could not be decoded/i.test(picked)) {
+      return picked + "\n\n→ That is a wallet-network mismatch, not a problem with the " +
+        "transaction. Switch MetaMask to Ethereum Mainnet (chainId 1) and retry.";
+    }
+    return picked;
+  }
+
+  // A revert with a custom error arrives as 4 bytes and ethers says
+  // "unknown custom error", which is a dead end — the contract told us exactly
+  // what was wrong and the message threw it away. Every ABI here lists its
+  // error types, so the selector can just be looked up.
+  function customErrorName(e) {
+    const blob = JSON.stringify(e && (e.info || e.data || e.error) || {}) + " " + (e && e.data || "");
+    const m = blob.match(/0x[0-9a-fA-F]{8}/g);
+    if (!m) return null;
+    const table = {};
+    Object.keys(CONTRACTS || {}).forEach((name) => {
+      (CONTRACTS[name].abi || []).forEach((entry) => {
+        if (entry.type !== "error") return;
+        const sig = entry.name + "(" + (entry.inputs || []).map((i) => i.type).join(",") + ")";
+        try { table[PoFChain.ethers.id(sig).slice(0, 10).toLowerCase()] = sig; } catch (_) {}
+      });
+    });
+    for (const candidate of m) {
+      const hit = table[candidate.toLowerCase()];
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  // Why a given custom error happened, where the contract's name alone is not
+  // enough to act on.
+  const ERROR_HINTS = {
+    "NotAggregator()": "This wallet is not authorised to submit epochs. The owner must call " +
+      "EpochManager.setAggregator(<wallet>, true) first.",
+    "EpochExists()": "That epoch number has already been submitted — epochs are write-once.",
+    "UnknownEpoch()": "No such epoch has been submitted yet.",
+    "OwnableUnauthorizedAccount(address)": "This wallet is not the contract owner.",
+    "WindowNotPassed()": "The challenge window has not elapsed yet.",
+    "DisputesOpen()": "An open dispute is blocking this.",
+    "AlreadyFinalized()": "That epoch is already finalized.",
+  };
+
+  // Last resort: hand over the whole payload. When ethers cannot parse an RPC
+  // error there is no substitute for seeing exactly what came back.
+  function rawErrorDump(e) {
+    const seen = new WeakSet();
+    let s;
+    try {
+      s = JSON.stringify(e, (_k, v) => {
+        if (typeof v === "bigint") return v.toString();
+        if (typeof v === "object" && v !== null) {
+          if (seen.has(v)) return "[circular]";
+          seen.add(v);
+        }
+        return v;
+      }, 2);
+    } catch (je) { s = String(e); }
+    if (!s || s === "{}") s = String(e && e.stack || e);
+    return s.length > 4000 ? s.slice(0, 4000) + "\n… (truncated)" : s;
+  }
+
+  // Does this failure smell like "the wallet can't pay for gas"? An unfunded
+  // wallet dies in gas estimation, which ethers wraps as "could not coalesce".
+  function looksLikeFunds(e) {
+    const s = (errMsg(e) + " " + JSON.stringify((e && (e.info || e.error)) || {})).toLowerCase();
+    return s.includes("insufficient") || s.includes("coalesce") || s.includes("estimat")
+        || s.includes("balance") || s.includes("funds");
+  }
+
+  const FEE_HEADROOM_PCT = 20n;  // gas price drifts between estimate and send
+
+  function fmtEth(wei) {
+    const s = PoFChain.ethers.formatEther(wei);
+    const n = Number(s);
+    if (n === 0) return "0";
+    if (n < 0.00000001) return s;              // dust: show it in full
+    return String(Number(n.toFixed(8)));
+  }
+  function fmtGwei(wei) {
+    return String(Number(Number(PoFChain.ethers.formatUnits(wei, "gwei")).toFixed(4)));
+  }
+  // Round a shortfall up to 2 significant digits, so "bridge at least X" is a
+  // number a human would actually type into the portal.
+  function suggestFund(wei) {
+    const n = Number(PoFChain.ethers.formatEther(wei));
+    if (!(n > 0)) return "0";
+    if (n < 0.000001) return "0.000001";   // anything smaller isn't worth bridging
+    if (n >= 1000) return String(Math.ceil(n));
+    const mag = Math.pow(10, Math.floor(Math.log10(n)) - 1);
+    return String(Number((Math.ceil(n / mag) * mag).toPrecision(2)));
+  }
+
+  // Price this exact transaction (gas limit x max fee per gas) so the console
+  // can quote a real ETH figure instead of guessing. eth_estimateGas prices the
+  // call; eth_feeHistory (via getFeeData) prices the gas.
+  async function feeFor(txReq) {
+    const req = Object.assign({}, txReq, { from: account });
+    const [gasLimit, fees] = await Promise.all([
+      chain.estimateGas(req),
+      chain.getFeeData(),
+    ]);
+    // maxFeePerGas is null on a chain still quoting legacy gas; gasPrice is the
+    // fallback, and one of the two is always present.
+    const price = BigInt(fees.maxFeePerGas || fees.gasPrice || 0n);
+    const cost = BigInt(gasLimit) * price;
+    return { gasLimit: BigInt(gasLimit), price, cost, needed: cost + (cost * FEE_HEADROOM_PCT) / 100n };
+  }
+
+  async function deployTxFor(name, args) {
+    const { abi, bytecode } = CONTRACTS[name];
+    const factory = new PoFChain.ethers.ContractFactory(abi, bytecode, signer);
+    return await factory.getDeployTransaction(...args);
+  }
+
+  // Every write goes through here: check the wallet's network, then hand the
+  // transaction to the wallet to sign and broadcast (eth_sendTransaction).
+  //
+  // This used to build a ZKsync type-113 (EIP-712) transaction, sign it with
+  // eth_signTypedData_v4, and broadcast the serialized bytes through our own L2
+  // provider — necessary there, because zksync-ethers' signTransaction falls
+  // through to eth_signTransaction, which MetaMask has never implemented.
+  //
+  // None of that applies on Ethereum mainnet, and doing it anyway is fatal:
+  // 0x71-typed bytes sent to mainnet come back "transaction could not be
+  // decoded: unsupported transaction type". Mainnet takes ordinary type-2
+  // transactions over the path every wallet already supports, so the signing
+  // detour is gone rather than made conditional.
+  async function sendTx(populated) {
+    await assertWalletOnChain();
+    return await signer.sendTransaction(populated);
+  }
+
+  // Refuse to sign while the wallet is on another chain. Signing would produce
+  // a signature bound to the wrong chainId, and any wallet-routed send would
+  // hit the wrong network entirely.
+  async function assertWalletOnChain() {
+    if (!window.ethereum) throw new Error("No wallet is connected.");
+    let current = null;
+    try { current = await window.ethereum.request({ method: "eth_chainId" }); } catch (e) {}
+    if (current && current.toLowerCase() === ZK.chainIdHex) return;
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain", params: [{ chainId: ZK.chainIdHex }],
+      });
+    } catch (sw) {
+      throw new Error(
+        "Your wallet is on chain " + (current || "unknown") + ", not Ethereum Mainnet (" +
+        ZK.chainIdHex + "). Switch networks in MetaMask and try again.");
+    }
+  }
+
+  // The answer to "how much do I need": balance, what this tx costs, shortfall.
+  async function fundingReport(what, buildTx) {
+    if (!chain || !account) return "";
+    let bal = null, est = null, estErr = "";
+    try { bal = await chain.getBalance(account); } catch (e) {}
+    try { est = await feeFor(await buildTx()); } catch (e) { estErr = errMsg(e); }
+    const L = ["wallet " + account,
+               "balance:          " + (bal === null ? "unknown" : fmtEth(bal) + " ETH") + "  (Ethereum Mainnet)"];
+    if (est) {
+      L.push(what + " costs: " + fmtEth(est.cost) + " ETH   (" + est.gasLimit.toLocaleString() +
+             " gas x " + fmtGwei(est.price) + " gwei)");
+      L.push("need in wallet:   " + fmtEth(est.needed) + " ETH   (cost + 20% headroom for gas-price drift)");
+      if (bal !== null && bal < est.needed) {
+        const short = est.needed - bal;
+        L.push("SHORT BY:         " + fmtEth(short) + " ETH");
+        L.push("→ send at least " + suggestFund(short) + " ETH to this wallet, then retry.");
+      } else if (bal !== null) {
+        L.push("→ your balance covers this, so the failure above is NOT a funding problem.");
+      }
+    } else {
+      L.push("could not price this transaction: " + (estErr || "fee estimate failed"));
+      L.push("→ check this wallet's Ethereum mainnet balance on etherscan.io.");
+    }
+    return L.join("\n");
+  }
+
+  async function loadData() {
+    CONTRACTS = await (await fetch("{{ static_resource('pof/contracts.json') }}")).json();
+    try { addresses = await (await fetch("{{ url_for('admin.contracts_addresses') }}", { credentials: "same-origin" })).json(); }
+    catch (e) { addresses = {}; }
+    if (!addresses || typeof addresses !== "object") addresses = {};
+    // Fill in the canonical deployments this installation has not recorded.
+    // Only where nothing is set: an operator who deliberately recorded another
+    // address keeps it, because overriding that would be this file deciding it
+    // knows their chain better than they do.
+    Object.keys(DEPLOYED).forEach((name) => {
+      if (!addresses[name]) addresses[name] = DEPLOYED[name].address;
+    });
+  }
+  async function saveAddresses() {
+    await fetch("{{ url_for('admin.contracts_save_addresses') }}", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(addresses),
+    });
+  }
+
+  async function connect() {
+    if (!window.ethereum) { status("No wallet found. Install MetaMask (or a Ethereum-compatible wallet).", "cx-err"); return; }
+    try {
+      provider = new PoFChain.ethers.BrowserProvider(window.ethereum);
+      await window.ethereum.request({ method: "eth_requestAccounts" });
+      let net = await provider.getNetwork();
+      if (net.chainId !== ZK.chainId) {
+        try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ZK.chainIdHex }] }); }
+        catch (sw) {
+          if (sw.code === 4902) await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{ chainId: ZK.chainIdHex, chainName: ZK.chainName, rpcUrls: ZK.rpcUrls, nativeCurrency: ZK.nativeCurrency, blockExplorerUrls: ZK.blockExplorerUrls }] });
+          else throw sw;
+        }
+        provider = new PoFChain.ethers.BrowserProvider(window.ethereum);
+        net = await provider.getNetwork();
+      }
+      // On mainnet the wallet's own provider is the chain: no separate L2
+      // provider and no wrapped signer. (Both were ZKsync requirements —
+      // zksync-ethers' ContractFactory throws "Initialize provider L2" without
+      // one — and carrying them here would only add a second RPC that can
+      // disagree with the wallet about nonces.)
+      chain = provider;
+      signer = await provider.getSigner();
+      account = await signer.getAddress();
+      let bal = 0n;
+      try { bal = await chain.getBalance(account); } catch (be) {}
+      const balEth = PoFChain.ethers.formatEther(bal);
+      $("cx-account").textContent = account + "  (" + balEth + " ETH)";
+      $("cx-network").textContent = net.chainId === ZK.chainId ? "Ethereum Mainnet" : ("chain " + net.chainId);
+      $("cx-network").className = "cx-badge " + (net.chainId === ZK.chainId ? "cx-ok" : "cx-err");
+      if (bal === 0n) {
+        status("Connected as " + account + " — this wallet has 0 ETH on Ethereum Mainnet.\n" +
+               "The Deploy panel below is pricing each contract now and will say exactly how much to bridge.", "cx-err");
+      } else {
+        status("Connected as " + account + " (" + balEth + " ETH on Ethereum Mainnet)", "cx-ok");
+      }
+      renderDeploy(); renderInteract();
+      // Re-read anything that depends on WHO is connected: the supply panel
+      // shows this wallet's balance, and the delivery queue warns against it.
+      $("cx-reg-self").disabled = !addresses.NodeRegistry;
+      refreshSupply().then(refreshDeliveries).then(refreshGrants)
+        .then(refreshGenesisState).then(refreshRegistrations);
+    } catch (e) { status("Connect failed: " + (e.message || e), "cx-err"); }
+  }
+
+  function argInputId(name, arg) { return "cx-ctor-" + name + "-" + arg; }
+
+  function renderDeploy() {
+    const host = $("cx-deploy"); host.innerHTML = "";
+    ORDER.forEach((name) => {
+      const spec = CTORS[name];
+      const div = document.createElement("div"); div.className = "cx-fn";
+      const deployed = addresses[name];
+      const canon = DEPLOYED[name];
+      let html = "<div class='cx-row'><strong>" + name + "</strong>";
+      if (deployed) {
+        html += " <a class='cx-mono cx-ok' target='_blank' rel='noopener' href='" +
+                EXPLORER + "/address/" + deployed + "'>" + deployed + "</a>";
+      }
+      if (canon) html += " <span class='cx-badge cx-ok'>mainnet</span>";
+      html += " <span class='cx-badge' id='cx-est-" + name + "'></span>";
+      html += "</div>";
+      if (canon) {
+        html += "<div class='cx-muted' style='font-size:.78rem;margin-top:4px'>" + canon.note +
+                " Deployed in block " + canon.block + " &mdash; " +
+                "<a target='_blank' rel='noopener' href='" + EXPLORER + "/tx/" + canon.tx +
+                "'>deployment transaction</a>.</div>";
+      }
+      html += "<div class='cx-muted' style='font-size:.82rem;margin:4px 0 6px'>" + (DOCS[name] || "") + "</div>";
+      spec.forEach((a) => {
+        let def = "";
+        if (a.k === "owner") def = account || "";
+        else if (a.k === "addr" && a.ref) def = addresses[a.ref] || "";
+        else if (a.def) def = a.def;
+        // Array labels carry the field order (see the CTORS comment): it is the
+        // one thing an operator cannot recover from the contract source without
+        // reading the constructor, and getting it wrong deploys a registry with
+        // its grace period and its term swapped.
+        // The argument NAME stays a bare identifier, matching the ABI's own
+        // name -- test_admin_console_treasury compares the two and parses names
+        // with \w+, so a descriptive label here silently drops the field from
+        // its arity check and the console can drift from the constructor
+        // unnoticed. The field ORDER, which is what an operator cannot recover
+        // without reading the constructor, goes in the hint instead.
+        const wide = (a.k === "uintarr" || a.k === "bytes32");
+        const label = a.n + (a.hint ? "<br><span style='opacity:.7'>" + a.hint + "</span>" : "");
+        html += "<div class='cx-row' style='margin-top:4px'><label class='cx-muted' style='width:" +
+          (wide ? "17rem" : "11rem") + ";font-size:.78rem'>" + label + "</label>" +
+          "<input class='cx-input mono' style='flex:1' id='" + argInputId(name, a.n) + "' value='" + def + "'" +
+          (a.k === "uintarr" ? " placeholder='" + a.len + " values, comma-separated'" : "") + "></div>";
+      });
+      const btn = document.createElement("button");
+      btn.className = "btn btn-sm btn-outline-primary mt-2";
+      btn.textContent = deployed ? "Redeploy " + name : "Deploy " + name;
+      btn.onclick = () => deploy(name);
+
+      // Record an address deployed elsewhere. Without this the ONLY way to
+      // register a contract here is to deploy it again — paying gas twice and
+      // orphaning the first one, which is a bad reason to spend money.
+      const adopt = document.createElement("input");
+      adopt.className = "cx-input mono"; adopt.style.cssText = "flex:1;margin-top:6px";
+      adopt.placeholder = "0x… already deployed? paste its address to record it";
+      const adoptBtn = document.createElement("button");
+      adoptBtn.className = "btn btn-sm btn-outline-secondary mt-2";
+      adoptBtn.style.marginLeft = "6px";
+      adoptBtn.textContent = "Record";
+      adoptBtn.onclick = async () => {
+        const v = (adopt.value || "").trim();
+        if (!/^0x[0-9a-fA-F]{40}$/.test(v)) { alert("Not an address."); return; }
+        addresses[name] = v;
+        await saveAddresses();
+        renderDeploy();
+      };
+      const wrap = document.createElement("div"); wrap.innerHTML = html;
+      // No deploy button for a canonical mainnet deployment. Redeploying it
+      // would spend real gas to create a second contract holding none of the
+      // channels, and its challenge period is immutable so a new one could not
+      // even be corrected afterwards. Recording a different address by hand is
+      // still available directly below.
+      if (!canon) wrap.appendChild(btn);
+      wrap.appendChild(adoptBtn);
+      wrap.appendChild(adopt);
+      host.appendChild(wrap);
+    });
+    refreshEstimates();
+  }
+
+  let estToken = 0;
+  // Price every deploy up front, so "how much ETH do I need" is answered on the
+  // page before anything is signed — per contract and as a total for what's left.
+  async function refreshEstimates() {
+    if (!signer || !chain || !account) return;
+    const token = ++estToken;
+    const totalEl = $("cx-est-total");
+    ORDER.forEach((n) => { const e = $("cx-est-" + n); if (e) e.textContent = "pricing…"; });
+    if (totalEl) { totalEl.className = "cx-out show"; totalEl.textContent = "Pricing deploys against Ethereum Mainnet…"; }
+
+    const bal = await chain.getBalance(account).catch(() => null);
+    const results = await Promise.all(ORDER.map(async (name) => {
+      try { return { name, est: await feeFor(await deployTxFor(name, ctorArgs(name, { fill: true }))) }; }
+      catch (e) { return { name, err: errMsg(e) }; }
+    }));
+    if (token !== estToken) return;  // a newer render superseded this pass
+
+    let total = 0n, unpriced = 0;
+    results.forEach((r) => {
+      const el = $("cx-est-" + r.name);
+      if (el) el.textContent = r.est ? ("gas ≈ " + fmtEth(r.est.cost) + " ETH") : "gas: unpriced";
+      if (addresses[r.name]) return;               // already deployed — nothing left to pay
+      if (r.est) total += r.est.cost; else unpriced++;
+    });
+    if (!totalEl) return;
+
+    const remaining = ORDER.filter((n) => !addresses[n]);
+    if (!remaining.length) {
+      totalEl.className = "cx-out show cx-ok";
+      totalEl.textContent = "All contracts deployed. Balance: " + (bal === null ? "unknown" : fmtEth(bal) + " ETH");
+      return;
+    }
+    const needed = total + (total * FEE_HEADROOM_PCT) / 100n;
+    const L = ["Still to deploy (" + remaining.length + "): " + remaining.join(", "),
+               "Gas for all of them:  " + fmtEth(total) + " ETH" + (unpriced ? "  (" + unpriced + " could not be priced)" : ""),
+               "Fund the wallet with: " + fmtEth(needed) + " ETH   (+20% headroom for gas-price drift)",
+               "Your balance:         " + (bal === null ? "unknown" : fmtEth(bal) + " ETH")];
+    let cls = "cx-ok";
+    if (bal !== null && bal < needed) {
+      L.push("SHORT BY:             " + fmtEth(needed - bal) + " ETH");
+      L.push("→ send at least " + suggestFund(needed - bal) + " ETH to " + account);
+      cls = "cx-err";
+    }
+    totalEl.textContent = L.join("\n");
+    totalEl.className = "cx-out show " + cls;
+  }
+
+  function parseArg(type, raw) {
+    raw = (raw || "").trim();
+    if (type.endsWith("]") || type.startsWith("tuple")) return JSON.parse(raw);
+    if (type.startsWith("uint") || type.startsWith("int")) return BigInt(raw);
+    if (type === "bool") return raw === "true" || raw === "1";
+    return raw; // address, bytes, bytesN, string
+  }
+
+  // Constructor args as typed. `fill` substitutes placeholders for blanks so a
+  // contract can still be priced before the addresses it references exist.
+  function ctorArgs(name, opts) {
+    return CTORS[name].map((a) => {
+      const el = $(argInputId(name, a.n));
+      let raw = (el ? el.value : "").trim();
+      if (!raw && opts && opts.fill) {
+        // A placeholder only has to make the transaction PRICEABLE, so the
+        // shapes have to be right even when the values are not: a fixed-size
+        // array of the wrong length does not encode, and a gas estimate that
+        // fails on a placeholder tells the operator nothing about the real one.
+        if (a.k === "uintarr") raw = a.def || new Array(a.len).fill("0").join(",");
+        else if (a.k === "bytes32") raw = a.def || PoFChain.ethers.ZeroHash;
+        else if (a.k === "uint") raw = a.def || "0";
+        else raw = account || PoFChain.ethers.ZeroAddress;
+      }
+      if (a.k === "uintarr") {
+        const parts = raw.split(",").map((x) => x.trim()).filter((x) => x !== "");
+        // LENGTH IS CHECKED HERE, not left to ethers. A uint64[6] given five
+        // values fails deep inside the encoder with a message about types, and
+        // the operator has no way to tell which field was short.
+        if (parts.length !== a.len) {
+          throw new Error(a.n + ": expected " + a.len + " comma-separated values, got " + parts.length);
+        }
+        return parts.map((x) => BigInt(x));
+      }
+      return a.k === "uint" ? BigInt(raw) : raw;
+    });
+  }
+
+  async function deploy(name) {
+    if (!signer) { status("Connect a wallet first.", "cx-err"); return; }
+    let lastStep = "start";
+    try {
+      const args = ctorArgs(name);
+      const buildTx = () => deployTxFor(name, args);
+
+      // Price it and check the balance BEFORE prompting the wallet, so an
+      // underfunded wallet gets an exact number instead of a signature request
+      // that dies in gas estimation.
+      status("Pricing the " + name + " deploy…", "");
+      let est = null;
+      try { est = await feeFor(await buildTx()); } catch (pe) {}
+      if (est) {
+        const bal = await chain.getBalance(account).catch(() => null);
+        if (bal !== null && bal < est.needed) {
+          status("Cannot deploy " + name + " — not enough ETH for gas.\n\n" +
+                 await fundingReport("deploying " + name, buildTx), "cx-err");
+          return;
+        }
+      }
+
+      // CONFIRM BEFORE SPENDING. The mint path has always had this and deploy
+      // did not, which is backwards: minting is reversible by burning, and a
+      // deployment is not reversible at all. On mainnet a misclick here spends
+      // real ETH and leaves an immutable contract at an address that will now
+      // appear in this console as "deployed".
+      //
+      // The ARGUMENTS are in the dialog, not just the fee, because several of
+      // them are `immutable` in Solidity and cannot be changed afterwards:
+      // AxonChannels' challengePeriod, and AxonRegistry's TERM, EPOCH and
+      // SEIZE_QUARANTINE. The moment to read them is before signing, and a
+      // dialog that showed only a price would be asking about the cheapest part
+      // of the decision.
+      const argLines = CTORS[name].map((a, i) => {
+        const v = args[i];
+        return "  " + a.n + " = " + (Array.isArray(v) ? "[" + v.join(", ") + "]" : String(v));
+      }).join("\n");
+      if (!window.confirm(
+          "Deploy " + name + " to Ethereum Mainnet?\n\n" +
+          "Constructor arguments" + (CTORS[name].length ? ":\n" + argLines : ": none") + "\n\n" +
+          (est ? "Estimated fee \u2248 " + fmtEth(est.cost) + " ETH.\n\n" : "") +
+          "This spends real ETH and cannot be undone. Arguments marked immutable " +
+          "in the contract are fixed at this moment forever.")) {
+        status("Deploy cancelled.", "");
+        return;
+      }
+
+      // Run the deploy in explicit steps instead of factory.deploy(). Under the
+      // hood ethers does exactly this — build, populate, send, wait — but it
+      // reports every one of them as the same opaque wallet error. Naming the
+      // step is the difference between "the wallet refused to sign" and "the
+      // node rejected the transaction", which need opposite fixes.
+      const feeNote = est ? " (fee ≈ " + fmtEth(est.cost) + " ETH)" : "";
+      lastStep = "build";
+      const txReq = await deployTxFor(name, args);
+
+      lastStep = "populate";
+      status("Deploying " + name + feeNote + " — populating fees/nonce…", "");
+      const populated = await signer.populateTransaction(txReq);
+
+      lastStep = "sign";
+      status("Deploying " + name + feeNote + " — confirm the signature in your wallet.", "");
+      const resp = await sendTx(populated);
+
+      lastStep = "mine";
+      status("Deploying " + name + " — tx " + resp.hash + ", waiting to be mined…", "");
+      const receipt = await resp.wait();
+
+      lastStep = "address";
+      // Mainnet always puts the address in the receipt. (The ZKsync fallback
+      // that used to sit here — utils.getDeployedContracts, needed because the
+      // CONTRACT_DEPLOYER system contract reports it in a log instead — has no
+      // counterpart on L1 and no plain-ethers equivalent.)
+      const deployedAt = receipt && receipt.contractAddress;
+      if (!deployedAt) throw new Error("deployed in tx " + resp.hash + " but no contract address in the receipt");
+
+      lastStep = "save";
+      addresses[name] = deployedAt;
+      await saveAddresses();
+      status(name + " deployed at " + deployedAt + "\ntx " + resp.hash, "cx-ok");
+      renderDeploy(); renderInteract();
+    } catch (e) {
+      let msg = "Deploy " + name + " failed during step: " + lastStep + "\n" + errMsg(e);
+      msg += "\n\n" + STEP_HINT[lastStep];
+      if (looksLikeFunds(e)) {
+        status(msg + "\n\nworking out exactly how much ETH this needs…", "cx-err");
+        const rep = await fundingReport("deploying " + name,
+          () => deployTxFor(name, ctorArgs(name, { fill: true })));
+        if (rep) msg += "\n\n" + rep;
+      }
+      // The payload goes in unconditionally now. Gating it on a list of known
+      // vague phrases meant "Internal JSON-RPC error." printed nothing useful,
+      // and the list will always be one wrapper behind whatever a wallet says.
+      msg += "\n\n" + (await txShape(name)) +
+             "\n\nraw RPC payload:\n" + rawErrorDump(e);
+      status(msg, "cx-err");
+    }
+  }
+
+  // Which component owns the failure, per step — the fix differs entirely.
+  const STEP_HINT = {
+    start:     "Failed before anything was built.",
+    build:     "Failed assembling the deploy transaction locally — an argument is malformed (no wallet or node involved).",
+    populate:  "Failed filling gas/nonce. This talks to the Ethereum RPC, not your wallet — an RPC or fee-estimation problem.",
+    sign:      "Failed signing the EIP-712 typed data in your wallet (eth_signTypedData_v4). Check the wallet for a rejected or failed signature prompt. If the payload below shows eth_signTransaction instead, the library bypassed our signing path — MetaMask does not implement that method.",
+    broadcast: "The wallet signed, but the Ethereum NODE rejected the transaction — the message above comes from the chain (nonce, fee, or validation).",
+    mine:      "Broadcast succeeded; the transaction failed or timed out while mining. Look it up on etherscan.io.",
+    address:   "Mined, but no contract address came back in the receipt.",
+    save:      "Deployed on-chain, but saving the address to the server failed — copy the address from the message above.",
+  };
+
+  // What we actually hand the wallet: an ordinary contract-creation
+  // transaction — no `to`, constructor-encoded bytecode as the data. Shown
+  // because when a deploy fails, the first useful question is what was sent.
+  async function txShape(name) {
+    try {
+      const tx = await deployTxFor(name, ctorArgs(name, { fill: true }));
+      const deps = (tx.customData && tx.customData.factoryDeps) || [];
+      const nonce = await chain.getTransactionCount(account).catch(() => "?");
+      return "transaction handed to the wallet:\n" +
+        "  type:        " + (tx.type === undefined ? "(unset)" : tx.type) +
+          (Number(tx.type) === 113 ? "   (EIP-712: signed as typed data, broadcast by the L2 provider)" : "") + "\n" +
+        "  to:          " + (tx.to || "(none)") + "\n" +
+        "  factoryDeps: " + deps.length + "\n" +
+        "  data:        " + (tx.data ? ((tx.data.length - 2) / 2) + " bytes" : "none") + "\n" +
+        "  from nonce:  " + nonce + "\n" +
+        "  signer:      " + ((signer && signer.constructor && signer.constructor.name) || "?");
+    } catch (te) {
+      return "could not rebuild the deploy transaction: " + errMsg(te);
+    }
+  }
+
+  function renderInteract() {
+    const host = $("cx-interact"); host.innerHTML = "";
+    const names = ORDER.filter((n) => addresses[n]);
+    if (!names.length) { host.innerHTML = "<div class='cx-muted'>No deployed contracts yet.</div>"; return; }
+    names.forEach((name) => {
+      const details = document.createElement("details"); details.className = "cx-card"; details.style.padding = "10px 14px";
+      const sum = document.createElement("summary");
+      sum.innerHTML = "<strong>" + name + "</strong> <span class='cx-mono cx-muted'>" + addresses[name] + "</span>";
+      details.appendChild(sum);
+      const desc = document.createElement("div");
+      desc.className = "cx-muted"; desc.style.cssText = "font-size:.82rem;margin:6px 0 4px";
+      desc.textContent = DOCS[name] || "";
+      details.appendChild(desc);
+      const abi = CONTRACTS[name].abi.filter((f) => f.type === "function");
+      abi.sort((a, b) => (a.stateMutability === "view" || a.stateMutability === "pure" ? 0 : 1) - (b.stateMutability === "view" || b.stateMutability === "pure" ? 0 : 1));
+      abi.forEach((fn) => details.appendChild(fnRow(name, fn)));
+      host.appendChild(details);
+    });
+  }
+
+  function fnRow(name, fn) {
+    const isRead = fn.stateMutability === "view" || fn.stateMutability === "pure";
+    const row = document.createElement("div"); row.className = "cx-fn " + (isRead ? "read" : "write");
+    const sig = fn.name + "(" + fn.inputs.map((i) => i.type + " " + (i.name || "")).join(", ") + ")";
+    row.innerHTML = "<h5>" + sig + "</h5>";
+    const inputs = fn.inputs.map((inp, idx) => {
+      const el = document.createElement("input"); el.className = "cx-input mono"; el.style.flex = "1";
+      el.placeholder = (inp.name || ("arg" + idx)) + " : " + inp.type;
+      return el;
+    });
+    const line = document.createElement("div"); line.className = "cx-row";
+    inputs.forEach((el) => line.appendChild(el));
+    const btn = document.createElement("button");
+    btn.className = "btn btn-sm " + (isRead ? "btn-outline-secondary" : "btn-outline-warning");
+    btn.textContent = isRead ? "call" : "send";
+    const out = document.createElement("div"); out.className = "cx-out";
+    btn.onclick = async () => {
+      if (!signer) { out.className = "cx-out show cx-err"; out.textContent = "connect a wallet first"; return; }
+      try {
+        const args = fn.inputs.map((inp, i) => parseArg(inp.type, inputs[i].value));
+        const c = new PoFChain.ethers.Contract(addresses[name], CONTRACTS[name].abi, signer);
+        if (isRead) {
+          const r = await c[fn.name](...args);
+          out.className = "cx-out show cx-ok"; out.textContent = jsonSafe(r);
+        } else {
+          out.className = "cx-out show"; out.textContent = "sending… confirm in wallet";
+          // Populate before sending so the fee and nonce shown in the wallet
+          // are the ones this console estimated.
+          const req = await c[fn.name].populateTransaction(...args);
+          const populated = await signer.populateTransaction(req);
+          const tx = await sendTx(populated);
+          out.textContent = "tx " + tx.hash + " — mining…";
+          await tx.wait();
+          out.className = "cx-out show cx-ok"; out.textContent = "mined: " + tx.hash;
+        }
+      } catch (e) {
+        out.className = "cx-out show cx-err";
+        let msg = errMsg(e);
+        if (!isRead && looksLikeFunds(e)) {
+          out.textContent = msg + "\n\nworking out exactly how much ETH this needs…";
+          const rep = await fundingReport("this " + fn.name + " call", async () => {
+            const c = new PoFChain.ethers.Contract(addresses[name], CONTRACTS[name].abi, signer);
+            const args = fn.inputs.map((inp, i) => parseArg(inp.type, inputs[i].value));
+            return await c[fn.name].populateTransaction(...args);
+          });
+          if (rep) msg += "\n\n" + rep;
+        }
+        if (VAGUE.test(errMsg(e))) {
+          msg += "\n\nraw RPC payload (what ethers could not parse):\n" + rawErrorDump(e);
+        }
+        out.textContent = msg;
+      }
+    };
+    line.appendChild(btn); row.appendChild(line); row.appendChild(out);
+    return row;
+  }
+
+  // ---- Genesis epoch -----------------------------------------------------
+  // Signed by the connected wallet like every other write here, so no key ever
+  // sits on the server. The chain, not our database, decides whether genesis
+  // has already happened — a local flag could disagree with reality and either
+  // block a legitimate launch or waste gas on a guaranteed revert.
+  const GENESIS_SEED_URL = "{{ url_for('main.pof_genesis_seed') }}";
+  let genesisSeed = {{ (genesis.seed | tojson) if genesis else "null" }};
+
+  function gout(msg, cls) {
+    const e = $("cx-genesis-out");
+    e.textContent = msg;
+    e.className = "cx-out show " + (cls || "");
+  }
+
+  async function genesisAlreadyOnChain() {
+    if (!chain || !addresses.EpochManager) return null;
+    try {
+      const c = new PoFChain.ethers.Contract(
+        addresses.EpochManager, CONTRACTS.EpochManager.abi, chain);
+      const e = await c.epochs(0);
+      // submittedAt is the contract's own existence test.
+      return BigInt(e.submittedAt ?? e[5]) !== 0n;
+    } catch (err) {
+      return null; // unknown — do not claim either way
+    }
+  }
+
+  // Is the connected wallet on EpochManager's aggregator allowlist? Read from
+  // the chain rather than assumed from ownership: they are separate permissions
+  // and conflating them is what produced a NotAggregator() revert after gas was
+  // already spent on estimation.
+  async function isAuthorisedAggregator() {
+    if (!chain || !addresses.EpochManager || !account) return null;
+    try {
+      const c = new PoFChain.ethers.Contract(
+        addresses.EpochManager, CONTRACTS.EpochManager.abi, chain);
+      return await c.isAggregator(account);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async function refreshGenesisState() {
+    const armBtn = $("cx-genesis-arm"), authBtn = $("cx-genesis-auth"), subBtn = $("cx-genesis-submit");
+    if (!armBtn) return;
+    if (!addresses.EpochManager) {
+      gout("Deploy EpochManager before launching genesis.", "cx-muted");
+      subBtn.disabled = true;
+      return;
+    }
+    const posted = await genesisAlreadyOnChain();
+    if (posted === true) {
+      armBtn.disabled = true; authBtn.disabled = true; subBtn.disabled = true;
+      gout("Genesis is already on-chain — epoch 0 exists. Nothing more to do here.", "cx-ok");
+      return;
+    }
+    const authorised = await isAuthorisedAggregator();
+    authBtn.disabled = authorised === true || !signer;
+    authBtn.textContent = authorised === true
+      ? "2 — Authorised ✓" : "2 — Authorise this wallet";
+
+    subBtn.disabled = !(genesisSeed && signer && authorised === true);
+
+    const lines = [];
+    lines.push(genesisSeed ? "seed armed:   " + genesisSeed : "seed:         not armed yet");
+    lines.push("aggregator:   " + (authorised === true ? "yes"
+      : authorised === false ? "NO — run step 2, or submitEpoch will revert with NotAggregator()"
+      : "unknown (could not read the chain)"));
+    lines.push("wallet:       " + (signer ? account : "not connected"));
+    if (!subBtn.disabled) lines.push("\nReady to launch genesis.");
+    gout(lines.join("\n"), subBtn.disabled ? "" : "cx-ok");
+  }
+
+  $("cx-genesis-auth").onclick = async () => {
+    const btn = $("cx-genesis-auth");
+    if (!signer) { gout("Connect a wallet first.", "cx-err"); return; }
+    if (!addresses.EpochManager) { gout("Deploy EpochManager first.", "cx-err"); return; }
+    btn.disabled = true;
+    try {
+      gout("Authorising " + account + " as an aggregator…", "");
+      const c = new PoFChain.ethers.Contract(
+        addresses.EpochManager, CONTRACTS.EpochManager.abi, signer);
+      const req = await c.setAggregator.populateTransaction(account, true);
+      const populated = await signer.populateTransaction(req);
+      const tx = await sendTx(populated);
+      gout("Authorising — tx " + tx.hash + "\nwaiting to be mined…", "");
+      await tx.wait();
+      gout("Wallet authorised as an aggregator.\ntx " + tx.hash, "cx-ok");
+      refreshGenesisState();
+    } catch (e) {
+      gout("Authorisation failed: " + errMsg(e) + "\n\nraw RPC payload:\n" + rawErrorDump(e), "cx-err");
+      btn.disabled = false;
+    }
+  };
+
+  $("cx-genesis-arm").onclick = async () => {
+    try {
+      const res = await fetch("{{ url_for('admin.contracts_genesis_arm') }}", {
+        method: "POST", credentials: "same-origin",
+      });
+      const body = await res.json();
+      if (!res.ok) { gout(body.error || "Could not arm the seed.", "cx-err"); return; }
+      genesisSeed = body.seed;
+      gout("Seed armed: " + body.seed +
+           "\ncreated " + body.created_at +
+           "\nNodes can now fetch it from " + GENESIS_SEED_URL, "cx-ok");
+      refreshGenesisState();
+    } catch (e) { gout("Arming failed: " + errMsg(e), "cx-err"); }
+  };
+
+  $("cx-genesis-submit").onclick = async () => {
+    const btn = $("cx-genesis-submit");
+    if (!signer) { gout("Connect a wallet first.", "cx-err"); return; }
+    if (!genesisSeed) { gout("Arm the seed first.", "cx-err"); return; }
+    if (!addresses.EpochManager) { gout("Deploy EpochManager first.", "cx-err"); return; }
+
+    // Re-check on-chain immediately before spending gas.
+    if (await genesisAlreadyOnChain() === true) {
+      gout("Genesis already exists on-chain — refusing to submit a second time.", "cx-err");
+      refreshGenesisState();
+      return;
+    }
+    if (await isAuthorisedAggregator() === false) {
+      gout("This wallet is not on the aggregator allowlist — run step 2 first, " +
+           "otherwise submitEpoch reverts with NotAggregator().", "cx-err");
+      refreshGenesisState();
+      return;
+    }
+    btn.disabled = true;
+    let step = "build";
+    try {
+      const ZERO = "0x" + "0".repeat(64);
+      const c = new PoFChain.ethers.Contract(
+        addresses.EpochManager, CONTRACTS.EpochManager.abi, signer);
+      // Genesis carries no work: empty roots, zero rewards. Its whole purpose
+      // is putting the randomness on-chain.
+      const args = [0, ZERO, ZERO, ZERO, genesisSeed, 0];
+
+      step = "populate";
+      gout("Preparing the genesis transaction…", "");
+      const req = await c.submitEpoch.populateTransaction(...args);
+      const populated = await signer.populateTransaction(req);
+
+      step = "sign";
+      gout("Confirm the transaction in your wallet…", "");
+      const tx = await sendTx(populated);
+
+      step = "mine";
+      gout("Submitted — tx " + tx.hash + "\nwaiting to be mined…", "");
+      await tx.wait();
+
+      step = "record";
+      await fetch("{{ url_for('admin.contracts_genesis_submitted') }}", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tx_hash: tx.hash }),
+      });
+      gout("Genesis launched.\ntx " + tx.hash +
+           "\nseed " + genesisSeed +
+           "\nNodes can now derive witness sets for epoch 0.", "cx-ok");
+      refreshGenesisState();
+    } catch (e) {
+      let msg = "Genesis failed during step: " + step + "\n" + errMsg(e);
+      if (/EpochExists/i.test(JSON.stringify(e && (e.info || e.error) || {}) + errMsg(e))) {
+        msg += "\n\nEpoch 0 already exists on-chain — genesis has already run.";
+      }
+      msg += "\n\nraw RPC payload:\n" + rawErrorDump(e);
+      gout(msg, "cx-err");
+      btn.disabled = false;
+    }
+  };
+
+  // ---- Node registrations ------------------------------------------------
+  let pendingRegistrations = [];
+
+  function rout(msg, cls) {
+    const e = $("cx-reg-out");
+    e.textContent = msg;
+    e.className = "cx-out show " + (cls || "");
+  }
+
+  async function refreshRegistrations() {
+    try {
+      const res = await fetch("{{ url_for('admin.contracts_registrations') }}",
+        { credentials: "same-origin" });
+      const body = await res.json();
+      pendingRegistrations = body.pending || [];
+      const submitBtn = $("cx-reg-submit");
+      submitBtn.disabled = pendingRegistrations.length === 0 || !signer || !addresses.NodeRegistry;
+
+      if (!pendingRegistrations.length) {
+        rout("No nodes are waiting to be registered.", "cx-muted");
+        return;
+      }
+      const lines = pendingRegistrations.map((r) => {
+        // node id = keccak256(p2p public key), the same derivation the node and
+        // the aggregator use. Computed here because the server has no keccak.
+        const nodeId = PoFChain.ethers.keccak256("0x" + r.p2p_public_key);
+        return "  " + nodeId.slice(0, 18) + "…  pays " + r.wallet +
+               "  caps 0b" + (r.capabilities >>> 0).toString(2) +
+               (r.has_wallet_signature ? "  [relayed]" : "  [YOU become the owner]") +
+               (r.error ? "  (last error: " + r.error.slice(0, 60) + ")" : "");
+      });
+      const unsigned = pendingRegistrations.filter((r) => !r.has_wallet_signature).length;
+      rout(pendingRegistrations.length + " node(s) waiting on gas:\n" + lines.join("\n") +
+           (unsigned
+             ? "\n\n" + unsigned + " of these filed without a wallet signature — a node " +
+               "cannot produce one, it holds no wallet key. Registering those makes YOUR " +
+               "wallet their registry owner, which grants you updateNode/deactivate/" +
+               "rotateKey over them. It does NOT redirect their earnings: each node signed " +
+               "its own payout address, shown above."
+             : "") +
+           (addresses.NodeRegistry ? "" : "\n\nDeploy NodeRegistry first."), "");
+    } catch (e) {
+      rout("Could not load the queue: " + errMsg(e), "cx-err");
+    }
+  }
+
+  $("cx-reg-refresh").onclick = refreshRegistrations;
+
+  $("cx-reg-submit").onclick = async () => {
+    const btn = $("cx-reg-submit");
+    if (!signer) { rout("Connect a wallet first.", "cx-err"); return; }
+    if (!addresses.NodeRegistry) { rout("Deploy NodeRegistry first.", "cx-err"); return; }
+    btn.disabled = true;
+
+    const log = [];
+    let ok = 0, failed = 0;
+    for (const r of pendingRegistrations) {
+      const label = "0x" + r.p2p_public_key.slice(0, 12) + "…";
+      try {
+        rout("Registering " + label + " (" + (ok + failed + 1) + "/" + pendingRegistrations.length +
+             ")…\n" + log.join("\n"), "");
+        const c = new PoFChain.ethers.Contract(
+          addresses.NodeRegistry, CONTRACTS.NodeRegistry.abi, signer);
+        // Which call depends on which half of the proof exists. registerWithSig
+        // recovers the owner from a wallet signature; without one it would
+        // recover address(0) and revert, so a self-filed node goes through
+        // register(), where the sender is the owner.
+        const req = r.has_wallet_signature
+          ? await c.registerWithSig.populateTransaction(
+              "0x" + r.p2p_public_key, r.capabilities, r.endpoint_commitment,
+              r.nonce, r.v, r.r, r.s)
+          : await c.register.populateTransaction(
+              "0x" + r.p2p_public_key, r.capabilities, r.endpoint_commitment);
+        const populated = await signer.populateTransaction(req);
+        const tx = await sendTx(populated);
+        await tx.wait();
+        // Record each result as it lands rather than at the end: a wallet
+        // rejection halfway through must not lose the ones already on-chain.
+        await fetch("{{ url_for('admin.contracts_registration_result') }}", {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: r.id, ok: true, tx_hash: tx.hash }),
+        });
+        ok++;
+        log.push("  ✓ " + label + "  tx " + tx.hash.slice(0, 18) + "…");
+      } catch (e) {
+        failed++;
+        const why = errMsg(e);
+        log.push("  ✗ " + label + "  " + why.slice(0, 120));
+        await fetch("{{ url_for('admin.contracts_registration_result') }}", {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: r.id, ok: false, error: why }),
+        });
+        // A rejected signature means the operator stopped; do not keep
+        // prompting for every remaining node.
+        if (/rejected|denied|ACTION_REJECTED/i.test(why)) {
+          log.push("  … stopped: the wallet rejected a signature.");
+          break;
+        }
+      }
+    }
+    rout("Registered " + ok + ", failed " + failed + ".\n" + log.join("\n"),
+         failed ? "cx-err" : "cx-ok");
+    await refreshRegistrations();
+  };
+
+  // ---- Epoch submission --------------------------------------------------
+  let loadedSettlement = null;
+
+  function eout(msg, cls) {
+    const e = $("cx-epoch-out");
+    e.textContent = msg;
+    e.className = "cx-out show " + (cls || "");
+  }
+
+  $("cx-epoch-load").onclick = async () => {
+    const epoch = parseInt($("cx-epoch-num").value || "0", 10);
+    loadedSettlement = null;
+    $("cx-epoch-submit").disabled = true;
+    try {
+      const res = await fetch("/admin/contracts/settlement/" + epoch + ".json",
+        { credentials: "same-origin" });
+      const body = await res.json();
+      if (!res.ok) { eout(body.error || "Not found.", "cx-err"); return; }
+      loadedSettlement = body;
+      const lines = [
+        "epoch          " + body.epoch,
+        "receiptRoot    " + body.receipt_root,
+        "rewardRoot     " + body.reward_root,
+        "randomness     " + body.randomness,
+        "totalRewards   " + body.total_rewards + " wei",
+        "receipts       " + body.accepted + " accepted, " + body.rejected + " rejected",
+        "claims         " + body.claim_count + " node(s) to pay",
+      ];
+      if ((body.rejections || []).length) {
+        lines.push("rejected because:");
+        body.rejections.forEach((r) => lines.push("  " + r));
+      }
+      if (body.submitted_tx) {
+        lines.push("", "ALREADY SUBMITTED — tx " + body.submitted_tx);
+      }
+      // Refuse to arm the button for an epoch already on-chain: submitEpoch is
+      // write-once and a second attempt reverts with EpochExists after gas.
+      $("cx-epoch-submit").disabled = !!body.submitted_tx || !signer || !addresses.EpochManager;
+      eout(lines.join("\n"), body.submitted_tx ? "cx-err" : "");
+    } catch (e) {
+      eout("Could not load: " + errMsg(e), "cx-err");
+    }
+  };
+
+  $("cx-epoch-submit").onclick = async () => {
+    const btn = $("cx-epoch-submit");
+    if (!signer) { eout("Connect a wallet first.", "cx-err"); return; }
+    if (!loadedSettlement) { eout("Load a settlement first.", "cx-err"); return; }
+    if (!addresses.EpochManager) { eout("Deploy EpochManager first.", "cx-err"); return; }
+    btn.disabled = true;
+    try {
+      // Check the chain, not the page: our record could be stale.
+      const em = new PoFChain.ethers.Contract(
+        addresses.EpochManager, CONTRACTS.EpochManager.abi, chain);
+      const existing = await em.epochs(loadedSettlement.epoch);
+      if (BigInt(existing.submittedAt ?? existing[5]) !== 0n) {
+        eout("Epoch " + loadedSettlement.epoch + " is already on-chain — refusing to resubmit.", "cx-err");
+        return;
+      }
+      eout("Submitting epoch " + loadedSettlement.epoch + "…", "");
+      const c = new PoFChain.ethers.Contract(
+        addresses.EpochManager, CONTRACTS.EpochManager.abi, signer);
+      const req = await c.submitEpoch.populateTransaction(
+        loadedSettlement.epoch,
+        loadedSettlement.receipt_root,
+        loadedSettlement.reward_root,
+        loadedSettlement.node_state_root,
+        loadedSettlement.randomness,
+        loadedSettlement.total_rewards);
+      const populated = await signer.populateTransaction(req);
+      const tx = await sendTx(populated);
+      eout("Submitted — tx " + tx.hash + "\nwaiting to be mined…", "");
+      await tx.wait();
+      await fetch("{{ url_for('admin.contracts_settlement_submitted') }}", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ epoch: loadedSettlement.epoch, tx_hash: tx.hash }),
+      });
+      eout("Epoch " + loadedSettlement.epoch + " committed.\ntx " + tx.hash +
+           "\nThe challenge window is now open; nodes can claim once it finalizes.", "cx-ok");
+    } catch (e) {
+      eout("Submission failed: " + errMsg(e) + "\n\nraw RPC payload:\n" + rawErrorDump(e), "cx-err");
+      btn.disabled = false;
+    }
+  };
+
+  // ---- Credit deliveries -------------------------------------------------
+  let pendingDeliveries = [];
+
+  function dout(msg, cls) {
+    const e = $("cx-del-out");
+    e.textContent = msg;
+    e.className = "cx-out show " + (cls || "");
+  }
+
+  const WEI = 10n ** 18n;
+  const SALE_RATE = {{ sale_rate|int }};   // credits per dollar, from the store
+  let heldCredits = null;   // whole credits in the connected wallet, null if unread
+
+  function sout(msg, cls) {
+    const e = $("cx-supply");
+    e.textContent = msg;
+    e.className = "cx-out show " + (cls || "");
+  }
+
+  // Reading the supply is what turns "delivery failed" into "there is nothing to
+  // deliver". Without it the operator sees a transfer revert and has no way to
+  // tell an empty treasury from a broken contract.
+  async function refreshSupply() {
+    const ready = !!signer && !!addresses.AxonToken;
+    ["cx-mint", "cx-mint-manual", "cx-burn"].forEach((id) => { $(id).disabled = !ready; });
+    if (!addresses.AxonToken) { sout("Deploy AxonToken first.", "cx-muted"); return; }
+    try {
+      const c = new PoFChain.ethers.Contract(
+        addresses.AxonToken, CONTRACTS.AxonToken.abi, chain);
+      const supply = await c.totalSupply();
+      let line = "Total supply: " + (supply / WEI) + " AXONCoins";
+      if (signer) {
+        const me = await signer.getAddress();
+        const mine = await c.balanceOf(me);
+        heldCredits = mine / WEI;
+        line += "  |  your wallet holds " + heldCredits;
+        if (!$("cx-mint-to").value) { $("cx-mint-to").value = me; }
+      }
+      const closed = await c.genesisClosed();
+      if (closed) {
+        line += "  |  genesis is CLOSED — only the Treasury can mint now";
+        $("cx-mint").disabled = true;
+        $("cx-mint-manual").disabled = true;
+      }
+      sout(line, supply === 0n ? "cx-err" : "cx-ok");
+    } catch (e) {
+      sout("Could not read the supply: " + errMsg(e), "cx-err");
+    }
+  }
+
+  // Value at the sale rate, so a confirmation names real money rather than a
+  // count. "1000000 AXONCoins" reads like a setting; "$250,000.00 of AXONCoins"
+  // reads like a mistake.
+  function dollarsFor(credits) {
+    const rate = BigInt(SALE_RATE || 4);
+    const cents = (credits * 100n + rate - 1n) / rate;
+    return "$" + (Number(cents) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
+  }
+
+  async function mintCredits(credits, to, btn) {
+    btn.disabled = true;
+    try {
+      sout("Minting " + credits + " AXONCoins to " + to + "…", "");
+      const c = new PoFChain.ethers.Contract(
+        addresses.AxonToken, CONTRACTS.AxonToken.abi, signer);
+      const req = await c.mintGenesis.populateTransaction(to, credits * WEI);
+      const tx = await sendTx(await signer.populateTransaction(req));
+      await tx.wait();
+      sout("Minted " + credits + " AXONCoins. " + tx.hash, "cx-ok");
+    } catch (e) {
+      sout("Mint failed: " + errMsg(e) + "\n\nraw RPC payload:\n" + rawErrorDump(e), "cx-err");
+    }
+    btn.disabled = false;
+    await refreshSupply();
+    await refreshDeliveries();
+  }
+
+  // The amount comes from the delivery queue, not from a text box. What is owed
+  // is a fact the server already knows exactly; asking an operator to retype it
+  // can only introduce error, and a mis-keyed genesis mint is permanent supply.
+  $("cx-mint").onclick = async () => {
+    if (!signer) { sout("Connect a wallet first.", "cx-err"); return; }
+    const owed = pendingDeliveries.reduce((n, d) => n + BigInt(d.credits), 0n);
+    if (owed <= 0n) {
+      sout("Nothing is owed, so there is nothing to mint. Use the advanced panel " +
+           "below to seed the treasury deliberately.", "cx-muted");
+      return;
+    }
+    // The FULL amount owed, never the shortfall against what this wallet already
+    // holds. This wallet is both the treasury and an ordinary holder, so its
+    // balance is not a float available to settle debts — netting a debt against
+    // it pays somebody with credits they already owned. That is exactly what
+    // happened: 4 held, 20 owed, 16 minted, and the holder's own 4 quietly went
+    // towards a debt the treasury owed THEM.
+    await mintCredits(owed, await signer.getAddress(), $("cx-mint"));
+  };
+
+  $("cx-mint-manual").onclick = async () => {
+    if (!signer) { sout("Connect a wallet first.", "cx-err"); return; }
+    let credits;
+    try { credits = BigInt($("cx-mint-amount").value || "0"); }
+    catch (e) { sout("That is not a whole number of AXONCoins.", "cx-err"); return; }
+    if (credits <= 0n) { sout("Enter how many AXONCoins to create.", "cx-err"); return; }
+    const to = ($("cx-mint-to").value || "").trim() || await signer.getAddress();
+    if (!window.confirm(
+        "Mint " + credits.toLocaleString("en-US") + " AXONCoins (" + dollarsFor(credits) +
+        " at the current sale rate) to\n" + to +
+        "\n\nGenesis minting is permanent supply. It cannot be undone by minting " +
+        "again — only by burning.")) {
+      return;
+    }
+    await mintCredits(credits, to, $("cx-mint-manual"));
+  };
+
+  // Burning is the only way back from a mint that was too large, so it exists
+  // here rather than leaving an operator to hand-encode calldata.
+  $("cx-burn").onclick = async () => {
+    const btn = $("cx-burn");
+    if (!signer) { sout("Connect a wallet first.", "cx-err"); return; }
+    let credits;
+    try { credits = BigInt($("cx-mint-amount").value || "0"); }
+    catch (e) { sout("That is not a whole number of AXONCoins.", "cx-err"); return; }
+    if (credits <= 0n) { sout("Enter how many AXONCoins to burn.", "cx-err"); return; }
+    btn.disabled = true;
+    try {
+      const me = await signer.getAddress();
+      const c = new PoFChain.ethers.Contract(
+        addresses.AxonToken, CONTRACTS.AxonToken.abi, signer);
+      const wired = await c.treasury();
+      const deployed = addresses.Treasury || "";
+      const treasuryIsContract = deployed &&
+        wired.toLowerCase() === deployed.toLowerCase();
+
+      // burn() takes only an amount and destroys the CALLER's own balance. It
+      // used to take a `from` address, which handed whoever held the treasury
+      // role the power to destroy anybody's tokens; that was removed, so there
+      // is no longer any way to burn somebody else's credits, including here.
+      if (treasuryIsContract) {
+        // Burn through the Treasury, from the Treasury's own allocation.
+        //
+        // The alternative the old code took — setTreasury(me), then burn — is
+        // now actively destructive: rotating the role away from the deployed
+        // Treasury silently disables fundEpoch, so epoch rewards could no
+        // longer be minted and every node would stop being payable. That is a
+        // catastrophic outcome for a button labelled "burn", so it is refused
+        // rather than confirmed.
+        const held = await c.balanceOf(deployed) / WEI;
+        if (held < credits) {
+          sout("The Treasury holds " + held + " AXONCoins; burning " + credits +
+               " needs more. Only AXONCoins the Treasury itself holds can be burned.", "cx-err");
+          btn.disabled = false;
+          return;
+        }
+        if (!window.confirm(
+            "Burn " + credits.toLocaleString("en-US") + " AXONCoins (" + dollarsFor(credits) +
+            ") from the TREASURY\n" + deployed + "\n\n" +
+            "This destroys them permanently and lowers total supply.\n" +
+            "Your own wallet is not touched.")) {
+          btn.disabled = false;
+          return;
+        }
+        sout("Burning " + credits + " AXONCoins from the Treasury…", "");
+        const t = new PoFChain.ethers.Contract(
+          addresses.Treasury, CONTRACTS.Treasury.abi, signer);
+        const req = await t.burn.populateTransaction(credits * WEI);
+        const tx = await sendTx(await signer.populateTransaction(req));
+        await tx.wait();
+        sout("Burned " + credits + " AXONCoins from the Treasury. " + tx.hash, "cx-ok");
+      } else {
+        if (deployed) {
+          sout("AxonToken.treasury is " + wired + ", but the deployed Treasury is " +
+               deployed + ". Wire them with setTreasury(" + deployed + ") before " +
+               "burning — until you do, nothing can mint epoch rewards either.", "cx-err");
+          btn.disabled = false;
+          return;
+        }
+        const needsRole = wired.toLowerCase() !== me.toLowerCase();
+        if (!window.confirm(
+            "Burn " + credits.toLocaleString("en-US") + " AXONCoins (" + dollarsFor(credits) +
+            ") from\n" + me + "\n\n" +
+            (needsRole
+              ? "AxonToken.treasury is " + wired + ", so this sends TWO transactions:\n" +
+                "  1. setTreasury(" + me + ")\n  2. burn(…)\n\n" +
+                "Whatever the treasury was set to will be replaced. "
+              : "") +
+            "This destroys the AXONCoins permanently.")) {
+          btn.disabled = false;
+          return;
+        }
+        if (needsRole) {
+          sout("Taking the treasury role so this wallet may burn…", "");
+          const setReq = await c.setTreasury.populateTransaction(me);
+          const setTx = await sendTx(await signer.populateTransaction(setReq));
+          await setTx.wait();
+        }
+        sout("Burning " + credits + " AXONCoins…", "");
+        const req = await c.burn.populateTransaction(credits * WEI);
+        const tx = await sendTx(await signer.populateTransaction(req));
+        await tx.wait();
+        sout("Burned " + credits + " AXONCoins. " + tx.hash, "cx-ok");
+      }
+    } catch (e) {
+      sout("Burn failed: " + errMsg(e) + "\n\nraw RPC payload:\n" + rawErrorDump(e), "cx-err");
+    }
+    btn.disabled = false;
+    await refreshSupply();
+  };
+
+  async function refreshDeliveries() {
+    try {
+      const res = await fetch("{{ url_for('admin.contracts_deliveries') }}",
+        { credentials: "same-origin" });
+      const body = await res.json();
+      pendingDeliveries = body.pending || [];
+      $("cx-del-send").disabled = pendingDeliveries.length === 0 || !signer || !addresses.AxonToken;
+      // No wallet needed: the server signs with the Treasury owner key.
+      $("cx-del-server").disabled = pendingDeliveries.length === 0;
+      if (!pendingDeliveries.length) { dout("Nothing owed.", "cx-muted"); return; }
+      const lines = pendingDeliveries.map((d) =>
+        "  " + String(d.credits).padStart(6) + " AXONCoins -> " + d.wallet + "  ($" + d.dollars + ")");
+      // Say WHY it cannot be sent before the operator spends gas finding out.
+      let warning = "";
+      if (!addresses.AxonToken) {
+        warning = "\n\nDeploy AxonToken first.";
+      } else if (addresses.Treasury) {
+        // The balance that matters is whichever one actually pays. Warning
+        // about the operator's wallet while the Treasury does the paying sends
+        // somebody to mint credits they did not need.
+        try {
+          const inTreasury = await new PoFChain.ethers.Contract(
+            addresses.AxonToken, CONTRACTS.AxonToken.abi, chain)
+              .balanceOf(addresses.Treasury) / WEI;
+          if (inTreasury < BigInt(body.owed_credits)) {
+            warning = "\n\nThe Treasury holds " + inTreasury + " AXONCoins and the queue " +
+                      "owes " + body.owed_credits + ". Genesis-mint the allocation into " +
+                      "the Treasury before delivering.";
+          }
+        } catch (e) { /* an unreadable balance is not a reason to block the attempt */ }
+      } else if (heldCredits !== null && heldCredits < BigInt(body.owed_credits)) {
+        warning = "\n\nThe connected wallet holds " + heldCredits + " AXONCoins and owes " +
+                  body.owed_credits + ". Mint what is owed before delivering — the " +
+                  "AXONCoins it already holds belongs to whoever holds it, not to the " +
+                  "queue.";
+      }
+      dout("Owed " + body.owed_credits + " AXONCoins across " + pendingDeliveries.length +
+           " purchase(s):\n" + lines.join("\n") + warning, "");
+    } catch (e) {
+      dout("Could not load the queue: " + errMsg(e), "cx-err");
+    }
+  }
+
+  $("cx-del-refresh").onclick = refreshDeliveries;
+
+  $("cx-del-send").onclick = async () => {
+    const btn = $("cx-del-send");
+    if (!signer) { dout("Connect a wallet first.", "cx-err"); return; }
+    if (!addresses.AxonToken) { dout("Deploy AxonToken first.", "cx-err"); return; }
+    btn.disabled = true;
+    const log = [];
+    let sent = 0, failed = 0;
+    const me = (await signer.getAddress()).toLowerCase();
+    for (const d of pendingDeliveries) {
+      try {
+        dout("Sending " + d.credits + " AXONCoins to " + d.wallet.slice(0, 12) + "… (" +
+             (sent + failed + 1) + "/" + pendingDeliveries.length + ")\n" + log.join("\n"), "");
+
+        // Delivering to the treasury's own wallet. The transfer would move
+        // tokens from this address to this address — it costs gas, changes
+        // nothing, and proves nothing. The obligation was settled by the mint.
+        //
+        // Recording it anyway is the point: without this the credits appear in
+        // the wallet while the queue still says they are owed, which reads as
+        // "not paid yet" and invites paying a second time. That is what
+        // happened, and a no-op transaction would not have fixed it.
+        // Only a no-op WITHOUT a Treasury. With one, delivering to the
+        // operator's own wallet is a genuine movement — Treasury to them — so
+        // short-circuiting it would clear the debt without paying it.
+        if (!addresses.Treasury && d.wallet.toLowerCase() === me) {
+          // Only when the credits demonstrably EXIST. The comment used to say
+          // "the mint settled it" and then take that on faith — but Mint and
+          // Deliver are separate buttons, so pressing only Deliver would clear
+          // the debt having created nothing. Checked against the chain here,
+          // which is the only thing that actually knows.
+          const supply = await new PoFChain.ethers.Contract(
+            addresses.AxonToken, CONTRACTS.AxonToken.abi, chain).balanceOf(me) / WEI;
+          if (supply < BigInt(d.credits)) {
+            failed++;
+            log.push("  --  your wallet holds " + supply + " AXONCoins, less than the " +
+                     d.credits + " owed. Mint what is owed first.");
+            continue;
+          }
+          await fetch("{{ url_for('admin.contracts_delivery_result') }}", {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: d.id, ok: true, tx_hash: "self:minted-to-treasury" }),
+          });
+          sent++;
+          log.push("  ok  " + d.credits + " -> your own wallet (settled by the mint; " +
+                   "no transfer needed)");
+          continue;
+        }
+
+        // 18 decimals: a whole credit is 1e18 base units.
+        const amount = BigInt(d.credits) * (10n ** 18n);
+        // Same reasoning as grants: once the allocation lives in the Treasury,
+        // delivering from the operator's own wallet drains the wrong balance.
+        // release() moves already-minted credits and cannot mint, so a delivery
+        // can never quietly inflate supply to cover itself.
+        let req;
+        if (addresses.Treasury) {
+          const treasury = new PoFChain.ethers.Contract(
+            addresses.Treasury, CONTRACTS.Treasury.abi, signer);
+          req = await treasury.release.populateTransaction(d.wallet, amount);
+        } else {
+          const c = new PoFChain.ethers.Contract(
+            addresses.AxonToken, CONTRACTS.AxonToken.abi, signer);
+          req = await c.transfer.populateTransaction(d.wallet, amount);
+        }
+        const populated = await signer.populateTransaction(req);
+        const tx = await sendTx(populated);
+        await tx.wait();
+        await fetch("{{ url_for('admin.contracts_delivery_result') }}", {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: d.id, ok: true, tx_hash: tx.hash }),
+        });
+        sent++;
+        log.push("  ok  " + d.credits + " -> " + d.wallet.slice(0, 12) + "…  " + tx.hash.slice(0, 16) + "…");
+      } catch (e) {
+        failed++;
+        const why = errMsg(e);
+        log.push("  --  " + d.wallet.slice(0, 12) + "…  " + why.slice(0, 110));
+        if (/rejected|denied|ACTION_REJECTED/i.test(why)) {
+          log.push("  … stopped: the wallet rejected a signature.");
+          break;
+        }
+      }
+    }
+    dout("Delivered " + sent + ", failed " + failed + ".\n" + log.join("\n"),
+         failed ? "cx-err" : "cx-ok");
+    await refreshDeliveries();
+  };
+
+  // ---- Send credits by hand ----------------------------------------------
+  function gout(msg, cls) {
+    const e = $("cx-grant-out");
+    e.textContent = msg;
+    e.className = "cx-out show " + (cls || "");
+  }
+
+  async function refreshGrants() {
+    $("cx-grant-send").disabled = !signer || !addresses.AxonToken;
+    try {
+      const res = await fetch("{{ url_for('admin.contracts_grants') }}",
+        { credentials: "same-origin" });
+      const body = await res.json();
+      const total = body.total_granted || 0;
+      $("cx-grant-total").textContent = total
+        ? " " + total + " AXONCoins have been sent this way so far."
+        : "";
+      const pending = body.pending || [];
+      if (pending.length) {
+        // Recorded but never sent. Shown because a grant somebody meant to make
+        // and did not is a person still waiting.
+        gout(pending.length + " grant(s) recorded but not sent:\n" +
+             pending.map((g) => "  #" + g.id + "  " + g.credits + " -> " + g.wallet +
+                                "   (" + g.reason + ")").join("\n"), "cx-err");
+      }
+    } catch (e) { /* the panel is not important enough to shout about */ }
+  }
+
+  $("cx-grant-send").onclick = async () => {
+    const btn = $("cx-grant-send");
+    if (!signer) { gout("Connect a wallet first.", "cx-err"); return; }
+    if (!addresses.AxonToken) { gout("Deploy AxonToken first.", "cx-err"); return; }
+    const wallet = ($("cx-grant-wallet").value || "").trim();
+    const reason = ($("cx-grant-reason").value || "").trim();
+    let credits;
+    try { credits = BigInt($("cx-grant-credits").value || "0"); }
+    catch (e) { gout("AXONCoins must be a whole number.", "cx-err"); return; }
+    if (credits <= 0n) { gout("Enter how many AXONCoins to send.", "cx-err"); return; }
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) { gout("That is not a 0x address.", "cx-err"); return; }
+    if (!reason) { gout("Say what this grant is for.", "cx-err"); return; }
+    // Only meaningful on the direct-transfer path: sending from your own wallet
+    // to your own wallet succeeds, reports success truthfully, and changes
+    // nothing — which reads as the feature being broken. A Treasury release is
+    // a real movement even when the destination is you, because the credits
+    // come out of the Treasury's allocation rather than your pocket.
+    if (!addresses.Treasury &&
+        wallet.toLowerCase() === (await signer.getAddress()).toLowerCase()) {
+      gout("That is your own wallet, and with no Treasury deployed this would be " +
+           "a transfer from you to you, which changes nothing.\n\nDeploy the " +
+           "Treasury and genesis-mint the allocation into it, and grants come out " +
+           "of that instead.", "cx-err");
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      // Recorded BEFORE the transaction. If the browser dies between signing and
+      // reporting back, there is still a row pointing at the movement rather
+      // than an unexplained transfer out of the treasury.
+      const created = await fetch("{{ url_for('admin.contracts_grant_create') }}", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: wallet, credits: Number(credits), reason: reason }),
+      }).then((r) => r.json());
+      if (created.error) { gout(created.error, "cx-err"); btn.disabled = false; return; }
+
+      // Grants come out of the TREASURY's allocation when there is one.
+      //
+      // This used to be a plain transfer from the operator's own wallet,
+      // because when it was written no Treasury contract existed and there was
+      // nowhere else for credits to live. Once the allocation is genesis-minted
+      // into the Treasury, that becomes actively wrong: the allocation sits
+      // untouched while every grant quietly drains the operator's personal
+      // balance, and the on-chain story stops matching the design.
+      //
+      // The direct transfer stays as a fallback rather than being deleted,
+      // because until the stack is redeployed the Treasury does not exist and a
+      // console that refused to grant at all would be a regression.
+      const token = new PoFChain.ethers.Contract(
+        addresses.AxonToken, CONTRACTS.AxonToken.abi, signer);
+      const viaTreasury = !!addresses.Treasury;
+      const source = viaTreasury ? addresses.Treasury : (await signer.getAddress());
+      const held = await token.balanceOf(source) / WEI;
+      if (held < credits) {
+        gout((viaTreasury
+                ? "The Treasury holds " + held + " AXONCoins; sending " + credits +
+                  " needs more. Genesis-mint the allocation into it first — "
+                : "Your wallet holds " + held + " AXONCoins; sending " + credits +
+                  " needs more. Mint first — ") +
+             "grant #" + created.id + " is recorded and waiting.", "cx-err");
+        btn.disabled = false;
+        await refreshGrants();
+        return;
+      }
+
+      gout("Sending " + credits + " AXONCoins to " + wallet +
+           (viaTreasury ? " from the Treasury…" : " from your wallet…"), "");
+      let req;
+      if (viaTreasury) {
+        // release() moves an already-minted allocation and cannot mint, which
+        // is what keeps the supply cap meaningful. Owner-only, so the connected
+        // wallet has to be the Treasury's owner.
+        const treasury = new PoFChain.ethers.Contract(
+          addresses.Treasury, CONTRACTS.Treasury.abi, signer);
+        req = await treasury.release.populateTransaction(wallet, credits * WEI);
+      } else {
+        req = await token.transfer.populateTransaction(wallet, credits * WEI);
+      }
+      const tx = await sendTx(await signer.populateTransaction(req));
+      await tx.wait();
+      // Built by substituting into the placeholder segment, not by a regex on
+      // the end of the string: the URL ends in "sent", so an end-anchored
+      // replace never matched and every grant reported success against grant 0.
+      // It 404'd silently, the row kept tx_hash NULL, the panel then said the
+      // grant was never sent, and the obvious response to that is to send it
+      // again.
+      const sentUrl = "{{ url_for('admin.contracts_grant_sent', grant_id=0) }}"
+                        .replace("/grants/0/sent", "/grants/" + created.id + "/sent");
+      const ack = await fetch(sentUrl, {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ok: true, tx_hash: tx.hash }),
+      });
+      if (!ack.ok) {
+        // The transfer LANDED. Saying so loudly matters more than the failure:
+        // somebody who believes it did not will send it a second time.
+        gout("The transfer landed (" + tx.hash + ") but recording it failed. " +
+             "Grant #" + created.id + " will still show as unsent — do NOT send " +
+             "it again; mark it by hand.", "cx-err");
+        btn.disabled = false;
+        await refreshGrants();
+        return;
+      }
+      gout("Sent " + credits + " AXONCoins to " + wallet + ".\n" + tx.hash, "cx-ok");
+      $("cx-grant-credits").value = "";
+      $("cx-grant-reason").value = "";
+    } catch (e) {
+      gout("Send failed: " + errMsg(e) + "\n\nraw RPC payload:\n" + rawErrorDump(e) +
+           "\n\nThe grant is recorded and still listed as unsent — retry it rather " +
+           "than entering it again.", "cx-err");
+    }
+    btn.disabled = false;
+    await refreshSupply();
+    await refreshGrants();
+  };
+
+  // ---- Register a node you own -------------------------------------------
+  function rsout(msg, cls) {
+    const e = $("cx-reg-self-out");
+    e.textContent = msg;
+    e.className = "cx-out show " + (cls || "");
+  }
+
+  $("cx-reg-self").onclick = async () => {
+    const btn = $("cx-reg-self");
+    if (!signer) { rsout("Connect a wallet first.", "cx-err"); return; }
+    if (!addresses.NodeRegistry) { rsout("Deploy NodeRegistry first.", "cx-err"); return; }
+    let key = ($("cx-reg-key").value || "").trim().toLowerCase();
+    if (key.startsWith("0x")) key = key.slice(2);
+    // Checked here rather than left to the contract: a mistyped key registers a
+    // node that does not exist, permanently burns that key slot, and pays for
+    // the privilege.
+    if (!/^[0-9a-f]{64}$/.test(key)) {
+      rsout("That is not a 32-byte ed25519 key. Expected 64 hex characters; got " +
+            key.length + ".", "cx-err");
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const caps = BigInt($("cx-reg-caps").value);
+      rsout("Registering " + key.slice(0, 16) + "… with capabilities " + caps + "…", "");
+      const c = new PoFChain.ethers.Contract(
+        addresses.NodeRegistry, CONTRACTS.NodeRegistry.abi, signer);
+      // Endpoint commitment is zero: this node is reachable over I2P, and there
+      // is no endpoint worth committing to that would not also leak where it is.
+      const req = await c.register.populateTransaction(
+        "0x" + key, caps, "0x" + "0".repeat(64));
+      const tx = await sendTx(await signer.populateTransaction(req));
+      await tx.wait();
+      rsout("Registered. " + tx.hash + "\n\nThe node is now eligible to be paid; its " +
+            "payout address is whatever it published, not this wallet.", "cx-ok");
+    } catch (e) {
+      rsout("Registration failed: " + errMsg(e) + "\n\nraw RPC payload:\n" + rawErrorDump(e),
+            "cx-err");
+    }
+    btn.disabled = false;
+  };
+
+  $("cx-connect").onclick = connect;
+  loadData().then(() => { renderInteract(); refreshGenesisState(); refreshRegistrations();
+                          refreshSupply().then(refreshDeliveries).then(refreshGrants); })
+            .catch((e) => status("Load failed: " + e, "cx-err"));
+})();
+</script>
+
+<script>
+(function () {
+  "use strict";
+  // finalize(uint64) — verified against this project's own keccak rather than
+  // transcribed from a block explorer.
+  var SELECTOR = "0x359bc19e";
+
+  function el(id) { return document.getElementById(id); }
+  function out(text, cls) {
+    var box = el("cx-finalize-out");
+    box.textContent = text;
+    box.className = "cx-out show " + (cls || "");
+  }
+
+  function encode(epoch) {
+    var hex = Number(epoch).toString(16);
+    return SELECTOR + "0".repeat(64 - hex.length) + hex;
+  }
+
+  // Which epochs are actually waiting. Read from the server's cached view of
+  // the chain rather than from the wallet, so the list is there before anyone
+  // connects one.
+  fetch("/epochs.json", {credentials: "same-origin"})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      var list = el("cx-finalize-list");
+      var waiting = (data && data.finalizable) || [];
+      if (!waiting.length) {
+        list.textContent = "No epoch is waiting to be finalized.";
+        return;
+      }
+      list.innerHTML = waiting.map(function (item) {
+        return "<div>Epoch <strong>" + item.epoch + "</strong> &mdash; " +
+               (item.pays_anyone
+                 ? "carries rewards; nothing from it is claimable until it is finalized."
+                 : "carries <strong>no rewards</strong>, so finalizing closes it but pays nobody.") +
+               "</div>";
+      }).join("");
+      if (!el("cx-finalize-epoch").value) {
+        el("cx-finalize-epoch").value = waiting[0].epoch;
+      }
+    })
+    .catch(function () {
+      el("cx-finalize-list").textContent =
+        "Could not read the epoch chain from this server; you can still finalize by number.";
+    });
+
+  el("cx-finalize").addEventListener("click", function () {
+    var epoch = el("cx-finalize-epoch").value;
+    if (epoch === "" || Number(epoch) < 0) { out("Enter an epoch number.", "cx-err"); return; }
+    if (!window.ethereum) { out("This needs a wallet.", "cx-err"); return; }
+
+    out("Confirm in your wallet\u2026");
+    // Read the address the same way the rest of this page does, from the
+    // server, rather than from a global that may not have been populated yet.
+    fetch("{{ url_for('admin.contracts_addresses') }}", {credentials: "same-origin"})
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (saved) {
+        var manager = (saved || {}).EpochManager || "";
+        if (!manager) { throw new Error("No EpochManager address is saved yet."); }
+        return window.ethereum.request({method: "eth_requestAccounts"})
+          .then(function (accounts) {
+            return window.ethereum.request({
+              method: "eth_sendTransaction",
+              params: [{from: accounts[0], to: manager, data: encode(epoch)}]
+            });
+          });
+      }).then(function (hash) {
+      out("Sent: " + hash + "\nReload once it confirms; finalized epochs stop appearing above.",
+          "cx-ok");
+    }).catch(function (error) {
+      out((error && error.message) ? error.message : String(error), "cx-err");
+    });
+  });
+})();
+</script>
+<script>
+// Deliver queued purchases from the SERVER rather than the browser wallet.
+// One at a time and sequential on purpose: each send consumes a nonce, and
+// firing them in parallel produces transactions that race and replace one
+// another rather than all landing.
+(function () {
+  var btn = document.getElementById("cx-del-server");
+  if (!btn) return;
+  var out = document.getElementById("cx-del-out") || document.getElementById("cx-status");
+  function say(msg, cls) {
+    if (!out) return;
+    out.textContent = msg;
+    out.className = "cx-out show " + (cls || "");
+  }
+
+  btn.onclick = async function () {
+    btn.disabled = true;
+    say("Loading the queue…", "");
+    // Fetched here rather than read from the page's own `pendingDeliveries`.
+    // That variable lives inside a different IIFE and is not visible from this
+    // block, so referencing it threw a ReferenceError and the button silently
+    // did nothing — no request ever reached the server.
+    var pending = [];
+    try {
+      var listRes = await fetch("{{ url_for('admin.contracts_deliveries') }}",
+                                {credentials: "same-origin"});
+      var listBody = await listRes.json();
+      pending = listBody.pending || [];
+    } catch (e) {
+      say("Could not load the delivery queue.", "cx-err");
+      btn.disabled = false;
+      return;
+    }
+    if (!pending.length) { say("Nothing is queued for delivery.", ""); btn.disabled = false; return; }
+
+    var done = 0, failed = 0, lines = [];
+    for (var i = 0; i < pending.length; i++) {
+      var d = pending[i];
+      say("Sending " + (i + 1) + "/" + pending.length + "…\n" + lines.join("\n"), "");
+      try {
+        var res = await fetch("{{ url_for('admin.contracts_delivery_send') }}", {
+          method: "POST", credentials: "same-origin",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({id: d.id}),
+        });
+        var body = await res.json();
+        if (res.ok && body.ok) {
+          done++; lines.push("sent " + d.credits + " to " + String(d.wallet).slice(0, 12) + "… " + body.tx_hash);
+        } else {
+          failed++; lines.push("FAILED #" + d.id + " — " + (body.error || ("HTTP " + res.status)));
+        }
+      } catch (e) {
+        failed++; lines.push("FAILED #" + d.id + " — could not reach the server");
+      }
+    }
+    say(done + " sent, " + failed + " failed\n" + lines.join("\n"), failed ? "cx-err" : "cx-ok");
+    btn.disabled = false;
+  };
+})();
+</script>
+
+
+{% endblock %}

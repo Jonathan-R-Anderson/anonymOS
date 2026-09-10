@@ -1,0 +1,136 @@
+services:
+  log-init:
+    image: alpine:3.20
+    command:
+    - sh
+    - -c
+    - "set -e\nfor svc in backend frontend nginx; do\n  mkdir -p \"/var/log/maniwani/$$svc\"\ndone\nchmod -R 0777 /var/log/maniwani\necho \"shared log folder ready at /var/log/maniwani\"\n"
+    restart: 'no'
+    volumes:
+    - ./maniwani_logs:/var/log/maniwani
+  postgres:
+    image: postgres:17
+    restart: always
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: dev
+    volumes:
+    - compose-postgres:/var/lib/postgresql/data
+  redis:
+    image: redis
+    hostname: redis
+    restart: always
+    command:
+    - sh
+    - -c
+    - rm -f /data/dump.rdb && redis-server --save ''
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    restart: unless-stopped
+    network_mode: none
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: '30'
+      AUTOHEAL_START_PERIOD: '300'
+      DOCKER_SOCK: /var/run/docker.sock
+      CURL_TIMEOUT: '60'
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+  maniwani:
+    extra_hosts:
+    - host.docker.internal:host-gateway
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      log-init:
+        condition: service_completed_successfully
+    environment:
+      SERVICE_NAME: backend
+      MANIWANI_CFG: /maniwani/runtime-config.cfg
+      MANIWANI_DEV: ${MANIWANI_DEV:-${DEV_MODE:-${dev_mode:-}}}
+      DEV_MODE: ${DEV_MODE:-${dev_mode:-}}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-["172.16.0.0/12"]}
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: dev
+      STORAGE_PROVIDER: S3
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://host.docker.internal:9109}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_UUID_PREFIX: ''
+      STORAGE_COORDINATOR_SIGNING_KEY: ${STORAGE_COORDINATOR_SIGNING_KEY:-}
+      STORAGE_BOOTSTRAP_PEERS: ${STORAGE_BOOTSTRAP_PEERS:-}
+      STORAGE_LEASE_REQUESTER_PEERS: ${STORAGE_LEASE_REQUESTER_PEERS:-}
+      I2P_SOCKS_PROXY: ${I2P_SOCKS_PROXY:-i2pd:4447}
+      GEVENT_RESOLVER: block
+    volumes:
+    - ./.env:/maniwani/.env:ro
+    - ${MANIWANI_CFG:-./deploy-configs/maniwani.cfg}:/maniwani/runtime-config.cfg:ro
+    - maniwani-uploads:/maniwani/uploads
+    - ./maniwani_logs:/var/log/maniwani
+    - ./deploy-configs/s3-ca.crt:/maniwani/deploy-configs/s3-ca.crt:ro
+    - ./deploy-configs/maniwani.cfg:/maniwani/deploy-configs/maniwani.cfg:ro
+    - ./backend/blueprints:/maniwani/blueprints:ro
+    - ./backend/services:/maniwani/services:ro
+    - ./backend/model:/maniwani/model:ro
+    - ./backend/templates:/maniwani/templates:ro
+    ports:
+    - 127.0.0.1:3032:3032
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -fsS
+      - http://127.0.0.1:3032/health
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+  maniwani-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    hostname: maniwani-frontend
+    environment:
+      SERVICE_NAME: frontend
+    volumes:
+    - ./maniwani_logs:/var/log/maniwani
+  nginx:
+    extra_hosts:
+    - host.docker.internal:host-gateway
+    build:
+      context: ./deploy-configs/nginx
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      DOMAIN: ${DOMAIN:-}
+      DOMAIN_ALIASES: ${DOMAIN_ALIASES:-}
+      SSL_CERT_COMMON_NAME: ${SSL_CERT_COMMON_NAME:-${DOMAIN:-localhost}}
+      SSL_ALT_NAMES: ${SSL_ALT_NAMES:-}
+      TLS_CERT_PATH: ${TLS_CERT_PATH:-}
+      TLS_KEY_PATH: ${TLS_KEY_PATH:-}
+    ports:
+    - 80:80
+    - 443:443
+    depends_on:
+      log-init:
+        condition: service_completed_successfully
+      maniwani:
+        condition: service_started
+    volumes:
+    - ./deploy-configs/nginx.conf:/etc/nginx/nginx.conf:ro
+    - ${TLS_MOUNT_PATH:-./deploy-configs/tls}:/etc/nginx/tls
+    - ${ACME_WEBROOT:-./deploy-configs/acme-webroot}:/acme-webroot:ro
+    - ./maniwani_logs:/var/log/maniwani
+networks:
+  default:
+    ipam:
+      config:
+      - subnet: 172.18.0.0/16
+volumes:
+  compose-postgres: null
+  maniwani-uploads: null

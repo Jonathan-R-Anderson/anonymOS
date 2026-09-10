@@ -1,0 +1,150 @@
+{%- extends "admin-shell.html" %}
+{% set admin_title = "Node releases" %}
+{% set admin_lede = "Publish the storage-node binary that volunteers install." %}
+{% block admin_content %}
+<style>
+  .nr-wrap { max-width: 1000px; margin: 0 auto; padding: 16px; color: inherit; }
+  .nr-card { background: var(--sc-surface); border: 1px solid var(--sc-border);
+             border-radius: 10px; padding: 16px; margin-bottom: 16px; color: inherit; }
+  .nr-muted { opacity: var(--sc-muted-alpha, .62); }
+  .nr-mono { font-family: monospace; font-size: .78rem; word-break: break-all; }
+  .nr-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .nr-input { background: var(--sc-surface-2); color: inherit; border: 1px solid var(--sc-border);
+              border-radius: 6px; padding: 6px 8px; font-size: .82rem; }
+  .nr-plat { border-top: 1px solid var(--sc-border); padding: 12px 0; }
+  .nr-plat:first-of-type { border-top: 0; }
+  .nr-plat h5 { margin: 0 0 2px; font-size: .92rem; }
+  .nr-badge { font-size: .7rem; border: 1px solid var(--sc-border); border-radius: 999px;
+              padding: 1px 8px; }
+  .nr-ok { color: #26de81; } .nr-err { color: #ff6b6b; } .nr-warn { color: #ff9f43; }
+  .nr-out { font-family: monospace; font-size: .76rem; white-space: pre-wrap; word-break: break-all;
+            background: var(--sc-surface-2); border: 1px solid var(--sc-border); border-radius: 6px;
+            padding: 6px 8px; margin-top: 6px; display: none; }
+  .nr-out.show { display: block; }
+</style>
+
+<div class="nr-wrap">
+  <div class="d-flex justify-content-between align-items-baseline mb-3" style="gap:.75rem">
+    <h2 class="mb-0">Node releases</h2>
+    <a href="{{ url_for('admin.dashboard') }}" class="nr-muted" style="color:inherit">&larr; Admin</a>
+  </div>
+
+  <div class="nr-card">
+    <p style="font-size:.9rem;line-height:1.6;margin:0">
+      These are the binaries <a href="/network">/network</a> hands out. They are
+      <strong>not in the container image</strong> — six platforms is ~180&nbsp;MB that would ride in
+      every deploy on a node that has already had its images garbage collected by disk pressure —
+      so they are uploaded here once per release and stored in the object store, keyed by hash.
+    </p>
+    <p class="nr-muted" style="font-size:.85rem;line-height:1.6;margin:.7rem 0 0">
+      Build them with <code>storage-client/scripts/build-release.sh</code>, then upload each file
+      from <code>storage-client/dist/</code>. The platform you pick and the file's own executable
+      header have to agree — an upload under the wrong platform is refused rather than published,
+      because the consequence of getting it wrong lands on someone else's machine days later.
+    </p>
+    <p class="nr-muted" style="font-size:.85rem;line-height:1.6;margin:.7rem 0 0">
+      For the Linux builds, prefer <code>./scripts/publish-node-release.sh</code> on the server: it
+      builds, writes the checksums and publishes all of them in one pass, taking the platform from
+      the filename instead of from a dropdown next to a file picker. Those are the ones
+      <code>curl -fsSL https://dendritic.network/install.sh | sh</code> fetches from
+      <code>/dl/&lt;binary&gt;</code>, so a Linux platform left unpublished here is an installer that
+      404s on somebody's machine. This form stays for macOS and Windows, and for a one-off fix.
+    </p>
+    <div class="nr-row" style="margin-top:.9rem">
+      <label style="margin:0;font-size:.82rem">Version
+        <input id="nr-version" class="nr-input" type="text" placeholder="e.g. 2026.08.01" style="width:11rem">
+      </label>
+      <label style="margin:0;font-size:.82rem">Toolchain
+        <input id="nr-toolchain" class="nr-input" type="text" placeholder="e.g. go1.25.12" style="width:11rem">
+      </label>
+      <span class="nr-muted" style="font-size:.8rem">
+        Applied to every upload below. The toolchain is published so somebody who rebuilds from
+        source knows which compiler produces a matching hash.
+      </span>
+    </div>
+  </div>
+
+  <div class="nr-card">
+    {%- for row in rows %}
+    <div class="nr-plat" data-os="{{ row.os }}" data-arch="{{ row.arch }}">
+      <div class="nr-row" style="justify-content:space-between">
+        <div>
+          <h5>{{ row.label }}
+            {%- if row.published and row.published.sha256 %}
+            <span class="nr-badge nr-ok">published</span>
+            {%- else %}
+            <span class="nr-badge nr-warn">missing</span>
+            {%- endif %}
+          </h5>
+          <div class="nr-mono nr-muted">{{ row.binary }}</div>
+          {%- if row.published and row.published.sha256 %}
+          <div class="nr-mono" style="margin-top:3px">{{ row.published.sha256 }}</div>
+          <div class="nr-muted" style="font-size:.76rem">
+            {{ '%.1f'|format((row.published.size or 0) / 1048576) }} MB
+            {%- if row.published.version %} · {{ row.published.version }}{% endif %}
+            {%- if row.published.toolchain %} · {{ row.published.toolchain }}{% endif %}
+          </div>
+          {%- else %}
+          <div class="nr-muted" style="font-size:.78rem">
+            /download/node returns 404 for this platform until a binary is uploaded.
+          </div>
+          {%- endif %}
+        </div>
+        <div class="nr-row">
+          <input type="file" class="nr-input nr-file" style="max-width:16rem">
+          <button class="btn btn-primary btn-sm nr-upload">Upload</button>
+        </div>
+      </div>
+      <div class="nr-out"></div>
+    </div>
+    {%- endfor %}
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  function say(node, message, kind) {
+    var out = node.querySelector(".nr-out");
+    out.textContent = message;
+    out.className = "nr-out show " + (kind || "");
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".nr-plat"), function (plat) {
+    plat.querySelector(".nr-upload").addEventListener("click", function () {
+      var file = plat.querySelector(".nr-file").files[0];
+      if (!file) { say(plat, "Pick a file first.", "nr-err"); return; }
+
+      var form = new FormData();
+      form.append("binary", file);
+      form.append("os", plat.getAttribute("data-os"));
+      form.append("arch", plat.getAttribute("data-arch"));
+      form.append("version", document.getElementById("nr-version").value.trim());
+      form.append("toolchain", document.getElementById("nr-toolchain").value.trim());
+
+      var button = this;
+      button.disabled = true;
+      say(plat, "Uploading " + (file.size / 1048576).toFixed(1) + " MB…");
+
+      fetch("{{ url_for('admin.node_releases_publish') }}",
+            {method: "POST", body: form, credentials: "same-origin"})
+        .then(function (response) {
+          return response.json().then(function (body) {
+            return {ok: response.ok, body: body};
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            say(plat, result.body.error || "Upload failed.", "nr-err");
+          } else {
+            say(plat, "Published " + result.body.sha256 +
+                      "\nReload to see it listed.", "nr-ok");
+          }
+        })
+        .catch(function (error) { say(plat, String(error), "nr-err"); })
+        .then(function () { button.disabled = false; });
+    });
+  });
+})();
+</script>
+{% endblock %}

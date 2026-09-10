@@ -1,0 +1,343 @@
+{%- extends "base.html" %}
+{% block title %}Decentralized network infrastructure{% endblock %}
+{% block content %}
+{#
+  Front page, rewritten for the network-only site.
+
+  The original was the imageboard firehose (a React-mounted recent-posts feed)
+  and was removed with the rest of the application layer. `main.index` already
+  passed `threads: []` before that removal, so the feed was dead code serving an
+  empty list; this template keeps the same contract -- greeting, token supply,
+  warrant canary -- and drops the feed entirely.
+
+  Everything below degrades: `supply` is None when the token-supply cache is
+  cold, and `warrant_canary` is falsy when unconfigured. Neither is allowed to
+  500 the front page, because the front page is what someone loads to find out
+  whether the network is up.
+#}
+{# The restored front hero: the anonymous figure with the scrambling title
+   that cycles "Anonymous" through several scripts. It was dropped when the
+   application layer was stripped; the image (static/img/anonymous.png) had
+   survived with nothing referencing it. #}
+{% include "includes/front-hero.html" %}
+
+<div class="dn-hero">
+  <div class="dn-inner">
+    {% if greeting %}
+    <div class="dn-greeting">{{ greeting|safe }}</div>
+    {% else %}
+    <p class="dn-lede">
+      An overlay network of independent nodes providing multi-hop routing where
+      no single relay sees both ends, content-addressed distributed storage, and
+      cryptographically owned names. Content is held as erasure-coded shards
+      across the node network rather than on a single origin server.
+    </p>
+    {% endif %}
+
+  </div>
+</div>
+
+{# ---------------------------------------------------------------------------
+   Why this exists.
+
+   Rebuilt after the first attempt was two columns of prose. No text here is
+   copied from anywhere: the observations about surveillance and anonymity are
+   common to the whole privacy field, and the wording is ours.
+
+   Every graphic here is inline SVG with currentColor, so it inherits the theme
+   instead of carrying a palette that goes invisible on midnight.
+   --------------------------------------------------------------------------- #}
+<div class="dn-inner dn-why">
+  <p class="dn-eyebrow">Why this exists</p>
+  <h2 class="dn-why-h">Being watched is the default.</h2>
+
+  {# Two columns so the diagram sits beside the claims instead of below them:
+     the section was a heading and a wide figure stacked, which left the right
+     half empty for the whole scroll. #}
+  <div class="dn-why-body">
+
+  {# The problem, as a picture: one wire, everything on it legible to whoever
+     holds it. Deliberately drawn before any prose -- the diagram IS the
+     paragraph the first version wrote out longhand. #}
+  {# Two rows: the problem, then what the network does about it.
+
+     The second row shows the RENDEZVOUS shape rather than a simple relay chain,
+     because "hide your server" is a different claim from "hide the visitor" and
+     only the two-sided picture makes it. Each end builds its own hops to a
+     meeting point, so neither side ever learns the other's address and no single
+     hop sees both ends.
+
+     Deliberately simplified: hop counts are illustrative, and the drawing says
+     nothing about traffic timing, which is where this protection actually ends
+     (Constitution s7). Static SVG -- the live canvas is in the hero above, and
+     the include binds to fixed ids so a second instance would be inert. #}
+  <figure class="dn-diag">
+    <svg viewBox="0 0 680 268" role="img"
+         aria-label="Today one observed link joins you to a site and shows both ends. On the network, you and the service each wrap traffic in three layers of encryption, one per hop; each hop peels exactly one layer, so no hop sees both ends and neither side learns the other's address. An innermost layer only the two ends can open crosses the meeting point intact.">
+      <g class="d-lbl"><text x="4" y="12">TODAY</text></g>
+      <g class="d-ln">
+        <rect x="4" y="26" width="66" height="30" rx="6"/>
+        <path d="M70 41 H300"/><path d="M344 41 H586"/>
+        <rect x="586" y="26" width="70" height="30" rx="6"/>
+        <circle cx="322" cy="41" r="15"/>
+      </g>
+      <circle class="d-pupil" cx="322" cy="41" r="5"/>
+      <g class="d-tx">
+        <text x="37" y="45" text-anchor="middle">you</text>
+        <text x="621" y="45" text-anchor="middle">site</text>
+        <text x="322" y="74" text-anchor="middle" class="d-warn">sees both ends</text>
+      </g>
+
+      <line class="d-rule" x1="4" y1="96" x2="676" y2="96"/>
+
+      <g class="d-lbl"><text x="4" y="122">ON THE NETWORK</text></g>
+      <g class="d-ln">
+        <rect x="4" y="140" width="66" height="30" rx="6"/>
+        <path d="M70 155 H112"/><path d="M126 155 H172"/><path d="M186 155 H232"/>
+        <path d="M246 155 H302"/><path d="M338 155 H394"/>
+        <path d="M408 155 H454"/><path d="M468 155 H514"/><path d="M528 155 H586"/>
+        <rect x="586" y="140" width="70" height="30" rx="6"/>
+      </g>
+      <g class="d-hop">
+        <circle cx="119" cy="155" r="7"/><circle cx="179" cy="155" r="7"/><circle cx="239" cy="155" r="7"/>
+        <circle cx="401" cy="155" r="7"/><circle cx="461" cy="155" r="7"/><circle cx="521" cy="155" r="7"/>
+      </g>
+      <path class="d-meet" d="M320 139 L336 155 L320 171 L304 155 Z"/>
+      <g class="d-tx">
+        <text x="37" y="159" text-anchor="middle">you</text>
+        <text x="621" y="159" text-anchor="middle">server</text>
+      </g>
+
+      {# The layer stacks. Each segment shows how many wrappers the cell is still
+         carrying: 3 leaving you, one fewer after each hop, and the mirror image
+         on the service side. The innermost band is drawn solid and unbroken all
+         the way across because it is the ONLY layer that survives the meeting
+         point -- the RP joins the two circuits and cannot open it. #}
+      <g class="d-layers">
+        <!-- client side: 3 -> 2 -> 1 wrappers -->
+        <rect x="74"  y="186" width="42" height="5" rx="2.5" class="d-l3"/>
+        <rect x="74"  y="193" width="42" height="5" rx="2.5" class="d-l2"/>
+        <rect x="134" y="193" width="42" height="5" rx="2.5" class="d-l2"/>
+        <rect x="74"  y="200" width="42" height="5" rx="2.5" class="d-l1"/>
+        <rect x="134" y="200" width="42" height="5" rx="2.5" class="d-l1"/>
+        <rect x="194" y="200" width="42" height="5" rx="2.5" class="d-l1"/>
+        <!-- service side: 1 -> 2 -> 3 wrappers -->
+        <rect x="444" y="200" width="42" height="5" rx="2.5" class="d-l1"/>
+        <rect x="504" y="200" width="42" height="5" rx="2.5" class="d-l1"/>
+        <rect x="564" y="200" width="42" height="5" rx="2.5" class="d-l1"/>
+        <rect x="504" y="193" width="42" height="5" rx="2.5" class="d-l2"/>
+        <rect x="564" y="193" width="42" height="5" rx="2.5" class="d-l2"/>
+        <rect x="564" y="186" width="42" height="5" rx="2.5" class="d-l3"/>
+        <!-- the end-to-end layer, unbroken across the meeting point -->
+        <rect x="74" y="211" width="532" height="5" rx="2.5" class="d-e2e"/>
+      </g>
+
+      <g class="d-tx">
+        <text x="119" y="182" text-anchor="middle" class="d-dim">3 layers</text>
+        <text x="239" y="182" text-anchor="middle" class="d-dim">1</text>
+        <text x="320" y="182" text-anchor="middle" class="d-dim">meeting point</text>
+        <text x="401" y="182" text-anchor="middle" class="d-dim">1</text>
+        <text x="521" y="182" text-anchor="middle" class="d-dim">3 layers</text>
+        <text x="340" y="231" text-anchor="middle" class="d-dim">only you and the server can open this one</text>
+        <text x="119" y="248" text-anchor="middle" class="d-dim">each hop peels exactly one</text>
+        <text x="521" y="248" text-anchor="middle" class="d-dim">each hop peels exactly one</text>
+      </g>
+    </svg>
+    <figcaption>
+      Each side wraps traffic in <em>three layers</em>, one per hop, and each hop peels
+      exactly one &mdash; so no hop sees both ends and neither side learns the
+      other&rsquo;s address. The innermost layer crosses the meeting point unopened.
+    </figcaption>
+  </figure>
+
+  {# Three claims, one line each. The first version spent a paragraph on each of
+     these and said no more than the line does. #}
+  <div class="dn-why-points">
+    <div class="dn-point">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M12 3 3 7v5c0 5 3.8 8.3 9 9 5.2-.7 9-4 9-9V7z"/>
+        <path d="M9 12l2 2 4-4"/>
+      </svg>
+      <h3>It is not about hiding</h3>
+      <p>Reading about a diagnosis. A search term that is evidence where you live.
+         A source who needs your silence to be worth something.</p>
+    </div>
+    <div class="dn-point">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6">
+        <circle cx="12" cy="12" r="3"/>
+        <circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/>
+        <circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/>
+        <path d="M6.6 7.4 9.8 10.2M17.4 7.4 14.2 10.2M6.6 16.6 9.8 13.8M17.4 16.6 14.2 13.8"/>
+      </svg>
+      <h3>No one owns it</h3>
+      <p>Unrelated operators, unrelated places. No company to subpoena, no server
+         to seize, no one who can be leaned on for the whole picture.</p>
+    </div>
+    <div class="dn-point">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6">
+        <path d="M3 20c1.8-5 5-7.5 9-7.5s7.2 2.5 9 7.5"/>
+        <circle cx="12" cy="7" r="3.2"/>
+        <path d="M12 12.5v7.5" opacity=".45"/>
+      </svg>
+      <h3>A crowd, or nothing</h3>
+      <p>Anonymity used by a few is a spotlight. It only protects you when it is
+         ordinary — which takes people, not cryptography.</p>
+    </div>
+  </div>
+
+  </div>
+
+  {# Every call to action in one row. They were split between the hero and here,
+     which made the reader choose twice; the decision is the same one. #}
+  <div class="dn-actions">
+    {# The role PICKER, not the page top: somebody who has just read "run a
+       node" wants the thing that lets them choose one. #}
+    <a class="btn btn-primary" href="{{ url_for('main.network_topology') }}#roles">
+      Choose what your node runs
+    </a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('status.status_page') }}">
+      See who already does
+    </a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('status.status_page') }}">
+      Network status
+    </a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('main.network_topology') }}">
+      How it works
+    </a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('main.download_node') }}">
+      Run a node
+    </a>
+  </div>
+
+</div>
+
+<div class="dn-inner dn-cards">
+  <div class="dn-card">
+    <h2>Anonymous routing</h2>
+    <p>Traffic traverses multi-hop encrypted circuits. No single relay learns
+       both ends of a connection.</p>
+    <a href="{{ url_for('main.network_topology') }}">Architecture &rarr;</a>
+  </div>
+  <div class="dn-card">
+    <h2>Distributed storage</h2>
+    <p>Objects are content-addressed, erasure-coded and dispersed across
+       independent nodes, then verified on retrieval.</p>
+    <a href="{{ url_for('status.status_page') }}">Live peers &rarr;</a>
+  </div>
+  <div class="dn-card">
+    <h2>Node operators earn</h2>
+    <p>Verified contribution — storage, bandwidth, uptime — is settled on-chain
+       through Proof of Facilitation.</p>
+    <a href="{{ url_for('main.economy') }}">Economy &rarr;</a>
+  </div>
+</div>
+
+{% if supply %}
+<div class="dn-inner dn-supply">
+  <span class="dn-supply-k">Token supply</span>
+  <span class="dn-supply-v">{{ supply.circulating if supply.circulating is defined else supply }}</span>
+</div>
+{% endif %}
+
+{% if warrant_canary and warrant_canary.enabled %}
+<div class="dn-inner dn-canary">
+  <span class="dn-canary-k">Warrant canary</span>
+  {% if warrant_canary.statement %}<p>{{ warrant_canary.statement }}</p>{% endif %}
+  {% if warrant_canary.updated_at %}<small>Last updated {{ warrant_canary.updated_at }}</small>{% endif %}
+</div>
+{% endif %}
+
+<style>
+  /* Inherits theme colours rather than hardcoding: the custom palettes
+     (midnight, cyberpunk) supply no --bs-* vars, so a literal colour here
+     becomes invisible text on those themes. */
+  .dn-inner { max-width: 82rem; margin: 0 auto; padding: 0 1rem; }
+  @media (max-width: 760px) { .dn-inner { max-width: 100%; } }
+  .dn-hero { padding: clamp(1.4rem, 4vw, 2.6rem) 0 clamp(1rem, 2.5vw, 1.8rem); }
+  .dn-eyebrow { font-family: 'Space Mono', ui-monospace, monospace; font-size: .7rem;
+                letter-spacing: .24em; text-transform: uppercase; opacity: .6; margin: 0; }
+  .dn-title { font-weight: 700; font-size: clamp(2.2rem, 6vw, 3.6rem); line-height: 1.03;
+              letter-spacing: -.025em; margin: .5rem 0 0; text-wrap: balance; }
+  /* .dn-lede is a PARAGRAPH: 44rem is a readable measure for it. */
+  .dn-lede { font-size: clamp(1rem, 1.6vw, 1.15rem); line-height: 1.65;
+             opacity: .9; max-width: 44rem; margin: 1.1rem 0 0; }
+  /* .dn-greeting is a whole landing SECTION with its own multi-column layout,
+     and it must NOT inherit a paragraph's measure. It shared the rule above,
+     so the entire two-column region was capped at 44rem (704px) and pinned
+     left by `margin: … 0 0` -- which is why widening the grids underneath it
+     changed nothing. The container was the constraint, not the grids. */
+  .dn-greeting { margin: 0; width: 100%; }
+  .dn-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.8rem; }
+  .dn-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+              gap: .9rem; padding-bottom: 1.8rem; }
+  .dn-card { border: 1px solid currentColor; border-radius: 10px; padding: 1.25rem;
+             border-color: rgba(128,128,128,.28); }
+  .dn-card h2 { font-size: 1.02rem; font-weight: 700; margin: 0 0 .5rem;
+                letter-spacing: -.01em; }
+  .dn-card p { font-size: .88rem; line-height: 1.6; opacity: .85; margin: 0 0 .75rem; }
+  .dn-card a { font-size: .82rem; font-weight: 600; text-decoration: none; }
+  .dn-supply, .dn-canary { border-top: 1px solid rgba(128,128,128,.22);
+                           padding: 1.1rem 1rem; font-size: .85rem; }
+  .dn-supply-k, .dn-canary-k { font-family: 'Space Mono', ui-monospace, monospace;
+                               font-size: .66rem; letter-spacing: .16em;
+                               text-transform: uppercase; opacity: .6;
+                               display: block; margin-bottom: .3rem; }
+  .dn-supply-v { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .dn-canary p { margin: 0; line-height: 1.6; opacity: .9; }
+  .dn-canary small { opacity: .6; }
+
+  .dn-why { padding: clamp(1.2rem, 3vw, 2rem) 1rem clamp(1.4rem, 3vw, 2.2rem);
+            border-top: 1px solid rgba(128,128,128,.22); }
+  .dn-why-h { font-weight: 700; font-size: clamp(1.6rem, 3.6vw, 2.3rem); line-height: 1.1;
+              letter-spacing: -.025em; margin: .5rem 0 1.5rem; text-wrap: balance; }
+
+  /* The diagram carries the argument, so it gets the room. currentColor
+     throughout: the custom themes supply no --bs-* vars, and a literal stroke
+     colour here disappears on midnight. */
+  .dn-diag { margin: 0 0 1.2rem; }
+  @media (min-width: 1040px) { .dn-diag { margin: 0; order: 2; } }
+  .dn-diag svg { width: 100%; height: auto; max-height: 270px; color: inherit; }
+  /* currentColor throughout: the custom themes supply no --bs-* vars, so a
+     literal stroke here goes invisible on midnight. */
+  .dn-diag .d-ln { fill: none; stroke: currentColor; stroke-width: 1.5; opacity: .55; }
+  .dn-diag .d-hop circle { fill: currentColor; opacity: .5; }
+  .dn-diag .d-meet { fill: none; stroke: currentColor; stroke-width: 1.6; opacity: .9; }
+  .dn-diag .d-pupil { fill: currentColor; opacity: .8; }
+  .dn-diag .d-rule { stroke: currentColor; opacity: .16; }
+  .dn-diag text { font-family: 'Space Mono', ui-monospace, monospace; fill: currentColor; }
+  .dn-diag .d-lbl text { font-size: 9.5px; letter-spacing: .18em; opacity: .5; }
+  .dn-diag .d-tx text { font-size: 10.5px; }
+  .dn-diag .d-dim { opacity: .55; }
+  .dn-diag .d-warn { opacity: .8; }
+  /* The wrappers fade with depth, so "three layers" reads as a stack rather
+     than three unrelated bars. */
+  .dn-diag .d-layers rect { fill: currentColor; }
+  .dn-diag .d-l3 { opacity: .22; }
+  .dn-diag .d-l2 { opacity: .34; }
+  .dn-diag .d-l1 { opacity: .48; }
+  /* The end-to-end layer is the only one drawn unbroken and at full strength:
+     it is the one the rendezvous point carries and cannot open. */
+  .dn-diag .d-e2e { opacity: .85; }
+  .dn-diag em { font-style: normal; opacity: 1; border-bottom: 1px solid currentColor; }
+  .dn-diag figcaption { font-size: .84rem; line-height: 1.55; opacity: .7; margin-top: .55rem; }
+  .dn-diag figcaption a { font-weight: 600; text-decoration: none; white-space: nowrap; }
+
+  /* Mobile-first, same lesson as the top region: split only when there is room
+     for both halves, not merely when the viewport stops being a phone. The
+     diagram needs ~30rem before its labels start colliding. */
+  .dn-why-body { display: grid; grid-template-columns: 1fr;
+                 gap: clamp(1.2rem, 3vw, 2.4rem); align-items: center;
+                 margin-bottom: 1.4rem; }
+  .dn-why-points { display: grid; gap: 1.1rem 1.6rem;
+                   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+  @media (min-width: 1040px) {
+    .dn-why-body { grid-template-columns: minmax(0, .95fr) minmax(30rem, 1.05fr); }
+    /* Once it is a column, the claims stack. */
+    .dn-why-points { grid-template-columns: 1fr; }
+  }
+  .dn-point svg { width: 26px; height: 26px; opacity: .75; margin-bottom: .55rem; display: block; }
+  .dn-point h3 { font-size: .95rem; font-weight: 700; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  .dn-point p { font-size: .85rem; line-height: 1.6; opacity: .82; margin: 0; }
+
+</style>
+{% endblock %}

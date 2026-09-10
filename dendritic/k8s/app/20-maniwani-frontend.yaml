@@ -1,0 +1,182 @@
+# =============================================================================
+# maniwani-frontend — Express SSR renderer + Gun websocket relay.
+# APP TIER, SOFTWARE NODE. Stateless (Deployment): it owns no persistent volume.
+# =============================================================================
+# Build context: `docker build -t registry.local/maniwani-frontend:latest ./frontend`
+#   (frontend/Dockerfile). FROM node:12.12.0-alpine — an EOL runtime. Flagged for
+#   a later upgrade; it is NOT a migration blocker and deliberately not touched
+#   here, since changing the Node major during a platform migration would make
+#   any regression impossible to attribute.
+#   The image bakes a 9 MB CSV (Loughran-McDonald dictionary) plus a full
+#   node_modules copy, so it is large — fine on the software node's 97 GB free.
+#
+# NAME IS LOAD-BEARING. Both deploy-configs/nginx.conf
+# (`set $frontend_upstream maniwani-frontend:3000`) and deploy-configs/maniwani.cfg
+# (`RENDERER_HOST = "http://maniwani-frontend:3000"`) hardcode this exact short
+# name, and the backend calls it on EVERY server-side page render. compose even
+# set `hostname: maniwani-frontend` explicitly. Renaming the Service takes the
+# whole site down at runtime with no apply-time warning.
+#
+# PORT 3000 IS NOT CONFIGURABLE: `var port = 3000` is hardcoded in the built
+# bundle (frontend/build/server.js:61). There is no PORT env var to set.
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: maniwani-frontend
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani-frontend
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: app
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: maniwani-frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maniwani-frontend
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani-frontend
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: app
+    app.kubernetes.io/component: app
+spec:
+  # ---------------------------------------------------------------------------
+  # REPLICAS: 1 — REQUIRED, NOT A CAPACITY CHOICE.
+  # server.js ends with `Gun({web: server, localStorage: false})` and no peer
+  # list. nginx proxies both `/gun` and `/gun/` here with websocket Upgrade
+  # headers. Two replicas behind one Service = two UNMESHED Gun peers, so
+  # clients that land on different pods see a split graph and silently diverge.
+  # Scaling this requires configuring Gun peering first.
+  # ---------------------------------------------------------------------------
+  replicas: 1
+  strategy:
+    # Recreate, not RollingUpdate, for the same reason: a rolling update would
+    # briefly run two unmeshed Gun peers. The cost is a few seconds where /gun
+    # is down; page rendering is covered because nginx maps backend 502/504 to
+    # the @starting page.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: maniwani-frontend
+  template:
+    metadata:
+      labels:
+        app: maniwani-frontend
+        app.kubernetes.io/name: maniwani-frontend
+        app.kubernetes.io/part-of: maniwani
+        maniwani.io/group: app
+    spec:
+      # K8s injects <SVC>_PORT=tcp://ip:port for every Service when this is
+      # true (the default). The backend coerces uppercase env keys to the type
+      # of the matching app.config entry, so REDIS_PORT becomes
+      # int("tcp://...") and the app dies at import. Everything here uses DNS.
+      enableServiceLinks: false
+      # Required because this pod writes into the shared hostPath log directory
+      # on the software node.
+      nodeSelector:
+        maniwani.io/role: software
+      initContainers:
+        # Canonical shared-log initContainer. OTHER GROUPS: copy this block plus
+        # the `log-init-script` and `shared-logs` volumes verbatim into every pod
+        # that writes to /var/log/maniwani. See 00-configmaps.yaml for why this
+        # is an initContainer and not a Job.
+        - name: log-init
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/scripts/log-init.sh"]
+          volumeMounts:
+            - name: log-init-script
+              mountPath: /scripts
+            - name: shared-logs
+              mountPath: /var/log/maniwani
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+      containers:
+        - name: maniwani-frontend
+          image: registry.local/maniwani-frontend:latest
+          imagePullPolicy: IfNotPresent
+          # ENTRYPOINT is `sh ./entrypoint.sh` -> `node server.js`. Left to the
+          # image. Runs as root (the Dockerfile has no USER directive); it needs
+          # no capabilities, only write access to /var/log/maniwani/frontend and
+          # its own CWD. Not switched to non-root here because the image chowns
+          # nothing — that is an image change, not a manifest change.
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            # Selects the /var/log/maniwani/frontend subdirectory in
+            # frontend/build/logger.js, which tees console output to
+            # frontend.log with its own size-based rotation.
+            - name: SERVICE_NAME
+              value: frontend
+          volumeMounts:
+            - name: shared-logs
+              mountPath: /var/log/maniwani
+            # Gun has no `file:` option configured, so it falls back to its
+            # default on-disk `radata/` store in the CWD (/maniwani-frontend).
+            # Today NO volume is mounted for it, i.e. relay state is ephemeral.
+            # An emptyDir preserves that behaviour exactly while keeping the
+            # writes off the image layer. DO NOT turn this into a PVC: that would
+            # change relay semantics (persisted graph across restarts) as an
+            # unreviewed side effect of the migration.
+            - name: gun-radata
+              mountPath: /maniwani-frontend/radata
+          # -------------------------------------------------------------------
+          # compose defined NO healthcheck and NO restart policy (so it defaulted
+          # to `no`). Kubernetes' default restartPolicy: Always is already a
+          # strict improvement. The image has two real probe endpoints that the
+          # compose file never used — wire both up:
+          #   GET /health-check  -> "OK"          (server.js:62)
+          #   GET /relay-status  -> {ok,gun}      (server.js:65)
+          # -------------------------------------------------------------------
+          startupProbe:
+            httpGet: {path: /health-check, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+          readinessProbe:
+            httpGet: {path: /health-check, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            # /relay-status rather than /health-check: it exercises the Gun relay
+            # object as well as the Express router, so a wedged relay is caught.
+            httpGet: {path: /relay-status, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            # Single-threaded Node doing SSR on every page render. It is on the
+            # synchronous path of every uncached request, so the CPU request is
+            # meaningful and there is deliberately no CPU limit (throttling here
+            # would add latency to literally every page view).
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: log-init-script
+          configMap:
+            name: log-init-script
+            defaultMode: 0555
+        - name: shared-logs
+          hostPath:
+            path: /var/log/maniwani
+            type: DirectoryOrCreate
+        - name: gun-radata
+          emptyDir:
+            sizeLimit: 512Mi

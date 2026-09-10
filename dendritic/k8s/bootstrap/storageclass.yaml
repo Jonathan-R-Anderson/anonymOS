@@ -1,0 +1,172 @@
+# =============================================================================
+# maniwani BOOTSTRAP — the two node-pinned local-path StorageClasses
+# =============================================================================
+# Every PVC in this repo names one of exactly two classes, and the choice is the
+# placement decision made physical:
+#
+#   maniwani-local  -> SOFTWARE node vps-8e766dc0 (8 vCPU / 22 GB / 200 GB, 97 G free)
+#                      app tier, all five aggregator DBs, rtmp, seedbox, clamav,
+#                      ergo, nntp-hub, maniwani-uploads.   ~50 GiB nominal.
+#   maniwani-data   -> DATA     node vps-56548ec0 (4 vCPU /  7 GB /  75 GB, 55 G free)
+#                      postgres only.                       ~5 GiB nominal.
+#
+# Grep before you edit: `grep -rn storageClassName k8s/`. There are no other
+# classes and nothing in this repo should ever bind the k3s default `local-path`.
+#
+# =============================================================================
+# HOW EACH CLASS IS ACTUALLY PINNED — THREE MECHANISMS, ONLY ONE IS DECISIVE
+# =============================================================================
+# There is no CSI driver here and no shared storage. "local-path" means "a
+# directory on one node's disk", so pinning is not a property the provisioner
+# can enforce on its own. Three things cooperate; understand which is which,
+# because the failure modes are completely different.
+#
+# (1) volumeBindingMode: WaitForFirstConsumer          <- THE DECISIVE ONE
+#     With Immediate binding the provisioner picks a node the instant the PVC is
+#     created — before any pod exists, therefore before any nodeSelector is
+#     known — and roughly half the time it would pick the wrong one. With
+#     WaitForFirstConsumer nothing happens until a POD that uses the claim is
+#     scheduled; the directory is then created on THAT node and the resulting PV
+#     gets a nodeAffinity to it, permanently. Binding follows scheduling.
+#
+# (2) The pod's nodeSelector: maniwani.io/role={software|data}   <- WHAT DECIDES
+#     Because of (1), the node the scheduler picks for the first consuming pod
+#     IS the node the volume lands on. Every workload manifest in this repo
+#     already carries the correct nodeSelector; those labels are applied by the
+#     bootstrap runbook (`kubectl label node ... maniwani.io/role=...`).
+#
+#     COROLLARY, AND IT IS THE MOST COMMON WAY TO GET THIS WRONG: a pod whose
+#     nodeSelector and storageClassName disagree does not "work anyway on the
+#     other node". Once a PV exists with nodeAffinity to node A, a pod pinned to
+#     node B stays Pending forever with
+#         "node(s) had volume node affinity conflict".
+#     That is the intended loud failure. Do not resolve it by editing the
+#     nodeSelector — resolve it by deciding which node the data belongs on.
+#
+# (3) allowedTopologies (below)                        <- DEFENCE + DOCUMENTATION
+#     For a CSI driver the scheduler filters candidate nodes by this list. The
+#     k3s provisioner is NOT a CSI driver — it is an out-of-tree provisioner
+#     using the sig-storage external-provisioner library — so DO NOT rely on
+#     this being enforced. It is here because it is free, because it is the
+#     only machine-readable statement of intent, and because if a future k3s
+#     ships a CSI-based local-path it starts being enforced for real.
+#
+#     (!) IT NAMES THE NODES LITERALLY. k3s registers a node under its hostname
+#     unless --node-name is passed. VERIFY BEFORE FIRST APPLY:
+#         kubectl get nodes -o name
+#     must print exactly node/vps-8e766dc0 and node/vps-56548ec0. If your node
+#     names differ, FIX THEM HERE — a wrong hostname in allowedTopologies is
+#     inert today, but it becomes a cluster-wide "no PVC will ever bind" outage
+#     the day the provisioner starts honouring it.
+#
+# (4) OPTIONAL HARD ENFORCEMENT — provisioner-side, if your version supports it.
+#     local-path-provisioner v0.0.24+ reads `storageClassConfigs` out of the
+#     `local-path-config` ConfigMap in kube-system, which lets each StorageClass
+#     have its own nodePathMap. Listing exactly ONE node per class, with NO
+#     DEFAULT_PATH_FOR_NON_LISTED_NODES entry, turns a mis-scheduled pod into a
+#     failed provision with a clear event instead of a directory quietly
+#     appearing on the wrong disk. Check the shipped version first:
+#         kubectl -n kube-system get deploy local-path-provisioner \
+#           -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+#     and note that k3s re-applies its packaged copy of that manifest on every
+#     restart: customise it by editing
+#     /var/lib/rancher/k3s/server/manifests/local-storage.yaml and creating
+#     local-storage.yaml.skip alongside it, never by `kubectl edit`.
+#     See bootstrap/README.md §4.3. This is hardening; (1)+(2) are the pin.
+#
+# =============================================================================
+# WHAT THESE CLASSES DO **NOT** DO
+# =============================================================================
+# * NO CAPACITY ENFORCEMENT. A PVC is a directory. `resources.requests.storage`
+#   is scheduler input and documentation; a 5Gi claim will happily fill 97 GB.
+#   The real limit is the node's free space, shared by every claim on it. Watch
+#   `df -h /` on both nodes, not `kubectl get pvc`.
+# * NO EXPANSION. allowVolumeExpansion is false because there is nothing to
+#   expand — grow the underlying disk instead and the directory grows with it.
+# * NO REPLICATION, NO SNAPSHOTS, NO BACKUP. Losing a node loses its volumes.
+#   The migration's answer for the data node is the same as compose's answer
+#   was: postgres is logically dumped, storage objects are DHT-backed, redis is
+#   disposable. There is no such answer for the software node's 28 GB of
+#   scraper/rtmp/seedbox volumes today, under compose or under k3s. Unchanged
+#   by this migration, but do not mistake "on a PVC" for "backed up".
+#
+# =============================================================================
+# reclaimPolicy: Retain — A DELIBERATE DEPARTURE FROM THE k3s DEFAULT
+# =============================================================================
+# The stock `local-path` class is Delete: removing a PVC runs a helper pod that
+# `rm -rf`s the directory. During a migration, where PVCs get created, deleted
+# and recreated while the operator is figuring out claim names, that is one
+# fat-finger away from deleting 8.5 GB of scraper database. Retain makes
+# `kubectl delete pvc` a metadata-only act.
+#
+# THE PRICE, AND YOU MUST ACTUALLY PAY IT: a deleted PVC leaves its PV in
+# `Released` and its directory on disk forever. Released PVs never rebind — a
+# new PVC of the same name provisions a NEW empty directory while the old one
+# still occupies the disk. Reap them by hand:
+#     kubectl get pv | grep Released          # then, per node, rm the path
+# VERIFY ONCE, after the first PVC binds, that the policy actually took:
+#     kubectl get pv -o custom-columns=\
+# NAME:.metadata.name,CLAIM:.spec.claimRef.name,RECLAIM:.spec.persistentVolumeReclaimPolicy,PATH:.spec.hostPath.path
+# If it prints Delete, this provisioner build ignores the class's reclaimPolicy;
+# in that case rely on the StatefulSets' own
+# persistentVolumeClaimRetentionPolicy (already Retain in the manifests) and
+# treat `kubectl delete pvc` as destructive again.
+#
+# =============================================================================
+# NEITHER CLASS IS THE DEFAULT — AND THAT MATTERS
+# =============================================================================
+# k3s marks its own `local-path` class default. We do not touch that annotation
+# (removing it is a fine post-cutover cleanup), which means a PVC that FORGETS
+# `storageClassName` does not fail — it silently binds to `local-path`, on
+# whichever node the pod happens to land, in a directory none of this file
+# describes. Audit after every apply:
+#     kubectl -n maniwani get pvc \
+#       -o custom-columns=NAME:.metadata.name,SC:.spec.storageClassName,STATUS:.status.phase
+# Every row must read maniwani-local or maniwani-data. Nothing else. Ever.
+# =============================================================================
+
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: maniwani-local
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/node-role: software
+  annotations:
+    maniwani.io/pinned-to: "vps-8e766dc0 (software, 51.79.71.153, wg 10.99.0.1)"
+    maniwani.io/description: >-
+      App tier, aggregators and media volumes. ~50 GiB nominal against 97 GB
+      free. Application, media, aggregator, and storage-node volumes.
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+allowVolumeExpansion: false
+# THE PIN. See mechanism (1) above. Never change this to Immediate.
+volumeBindingMode: WaitForFirstConsumer
+allowedTopologies:
+  - matchLabelExpressions:
+      # Node NAME, not the maniwani.io/role label: topology matching is defined
+      # against well-known topology keys, and kubernetes.io/hostname is the only
+      # one either node actually carries. Verify with `kubectl get nodes -o name`.
+      - key: kubernetes.io/hostname
+        values: ["vps-8e766dc0"]
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: maniwani-data
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/node-role: data
+  annotations:
+    maniwani.io/pinned-to: "vps-56548ec0 (data, 148.113.203.46, wg 10.99.0.2)"
+    maniwani.io/description: >-
+      postgres (5Gi) only, against 55 GB free on a 4 vCPU / 7 GB node with no
+      swap. The DHT-backed storage gateway is on maniwani-local.
+provisioner: rancher.io/local-path
+reclaimPolicy: Retain
+allowVolumeExpansion: false
+volumeBindingMode: WaitForFirstConsumer
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: kubernetes.io/hostname
+        values: ["vps-56548ec0"]

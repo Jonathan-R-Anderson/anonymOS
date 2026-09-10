@@ -4257,7 +4257,7 @@ private void dispatchSyscall(int tid) {
     // Save -EINTR as the post-handler syscall result: after the handler returns, eloop processes
     // its signal flag and runs wpa_supplicant_reconfig().
     if (ret == 0 && (rax == 7 || rax == 271 || rax == 232 || rax == 281 ||
-                     rax == 441 || rax == 23 || rax == 270)) {
+                     rax == 441 || rax == 23 || rax == 270 || rax == 35 || rax == 230)) {
         int psig = g_taskPendingSig[tid];
         if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&
             g_sigHandler[tid][psig] != 0) {
@@ -4315,6 +4315,41 @@ private void dispatchSyscall(int tid) {
         }
         // got events (or an error): the wait is satisfied.
         if ((isPoll || isEpoll) && ret != 0) g_pollBlocked[tid] = false;
+    }
+
+    // nanosleep(35) / clock_nanosleep(230, RELATIVE only) — a REAL timed sleep.  anonymOS's handler
+    // is a no-op that returns 0 immediately, which makes Go's time.Sleep return instantly and its
+    // runtime busy-spin (25 nanosleeps in a trivial program).  Park the task until the requested
+    // deadline, exactly like poll's timed park above, reusing g_pollDeadline as the wake time.
+    // DENDRITIC_NETWORK_ROADMAP P1 (Go-runtime bring-up).  clock_nanosleep with TIMER_ABSTIME
+    // (flags bit 0 in rsi) is left as the no-op — its timespec is an absolute clock value, not a
+    // duration, so parsing it as one would sleep for decades.
+    if (ret == 0 && (rax == 35 || (rax == 230 && (rsi & 1) == 0)) && tid >= 0 && tid < MAX_TASKS) {
+        if (!g_pollBlocked[tid]) {
+            // First entry: parse the request timespec (nanosleep req=rdi, clock_nanosleep req=rdx).
+            const ulong reqPtr = (rax == 35) ? rdi : rdx;
+            ulong ms = 0;
+            if (reqPtr >= 0x1000 && userPageMapped(tid, reqPtr) && userPageMapped(tid, reqPtr + 8)) {
+                const long tvSec  = *cast(long*)reqPtr;
+                const long tvNsec = *cast(long*)(reqPtr + 8);
+                if (tvSec > 0 || tvNsec > 0)                    // any non-zero duration rounds up to >= 1 ms
+                    ms = (tvSec > 0 ? cast(ulong)tvSec * 1000 : 0)
+                       + (cast(ulong)(tvNsec > 0 ? tvNsec : 0) + 999_999) / 1_000_000;
+            }
+            if (ms == 0) return;                                // zero/unreadable duration: the no-op 0 stands
+            g_pollBlocked[tid]  = true;
+            g_pollDeadline[tid] = pitMs() + ms;
+            g_pollEpfd[tid]     = -1;                           // no fd — woken purely by the deadline
+        } else if (g_pollDeadline[tid] != 0 && pitMs() >= g_pollDeadline[tid]) {
+            g_pollBlocked[tid] = false;
+            task.regs[REG_RAX] = 0;                             // slept the full duration
+            return;
+        }
+        task.waiting = true;                                   // park (first entry, or still sleeping)
+        task.regs[REG_RIP] -= 2;                               // re-run the sleep syscall on wake
+        bootProgressEventHex("park", rax, g_parkScreenTrace);
+        scheduleNext();
+        return;
     }
 
     // select(23) / pselect6(270): linux_sys_select now SCANS fd readiness (returns 0 when none ready), so

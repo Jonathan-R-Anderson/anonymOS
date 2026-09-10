@@ -1,0 +1,134 @@
+# Sandboxed judge for arcade code submissions.
+#
+# This pod runs arbitrary code written by anyone with a slip. Every control
+# below is load-bearing; none of them is decoration.
+#
+# The NetworkPolicy is the one that matters most. The runner asserts the
+# invariant itself at startup -- it opens an outbound connection and REFUSES TO
+# SERVE if that succeeds -- so deleting or mis-selecting this policy takes the
+# feature down loudly instead of quietly granting submitted code the internet.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-runner
+  namespace: maniwani
+  labels:
+    app: code-runner
+    maniwani.io/tier: app
+spec:
+  selector:
+    app: code-runner
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  # ClusterIP only. This is never reachable from outside the cluster; the
+  # backend calls it over the pod network.
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-runner
+  namespace: maniwani
+  labels:
+    app: code-runner
+    maniwani.io/tier: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: code-runner
+  template:
+    metadata:
+      labels:
+        app: code-runner
+        maniwani.io/tier: app
+    spec:
+      nodeSelector:
+        maniwani.io/role: software
+      # No service account token: submitted code that escapes the interpreter
+      # must not find cluster credentials sitting in the filesystem.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          # RuntimeDefault already blocks the syscalls that matter most here
+          # (ptrace, mount, kexec, bpf, userns tricks). Kept explicit so a
+          # cluster default change cannot silently relax it.
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: registry.local/code-runner:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - {name: RUNNER_CPU_SECONDS,   value: "5"}
+            - {name: RUNNER_WALL_SECONDS,  value: "10"}
+            - {name: RUNNER_MEMORY_MB,     value: "256"}
+            - {name: RUNNER_MAX_PROCESSES, value: "64"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # The ONLY writable path. Each run gets a fresh subdirectory here
+            # and it is removed afterwards. Memory-backed so nothing submitted
+            # ever touches the node's disk.
+            - name: scratch
+              mountPath: /tmp
+          resources:
+            # A hard ceiling on top of the per-run rlimits: if the in-process
+            # limits are ever wrong, the kernel still caps the blast radius.
+            requests: {cpu: "100m", memory: "128Mi"}
+            limits:   {cpu: "2000m", memory: "768Mi"}
+          readinessProbe:
+            # /health returns 503 when the runner has detected it is NOT
+            # network-isolated, so an unsafe pod never receives traffic.
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 20
+            periodSeconds: 30
+      volumes:
+        - name: scratch
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Mi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: code-runner-isolation
+  namespace: maniwani
+  labels:
+    app: code-runner
+spec:
+  podSelector:
+    matchLabels:
+      app: code-runner
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    # Only the backend may submit work. Nothing else in the namespace, and
+    # nothing from outside it.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: maniwani
+      ports:
+        - {port: 8000, protocol: TCP}
+  egress:
+    # Deliberately EMPTY. No DNS, no cluster services, no internet.
+    #
+    # DNS is omitted on purpose even though it is conventional to allow it:
+    # submitted code with DNS can exfiltrate data one hostname label at a time,
+    # and the runner itself never resolves anything -- it only accepts requests.
+    []

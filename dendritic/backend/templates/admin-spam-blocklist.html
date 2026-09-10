@@ -1,0 +1,210 @@
+{%- extends "admin-shell.html" %}
+{% set admin_title = "Spam blocklist" %}
+{% set admin_lede = "Blocked URLs and tokens, applied at post time." %}
+{% block admin_content %}
+<div class="container" style="padding-top:1.5rem;">
+
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-info">{{ message }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-1">Spam Blocklist</h3>
+            <small class="text-muted">
+                {{ "{:,}".format(enabled_count) }} active of {{ "{:,}".format(all_count) }} entries.
+                Checked on every post submission &mdash; body and subject, after wordfilters.
+            </small>
+        </div>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left mr-1"></i> Admin
+        </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Add entries</h5>
+            <form method="POST" action="{{ url_for('admin.spam_blocklist_add') }}"
+                  enctype="multipart/form-data">
+                <div class="form-row align-items-end mb-3">
+                    <div class="col-md-6">
+                        <label class="small text-muted mb-1">Single entry</label>
+                        <input type="text" name="pattern" class="form-control form-control-sm"
+                               placeholder="spam-domain.com, .by.ru, phentermine, /\bcialis\b/i">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="small text-muted mb-1">Note (optional)</label>
+                        <input type="text" name="note" class="form-control form-control-sm"
+                               placeholder="why">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-primary btn-sm w-100" type="submit">Add</button>
+                    </div>
+                </div>
+                <hr class="my-3">
+                <label class="small text-muted mb-1">
+                    Bulk import &mdash; one per line. Accepts hosts-file format
+                    (<code>0.0.0.0&nbsp;&nbsp;domain.com</code>), <code>#</code> comments, and
+                    <code>/regex/i</code>.
+                </label>
+                <textarea name="bulk" class="form-control form-control-sm mb-2" rows="5"
+                          placeholder="0.0.0.0    spam.example&#10;another-spam.com&#10;/\bviagra\b/i"></textarea>
+                <div class="form-row align-items-end">
+                    <div class="col-md-8">
+                        <label class="small text-muted mb-1">&hellip;or upload a list file</label>
+                        <input type="file" name="bulk-file" class="form-control-file form-control-sm">
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-outline-primary btn-sm w-100" type="submit">Import list</button>
+                    </div>
+                </div>
+            </form>
+            <small class="text-muted d-block mt-3">
+                <i class="fas fa-shield-alt mr-1"></i>
+                Domains belonging to a site on the
+                chans we aggregate list are skipped on
+                import and never blocked at match time &mdash; public blocklists routinely include
+                imageboards, and blocking our own sources would stop users linking them.
+            </small>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="mb-2">On a match</h5>
+            <form method="POST" action="{{ url_for('admin.spam_blocklist_settings') }}"
+                  class="form-inline">
+                <div class="custom-control custom-switch mr-3">
+                    <input type="checkbox" class="custom-control-input" id="autoban" name="autoban"
+                           value="1" {{ "checked" if autoban else "" }}>
+                    <label class="custom-control-label" for="autoban">
+                        Also ban the poster's IP
+                    </label>
+                </div>
+                <select name="autoban-duration" class="form-control form-control-sm mr-2">
+                    {% for value, label in duration_choices %}
+                    <option value="{{ value }}" {{ "selected" if value == autoban_duration else "" }}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
+            </form>
+            <small class="text-muted d-block mt-2">
+                Off by default: broad entries like <code>holdem</code> or <code>ringtones</code> would
+                otherwise IP-ban everyone behind a shared NAT or VPN exit. The post is always rejected
+                either way.
+            </small>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">Entries</h5>
+                <form method="GET" action="{{ url_for('admin.spam_blocklist') }}" class="form-inline">
+                    <input type="text" name="q" value="{{ query }}" class="form-control form-control-sm mr-2"
+                           placeholder="filter patterns">
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">Search</button>
+                </form>
+            </div>
+            <small class="text-muted d-block mb-2">
+                Sorted by hits, so whatever is actually catching spam floats to the top.
+            </small>
+
+            {% if entries %}
+            <div class="table-responsive">
+                <table class="table table-sm table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Pattern</th>
+                            <th>Form</th>
+                            <th class="text-right">Hits</th>
+                            <th>Last hit</th>
+                            <th>Note</th>
+                            <th class="text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in entries %}
+                        <tr{{ ' class="text-muted"'|safe if not entry.enabled else "" }}>
+                            <td style="word-break:break-all;"><code>{{ entry.pattern }}</code></td>
+                            <td>
+                                {% if entry.is_regex %}
+                                <span class="badge badge-warning">regex</span>
+                                {% elif entry_form(entry.pattern) == "domain" %}
+                                <span class="badge badge-primary">domain</span>
+                                {% else %}
+                                <span class="badge badge-secondary">substring</span>
+                                {% endif %}
+                                {% if not entry.enabled %}
+                                <span class="badge badge-light">disabled</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-right">{{ entry.hit_count }}</td>
+                            <td>
+                                {% if entry.last_hit_at %}
+                                {{ entry.last_hit_at.strftime("%Y-%m-%d %H:%M") }}
+                                {% else %}
+                                <span class="text-muted">&mdash;</span>
+                                {% endif %}
+                            </td>
+                            <td><small class="text-muted">{{ entry.note or "" }}</small></td>
+                            <td class="text-right text-nowrap">
+                                <form method="POST" class="d-inline"
+                                      action="{{ url_for('admin.spam_blocklist_toggle', entry_id=entry.id) }}">
+                                    <input type="hidden" name="q" value="{{ query }}">
+                                    <input type="hidden" name="enabled" value="{{ '0' if entry.enabled else '1' }}">
+                                    <button class="btn btn-sm btn-outline-secondary" type="submit">
+                                        {{ "Disable" if entry.enabled else "Enable" }}
+                                    </button>
+                                </form>
+                                <form method="POST" class="d-inline"
+                                      action="{{ url_for('admin.spam_blocklist_remove', entry_id=entry.id) }}"
+                                      data-confirm="Remove {{ entry.pattern }} from the blocklist?"
+                                      onsubmit="return confirm(this.dataset.confirm);">
+                                    <input type="hidden" name="q" value="{{ query }}">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if pages > 1 %}
+            <nav class="mt-3">
+                <ul class="pagination pagination-sm mb-0">
+                    {% if page > 1 %}
+                    <li class="page-item">
+                        <a class="page-link"
+                           href="{{ url_for('admin.spam_blocklist', page=page-1, q=query or None) }}">Previous</a>
+                    </li>
+                    {% endif %}
+                    <li class="page-item disabled">
+                        <span class="page-link">Page {{ page }} of {{ pages }} ({{ "{:,}".format(total) }})</span>
+                    </li>
+                    {% if page < pages %}
+                    <li class="page-item">
+                        <a class="page-link"
+                           href="{{ url_for('admin.spam_blocklist', page=page+1, q=query or None) }}">Next</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+
+            {% else %}
+            <p class="text-muted mb-0">
+                {% if query %}Nothing matches &ldquo;{{ query }}&rdquo;.{% else %}The blocklist is empty.{% endif %}
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

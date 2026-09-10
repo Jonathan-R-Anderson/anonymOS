@@ -1,0 +1,318 @@
+{% import "_tip_button.html" as tip_macros with context %}
+{% extends "base.html" %}
+{% block title %}{{ profile.slug }}'s Profile{% endblock %}
+{% block content %}
+<style>
+    #profile-container { min-height: 80vh; padding: 16px; }
+
+    /* Arcade panel. Palette variables only, text inherited -- so it follows
+       the site theme selector instead of hardcoding light colours. */
+    .cp-profile { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; color: inherit; }
+    .cp-profile__stats { flex: 1 1 260px; min-width: 220px; }
+    .cp-profile__radar { flex: 0 1 220px; text-align: center; }
+    .cp-profile__level { display: flex; justify-content: space-between; align-items: baseline; }
+    .cp-profile__muted, .cp-profile__figures span { opacity: var(--sc-muted-alpha); }
+    .cp-profile__bar { background: var(--sc-fill); border-radius: 999px; height: 8px;
+                       overflow: hidden; margin: 6px 0 10px; }
+    .cp-profile__bar > i { display: block; height: 100%; background: var(--sc-accent); }
+    .cp-profile__figures { display: flex; gap: 8px; list-style: none; padding: 0; margin: 0; }
+    .cp-profile__figures li { flex: 1; text-align: center; background: var(--sc-surface-2);
+                              border: 1px solid var(--sc-border); border-radius: 8px; padding: 6px 4px; }
+    .cp-profile__figures b { display: block; font-size: 1.25rem; line-height: 1.1; }
+    .cp-profile__figures span { font-size: .78rem; }
+    .cp-profile__badges { margin-top: 10px; }
+    .cp-profile__badge { display: inline-block; background: var(--sc-fill);
+                         border: 1px solid var(--sc-border); border-radius: 999px;
+                         padding: 1px 9px; margin: 0 4px 4px 0; font-size: .76rem; }
+
+    /* The video panel is position:fixed the whole time (a placeholder reserves
+       its space in the flow). Because it's out of flow, JS can resize/reposition
+       it every frame WITHOUT reflowing the page — no scroll feedback loop, no
+       jitter. It shrinks proportionally while pinned at top, then detaches into
+       a draggable/resizable floating picture-in-picture window. */
+    #ps-holder { margin: 0 0 16px; }
+    #profile-stream { position: fixed; z-index: 30; margin: 0; background: #000;
+        display: flex; flex-direction: column; overflow: hidden;
+        will-change: top, left, width, height; }
+    #ps-bar { display: flex; align-items: center; gap: .5rem; padding: 5px 10px; flex: 0 0 auto;
+        background: var(--sc-surface-2, #1f1f23); color: var(--sc-text, #eee); font-size: 13px; }
+    #ps-bar .ps-title { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #ps-bar .ps-btn { display: none; border: 0; background: rgba(0,0,0,.3); color: #fff;
+        border-radius: 4px; cursor: pointer; padding: 2px 8px; line-height: 1; font-size: 14px; }
+    #profile-stream .pv-video { position: relative; flex: 1 1 auto; min-height: 0; background: #000; overflow: hidden; }
+    #profile-stream .pv-video video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+    #ps-resize { display: none; }
+    /* Floating PiP */
+    #profile-stream.floating { border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.5);
+        border: 1px solid rgba(255,255,255,.18); }
+    #profile-stream.floating #ps-bar { cursor: move; }
+    #profile-stream.floating .ps-btn { display: inline-block; }
+    #profile-stream.floating #ps-resize { display: block; position: absolute; right: 0; bottom: 0;
+        width: 18px; height: 18px; cursor: nwse-resize; z-index: 2;
+        background: linear-gradient(135deg, transparent 45%, rgba(255,255,255,.6) 45%); }
+
+    /* Identity header. Palette variables only so it follows the theme selector. */
+    .pv-id { display: flex; align-items: center; gap: 14px; margin: 0 0 16px;
+             padding: 12px 14px; border: 1px solid var(--sc-border);
+             border-radius: 10px; background: var(--sc-surface); color: inherit; }
+    .pv-id__pic { width: 72px; height: 72px; flex: 0 0 72px; border-radius: 50%;
+                  object-fit: cover; border: 1px solid var(--sc-border);
+                  background: var(--sc-surface-2); }
+    .pv-id__pic--mono { display: flex; align-items: center; justify-content: center;
+                        font-size: 1.9rem; font-weight: 700; line-height: 1;
+                        opacity: .55; user-select: none; }
+    .pv-id__who { min-width: 0; }
+    .pv-id__name { margin: 0; font-size: 1.35rem; line-height: 1.2; color: inherit;
+                   overflow-wrap: anywhere; }
+    .pv-id__meta { margin-top: 3px; font-size: .78rem; opacity: var(--sc-muted-alpha, .62); }
+    .pv-id__meta code { color: inherit; }
+    .pv-id__awards { margin-left: 8px; white-space: nowrap; }
+
+    /* Two-column layout: your content on the left, chat docked on the right. */
+    .profile-layout { display: flex; gap: 16px; align-items: flex-start; }
+    .profile-main { flex: 1 1 auto; min-width: 0; }
+    .profile-rail { flex: 0 0 340px; max-width: 340px; position: sticky; top: 16px; align-self: flex-start; }
+    .profile-rail #chat-slot-default { height: 78vh; max-height: 720px; display: flex; }
+    @media (max-width: 860px) {
+        .profile-layout { flex-direction: column; }
+        .profile-rail { flex-basis: auto; max-width: none; width: 100%; position: static; }
+        .profile-rail #chat-slot-default { height: 480px; }
+    }
+
+    /* MySpace-style default sections (shown until you add your own custom HTML). */
+    .ms-section { border: 1px solid var(--sc-border, rgba(0,0,0,.12)); border-radius: .5rem;
+        background: var(--sc-surface, #fff); color: inherit; margin-bottom: 16px; overflow: hidden; }
+    .ms-section > h3 { margin: 0; padding: 8px 12px; font-size: .95rem; font-weight: 700;
+        background: var(--sc-accent, #b07274); color: #fff; }
+    .ms-section > .ms-body { padding: 12px; }
+
+    /* User custom CSS */
+    {{ profile.custom_css | safe }}
+</style>
+
+<div id="profile-container" class="profile-content">
+    
+
+    <div class="profile-layout">
+        <div class="profile-main">
+            {# Whose page this is. Above custom HTML for the same reason the
+               arcade block is: a customised page must not be able to hide the
+               identity of its owner. The avatar used to render only inside the
+               "hasn't customised" fallback, so anybody who wrote any custom HTML
+               at all had no avatar anywhere on their own profile.
+
+               Shows the SLUG, never the slip name: posts only link here when the
+               owner turned that on, and printing the slip name would rebuild
+               that association in the other direction for someone who didn't. #}
+            <div class="pv-id">
+                {% if profile.avatar_url %}
+                    <img class="pv-id__pic" src="{{ profile.avatar_url }}"
+                         alt="{{ profile.slug }}'s profile picture">
+                {% else %}
+                    {# A monogram rather than a broken-image slot, so a profile
+                       with no upload still looks finished. #}
+                    <span class="pv-id__pic pv-id__pic--mono" aria-hidden="true">{{ profile.slug[0] | upper }}</span>
+                {% endif %}
+                <div class="pv-id__who">
+                    <h2 class="pv-id__name">{{ profile.slug }}</h2>
+                    <div class="pv-id__meta">
+                        {% if profile.eth_address %}
+                            <code>{{ profile.eth_address[:6] }}…{{ profile.eth_address[-4:] }}</code>
+                        {% endif %}
+                        {% if awards and awards.count %}
+                            {# Only when there are some: "0 awards" on a new
+                               profile reads as a verdict rather than a blank. #}
+                            <span class="pv-id__awards" title="AXONCoins given by readers for posts">
+                                🏅 {{ awards.count }} award{{ "s" if awards.count != 1 }} ·
+                                {{ "{:,}".format(awards.credits) }} AXONCoins
+                            </span>
+                        {% endif %}
+                    </div>
+                    {#- Pooled tipping (P15). tip_for fails closed: no button
+                        unless this visitor can actually complete a payment to
+                        this person right now. It shows no amount, no channel
+                        and no history — the site holds none of those. -#}
+                    {% set tip = tip_for(profile.slip) %}
+                    {% if tip %}
+                        <div class="pv-id__tip">
+                            {{ tip_macros.tip_button(tip) }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if arcade and arcade.played %}
+                {# Arcade standing. Shown above custom HTML so a customised page
+                   cannot bury it, and only once the slip has actually played. #}
+                <div class="ms-section"><h3>Arcade</h3><div class="ms-body">
+                  <div class="cp-profile">
+                    <div class="cp-profile__stats">
+                      <div class="cp-profile__level">
+                        <strong>Level {{ arcade.level }}</strong>
+                        <span class="cp-profile__muted">{{ arcade.xp }} XP</span>
+                      </div>
+                      <div class="cp-profile__bar"><i style="width:{{ arcade.level_percent }}%"></i></div>
+                      <ul class="cp-profile__figures">
+                        <li><b>{{ arcade.solved }}</b><span>solved</span></li>
+                        <li><b>{{ arcade.streak }}</b><span>day streak</span></li>
+                        <li><b>{{ arcade.accuracy }}%</b><span>accuracy</span></li>
+                      </ul>
+                      {% if arcade.badges %}
+                        <div class="cp-profile__badges">
+                          {% for badge in arcade.badges %}
+                            <span class="cp-profile__badge" title="{{ badge.description }}">{{ badge.name }}</span>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    </div>
+                    <div class="cp-profile__radar">
+                      {% with radar = arcade.radar %}{% include "codeplay-radar.html" %}{% endwith %}
+                    </div>
+                  </div>
+                </div></div>
+            {% endif %}
+
+            {% if profile.custom_html %}
+                {{ profile.custom_html | safe }}
+            {% else %}
+                <div class="ms-section"><h3>{{ profile.slug }}</h3><div class="ms-body">
+                    {# Avatar and short wallet moved to the identity header above,
+                       which every profile gets. The full address stays here. #}
+                    <p><strong>{{ profile.slug }}</strong> hasn't customized their page yet.</p>
+                    {% if profile.eth_address %}<p class="small mb-0">Wallet: <code>{{ profile.eth_address }}</code></p>{% endif %}
+                    {% if reputation %}
+                    <div class="mt-2" style="border:1px solid var(--sc-border);border-radius:8px;
+                         background:var(--sc-surface-2);padding:8px 10px;">
+                      <div class="small"><strong>Node operator</strong> ·
+                        {{ reputation.nodes }} node{{ "s" if reputation.nodes != 1 }}</div>
+                      <div style="height:6px;border-radius:3px;background:var(--sc-fill);overflow:hidden;margin:5px 0;">
+                        <div style="height:100%;width:{{ reputation.score }}%;
+                             background:{% if reputation.score < 40 %}#ff6b6b{% elif reputation.score < 70 %}var(--sc-accent){% else %}#26de81{% endif %};"></div>
+                      </div>
+                      <div class="small" style="opacity:.7;">
+                        reputation {{ reputation.score }}/100 ·
+                        <a href="{{ url_for('main.reputation') }}">how this is scored</a>
+                      </div>
+                    </div>
+                    {% endif %}
+                    <div style="clear:both;"></div>
+                </div></div>
+                <div class="ms-section"><h3>Blurbs</h3><div class="ms-body">
+                    <p><strong>About me:</strong> &hellip;</p>
+                    <p class="mb-0"><strong>Who I'd like to meet:</strong> &hellip;</p>
+                </div></div>
+                <div class="ms-section"><h3>Friend Space</h3><div class="ms-body"><p class="mb-0 text-muted">No friends added yet.</p></div></div>
+                <div class="ms-section"><h3>Comments</h3><div class="ms-body"><p class="mb-0 text-muted">No comments yet.</p></div></div>
+            {% endif %}
+        </div>
+        <aside class="profile-rail">
+            {% if profile.enable_chat %}<div id="chat-slot-default"></div>{% endif %}
+        </aside>
+    </div>
+</div>
+
+{% if profile.enable_chat %}<div id="profile-chat-mount">{% include "includes/profile-chat.html" %}</div>{% endif %}
+{% if profile.enable_place %}{% include "includes/profile-place.html" %}{% endif %}
+
+<script>
+ // Owners can place the stream/chat anywhere via a div in their custom HTML
+ // (id="stream-slot" / id="chat-slot", or data-profile-slot="..."). Otherwise the
+ // stream stays as the sticky top header and chat docks in the right rail.
+ (function () {
+     function relocate(elementId, selectors) {
+         var el = document.getElementById(elementId);
+         if (!el) { return; }
+         var slot = null;
+         for (var i = 0; i < selectors.length && !slot; i++) { slot = document.querySelector(selectors[i]); }
+         if (slot && slot !== el && !slot.contains(el)) {
+             slot.appendChild(el);
+             el.style.margin = "0"; el.style.maxWidth = "none"; el.style.width = "100%";
+         }
+     }
+     relocate("profile-stream", ["#stream-slot", "[data-profile-slot='stream']", ".profile-stream-slot"]);
+     relocate("profile-chat-mount", ["#chat-slot", "[data-profile-slot='chat']", ".profile-chat-slot", "#chat-slot-default"]);
+
+     // Video collapse. The panel is position:fixed (out of flow) so resizing it
+     // every frame never reflows the page — #ps-holder reserves its space. It
+     // shrinks 1:1 with scroll from full 16:9 down to a minimum while pinned at
+     // top, then detaches into a draggable/resizable floating PiP (bottom-left).
+     var panel = document.getElementById("profile-stream");
+     var holder = document.getElementById("ps-holder");
+     var bar = document.getElementById("ps-bar");
+     if (panel && holder && bar) {
+         var MIN_V = 72;          // minimum video height while pinned
+         var FLOAT_AFTER = 70;    // extra scroll past full-collapse before it pops out
+         var barH = 34, fullV = 200, F = 234;
+         var floating = false, pending = false, drag = null, rz = null;
+         var pip = { left: null, top: null, w: 340, expanded: false };
+
+         function pipH() { return Math.round(pip.w * 9 / 16) + barH; }
+         function clampPip() {
+             if (pip.left == null) { pip.left = 16; }
+             if (pip.top == null) { pip.top = window.innerHeight - pipH() - 16; }
+             pip.left = Math.max(0, Math.min(pip.left, window.innerWidth - pip.w));
+             pip.top = Math.max(0, Math.min(pip.top, window.innerHeight - pipH()));
+         }
+         function renderFloat() {
+             clampPip();
+             panel.style.left = pip.left + "px"; panel.style.top = pip.top + "px";
+             panel.style.width = pip.w + "px"; panel.style.height = pipH() + "px";
+         }
+         function enterFloat() {
+             if (!floating) { floating = true; panel.classList.add("floating"); pip.left = 16; pip.top = window.innerHeight - pipH() - 16; }
+             renderFloat();
+         }
+         function exitFloat() { floating = false; panel.classList.remove("floating"); pip.left = null; pip.top = null; }
+         function measure() {
+             barH = bar.offsetHeight || 34;
+             fullV = (holder.clientWidth || 640) * 9 / 16;
+             F = barH + fullV;
+             holder.style.height = F + "px";
+             schedule();
+         }
+         function update() {
+             pending = false;
+             var r = holder.getBoundingClientRect();
+             if (floating) { if (r.top >= -4) { exitFloat(); } else { return; } }
+             var over = -r.top;
+             if (over > (fullV - MIN_V) + FLOAT_AFTER) { enterFloat(); return; }
+             var top = over > 0 ? 0 : r.top;                       // pin at top once scrolled in
+             var h = over > 0 ? Math.max(barH + MIN_V, F - over) : F;
+             panel.style.left = r.left + "px"; panel.style.top = top + "px";
+             panel.style.width = r.width + "px"; panel.style.height = h + "px";
+         }
+         function schedule() { if (!pending) { pending = true; requestAnimationFrame(update); } }
+
+         window.addEventListener("scroll", schedule, { passive: true });
+         window.addEventListener("resize", measure);
+         bar.addEventListener("mousedown", function (e) {
+             if (!floating || e.target.classList.contains("ps-btn")) { return; }
+             drag = { x: e.clientX, y: e.clientY, l: pip.left, t: pip.top }; e.preventDefault();
+         });
+         document.getElementById("ps-resize").addEventListener("mousedown", function (e) {
+             if (!floating) { return; }
+             rz = { x: e.clientX, w: pip.w }; e.preventDefault(); e.stopPropagation();
+         });
+         window.addEventListener("mousemove", function (e) {
+             if (drag) { pip.left = drag.l + (e.clientX - drag.x); pip.top = drag.t + (e.clientY - drag.y); renderFloat(); }
+             else if (rz) { pip.w = Math.max(200, Math.min(760, rz.w + (e.clientX - rz.x))); renderFloat(); }
+         });
+         window.addEventListener("mouseup", function () { drag = null; rz = null; });
+         document.getElementById("ps-expand").addEventListener("click", function () {
+             pip.expanded = !pip.expanded; pip.w = pip.expanded ? 560 : 340; renderFloat();
+         });
+         measure();
+     }
+ })();
+</script>
+
+
+
+{#- The tip panel the button opens. MUST be inside the content block: a child
+    template that extends another discards everything outside a block, so this
+    sat after {% endblock %} and rendered nothing at all — the page shipped a
+    Tip button that opened a dialog which did not exist. Found by loading the
+    real page in Firefox; every macro-level test passed because it rendered the
+    macro directly rather than through this template. -#}
+{{ tip_macros.tip_dialog() }}
+{% endblock %}

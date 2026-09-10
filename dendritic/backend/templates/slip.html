@@ -1,0 +1,140 @@
+{%- extends "base.html" %}
+{% block title %}Slip{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 480px; padding-top: 3rem; padding-bottom: 3rem;">
+    {% if get_slip() is none %}
+    <div class="text-center mb-4">
+        <div class="mb-3" style="font-size: 2.5rem; opacity: .6;"><i class="fas fa-user-circle"></i></div>
+        <h2 class="mb-1" style="font-weight: 700;">Welcome</h2>
+        <p class="text-muted">Sign in to your slip or create a new one.</p>
+    </div>
+    <div class="card shadow-sm">
+        <div class="card-body p-4">
+            <p class="small text-muted mb-4">
+                A <em>slip</em> is how {{ instance_name() }} tracks your settings and permissions anonymously.
+                Only a name and password are required — no email needed.
+            </p>
+            <form method="post">
+                <div class="form-group">
+                    <label for="slipName" class="font-weight-bold small text-uppercase" style="letter-spacing:.04em;">Name</label>
+                    <input type="text" class="form-control" id="slipName" name="name"
+                        placeholder="your-username" maxlength="20" autocomplete="username">
+                    <small class="form-text text-muted">Max 20 characters. Not publicly displayed.</small>
+                </div>
+                <div class="form-group">
+                    <label for="slipPassword" class="font-weight-bold small text-uppercase" style="letter-spacing:.04em;">Password</label>
+                    <input type="password" class="form-control" id="slipPassword" name="password"
+                        placeholder="••••••••" autocomplete="current-password">
+                    <small class="form-text text-muted">There is no password recovery — don't forget it.</small>
+                </div>
+                <div class="d-flex mt-4" style="gap: .5rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;"
+                        formaction="{{ url_for("slip.login") }}">Log in</button>
+                    <button type="submit" class="btn btn-outline-secondary" style="flex: 1;"
+                        formaction="{{ url_for("slip.register") }}">Sign up</button>
+                </div>
+            </form>
+
+            <div class="d-flex align-items-center my-4" style="gap:.75rem;">
+                <hr style="flex:1;border-color:var(--sc-border);margin:0;">
+                <span class="small text-muted">or</span>
+                <hr style="flex:1;border-color:var(--sc-border);margin:0;">
+            </div>
+
+            <button id="wallet-signin" type="button" class="btn btn-outline-warning btn-block d-flex align-items-center justify-content-center" style="gap:.5rem;">
+                {% include "includes/metamask-icon.svg" %}
+                <span>Sign in with MetaMask</span>
+            </button>
+            <div id="wallet-signin-status" class="small mt-2 text-center" style="min-height:1.3em;"></div>
+            <p class="small text-muted text-center mt-2 mb-0">
+                Only works if you have already linked a wallet to your slip.
+                <a href="{{ url_for('main.metamask_help') }}">Get MetaMask &amp; connect to Ethereum</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+      var btn = document.getElementById("wallet-signin");
+      var out = document.getElementById("wallet-signin-status");
+      if (!btn) return;
+      function say(msg, cls) { out.textContent = msg; out.className = "small mt-2 text-center " + (cls || "text-muted"); }
+      btn.onclick = async function () {
+        if (!window.ethereum) {
+          say("No wallet detected — install MetaMask first.", "text-danger");
+          window.open("{{ url_for('main.metamask_help') }}", "_self");
+          return;
+        }
+        btn.disabled = true;
+        try {
+          say("Waiting for your wallet…");
+          var accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+          var address = (accounts && accounts[0] || "").toLowerCase();
+          // Fetch the nonce first: signing anything the server did not just
+          // issue would let an old signature be replayed.
+          var chal = await (await fetch("{{ url_for('slip.wallet_challenge') }}",
+            { method: "POST", credentials: "same-origin" })).json();
+          say("Confirm the signature request in MetaMask…");
+          var signature = await window.ethereum.request({
+            method: "personal_sign", params: [chal.message, address],
+          });
+          var res = await fetch("{{ url_for('slip.wallet_login') }}", {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address: address, signature: signature }),
+          });
+          var body = await res.json();
+          if (!res.ok) { say(body.error || "Sign-in failed.", "text-danger"); btn.disabled = false; return; }
+          say("Signed in — redirecting…", "text-success");
+          window.location = body.redirect;
+        } catch (e) {
+          say((e && (e.message || e.reason)) || "Sign-in failed.", "text-danger");
+          btn.disabled = false;
+        }
+      };
+    })();
+    </script>
+    {% else %}
+    <div class="text-center mb-4">
+        <div class="mb-3" style="font-size: 2.5rem; opacity: .6;"><i class="fas fa-user-check"></i></div>
+        <h2 class="mb-1" style="font-weight: 700;">Your Slip</h2>
+    </div>
+    <div class="card shadow-sm">
+        <div class="card-body p-4">
+            <div class="d-flex align-items-center mb-4 pb-3" style="border-bottom: 1px solid rgba(0,0,0,.08);">
+                <div class="rounded-circle d-flex align-items-center justify-content-center mr-3 bg-secondary text-white"
+                    style="width: 46px; height: 46px; flex-shrink: 0; font-size: 1.1rem;">
+                    {{ get_slip().name[0].upper() }}
+                </div>
+                <div>
+                    <div class="font-weight-bold">{{ get_slip().name }}</div>
+                    <div class="text-muted small">Logged in</div>
+                </div>
+            </div>
+            <div class="d-flex flex-column" style="gap: .5rem;">
+                <form action="{{ url_for('slip.media_preference') }}" method="post" class="text-left mb-2">
+                    <label for="media_delivery_mode" class="font-weight-bold small text-uppercase text-muted mb-1" style="letter-spacing:.04em;">Media delivery</label>
+                    <select id="media_delivery_mode" name="media_delivery_mode" class="form-control form-control-sm mb-2">
+                        <option value="torrent" {% if slip_media_delivery_mode() == "torrent" %}selected{% endif %}>BitTorrent relay</option>
+                        <option value="direct" {% if slip_media_delivery_mode() == "direct" %}selected{% endif %}>Direct from server</option>
+                    </select>
+                    <small class="form-text text-muted mb-2">Thread pages prefer the tracker swarm by default. Switch to direct if torrent delivery does not work in your browser or network.</small>
+                    <button type="submit" class="btn btn-outline-primary btn-sm btn-block">
+                        <i class="fas fa-save mr-1"></i> Save media preference
+                    </button>
+                </form>
+                
+                    <i class="fas fa-plus mr-1"></i> Create board
+                
+                <a href="{{ url_for("admin.login") }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-wallet mr-1"></i> Wallet admin
+                </a>
+                <a href="{{ url_for("slip.unset") }}" class="btn btn-outline-danger btn-sm mt-2">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Log out
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

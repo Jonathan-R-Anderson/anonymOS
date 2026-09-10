@@ -1,0 +1,131 @@
+# Public, certificate-owning edge for the storage bootstrap hostname.
+#
+# node.syndichan.org resolves to the data node. This pod intentionally exposes
+# only the signed well-known document; it is not a second application ingress.
+# Caddy obtains/renews a node.syndichan.org certificate itself, so neither the
+# Name.com API token nor syndichan.org's private key reaches this node.
+#
+# It listens on 8443, not 443. A volunteer gateway owns public 80/443 on this
+# host and forwards node.syndichan.org here by SNI without decrypting it, so
+# this pod keeps its own certificate and its own TLS termination -- the port is
+# the only thing that changed. Renewal moved to TLS-ALPN-01 accordingly, since
+# HTTP-01 would need a :80 this pod no longer holds.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-bootstrap-edge
+  namespace: maniwani
+data:
+  Caddyfile: |
+    {
+      admin off
+      email admin@syndichan.org
+      # A volunteer gateway owns public 80 and 443 on this host, so this edge
+      # answers behind it on 8443 and the gateway forwards node.syndichan.org
+      # here by SNI without decrypting it. Caddy still terminates its own TLS
+      # and still owns its own certificate; only the port moved.
+      #
+      # Redirects off because they would try to bind :80, which is no longer
+      # ours to take.
+      auto_https disable_redirects
+    }
+
+    node.syndichan.org:8443 {
+      tls {
+        issuer acme {
+          # HTTP-01 needs :80. TLS-ALPN-01 arrives over the same SNI route that
+          # carries ordinary traffic here, so renewal keeps working without
+          # this pod holding a port the gateway needs.
+          disable_http_challenge
+        }
+      }
+      @bootstrap path /.well-known/syndichan/storage-node.json
+      handle @bootstrap {
+        reverse_proxy http://maniwani.maniwani.svc.cluster.local:3032
+      }
+      handle {
+        respond "not found" 404
+      }
+      log {
+        output stdout
+        format json
+      }
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: node-bootstrap-edge-data
+  namespace: maniwani
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: local-path
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-bootstrap-edge
+  namespace: maniwani
+  labels: &labels
+    app: node-bootstrap-edge
+    app.kubernetes.io/name: node-bootstrap-edge
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: storage
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: node-bootstrap-edge
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      enableServiceLinks: false
+      nodeSelector:
+        maniwani.io/role: data
+      priorityClassName: maniwani-data-cache
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: caddy
+          image: caddy:2.10.0-alpine
+          args: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+          ports:
+            # 80 and 443 belong to the volunteer gateway on this host; this edge
+            # sits behind it. See the Caddyfile above.
+            - {name: https, containerPort: 8443, hostPort: 8443}
+          volumeMounts:
+            - {name: config, mountPath: /etc/caddy, readOnly: true}
+            - {name: data, mountPath: /data}
+            - {name: runtime-config, mountPath: /config}
+          readinessProbe:
+            tcpSocket: {port: https}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: https}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["NET_BIND_SERVICE"]
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: config
+          configMap:
+            name: node-bootstrap-edge
+        - name: data
+          persistentVolumeClaim:
+            claimName: node-bootstrap-edge-data
+        - name: runtime-config
+          emptyDir: {}

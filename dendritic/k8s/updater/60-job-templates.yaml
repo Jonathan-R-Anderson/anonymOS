@@ -1,0 +1,339 @@
+# =============================================================================
+# maniwani UPDATER — SCHEMA JOB TEMPLATES (migrate forward / downgrade back).
+# =============================================================================
+# Two templates, mounted at /templates in the updater pod. update.sh substitutes
+# __JOBNAME__, __SHA__, __PREV_REV__ and __RUN_ID__ with `sed` and pipes the
+# result into `kubectl apply -f -`. They are ConfigMap keys rather than files on
+# disk for the same reason update.sh is: fixing them must not require SSH.
+#
+# =============================================================================
+# WHY MIGRATIONS ARE HOISTED OUT OF THE BACKEND'S BOOT AT ALL
+# =============================================================================
+# Verified in the code, not assumed:
+#
+#   backend/docker-entrypoint.sh  (else branch, i.e. production)
+#       -> python3 ensure_runtime.py
+#       -> update.py:update_db()
+#       -> command.upgrade(config=alembic_config, revision="head")
+#
+# So by default the schema is ALREADY FORWARD by the time a readiness failure is
+# visible, and the failure is therefore expensive. Running the same code as a
+# discrete Job FIRST makes a bad migration a CHEAP failure: the Job fails,
+# postgres rolls the failing revision's DDL back inside its own transaction, and
+# not one manifest has been applied. update.sh only rolls sts/maniwani after the
+# Job reports complete.
+#
+# The backend still runs update_db() on its own boot afterwards. That is fine and
+# is deliberately NOT suppressed: by then the schema is already at head, so the
+# second run is a no-op, and leaving the boot path untouched means a hand-started
+# pod still self-migrates exactly as it does today.
+#
+# =============================================================================
+# WHAT IS AND IS NOT RECOVERABLE — READ BEFORE TRUSTING THE DOWNGRADE
+# =============================================================================
+# THE FINDING THAT DRIVES THE WHOLE DESIGN (backend/update.py:105-122):
+#
+#   revision_chain = [m[0] for m in SCHEMA_REVISION_MARKERS] + [EARLIEST_REVISION]
+#   if stored_revision is None or (stored_revision in revision_chain
+#           and detected_revision in revision_chain
+#           and revision_chain.index(detected_revision) < revision_chain.index(stored_revision)):
+#       command.stamp(...)          # "The stamp is only ever moved forward."
+#   command.upgrade(config=alembic_config, revision="head")
+#
+# After a successful forward migration, alembic_version holds a revision id that
+# DOES NOT EXIST in the old image's migrations/versions/ directory and is not in
+# its SCHEMA_REVISION_MARKERS. The guard therefore does not fire, and
+# `command.upgrade("head")` asks Alembic to resolve a revision it has never heard
+# of. Alembic raises:
+#
+#       Can't locate revision identified by '<new-revision>'
+#
+#   >>> REVERTING THE BACKEND IMAGE ALONE, AFTER A SUCCESSFUL FORWARD MIGRATION,
+#   >>> DOES NOT "RISK INCOMPATIBILITY". IT DETERMINISTICALLY CRASHES AT BOOT. <<<
+#
+# Two consequences, both load-bearing:
+#
+#   1. THE DOWNGRADE MUST RUN ON THE **NEW** IMAGE. The old image does not
+#      contain the new revision script, so it physically cannot downgrade it.
+#      Ordering is downgrade-then-revert, never revert-then-downgrade. This is
+#      the least intuitive thing in the whole updater and it is not optional.
+#
+#   2. A DOWNGRADE IS LOSSY BY DEFINITION. downgrade() drops the columns and
+#      tables the upgrade added; anything written into them since the migration
+#      is gone. Exposure is minutes (the site is largely serving @starting during
+#      a failed rollout) but it is neither zero nor reversible.
+#
+# ALSO TRUE, AND NOT PAPERED OVER: all 35 revisions in backend/migrations/versions
+# define a downgrade(), which is what makes this viable at all — but NOTHING IN
+# CI PROVES ANY OF THEM RUN. They are untested code. A downgrade that itself
+# fails leaves the schema forward with no image able to serve it; update.sh stops
+# there, does NOT restore the dump on its own, and prints the pg_restore command
+# for a human. Restoring is a DROP/recreate of the whole database and destroys
+# every post, vote and upload since the dump — that is a decision made with eyes
+# open, never by an unattended script at 3am.
+#
+# WHAT IS NOT RECOVERABLE, PLAINLY: there is no schema rollback that preserves
+# data written under the new schema. Full stop. The pre-migration pg_dump and the
+# downgrade() narrow the window; neither is a time machine.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maniwani-updater-templates
+  namespace: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani-updater
+    app.kubernetes.io/part-of: maniwani
+    app.kubernetes.io/component: updater
+    maniwani.io/group: updater
+data:
+  # ===========================================================================
+  # FORWARD. `args: ["update"]` hits the third branch of docker-entrypoint.sh,
+  # which is `python3 update.py` and nothing else — no uwsgi, no storestub, no
+  # frontend sidecar.
+  #
+  # NOTE that update.py's __main__ runs update_storage() (the object store/S3 bucket setup)
+  # BEFORE update_db(). That is why this pod carries `app: maniwani` rather than
+  # only the postgres-client label: it needs postgres, redis AND the object store, and
+  # k8s/data/networkpolicy.yaml is fail-closed on all three.
+  # ===========================================================================
+  job-migrate.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: __JOBNAME__
+      namespace: maniwani
+      labels:
+        app.kubernetes.io/name: maniwani-migrate
+        app.kubernetes.io/part-of: maniwani
+        app.kubernetes.io/component: migration
+        maniwani.io/group: updater
+        maniwani.io/run-id: "__RUN_ID__"
+    spec:
+      # NEVER RETRY A MIGRATION. A half-applied revision retried blind is how a
+      # recoverable failure becomes an unrecoverable one.
+      backoffLimit: 0
+      activeDeadlineSeconds: 900
+      # Kept for a day so `kubectl logs job/...` still works during triage. The
+      # authoritative copy of the output is already in the updater's run log.
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            # (!) FAIL-CLOSED NETWORKPOLICY CONTRACT. `app: maniwani` is what
+            # k8s/data/networkpolicy.yaml permits to reach postgres:5432,
+            # redis:6379 and the storage gateway. Without it the Job hangs until
+            # SQLALCHEMY_POOL_TIMEOUT and reports a connection failure that
+            # looks like postgres being down.
+            app: maniwani
+            app.kubernetes.io/name: maniwani-migrate
+            app.kubernetes.io/part-of: maniwani
+            maniwani.io/group: updater
+        spec:
+          restartPolicy: Never
+          # Same node as the backend. Not because the schema needs it, but
+          # because the image only exists in THIS node's containerd (no registry,
+          # IfNotPresent) — on the data node this would be ImagePullBackOff.
+          nodeSelector:
+            maniwani.io/role: software
+          securityContext:
+            # Mirrors 10-maniwani.yaml: the image ends with `USER maniwani`
+            # (uid/gid 1000) and runAsUser is deliberately left unset so the
+            # image stays authoritative.
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+          containers:
+            - name: migrate
+              # THE NEW IMAGE, pinned to the commit being deployed. Never
+              # :latest — the entire point of the tagging scheme is that this
+              # exact bit-for-bit image is identifiable and re-runnable.
+              image: registry.local/maniwani:g__SHA__
+              imagePullPolicy: IfNotPresent
+              args: ["update"]
+              env:
+                - {name: SERVICE_NAME, value: migrate}
+                - {name: MANIWANI_CFG, value: /maniwani/runtime-config.cfg}
+                - {name: POSTGRES_HOST, value: postgres}
+                - name: POSTGRES_USER
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_USER}}
+                - name: POSTGRES_PASSWORD
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_PASSWORD}}
+                - name: POSTGRES_DB
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_DB}}
+                - {name: STORAGE_PROVIDER, value: S3}
+                - {name: S3_ENDPOINT, value: "https://syndichan-node:9000"}
+                - {name: S3_CA_BUNDLE, value: "/storage-tls/tls.crt"}
+                - name: S3_ACCESS_KEY
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: S3_ACCESS_KEY}}
+                - name: S3_SECRET_KEY
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: S3_SECRET_KEY}}
+                - {name: S3_UUID_PREFIX, value: ""}
+              volumeMounts:
+                # THE PRIMARY CONFIG CHANNEL. backend/shared.py:619 does
+                # _load_env_file(".env") at import, relative to CWD /maniwani —
+                # so without this mount the Job does not merely lose optional
+                # settings, it fails to import. subPath is mandatory: mounting a
+                # directory at /maniwani would hide the application.
+                - {name: dotenv, mountPath: /maniwani/.env, subPath: .env, readOnly: true}
+                - {name: cfg, mountPath: /maniwani/runtime-config.cfg, subPath: maniwani.cfg, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+                - {name: storage-tls, mountPath: /storage-tls, readOnly: true}
+                # DELIBERATELY ABSENT: the five aggregator PVCs and rtmp-storage.
+                # A migration has no business holding a writable handle on 22 GB
+                # of unreproducible scraped content, and not mounting them means
+                # a runaway migration cannot touch it.
+              resources:
+                requests: {cpu: 200m, memory: 512Mi}
+                limits:   {memory: 2Gi}
+          volumes:
+            - name: dotenv
+              secret:
+                secretName: maniwani-dotenv
+                defaultMode: 0444
+                items: [{key: .env, path: .env}]
+            - name: cfg
+              configMap: {name: maniwani-cfg, defaultMode: 0444}
+            - name: tmp
+              emptyDir: {sizeLimit: 1Gi}
+            - name: storage-tls
+              secret:
+                secretName: syndichan-node-tls
+                items: [{key: tls.crt, path: tls.crt}]
+
+  # ===========================================================================
+  # BACKWARD. Runs on the NEW image (see the header — the old one cannot) and
+  # targets the revision recorded BEFORE the migration.
+  #
+  # It does not use `alembic downgrade` on the CLI, because
+  # backend/migrations/env.py reads `current_app.config['SQLALCHEMY_DATABASE_URI']`
+  # and `current_app.extensions['migrate']` — it REQUIRES a Flask app context.
+  # A bare `alembic -c migrations/alembic.ini downgrade <rev>` dies immediately
+  # with "Working outside of application context". So this mirrors exactly what
+  # update.py:update_db() does, including the gevent/psycogreen patching that
+  # must happen before psycopg2 is imported.
+  # ===========================================================================
+  job-downgrade.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: __JOBNAME__
+      namespace: maniwani
+      labels:
+        app.kubernetes.io/name: maniwani-downgrade
+        app.kubernetes.io/part-of: maniwani
+        app.kubernetes.io/component: migration
+        maniwani.io/group: updater
+        maniwani.io/run-id: "__RUN_ID__"
+      annotations:
+        maniwani.io/target-revision: "__PREV_REV__"
+        maniwani.io/warning: "LOSSY. downgrade() drops what the upgrade added; data written into those columns is destroyed."
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: maniwani            # fail-closed NetworkPolicy contract; see above
+            app.kubernetes.io/name: maniwani-downgrade
+            app.kubernetes.io/part-of: maniwani
+            maniwani.io/group: updater
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            maniwani.io/role: software
+          securityContext:
+            fsGroup: 1000
+            fsGroupChangePolicy: OnRootMismatch
+          containers:
+            - name: downgrade
+              # THE NEW IMAGE. NOT the one being rolled back to. This is the
+              # whole point: only g__SHA__ contains the revision script that
+              # knows how to undo itself.
+              image: registry.local/maniwani:g__SHA__
+              imagePullPolicy: IfNotPresent
+              command: ["python3", "-c"]
+              args:
+                - |
+                  import gevent.monkey; gevent.monkey.patch_all()
+                  import psycogreen.gevent; psycogreen.gevent.patch_psycopg()
+                  import os, sys
+                  from alembic import command
+                  from alembic.config import Config
+                  from shared import app, db      # registers Migrate(app, db); env.py needs it
+                  target = "__PREV_REV__"
+                  cfg = Config(os.path.join("migrations", "alembic.ini"))
+                  cfg.set_main_option("script_location", "migrations")
+                  with app.app_context():
+                      from sqlalchemy import text
+                      with db.engine.connect() as c:
+                          cur = c.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                      print("alembic_version is %s; downgrading to %s" % (cur, target), flush=True)
+                      if cur == target:
+                          print("already at target; nothing to do", flush=True)   # IDEMPOTENT
+                          sys.exit(0)
+                      command.downgrade(config=cfg, revision=target)
+                      db.session.commit()
+                      with db.engine.connect() as c:
+                          now = c.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                      print("alembic_version now %s" % now, flush=True)
+                      if now != target:
+                          raise SystemExit("downgrade did not reach %s (stopped at %s)" % (target, now))
+              env:
+                - {name: SERVICE_NAME, value: downgrade}
+                - {name: MANIWANI_CFG, value: /maniwani/runtime-config.cfg}
+                - {name: POSTGRES_HOST, value: postgres}
+                - name: POSTGRES_USER
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_USER}}
+                - name: POSTGRES_PASSWORD
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_PASSWORD}}
+                - name: POSTGRES_DB
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: POSTGRES_DB}}
+                # STORAGE_PROVIDER is set but nothing calls update_storage() on
+                # this path — shared.py still imports model.Media, which wants a
+                # configured backend at import time.
+                - {name: STORAGE_PROVIDER, value: S3}
+                - {name: S3_ENDPOINT, value: "https://syndichan-node:9000"}
+                - {name: S3_CA_BUNDLE, value: "/storage-tls/tls.crt"}
+                - name: S3_ACCESS_KEY
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: S3_ACCESS_KEY}}
+                - name: S3_SECRET_KEY
+                  valueFrom: {secretKeyRef: {name: maniwani-env, key: S3_SECRET_KEY}}
+              volumeMounts:
+                - {name: dotenv, mountPath: /maniwani/.env, subPath: .env, readOnly: true}
+                - {name: cfg, mountPath: /maniwani/runtime-config.cfg, subPath: maniwani.cfg, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+                - {name: storage-tls, mountPath: /storage-tls, readOnly: true}
+              resources:
+                requests: {cpu: 200m, memory: 512Mi}
+                limits:   {memory: 2Gi}
+          volumes:
+            - name: dotenv
+              secret:
+                secretName: maniwani-dotenv
+                defaultMode: 0444
+                items: [{key: .env, path: .env}]
+            - name: cfg
+              configMap: {name: maniwani-cfg, defaultMode: 0444}
+            - name: tmp
+              emptyDir: {sizeLimit: 1Gi}
+            - name: storage-tls
+              secret:
+                secretName: syndichan-node-tls
+                items: [{key: tls.crt, path: tls.crt}]
+# =============================================================================
+# RUNNING EITHER BY HAND (MIGRATION_ROLLBACK=manual, or triage)
+# -----------------------------------------------------------------------------
+#   kubectl -n maniwani get cm maniwani-updater-templates \
+#     -o jsonpath='{.data.job-downgrade\.yaml}' \
+#     | sed -e 's/__JOBNAME__/downgrade-manual/' \
+#           -e 's/__SHA__/<the 12-char sha that was being deployed>/' \
+#           -e 's/__PREV_REV__/<revision from the run log>/' \
+#           -e 's/__RUN_ID__/manual/' \
+#     | kubectl -n maniwani apply -f -
+#   kubectl -n maniwani logs -f job/downgrade-manual
+#
+# The values for __SHA__ and __PREV_REV__ are both printed in the run log at
+# https://<domain>/_deploy/latest-failure.log — you do not need SSH, and you do
+# not need the backend to be up, to find them.
+# =============================================================================

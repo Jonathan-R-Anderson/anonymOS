@@ -1,0 +1,66 @@
+# =============================================================================
+# maniwani DATA TIER — PriorityClasses
+# =============================================================================
+# Namespace `maniwani` is created by the bootstrap layer and is NOT defined in
+# this directory. These two objects are CLUSTER-SCOPED (PriorityClass has no
+# namespace). If the bootstrap layer ends up owning them, delete this file
+# rather than applying it twice — re-applying is idempotent, but ownership
+# should live in exactly one place.
+#
+# APPLY ORDER: this file first (10-postgres.yaml and the storage-node manifest
+# reference maniwani-data-critical by name; a pod that names a missing PriorityClass is
+# REJECTED by the API server, it does not fall back to zero).
+#
+# WHY THIS EXISTS
+# The data node (vps-56548ec0) has 4 vCPU / 7 GB RAM and NO SWAP. Two pods
+# share it:
+#     postgres  limit 1Gi     request 256Mi
+#     redis     limit 768Mi   request 256Mi
+#     ---------------------------------------
+#     ~1.75 GiB of limits, ~512 MiB of requests, plus ~1 GB for the k3s agent,
+#     containerd and kubelet, on a 7 GB box.
+# Requests are deliberately far below limits (see each manifest) so the
+# scheduler can actually place all three. That makes all three Burstable QoS,
+# which makes all three eviction candidates under memcg pressure.
+#
+# Without swap, kubelet memory-pressure eviction is the only thing standing
+# between "the redis cache grew" and "the OSD holding every image on the site
+# got OOM-killed". Kubelet ranks eviction victims by whether usage exceeds
+# requests, then by pod PRIORITY, then by usage-above-requests. These classes
+# make that ordering explicit and correct: redis is disposable; postgres and
+# the software-node storage gateway are not.
+#
+# Pair this with the kubelet flag called for in the bootstrap/network runbook,
+# so eviction happens with headroom instead of the kernel OOM-killer firing:
+#     --kubelet-arg=eviction-hard=memory.available<500Mi
+# =============================================================================
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: maniwani-data-critical
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: data
+# Below the built-in system-cluster-critical (2000000000) so k3s's own
+# components always win, but far above anything in the application tier.
+value: 100000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: >-
+  Stateful data services whose loss is a site outage or a data-integrity event
+  (primary storage gateway, postgres). Evicted last under node memory pressure.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: maniwani-data-cache
+  labels:
+    app.kubernetes.io/part-of: maniwani
+    maniwani.io/group: data
+value: 10000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: >-
+  Rebuildable in-memory state (redis). Deliberately the first data-tier pod the
+  kubelet should evict: redis already runs with RDB and AOF disabled and every
+  consumer tolerates a cold cache.

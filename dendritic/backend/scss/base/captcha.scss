@@ -1,0 +1,52 @@
+.anime-captcha {
+	margin-top: 1rem;
+	max-width: 32rem;
+}
+
+.anime-captcha-title {
+	font-size: 1.25rem;
+	font-weight: 600;
+	margin-bottom: .75rem;
+}
+
+.anime-captcha-grid {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	grid-gap: .5rem;
+}
+
+.anime-captcha-tile {
+	cursor: pointer;
+	display: block;
+	margin: 0;
+}
+
+.anime-captcha-checkbox {
+	display: none;
+}
+
+.anime-captcha-image {
+	background-color: rgba(255, 255, 255, .1);
+	border: 2px solid transparent;
+	display: block;
+	height: 7rem;
+	object-fit: cover;
+	transition: border-color .15s ease, opacity .15s ease, transform .15s ease;
+	user-select: none;
+	width: 100%;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	-webkit-user-select: none;
+}
+
+.anime-captcha-checkbox:checked + .anime-captcha-image {
+	border-color: #007bff;
+	opacity: .85;
+	transform: scale(.94);
+}
+
+@media (max-width: 575.98px) {
+	.anime-captcha-image {
+		height: 4.5rem;
+	}
+}

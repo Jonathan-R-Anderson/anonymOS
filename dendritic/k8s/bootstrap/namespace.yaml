@@ -1,0 +1,75 @@
+# =============================================================================
+# maniwani BOOTSTRAP — the `maniwani` namespace
+# =============================================================================
+# EVERY other manifest in k8s/ hardcodes `namespace: maniwani`. Nothing here is
+# templated and nothing sets a default namespace, so this object must exist
+# before anything else is applied. It is the first entry in
+# bootstrap/kustomization.yaml for that reason.
+#
+# -----------------------------------------------------------------------------
+# POD SECURITY ADMISSION — WHY `enforce: privileged` AND NOT SOMETHING TIGHTER
+# -----------------------------------------------------------------------------
+# PSA is a NAMESPACE-level, all-or-nothing control: one level applies to every
+# pod in the namespace, and this namespace contains workloads that genuinely
+# need host-level access. Requested explicitly by k8s/media/00-media-common.yaml
+# ("The `maniwani` namespace must therefore be labelled by the bootstrap layer
+# with pod-security.kubernetes.io/enforce: privileged").
+#
+# The workloads that force it, each verified against its manifest:
+#   falco       hostPID: true + host /proc, /boot, /usr, /etc and the container
+#               runtime socket. A host IDS cannot run under `baseline`.
+#               (No manifest exists yet — see the README preflight — but the
+#               namespace must already tolerate it or the DaemonSet is rejected
+#               the moment someone writes it.)
+#   coturn      hostNetwork: true (3478, 5349, 49152-49351). `baseline` forbids
+#               hostNetwork outright.
+#   rtmp        hostPort 1935, runs as root.
+#   nntp-hub    hostPort 119 — a PRIVILEGED port, bound by a root process.
+#   clamav      runs as root (freshclam + the tee-to-FIFO entrypoint).
+# `baseline` forbids hostNetwork/hostPID/hostPorts <1024; `restricted` also
+# forbids running as root, a writable root filesystem, and requires
+# seccompProfile — which the data tier (postgres re-adds CHOWN/SETUID for its
+# gosu privilege drop) would also fail.
+#
+# TIGHTENING IS A POST-CUTOVER PROJECT, NOT A MIGRATION STEP. The correct end
+# state is two namespaces (a `restricted` one for the ~15 ordinary workloads and
+# a `privileged` one for the five above), which means editing the namespace of
+# every manifest, every Service DNS name that crosses the split, and every
+# NetworkPolicy podSelector. Doing that during a migration whose priority is
+# behavioural parity would be reckless.
+#
+# audit/warn are deliberately left at `baseline`, one level tighter than
+# enforce. Nothing is blocked, but `kubectl apply` PRINTS a warning for each of
+# the five workloads above. That noise is the point: it is a standing, visible
+# inventory of exactly which pods hold host privileges, and a NEW warning means
+# somebody added a sixth. Expect these five warnings on every apply of
+# k8s/media/ — they are signal, not failure.
+#
+# -----------------------------------------------------------------------------
+# NO ResourceQuota AND NO LimitRange HERE, ON PURPOSE
+# -----------------------------------------------------------------------------
+# Every workload manifest sets its own requests/limits, and several are tuned
+# against measured failure modes (the object store's 4Gi against a documented OOM-kill of
+# the OSD; redis 768Mi paired with an in-process --maxmemory 512mb; the backend
+# deliberately has NO cpu limit because CFS throttling stalls its gevent hub).
+# A LimitRange would silently inject defaults into any pod that omitted one —
+# including migration Jobs — and a ResourceQuota would start REJECTING pods
+# mid-cutover the moment the sum crossed a line nobody is watching. Both are
+# reasonable additions once the cluster is boring. Neither belongs here today.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: maniwani
+  labels:
+    app.kubernetes.io/name: maniwani
+    app.kubernetes.io/part-of: maniwani
+    # Pod Security Admission. `latest` pins to the API server's own current
+    # version of each policy, so an upgrade that tightens `baseline` shows up as
+    # new warnings rather than silently doing nothing.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/warn-version: latest

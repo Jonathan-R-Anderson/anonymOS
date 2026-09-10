@@ -1,0 +1,12 @@
+[Unit]
+Description=Check GitHub for Syndichan node updates
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=syndichan-node-update.service
+
+[Install]
+WantedBy=timers.target

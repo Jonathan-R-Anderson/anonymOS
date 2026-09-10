@@ -1,0 +1,58 @@
+{
+  "gateway": {
+    "enabled": false,
+    "probe_enabled": false,
+    "listen_address": "0.0.0.0",
+    "listen_port": 443,
+    "public_hostname": "",
+    "registration_api": "https://syndichan.org/api/v1/gateways",
+    "advertise_ipv4": true,
+    "advertise_ipv6": true,
+    "reverse_proxy": false,
+    "tls": {
+      "mode": "acme",
+      "acme_email": "operator@example.com",
+      "acme_http_address": "0.0.0.0:80"
+    },
+    "external_verification": {
+      "enabled": true,
+      "minimum_successful_probes": 3,
+      "minimum_distinct_networks": 2,
+      "verification_timeout_seconds": 15,
+      "registration_validity_seconds": 300,
+      "probe_result_validity_seconds": 120,
+      "reverify_interval_seconds": 60
+    },
+    "health": {
+      "failure_threshold": 3,
+      "recovery_threshold": 2,
+      "check_interval_seconds": 30,
+      "drain_seconds": 60
+    },
+    "eligibility": {
+      "minimum_upload_mbps": 10,
+      "minimum_free_memory_mb": 512,
+      "minimum_free_disk_mb": 1024,
+      "maximum_cpu_percent": 90,
+      "require_public_address": true,
+      "reject_cgnat": true
+    },
+    "trusted_probes": {},
+    "probe_urls": [],
+    "public_addresses": [],
+    "probe_network": "",
+    "frontend": {
+      "enabled": false,
+      "origin_address": "51.79.71.153:9443",
+      "origin_server_name": "syndichan.org",
+      "sni_allowlist": ["syndichan.org"],
+      "max_connections": 1024,
+      "max_bytes_per_second": 16777216,
+      "handshake_timeout_seconds": 10,
+      "dial_timeout_seconds": 10,
+      "idle_timeout_seconds": 300,
+      "drain_seconds": 60,
+      "proxy_protocol": true
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# Additional i2pd options required by syndichan-node. This file contains no
+# account credentials or node identity. Both control interfaces remain bound
+# to loopback.
+DAEMON_OPTS="--conf=/etc/i2pd/i2pd.conf --tunconf=/etc/i2pd/tunnels.conf --tunnelsdir=/etc/i2pd/tunnels.conf.d --pidfile=/run/i2pd/i2pd.pid --logfile=/var/log/i2pd/i2pd.log --daemon --service --sam.enabled=true --sam.address=127.0.0.1 --sam.port=7656 --httpproxy.enabled=true --httpproxy.address=127.0.0.1 --httpproxy.port=4444 --httpproxy.outproxy=http://exit.stormycloud.i2p --http.enabled=true --http.address=127.0.0.1 --http.port=7070"

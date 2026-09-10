@@ -1,0 +1,27 @@
+[Unit]
+Description=Check GitHub and safely update Syndichan node
+Documentation=https://github.com/Jonathan-R-Anderson/syndichan-node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+Environment=SYNDICHAN_INSTALL_DIR=/home/ubuntu/syndichan-node
+Environment=SYNDICHAN_GIT_URL=https://github.com/Jonathan-R-Anderson/syndichan-node.git
+Environment=SYNDICHAN_GIT_BRANCH=main
+Environment=SYNDICHAN_SERVICE=syndichan-node.service
+Environment=SYNDICHAN_UPDATE_HEALTH_URL=https://gw-REPLACE.syndichan.org/readyz
+ExecStart=/home/ubuntu/syndichan-node/bin/update-from-github
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/syndichan-node
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true

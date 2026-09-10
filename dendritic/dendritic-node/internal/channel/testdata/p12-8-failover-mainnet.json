@@ -1,0 +1,29 @@
+{
+  "all_failed": 0,
+  "attested": "The selected RPC providers are intended to be operationally independent and are not known to share a common upstream provider. The primary is an unroutable RFC 5737 address, used deliberately to induce the failure this term measures; the fallbacks are live public mainnet providers on distinct registrable domains.",
+  "chain_id": 1,
+  "endpoints": [
+    {
+      "attempts": 30,
+      "endpoint": "http://192.0.2.1:8545",
+      "failures": 30
+    },
+    {
+      "attempts": 30,
+      "endpoint": "https://ethereum-rpc.publicnode.com",
+      "failures": 0
+    },
+    {
+      "attempts": 0,
+      "endpoint": "https://eth.drpc.org",
+      "failures": 0
+    },
+    {
+      "attempts": 0,
+      "endpoint": "https://eth1.lava.build",
+      "failures": 0
+    }
+  ],
+  "rounds": 30,
+  "worst_failover": "15.116682986s"
+}

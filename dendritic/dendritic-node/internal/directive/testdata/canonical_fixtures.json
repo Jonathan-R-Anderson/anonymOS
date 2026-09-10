@@ -1,0 +1,72 @@
+{
+  "freeze": {
+    "canonical": "syndichan network directive v1\nkind: freeze\nsequence: 9\nissued_at: 1800000000\nnot_before: 1800000000\nemergency: no\norigin_domain: -\norigin_address: -\norigin_key: -\nnote: wallet may be compromised",
+    "directive": {
+      "emergency": false,
+      "issued_at": 1800000000,
+      "kind": "freeze",
+      "not_before": 1800000000,
+      "note": "wallet may be compromised",
+      "origin_address": "",
+      "origin_domain": "",
+      "origin_key": "",
+      "sequence": 9
+    }
+  },
+  "move_emergency": {
+    "canonical": "syndichan network directive v1\nkind: move\nsequence: 42\nissued_at: 1800000000\nnot_before: 1800000000\nemergency: yes\norigin_domain: syndichan.net\norigin_address: 203.0.113.9:443\norigin_key: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nnote: failover",
+    "directive": {
+      "emergency": true,
+      "issued_at": 1800000000,
+      "kind": "move",
+      "not_before": 1800000000,
+      "note": "failover",
+      "origin_address": "203.0.113.9:443",
+      "origin_domain": "syndichan.net",
+      "origin_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sequence": 42
+    }
+  },
+  "move_plain": {
+    "canonical": "syndichan network directive v1\nkind: move\nsequence: 1\nissued_at: 1800000000\nnot_before: 1800003600\nemergency: no\norigin_domain: syndichan.net\norigin_address: -\norigin_key: -\nnote: -",
+    "directive": {
+      "emergency": false,
+      "issued_at": 1800000000,
+      "kind": "move",
+      "not_before": 1800003600,
+      "note": "",
+      "origin_address": "",
+      "origin_domain": "syndichan.net",
+      "origin_key": "",
+      "sequence": 1
+    }
+  },
+  "note_that_looks_like_a_field": {
+    "canonical": "syndichan network directive v1\nkind: move\nsequence: 3\nissued_at: 1800000000\nnot_before: 1800003600\nemergency: no\norigin_domain: syndichan.net\norigin_address: -\norigin_key: -\nnote: hi origin_domain: evil.example emergency: yes",
+    "directive": {
+      "emergency": false,
+      "issued_at": 1800000000,
+      "kind": "move",
+      "not_before": 1800003600,
+      "note": "hi origin_domain: evil.example emergency: yes",
+      "origin_address": "",
+      "origin_domain": "syndichan.net",
+      "origin_key": "",
+      "sequence": 3
+    }
+  },
+  "resume": {
+    "canonical": "syndichan network directive v1\nkind: resume\nsequence: 10\nissued_at: 1800000000\nnot_before: 1800000000\nemergency: no\norigin_domain: -\norigin_address: -\norigin_key: -\nnote: -",
+    "directive": {
+      "emergency": false,
+      "issued_at": 1800000000,
+      "kind": "resume",
+      "not_before": 1800000000,
+      "note": "",
+      "origin_address": "",
+      "origin_domain": "",
+      "origin_key": "",
+      "sequence": 10
+    }
+  }
+}

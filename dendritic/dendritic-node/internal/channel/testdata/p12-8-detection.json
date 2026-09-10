@@ -1,0 +1,11 @@
+{
+  "chain_id": 1,
+  "channels_per_watchtower": 1000,
+  "watchtowers": 2,
+  "sweep_interval": "30s",
+  "sweeps_per_watchtower": 30,
+  "worst_sweep": "561.75µs",
+  "median_sweep": "95.116µs",
+  "samples": 60,
+  "method": "timed Watchtower.Sweep over 1000 real channels per watchtower, 2 watchtowers, 30 sweeps each; every sweep verified to have examined all 1000 channels via the OnResult hook; chain reads stubbed so the number measures this software at this scale rather than a provider's latency, which the rpc-failure term budgets separately"
+}

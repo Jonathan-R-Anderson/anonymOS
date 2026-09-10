@@ -1,0 +1,18 @@
+{
+  "beacon_provider": "chainsafe.io",
+  "bootstrap_period": 1830,
+  "bootstrap_slot": 14994592,
+  "checkpoint_root": "0x5bfa989e1f2c7e9af42781a01ba90fe51ce4e521ee48171cc6d2bc6d72be1d42",
+  "checkpoint_source": "operator-supplied, independent of BEACON_API_URL",
+  "committee_keys": 512,
+  "committee_root": "2bc002bbdec06add856ce118e1ab53d29ba188ac85084f99049b904f81126b9e",
+  "committee_size": 512,
+  "execution_provider": "drpc.org",
+  "finality_applied": true,
+  "finality_participants": 512,
+  "finalized_slot": 14994592,
+  "genesis_validators": "0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95",
+  "head_advanced_slots": 0,
+  "rotation_exercised": false,
+  "rotations_applied": 0
+}

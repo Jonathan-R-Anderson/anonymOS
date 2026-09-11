@@ -185,7 +185,13 @@ GTK_DEMO_DIR  := deps/gtk-stack/build/gtk+-3.24.43/_build/demos
 GTK_WIDGETFAC_BIN := $(GTK_DEMO_DIR)/widget-factory/gtk3-widget-factory
 GTK_DEMO_BIN      := $(GTK_DEMO_DIR)/gtk-demo/gtk3-demo
 HYPRLAND_BIN := deps/hyprland/Hyprland
-DECOY_IMAGE := deps/decoy-os/build/decoy.ext4
+# The decoy region the installer streams to sysFirst+1 must be the ANOSBOOT-WRAPPED
+# payload — [ANOSBOOT descriptor][desktop UKI][encrypted squashfs] — because the pre-boot
+# loader (deps/veracrypt/efi/efi_main.c decrypt_and_boot) checks sector 0 for the "ANOSBOOT"
+# magic and, not finding it, silently halts (for(;;)hlt) after a correct password. The raw
+# decoy.ext4 has no such header; decoy-boot.img (deps/decoy-os wrap-decoy-payload.py) is the
+# wrapped payload the loader expects. Staged as cd/decoy-linux.ext4 (installer streams as-is).
+DECOY_IMAGE := deps/decoy-os/build/decoy-boot.img
 PREBOOT_EFI := deps/veracrypt/build/preboot.efi
 STAGE2_EFI := deps/veracrypt/build/stage2.efi
 # GW3: Weston (reference Wayland compositor + Pixman software renderer).
@@ -230,7 +236,7 @@ decoy:
 decoy-os:
 	+$(MAKE) -C deps/decoy-os image verify
 $(DECOY_IMAGE):
-	+$(MAKE) -C deps/decoy-os image verify
+	+$(MAKE) -C deps/decoy-os decoy-boot
 veracrypt-efi:
 	+$(MAKE) -C deps/veracrypt efi
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt

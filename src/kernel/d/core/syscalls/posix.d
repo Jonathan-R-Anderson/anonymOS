@@ -12520,6 +12520,20 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
     if (sharedOut !is null) *sharedOut = false;
 
     if (f.type == FileType.FD_DRM && offset != 0) {
+        // SECURITY: `offset` is used verbatim as the physical address to map.
+        // Only offsets inside a live GEM buffer (dumb-buffer table or
+        // virtio-gpu table) are mappable; anything else is rejected.  Without
+        // this, any task in a GPU-allowed domain could map arbitrary physical
+        // memory (kernel text, page tables, other tasks' pages) PTE_USER|RW.
+        GemBuf* gem  = findGemByPhys(offset);
+        DrmGem* vgem = (gem is null) ? drmGemFindByPhys(offset) : null;
+        if (gem is null && vgem is null)
+            return negErrno(EACCES);
+        // Valid window for the mapping: from the offset to the end of the
+        // buffer it landed in, so callers can clamp the mapped length.
+        ulong gemEnd = (gem !is null) ? gem.physAddr + gem.size
+                                      : vgem.phys + vgem.size;
+        if (sizeOut !is null)   *sizeOut = gemEnd - offset;
         if (physOut !is null)   *physOut = offset;
         if (vmoOut !is null)    *vmoOut = drmVmoForPhys(offset);
         if (sharedOut !is null) *sharedOut = true;
@@ -12530,8 +12544,9 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
         int mid = cast(int)cast(size_t)f.backend;
         if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
         if (g_memfds[mid].physBase == 0) return 0;
+        if (offset >= g_memfds[mid].size) return 0;   // no backing at/past EOF
         if (physOut !is null)   *physOut = g_memfds[mid].physBase + offset;
-        if (sizeOut !is null)   *sizeOut = g_memfds[mid].size;
+        if (sizeOut !is null)   *sizeOut = g_memfds[mid].size - offset;
         if (vmoOut !is null)    *vmoOut = ensureMemfdVmo(mid);
         if (sharedOut !is null) *sharedOut = true;
         return 1;
@@ -15078,6 +15093,15 @@ private GemBuf* findGem(uint handle) {
 private GemBuf* findGemByPhys(ulong phys) {
     foreach (ref g; g_gemBufs)
         if (g.inUse && phys >= g.physAddr && phys < g.physAddr + g.size) return &g;
+    return null;
+}
+
+// Find a virtio-gpu GEM buffer by physical address (g_drmGems table).
+// Note: for host-visible blobs this phys is a BAR-window address, not
+// allocator RAM — membership in the table is still the authority check.
+private DrmGem* drmGemFindByPhys(ulong phys) {
+    foreach (ref g; g_drmGems)
+        if (g.used && phys >= g.phys && phys < g.phys + g.size) return &g;
     return null;
 }
 

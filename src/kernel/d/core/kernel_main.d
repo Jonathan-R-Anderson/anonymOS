@@ -3723,13 +3723,25 @@ private void dispatchSyscall(int tid) {
             // Shared fd backings (DRM dumb-buffer mmap and memfd mmap) now route
             // through the fd object's mmap op instead of peeking at File.type here.
             ulong backingPhys = 0;
+            ulong backingSize = 0;   // valid bytes starting at backingPhys
             uint vmoObjId = 0;
             bool useObjectBacking = false;
             if (mfd < 1024) {
                 long backing = fdMmapBacking(mfd, moffset, &backingPhys,
-                                             null, &vmoObjId,
+                                             &backingSize, &vmoObjId,
                                              &useObjectBacking);
                 if (backing <= 0) useObjectBacking = false;
+            }
+            // SECURITY: clamp the mapping to the backing's valid window.  A
+            // valid offset with an oversized length must not map physical
+            // pages past the end of the GEM buffer / memfd.
+            if (useObjectBacking && backingSize > 0) {
+                ulong maxPgs = backingSize >> 12;
+                if (maxPgs < numPgs) {
+                    numPgs = maxPgs;
+                    alignedLen = numPgs << 12;
+                }
+                if (numPgs == 0) { ret = -22; break; }   // EINVAL
             }
 
             // File-backed mmap (MAP_PRIVATE of a regular file): the dynamic linker

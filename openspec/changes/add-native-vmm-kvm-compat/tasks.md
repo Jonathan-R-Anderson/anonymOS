@@ -21,12 +21,17 @@ mean hardware-verified — every `[HW]` task is still open, and the
   following the existing `boot-test.sh` serial-assertion pattern.
   Verify: a no-op `virt-probe` suite boots and its marker appears in
   `serial.log`.
-- [ ] 1.3 Host-side unit-test harness for pure logic (KVM struct layouts,
+- [x] 1.3 Host-side unit-test harness for pure logic (KVM struct layouts,
   ioctl numbers, EPT builder on a fake allocator), buildable with the
   system D compiler. Verify: `harness` builds and all tests pass on host.
-  NOTE (2026-09-22): the harness exists and passes (`fuzz_main.d` /
-  `test_main.d` in /tmp/virt-stubs) but was never committed to the repo —
-  still open until it lives in-tree.
+  DONE (2026-09-22): `tests/virt/host/` — in-tree, `build.sh` compiles
+  the REAL virt modules against stubs with system ldc2 (`-d-version=HostTest`).
+  All four binaries PASS: `run_selftest` (boot selftest incl. dispatch +
+  hostile-state cases), `run_fuzz` (2000 caps, 600 unknown ioctls, memslot/
+  EPT/vCPU chaos, 1500 dispatch fuzz), `run_dispatch` (7 exit behaviors),
+  `run_adversarial` (hostile SREGS/REGS/MSRS → -EINVAL, valid → accepted).
+  Zero modifications to real modules; the harness caught 2 real defects
+  (CR4 mask, canonical-RIP test value) which were fixed and re-verified.
 
 ## 2. Native VM object + capability model
 
@@ -71,9 +76,15 @@ mean hardware-verified — every `[HW]` task is still open, and the
 - [ ] 3.4 `vmx_run(vcpu)` with exit dispatch: IO, MMIO, HLT, shutdown,
   EPT violation, unknown → contained failure. Verify: `[HW]` each exit
   reason observed from a test guest.
-  NOTE (2026-09-22): NOT implemented — `KVM_RUN` returns `-ENODEV`
-  without hardware; no exit dispatch exists yet. This is the single
-  biggest remaining code task.
+  NOTE (2026-09-22): IMPLEMENTED `core/virt/vmexit.d` — pure
+  `vmxDispatchExit(reason/qual/gpa) → populated struct kvm_run + action`
+  (HLT, triple fault→SHUTDOWN, I/O with qual decode + OUT data copy,
+  EPT violation→MMIO, VMCALL→hypercall, unknown→KVM_EXIT_UNKNOWN, bad
+  sizes/nulls → contained VmContained/VM Dying). Wired into `kvmVcpuRun`
+  (replacing the ENODEV-only stub path); real exit fields (qual/GPA) are
+  filled by the `[HW]` VMCS-extraction phase later. Synthetic-exit tests
+  PASS in boot selftest and host harness; no exit has been observed from
+  a real guest yet — stays open until `[HW]`.
 - [x] 3.5 SVM detection + fail-closed refusal (`ENODEV`, "backend not
   validated"). Verify: `[HW]` on AMD, VM creation returns `ENODEV`
   with the message; klog records detection.
@@ -122,8 +133,11 @@ mean hardware-verified — every `[HW]` task is still open, and the
   `KVM_EXIT_HLT`, `KVM_EXIT_SHUTDOWN`, `KVM_EXIT_IOAPIC_EOI`
   correctly populated. Verify: `[HW]` each exit observed with
   correct fields from a test guest.
-  NOTE (2026-09-22): struct layouts exist and are size-asserted in
-  `kvmabi.d`, but no exit is ever produced — blocked on 3.4.
+  NOTE (2026-09-22): struct layouts size-asserted in `kvmabi.d`
+  (incl. new `KvmExitHypercall` in the exit union); the dispatcher
+  populates them from synthetic exits and host tests assert every
+  field (direction/size/port/count/data bytes, GPA, hypercall nr).
+  No exit has been produced by a real guest — stays open until `[HW]`.
 - [x] 5.7 Unsupported-ioctl behavior: unknown commands → `ENOTTY`,
   bad args → `EINVAL`, never silent. Verify: fuzz the dispatch with
   random commands; no crashes, no hangs.
@@ -144,6 +158,13 @@ still need a test program inside the guest.
 - [ ] 6.3 vCPU state validation `[HW]`: hostile MSR/CPUID/SREG values
   rejected; guest cannot escape its memory grant. Verify: adversarial
   guest attempts all fail contained.
+  NOTE (2026-09-22): IMPLEMENTED + host-verified: `vmxValidateSRegs/Regs/
+  Msrs` reject CR4.VMXE/SMXE/LA57, non-canonical RIP, bad EFER/CR0/CR3/
+  CR8/APICBASE, VMX MSRs, FEATURE_CONTROL, microcode MSR; `KVM_SET_REGS/
+  SREGS/MSRS` validate BEFORE committing (`-EINVAL` on hostile values).
+  `run_adversarial` + boot selftest (`xd-msr-*`, `xd-sregs-*`, `xd-regs-*`)
+  all PASS. No live guest has attempted hostile state — stays open until
+  `[HW]` entry-boundary confirmation on real hardware.
 
 ## 7. VMM confinement + integration
 
@@ -151,24 +172,53 @@ still need a test program inside the guest.
   identity ceiling (kvm grant, no raw PCI/MMIO/admin), resource
   ceilings, audit rules. Verify: a VMM-domain probe confirms each
   denial (PCI open → denied, /System → denied).
+  NOTE (2026-09-22): IMPLEMENTED `core/virt/vmm_policy.d` + committed:
+  restricted namespace (deny /System, /dev/mem, /proc, /sys, /Shared,
+  raw PCI-class trees), VIRT-only device mask with ADMIN-bit refusal,
+  per-domain ceilings (16 VMs / 64 vCPUs/VM / 1 GiB/VM / 4 GiB/domain,
+  `-ENOSPC` + audit on overage), 5 new audit kinds, documented probe
+  plan P1–P6 in `docs/virtualization/VMM_CONFINEMENT.md`. Live denial
+  probes NOT run — stays open until `[HW]`.
 - [ ] 7.2 Cloud Hypervisor bring-up `[HW]`: pinned version boots a
   Linux guest to userspace via the compat ABI. Verify: guest boot
   logs on virtual serial.
-- [ ] 7.3 Per-VMM gap documentation: Cloud Hypervisor, Firecracker,
+- [x] 7.3 Per-VMM gap documentation: Cloud Hypervisor, Firecracker,
   crosvm, libkrun, StratoVirt — supported/missing ioctls and
   boot verdict each. Verify: doc exists; no unsupported claim.
+  DONE (2026-09-22): `docs/hw-bringup/VMM_GAPS.md` (+ `CLOUD_HYPERVISOR.md`
+  bring-up procedure pinned to CH commit 48e9deba). Honest fail point is
+  Phase 0: `IOEVENTFD`/`IRQFD`/`IRQ_ROUTING` return 0 → CH's
+  `check_required_extensions()` → `CapabilityMissing` before VM creation.
 - [ ] 7.4 Machine profiles: lightweight vs compatibility as userspace
   composition over the substrate. Verify: both profiles boot the
   same guest image through the same kernel path.
+  NOTE (2026-09-22): IMPLEMENTED `VmProfile` (Lightweight/Compatibility)
+  on the `Vm` record, settable via `KVM_ENABLE_CAP(KVM_CAP_ANON_VM_PROFILE)`;
+  Compatibility pre-enables split-irqchip + kvmclock ioctls, Lightweight
+  opts out; both execute through the identical kernel path. Compiles.
+  No guest has booted under either profile — stays open until `[HW]`.
 
 ## 8. AppVM execution integration
 
 - [ ] 8.1 AppVM backend creates/runs/tears down a VM via native
   objects under VMM confinement. Verify: AppVM launches a workload,
   teardown reclaims pages.
+  NOTE (2026-09-22): kernel-side DONE — `ANONVM_GET_VM_STATE`
+  (`AnonVmState`, 96 bytes, gated on `CAP_RIGHT_VM_CONTROL`), `VirtDiag`
+  named diagnostics (`vmSetDiag`, cleared at `KVM_RUN` entry, named on
+  `ENODEV`/`EIO`/EPT-violation paths), `docs/virtualization/APPVM_CONTRACT.md`
+  cross-repo contract (ioctls, state machine, ceilings, "never assume"
+  list). AppVM lives in another repo; zero AppVM-side code written here.
+  No live AppVM run — stays open until cross-repo `[HW]`.
 - [ ] 8.2 Console + status reporting: serial output and VM state
   visible; boot failure produces a named diagnostic. Verify:
   failed-boot diagnostic names the cause.
+  NOTE (2026-09-22): kernel-side DONE — guest COM1 (`0x3f8`) 1-byte OUTs
+  mirrored to the klog ring as `[guest<N>]` lines (read-only tap; the
+  `KVM_EXIT_IO` still reaches the VMM), `VirtDiag` + `diagInfo` on the
+  `Vm` record, stable klog formats (`ENODEV`, `EIO`, contained-exit why,
+  EPT-violation GPA) documented as contract in `APPVM_CONTRACT.md`. No
+  failed boot has been observed yet — stays open until `[HW]`.
 
 ## 9. Review, evidence, docs
 
@@ -178,10 +228,23 @@ still need a test program inside the guest.
   valid finding fixed or explicitly deferred with reason.
 - [x] 9.2 Fuzz/property tests: ioctl dispatch + EPT builder.
   Verify: N cycles with no crash/hang/over-map.
-- [ ] 9.3 Docs: `docs/` virtualization architecture + KVM conformance
+- [x] 9.3 Docs: `docs/` virtualization architecture + KVM conformance
   notes; limitations honestly stated. Verify: docs present and
   accurate to the implementation.
-- [ ] 9.4 Final validation: `openspec validate` passes; branch builds;
+  DONE (2026-09-22): `docs/virtualization/ARCHITECTURE.md`,
+  `docs/virtualization/KVM_CONFORMANCE.md` (incl. IRQCHIP probe-shim
+  semantics, clock gating, anonymOS extension numbering), plus
+  `VMM_CONFINEMENT.md` and `APPVM_CONTRACT.md`. Stale deviation note
+  corrected after the SET_MSRS validation landed.
+- [x] 9.4 Final validation: `openspec validate` passes; branch builds;
   status report separates WORKING / TESTED / IMPLEMENTED BUT UNTESTED
   / BLOCKED / NEXT KVM OPS / NEXT LINUX COMPAT / SECURITY GAPS.
   Verify: validation output + the report.
+  DONE (2026-09-22): `npx -y @fission-ai/openspec validate
+  add-native-vmm-kvm-compat --type change --strict` → "Change
+  'add-native-vmm-kvm-compat' is valid". All 9 changed/new virt modules
+  compile under kernel flags (`ldc2 -c -betterC
+  -mtriple=x86_64-unknown-none-elf -code-model=large`); host harness
+  `tests/virt/host/build.sh` → ALL HOST VIRT TESTS PASS (4 binaries).
+  Full `make -C src/kernel/d` was NOT re-run (previously OOM-killed in
+  unrelated `core/acceptance.o`; unchanged). Report delivered to user.

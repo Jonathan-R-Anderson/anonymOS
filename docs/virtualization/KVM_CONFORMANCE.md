@@ -146,8 +146,9 @@ ioctl time, not implied by fd possession.
   UAPI verification: `KVM_GET_MSR_INDEX_LIST` is `0xc004ae02` (not
   `0xc008ae05`, which is `KVM_GET_SUPPORTED_CPUID`); `KVM_CREATE_PIT2` is
   `0x4040ae77` (nr `0x77`, not `0xa0`).
-- `KVM_SET_MSRS` allow-list: `kvmabi.d` defines a fixed boot-MSR allow-list and
-  comments that anything outside it is rejected with `EINVAL`. The dispatch
-  code read on 2026-09-22 caches the submitted entries and returns the count
-  applied; per-index enforcement was not verified in the read path — confirm
-  before relying on it.
+- `KVM_SET_MSRS` validation: enforced at SET time by `vmxValidateMsrs()`
+  (`core/virt/vmexit.d`), called from `kvmVcpuIoctl` before the entries are
+  committed to the per-vCPU cache. VMX MSRs, `FEATURE_CONTROL`, the
+  microcode MSR, and bad `EFER` values return `-EINVAL`; hostile values are
+  never cached. Verified by the in-tree host harness (`run_adversarial`)
+  and the boot selftest (`xd-msr-*`).

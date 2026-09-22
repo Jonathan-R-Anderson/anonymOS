@@ -226,7 +226,7 @@ private int checkEfer(ulong efer) {
 // Guest CR4: allow the bits a normal 64-bit guest needs; deny VMX/SMX/LA57
 // and everything reserved.  (Our EPT is 4-level; LA57 guests are refused
 // rather than half-supported.)
-enum ulong GUEST_CR4_VALID = 0xF7FFFUL; // bits 0-11,16,17,18,20,21,22,23
+enum ulong GUEST_CR4_VALID = 0xF70FFFUL; // bits 0-11,16,17,18,20,21,22,23
 
 int vmxValidateSRegs(const KvmSRegs* s) {
     if (s is null) return VMX_EINVAL;

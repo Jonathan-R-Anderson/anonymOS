@@ -382,7 +382,7 @@ public void virtSelfTest() {
                     KvmRegs rg;
                     foreach (i; 0 .. KvmRegs.sizeof)
                         (cast(ubyte*)&rg)[i] = 0;
-                    rg.rip = 0xFFFF_8000_0000_0000UL; // non-canonical
+                    rg.rip = 0x0000_8000_0000_0000UL; // non-canonical (bit47=1, bits63:48=0)
                     vtCheck(vmxValidateRegs(&rg) == -22, "xd-regs-rip");
                     rg.rip = 0x1000;
                     vtCheck(vmxValidateRegs(&rg) == 0, "xd-regs-ok");

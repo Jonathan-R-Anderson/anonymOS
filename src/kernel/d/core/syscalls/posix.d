@@ -2291,10 +2291,20 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         auto src = cast(const(ubyte)*)buf;
         for (size_t i = 0; i < count; ++i) g_rt[idx].data[f.offset + i] = src[i];
         // Mirror runtime *.log writes (e.g. Hyprland's hyprland.log, which it
-        // redirects to once it disables stdout logging) onto serial so the log
-        // stays complete without repainting the slow framebuffer text console.
-        if (rtNameEndsWith(g_rt[idx], ".log"))
-            for (size_t i = 0; i < count; ++i) console_serial_putchar(cast(char)src[i]);
+        // redirects to once it disables stdout logging) into the kernel log so the
+        // log stays complete without repainting the slow framebuffer text console.
+        //
+        // RING ONLY by default.  Mirroring to the UART made every aquamarine per-frame
+        // debug line and every wpa_supplicant -dd line a synchronous serial write under
+        // the BKL, twice per frame in Hyprland's case (stdout + this mirror) -- the largest
+        // steady-state serial cost on a live boot.  /run/klog (the Logs app) keeps every
+        // byte; /epin-live-diag.conf (g_diagVerbose) restores the serial copy.
+        if (rtNameEndsWith(g_rt[idx], ".log")) {
+            if (g_diagVerbose)
+                for (size_t i = 0; i < count; ++i) console_serial_putchar(cast(char)src[i]);
+            else
+                for (size_t i = 0; i < count; ++i) klogRingPut(cast(char)src[i]);
+        }
         f.offset += count;
         if (cast(uint)f.offset > g_rt[idx].size) g_rt[idx].size = cast(uint)f.offset;
         f.fileSize = g_rt[idx].size;
@@ -4286,15 +4296,27 @@ public long linux_sys_write(ulong fd, ulong buf, ulong count) {
     return cast(long)sys_write(cast(int)fd, cast(const(void)*)buf, cast(size_t)count);
 }
 
+// The [open] trace is BOUNDED BY PHASE: it used to log every open(2) from every task for the whole
+// session (921 lines / 48 KB in a 300 s live boot, 151 of them after the desktop was up -- mostly the
+// bar polling /run/wifi/networks -- all synchronous UART under the BKL).  Startup hangs are what the
+// trace diagnoses, so it stays on until the desktop has PRESENTED, plus a small budget after that so
+// the first client opens (the installer's fonts, /config/disks.json) are still on record.  A plain
+// count was tried first and ran out while Hyprland was still probing /sys -- before the desktop.
+// /epin-live-diag.conf (g_diagVerbose) lifts the bound.
+private __gshared uint g_openTracePostDesktop = 0;
+private enum uint OPEN_TRACE_POST_DESKTOP_MAX = 200;
 public long linux_sys_open(ulong path, ulong flags, ulong _mode) {
     auto p = cast(const(char)*)path;
 
-    klog("[open] ");
-    if (p !is null)
-        klog(p);
-    else
-        klog("(null)");
-    klog("\n");
+    if (g_diagVerbose || g_lastPresentMs == 0 || g_openTracePostDesktop < OPEN_TRACE_POST_DESKTOP_MAX) {
+        if (g_lastPresentMs != 0) ++g_openTracePostDesktop;
+        klog("[open] ");
+        if (p !is null)
+            klog(p);
+        else
+            klog("(null)");
+        klog("\n");
+    }
 
     const long r = cast(long)sys_open(cast(const(char)*)path, cast(int)flags);
     // ROADMAP 2.3: the [open] line above records only the ATTEMPT, so a log full of plausible
@@ -14551,7 +14573,9 @@ public void freezeProbeKlog() @nogc nothrow {
         }
         return;
     }
-    if (g_freezeKlogLastMs != 0 && now - g_freezeKlogLastMs < 1000) return;   // ~1 Hz while stalled
+    // First report immediately, then every 10 s while the stall persists (was 1 Hz: ~370 B/s of
+    // synchronous UART while the desktop was already struggling).  Diagnostics keep the 1 Hz rate.
+    if (g_freezeKlogLastMs != 0 && now - g_freezeKlogLastMs < (g_diagVerbose ? 1000 : 10_000)) return;
     g_freezeKlogLastMs = now;
     g_freezeWasStalled = true;
     g_freezeLastFlipQ  = g_flipQueued;                // to tell "presented" from "went idle" later
@@ -14911,7 +14935,7 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     }
     presentAccount(_t0, rdtsc(), cast(ulong)copyW * copyH, true);
     if (g_pendingInputMs != 0) {   // R2: full input→screen latency (one line per burst)
-        klog("[lat] input->present_ms="); klog_dec(pitMs() - g_pendingInputMs); klog("\n");
+        if (g_diagVerbose) { klog("[lat] input->present_ms="); klog_dec(pitMs() - g_pendingInputMs); klog("\n"); }
         g_pendingInputMs = 0;
     }
     return 0;
@@ -14934,6 +14958,11 @@ public void presentProfStats() @nogc nothrow {
             klog("\n");
         }
     }
+    // The heartbeat line: un-quieted even when presentProfTick() has scoped the dump ring-only,
+    // because the boot tests count it (`atleast 3 [present] total=`) to prove the desktop kept
+    // presenting.  One ~150-byte line per 5 s is the whole serial cost of the profiler now.
+    const bool wasRingOnly = g_klogRingOnly;
+    g_klogRingOnly = false;
     klog("[present] total="); klog_dec(g_presTotal);
     klog(" flipQ="); klog_dec(g_flipQueued);
     klog(" flipRd="); klog_dec(g_flipRead);
@@ -14972,6 +15001,7 @@ public void presentProfStats() @nogc nothrow {
     klog(" fps_x100="); klog_dec(wallMs != 0 ? (g_presN * 100000UL) / wallMs : 0UL);
 
     klog("\n");
+    g_klogRingOnly = wasRingOnly;
     // BEFORE the idle early-return: "no frames this interval" is precisely the case where the
     // question "who had the core?" matters most, and returning first would hide it.
     cpuTimeStats();
@@ -15649,6 +15679,10 @@ private void hosDrawIdentityBorders() @nogc nothrow {
     }
 }
 
+private __gshared uint g_hosWinLogN     = 0;
+private __gshared uint g_hosWinPrevN    = 0xffffffffu;
+private __gshared int  g_hosWinPrevW    = -1;
+private __gshared int  g_hosWinPrevH    = -1;
 private long drmSetHosWindows(ulong arg) @nogc nothrow {
     // arg layout: u32 count, u32 pad, then count × { i32 x,y,w,h; u32 pid }.
     uint count = userRead!uint(arg + 0);
@@ -15670,10 +15704,10 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
     // which is why "is Hyprland laying out 6 windows or 1, and at what geometry" could not
     // be answered from a boot log.  Change-triggered logging costs a few lines per session
     // and answers it directly.  Bounded so a thrashing layout cannot flood the UART either.
-    static uint g_hosWinLogN     = 0;
-    static uint g_hosWinPrevN    = 0xffffffffu;
-    static int  g_hosWinPrevW    = -1;
-    static int  g_hosWinPrevH    = -1;
+    // NB: these were function-scope `static` locals.  In D a `static` local is THREAD-LOCAL
+    // (.tbss), and this -betterC kernel sets up no TLS, so the values never persisted between
+    // calls: the "log only on change" guard held nothing and one [g5] line went to the UART per
+    // PRESENT (521 in two minutes of a live boot).  Module-level __gshared is what was meant.
     const int hosW0 = count > 0 ? g_hosWins[0].w : -1;
     const int hosH0 = count > 0 ? g_hosWins[0].h : -1;
     if (g_hosWinLogN < 40 &&

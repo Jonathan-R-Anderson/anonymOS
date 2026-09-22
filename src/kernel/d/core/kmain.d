@@ -310,6 +310,13 @@ extern(C) void apKernelLoopBody(uint idx) {
     // excluded in the kernel but run userspace in true parallel.  getpid reads the global
     // g_current_task_id, so point it at the AP's task while the lock is held, then restore it.
     for (;;) {
+        // INSTALLER §E6: while an encrypted install is streaming, this core prepares its crypto
+        // chunks (random fill / XTS) with NO lock held -- the BSP only writes them.  One chunk per
+        // iteration; the getpid stub below is skipped meanwhile (it only exists as the S4 proof).
+        {
+            import drivers.veracrypt_impl : installApJobActive, installApWorkerStep;
+            if (installApJobActive()) { installApWorkerStep(); ++pc.heartbeat; continue; }
+        }
         // S5: run the stub with interrupts ON (set IF) — now PREEMPTIBLE.  The AP's own local-APIC timer
         // (vector 0x20 → apTimerHandler on IST1) fires during the stub, bumps apicTicks, EOIs, and resumes
         // it.  (Before S5 the stub had to run IF=0, or a timer would halt the AP via apDefaultHandler.)

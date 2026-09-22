@@ -33,7 +33,9 @@ subprocess.run(["mcopy","-i",esp,BLD+"/preboot-proof.efi","::/EFI/BOOT/BOOTX64.E
 subprocess.run(["cp",OVMF_VARS,varsfd], check=True)
 
 qemu = subprocess.Popen([
-  "qemu-system-x86_64","-enable-kvm","-m","256",
+  # qemu64 has no AES-NI; +aes exercises the loader's accelerated XTS path (what real hardware
+  # and VirtualBox expose).  The software path is covered by the selftest line either way.
+  "qemu-system-x86_64","-enable-kvm","-cpu","qemu64,+aes,+sse4.1","-m","256",
   "-drive","if=pflash,format=raw,readonly=on,file="+OVMF_CODE,
   "-drive","if=pflash,format=raw,file="+varsfd,
   "-drive","file=%s,format=raw,if=ide"%esp,
@@ -58,7 +60,7 @@ try:
         except (FileNotFoundError, ConnectionRefusedError): time.sleep(0.5)
     f=s.makefile('rwb', buffering=0); f.readline()
     f.write(b'{"execute":"qmp_capabilities"}\n'); f.readline()
-    if not wait_for("Enter password:", 40):
+    if not wait_for("Enter password:", 60):
         print("FAIL: never saw the prompt"); raise SystemExit(1)
     time.sleep(1)
     def key(q):
@@ -68,13 +70,20 @@ try:
     for ch in pw: key(qmap.get(ch, ch))
     key("ret")
 
-    ok = wait_for(verdict, 15)
+    # 200000-iteration PBKDF2 x 4 candidates x 2 headers in software SHA-512: allow a minute.
+    ok = wait_for(verdict, 90)
     checks = [("routing verdict %r"%verdict, ok)]
+    # VOLUME_MARKERS=1: the payload is a kind-1 FAT volume; every stage of the RAM-volume chain
+    # must have reported (decrypt -> key hand-off -> firmware mount -> chain-load).
+    if os.environ.get("VOLUME_MARKERS") == "1" and booted:
+        for m in ("FAT payload decrypted into RAM", "key handed to /anos.key",
+                  "RAM volume mounted by the firmware FAT driver", "booting BOOTX64.EFI from the decrypted volume"):
+            checks.append(("volume chain: %s" % m, wait_for(m, 30)))
     # The marker proving the decrypted payload actually RAN. Default is the stage2 test stub;
     # BOOT_MARKER overrides it for a real payload (e.g. "DECOY-INIT-OK" from the Alpine UKI),
     # which can take longer to reach userspace, so BOOT_TIMEOUT is generous.
     marker = os.environ.get("BOOT_MARKER", "STAGE2 RUNNING")
-    btmo = int(os.environ.get("BOOT_TIMEOUT", "12"))
+    btmo = int(os.environ.get("BOOT_TIMEOUT", "30"))
     if booted:
         dec = wait_for("decrypted the OS bootloader", btmo)
         run = wait_for(marker, btmo)

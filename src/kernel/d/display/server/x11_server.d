@@ -1197,11 +1197,16 @@ __gshared X11ServerState g_x11Server;
 
 /// Render all mapped X11 windows to the framebuffer
 /// This is called every frame when using i3 as the window manager
+// Module-level __gshared rather than function `static` locals: a static local is thread-local in D,
+// and this -betterC kernel has no TLS, so these never kept their values across calls.
+private __gshared bool   g_x11RenderLogged = false;
+private __gshared size_t g_x11LastWindowCount = 0;
+private __gshared size_t g_x11LastMappedCount = 0;
 @nogc nothrow void renderAllX11Windows()
 {
-    static bool logged = false;
-    static size_t lastWindowCount = 0;
-    static size_t lastMappedCount = 0;
+    alias logged = g_x11RenderLogged;
+    alias lastWindowCount = g_x11LastWindowCount;
+    alias lastMappedCount = g_x11LastMappedCount;
     
     size_t mappedCount = 0;
     for (size_t i = 0; i < g_x11WindowCount; ++i)

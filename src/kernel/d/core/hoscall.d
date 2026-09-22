@@ -163,11 +163,13 @@ private long hosFstat(ulong h, ulong statbuf)           @nogc nothrow { return l
 // native tasks (rt_sigframe / EINTR at a blocking device_read); this records the explicit native
 // subscription so the surface is the native ABI's, not just an implicit Linux signal.  Per-task
 // bitmask — a formalization of already-functional delivery, not a gate on it.
+// (module-level __gshared, not a function `static`: a static local is TLS in D and this kernel has
+// no TLS, so the rate-limit counter never advanced and every call logged.)
+private __gshared uint g_hosSubscribeN = 0;
 private long hosSubscribe(ulong events) @nogc nothrow {
     const int tid = cast(int)g_current_task_id;
     if (tid >= 0 && tid < MAX_TASKS) g_taskSubscriptions[tid] |= cast(uint)events;
-    static uint sn;
-    if ((sn++ & 0x3F) == 0) {
+    if ((g_hosSubscribeN++ & 0x3F) == 0) {
         klog("[obj-subscribe tid="); klog_hex(cast(ulong)tid);
         klog(" events="); klog_hex(events); klog("]\n");
     }

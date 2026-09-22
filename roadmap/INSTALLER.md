@@ -554,6 +554,88 @@ reaches a shell to *prove* the boot; pivoting it into the believable on-disk dec
 (deps/decoy-os) needs the master key handed forward to a dm-crypt mount (or the rootfs embedded +
 `switch_root`), and the HIDDEN payload still needs to become the real EpinAnonymOS loader.
 
+**E5d(kernel) — runtime FDE key hand-off + encrypted object store (design D, kernel side ✅ landed).**
+The kernel now completes the runtime half of design D so an encrypted install's *persistent data* is
+encrypted too (goal 3), not just its boot payload:
+- **AES-256 inverse cipher + XTS decrypt in the kernel.** The kernel previously had `aes_encrypt`
+  only; `src/kernel/d/drivers/veracrypt_crypto.d` now defines `aes_decrypt` (FIPS-197 inverse cipher,
+  KAT'd against the AES-256 test vector) and `src/kernel/d/drivers/veracrypt_impl.d` adds
+  `xts_decrypt_sector`, the exact inverse of `xts_encrypt_sector` and byte-for-byte identical to the
+  loader's `efi_vc.c` XTS (same LE tweak, 0x87 reduction). `vcCryptoKatXts()` runs at boot and prints
+  `[vc-crypto] XTS KAT PASS` (encrypt→decrypt round-trip over a full sector at a non-zero data unit).
+- **Runtime key module `/anos.key`** (`src/kernel/d/core/fde.d`). On an encrypted boot the pre-boot
+  loader patches the `/anos.key` placeholder inside the decrypted-in-RAM boot volume with an
+  **ANOSKEY1** record (master key + absolute store LBA bounds + flags); Limine hands it to the kernel
+  as a module. `fdeAcceptKeyModule` copies it into `__gshared` state, derives a **separate** object-
+  store key `SHA-512(master_key || "anos-objstore")` (design-review BLOCKER 3 — never reuse one XTS
+  key across two tweak domains), then **scrubs the key material from reclaimable RAM** (BLOCKER 4:
+  Limine's module copy, and — when the loader records `ram_fat_base/len` in the optional record tail —
+  the stray `/anos.key` sector still sitting in the loader's decrypted RAM-FAT buffer). Prints
+  `[fde] key module accepted: store LBA 0x..-0x.. flags=0x..` and `[fde] key material scrubbed…`.
+- **Encrypted object store** (`src/kernel/d/core/objstore.d`). When `fdeActive()`, the store is placed
+  at the loader-supplied absolute bounds (skipping the GPT tail/gap heuristics — the old fallback
+  wrote a *plaintext* `OBJ` superblock into the pre-partition gap, falsifying goal 3), and every
+  `stRead`/`stWrite` is transparently AES-256-XTS decrypted/encrypted per 512-byte sector, data unit =
+  absolute LBA, under the derived store key. Prints `[fde] encrypted object store at LBA 0x..-0x..`.
+- **Config hardening** (`veracrypt_impl.d`). `encryption:"Full disk"` is recognised (→ `g_instConfigFde`,
+  disk password captured RAM-only from `diskPassword`, falling back to `hiddenPassword`). For any
+  *encrypted* install the persisted `install.json` no longer enumerates unsalted SHA-512 of the
+  disk/hidden/outer/decoy-boot passwords (design-review RISK) — only non-secret declarative fields plus
+  the login `userPasswordSha512` remain. The header KDF is raised from 1000 to **200000** PBKDF2-HMAC-
+  SHA512 iterations (BLOCKER 2); this is a lock-step contract with the loader's `vcheader.{c,h}`,
+  `efi_vc.{c,h}` and `preboot_auth.c`, which must match.
+
+**E6 — Full-disk encryption + a bootable hidden EpinAnonymOS ✅ DONE (2026-09-22), OVMF-proven.**
+Both encrypted modes now produce a disk that boots through the same chain: firmware → the preboot ESP
+(`preboot.efi` only, 8 MiB — the ONE plaintext thing on the disk) → password → VeraCrypt header
+(PBKDF2-HMAC-SHA512, **200000** iterations, typo budget cut to 4 candidates) → XTS-decrypt the matched
+payload off the raw disk → boot it.
+- **Payload kinds (ANOSBOOT descriptor v3, `[24..32)`):** `0` = a PE image (the Alpine decoy's UKI,
+  LoadImage'd as before); `1` = **a whole FAT32 boot volume** (EpinAnonymOS: `esp-image`, i.e. Limine +
+  kernel + modules).  For kind 1 the loader (`efi_main.c:boot_fat_volume`) decrypts the volume into RAM
+  (AES-NI XTS, `efi_aesni.c`, runtime-dispatched, byte-identical to the software path by self-test),
+  patches the master key + the object-store LBA bounds into the volume's `/anos.key` placeholder (RAM
+  only, never the disk), publishes the volume as an `EFI_BLOCK_IO` device on a fresh handle, lets the
+  firmware's own FAT driver mount it, and chain-loads `\EFI\BOOT\BOOTX64.EFI` with the image's
+  `DeviceHandle` pointing at that volume — so Limine resolves `boot():/` on the decrypted RAM volume.
+  `make -C deps/veracrypt fat-boot-check` proves the whole chain in OVMF for the decoy AND the hidden
+  region (18/18), and a wrong password decrypts nothing; `decrypt-boot-check` still passes 3/3.
+- **Full disk (kernel `installBegin`/`installStep`, `INST_PHASE_FDE_IMAGE`):** the SAME 3-partition
+  GPT as Hidden OS, sized by the same rule (the larger of the decoy image and the boot volume + slack),
+  so the plaintext GPT cannot tell the two apart; preboot ESP; system partition = header (disk password,
+  master key MkD) + descriptor v3 kind 1 + `esp-image`; the outer partition is random fill with NO
+  headers; `install.json` is patched into the in-RAM `esp-image` BEFORE it is streamed (it lives inside
+  the encrypted volume; the preboot ESP has none); no scheme-password hashes are persisted.
+- **Hidden OS:** unchanged decoy (Alpine, decoy-boot password); the hidden payload is now the v3
+  kind-1 boot volume, so the **hidden EpinAnonymOS boots** (it never did: the old payload was a bare
+  FAT image the loader rejected).  The hidden volume is sized image + max(1 GiB, outer/4) so the hidden
+  system has an object store of its own after the payload.
+- **Runtime (`core/fde.d`, `objstore.d`):** the kernel accepts the `anos.key` module, derives a SEPARATE
+  store key `SHA-512(master || "anos-objstore")`, scrubs every RAM copy (Limine's module and the loader's
+  RAM-FAT buffer, whose base/len the loader records in the record), and XTS-encrypts the object store at
+  the loader-supplied bounds (Full disk: the outer partition past a 1 MiB guard; Hidden: the hidden
+  volume's tail), data unit = absolute LBA.  `[fde] key module accepted` / `[fde] encrypted object
+  store at LBA …` are the boot markers.
+- **Proof tooling:** `AUTOINSTALL_FDE=1` stages an `autoinstall-fde` trigger (a headless Full-disk
+  install with the password `disk-password` 60 s after boot); `scripts/encrypted-boot-test.py <disk>
+  <password> EPIN|DECOY|REJECT` boots the installed disk under OVMF, types the password at the prompt via
+  QMP and asserts what boots (`[dkernel] … starting`, `[fde] key module accepted`, a present).
+
+- **The install no longer freezes the desktop (2026-09-22).** Every byte of an encrypted install is
+  CSPRNG output or XTS ciphertext, and it was all computed inside the kernel loop with the BKL held,
+  one 128 KiB batch per millisecond at 15-45 ms a batch: the compositor got what was left of each
+  millisecond ("the cursor barely moves").  Now preparation fills 1 MiB staging slots without the
+  lock -- on the second core when one is up (`installApWorkerStep`, hooked into `apKernelLoopBody`),
+  on the BSP as a fallback (single-CPU machines, or a 2 s watchdog if the AP stops delivering) --
+  and the loop only issues the DMA per slot, admitted against an input-aware budget: 15 ms of every
+  100 ms while the mouse/keyboard were active in the last 400 ms, 60 ms when idle.  The crypto got
+  cheaper too: a ChaCha20 bulk generator (`core/random.d`) replaces the per-8-byte entropy-pool stir
+  (~8 MB/s), XTS expands the AES key schedule once per sector instead of once per block, and
+  `veracrypt_crypto.d` / `veracrypt_impl.d` / `random.d` compile at -O2.  Measured (QEMU, 1 vCPU,
+  2 GiB target): a Full-disk install went from ~9 min with 40 s desktop stalls to ~2.5 min with the
+  compositor consuming 96 % of injected mouse events at its idle frame rate.
+
+
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:
 **None** · **Full-disk encryption** (single password) · **Hidden OS (plausible deniability)**. Picking

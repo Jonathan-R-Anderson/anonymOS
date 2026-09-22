@@ -37,7 +37,7 @@ VC_CFLAGS := -O2 -DNDEBUG -DCRYPTOPP_DISABLE_ASM -fPIC -I$(VCSRC) -I$(VCSRC)/Cry
 
 RUN := $(BUILD_RESOURCE_RUN)
 
-.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk mkinstall decrypt-boot-check clean
+.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk mkinstall decrypt-boot-check fat-boot-check clean
 all: crypto
 
 $(BLD) $(SYSROOT)/lib:
@@ -131,6 +131,30 @@ decrypt-boot-check: mkinstall
 	@python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img hidden-password HIDDEN
 	@python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img not-the-password REJECT
 
+# §E6 — the FAT-VOLUME payload chain (what an encrypted EpinAnonymOS install boots through):
+# a 48 MiB FAT32 volume carrying \EFI\BOOT\BOOTX64.EFI = stage2.efi plus the /anos.key placeholder,
+# wrapped as a kind-1 ANOSBOOT payload for BOTH the decoy and the hidden region.  In OVMF the
+# loader must decrypt the volume into RAM, publish it as a block device, get the firmware's FAT
+# driver to mount it, hand the key to /anos.key and chain-load BOOTX64.EFI from it -- so "STAGE2
+# RUNNING" can only appear if the whole RAM-volume path worked, on either password.
+fat-boot-check: mkinstall
+	@echo "=== §E6 FAT-volume decrypt-and-boot (RAM volume -> firmware FAT -> BOOTX64.EFI) ==="
+	@dd if=/dev/zero of=$(BLD)/fatvol.img bs=1M count=48 status=none
+	@mformat -i $(BLD)/fatvol.img -F ::
+	@mmd -i $(BLD)/fatvol.img ::/EFI ::/EFI/BOOT
+	@mcopy -i $(BLD)/fatvol.img $(BLD)/stage2.efi ::/EFI/BOOT/BOOTX64.EFI
+	@python3 -c "import sys; sys.stdout.buffer.write(b'ANOSKEY-PLACEHOLDER-v1-' + b'\0'*489)" > $(BLD)/anos.key
+	@mcopy -i $(BLD)/fatvol.img $(BLD)/anos.key ::/anos.key
+	@set -e; img=$(BLD)/install.img; \
+	  sL=$$(sgdisk -i 2 $$img | awk '/First sector/{print $$3}'); \
+	  sS=$$(sgdisk -i 2 $$img | awk '/Partition size/{print $$3}'); \
+	  oL=$$(sgdisk -i 3 $$img | awk '/First sector/{print $$3}'); \
+	  oS=$$(sgdisk -i 3 $$img | awk '/Partition size/{print $$3}'); \
+	  $(BLD)/vc-mkinstall $$img $(BLD)/fatvol.img decoy-password $$sL $$sS $$oL $$oS fat
+	@BOOT_MARKER="STAGE2 RUNNING" VOLUME_MARKERS=1 python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img decoy-password  DECOY
+	@BOOT_MARKER="STAGE2 RUNNING" VOLUME_MARKERS=1 python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img hidden-password HIDDEN
+	@python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img not-the-password REJECT
+
 # §E5 — validate the pre-boot authenticator (decoy vs hidden routing) on a disk image.
 preboot-check: crypto | $(BLD)
 	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
@@ -144,16 +168,19 @@ EFI      := $(SELF)/efi
 EFI_CFLAGS := -target x86_64-unknown-windows -ffreestanding -fshort-wchar -mno-red-zone -O2 -I$(EFI)
 efi: | $(BLD)
 	clang $(EFI_CFLAGS) -c $(EFI)/efi_vc.c   -o $(BLD)/efi_vc_pe.o
+	# §E6: AES-NI XTS for the whole-volume decrypt (a 512 MiB EpinAnonymOS boot volume; the
+	# software AES is fine for a header + a UKI, hopeless for that).  Runtime-dispatched on CPUID.
+	clang $(EFI_CFLAGS) -maes -msse2 -c $(EFI)/efi_aesni.c -o $(BLD)/efi_aesni_pe.o
 	# Production loader — deniable: no banner, no decoy/hidden reveal, generic prompt. This is the
 	# binary staged into the installer ISO.
 	clang $(EFI_CFLAGS) -c $(EFI)/efi_main.c -o $(BLD)/efi_main.o
 	lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
-	    $(BLD)/efi_main.o $(BLD)/efi_vc_pe.o -out:$(BLD)/preboot.efi
+	    $(BLD)/efi_main.o $(BLD)/efi_vc_pe.o $(BLD)/efi_aesni_pe.o -out:$(BLD)/preboot.efi
 	# Proof loader — same code with -DPREBOOT_PROOF, which re-enables the §E5 routing/diagnostic
 	# markers (BOOTING DECOY OS, etc.) that decrypt-boot-test.py greps for. NOT shipped.
 	clang $(EFI_CFLAGS) -DPREBOOT_PROOF -c $(EFI)/efi_main.c -o $(BLD)/efi_main_proof.o
 	lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
-	    $(BLD)/efi_main_proof.o $(BLD)/efi_vc_pe.o -out:$(BLD)/preboot-proof.efi
+	    $(BLD)/efi_main_proof.o $(BLD)/efi_vc_pe.o $(BLD)/efi_aesni_pe.o -out:$(BLD)/preboot-proof.efi
 	clang $(EFI_CFLAGS) -c $(EFI)/efi_stage2.c -o $(BLD)/efi_stage2.o
 	lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
 	    $(BLD)/efi_stage2.o -out:$(BLD)/stage2.efi

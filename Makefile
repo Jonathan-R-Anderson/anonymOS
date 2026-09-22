@@ -1054,6 +1054,29 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 	else \
 		echo "Skipped /epin-ssh.conf (SSH=0: no remote-access server in this image)"; \
 	fi
+	@# LIVE-MEDIA POLICY (kernel_main.d diagnosticsEnabled / liveServicesSuppressed): a live boot
+	@# runs the desktop shell + the installer and NOTHING else.  Two opt-in markers restore what
+	@# used to run unconditionally:
+	@#   LIVE_DIAG=1  /epin-live-diag.conf  the ROADMAP proofs (4.1 identity spawns = wl-calc/wl-clocks
+	@#                                     on top of the installer, inotify/dbus/proc/syscall-audit
+	@#                                     self-tests, epoll dumps) + verbose per-event serial logging.
+	@#                                     tests/disposable-identity.txt, image-update.txt and
+	@#                                     immutable-rootless.txt assert those lines: build with it.
+	@#   LIVE_NET=1   /epin-live-net.conf   lkl-boot / wpa / udhcpc / NTP / sshd / dbus on live media.
+	@if [ "$(LIVE_DIAG)" = "1" ]; then \
+		printf 'epin live diagnostics marker (ROADMAP proofs + verbose serial on every boot)\n' > cd/epin-live-diag.conf; \
+		printf '    module_path: boot():/epin-live-diag.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /epin-live-diag.conf (LIVE_DIAG=1: ROADMAP proofs + verbose serial diagnostics ON)"; \
+	else \
+		echo "Skipped /epin-live-diag.conf (default: live media runs only the installer; LIVE_DIAG=1 for the proofs)"; \
+	fi
+	@if [ "$(LIVE_NET)" = "1" ]; then \
+		printf 'epin live network marker (lkl/wpa/udhcpc/ntp/sshd/dbus on live media)\n' > cd/epin-live-net.conf; \
+		printf '    module_path: boot():/epin-live-net.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /epin-live-net.conf (LIVE_NET=1: network stack + services ON on live media)"; \
+	else \
+		echo "Skipped /epin-live-net.conf (default: no network stack/services on live media; LIVE_NET=1 to enable)"; \
+	fi
 	cp $(WIFITERM_BIN) cd/hos-wifiterm
 	printf '    module_path: boot():/hos-wifiterm\n' >> cd/boot/limine/limine.conf
 	@# WiFi/DHCP diagnostic script, baked in at /wifi-diag.sh — run `sh /wifi-diag.sh` on the
@@ -1458,6 +1481,13 @@ stage-iso-tree: kernel.elf $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WL
 		printf 'hiddeninstall-test' > cd/hiddeninstall-test; \
 		printf '\n    module_path: boot():/hiddeninstall-test\n' >> cd/boot/limine/limine.conf; \
 		echo "Included DELAYED HIDDEN autoinstall trigger (TEST IMAGE -- repros the GUI install after the desktop is up)"; \
+	fi
+	@# INSTALLER §E6: headless FULL-DISK install (password "disk-password") 60 s after boot, for the
+	@# end-to-end proof (scripts/encrypted-boot-test.py boots the result under OVMF).  Test image only.
+	@if [ "$(AUTOINSTALL_FDE)" = "1" ]; then \
+		printf 'autoinstall-fde' > cd/autoinstall-fde; \
+		printf '\n    module_path: boot():/autoinstall-fde\n' >> cd/boot/limine/limine.conf; \
+		echo "Included FULL-DISK autoinstall trigger (TEST IMAGE -- encrypts the target disk with 'disk-password')"; \
 	fi
 
 	python3 scripts/build-boot-integrity-manifest.py cd $(BOOT_INTEGRITY_MANIFEST) \

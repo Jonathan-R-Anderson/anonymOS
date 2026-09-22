@@ -25,8 +25,19 @@ ubyte inb(ushort port) {
 // above (→ /run/klog → the Logs app + the USB stick), so a dropped serial copy loses nothing.
 __gshared bool g_serialDead      = false;
 __gshared uint g_serialCapStreak = 0;
+// Serial is SYNCHRONOUS and runs with the BKL held, so every byte written after the desktop is up
+// is a stall the compositor and the installer feel.  Two switches keep the steady state quiet:
+//   g_diagVerbose   -- set from /epin-live-diag.conf at boot; the chatty per-event loggers (futex
+//                      wakes, every open(2), input latency, the *.log rtfile UART mirror) check it
+//                      and stay silent otherwise.  The RAM ring below still gets everything.
+//   g_klogRingOnly  -- a SCOPED flag: while true, kchar() feeds the ring but skips the UART.  The
+//                      periodic profiling dumps set it around their multi-line blocks so the data
+//                      stays readable in /run/klog (the Logs app) without costing UART time.
+__gshared bool g_diagVerbose  = false;
+__gshared bool g_klogRingOnly = false;
 void kchar(char c) {
     klogRingPut(c);
+    if (g_klogRingOnly) return;                      // ring-only scope (see above)
     if (g_serialDead) return;                        // UART proven stuck/unread → never spin here again
     uint spin = 0;
     while ((inb(0x3F8 + 5) & 0x20) == 0) {

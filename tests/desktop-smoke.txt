@@ -75,3 +75,24 @@ require  [bar] wl-layer-bar launched
 # the GUI installer at ~5% for an unknown length of time before removeRegion's swap-remove was
 # found to orphan a MemRegion per unmap.  Never let it recur unnoticed.
 forbid   [objmgr] OBJECT TABLE EXHAUSTED
+
+# ── LIVE-MEDIA POLICY: the installer is the only job ─────────────────────────────────────────
+# A default install image runs the desktop shell + the installer and nothing else.  The 4.1
+# identity proof used to spawn wl-calc + wl-clocks + xid-test on top of the wizard 30 s in (the
+# "clock and calculator that keep popping up"), and dbus/sshd/lkl/wpa/udhcpc + six epoll dumps ran
+# behind it, each one more work for a cooperative scheduler and a software compositor.  They are
+# opt-in now (LIVE_DIAG=1 / LIVE_NET=1); this suite boots the DEFAULT image and must see none.
+require  [live] install media: diagnostics off; network/services OFF
+forbid   [4.1] spawning /wl-calc
+forbid   [4.1] spawning /wl-clocks
+forbid   [epdump] #
+forbid   hos-dbus-test launched
+forbid   hos-dbus-launch launched
+forbid   hos-sshd-launch launched
+forbid   launching inotify-test
+forbid   [audit] missing:
+# The serial-noise fixes: the [g5] window-set line is change-triggered again (it was one line per
+# present because its `static` change-detect locals were TLS in a kernel with no TLS), and the
+# 5-second profiler dump is ring-only -- only its heartbeat line stays on serial.
+atmost   40  [g5] windows=
+forbid   [cmpduty]

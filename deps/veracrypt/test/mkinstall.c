@@ -46,14 +46,17 @@ static void put_header(FILE *d, long lba, const char *pw, uint64_t hiddenSz, uin
  *   region_lba+1 .. +nsec   : the PE payload,  units 1.. .
  * Every sector is XTS-encrypted with the volume master key `mk` (data=mk[0..32), tweak=mk[32..64)).
  * Unit numbers and key halves MUST match deps/veracrypt/efi/efi_main.c:decrypt_and_boot(). */
-static long write_bootloader(FILE *d, long region_lba, long region_cap_sec, const uint8_t *payload, long plen, const uint8_t *mk){
+static long write_bootloader(FILE *d, long region_lba, long region_cap_sec, const uint8_t *payload, long plen, const uint8_t *mk, uint64_t kind){
     long psec = (plen + SEC - 1)/SEC;
     if (1 + psec > region_cap_sec){ fprintf(stderr,"payload too big for region (%ld > %ld sectors)\n", 1+psec, region_cap_sec); exit(2); }
     uint8_t sec[SEC];
-    /* descriptor at unit 0 */
+    /* descriptor at unit 0.  v3: [24..32) = payload kind -- 0 a PE image (LoadImage'd directly),
+     * 1 a whole FAT32 boot volume (published as a RAM block device; its \EFI\BOOT\BOOTX64.EFI is
+     * chain-loaded).  Older readers ignore the field; older writers leave it zero. */
     memset(sec,0,SEC);
     memcpy(sec, "ANOSBOOT", 8);
     put_le64(sec+8, (uint64_t)plen);
+    put_le64(sec+24, kind);
     vc_xts_encrypt(sec, SEC, 0, mk, mk+32);
     fseek(d, region_lba*SEC, SEEK_SET); fwrite(sec,1,SEC,d);
     /* payload at units 1.. */
@@ -91,6 +94,11 @@ int main(int argc, char **argv){
      * it raw-XTS at sysLBA+1 for the DECOY and lay only the headers for outer/hidden (enough for
      * the loader's layout probe) — this proves the loader→UKI→init-crypt→dm-crypt→squashfs chain. */
     int wrapped = (argc >= 9 && strcmp(argv[8], "wrapped") == 0);
+    /* "fat" mode: <payload.efi> is a FAT32 VOLUME IMAGE (kind 1) -- the shape of an encrypted
+     * EpinAnonymOS install.  Written with a v3 descriptor for BOTH the decoy and the hidden
+     * region, so the loader's RAM-volume chain is proven on either route. */
+    int fat = (argc >= 9 && strcmp(argv[8], "fat") == 0);
+    const uint64_t kind = fat ? 1 : 0;
     const char *disk=argv[1], *payloadPath=argv[2], *pw=argv[3];
     long sysLBA=atol(argv[4]), sysSec=atol(argv[5]), outerLBA=atol(argv[6]), outerSec=atol(argv[7]);
 
@@ -114,7 +122,7 @@ int main(int argc, char **argv){
     uint8_t mkD[256];
     put_header(d, sysLBA, pw, 0, (uint64_t)sysSec*SEC, mkD);
     long dsec = wrapped ? write_wrapped   (d, sysLBA+1, sysSec-1, payload, plen, mkD)
-                        : write_bootloader(d, sysLBA+1, sysSec-1, payload, plen, mkD);
+                        : write_bootloader(d, sysLBA+1, sysSec-1, payload, plen, mkD, kind);
 
     /* 3. outer + hidden headers overlaid on the random outer partition, then the hidden
      *    bootloader XTS-encrypted with the HIDDEN master key at hidden_lba+1 (= outerLBA+129),
@@ -122,8 +130,8 @@ int main(int argc, char **argv){
      *    just needs them for its layout probe; the decoy chain is what this test exercises.) */
     put_header(d, outerLBA, "outer-password", (uint64_t)256<<20, (uint64_t)outerSec*SEC, 0);
     uint8_t mkH[256];
-    put_header(d, outerLBA + 128, "hidden-password", 0, (uint64_t)256<<20, mkH);
-    long hsec = wrapped ? 0 : write_bootloader(d, outerLBA+129, outerSec-129, payload, plen, mkH);
+    put_header(d, outerLBA + 128, "hidden-password", 0, (uint64_t)(outerSec-129)*SEC, mkH);
+    long hsec = wrapped ? 0 : write_bootloader(d, outerLBA+129, outerSec-129, payload, plen, mkH, kind);
 
     fclose(d); fclose(g_urand); free(payload);
     printf("[mkinstall] system(%ld sec) + outer(%ld sec) filled with ciphertext/random; headers written; "

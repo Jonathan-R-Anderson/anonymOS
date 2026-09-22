@@ -6,7 +6,7 @@
 /* §G2.2 typo tolerance — fuzz the INPUT (the bounded model from deps/decoy/g2/dm.c); the
  * VeraCrypt header is the exact verifier. §E7/F4: cap at + pad to a fixed budget so the
  * candidate count (hence the auth time) is length-independent. Mirrors efi_vc.c. */
-#define VC_CAND_BUDGET 48
+#define VC_CAND_BUDGET 4    /* mirrors efi_vc.c: 4 x 2 headers x 200000 PBKDF2 iterations per unlock */
 static char swapcase(char c){ if(c>='a'&&c<='z')return c-32; if(c>='A'&&c<='Z')return c+32; return c; }
 static int typo_candidates(const char *in, char out[][128], int max){
     int B = max < VC_CAND_BUDGET ? max : VC_CAND_BUDGET;

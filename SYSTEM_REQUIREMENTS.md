@@ -13,11 +13,17 @@ time, so the **install VM needs a bit more RAM than the installed OS ever does.*
 cost — after install, the decoy lives encrypted on disk and boots by loading only a ~14 MB kernel
 image plus on-demand `dm-crypt` reads.
 
+> **Encrypted installs boot from an 8 MiB preboot-only ESP** (`esp-preboot-image` — just
+> `preboot.efi`).  The 512 MiB `esp-hidden-image`, which bundled the whole plaintext boot tree, is no
+> longer built or staged, so the live installer's boot modules total ~1.9 GB instead of ~2.4 GB and the
+> install ISO is 1.9 GB.  A 4 GB VM boots the installer (verified headless: `MEM=4096`); 6 GB stays
+> the comfortable recommendation.
+
 ### Install VM (booting `hos-install.iso`)
 
 | Resource | Minimum | Recommended | Why |
 | --- | --- | --- | --- |
-| RAM | 6 GB | 8 GB | The bootloader loads the ~1 GB compressed decoy image plus the anonymOS payload into memory. |
+| RAM | 4 GB | 6 GB | The bootloader loads the ~1 GB compressed decoy image plus the anonymOS payload (~1.9 GB of boot modules) into memory. |
 | Disk | 20 GB | 40 GB+ | Holds the boot ESP + the decoy system + the outer volume (which hides the hidden OS and is random-filled for deniability). |
 | Firmware | **UEFI** | UEFI | The ISO is UEFI-only. There is no legacy-BIOS boot path. |
 | CPU | x2APIC on, **4 vCPU** | x2APIC on, 4 vCPU | The kernel **requires x2APIC**; without it the boot faults immediately. AES-NI strongly recommended (the disk is XTS-encrypted). **4 vCPU, not 2** — the desktop is software-rendered (llvmpipe) and the compositor keeps a core busy; with only 2 cores it starves input handling and the installer's text fields become unresponsive while typing. |

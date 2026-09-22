@@ -12,10 +12,12 @@
 #define VC_HEADER_SIZE          512    /* TC_BOOT_ENCRYPTION_VOLUME_HEADER_SIZE (system enc.) */
 #define VC_SALT_SIZE            64
 #define VC_MASTER_KEYDATA_SIZE  256
-/* PBKDF2 iterations. Kept modest so the harness is snappy; production uses VeraCrypt's
- * PIM-based counts (e.g. 200000 system / 500000 non-system for SHA-512). The format +
- * crypto pipeline is what's validated here, and create/open agree on this value. */
-#define VC_HEADER_ITERATIONS    1000
+/* PBKDF2 iterations: VeraCrypt's SHA-512 system-encryption default.  The harness ran at 1000
+ * while the format was being validated; the header is the sole gate to the master key, so this
+ * count is the offline attack cost and must be the production value everywhere.  Mirrored in
+ * deps/veracrypt/efi/efi_vc.h and src/kernel/d/drivers/veracrypt_impl.d (which WRITES the
+ * headers): create/open must agree or nothing opens. */
+#define VC_HEADER_ITERATIONS    200000
 
 /* Build a 512-byte VeraCrypt header. salt[64] is plaintext; masterKey[256] is the volume
  * key area; hiddenVolSize != 0 marks this as the OUTER header of a hidden pair. */

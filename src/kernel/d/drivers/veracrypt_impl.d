@@ -1,15 +1,28 @@
 module drivers.veracrypt_impl;
 
 import drivers.veracrypt;
-import core.io : klog, klog_hex;
+import core.io : klog, klog_hex, klog_dec;
 import core.install_cap : InstallWriteCap, gatedDiskWrite;   // for vcRandomFillRange (module scope)
 
 extern(C) void sha512_hash(const(ubyte)* data, size_t len, ubyte* output) @nogc nothrow;
 extern(C) void aes_encrypt(ubyte* data, const(ubyte)* key) @nogc nothrow;
+extern(C) void aes_decrypt(ubyte* data, const(ubyte)* key) @nogc nothrow;   // §D: objstore read path
+extern(C) void aes256_key_schedule(const(ubyte)* key, ubyte* rk240) @nogc nothrow;
+extern(C) void aes_encrypt_rk(ubyte* data, const(ubyte)* rk) @nogc nothrow;
+extern(C) void aes_decrypt_rk(ubyte* data, const(ubyte)* rk) @nogc nothrow;
 
-// PBKDF2 header-KDF iterations — MUST match deps/veracrypt/vcheader.h VC_HEADER_ITERATIONS
-// so a header built here opens with the host reference (and vice versa).  §E2b.
-enum uint VC_HEADER_ITERATIONS = 1000;
+// PBKDF2-HMAC-SHA512 header-KDF iterations — MUST match deps/veracrypt/vcheader.h
+// VC_HEADER_ITERATIONS (mirrored in deps/veracrypt/efi/efi_vc.h and preboot_auth.c) so a
+// header built here opens with the host/loader reference and vice versa.  §E2b.
+//
+// design-review BLOCKER 2: the VeraCrypt header sits at the known offset sysFirst and is the
+// SOLE gate to the master key, so the whole FDE claim reduces to this PBKDF2 over the user's
+// password.  1000 iterations was ~200x cheaper to brute-force offline than real VeraCrypt system
+// encryption.  Raised to 200000 (VeraCrypt's system-partition strength).  LOCKSTEP CONTRACT: the
+// LOADER agent must set the same value in vcheader.{c,h}, efi_vc.{c,h} and preboot_auth.c, and cut
+// the preboot typo-candidate budget (VC_CAND_BUDGET) so the prompt stays responsive
+// (budget x 2 headers x 200000 PBKDF2 per attempt).  A mismatch fails the §E2b cross-check.
+enum uint VC_HEADER_ITERATIONS = 200000;
 
 // Big-endian field writers (VeraCrypt header fields are big-endian).
 @nogc nothrow private void putBE16(ubyte* p, ushort v) { p[0]=cast(ubyte)(v>>8); p[1]=cast(ubyte)v; }
@@ -37,6 +50,8 @@ void xts_encrypt_sector(ubyte* data, size_t len, ulong sectorNum, ubyte* key1, u
     
     // Encrypt tweak with Key2
     aes_encrypt(tweak.ptr, key2);
+    ubyte[240] rk = void;                  // data-key schedule, expanded ONCE per sector
+    aes256_key_schedule(key1, rk.ptr);
     
     for (size_t i = 0; i < len; i += 16)
     {
@@ -44,7 +59,7 @@ void xts_encrypt_sector(ubyte* data, size_t len, ulong sectorNum, ubyte* key1, u
         for (int j = 0; j < 16; j++) data[i+j] ^= tweak[j];
         
         // 2. Encrypt with Key1
-        aes_encrypt(data + i, key1);
+        aes_encrypt_rk(data + i, rk.ptr);
         
         // 3. Xor data with tweak again
         for (int j = 0; j < 16; j++) data[i+j] ^= tweak[j];
@@ -66,6 +81,75 @@ void xts_encrypt_sector(ubyte* data, size_t len, ulong sectorNum, ubyte* key1, u
             tweak[0] ^= 0x87;
         }
     }
+}
+
+// XTS-AES DECRYPT — the exact inverse of xts_encrypt_sector, and byte-for-byte
+// identical to the pre-boot loader's xts_dec (deps/veracrypt/efi/efi_vc.c:114-117):
+// same 64-bit little-endian tweak seeded from sectorNum, same 0x87 GF(2^128)
+// reduction, tweak encrypted with key2 (aes_encrypt), data blocks run through the
+// AES inverse (aes_decrypt).  §D uses this in objstore stRead; the KAT in
+// vcCryptoKatXts() proves encrypt→decrypt round-trips.
+@nogc nothrow
+void xts_decrypt_sector(ubyte* data, size_t len, ulong sectorNum, ubyte* key1, ubyte* key2)
+{
+    ubyte[16] tweak;
+    for (int i = 0; i < 16; i++) tweak[i] = 0;
+    for (int i = 0; i < 8; i++) tweak[i] = cast(ubyte)((sectorNum >> (i * 8)) & 0xFF);
+
+    // Tweak is ENCRYPTED with key2 (same as the encrypt path — the tweak schedule is
+    // identical for both directions; only the data cipher inverts).
+    aes_encrypt(tweak.ptr, key2);
+    ubyte[240] rk = void;
+    aes256_key_schedule(key1, rk.ptr);
+
+    for (size_t i = 0; i < len; i += 16)
+    {
+        for (int j = 0; j < 16; j++) data[i+j] ^= tweak[j];
+        aes_decrypt_rk(data + i, rk.ptr);
+        for (int j = 0; j < 16; j++) data[i+j] ^= tweak[j];
+
+        ubyte carry = 0;
+        for (int j = 0; j < 16; j++)
+        {
+            ubyte nextCarry = (tweak[j] >> 7) & 1;
+            tweak[j] = cast(ubyte)((tweak[j] << 1) | carry);
+            carry = nextCarry;
+        }
+        if (carry) tweak[0] ^= 0x87;
+    }
+}
+
+// §E: boot-time KAT for the XTS pair.  Proves (1) encrypt→decrypt round-trips over a
+// full 512-byte sector at a non-zero data unit, and (2) the kernel's XTS decrypt of a
+// FIXED known vector matches — a byte mismatch between this and the loader's XTS would
+// silently corrupt the encrypted object store, so this must print PASS at boot.
+@nogc nothrow
+public void vcCryptoKatXts()
+{
+    // key1/key2 (32 bytes each) — distinct, non-trivial.
+    ubyte[32] k1 = void, k2 = void;
+    foreach (i; 0 .. 32) { k1[i] = cast(ubyte)(0x10 + i); k2[i] = cast(ubyte)(0xA0 + i); }
+
+    // A recognisable 512-byte plaintext.
+    ubyte[512] pt = void, buf = void;
+    foreach (i; 0 .. 512) pt[i] = cast(ubyte)(i * 7 + 3);
+    foreach (i; 0 .. 512) buf[i] = pt[i];
+
+    enum ulong UNIT = 0x1234_5678UL;         // a non-zero absolute-LBA-style data unit
+    xts_encrypt_sector(buf.ptr, 512, UNIT, k1.ptr, k2.ptr);
+
+    // (2) the ciphertext must NOT equal the plaintext (encryption did something).
+    bool changed = false;
+    foreach (i; 0 .. 512) if (buf[i] != pt[i]) { changed = true; break; }
+
+    xts_decrypt_sector(buf.ptr, 512, UNIT, k1.ptr, k2.ptr);
+
+    // (1) round-trip: decrypt(encrypt(pt)) == pt.
+    bool roundtrip = true;
+    foreach (i; 0 .. 512) if (buf[i] != pt[i]) { roundtrip = false; break; }
+
+    if (changed && roundtrip) klog("[vc-crypto] XTS KAT PASS (AES-256 XTS encrypt/decrypt round-trip)\n");
+    else                       klog("[vc-crypto] XTS KAT FAIL\n");
 }
 
 // HMAC-SHA512
@@ -567,12 +651,17 @@ private enum ubyte INST_PHASE_HIDDEN_IMAGE = 4;
 private enum ubyte INST_PHASE_HEADERS = 5;
 private enum ubyte INST_PHASE_SLOTB = 6;     // UPDATE U1-B: stream esp-image → slot-B
 private enum ubyte INST_PHASE_BOOTESP = 7;   // UPDATE U1-B: stream esp-boot (arbiter) → ESP-boot
+private enum ubyte INST_PHASE_FDE_IMAGE = 8;  // §E6 Full disk: descriptor v3 + esp-image → sys partition
 private enum ulong INST_HIDDEN_HDR_OFFSET = 128; // VeraCrypt hidden header, 64 KiB into outer volume.
 __gshared char[INST_CONFIG_MAX] g_instConfig;
 __gshared uint g_instConfigLen;
 __gshared bool g_instConfigPresent;
 __gshared bool g_instConfigHidden;
+__gshared bool g_instConfigFde;          // §D: encryption == "Full disk"
+__gshared char[INST_SECRET_MAX] g_instDiskPassword;   // §D: FDE disk password (RAM only)
+__gshared uint g_instDiskPasswordLen;
 __gshared bool g_instHiddenMode;
+__gshared bool g_instFdeMode;                 // §E6: Full-disk install in flight (3-partition layout, no decoy)
 __gshared ubyte g_instPhase;
 __gshared ulong g_instProgressDone;
 __gshared char[INST_SECRET_MAX] g_instHiddenPassword;
@@ -612,16 +701,20 @@ private void instClearTransientPasswords() {
     foreach (i; 0 .. g_instHiddenPassword.length) g_instHiddenPassword[i] = 0;
     foreach (i; 0 .. g_instOuterPassword.length) g_instOuterPassword[i] = 0;
     foreach (i; 0 .. g_instDecoyBootPassword.length) g_instDecoyBootPassword[i] = 0;
+    foreach (i; 0 .. g_instDiskPassword.length) g_instDiskPassword[i] = 0;
     g_instHiddenPasswordLen = 0;
     g_instOuterPasswordLen = 0;
     g_instDecoyBootPasswordLen = 0;
+    g_instDiskPasswordLen = 0;
 }
 
 @nogc nothrow
 private void instClearHiddenInstallState() {
+    instUnpublishJob();
     foreach (i; 0 .. g_instMkD.length) { g_instMkD[i] = 0; g_instMkO[i] = 0; g_instMkH[i] = 0; }
     foreach (i; 0 .. g_instSaltD.length) { g_instSaltD[i] = 0; g_instSaltO[i] = 0; g_instSaltH[i] = 0; }
     g_instHiddenMode = false;
+    g_instFdeMode = false;
     g_instPhase = INST_PHASE_ESP;
     g_instProgressDone = 0;
     g_instSysFirst = 0; g_instSysSectors = 0;
@@ -767,6 +860,7 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
     char[129] hash; uint hashLen;
 
     g_instConfigHidden = false;
+    g_instConfigFde = false;
     instClearTransientPasswords();
     g_instConfigLen = 0;
     instCfgAppend("{\n");
@@ -806,32 +900,61 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
         instCfgAppendJsonString("drivers".ptr, v.ptr, vl, true);
     }
 
-    instJsonGetString(raw, len, "userPassword", pw[], pwLen);
-    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
-    instCfgAppendJsonString("userPasswordSha512".ptr, hash.ptr, hashLen, true);
+    // Encryption mode is detected BEFORE the password fields so the scheme-password hashes can be
+    // withheld on encrypted installs.  design-review RISK: install.json lives inside the (encrypted)
+    // esp-image, but for a Hidden/Full-disk install it must NOT enumerate unsalted fast SHA-512 of
+    // every scheme password — that hands an attacker who opens the volume a cheap crack target for
+    // the disk/hidden/outer/decoy-boot passwords.  We keep only non-secret declarative fields plus
+    // the login credential (userPasswordSha512), and capture the scheme passwords into RAM-only
+    // transients that installStep wipes after use.  Never hash the disk password into the JSON.
     instGetOrDefault(raw, len, "encryption", "none".ptr, encryption[], encryptionLen);
     g_instConfigHidden = instSliceEq(encryption.ptr, encryptionLen, "Hidden OS") ||
                          instSliceEq(encryption.ptr, encryptionLen, "hidden");
+    g_instConfigFde = instSliceEq(encryption.ptr, encryptionLen, "Full disk") ||
+                      instSliceEq(encryption.ptr, encryptionLen, "fulldisk") ||
+                      instSliceEq(encryption.ptr, encryptionLen, "full");
+    const bool encrypted = g_instConfigHidden || g_instConfigFde;
+
+    instJsonGetString(raw, len, "userPassword", pw[], pwLen);
+    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+    instCfgAppendJsonString("userPasswordSha512".ptr, hash.ptr, hashLen, true);
     instCfgAppendJsonString("encryption".ptr, encryption.ptr, encryptionLen, true);
+
+    // FDE disk password: from "diskPassword", falling back to "hiddenPassword" for the old installer
+    // (which only emitted the Hidden-OS field names).  RAM only — never hashed into the JSON.
+    if (g_instConfigFde) {
+        instJsonGetString(raw, len, "diskPassword", pw[], pwLen);
+        if (pwLen == 0) instJsonGetString(raw, len, "hiddenPassword", pw[], pwLen);
+        instStoreSecret(pw.ptr, pwLen, g_instDiskPassword[], g_instDiskPasswordLen);
+    }
+
     instJsonGetString(raw, len, "hiddenPassword", pw[], pwLen);
     if (g_instConfigHidden) instStoreSecret(pw.ptr, pwLen, g_instHiddenPassword[], g_instHiddenPasswordLen);
-    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
-    instCfgAppendJsonString("hiddenPasswordSha512".ptr, hash.ptr, hashLen, true);
+    if (!encrypted) {
+        instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+        instCfgAppendJsonString("hiddenPasswordSha512".ptr, hash.ptr, hashLen, true);
+    }
     instJsonGetString(raw, len, "outerPassword", pw[], pwLen);
     if (g_instConfigHidden) instStoreSecret(pw.ptr, pwLen, g_instOuterPassword[], g_instOuterPasswordLen);
-    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
-    instCfgAppendJsonString("outerPasswordSha512".ptr, hash.ptr, hashLen, true);
+    if (!encrypted) {
+        instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+        instCfgAppendJsonString("outerPasswordSha512".ptr, hash.ptr, hashLen, true);
+    }
     instJsonGetString(raw, len, "decoyBootPassword", pw[], pwLen);
     if (g_instConfigHidden) instStoreSecret(pw.ptr, pwLen, g_instDecoyBootPassword[], g_instDecoyBootPasswordLen);
-    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
-    instCfgAppendJsonString("decoyBootPasswordSha512".ptr, hash.ptr, hashLen, true);
+    if (!encrypted) {
+        instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+        instCfgAppendJsonString("decoyBootPasswordSha512".ptr, hash.ptr, hashLen, true);
+    }
     instGetOrDefault(raw, len, "decoyUser", "decoy".ptr, decoyUser[], decoyUserLen);
     instCfgAppendJsonString("decoyUser".ptr, decoyUser.ptr, decoyUserLen, true);
     instGetOrDefault(raw, len, "decoyFullName", "Decoy User".ptr, decoyFullName[], decoyFullNameLen);
     instCfgAppendJsonString("decoyFullName".ptr, decoyFullName.ptr, decoyFullNameLen, true);
-    instJsonGetString(raw, len, "decoyPassword", pw[], pwLen);
-    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
-    instCfgAppendJsonString("decoyPasswordSha512".ptr, hash.ptr, hashLen, true);
+    if (!encrypted) {
+        instJsonGetString(raw, len, "decoyPassword", pw[], pwLen);
+        instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+        instCfgAppendJsonString("decoyPasswordSha512".ptr, hash.ptr, hashLen, true);
+    }
     instGetOrDefault(raw, len, "decoyHostname", "decoy-pc".ptr, decoyHostname[], decoyHostnameLen);
     instCfgAppendJsonString("decoyHostname".ptr, decoyHostname.ptr, decoyHostnameLen, false);
     instCfgAppend("}\n".ptr);
@@ -853,8 +976,12 @@ private bool installCaptureConfig(const(char)* json, size_t len) {
 @nogc nothrow
 private void installEnsureDefaultConfig() {
     if (g_instConfigPresent && g_instConfigLen > 0) return;
-    g_instConfigHidden = false;
-    instClearTransientPasswords();
+    // No install.json was captured: a headless hook (installBeginHiddenTest / installBeginFdeTest)
+    // or a bare `echo install > /config/install.action`.  The hooks set the mode and the passwords
+    // DIRECTLY, so this must not reset them -- it used to, which was harmless only because it ran
+    // after the headers were written; the in-RAM install.json patch now runs it first, and a
+    // reset here turned into "Full disk selected without a disk password" at header time.  The
+    // text below is only the persisted configuration; its "encryption" value follows the mode.
     static immutable string d =
 `{
   "schema": "epin.install.v1",
@@ -886,6 +1013,28 @@ private void installEnsureDefaultConfig() {
     g_instConfig[d.length] = 0;
     g_instConfigLen = cast(uint)d.length;
     g_instConfigPresent = true;
+    // "encryption": "none" -> the real mode ("Hidden OS" / "Full disk" both fit in the slot when
+    // padded: the literal is 4 chars; the replacements are 9, so the buffer is shifted right).
+    if (g_instConfigHidden || g_instConfigFde) {
+        static immutable string key = `"encryption": "none"`;
+        static immutable string hid = `"encryption": "Hidden OS"`;
+        static immutable string fde = `"encryption": "Full disk"`;
+        const string repl = g_instConfigHidden ? hid : fde;
+        size_t at = size_t.max;
+        for (size_t i = 0; i + key.length <= g_instConfigLen; i++) {
+            bool m = true;
+            foreach (j; 0 .. key.length) if (g_instConfig[i + j] != key[j]) { m = false; break; }
+            if (m) { at = i; break; }
+        }
+        if (at != size_t.max && g_instConfigLen + (repl.length - key.length) < INST_CONFIG_MAX - 1) {
+            const size_t grow = repl.length - key.length;
+            // shift the tail right by `grow`, then drop the replacement in
+            for (size_t i = g_instConfigLen; i-- > at + key.length;) g_instConfig[i + grow] = g_instConfig[i];
+            foreach (j; 0 .. repl.length) g_instConfig[at + j] = repl[j];
+            g_instConfigLen += cast(uint)grow;
+            g_instConfig[g_instConfigLen] = 0;
+        }
+    }
 }
 
 @nogc nothrow private ushort instFat16(const(ubyte)* p) {
@@ -934,6 +1083,9 @@ private bool installPersistConfigToEsp() {
     import core.install_cap : gatedDiskWrite;
     enum uint SEC = 512;
     installEnsureDefaultConfig();
+    // §E6: an encrypted install's ESP is the preboot ESP (no install.json); the config was
+    // patched into the in-RAM boot volume before it was streamed (installPatchConfigIntoImage).
+    if (g_instHiddenMode || g_instFdeMode) return true;
     if (g_instEspFirst == 0 || g_instConfigLen == 0) return false;
 
     ubyte[SEC] sec = void;
@@ -1016,6 +1168,301 @@ private bool installPersistConfigToEsp() {
     return true;
 }
 
+// §E6: patch /install.json into the IN-MEMORY esp-image (the Limine boot module is plain RAM
+// through the HHDM), so an encrypted install carries its configuration INSIDE the encrypted
+// boot volume.  Same FAT32 walk as installPersistConfigToEsp, over a byte buffer instead of the
+// disk: the root directory is scanned for the 8.3 entry INSTALL.JSON (the ISO builder creates it
+// as a 32 KiB zero placeholder so no cluster allocation is ever needed), its size field is set
+// and its cluster chain filled.  A plain install keeps the on-disk path.
+@nogc nothrow
+private bool installPatchConfigIntoImage(ubyte* img, ulong imgSize) {
+    enum uint SEC = 512;
+    installEnsureDefaultConfig();
+    if (img is null || imgSize < 65536 || g_instConfigLen == 0) return false;
+    const ubyte* bs = img;
+    const ushort bps = instFat16(bs + 11);
+    const ubyte spc = bs[13];
+    const ushort reserved = instFat16(bs + 14);
+    const ubyte fats = bs[16];
+    uint fatSz = instFat32(bs + 36);
+    if (fatSz == 0) fatSz = instFat16(bs + 22);
+    const uint rootCluster = instFat32(bs + 44);
+    if (bps != SEC || spc == 0 || reserved == 0 || fats == 0 || fatSz == 0 || rootCluster < 2)
+        return false;
+    const ulong totalSectors = imgSize / SEC;
+    const ulong fatFirst = reserved;
+    const ulong dataFirst = reserved + cast(ulong)fats * fatSz;
+    if (dataFirst >= totalSectors) return false;
+
+    // FAT32 next-cluster lookup, in memory
+    bool nextCluster(uint c, out uint nx) @nogc nothrow {
+        const ulong byteOff = fatFirst * SEC + cast(ulong)c * 4;
+        if (byteOff + 4 > imgSize) return false;
+        nx = instFat32(img + byteOff) & 0x0fffffffu;
+        return true;
+    }
+    ulong clusterSector(uint c) @nogc nothrow { return dataFirst + cast(ulong)(c - 2) * spc; }
+
+    uint dirCluster = rootCluster;
+    ulong entryOff = 0;
+    uint fileCluster = 0;
+    bool found = false;
+    uint guard = 0;
+    while (dirCluster >= 2 && dirCluster < 0x0ffffff8u && !found && guard++ < 4096) {
+        const ulong clba = clusterSector(dirCluster);
+        foreach (sIdx; 0 .. spc) {
+            const ulong so = (clba + sIdx) * SEC;
+            if (so + SEC > imgSize) return false;
+            const ubyte* sec = img + so;
+            foreach (off; 0 .. 16) {
+                const size_t o = cast(size_t)off * 32;
+                if (sec[o] == 0x00) break;
+                if (sec[o] == 0xE5 || sec[o + 11] == 0x0F) continue;
+                if (!instShortNameEq(sec + o)) continue;
+                entryOff = so + o;
+                fileCluster = (instFat16(sec + o + 20) << 16) | instFat16(sec + o + 26);
+                found = true;
+                break;
+            }
+            if (found) break;
+        }
+        if (found) break;
+        uint nx;
+        if (!nextCluster(dirCluster, nx)) return false;
+        if (nx == 0 || nx == dirCluster) break;
+        dirCluster = nx;
+    }
+    if (!found || fileCluster < 2) {
+        klog("[install] FAIL: boot volume image has no install.json placeholder\n");
+        return false;
+    }
+    instPutFat32(img + entryOff + 28, g_instConfigLen);
+
+    uint cluster = fileCluster;
+    uint remaining = g_instConfigLen;
+    uint copied = 0;
+    guard = 0;
+    while (cluster >= 2 && cluster < 0x0ffffff8u && remaining > 0 && guard++ < 4096) {
+        const ulong clba = clusterSector(cluster);
+        foreach (sIdx; 0 .. spc) {
+            const ulong so = (clba + sIdx) * SEC;
+            if (so + SEC > imgSize) return false;
+            ubyte* sec = img + so;
+            foreach (i; 0 .. SEC) sec[i] = 0;
+            const uint n = remaining > SEC ? SEC : remaining;
+            foreach (i; 0 .. n) sec[i] = cast(ubyte)g_instConfig[copied + i];
+            copied += n;
+            remaining -= n;
+            if (remaining == 0) break;
+        }
+        if (remaining == 0) break;
+        uint nx;
+        if (!nextCluster(cluster, nx)) return false;
+        if (nx == 0 || nx == cluster) break;
+        cluster = nx;
+    }
+    if (remaining != 0) {
+        klog("[install] FAIL: boot volume install.json placeholder too small\n");
+        return false;
+    }
+    klog("[install] install.json placed in the boot volume image bytes=0x"); klog_hex(g_instConfigLen); klog("\n");
+    return true;
+}
+
+// ── §E6: streaming an encrypted install WITHOUT stalling the desktop ─────────────────────────
+//
+// Every byte of an encrypted install is either CSPRNG output (the random fill) or XTS ciphertext
+// (the payloads), and until now all of it was computed inside the kernel loop with the Big Kernel
+// Lock held, one batch per millisecond: the compositor, the cursor and every app got what was left
+// of each millisecond after ~15-45 ms of crypto.  That is the "cursor barely moves while the OS
+// installs".
+//
+// Now the work is split.  PREPARATION (random generation / encryption) fills 1 MiB staging slots
+// and needs no lock -- it runs on the SECOND CORE when one is up (installApWorkerStep, called from
+// the AP's kernel loop), and on the BSP only as a fallback for single-CPU machines.  WRITING (one
+// DMA per slot) is all the BSP loop does, under an input-aware time budget (kernel_main.d), so the
+// desktop keeps the core while a person is moving the mouse.
+//
+// Cross-CPU protocol (x86-TSO + mfence; the D compiler is kept honest with volatileLoad/Store):
+//   BSP publishes a job under the BKL: parameters, seeded RNG, then g_instJobGen := n (n > 0).
+//   AP: reads gen; claims a FREE slot (state 1); re-checks gen; prepares; state := READY.
+//   BSP: writes READY slots in unit order; state := FREE.
+//   BSP unpublishes: gen := 0, waits until the AP is not inside a prepare, clears every slot.
+import core.random : ChaChaCtx, chacha_seed, chacha_fill, chacha_needs_reseed, chacha_ratchet;
+import core.volatile : volatileLoad, volatileStore;
+import ldc.llvmasm : __asm;
+enum uint INST_STAGE_SECTORS = 2048;                 // 1 MiB per slot
+enum uint INST_STAGE_SLOTS   = 4;
+enum ubyte SLOT_FREE = 0, SLOT_FILLING = 1, SLOT_READY = 2;
+__gshared ubyte[INST_STAGE_SECTORS * 512][INST_STAGE_SLOTS] g_instStageBuf;
+__gshared ulong[INST_STAGE_SLOTS] g_instSlotFirstUnit;
+__gshared uint[INST_STAGE_SLOTS]  g_instSlotSectors;
+__gshared ubyte[INST_STAGE_SLOTS] g_instSlotState;
+__gshared uint   g_instJobGen = 0;                    // 0 = no job
+__gshared uint   g_instJobSeq = 0;
+__gshared ubyte  g_instJobKind = 0;                   // 1 random fill, 2 encrypt image
+__gshared ulong  g_instJobEndUnit = 0;
+__gshared ulong  g_instPrepNext = 0;                  // next unit to prepare (one preparer at a time)
+__gshared ubyte[32] g_instJobK1, g_instJobK2;
+__gshared const(ubyte)* g_instJobSrc = null;
+__gshared ulong  g_instJobImageSize = 0;
+__gshared bool   g_instJobDescriptor = false;         // unit 0 is a synthesized ANOSBOOT descriptor
+__gshared ChaChaCtx g_instRng;
+__gshared ubyte  g_instApWorkerSeen = 0;              // the AP has visited installApWorkerStep
+__gshared ubyte  g_instApPreparing = 0;
+__gshared uint   g_instPrepLock = 0;                  // xchg lock: exactly one preparer at a time
+__gshared ulong  g_instWaitSinceMs = 0;               // BSP: how long it has waited on the AP for a READY slot
+__gshared ulong  g_instApChunks = 0;                  // chunks prepared on the AP (for the DONE line)
+__gshared ulong  g_instBspChunks = 0;                 // ... and on the BSP (fallback)
+
+@nogc nothrow private void instFence() { __asm("mfence", "~{memory}"); }
+// The preparer lock guards g_instPrepNext + the slot claim.  Non-blocking on both sides: a loser
+// simply comes back later.  (The AP can appear mid-install -- it is released after the desktop is
+// up -- so the BSP fallback and the AP must never both believe they own the next unit.)
+@nogc nothrow private bool instPrepTryLock() {
+    uint old = void; uint* p = &g_instPrepLock;
+    asm @nogc nothrow { mov RDX, p; mov EAX, 1; xchg [RDX], EAX; mov old, EAX; }
+    return old == 0;
+}
+@nogc nothrow private void instPrepUnlock() { instFence(); volatileStore(&g_instPrepLock, 0u); }
+
+@nogc nothrow
+private void instUnpublishJob() {
+    volatileStore(&g_instJobGen, 0u);
+    instFence();
+    for (uint spin = 0; spin < 400_000_000u && (volatileLoad(&g_instApPreparing) != 0); ++spin) { __asm("pause", ""); }
+    foreach (i; 0 .. INST_STAGE_SLOTS) volatileStore(&g_instSlotState[i], SLOT_FREE);
+    g_instJobKind = 0; g_instJobEndUnit = 0; g_instPrepNext = 0;
+    g_instJobSrc = null; g_instJobImageSize = 0; g_instJobDescriptor = false;
+    foreach (i; 0 .. 32) { g_instJobK1[i] = 0; g_instJobK2[i] = 0; }
+    instFence();
+}
+
+// BSP, under the BKL.  kind 1 = random fill of `units` sectors; kind 2 = encrypt the image
+// (descriptor + image when `desc`) with k1/k2.
+@nogc nothrow
+private void instPublishJob(ubyte kind, ulong units, const(ubyte)* src, ulong imageSize, bool desc,
+                            const(ubyte)* k1, const(ubyte)* k2) {
+    instUnpublishJob();
+    g_instJobKind = kind;
+    g_instJobEndUnit = units;
+    g_instPrepNext = 0;
+    g_instJobSrc = src; g_instJobImageSize = imageSize; g_instJobDescriptor = desc;
+    foreach (i; 0 .. 32) { g_instJobK1[i] = k1 ? k1[i] : 0; g_instJobK2[i] = k2 ? k2[i] : 0; }
+    chacha_seed(g_instRng);                            // pool access: BSP only
+    instFence();
+    volatileStore(&g_instJobGen, ++g_instJobSeq);
+}
+
+// Prepare the next chunk into `slot`.  Pure computation on the job's own state: no lock, any CPU.
+@nogc nothrow
+private bool installPrepareSlot(uint slot) {
+    enum uint SEC = 512;
+    const ulong next = g_instPrepNext;
+    if (next >= g_instJobEndUnit) return false;
+    const ulong left = g_instJobEndUnit - next;
+    const uint n = cast(uint)(left < INST_STAGE_SECTORS ? left : INST_STAGE_SECTORS);
+    ubyte* buf = g_instStageBuf[slot].ptr;
+    if (g_instJobKind == 1) {
+        if (chacha_needs_reseed(g_instRng)) chacha_ratchet(g_instRng);
+        chacha_fill(g_instRng, buf, cast(ulong)n * SEC);
+    } else {
+        foreach (sIdx; 0 .. n) {
+            ubyte* out_ = buf + cast(size_t)sIdx * SEC;
+            const ulong unit = next + sIdx;
+            if (g_instJobDescriptor && unit == 0) {
+                instBuildAnosbootDescriptor(out_, g_instJobImageSize);
+            } else {
+                const ulong byteOff = (g_instJobDescriptor ? unit - 1 : unit) * SEC;
+                const ulong bytesLeft = g_instJobImageSize > byteOff ? g_instJobImageSize - byteOff : 0;
+                const ulong copyBytes = bytesLeft < SEC ? bytesLeft : SEC;
+                foreach (i; 0 .. cast(size_t)copyBytes) out_[i] = g_instJobSrc[cast(size_t)byteOff + i];
+                foreach (i; cast(size_t)copyBytes .. cast(size_t)SEC) out_[i] = 0;
+            }
+            xts_encrypt_sector(out_, SEC, unit, g_instJobK1.ptr, g_instJobK2.ptr);
+        }
+    }
+    g_instSlotFirstUnit[slot] = next;
+    g_instSlotSectors[slot] = n;
+    g_instPrepNext = next + n;
+    instFence();
+    volatileStore(&g_instSlotState[slot], SLOT_READY);
+    return true;
+}
+
+// The AP's hook: called from its kernel loop (kmain.d apKernelLoopBody) WITHOUT the BKL.  One chunk
+// per call; returns quickly when there is nothing to do.
+public bool installApJobActive() @nogc nothrow { return volatileLoad(&g_instJobGen) != 0; }
+public void installApWorkerStep() @nogc nothrow {
+    volatileStore(&g_instApWorkerSeen, cast(ubyte)1);
+    const uint gen = volatileLoad(&g_instJobGen);
+    if (gen == 0) return;
+    if (!instPrepTryLock()) return;                       // the BSP fallback is mid-prepare
+    volatileStore(&g_instApPreparing, cast(ubyte)1);
+    instFence();
+    if (volatileLoad(&g_instJobGen) != gen) { volatileStore(&g_instApPreparing, cast(ubyte)0); instPrepUnlock(); return; }
+    foreach (i; 0 .. INST_STAGE_SLOTS) {
+        if (volatileLoad(&g_instSlotState[i]) != SLOT_FREE) continue;
+        volatileStore(&g_instSlotState[i], SLOT_FILLING);
+        if (installPrepareSlot(i)) ++g_instApChunks;
+        else volatileStore(&g_instSlotState[i], SLOT_FREE);   // nothing left in this job
+        break;
+    }
+    instFence();
+    volatileStore(&g_instApPreparing, cast(ubyte)0);
+    instPrepUnlock();
+}
+
+// The BSP consumer: write READY slots in unit order; when no AP is preparing, prepare here.
+// `sync` (installBootableToDisk's run-to-completion) never waits on the AP.
+@nogc nothrow
+private bool installStreamCurrentPhase(uint maxSectors, ref uint did) {
+    import core.install_cap : gatedDiskWrite;
+    enum uint SEC = 512;
+    const bool sync = maxSectors == 0xFFFFFFFFu;
+    while (g_instRemaining > 0 && did < maxSectors) {
+        const ulong want = g_instOff / SEC;
+        int slot = -1;
+        foreach (i; 0 .. INST_STAGE_SLOTS)
+            if (volatileLoad(&g_instSlotState[i]) == SLOT_READY && g_instSlotFirstUnit[i] == want) { slot = cast(int)i; break; }
+        if (slot < 0) {
+            // Wait for the AP only while it is actually delivering.  If nothing has become READY
+            // for a while (the AP never ran the hook for this job, or died), the BSP prepares the
+            // chunk itself -- the install must never depend on the second core being alive.
+            import core.ticks : pitMs;
+            const ulong nowMs = pitMs();
+            if (g_instWaitSinceMs == 0) g_instWaitSinceMs = nowMs;
+            const bool apAlive = (volatileLoad(&g_instApWorkerSeen) != 0) && !sync &&
+                                 (nowMs - g_instWaitSinceMs) < 2000;
+            if (apAlive) return true;                     // the AP is filling; come back next pass
+            // Fallback (single CPU, or synchronous run): prepare one chunk here, then write it.
+            int free_ = -1;
+            foreach (i; 0 .. INST_STAGE_SLOTS)
+                if (volatileLoad(&g_instSlotState[i]) == SLOT_FREE) { free_ = cast(int)i; break; }
+            if (free_ < 0) return true;                   // (cannot happen: 4 slots, sequential) — yield
+            if (!instPrepTryLock()) return true;          // an AP just appeared and owns the prepare
+            if (g_instPrepNext != want) g_instPrepNext = want;   // the BSP resumes exactly at the write point
+            volatileStore(&g_instSlotState[free_], SLOT_FILLING);
+            const bool okPrep = installPrepareSlot(cast(uint)free_);
+            instPrepUnlock();
+            if (!okPrep) { volatileStore(&g_instSlotState[free_], SLOT_FREE); return false; }
+            ++g_instBspChunks;
+            slot = free_;
+        }
+        g_instWaitSinceMs = 0;                            // something was ready: the wait clock restarts
+        const uint n = g_instSlotSectors[slot];
+        if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, n, g_instStageBuf[slot].ptr)) return false;
+        g_instLba += n;
+        g_instOff += cast(ulong)n * SEC;
+        g_instRemaining -= n;
+        g_instProgressDone += n;
+        did += n;
+        instFence();
+        volatileStore(&g_instSlotState[slot], SLOT_FREE);
+    }
+    return true;
+}
+
 @nogc nothrow
 private bool installRandomFillCurrentPhase(uint maxSectors, ref uint did) {
     import core.install_cap : gatedDiskWrite;
@@ -1036,30 +1483,59 @@ private bool installRandomFillCurrentPhase(uint maxSectors, ref uint did) {
     return true;
 }
 
+// The EpinAnonymOS payload (Full disk: the sys partition; Hidden OS: the hidden volume) is the
+// raw esp-image FAT32 volume behind a synthesized ANOSBOOT v3 descriptor:
+//   unit 0            "ANOSBOOT" | u64 plen (= esp-image bytes) | u64 rootfs 0 | u64 kind 1
+//   units 1..n        esp-image sector (unit-1)
+// which is exactly what deps/veracrypt/efi/efi_main.c:decrypt_and_boot expects for kind 1 (it
+// decrypts the volume into RAM and chain-loads its BOOTX64.EFI).  The decoy payload (decoy-boot.img)
+// already carries its own descriptor from wrap-decoy-payload.py, so it streams as-is from unit 0.
+@nogc nothrow
+private void instBuildAnosbootDescriptor(ubyte* sec, ulong plen) {
+    foreach (i; 0 .. 512) sec[i] = 0;
+    immutable string MAGIC = "ANOSBOOT";
+    foreach (i; 0 .. 8) sec[i] = cast(ubyte)MAGIC[i];
+    foreach (i; 0 .. 8) sec[8 + i] = cast(ubyte)(plen >> (8 * i));      // payload length
+    /* [16..24) rootfs sectors = 0 (no dm-crypt root: the volume IS the root) */
+    sec[24] = 1;                                                        // [24..32) kind = 1 (FAT volume)
+}
+
 @nogc nothrow
 private bool installEncryptImageCurrentPhase(uint maxSectors, ref uint did) {
     import core.install_cap : gatedDiskWrite;
     enum uint SEC = 512;
     ubyte[32] k1, k2;
+    // Which master key, which source image, and whether unit 0 is a synthesized descriptor:
+    //   DECOY_IMAGE   MkD, decoy-boot.img, already wrapped (units 0.. = file sectors 0..)
+    //   HIDDEN_IMAGE  MkH, esp-image, descriptor + image (unit 0 synthesized, unit u -> sector u-1)
+    //   FDE_IMAGE     MkD, esp-image, descriptor + image
     const bool hiddenPayload = g_instPhase == INST_PHASE_HIDDEN_IMAGE;
+    const bool epinPayload   = hiddenPayload || g_instPhase == INST_PHASE_FDE_IMAGE;
     foreach (i; 0 .. 32) {
         k1[i] = hiddenPayload ? g_instMkH[i] : g_instMkD[i];
         k2[i] = hiddenPayload ? g_instMkH[32 + i] : g_instMkD[32 + i];
     }
+    const(ubyte)* src = epinPayload ? g_instHiddenImageSrc : g_instDecoyImageSrc;
+    const ulong imageSize = epinPayload ? g_instHiddenImageSize : g_instDecoyImageSize;
 
     while (g_instRemaining > 0 && did < maxSectors) {
         uint n = cast(uint)(g_instRemaining > INST_CRYPT_CHUNK ? INST_CRYPT_CHUNK : g_instRemaining);
         if (n > maxSectors - did) n = maxSectors - did;
         if (n == 0) break;
-        foreach (i; 0 .. cast(size_t)n * SEC) g_instCryptBuf[i] = 0;
-        const ulong sector = g_instOff / SEC;
-        const ulong byteOff = sector * SEC;
-        const(ubyte)* src = hiddenPayload ? g_instHiddenImageSrc : g_instDecoyImageSrc;
-        ulong imageSize = hiddenPayload ? g_instHiddenImageSize : g_instDecoyImageSize;
-        ulong bytesLeft = imageSize > byteOff ? imageSize - byteOff : 0;
-        ulong copyBytes = bytesLeft < cast(ulong)n * SEC ? bytesLeft : cast(ulong)n * SEC;
-        foreach (i; 0 .. cast(size_t)copyBytes)
-            g_instCryptBuf[i] = src[cast(size_t)byteOff + i];
+        const ulong sector = g_instOff / SEC;          // first XTS unit of this chunk
+        foreach (sIdx; 0 .. n) {
+            ubyte* out_ = g_instCryptBuf.ptr + cast(size_t)sIdx * SEC;
+            const ulong unit = sector + sIdx;
+            if (epinPayload && unit == 0) {
+                instBuildAnosbootDescriptor(out_, imageSize);
+            } else {
+                const ulong byteOff = (epinPayload ? unit - 1 : unit) * SEC;
+                const ulong bytesLeft = imageSize > byteOff ? imageSize - byteOff : 0;
+                const ulong copyBytes = bytesLeft < SEC ? bytesLeft : SEC;
+                foreach (i; 0 .. cast(size_t)copyBytes) out_[i] = src[cast(size_t)byteOff + i];
+                foreach (i; cast(size_t)copyBytes .. cast(size_t)SEC) out_[i] = 0;
+            }
+        }
         foreach (s; 0 .. n)
             xts_encrypt_sector(g_instCryptBuf.ptr + cast(size_t)s * SEC, SEC, sector + s, k1.ptr, k2.ptr);
         if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, n, g_instCryptBuf.ptr))
@@ -1073,14 +1549,19 @@ private bool installEncryptImageCurrentPhase(uint maxSectors, ref uint did) {
     return true;
 }
 
+// The hidden volume holds the descriptor + the EpinAnonymOS boot volume AND, after them, the
+// hidden system's encrypted object store (core/fde.d hands the kernel that tail as its store
+// bounds).  So it is sized image + the larger of 1 GiB and a quarter of the outer partition, capped
+// to what the outer partition can hold past the hidden header.
 @nogc nothrow
 private ulong installHiddenVolumeBytes() {
     enum uint SEC = 512;
-    ulong minBytes = (g_instHiddenImageSectors + 1) * SEC;
-    ulong hiddenBytes = (256UL << 20);
-    if (hiddenBytes < minBytes) hiddenBytes = minBytes;
-    if (g_instOuterSectors <= INST_HIDDEN_HDR_OFFSET) return 0;
-    const ulong maxBytes = (g_instOuterSectors - INST_HIDDEN_HDR_OFFSET) * SEC;
+    if (g_instOuterSectors <= INST_HIDDEN_HDR_OFFSET + 1) return 0;
+    const ulong outerBytes = g_instOuterSectors * SEC;
+    ulong storeBytes = 1UL << 30;
+    if (outerBytes / 4 > storeBytes) storeBytes = outerBytes / 4;
+    ulong hiddenBytes = (g_instHiddenImageSectors + 1 + 2048) * SEC + storeBytes;   // +1 descriptor, +1 MiB guard
+    const ulong maxBytes = (g_instOuterSectors - INST_HIDDEN_HDR_OFFSET - 1) * SEC;
     if (hiddenBytes > maxBytes) hiddenBytes = maxBytes;
     return hiddenBytes;
 }
@@ -1093,26 +1574,39 @@ private void installEnterHiddenPhase(ubyte phase) {
     case INST_PHASE_SYS_RANDOM:
         g_instLba = g_instSysFirst;
         g_instRemaining = g_instSysSectors;
-        klog("[install] Hidden OS: randomizing encrypted decoy system partition\n");
+        klog(g_instFdeMode ? "[install] Full disk: randomizing the system partition\n"
+                           : "[install] Hidden OS: randomizing encrypted decoy system partition\n");
+        instPublishJob(1, g_instRemaining, null, 0, false, null, null);
         break;
     case INST_PHASE_OUTER_RANDOM:
         g_instLba = g_instOuterFirst;
         g_instRemaining = g_instOuterSectors;
-        klog("[install] Hidden OS: randomizing full outer volume partition\n");
+        klog(g_instFdeMode ? "[install] Full disk: randomizing the outer partition\n"
+                           : "[install] Hidden OS: randomizing full outer volume partition\n");
+        instPublishJob(1, g_instRemaining, null, 0, false, null, null);
         break;
     case INST_PHASE_DECOY_IMAGE:
         g_instLba = g_instSysFirst + 1;
         g_instRemaining = g_instDecoyImageSectors;
         klog("[install] Hidden OS: writing encrypted decoy Linux image\n");
+        instPublishJob(2, g_instRemaining, g_instDecoyImageSrc, g_instDecoyImageSize, false, g_instMkD.ptr, g_instMkD.ptr + 32);
         break;
     case INST_PHASE_HIDDEN_IMAGE:
         g_instLba = g_instOuterFirst + INST_HIDDEN_HDR_OFFSET + 1;
-        g_instRemaining = g_instHiddenImageSectors;
-        klog("[install] Hidden OS: writing encrypted hidden EpinAnonymOS image\n");
+        g_instRemaining = g_instHiddenImageSectors + 1;      // + the ANOSBOOT v3 descriptor
+        klog("[install] Hidden OS: writing encrypted hidden EpinAnonymOS boot volume\n");
+        instPublishJob(2, g_instRemaining, g_instHiddenImageSrc, g_instHiddenImageSize, true, g_instMkH.ptr, g_instMkH.ptr + 32);
+        break;
+    case INST_PHASE_FDE_IMAGE:
+        g_instLba = g_instSysFirst + 1;
+        g_instRemaining = g_instHiddenImageSectors + 1;      // + the ANOSBOOT v3 descriptor
+        klog("[install] Full disk: writing encrypted EpinAnonymOS boot volume\n");
+        instPublishJob(2, g_instRemaining, g_instHiddenImageSrc, g_instHiddenImageSize, true, g_instMkD.ptr, g_instMkD.ptr + 32);
         break;
     case INST_PHASE_HEADERS:
         g_instLba = 0;
         g_instRemaining = 0;
+        instUnpublishJob();
         break;
     case INST_PHASE_ESP:
         break;
@@ -1126,6 +1620,33 @@ private bool installWriteHiddenHeaders() {
     import core.install_cap : gatedDiskWrite;
     enum uint SEC = 512;
 
+    if (g_instFdeMode) {
+        // §E6 Full disk: ONE header, at sysFirst, keyed by the disk password.  The outer partition
+        // stays pure random -- no outer/hidden headers -- so the disk is byte-for-byte the shape
+        // of a Hidden-OS install (same GPT geometry, same random fill, one plaintext preboot ESP).
+        if (g_instHiddenImageSrc is null || g_instHiddenImageSize == 0) {
+            klog("[install] FAIL: Full disk selected but the esp-image boot volume is missing\n");
+            return false;
+        }
+        if (g_instDiskPasswordLen == 0) {
+            klog("[install] FAIL: Full disk selected without a disk password\n");
+            return false;
+        }
+        const ulong sysBytes = g_instSysSectors * SEC;
+        ubyte[512] hdr;
+        create_veracrypt_header(g_instDiskPassword.ptr, g_instDiskPasswordLen,
+                                g_instSaltD.ptr, g_instMkD.ptr, 0, sysBytes, SEC, sysBytes, hdr.ptr);
+        if (!gatedDiskWrite(g_instCap, g_instIdx, g_instSysFirst, 1, hdr.ptr)) {
+            klog("[install] FAIL: writing full-disk system header\n");
+            return false;
+        }
+        foreach (i; 0 .. 512) hdr[i] = 0;
+        g_instProgressDone++;
+        klog("[install] Full disk layout written: boot volume sectors=0x"); klog_hex(g_instHiddenImageSectors + 1);
+        klog(" sys=0x"); klog_hex(g_instSysFirst);
+        klog(" outer=0x"); klog_hex(g_instOuterFirst); klog(" (random)\n");
+        return true;
+    }
     if (!g_instHiddenMode) return true;
     if (g_instDecoyImageSrc is null || g_instDecoyImageSize == 0) {
         klog("[install] FAIL: Hidden OS selected but decoy Linux image module is missing\n");
@@ -1147,6 +1668,7 @@ private bool installWriteHiddenHeaders() {
         klog("[install] FAIL: hidden EpinAnonymOS image is empty\n");
         return false;
     }
+    // (the hidden payload is the descriptor + esp-image, so +1 vs. the raw image size)
     if (g_instOuterSectors <= INST_HIDDEN_HDR_OFFSET + 1) {
         klog("[install] FAIL: outer partition too small for hidden header\n");
         return false;
@@ -1155,7 +1677,7 @@ private bool installWriteHiddenHeaders() {
     const ulong sysBytes = g_instSysSectors * SEC;
     const ulong outerBytes = g_instOuterSectors * SEC;
     const ulong hiddenBytes = installHiddenVolumeBytes();
-    const ulong minHiddenBytes = (g_instHiddenImageSectors + 1) * SEC;
+    const ulong minHiddenBytes = (g_instHiddenImageSectors + 2) * SEC;
     if (hiddenBytes < minHiddenBytes) {
         klog("[install] FAIL: hidden EpinAnonymOS image does not fit hidden volume\n");
         return false;
@@ -1207,49 +1729,76 @@ public bool installBegin(int idx, ulong dsec) {
     if (g_instActive) return true;                       // already running
 
     const bool hidden = g_instConfigHidden;
-    const string espModule = hidden ? "esp-hidden-image" : "esp-image";
+    const bool fde    = g_instConfigFde && !hidden;      // §E6 Full disk (Hidden OS wins if both are set)
+    const bool enc    = hidden || fde;
+    // The ESP.  Encrypted installs boot through the PREBOOT ESP: 8 MiB holding only the pre-boot
+    // authenticator -- the one plaintext thing on the disk.  (esp-hidden-image, the old 512 MiB
+    // hidden ESP, carried the whole boot tree in plaintext; accepted only as a fallback for an
+    // older ISO, with a warning, because a plaintext tree next to an "encrypted" install is the
+    // hole this work exists to close.)
+    string espModule = enc ? "esp-preboot-image" : "esp-image";
     ulong phys, size;
     if (!instFindModule(espModule, phys, size)) {
-        if (hidden)
-            klog("[install] no esp-hidden-image boot module (build an INSTALL ISO)\n");
-        else
-            klog("[install] no esp-image boot module (build an INSTALL ISO)\n");
-        g_instFailed = true;                             // surface as progress=-1 to the GUI
-        return false;
+        if (enc && instFindModule("esp-hidden-image", phys, size)) {
+            klog("[install] WARNING: no esp-preboot-image; falling back to the plaintext esp-hidden-image ESP\n");
+            espModule = "esp-hidden-image";
+        } else {
+            klog(enc ? "[install] no esp-preboot-image boot module (build an INSTALL ISO)\n"
+                     : "[install] no esp-image boot module (build an INSTALL ISO)\n");
+            g_instFailed = true;                         // surface as progress=-1 to the GUI
+            return false;
+        }
     }
     ulong decoyPhys = 0, decoySize = 0;
     ulong hiddenPhys = 0, hiddenSize = 0;
-    if (hidden) {
+    if (enc) {
+        // Both encrypted modes size the system partition from the SAME inputs (design-review
+        // BLOCKER 1): a Full-disk disk must be geometrically identical to a Hidden-OS disk, or
+        // the plaintext GPT alone tells them apart.  So the decoy image is measured even when it
+        // will not be written.
         if (!instFindModule("decoy-linux.ext4", decoyPhys, decoySize)) {
-            klog("[install] FAIL: Hidden OS selected but decoy-linux.ext4 is not staged\n");
-            g_instFailed = true;
-            return false;
+            if (hidden) {
+                klog("[install] FAIL: Hidden OS selected but decoy-linux.ext4 is not staged\n");
+                g_instFailed = true;
+                return false;
+            }
+            decoySize = 0;   // Full disk on an image without the decoy: fall back to the boot-volume rule
         }
         if (!instFindModule("esp-image", hiddenPhys, hiddenSize)) {
-            klog("[install] FAIL: Hidden OS selected but esp-image hidden payload is not staged\n");
+            klog("[install] FAIL: encrypted install selected but the esp-image boot volume is not staged\n");
             g_instFailed = true;
             return false;
         }
-        if (g_instHiddenPasswordLen == 0 || g_instOuterPasswordLen == 0 || g_instDecoyBootPasswordLen == 0) {
+        if (hidden && (g_instHiddenPasswordLen == 0 || g_instOuterPasswordLen == 0 || g_instDecoyBootPasswordLen == 0)) {
             klog("[install] FAIL: Hidden OS selected but boot-volume passwords are incomplete\n");
+            g_instFailed = true;
+            return false;
+        }
+        if (fde && g_instDiskPasswordLen == 0) {
+            klog("[install] FAIL: Full disk selected but no disk password was given\n");
             g_instFailed = true;
             return false;
         }
     }
     const ulong espSectors = (size + SEC - 1) / SEC;
-    const ulong decoyImageSectors = hidden ? ((decoySize + SEC - 1) / SEC) : 0;
-    const ulong hiddenImageSectors = hidden ? ((hiddenSize + SEC - 1) / SEC) : 0;
+    const ulong decoyImageSectors = (enc && decoySize) ? ((decoySize + SEC - 1) / SEC) : 0;
+    const ulong hiddenImageSectors = enc ? ((hiddenSize + SEC - 1) / SEC) : 0;
     ulong sysSectors = VC_INSTALL_SYS_SECTORS;
-    if (hidden && sysSectors < decoyImageSectors + 4096)
-        sysSectors = decoyImageSectors + 4096;
+    // One sizing rule for both encrypted modes: room for whichever payload is larger, the decoy
+    // (descriptor already inside decoy-boot.img) or the EpinAnonymOS boot volume (+1 descriptor),
+    // plus slack -- identical numbers whether the partition ends up holding Alpine or EpinAnonymOS.
+    if (enc) {
+        if (sysSectors < decoyImageSectors + 4096)      sysSectors = decoyImageSectors + 4096;
+        if (sysSectors < hiddenImageSectors + 1 + 4096) sysSectors = hiddenImageSectors + 1 + 4096;
+    }
 
     // UPDATE U1-B: the non-hidden install is now A/B — find the ESP-boot arbiter image.
     // If it isn't staged, fall back to the legacy single-ESP install (no A/B) rather than
     // failing, so an older ISO still installs.
     ulong bootPhys = 0, bootSize = 0;
-    const bool abInstall = !hidden && instFindModule("esp-boot-image", bootPhys, bootSize);
+    const bool abInstall = !enc && instFindModule("esp-boot-image", bootPhys, bootSize);
     const ulong bootEspSectors = abInstall ? ((bootSize + SEC - 1) / SEC) : 0;
-    if (!hidden) {
+    if (!enc) {
         const ulong need = abInstall ? (2048 + bootEspSectors + 2 * espSectors + 2048 + 64)
                                      : (espSectors + 2048 + 64);
         if (dsec < need) { klog("[install] FAIL: target disk too small\n"); g_instFailed = true; return false; }
@@ -1257,7 +1806,7 @@ public bool installBegin(int idx, ulong dsec) {
     klog("[install] begin idx=0x"); klog_hex(idx); klog(" image=0x"); klog_hex(size);
     klog("B sectors=0x"); klog_hex(espSectors); klog("\n");
 
-    if (hidden) {
+    if (enc) {
         random_get_bytes(g_instMkD.ptr, cast(ulong)g_instMkD.length);
         random_get_bytes(g_instMkO.ptr, cast(ulong)g_instMkO.length);
         random_get_bytes(g_instMkH.ptr, cast(ulong)g_instMkH.length);
@@ -1269,7 +1818,7 @@ public bool installBegin(int idx, ulong dsec) {
     g_instCap = mintInstallWriteCap(idx);
     GptLayout L;
     bool gptOk;
-    if (hidden)
+    if (enc)
         gptOk = gptWriteEncryptedToDisk(idx, dsec, espSectors, sysSectors, L);
     else if (abInstall)
         gptOk = gptWriteABToDisk(idx, dsec, bootEspSectors, espSectors, L);
@@ -1286,16 +1835,28 @@ public bool installBegin(int idx, ulong dsec) {
     g_instIdx = idx; g_instSrc = cast(const(ubyte)*) phys_to_virt(phys);
     g_instEspFirst = L.espFirst; g_instEspSectors = espSectors;
     g_instHiddenMode = hidden;
+    g_instFdeMode = fde;
     g_instPhase = INST_PHASE_ESP;
     g_instProgressDone = 0;
-    g_instSysFirst = L.sysFirst; g_instSysSectors = hidden ? (L.sysLast - L.sysFirst + 1) : 0;
-    g_instOuterFirst = L.outerFirst; g_instOuterSectors = hidden ? (L.outerLast - L.outerFirst + 1) : 0;
-    g_instDecoyImageSrc = hidden ? cast(const(ubyte)*) phys_to_virt(decoyPhys) : null;
+    g_instSysFirst = L.sysFirst; g_instSysSectors = enc ? (L.sysLast - L.sysFirst + 1) : 0;
+    g_instOuterFirst = L.outerFirst; g_instOuterSectors = enc ? (L.outerLast - L.outerFirst + 1) : 0;
+    g_instDecoyImageSrc = (hidden && decoyPhys) ? cast(const(ubyte)*) phys_to_virt(decoyPhys) : null;
     g_instDecoyImageSize = hidden ? decoySize : 0;
-    g_instDecoyImageSectors = decoyImageSectors;
-    g_instHiddenImageSrc = hidden ? cast(const(ubyte)*) phys_to_virt(hiddenPhys) : null;
-    g_instHiddenImageSize = hidden ? hiddenSize : 0;
+    g_instDecoyImageSectors = hidden ? decoyImageSectors : 0;
+    g_instHiddenImageSrc = enc ? cast(const(ubyte)*) phys_to_virt(hiddenPhys) : null;
+    g_instHiddenImageSize = enc ? hiddenSize : 0;
     g_instHiddenImageSectors = hiddenImageSectors;
+    // §E6: on an encrypted install the persisted install.json lives INSIDE the encrypted boot
+    // volume, so it is patched into the in-RAM esp-image now, before that image is streamed.
+    // (The preboot ESP carries no placeholder; installPersistConfigToEsp is a no-op there.)
+    if (enc && !installPatchConfigIntoImage(cast(ubyte*) phys_to_virt(hiddenPhys), hiddenSize)) {
+        klog("[install] FAIL: could not place install.json in the boot volume image\n");
+        revokeInstallWriteCap(g_instCap);
+        instClearTransientPasswords();
+        instClearHiddenInstallState();
+        g_instFailed = true;
+        return false;
+    }
     g_instLba = L.espFirst; g_instRemaining = espSectors;
     // UPDATE U1-B A/B state: slot-A first (= L.espFirst above), then slot-B, then ESP-boot.
     g_abInstall = abInstall;
@@ -1303,7 +1864,8 @@ public bool installBegin(int idx, ulong dsec) {
     g_instBootEspFirst = abInstall ? L.bootEspFirst : 0;
     g_instBootEspSectors = bootEspSectors;
     g_instBootSrc = abInstall ? cast(const(ubyte)*) phys_to_virt(bootPhys) : null;
-    g_instTotal = hidden ? (espSectors + g_instSysSectors + g_instOuterSectors + decoyImageSectors + hiddenImageSectors + 3)
+    g_instTotal = hidden ? (espSectors + g_instSysSectors + g_instOuterSectors + decoyImageSectors + hiddenImageSectors + 1 + 3)
+                : fde    ? (espSectors + g_instSysSectors + g_instOuterSectors + hiddenImageSectors + 1 + 1)
                 : (abInstall ? (2 * espSectors + bootEspSectors) : espSectors);
     g_instOff = 0;
     g_instLastBeat = 0;
@@ -1312,7 +1874,12 @@ public bool installBegin(int idx, ulong dsec) {
         klog("[install] encrypted Hidden OS GPT written; ESP @lba=0x"); klog_hex(L.espFirst);
         klog(" sys=0x"); klog_hex(L.sysFirst);
         klog(" outer=0x"); klog_hex(L.outerFirst);
-        klog("; streaming hidden ESP, then encrypted decoy Linux + hidden OS payload + outer volume\n");
+        klog("; streaming preboot ESP, then encrypted decoy Linux + hidden OS boot volume + outer volume\n");
+    } else if (fde) {
+        klog("[install] encrypted Full-disk GPT written; ESP @lba=0x"); klog_hex(L.espFirst);
+        klog(" sys=0x"); klog_hex(L.sysFirst);
+        klog(" outer=0x"); klog_hex(L.outerFirst);
+        klog("; streaming preboot ESP, then the encrypted EpinAnonymOS boot volume + random outer\n");
     } else if (abInstall) {
         klog("[install] A/B GPT written; ESP-boot @lba=0x"); klog_hex(L.bootEspFirst);
         klog(" slotA @lba=0x"); klog_hex(L.slotAFirst);
@@ -1366,7 +1933,7 @@ public void installStep(uint maxSectors) {
             }
             if (g_instRemaining != 0) break;
 
-            if (g_instPhase == INST_PHASE_ESP && g_instHiddenMode) {
+            if (g_instPhase == INST_PHASE_ESP && (g_instHiddenMode || g_instFdeMode)) {
                 installEnterHiddenPhase(INST_PHASE_SYS_RANDOM);
                 continue;
             }
@@ -1432,7 +1999,7 @@ public void installStep(uint maxSectors) {
         }
 
         if (g_instPhase == INST_PHASE_SYS_RANDOM || g_instPhase == INST_PHASE_OUTER_RANDOM) {
-            if (!installRandomFillCurrentPhase(maxSectors, did)) {
+            if (!installStreamCurrentPhase(maxSectors, did)) {
                 revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
                 instClearTransientPasswords(); instClearHiddenInstallState();
                 if (g_instPhase == INST_PHASE_SYS_RANDOM)
@@ -1441,29 +2008,32 @@ public void installStep(uint maxSectors) {
                     klog("[install] FAIL: randomizing full outer volume partition\n");
                 return;
             }
-            if (g_instRemaining != 0) break;
+            if (g_instRemaining != 0) break;              // (also: nothing ready yet -- next pass)
             if (g_instPhase == INST_PHASE_SYS_RANDOM)
                 installEnterHiddenPhase(INST_PHASE_OUTER_RANDOM);
+            else if (g_instFdeMode)
+                installEnterHiddenPhase(INST_PHASE_FDE_IMAGE);      // Full disk: no decoy, no hidden volume
             else
                 installEnterHiddenPhase(INST_PHASE_DECOY_IMAGE);
             continue;
         }
 
-        if (g_instPhase == INST_PHASE_DECOY_IMAGE || g_instPhase == INST_PHASE_HIDDEN_IMAGE) {
-            if (!installEncryptImageCurrentPhase(maxSectors, did)) {
+        if (g_instPhase == INST_PHASE_DECOY_IMAGE || g_instPhase == INST_PHASE_HIDDEN_IMAGE ||
+            g_instPhase == INST_PHASE_FDE_IMAGE) {
+            if (!installStreamCurrentPhase(maxSectors, did)) {
                 revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
                 instClearTransientPasswords(); instClearHiddenInstallState();
                 if (g_instPhase == INST_PHASE_DECOY_IMAGE)
                     klog("[install] FAIL: writing encrypted decoy Linux image\n");
                 else
-                    klog("[install] FAIL: writing encrypted hidden EpinAnonymOS image\n");
+                    klog("[install] FAIL: writing encrypted EpinAnonymOS boot volume\n");
                 return;
             }
             if (g_instRemaining != 0) break;
             if (g_instPhase == INST_PHASE_DECOY_IMAGE)
                 installEnterHiddenPhase(INST_PHASE_HIDDEN_IMAGE);
             else
-                installEnterHiddenPhase(INST_PHASE_HEADERS);
+                installEnterHiddenPhase(INST_PHASE_HEADERS);       // hidden or full-disk volume done
             continue;
         }
 
@@ -1480,10 +2050,15 @@ public void installStep(uint maxSectors) {
                 klog("[install] FAIL (persist install config)\n");
                 return;
             }
+            const bool wasFde = g_instFdeMode;
             revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
             instClearTransientPasswords(); instClearHiddenInstallState();
             klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
-            klog(" (Hidden OS selected: preboot ESP + encrypted decoy Linux + encrypted hidden OS + headers were written)\n");
+            klog(wasFde ? " (Full disk: preboot ESP + encrypted EpinAnonymOS boot volume + random outer volume were written)\n"
+                        : " (Hidden OS selected: preboot ESP + encrypted decoy Linux + encrypted hidden OS + headers were written)\n");
+            klog("[install] crypto chunks prepared on the second core: "); klog_dec(g_instApChunks);
+            klog(", on the BSP: "); klog_dec(g_instBspChunks); klog("\n");
+            g_instApChunks = 0; g_instBspChunks = 0;
             return;
         }
 
@@ -1643,6 +2218,38 @@ public void installMaybeStartHiddenTest(ulong nowMs) {
     g_hiddenTestStarted = true;
     klog("[install] TEST: delayed HIDDEN install starting from the loop (desktop is up)\n");
     installBeginHiddenTest();
+}
+
+// §E6 TEST IMAGE ONLY (AUTOINSTALL_FDE=1 stages the "autoinstall-fde" trigger module): run a
+// Full-disk install with the fixed password "disk-password" once the desktop is up, so the whole
+// chain -- kernel installer -> preboot ESP -> encrypted boot volume -> OVMF password prompt ->
+// EpinAnonymOS with an encrypted object store -- is provable without a person at the wizard
+// (scripts/encrypted-boot-test.py boots the result).
+__gshared bool g_fdeTestStarted = false;
+@nogc nothrow
+public bool installBeginFdeTest() {
+    import drivers.block.disk : diskFindTarget, diskStoreIndex, diskFindBootDisk;
+    void setpw(ref char[INST_SECRET_MAX] dst, ref uint dlen, string str) @nogc nothrow {
+        uint n = 0; foreach (c; str) { if (n < INST_SECRET_MAX) dst[n++] = c; } dlen = n;
+    }
+    g_instConfigHidden = false;
+    g_instConfigFde = true;
+    setpw(g_instDiskPassword, g_instDiskPasswordLen, "disk-password");
+    ulong dsec = 0;
+    int idx = diskFindBootDisk(dsec);
+    if (idx < 0) idx = diskFindTarget(dsec);
+    if (idx < 0) idx = diskStoreIndex(dsec);
+    if (idx < 0) { klog("[install] TEST fde: no disk\n"); return false; }
+    return installBegin(idx, dsec);
+}
+@nogc nothrow
+public void installMaybeStartFdeTest(ulong nowMs) {
+    if (g_fdeTestStarted || nowMs < 60000) return;
+    ulong phys, size;
+    if (!instFindModule("autoinstall-fde", phys, size)) return;      // test image only
+    g_fdeTestStarted = true;
+    klog("[install] TEST: FULL-DISK install starting from the loop (password: disk-password)\n");
+    installBeginFdeTest();
 }
 
 @nogc nothrow

@@ -25,6 +25,8 @@ import memory.dma : dma_alloc;
 import core.io : klog, klog_hex, klog_dec;
 import core.stdc.string : memset, memcpy;
 import core.bootstate : BOOTSTATE_LBA;   // SYSTEM_UPDATE D1: the store must not overlap it
+import core.fde : fdeActive, fdeStoreBounds, fdeStoreKey1, fdeStoreKey2;   // §D: encrypted store
+import drivers.veracrypt_impl : xts_encrypt_sector, xts_decrypt_sector;    // §D: AES-256-XTS
 
 @nogc nothrow:
 
@@ -146,15 +148,38 @@ public ulong objstoreBaseLba() { return g_baseLba; }
 // All store I/O goes through these two.  They translate relative -> absolute and enforce the
 // upper wall, so no code path in this module can write outside its region even if a length or a
 // persisted LBA is wrong.
+// §D: on an FDE install the store is XTS-encrypted, data unit = ABSOLUTE LBA, keyed by
+// the DERIVED object-store key (fde.d, NOT the boot master key — BLOCKER 3).  Reads
+// decrypt in place in dst; writes go through this 512-byte bounce buffer because src is
+// const and the ciphertext must not clobber the caller's plaintext.
+__gshared ubyte[SECTOR] g_cryptSec;
+
 private bool stRead(ulong rel, uint count, void* dst) {
     const ulong a = g_baseLba + rel;
     if (g_endLba != 0 && (a + count) > g_endLba) return false;
-    return diskReadSectors(a, count, dst);
+    if (!diskReadSectors(a, count, dst)) return false;
+    if (fdeActive()) {
+        auto k1 = fdeStoreKey1(); auto k2 = fdeStoreKey2();
+        auto p = cast(ubyte*)dst;
+        foreach (s; 0 .. count)
+            xts_decrypt_sector(p + cast(size_t)s * SECTOR, SECTOR, a + s, k1, k2);
+    }
+    return true;
 }
 private bool stWrite(ulong rel, uint count, const(void)* src) {
     const ulong a = g_baseLba + rel;
     if (g_endLba != 0 && (a + count) > g_endLba) return false;
-    return diskWriteSectors(a, count, src);
+    if (!fdeActive())
+        return diskWriteSectors(a, count, src);
+    // FDE: encrypt one sector at a time into the bounce buffer, unit = absolute LBA.
+    auto k1 = fdeStoreKey1(); auto k2 = fdeStoreKey2();
+    auto p = cast(const(ubyte)*)src;
+    foreach (s; 0 .. count) {
+        memcpy(g_cryptSec.ptr, p + cast(size_t)s * SECTOR, SECTOR);
+        xts_encrypt_sector(g_cryptSec.ptr, SECTOR, a + s, k1, k2);
+        if (!diskWriteSectors(a + s, 1, g_cryptSec.ptr)) return false;
+    }
+    return true;
 }
 
 private uint sectorsFor(uint bytes) { return (bytes + SECTOR - 1) / SECTOR; }
@@ -485,7 +510,23 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
     // gap between the partition array and the first partition is unused by the spec and by this
     // project's own installer, so the store relocates there instead of refusing.  Everything in
     // this module addresses sectors relative to g_baseLba, and g_endLba is a hard wall.
-    {
+    // §D (FDE): an encrypted install carries EXPLICIT absolute store bounds from the loader
+    // (the tail after the last partition, or the hidden-volume tail).  Use them verbatim and
+    // skip the GPT tail/gap heuristics entirely — on an FDE disk that pre-partition gap is
+    // random fill, and writing a plaintext OBJ superblock there (the old fallback) would both
+    // corrupt nothing important AND leak that a store exists.  With fdeActive() every stRead/
+    // stWrite through this base is transparently XTS-encrypted.
+    if (fdeActive()) {
+        ulong first, last;
+        fdeStoreBounds(first, last);
+        if (last > first) {
+            g_baseLba = first;
+            g_endLba  = last + 1;      // exclusive
+            klog("[fde] encrypted object store at LBA 0x");
+            klog_hex(first); klog("..0x"); klog_hex(last); klog("\n");
+        }
+    }
+    else {
         import drivers.block.disk : diskFirstSectorIsGpt, diskSectors;
         import core.diskpart : gptTailFreeSpace;
         if (diskFirstSectorIsGpt()) {

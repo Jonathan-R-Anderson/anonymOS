@@ -1,3 +1,9 @@
+# NEEDS `LIVE_DIAG=1 make iso`.  The [4.1] identity-proof spawns (wl-calc / wl-clocks / xid-test)
+# and the other ROADMAP self-tests are opt-in by the /epin-live-diag.conf marker since the
+# live-media policy landed: a default installer image spawns nothing but the installer, so this
+# suite would fail on it.  The line below fails FIRST, with the reason, on an unmarked image.
+require  [live] install media: diagnostics ENABLED (/epin-live-diag.conf)
+
 # IMMUTABLE_ROOTLESS Phase 0.4 -- the section-F acceptance gates.
 #
 # This suite deliberately does NOT require every gate to pass.  Section 0.4 asks for "a test list

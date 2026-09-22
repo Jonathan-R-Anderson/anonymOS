@@ -60,10 +60,11 @@ static void aes_enc(u8*blk,const u8*key){ u8 rk[240],s[16]; expand(key,rk);
     for(int i=0;i<16;i++) s[i]=(u8)(blk[i]^rk[i]);
     for(int r=1;r<14;r++){ for(int i=0;i<16;i++)s[i]=SB[s[i]]; srows(s); mcol(s); for(int i=0;i<16;i++)s[i]^=rk[r*16+i]; }
     for(int i=0;i<16;i++)s[i]=SB[s[i]]; srows(s); for(int i=0;i<16;i++)blk[i]=(u8)(s[i]^rk[224+i]); }
-static void aes_dec(u8*blk,const u8*key){ if(!isb_ready)mk_isb(); u8 rk[240],s[16]; expand(key,rk);
+static void aes_dec_rk(u8*blk,const u8*rk){ if(!isb_ready)mk_isb(); u8 s[16];
     for(int i=0;i<16;i++) s[i]=(u8)(blk[i]^rk[224+i]);
     for(int r=13;r>=1;r--){ isrows(s); for(int i=0;i<16;i++)s[i]=ISB[s[i]]; for(int i=0;i<16;i++)s[i]^=rk[r*16+i]; imcol(s); }
     isrows(s); for(int i=0;i<16;i++)s[i]=ISB[s[i]]; for(int i=0;i<16;i++)blk[i]=(u8)(s[i]^rk[i]); }
+static void aes_dec(u8*blk,const u8*key){ u8 rk[240]; expand(key,rk); aes_dec_rk(blk,rk); }
 
 /* ── SHA-512 ── */
 static const u64 K[80]={
@@ -110,21 +111,36 @@ static void pbkdf2(const char*pw,const u8*salt,u32 iters,u8*out,u32 ol){
 static u32 crc32_(const u8*d,u64 n){ u32 c=0xFFFFFFFFu; for(u64 i=0;i<n;i++){ c^=d[i]; for(int j=0;j<8;j++) c=(c&1)?(c>>1)^0xEDB88320u:(c>>1);} return ~c; }
 static u32 rbe32(const u8*p){ return (u32)p[0]<<24|(u32)p[1]<<16|(u32)p[2]<<8|p[3]; }
 
-/* XTS-decrypt one data unit (tweak via AES-encrypt, data via AES-decrypt) */
+/* XTS-decrypt one data unit (tweak via AES-encrypt, data via AES-decrypt).  The data-key
+ * schedule is expanded ONCE per unit (it used to be re-expanded per 16-byte block, which is
+ * what made the software path unusable for anything bigger than a UKI). */
 static void xts_dec(u8*buf,u64 len,u64 unit,const u8*k1,const u8*k2){
     u8 tw[16]; for(int i=0;i<16;i++)tw[i]=0; for(int i=0;i<8;i++)tw[i]=(u8)(unit>>(8*i)); aes_enc(tw,k2);
-    for(u64 o=0;o<len;o+=16){ for(int j=0;j<16;j++)buf[o+j]^=tw[j]; aes_dec(buf+o,k1); for(int j=0;j<16;j++)buf[o+j]^=tw[j];
-        u8 carry=0; for(int j=0;j<16;j++){ u8 nc=tw[j]>>7; tw[j]=(u8)(tw[j]<<1)|carry; carry=nc; } if(carry)tw[0]^=0x87; } }
+    u8 rk[240]; expand(k1,rk);
+    for(u64 o=0;o<len;o+=16){ for(int j=0;j<16;j++)buf[o+j]^=tw[j]; aes_dec_rk(buf+o,rk); for(int j=0;j<16;j++)buf[o+j]^=tw[j];
+        u8 carry=0; for(int j=0;j<16;j++){ u8 nc=tw[j]>>7; tw[j]=(u8)(tw[j]<<1)|carry; carry=nc; } if(carry)tw[0]^=0x87; }
+    for(int i=0;i<240;i++) rk[i]=0; }
+static u64 rbe64(const u8*p){ u64 v=0; for(int i=0;i<8;i++) v=(v<<8)|p[i]; return v; }
 
-int vc_open_header(const char*pw,const unsigned char header[512],unsigned char outKey[256]){
+int vc_open_header_ex(const char*pw,const unsigned char header[512],unsigned char outKey[256],
+                      unsigned long long *outVolumeSize, unsigned long long *outHiddenSize){
     u8 h[512]; vc_memcpy(h,header,512);
     u8 hk[64]; pbkdf2(pw,h,VC_HEADER_ITERATIONS,hk,64);
     xts_dec(h+64,448,0,hk,hk+32);
+    for(int i=0;i<64;i++) hk[i]=0;
     if(h[64]!='V'||h[65]!='E'||h[66]!='R'||h[67]!='A') return -1;
     if(rbe32(h+252)!=crc32_(h+64,188)) return -2;
     if(rbe32(h+72)!=crc32_(h+256,256)) return -3;
     vc_memcpy(outKey,h+256,256);
+    /* vcheader.c layout: [92] hidden volume size, [100] volume size, [108] enc-area start,
+     * [116] enc-area length -- all BIG-endian (the master keys at [256] are raw bytes). */
+    if(outVolumeSize) *outVolumeSize = rbe64(h+100);
+    if(outHiddenSize) *outHiddenSize = rbe64(h+92);
+    for(int i=0;i<512;i++) h[i]=0;
     return 0;
+}
+int vc_open_header(const char*pw,const unsigned char header[512],unsigned char outKey[256]){
+    return vc_open_header_ex(pw, header, outKey, 0, 0);
 }
 
 /* §E5d — public wrapper so efi_main.c can decrypt the on-disk bootloader payload with the
@@ -134,6 +150,10 @@ void vc_xts_decrypt(unsigned char *buf, unsigned long long len, unsigned long lo
                     const unsigned char *k1, const unsigned char *k2){
     xts_dec(buf, (u64)len, (u64)unit, k1, k2);
 }
+void vc_xts_decrypt_units(unsigned char *buf, unsigned long long nunits, unsigned long long first_unit,
+                          const unsigned char *k1, const unsigned char *k2){
+    for (u64 u = 0; u < nunits; u++) xts_dec(buf + u*512, 512, first_unit + u, k1, k2);
+}
 
 /* §G2.2 typo tolerance — fuzz the INPUT (caps-lock / first-char / transposition / single
  * deletion), the same bounded model as deps/decoy/g2/dm.c. The VeraCrypt header is the
@@ -141,7 +161,12 @@ void vc_xts_decrypt(unsigned char *buf, unsigned long long len, unsigned long lo
  * §E7/F4: cap at + pad to a FIXED budget so the candidate count (hence the auth time) is
  * independent of the typed-password length (no length side-channel). Padding entries are a
  * never-matching dummy, so they only burn a constant amount of PBKDF2 work. */
-#define VC_CAND_BUDGET 48
+/* 4 candidates: as-is, caps-lock, first-char case, + one transposition (the rest of the
+ * §G2.2 model is padded out).  Was 48 at 1000 PBKDF2 iterations; at 200000 each candidate is
+ * two full header derivations (~0.6 s each in this software SHA-512), so the budget IS the
+ * unlock latency: 4 x 2 x ~0.6 s ~= 5 s, in VeraCrypt's own range.  Still fixed-size, so the
+ * count (and the time) does not depend on the typed length. */
+#define VC_CAND_BUDGET 4
 static char vc_swapcase(char c){ if(c>='a'&&c<='z')return c-32; if(c>='A'&&c<='Z')return c+32; return c; }
 static int vc_typo_candidates(const char *in, char out[][128], int max){
     int B = max < VC_CAND_BUDGET ? max : VC_CAND_BUDGET;
@@ -157,10 +182,12 @@ static int vc_typo_candidates(const char *in, char out[][128], int max){
     return n;                                         /* always == B (fixed-budget) */
 }
 
-int preboot_authenticate(const char*pw,const unsigned char decoy[512],const unsigned char hidden[512],unsigned char outKey[256]){
+int preboot_authenticate_ex(const char*pw,const unsigned char decoy[512],const unsigned char hidden[512],
+                            unsigned char outKey[256], unsigned long long *outVolumeSize){
     static char cand[64][128];      /* static: keep the 8 KB off the stack (no __chkstk in freestanding EFI) */
     int nc = vc_typo_candidates(pw, cand, 64);
     int v = PREBOOT_REJECT;
+    if (outVolumeSize) *outVolumeSize = 0;
     /* no early-out: try every candidate against both headers so a wrong password takes the same
      * work as a right one (constant shape, no timing side-channel).
      *
@@ -172,11 +199,16 @@ int preboot_authenticate(const char*pw,const unsigned char decoy[512],const unsi
      * their coercer — the exact failure deniability exists to prevent. Both headers are still
      * OPENED every candidate (work unchanged); only what counts as a hidden MATCH is narrowed. */
     for (int c=0;c<nc;c++){
-        u8 kd[256], kh[256];
-        int okd = (vc_open_header(cand[c], decoy,  kd)==0);
-        int okh = (vc_open_header(cand[c], hidden, kh)==0);
-        if (okd && v==PREBOOT_REJECT){ vc_memcpy(outKey,kd,256); v=PREBOOT_DECOY;  }
-        if (okh && c==0 && v==PREBOOT_REJECT){ vc_memcpy(outKey,kh,256); v=PREBOOT_HIDDEN; }
+        u8 kd[256], kh[256]; u64 vd=0, vh=0;
+        int okd = (vc_open_header_ex(cand[c], decoy,  kd, &vd, 0)==0);
+        int okh = (vc_open_header_ex(cand[c], hidden, kh, &vh, 0)==0);
+        if (okd && v==PREBOOT_REJECT){ vc_memcpy(outKey,kd,256); v=PREBOOT_DECOY;  if(outVolumeSize)*outVolumeSize=vd; }
+        if (okh && c==0 && v==PREBOOT_REJECT){ vc_memcpy(outKey,kh,256); v=PREBOOT_HIDDEN; if(outVolumeSize)*outVolumeSize=vh; }
+        for(int i=0;i<256;i++){ kd[i]=0; kh[i]=0; }
     }
+    for (int c=0;c<nc;c++) for(int i=0;i<128;i++) cand[c][i]=0;   /* the typed password and its variants */
     return v;
+}
+int preboot_authenticate(const char*pw,const unsigned char decoy[512],const unsigned char hidden[512],unsigned char outKey[256]){
+    return preboot_authenticate_ex(pw, decoy, hidden, outKey, 0);
 }

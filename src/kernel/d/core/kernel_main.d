@@ -54,12 +54,16 @@ import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B updat
 import drivers.block.disk : diskInit, diskSelfTest; // A5/F4 persistence: SATA disk layer
 import core.diskpart : gptPartProof, gptWriteProof;  // INSTALLER §D2(b): native GPT partition engine
 import drivers.veracrypt_crypto : vcCryptoKat;       // INSTALLER §E2b: real kernel AES-256 + SHA-512
+import drivers.veracrypt_impl : vcCryptoKatXts;      // INSTALLER §D/E: AES-256-XTS decrypt round-trip KAT
 import drivers.veracrypt_impl : bootHasInstallPayload,
                                 vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof,
                                 vcEncryptedInstallProof, vcFullInstallProof, // §E2b/§E3/§E4a/§E4b/full
                                 installStep,              // INSTALLER §D: autonomous install driver
-                                installMaybeStartHiddenTest;   // TEST: delayed hidden-install repro
-__gshared ulong g_instDriveLastMs = 0;   // rate-limit the loop's install driver to 1 batch/ms
+                                installMaybeStartHiddenTest,   // TEST: delayed hidden-install repro
+                                installMaybeStartFdeTest;      // TEST: headless Full-disk install (AUTOINSTALL_FDE=1)
+__gshared ulong g_instDriveLastMs = 0;   // (legacy) rate-limit the loop's install driver to 1 batch/ms
+__gshared ulong g_instBudgetWinMs = 0, g_instBudgetSpentMs = 0;   // §E6: 100 ms budget window for the driver
+__gshared ulong g_instLastInputMs = 0, g_instSeenMouse = 0, g_instSeenKbd = 0;
 import core.install_cap : installCapProof;             // INSTALLER §E4c: one-shot block-write cap
 import core.acceptance : acceptanceRun;   // IMMUTABLE_ROOTLESS Phase 0.4 section-F gates
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
@@ -315,6 +319,14 @@ private void presentProfTick() {
     const ulong now = pitMs();
     if (now - g_presProfLastMs < 5000) return;         // one rolling 5 s window per line
     g_presProfLastMs = now;
+    // RING-ONLY unless diagnostics are enabled.  This block is 1-3 KB of per-task profiling every
+    // 5 s, written synchronously to the UART with the BKL held, and its per-task lines grow with
+    // every process spawned -- on real hardware that is several ms of frozen kernel per dump.  The
+    // data is still worth having, so it goes to the /run/klog ring (the Logs app) and only the one
+    // `[present] total=` heartbeat line stays on serial (presentProfStats un-quiets it: it is what
+    // tests/desktop-smoke.txt counts to prove the desktop kept presenting).
+    const bool ringOnly = !g_diagVerbose;
+    if (ringOnly) g_klogRingOnly = true;
     presentProfStats();                                // NB: prints AND resets the interval counters
     schedProfStats();      // absolute USERSPACE ms/task -- vs [cputime] jiffies this is the user/kernel split
 
@@ -325,6 +337,7 @@ private void presentProfTick() {
     klog(" running="); klog_dec(g_cmpRunSamples);
     klog(" tid="); klog_dec(cast(ulong)g_presenterTid);
     klog("\n");
+    if (ringOnly) g_klogRingOnly = false;
     g_cmpParkSamples = 0;
     g_cmpRunSamples  = 0;
 }
@@ -344,8 +357,14 @@ private void freezeWatchdog() {
     g_fwdLastMs = now;
     ++g_fwdWakes;
     wakePollers();                                        // tier 1: poll/epoll/read-parked tasks
-    klog("[freeze] watchdog: re-woke parked pollers (stall ");
-    klog_dec(stall / 1000); klog("s, attempt "); klog_dec(g_fwdWakes); klog(")\n");
+    // The recovery action stays at 1 Hz; the LOG of it does not.  A stalled desktop is exactly
+    // when a per-second synchronous UART line hurts most, so report the first attempt and then
+    // every 10th (diagnostics keep every one).
+    const bool say = g_diagVerbose || g_fwdWakes == 1 || (g_fwdWakes % 10) == 0;
+    if (say) {
+        klog("[freeze] watchdog: re-woke parked pollers (stall ");
+        klog_dec(stall / 1000); klog("s, attempt "); klog_dec(g_fwdWakes); klog(")\n");
+    }
     if (stall >= 5000) {                                  // tier 2: infinite futex waiters
         uint n = 0;
         for (int i = 0; i < MAX_TASKS; i++) {
@@ -355,7 +374,7 @@ private void freezeWatchdog() {
                 ++n;
             }
         }
-        klog("[freeze] watchdog: spurious-woke "); klog_dec(n); klog(" futex waiters\n");
+        if (say) { klog("[freeze] watchdog: spurious-woke "); klog_dec(n); klog(" futex waiters\n"); }
     }
 }
 
@@ -548,10 +567,14 @@ private uint futexWakeAddress(ulong uaddr, uint maxWake, uint wakeBits, int wake
         if (wakerPml4 != 0 && g_tasks[i].pml4Phys != wakerPml4) continue;
         clearFutexWait(i, 0);
         woke++;
-        klog("[futex-wake-one] waker="); klog_hex(cast(ulong)wakerTid);
-        klog(" waiter="); klog_hex(cast(ulong)i);
-        klog(" u="); klog_hex(uaddr);
-        klog("\n");
+        // Diagnostics only: this fired on EVERY successful wake (~215 B of synchronous UART per
+        // wake with the BKL held), and a compositor + a dozen clients wake each other constantly.
+        if (g_diagVerbose) {
+            klog("[futex-wake-one] waker="); klog_hex(cast(ulong)wakerTid);
+            klog(" waiter="); klog_hex(cast(ulong)i);
+            klog(" u="); klog_hex(uaddr);
+            klog("\n");
+        }
     }
     return woke;
 }
@@ -1963,6 +1986,9 @@ private __gshared bool g_lklTestStarted = false;
 private __gshared int  g_lklTestDelay   = 0;
 private void maybeSpawnLklTest() {
     if (g_lklTestStarted) return;
+    // LIVE MEDIA: an embedded Linux with ~40 threads is the single heaviest thing the cooperative
+    // scheduler can host, and the installer needs nothing it provides.  LIVE_NET=1 restores it.
+    if (liveServicesSuppressed()) { g_lklTestStarted = true; return; }
     if (g_lklTestDelay++ < 80) return;   // settle: let PCI fully enumerate before touching the
                                          // device.  (Polling findDeviceByClass from reconcile 1 hung
                                          // the whole boot on real HW — reverted to this known-good delay.)
@@ -2111,6 +2137,68 @@ private bool debugNetBootPresent() {
     return g_debugNetBoot == 1;
 }
 
+// ── LIVE-MEDIA POLICY: the installer is the only job ─────────────────────────────────────────
+//
+// A live boot (bootHasInstallPayload()) used to run every ROADMAP proof and the whole network
+// stack while the user was in the installer: the 4.1 identity proof spawned wl-calc + wl-clocks +
+// xid-test on top of the wizard at t=30 s (the "clock and calculator that keep popping up"),
+// dbus/sshd/lkl-boot/wpa/udhcpc came up behind it, and epoll dumps, the syscall audit and the
+// /proc self-test all fired mid-wizard.  Each one is a task the cooperative scheduler has to visit,
+// a window the software compositor has to composite, or a burst of synchronous UART traffic with
+// the BKL held -- and the effect compounds as they arrive, which is exactly what "the installer
+// gets more sluggish the further I get" looks like from the chair.
+//
+// So the DEFAULT live boot now runs nothing but the desktop shell + the installer.  Everything
+// else is opt-in by boot marker, mirroring sshBootPresent()/debugUsbBootPresent():
+//
+//   /epin-live-diag.conf   LIVE_DIAG=1 make iso   the ROADMAP proofs + verbose serial diagnostics
+//                                                (tests/disposable-identity.txt & co need this)
+//   /epin-live-net.conf    LIVE_NET=1 make iso    lkl-boot / wpa / udhcpc / NTP / sshd / dbus on
+//                                                live media (the installer itself needs none)
+//
+// The diagnostics gate applies to EVERY boot, not just live media: an installed system has no
+// more use for a calculator spawned into BankVault than the installer does.
+private bool bootModuleNamed(const(char)* base) {
+    if (g_mboot_modules is null || g_module_count <= 0) return false;
+    auto recs = cast(ubyte*)g_mboot_modules;
+    for (int i = 0; i < g_module_count; i++) {
+        auto rec = cast(multiboot_module_t*)(recs + i * 128);
+        const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+        const(char)* modBase = modName;
+        for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+        if (cstrEqK(modBase, base)) return true;
+    }
+    return false;
+}
+private __gshared int g_diagBoot = -1;      // -1 unknown, 0 no, 1 yes (cached: the module list is static)
+private __gshared int g_liveNetBoot = -1;
+public bool diagnosticsEnabled() {
+    if (g_diagBoot < 0) g_diagBoot = bootModuleNamed("epin-live-diag.conf") ? 1 : 0;
+    return g_diagBoot == 1;
+}
+private bool liveNetBootPresent() {
+    if (g_liveNetBoot < 0) g_liveNetBoot = bootModuleNamed("epin-live-net.conf") ? 1 : 0;
+    return g_liveNetBoot == 1;
+}
+// True when the background network/service stack must stay down: live media without LIVE_NET=1.
+private bool liveServicesSuppressed() {
+    import drivers.veracrypt_impl : bootHasInstallPayload;
+    return bootHasInstallPayload() && !liveNetBootPresent();
+}
+// Printed once from the loop so a serial log states which policy the boot ran under.
+private __gshared bool g_livePolicyPrinted = false;
+private __gshared uint g_cloneTraceN = 0;         // [trace] clone budget (see the clone syscall arm)
+private void livePolicyAnnounce() {
+    if (g_livePolicyPrinted) return;
+    g_livePolicyPrinted = true;
+    import drivers.veracrypt_impl : bootHasInstallPayload;
+    import core.io : g_diagVerbose;
+    g_diagVerbose = diagnosticsEnabled();
+    klog(bootHasInstallPayload() ? "[live] install media: " : "[live] installed system: ");
+    klog(diagnosticsEnabled() ? "diagnostics ENABLED (/epin-live-diag.conf)" : "diagnostics off");
+    klog(liveServicesSuppressed() ? "; network/services OFF (LIVE_NET=1 to enable)\n" : "; network/services on\n");
+}
+
 // Direct-wpa Wi-Fi is the DEFAULT.  NetworkManager hangs at `platform-linux: create`, never registers
 // its D-Bus name here, and its NM+dbus+nmcli chain churns the CPU -> Weston starvation ("Wi-Fi
 // unavailable").  Instead hos-wpa-agent drives wpa_supplicant directly (writes /run/wpa-net.conf +
@@ -2217,22 +2305,44 @@ private __gshared bool g_wpaGaveUp    = false;
 private __gshared int  g_wpaSpawnFails = 0;
 private enum int WPA_MAX_SPAWN_FAILS  = 3;
 private __gshared int  g_wpaTid = 0;
+// Exit-restart supervision is BACKED OFF and CAPPED.  The spawn-failure cap above never covered a
+// supplicant that execs and then exits (no wlan0, firmware -110): that path cleared the latch and
+// respawned on the very next loop pass -- an ELF load plus a `-dd` log burst per pass, the same
+// storm shape as the 88k-attempt one, on the exit path instead of the spawn path.
+private __gshared ulong g_wpaRestartNotBeforeMs = 0;
+private __gshared int   g_wpaRestarts = 0;
+private __gshared bool  g_wpaRestartPending = false;
+private enum int   WPA_MAX_RESTARTS   = 12;
+private enum ulong WPA_RESTART_GAP_MS = 5_000;
 private void maybeSpawnWpa() {
     if (g_skipNetForTest || g_wpaGaveUp) return;
+    if (liveServicesSuppressed()) { g_wpaGaveUp = true; return; }   // live media: LIVE_NET=1 only
     if (g_wpaStarted) {
         /* The agent reloads configuration in-place with SIGHUP so this process retains its
          * initialized nl80211 sockets and radio ownership.  Still supervise genuine exits. */
         if (g_wpaTid > 0 && g_wpaTid < MAX_TASKS &&
             g_tasks[g_wpaTid].active && !g_tasks[g_wpaTid].exited)
             return;
+        if (pitMs() < g_wpaRestartNotBeforeMs) return;           // back off between restarts
         g_wpaStarted = false;
         g_wpaTid = 0;
+        g_wpaRestartPending = true;                              // credit is spent below, when a respawn really happens
         klog("[wpa] supplicant exited; restarting with current /run/wpa-net.conf\n");
     }
+    if (g_wpaRestartPending && pitMs() < g_wpaRestartNotBeforeMs) return;   // the gap holds across the preconditions too
     // Debug-net boots drive wpa in direct -c mode (no D-Bus) and dbus is gated off there, so requiring
     // g_dbusStarted would wedge wifi forever. Only normal (-u/NetworkManager) boots need the bus first.
     if (!useDirectWifi() && !g_dbusStarted) return;                   // direct-wpa needs no dbus; only NM mode waits for the bus
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
+    if (g_wpaRestartPending) {
+        g_wpaRestartPending = false;
+        if (++g_wpaRestarts > WPA_MAX_RESTARTS) {
+            g_wpaGaveUp = true;
+            klog("[wpa] supplicant exited 12x -- giving up on auto-restart for this boot\n");
+            return;
+        }
+        g_wpaRestartNotBeforeMs = pitMs() + WPA_RESTART_GAP_MS;
+    }
     g_wpaStarted = true;
     klog("[wpa] M5: net-provider live -> launching hos-wpa-launch -> wpa_supplicant under the shim\n");
     if (spawnWaylandProgram("hos-wpa-launch\0".ptr, "[wpa]\0".ptr))
@@ -2251,6 +2361,7 @@ private __gshared ulong g_nmStartedMs = 0;
 private void maybeSpawnNetworkManager() {
     if (g_skipNetForTest) return;
     if (g_nmStarted) return;
+    if (liveServicesSuppressed()) { g_nmStarted = true; return; }   // live media: LIVE_NET=1 only
     if (useDirectWifi()) return;   // direct-wpa is the default; NM never registers + churns dbus -> freezes
     if (!g_dbusStarted) return;                                        // system bus must be up first
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;   // provider (LKL netlink) not up yet
@@ -2268,6 +2379,7 @@ private __gshared bool g_wifiAgentStarted = false;
 private void maybeSpawnWifiAgent() {
     if (g_skipNetForTest) return;
     if (g_wifiAgentStarted) return;
+    if (liveServicesSuppressed()) { g_wifiAgentStarted = true; return; }   // live media: LIVE_NET=1 only
     if (useDirectWifi()) return;   // direct-wpa uses hos-wpa-agent instead; this D-Bus agent would spin against the bypassed NM
     if (g_wifiBridgePresent) return;   // the COM2 host-WiFi bridge owns /run/wifi/* — no demo agent
     // Do not start it merely because the dbus launcher was spawned: dbus-daemon may
@@ -2299,6 +2411,7 @@ private __gshared int  g_wpaAgentDelay   = 0;
 private void maybeSpawnWpaAgent() {
     if (g_skipNetForTest) return;
     if (g_wpaAgentStarted) return;
+    if (liveServicesSuppressed()) { g_wpaAgentStarted = true; return; }   // live media: LIVE_NET=1 only
     if (!useDirectWifi()) return;                                     // NM mode uses hos-wifi-agent instead
     if (g_wifiBridgePresent) return;                                  // the COM2 host-WiFi bridge owns /run/wifi/*
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;  // needs the LKL provider for NSP_SCAN
@@ -2316,15 +2429,25 @@ private __gshared int  g_udhcpcDelay  = 0;   // initial settle before the first 
 private __gshared int  g_udhcpcRetry  = 0;   // respawn throttle once we're launching
 private __gshared int  g_udhcpcSpawns = 0;   // respawn CAP: a udhcpc that keeps crashing must not churn forever
 private __gshared int  g_udhcpcTid    = 0;   // tid of the live udhcpc — never stack a 2nd resident instance
+private __gshared uint g_udhcpcProbe  = 0;   // throttle for the dhcp-ok path probe (see below)
 private void maybeSpawnUdhcpc() {
     if (g_skipNetForTest) return;
     if (g_udhcpcLeased) return;                                       // lease already obtained — done, never respawn
+    if (liveServicesSuppressed()) { g_udhcpcLeased = true; return; }  // live media: LIVE_NET=1 only
     if (g_wifiBridgePresent) return;                                  // COM2 host-bridge owns wifi
     if (!useDirectWifi() && !g_dbusStarted) return;                   // dbus is gated off in direct-wpa mode; udhcpc never needs it
     if (!unixSocketListenerReady("/run/hos-net.sock\0".ptr)) return;  // LKL net-provider (owns wlan0) up
     // The udhcpc lease script writes /run/wifi/dhcp-ok on a successful bind.  Once it exists we're
     // done: latch off and let the live udhcpc stay up to renew.
-    if (linux_sys_access(cast(ulong)"/run/wifi/dhcp-ok\0".ptr, 0) == 0) { g_udhcpcLeased = true; return; }
+    //
+    // THROTTLED.  This access() is a full rtfs path resolve -- three linear scans over all 12288
+    // overlay nodes when the file is absent -- and it used to run on EVERY kernel-loop pass from the
+    // moment the provider socket existed until a lease landed (never, on a machine with no network
+    // configured): ~37k node checks per pass with the BKL held, forever.  posix.d's COM2 bridge
+    // documents the same trap ("far too heavy to run on every scheduler pass") and throttles to
+    // 10 Hz; this site never was.  Probe once per ~600 passes, same cadence as the respawn throttle.
+    if ((g_udhcpcProbe++ % 600) == 0 &&
+        linux_sys_access(cast(ulong)"/run/wifi/dhcp-ok\0".ptr, 0) == 0) { g_udhcpcLeased = true; return; }
     // RESIDENCY CAP = 1.  busybox udhcpc runs -f with NO -n, so ONE instance stays alive forever
     // retrying DISCOVER — a second is pure waste.  Without this, the %600 respawn throttle STACKS up to
     // 12 CONCURRENT resident udhcpc, and each re-checks readiness with an NSP_POLL RPC to the single
@@ -2362,6 +2485,7 @@ private __gshared int  g_nmcliDelay   = 0;
 private void maybeSpawnNmcli() {
     if (g_skipNetForTest) return;
     if (g_nmcliStarted) return;
+    if (liveServicesSuppressed()) { g_nmcliStarted = true; return; }   // live media: LIVE_NET=1 only
     if (useDirectWifi()) return;   // direct-wpa: the NM boot-doctor poll is a foregone "stuck" verdict + churns dbus
     // UNGATED (not requiring g_nmStarted): the boot-doctor diagnoses the whole chain — dbus, the LKL
     // provider socket, and NM registration — and writes /run/boot-status.txt.  It must run even when
@@ -2379,6 +2503,7 @@ private __gshared int  g_logUploadDelay   = 0;
 private void maybeSpawnLogUpload() {
     if (g_skipNetForTest) return;
     if (g_logUploadStarted) return;
+    if (liveServicesSuppressed()) { g_logUploadStarted = true; return; }   // live media: LIVE_NET=1 only
     if (!g_nmStarted) return;
     if (g_logUploadDelay++ < 180) return;
     g_logUploadStarted = true;
@@ -2415,6 +2540,9 @@ public bool sshBootPresent() {   // SSH-in is OPT-IN (/epin-ssh.conf, SSH=1) —
 private void maybeSpawnSshd() {
     if (g_sshdStarted) return;
     if (!sshBootPresent()) { g_sshdStarted = true; return; }   // opt-in only (SSH=1)
+    // Live media: the dropbear launcher rides on the LKL tcp/22 bridge, which is down here unless
+    // LIVE_NET=1 -- so it would only be a parked task and one more listener.  Off with the rest.
+    if (liveServicesSuppressed()) { g_sshdStarted = true; return; }
     if (g_sshdDelay++ < 40) return;      // let the desktop settle first
     g_sshdStarted = true;
     klog("[sshd] launching hos-sshd-launch (SSH-in via lkl-boot tcp/22 -> /run/sshd.sock -> dropbear)\n");
@@ -2423,6 +2551,9 @@ private void maybeSpawnSshd() {
 
 private void maybeSpawnDbus() {
     if (g_dbusStarted) return;
+    // Live media: the installer is a raw wl_shm client and needs no bus; the GTK apps that do are
+    // launch-on-demand and not the live medium's job.  LIVE_NET=1 (or LIVE_DIAG=1) brings it back.
+    if (liveServicesSuppressed() && !diagnosticsEnabled()) { g_dbusStarted = true; return; }
     // ROADMAP 2.5.  The `if (useDirectWifi()) return;` that used to sit here skipped the bus
     // ENTIRELY on the default boot path, reasoning that "direct-wpa needs no dbus" -- true of
     // NETWORK MANAGEMENT, and the reason it was written, but it conflated "networking does not
@@ -2464,6 +2595,7 @@ enum ulong NTP_RESYNC_MS    = 60_000;
 private void maybeSyncNtp() {
     import network.ntp : ntpRequest, ntpSynced, ntpResetForRetry, ntpHaveServer;
     if (!g_netConfigured || !ntpHaveServer()) return;
+    if (liveServicesSuppressed()) return;                            // live media: LIVE_NET=1 only
 
     // ONE timer, whose interval depends on whether the clock has been set yet: retry briskly
     // until the first success, then re-sync periodically so the clock cannot drift away for as
@@ -2507,6 +2639,7 @@ private struct SyscallProbe { ulong nr; const(char)* name; ulong a, b, c; }
 private __gshared bool g_syscallAudited = false;
 private void maybeSyscallAudit() {
     if (g_syscallAudited) return;
+    if (!diagnosticsEnabled()) { g_syscallAudited = true; return; }   // ROADMAP proof: LIVE_DIAG=1 only
     if (pitMs() < 5_000) return;      // after the desktop is up, so the report sits with the rest
     g_syscallAudited = true;
 
@@ -2565,6 +2698,7 @@ private __gshared ulong g_epDumpNext = 0;
 private __gshared int   g_epDumpN    = 0;
 private void maybeEpollDump() {
     if (g_epDumpN >= 6) return;
+    if (!diagnosticsEnabled()) { g_epDumpN = 6; return; }   // 6 full epoll dumps mid-install: LIVE_DIAG=1 only
     const ulong now = pitMs();
     if (now < 20_000) return;              // let the desktop finish coming up first
     if (now < g_epDumpNext) return;
@@ -2578,6 +2712,7 @@ private void maybeEpollDump() {
 private __gshared bool g_procTested = false;
 private void maybeProcSelfTest() {
     if (g_procTested) return;
+    if (!diagnosticsEnabled()) { g_procTested = true; return; }   // ROADMAP proof: LIVE_DIAG=1 only
     if (pitMs() < 4_000) return;
     g_procTested = true;
     procSelfTest();
@@ -2608,15 +2743,13 @@ __gshared bool g_dualIdProofDone = false;
 private void maybeProveDualIdentity() {
     import core.domain : domainByName, domainSpawnInto, domainById, domainSessionId;
     if (g_dualIdProofDone) return;
-    // LIVE MEDIA ONLY.  These spawns exist to PROVE the identity model -- wl-calc in BankVault,
-    // wl-clocks in Throwaway, xid-test probing the cross-identity gate.  They are diagnostics, and
-    // on an installed system they are three windows the user did not ask for, competing for a
-    // software-rendered desktop's first frames.  An installed system autostarts the Domain Manager
-    // and nothing else.
-    {
-        import drivers.veracrypt_impl : bootHasInstallPayload;
-        if (!bootHasInstallPayload()) { g_dualIdProofDone = true; return; }
-    }
+    // DIAGNOSTICS ONLY (/epin-live-diag.conf).  These spawns exist to PROVE the identity model --
+    // wl-calc in BankVault, wl-clocks in Throwaway, xid-test probing the cross-identity gate.  They
+    // used to run on every LIVE boot, i.e. they were the calculator and the clock that appeared on
+    // top of the installer 30 s into every install, and wl-clocks then forced a full software
+    // recomposite every second for the rest of the session.  tests/disposable-identity.txt still
+    // asserts them; build that image with LIVE_DIAG=1.
+    if (!diagnosticsEnabled()) { g_dualIdProofDone = true; return; }
     if (pitMs() < 30_000) return;              // let the desktop settle first
     // Wait for the dbus listener rather than guessing a delay.  The first run of the gate proof
     // fired at 30s, before dbus had bound, and xid-test correctly reported errno=111 INCONCLUSIVE
@@ -2665,6 +2798,7 @@ private void maybeProveDualIdentity() {
 private void maybeSpawnInotifyTest() {
     import core.syscalls.posix : g_rtInitialized;
     if (g_inotifyTestStarted) return;
+    if (!diagnosticsEnabled()) { g_inotifyTestStarted = true; return; }   // ROADMAP proof: LIVE_DIAG=1 only
     if (!g_rtInitialized) return;
     // Run BEFORE the desktop claims the framebuffer.  exec() paints a "[proc] exec <name>" marker
     // straight onto the framebuffer text console (procFb), which is the top of the screen -- the
@@ -2681,6 +2815,7 @@ private void maybeSpawnInotifyTest() {
 
 private void maybeSpawnDbusTest() {
     if (g_dbusTestStarted) return;
+    if (!diagnosticsEnabled()) { g_dbusTestStarted = true; return; }   // ROADMAP proof: LIVE_DIAG=1 only
     if (!g_dbusStarted) return;         // launch the daemon first
     // Wait for the bus to be *accepting*, not for time to elapse.  The original fixed 40-tick
     // delay was a guess and lost the race: dbus-send ran, got ECONNREFUSED, and the daemon only
@@ -3853,8 +3988,13 @@ private void dispatchSyscall(int tid) {
             // TEMP boot-hang trace: is clone() even reached?  libudev-zero spawns one
             // pthread per /sys/dev/char entry and joins them; no [clone] line in the boot
             // log means the threads were never created and the join can never return.
-            klog("[trace] clone flags="); klog_hex(rdi);
-            klog(" stack="); klog_hex(rsi); klog("\n");
+            // Bounded like every other TEMP hang trace (a thread-pool-heavy client would
+            // otherwise write one UART line per thread it spawns, under the BKL).
+            if (g_diagVerbose || g_cloneTraceN < 64) {
+                ++g_cloneTraceN;
+                klog("[trace] clone flags="); klog_hex(rdi);
+                klog(" stack="); klog_hex(rsi); klog("\n");
+            }
             // clone(flags=rdi, stack=rsi, ptid=rdx, ctid=r10, tls=r8).
             // CLONE_VM ⇒ thread creation (pthread_create / std::thread): a new
             // task sharing this address space, running on the supplied stack.
@@ -4101,7 +4241,7 @@ private void dispatchSyscall(int tid) {
 
                 uint maxWake = rdx > uint.max ? uint.max : cast(uint)rdx;
                 uint woke = futexWakeAddress(rdi, maxWake, wakeBits, tid);
-                if (g_futexWakeLogCount < 80 || woke != 0 || (g_futexWakeLogCount % 50000) == 0) {
+                if (g_futexWakeLogCount < 80 || (woke != 0 && g_diagVerbose) || (g_futexWakeLogCount % 50000) == 0) {
                     klog("[futex-wake] t="); klog_hex(cast(ulong)tid);
                     klog(" u="); klog_hex(rdi);
                     klog(" max="); klog_hex(cast(ulong)maxWake);
@@ -4123,12 +4263,15 @@ private void dispatchSyscall(int tid) {
                 uint maxRequeue = r10 > uint.max ? uint.max : cast(uint)r10;
                 uint woke = futexWakeAddress(rdi, maxWake, FUTEX_BITSET_MATCH_ANY, tid);
                 uint moved = futexRequeueAddress(rdi, r8, maxRequeue, FUTEX_BITSET_MATCH_ANY);
-                klog("[futex-requeue] t="); klog_hex(cast(ulong)tid);
-                klog(" from="); klog_hex(rdi);
-                klog(" to="); klog_hex(r8);
-                klog(" woke="); klog_hex(cast(ulong)woke);
-                klog(" moved="); klog_hex(cast(ulong)moved);
-                klog("\n");
+                if (g_diagVerbose || g_futexWakeLogCount < 80 || (g_futexWakeLogCount % 50000) == 0) {
+                    klog("[futex-requeue] t="); klog_hex(cast(ulong)tid);
+                    klog(" from="); klog_hex(rdi);
+                    klog(" to="); klog_hex(r8);
+                    klog(" woke="); klog_hex(cast(ulong)woke);
+                    klog(" moved="); klog_hex(cast(ulong)moved);
+                    klog("\n");
+                }
+                g_futexWakeLogCount++;
                 task.regs[REG_RAX] = cast(ulong)(woke + moved);
                 return;
             } else if (op == FUTEX_WAKE_OP) {
@@ -4136,11 +4279,14 @@ private void dispatchSyscall(int tid) {
                 uint maxWake2 = r10 > uint.max ? uint.max : cast(uint)r10;
                 uint woke = futexWakeAddress(rdi, maxWake1, FUTEX_BITSET_MATCH_ANY, tid);
                 woke += futexWakeAddress(r8, maxWake2, FUTEX_BITSET_MATCH_ANY, tid);
-                klog("[futex-wake-op] t="); klog_hex(cast(ulong)tid);
-                klog(" u1="); klog_hex(rdi);
-                klog(" u2="); klog_hex(r8);
-                klog(" woke="); klog_hex(cast(ulong)woke);
-                klog("\n");
+                if (g_diagVerbose || g_futexWakeLogCount < 80 || (g_futexWakeLogCount % 50000) == 0) {
+                    klog("[futex-wake-op] t="); klog_hex(cast(ulong)tid);
+                    klog(" u1="); klog_hex(rdi);
+                    klog(" u2="); klog_hex(r8);
+                    klog(" woke="); klog_hex(cast(ulong)woke);
+                    klog("\n");
+                }
+                g_futexWakeLogCount++;
                 task.regs[REG_RAX] = cast(ulong)woke;
                 return;
             }
@@ -5036,6 +5182,7 @@ private void kernelLoop() {
         fsPersistTick(pitMs());// ROADMAP 1.2: flush /home if it changed, at most every 30 s
         freezeWatchdog();      // LOST-WAKEUP RECOVERY: un-park stalled sleepers so the compositor resumes
         maybeReapZombies();    // free leaked task slots (crash-loop zombies) so new apps/installer can spawn
+        livePolicyAnnounce();  // once: which live-media policy this boot runs under (see diagnosticsEnabled)
         // INSTALLER §D: advance an in-flight disk install AUTONOMOUSLY, from the kernel loop, so it
         // completes regardless of the GUI (the desktop installer used to be the only driver —
         // batch-per-write — so a ~1 fps compositor stalled it mid-ESP, leaving an unbootable disk).
@@ -5045,11 +5192,31 @@ private void kernelLoop() {
         // loop and FROZE the compositor for the entire install. So do a SMALL batch at most once
         // per millisecond: ~128 KiB/ms ≈ 128 MB/s of install progress while leaving the bulk of
         // each millisecond for the compositor and scheduler. installStep() no-ops when idle.
-        if (pitMs() != g_instDriveLastMs) {
-            g_instDriveLastMs = pitMs();
-            installStep(256);   // 128 KiB per ms, bounded so the UI stays responsive
+        //
+        // INPUT-AWARE TIME BUDGET (§E6).  The per-ms batch above still let the installer take
+        // most of every millisecond, because a batch of software crypto cost 15-45 ms.  The
+        // crypto now runs on the second core into staging slots (veracrypt_impl.d), so a pass here
+        // is one DMA write -- and it is admitted against a budget: at most 15 ms of every 100 ms
+        // while a person is moving the mouse or typing (the cursor comes first), 60 ms when the
+        // desktop is idle.  pitMs granularity is coarse, so each call is charged at least 1 ms.
+        {
+            import core.syscalls.posix : g_inMouseEnq, g_inKbdEnq;
+            const ulong nowMs = pitMs();
+            if (g_inMouseEnq != g_instSeenMouse || g_inKbdEnq != g_instSeenKbd) {
+                g_instSeenMouse = g_inMouseEnq; g_instSeenKbd = g_inKbdEnq; g_instLastInputMs = nowMs;
+            }
+            if (nowMs - g_instBudgetWinMs >= 100) { g_instBudgetWinMs = nowMs; g_instBudgetSpentMs = 0; }
+            const bool inputRecent = (nowMs - g_instLastInputMs) < 400;
+            const ulong share = inputRecent ? 15 : 60;
+            if (g_instBudgetSpentMs < share) {
+                const ulong t0 = pitMs();
+                installStep(2048);                     // <= one 1 MiB staging slot per admitted pass
+                ulong dt = pitMs() - t0; if (dt == 0) dt = 1;
+                g_instBudgetSpentMs += dt;
+            }
         }
         installMaybeStartHiddenTest(pitMs());  // TEST image only: delayed hidden install repro
+        installMaybeStartFdeTest(pitMs());     // TEST image only: headless Full-disk install
         maybeSpawnWaylandClient();
         // R2.5: GPU-test launchers OFF during Weston-GL bring-up — they contend with
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.
@@ -5502,6 +5669,7 @@ void d_kernel_main() {
     diskSelfTest();
     const bool installMedia = bootHasInstallPayload();
     vcCryptoKat();    // INSTALLER §E2b: validate the kernel AES-256 + SHA-512 (FIPS-197 / NIST)
+    vcCryptoKatXts(); // INSTALLER §D/E: validate AES-256-XTS encrypt/decrypt round-trip (objstore crypto)
     gptPartProof();   // INSTALLER §D2(b): build+validate a GPT layout (in-memory; no disk write)
     if (!installMedia) {
         gptWriteProof();  // INSTALLER §D2(b): write a GPT to a spare target disk + reread (SKIP if none)
@@ -5537,6 +5705,29 @@ void d_kernel_main() {
                 appImgLen = cast(uint)(cast(ulong)rec.mod_end - cast(ulong)rec.mod_start);
                 appImg = cast(const(void)*)(cast(ulong)rec.mod_start + hhdm_offset);
                 break;
+            }
+        }
+    }
+    // INSTALLER §D (FDE): accept the /anos.key runtime key module BEFORE mounting the store.
+    // On an encrypted install the pre-boot loader patched an ANOSKEY1 record (master key +
+    // absolute store LBA bounds) into /anos.key; the kernel copies it into fde.d's __gshared
+    // state, derives the object-store key, and scrubs the key material from reclaimable RAM.
+    // On a plain install /anos.key is a placeholder without the magic and this is a no-op.
+    {
+        import core.fde : fdeAcceptKeyModule;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "anos.key")) {
+                    void* kmod = cast(void*)(cast(ulong)rec.mod_start + hhdm_offset);
+                    size_t klen = cast(size_t)(cast(ulong)rec.mod_end - cast(ulong)rec.mod_start);
+                    fdeAcceptKeyModule(kmod, klen);
+                    break;
+                }
             }
         }
     }

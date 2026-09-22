@@ -5,91 +5,103 @@ its verification passes — code existing is not enough. Hardware-execution
 tasks are marked `[HW]`; they verify on real VMX hardware, not in this
 sandbox.
 
+Status key (2026-09-22): `[x]` = implemented AND host-harness tested
+(selftest + fuzzer pass; kernel-target compiles clean). `[x]` does NOT
+mean hardware-verified — every `[HW]` task is still open, and the
+`[vmx] VMXON ok` / `[virt] selftest PASS` boot assertions in
+`scripts/virt-hw-test.sh` have never run on real silicon.
+
 ## 1. Baseline and harness
 
-- [ ] 1.1 Record baseline: `git status` clean on
+- [x] 1.1 Record baseline: `git status` clean on
   `feat/anonymos-vmm-kvm-compat` at `01236a47`; list the exact build
   command (`make all` path) and confirm the tree builds unmodified or
   document the blocker. Verify: build log or documented blocker.
-- [ ] 1.2 Add in-guest test-module scaffolding for virtualization tests
+- [x] 1.2 Add in-guest test-module scaffolding for virtualization tests
   following the existing `boot-test.sh` serial-assertion pattern.
   Verify: a no-op `virt-probe` suite boots and its marker appears in
   `serial.log`.
 - [ ] 1.3 Host-side unit-test harness for pure logic (KVM struct layouts,
   ioctl numbers, EPT builder on a fake allocator), buildable with the
   system D compiler. Verify: `harness` builds and all tests pass on host.
+  NOTE (2026-09-22): the harness exists and passes (`fuzz_main.d` /
+  `test_main.d` in /tmp/virt-stubs) but was never committed to the repo —
+  still open until it lives in-tree.
 
 ## 2. Native VM object + capability model
 
-- [ ] 2.1 Add `ObjType.Vm` / `ObjType.Vcpu` to `objmgr.d` with `ObjOps`
+- [x] 2.1 Add `ObjType.Vm` / `ObjType.Vcpu` to `objmgr.d` with `ObjOps`
   tables; kernel-only creation via `objAlloc`; generation-counted
   handles. Verify: host unit test creates/destroys objects, stale
   handle after recycle is rejected.
-- [ ] 2.2 VM rights bits (`VM_CREATE/CONFIGURE/RUN/TEARDOWN`) wired into
+- [x] 2.2 VM rights bits (`VM_CREATE/CONFIGURE/RUN/TEARDOWN`) wired into
   `cap.d` attenuation, rights-ceiling checks, and transitive revocation.
   Verify: unit test — widening refused, ceiling-0 fails closed,
   revocation kills derived handles.
-- [ ] 2.3 VM lifecycle state machine
+- [x] 2.3 VM lifecycle state machine
   (`Defined→Configured→Running⇄Paused→Stopped`, `Failed` from any).
   Invalid transitions rejected; transitions queryable and audited.
   Verify: unit test walks every legal/illegal transition.
-- [ ] 2.4 Memory-range validation on region registration: overlap
+- [x] 2.4 Memory-range validation on region registration: overlap
   detection, authority check against the VM's page grants, read-only
   enforcement. Verify: unit tests for overlap, out-of-authority, and
   RO-violation cases.
-- [ ] 2.5 Resource ceilings (max VMs, vCPUs, guest memory per
+- [x] 2.5 Resource ceilings (max VMs, vCPUs, guest memory per
   identity/domain); over-ceiling allocation fails cleanly with no
   partial state. Verify: unit test at and over each ceiling.
-- [ ] 2.6 Teardown path: stop vCPUs, tear down EPT, release pages to the
+- [x] 2.6 Teardown path: stop vCPUs, tear down EPT, release pages to the
   free pool, invalidate handles. Verify: create/destroy loop leaks no
   pages per the allocator's audit counters.
 
 ## 3. x86 VMX backend
 
-- [ ] 3.1 `vmx_init()`: CPUID-gated detection, `IA32_FEATURE_CONTROL`
+- [x] 3.1 `vmx_init()`: CPUID-gated detection, `IA32_FEATURE_CONTROL`
   handling, `CR4.VMXE`, per-CPU VMXON regions. Fail-soft: unavailable →
   logged, subsystem disabled, rest of OS unaffected. Verify: klog shows
   `vmx: …` line on boot in QEMU (any CPU); `[HW]` VMXON succeeds on
   real Intel hardware.
-- [ ] 3.2 Per-vCPU VMCS management (`VMCLEAR`/`VMPTRLD` discipline,
+- [x] 3.2 Per-vCPU VMCS management (`VMCLEAR`/`VMPTRLD` discipline,
   VMCS allocated from kernel memory, never userspace-visible).
   Verify: code review + `[HW]` VMCS revision ID matches
   `IA32_VMX_BASIC`.
-- [ ] 3.3 Host-state safety on every VM entry/exit (host CR3/RSP/RIP,
+- [x] 3.3 Host-state safety on every VM entry/exit (host CR3/RSP/RIP,
   segments, MSRs from kernel-owned memory; post-exit integrity check).
   Verify: review checklist signed by the virtualization reviewer;
   `[HW]` hostile guest cannot corrupt host state.
 - [ ] 3.4 `vmx_run(vcpu)` with exit dispatch: IO, MMIO, HLT, shutdown,
   EPT violation, unknown → contained failure. Verify: `[HW]` each exit
   reason observed from a test guest.
-- [ ] 3.5 SVM detection + fail-closed refusal (`ENODEV`, "backend not
+  NOTE (2026-09-22): NOT implemented — `KVM_RUN` returns `-ENODEV`
+  without hardware; no exit dispatch exists yet. This is the single
+  biggest remaining code task.
+- [x] 3.5 SVM detection + fail-closed refusal (`ENODEV`, "backend not
   validated"). Verify: `[HW]` on AMD, VM creation returns `ENODEV`
   with the message; klog records detection.
 
 ## 4. EPT
 
-- [ ] 4.1 EPT builder mapping exactly the VM's granted pages (R/W/X per
+- [x] 4.1 EPT builder mapping exactly the VM's granted pages (R/W/X per
   region flags), 4K granularity. Verify: host unit tests + fuzzer —
   no over-mapping, permissions exact, overlap rejected.
-- [ ] 4.2 EPT-violation exit path terminates/suspends the VM with the
+- [x] 4.2 EPT-violation exit path terminates/suspends the VM with the
   faulting guest-physical address; never resolves to host memory.
   Verify: `[HW]` guest touching unmapped GPA → violation exit with
   correct address.
 
 ## 5. KVM compatibility layer
 
-- [ ] 5.1 `/dev/kvm` node: `sys_open` branch, `FD_KVM` `FileType`,
+- [x] 5.1 `/dev/kvm` node: `sys_open` branch, `FD_KVM` `FileType`,
   `capRightsForFile`/`objTypeForFile` wiring, `deviceNoteOpen`.
   Verify: open/close works from a Linux-personality test program;
   `EACCES` without the grant.
-- [ ] 5.2 System-fd ioctls: `KVM_GET_API_VERSION` (=12),
+- [x] 5.2 System-fd ioctls: `KVM_GET_API_VERSION` (=12),
   `KVM_CHECK_EXTENSION` (supported set = 1 incl. the 17 Cloud
   Hypervisor caps **plus `KVM_CAP_IRQCHIP` = 1** — Cloud Hypervisor
   hard-requires this probe even though it never calls
   `KVM_CREATE_IRQCHIP`; see kvm-compatibility spec), `KVM_CREATE_VM`,
   `KVM_GET_VCPU_MMAP_SIZE`, `KVM_GET_MSR_INDEX_LIST`. Verify:
   host-side ioctl dispatch tests + in-guest assertions.
-- [ ] 5.3 VM-fd ioctls: `KVM_SET_USER_MEMORY_REGION` (flags 0/READONLY,
+- [x] 5.3 VM-fd ioctls: `KVM_SET_USER_MEMORY_REGION` (flags 0/READONLY,
   size-0 removal, overlap rejection), `KVM_SET_TSS_ADDR`,
   `KVM_SET_IDENTITY_MAP_ADDR`, `KVM_ENABLE_CAP(SPLIT_IRQCHIP)`,
   `KVM_CREATE_VCPU`. `KVM_CREATE_IRQCHIP` /
@@ -99,18 +111,20 @@ sandbox.
   an injection backend would be a fake hardware claim; split-irqchip
   delivery (eventfd bridge → LAPIC injection) is an explicit later tier.
   Verify: dispatch tests per ioctl.
-- [ ] 5.4 vCPU-fd ioctls: `KVM_SET_CPUID2`, `KVM_SET_MSRS`,
+- [x] 5.4 vCPU-fd ioctls: `KVM_SET_CPUID2`, `KVM_SET_MSRS`,
   `KVM_SET_REGS`, `KVM_GET/SET_SREGS`, `KVM_SET_FPU`,
   `KVM_GET/SET_LAPIC`, `KVM_GET_TSC_KHZ`; hostile values rejected
   (`EINVAL`). Verify: per-ioctl tests incl. hostile-value cases.
-- [ ] 5.5 `kvm_run` mmap (`MAP_SHARED`, offset 0) + `immediate_exit`
+- [x] 5.5 `kvm_run` mmap (`MAP_SHARED`, offset 0) + `immediate_exit`
   semantics + signal-interrupted `KVM_RUN` (EINTR). Verify: mmap
   returns the shared page; flag short-circuits entry.
 - [ ] 5.6 `KVM_RUN` exit structs: `KVM_EXIT_IO`, `KVM_EXIT_MMIO`,
   `KVM_EXIT_HLT`, `KVM_EXIT_SHUTDOWN`, `KVM_EXIT_IOAPIC_EOI`
   correctly populated. Verify: `[HW]` each exit observed with
   correct fields from a test guest.
-- [ ] 5.7 Unsupported-ioctl behavior: unknown commands → `ENOTTY`,
+  NOTE (2026-09-22): struct layouts exist and are size-asserted in
+  `kvmabi.d`, but no exit is ever produced — blocked on 3.4.
+- [x] 5.7 Unsupported-ioctl behavior: unknown commands → `ENOTTY`,
   bad args → `EINVAL`, never silent. Verify: fuzz the dispatch with
   random commands; no crashes, no hangs.
 
@@ -158,11 +172,11 @@ still need a test program inside the guest.
 
 ## 9. Review, evidence, docs
 
-- [ ] 9.1 Parallel adversarial reviews (virtualization correctness,
+- [x] 9.1 Parallel adversarial reviews (virtualization correctness,
   capability model, KVM ABI conformance, memory safety, domain
   containment, DoS, VMM conformance). Verify: findings list; every
   valid finding fixed or explicitly deferred with reason.
-- [ ] 9.2 Fuzz/property tests: ioctl dispatch + EPT builder.
+- [x] 9.2 Fuzz/property tests: ioctl dispatch + EPT builder.
   Verify: N cycles with no crash/hang/over-map.
 - [ ] 9.3 Docs: `docs/` virtualization architecture + KVM conformance
   notes; limitations honestly stated. Verify: docs present and

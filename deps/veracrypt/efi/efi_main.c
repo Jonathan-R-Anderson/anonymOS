@@ -494,8 +494,14 @@ static void decrypt_and_boot(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_I
      * each 512-byte data unit (unit = its offset within the region, matching the installer). */
     if (bio->ReadBlocks(bio, bio->Media->MediaId, region_lba+1, nsec*512, p)!=0){
         PDBG("[preboot-efi] boot: payload read failed\n"); return; }
-    for (u64 i=0;i<nsec;i++)
-        vc_xts_decrypt(p+i*512, 512, 1+i, key, key+32);
+    /* AES-NI when the CPU has it, exactly as the kind-1 volume path does.  This used to be the
+     * software cipher, one call per sector: the decoy's UKI is a 14 MB Linux kernel + initramfs,
+     * ~29000 sectors, which took MINUTES in firmware with no output on screen -- indistinguishable
+     * from a machine that simply refuses to boot the decoy (the hidden OS, decrypted through the
+     * accelerated path, came up fine).  Same key, same units, same result -- just not by hand. */
+    if (aesni_available()) aesni_xts_decrypt_units(p, nsec, 1, key, key+32);
+    else                   vc_xts_decrypt_units(p, nsec, 1, key, key+32);
+    PDBG("[preboot-efi] payload decrypted\n");
     EFI_HANDLE img=0;
     if (BS->LoadImage(0, Image, 0, buf, plen, &img)!=0){ PDBG("[preboot-efi] boot: LoadImage failed\n"); return; }
     /* Hand the decoy key + rootfs geometry to the UKI on its kernel command line (LoadOptions).

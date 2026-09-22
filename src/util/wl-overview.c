@@ -61,7 +61,7 @@ static const struct appentry BUILTIN_APPS[] = {
      * the FW13 Pixman desktop.  /gl-term is GLES2/EGL and FAILS without a GPU; a full login-zsh wl-term
      * fork-storms.  (GL terminal is still on SUPER+Y for the virgl/GPU desktop.) */
     { "Terminal",       "/hos-wifiterm" },
-    { "Software",       "/store-app" },
+    { "Software",       "/wl-software" },
     { "Settings",       "/wl-quicksettings" },
     { "Domains",        "/wl-domain-manager" },
     { "Logs",           "/wl-logview" },

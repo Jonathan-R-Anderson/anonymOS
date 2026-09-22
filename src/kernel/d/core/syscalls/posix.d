@@ -109,6 +109,9 @@ enum FileType {
     FD_PTY_MASTER,       // pseudo-terminal master (/dev/ptmx)
     FD_PTY_SLAVE,        // pseudo-terminal slave  (/dev/pts/N)
     FD_DOMAIN_CTL,       // DM10.3: /config/domain.action — writes are domain control commands
+    FD_SOFTWARE_CATALOG, // Software Center: /config/software.catalog — the aggregated package index
+    FD_SOFTWARE_CTL,     // Software Center: /config/software.action — writes request a package install
+    FD_SOFTWARE_STATUS,  // Software Center: /config/software.status — reads return the last verdict
     FD_INSTALL_CTL,      // INSTALLER §D: /config/install.action — writes drive the in-OS installer
     FD_INSTALL_PROGRESS, // INSTALLER §D: /config/install.progress — reads return 0..1000 permille
     FD_HW_DETECT,        // DRIVERS: /config/hardware.detect — reads return the detected driver codes (PCI)
@@ -1898,6 +1901,33 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)done;
     }
 
+    // Software Center: the catalog bytes, straight out of the boot module (no copy).
+    if (f.type == FileType.FD_SOFTWARE_CATALOG) {
+        ulong phys, size;
+        if (!findBootModule("/software-catalog.bin\0".ptr, phys, size) || phys == 0) return 0;
+        if (f.offset >= size || _buf is null) return 0;
+        const ulong left = size - f.offset;
+        const size_t give = _count < left ? _count : cast(size_t)left;
+        auto src = cast(const(ubyte)*)phys_to_virt(phys) + f.offset;
+        auto dst = cast(ubyte*)_buf;
+        foreach (i; 0 .. give) dst[i] = src[i];
+        f.offset += give;
+        return cast(ssize_t)give;
+    }
+
+    // Software Center: /config/software.status — the last install verdict, then EOF.
+    if (f.type == FileType.FD_SOFTWARE_STATUS) {
+        import core.software : softwareStatus;
+        if (f.offset > 0 || _buf is null) return 0;
+        char[200] line = void;
+        const uint n = softwareStatus(line.ptr, cast(uint)line.length);
+        const size_t give = _count < n ? _count : n;
+        auto dst = cast(ubyte*)_buf;
+        foreach (i; 0 .. give) dst[i] = cast(ubyte)line[i];
+        f.offset += give;
+        return cast(ssize_t)give;
+    }
+
     // INSTALLER §D: /config/install.progress — the install progress as a decimal string (then
     // EOF), polled by the installer GUI: -1 = FAILED, 0 = never started, 1..1000 permille.
     if (f.type == FileType.FD_INSTALL_PROGRESS) {
@@ -2335,6 +2365,14 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
     if (f.type == FileType.FD_INSTALL_CTL) {
         import drivers.veracrypt_impl : installControlWrite;
         installControlWrite(cast(const(char)*)buf, cast(size_t)count);
+        return cast(ssize_t)count;
+    }
+
+    // Software Center: a write to /config/software.action asks the kernel to install a package.
+    // The write itself always succeeds; the verdict (and the reason) is in software.status.
+    if (f.type == FileType.FD_SOFTWARE_CTL) {
+        import core.software : softwareControlWrite;
+        softwareControlWrite(cast(const(char)*)buf, cast(size_t)count);
         return cast(ssize_t)count;
     }
 
@@ -3798,6 +3836,51 @@ public int sys_open(const(char)* path, int flags) {
     if (cstrEq(path, "/config/domain.action")) {
         if ((flags & 3) == O_RDONLY) return negErrno(EACCES);   // write-only control endpoint
         g_fdTable[fd].type     = FileType.FD_DOMAIN_CTL;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        return publishActiveFdReturn(fd);
+    }
+
+    // Software Center: /config/software.catalog — the aggregated package index of every major
+    // Linux distribution, served DIRECTLY from its boot module.
+    //
+    // It used to be unpacked into the overlay like the font and icon blobs, and a confined app
+    // (every desktop app is namespace-bound, ROADMAP 4.0b) then got ENOENT for it: the overlay
+    // copy is not reachable from inside a domain's restricted view.  Serving it here, beside
+    // /config/disks.json, sidesteps that the same way the installer already reads its disk list --
+    // and costs no overlay bytes at all, which for a 6.8 MB index is the difference between
+    // shipping it and not.
+    if (cstrEq(path, "/config/software.catalog")) {
+        if ((flags & 3) != O_RDONLY) return negErrno(EACCES);
+        ulong phys, size;
+        if (!findBootModule("/software-catalog.bin\0".ptr, phys, size) || phys == 0 || size == 0)
+            return negErrno(ENOENT);
+        g_fdTable[fd].type     = FileType.FD_SOFTWARE_CATALOG;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = size;
+        return publishActiveFdReturn(fd);
+    }
+
+    // Software Center: /config/software.action — "install <pkgmgr> <name> <url>".  Write-only,
+    // like every other control endpoint here; the verdict comes back from software.status.
+    if (cstrEq(path, "/config/software.action")) {
+        if ((flags & 3) == O_RDONLY) return negErrno(EACCES);
+        g_fdTable[fd].type     = FileType.FD_SOFTWARE_CTL;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        return publishActiveFdReturn(fd);
+    }
+
+    // Software Center: /config/software.status — read-only; one line, "ok|busy|refused <text>".
+    if (cstrEq(path, "/config/software.status")) {
+        if ((flags & 3) != O_RDONLY) return negErrno(EACCES);
+        g_fdTable[fd].type     = FileType.FD_SOFTWARE_STATUS;
         g_fdTable[fd].flags    = flags;
         g_fdTable[fd].offset   = 0;
         g_fdTable[fd].backend  = null;
@@ -6480,6 +6563,35 @@ private int rtMkdirChild(int cur, const(char)* name, size_t len) {
 
 // Walk a '/'-separated relative path (no leading '/'), creating intermediate
 // directories, then create the final component as a regular file holding `data`.
+// Software Center: publish an APPROVED install request for the userspace fetcher.  The kernel
+// decides what may be fetched (core/software.d); the helper only carries it out, so the request
+// file is the interface between the two -- one line, "<pkgmgr> <name> <baseurl>".
+// Size of the Software Center catalog boot module (0 when the image has none).
+public ulong softwareCatalogModule() @nogc nothrow {
+    ulong phys, size;
+    if (!findBootModule("/software-catalog.bin\0".ptr, phys, size) || phys == 0) return 0;
+    return size;
+}
+
+public void pkgFetchSetRequest(const(char)* pkgmgr, const(char)* name, const(char)* url) @nogc nothrow {
+    __gshared char[320] req;
+    uint n = 0;
+    void put(const(char)* s) { if (s is null) return; for (uint i = 0; s[i] != 0 && n + 2 < req.length; ++i) req[n++] = s[i]; }
+    put(pkgmgr); if (n + 1 < req.length) req[n++] = ' ';
+    put(name);   if (n + 1 < req.length) req[n++] = ' ';
+    put(url);    if (n + 1 < req.length) req[n++] = '\n';
+    rtAddFile("run/pkg/request\0".ptr, "run/pkg/request".length, cast(const(ubyte)*)req.ptr, n);
+}
+
+// A silent failure here is a file that is simply absent at runtime, while the unpack counters
+// still report it as placed -- which is exactly how a 6.8 MB catalog shipped inside the image and
+// the client that reads it got ENOENT.  Say which path failed, and why.
+private void rtAddFileFail(const(char)* rel, size_t relLen, const(char)* why) {
+    klog("[assets] FAILED to place /");
+    foreach (i; 0 .. relLen) { char[2] c; c[0] = rel[i]; c[1] = 0; klog(c.ptr); }
+    klog(": "); klog(why); klog("\n");
+}
+
 private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint dataLen) {
     int cur = 0;                      // overlay root
     size_t i = 0;
@@ -6493,14 +6605,21 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
             int fidx = rtFindChild(cur, rel + cstart, clen);
             if (fidx < 0) fidx = rtCreate(cur, rel + cstart, clen, RT_REG,
                                           cast(ushort)0x1A4 /*0644*/, 0, 0);
-            if (fidx < 0 || g_rt[fidx].kind != RT_REG) return;
-            if (!rtEnsureCap(g_rt[fidx], dataLen)) { ++g_xkbAllocFails; return; }
+            if (fidx < 0 || g_rt[fidx].kind != RT_REG) {
+                rtAddFileFail(rel, relLen, "no free overlay node (RT_MAX_NODES)\0".ptr);
+                return;
+            }
+            if (!rtEnsureCap(g_rt[fidx], dataLen)) {
+                ++g_xkbAllocFails;
+                rtAddFileFail(rel, relLen, "no room for the payload (RT_MAX_BYTES)\0".ptr);
+                return;
+            }
             foreach (k; 0 .. dataLen) g_rt[fidx].data[k] = data[k];
             g_rt[fidx].size = dataLen;
             return;
         }
         cur = rtMkdirChild(cur, rel + cstart, clen);
-        if (cur < 0) return;
+        if (cur < 0) { rtAddFileFail(rel, relLen, "cannot create a parent directory\0".ptr); return; }
         ++i;                          // skip '/'
     }
 }
@@ -6742,6 +6861,10 @@ private void rtUnpackAssets() {
     // before`, so unpacking this first would make a fonts/icons-less image look like it had
     // assets and suppress the fallback.
     rtUnpackAssetBlob("/apps.blob\0".ptr);
+
+    // (The Software Center's catalog is NOT unpacked here: it is served straight from its boot
+    // module at /config/software.catalog, so a confined app can read it and the overlay does not
+    // carry a second 6.8 MB copy.  See the open() intercept.)
 
     // Z8: zsh's autoloadable function + completion tree (compinit, compaudit, _<cmd>
     // completions, add-zsh-hook, promptinit, vcs_info, zle widgets) flattened at zsh's

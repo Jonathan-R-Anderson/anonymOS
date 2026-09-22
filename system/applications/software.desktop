@@ -1,6 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Software
-Exec=/store-app
+Comment=Browse and install software from the Linux distribution repositories
+Exec=/wl-software
 Icon=package
 Categories=System;PackageManager;

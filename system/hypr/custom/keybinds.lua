@@ -21,7 +21,11 @@ hl.bind("SUPER + SHIFT + F", hl.dsp.exec_cmd("/wl-files"),          { descriptio
 hl.bind("SUPER + SHIFT + E", hl.dsp.exec_cmd("/wl-editor"),         { description = "Text editor" })
 hl.bind("SUPER + SHIFT + M", hl.dsp.exec_cmd("/wl-sysmon"),         { description = "System monitor" })
 hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("/wl-screenshot"),     { description = "Screenshot" })
-hl.bind("SUPER + SHIFT + A", hl.dsp.exec_cmd("/store-app"),         { description = "App store" })
+-- The Software Center: one catalog over the package repositories of every major Linux
+-- distribution (src/util/wl-software.c).  /store-app was the 51-line object-store demo that the
+-- "App store" binding used to open, which is why there was no way to reach any software.
+hl.bind("SUPER + K",         hl.dsp.exec_cmd("/wl-software"),       { description = "Software Center" })
+hl.bind("SUPER + SHIFT + A", hl.dsp.exec_cmd("/wl-software"),       { description = "Software Center" })
 
 -- ROADMAP 2.3: upstream GTK's own demos, unmodified.  The point of binding them is that they are
 -- NOT ours -- gtk-hello was written for this OS and so proves only that the toolkit links, while

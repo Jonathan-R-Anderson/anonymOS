@@ -1546,6 +1546,12 @@ private bool isSystemProgram(const(char)* prog) @nogc nothrow {
         "calamares",           // the installer: reads /config/disks.json, writes install.action
         "wl-installer",
         "wl-domain-manager",   // reads+writes /config/domain.action and the domain JSON views
+        // The Software Center reads the catalog the kernel serves at /config/software.catalog and
+        // asks for installs through /config/software.action -- the same shape as the Domain
+        // Manager above, and the same reason it cannot run inside a domain's restricted view
+        // (which denies /config by default).  The privilege it gains is reading a catalog; the
+        // install itself stays cap-gated in core/software.d, which is where it belongs.
+        "wl-software",
         "Hyprland",            // the compositor itself
         "wl-layer-bar",        // the shell bar is part of the desktop, not an app in it
     ];
@@ -1557,6 +1563,16 @@ private bool isSystemProgram(const(char)* prog) @nogc nothrow {
     // The kernel's own service launchers all share this prefix.
     if (b[0] == 'h' && b[1] == 'o' && b[2] == 's' && b[3] == '-') return true;
     return false;
+}
+
+// Software Center (core/software.d): start the package fetcher for an approved install request.
+// The hook lives here because spawnWaylandProgram is this file's private launch choke point, and
+// the fetcher is an ordinary userspace client -- it just happens to be started by a control write
+// instead of by the desktop.  argv is passed through the same env/arg path the other helpers use.
+public bool softwareSpawnFetcher(const(char)* pkgmgr, const(char)* name, const(char)* url) {
+    import core.syscalls.posix : pkgFetchSetRequest;
+    pkgFetchSetRequest(pkgmgr, name, url);          // the helper reads it from /run/pkg/request
+    return spawnWaylandProgram("hos-pkg-fetch\0".ptr, "[pkg]\0".ptr);
 }
 
 private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
@@ -5811,6 +5827,7 @@ void d_kernel_main() {
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)
+    { import core.software : softwareCatalogReport; softwareCatalogReport(); }  // Software Center catalog
     { import core.sysupdate : updateAdoptBootSlot; updateAdoptBootSlot(); } // UPDATE U1: read A/B boot-state → g_bootSlot
     { import core.sysversion : updateVersionProof; updateVersionProof(); } // UPDATE U0: version identity proof
     {   // UPDATE U1: prove the boot-state on-disk contract, but only on a scratch/install

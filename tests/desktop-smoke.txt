@@ -96,3 +96,9 @@ forbid   [audit] missing:
 # 5-second profiler dump is ring-only -- only its heartbeat line stays on serial.
 atmost   40  [g5] windows=
 forbid   [cmpduty]
+
+# ── Software Center ──────────────────────────────────────────────────────────────────────────
+# The aggregated package catalog (Alpine, Debian, Ubuntu, Fedora, Arch, openSUSE, Flathub) ships
+# as a boot module and is served at /config/software.catalog; without it the Software Center has
+# nothing to show and says so, which is the state this asserts against.
+require  [software] catalog module:

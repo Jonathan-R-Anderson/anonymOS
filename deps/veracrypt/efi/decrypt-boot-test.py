@@ -55,11 +55,25 @@ def wait_for(text, timeout):
 
 rc = 1
 try:
-    for _ in range(60):
-        try: s=socket.socket(socket.AF_UNIX); s.connect(sock_path); break
-        except (FileNotFoundError, ConnectionRefusedError): time.sleep(0.5)
-    f=s.makefile('rwb', buffering=0); f.readline()
-    f.write(b'{"execute":"qmp_capabilities"}\n'); f.readline()
+    # Connect + greeting + capabilities as one retried unit: a connect that lands while QEMU is
+    # still binding its listener succeeds and then fails the first read with EINVAL.
+    f=None
+    for _ in range(120):
+        try:
+            s=socket.socket(socket.AF_UNIX); s.settimeout(5); s.connect(sock_path)
+            f=s.makefile('rwb', buffering=0)
+            if not f.readline(): raise OSError("empty greeting")
+            f.write(b'{"execute":"qmp_capabilities"}\n')
+            if not f.readline(): raise OSError("no capabilities reply")
+            s.settimeout(None)
+            break
+        except (FileNotFoundError, ConnectionRefusedError, OSError):
+            f=None
+            try: s.close()
+            except Exception: pass
+            time.sleep(0.5)
+    if f is None:
+        print("FAIL: QMP never came up"); raise SystemExit(1)
     if not wait_for("Enter password:", 60):
         print("FAIL: never saw the prompt"); raise SystemExit(1)
     time.sleep(1)

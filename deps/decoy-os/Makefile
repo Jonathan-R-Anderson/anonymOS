@@ -5,6 +5,7 @@
 # resulting rootfs can be packed into decoy.ext4, which the installer encrypts into
 # the decoy system partition when Hidden OS is selected.
 SELF := $(abspath .)
+PROJECT_ROOT ?= $(abspath ../..)
 BLD  := $(SELF)/build
 DL   := $(SELF)/dl
 CC   ?= cc
@@ -207,9 +208,17 @@ $(BLD)/dmsetup.static: | $(BLD)
 # dm-crypt's FULL load-time closure (from modules.dep) + the storage + the runtime crypto for
 # aes-xts-plain64. NB dm-crypt.ko hard-depends on encrypted-keys/trusted/asn1_encoder/tpm/rng-core
 # (kernel keyring), which must all insmod before it, or the "crypt" target never registers.
+# STORAGE IS THE WHOLE POINT: this initramfs exists to reach the decoy's root, so every
+# controller a real machine might use has to be here.  The set below was virtio + IDE/AHCI only,
+# with NO NVMe -- so on any modern laptop (an NVMe SSD) init-crypt found no block device at all,
+# printed NO-DISK and dropped to a shell: the decoy "tried to boot and wouldn't", while the hidden
+# OS (whose kernel has its own drivers) came up fine.  nvme/nvme-core fix that; the USB and
+# virtio-scsi entries cover install sticks and the other common hypervisor configuration.
 CRYPT_MODS = virtio virtio_ring virtio_pci_modern_dev virtio_pci_legacy_dev virtio_pci virtio_blk \
-  ata_piix ahci libahci libata scsi_mod sd_mod \
-  crc16 crc32c_generic crc32c-intel libcrc32c mbcache jbd2 ext4 \
+  virtio_scsi ata_piix ahci libahci libata scsi_mod sd_mod sr_mod cdrom \
+  nvme-core nvme nvme-common t10-pi \
+  usb-common usbcore xhci-pci-renesas xhci-pci xhci-hcd ehci-pci ehci-hcd uas usb-storage \
+  crc16 crc32c_generic crc32c-intel crc64 crc64-rocksoft libcrc32c mbcache jbd2 ext4 \
   rng-core tpm asn1_encoder trusted encrypted-keys dm-mod dm-crypt \
   libaes aes_generic aesni-intel crypto_simd cryptd xts ecb gf128mul \
   squashfs overlay loop
@@ -219,11 +228,16 @@ $(BLD)/initramfs-crypt.gz: $(BLD)/busybox.static $(BLD)/dmsetup.static initramfs
 	@cp $(BLD)/dmsetup.static $(BLD)/crdir/bin/dmsetup
 	@cp $(SELF)/initramfs/init-crypt $(BLD)/crdir/init && chmod +x $(BLD)/crdir/init
 	@# Modules are a MIX of .ko.gz (drivers) and .ko (crypto) in this rootfs — handle both.
-	@set -e; M=$(DROOT)/lib/modules/$(KVER)/kernel; for name in $(CRYPT_MODS); do \
-	   f=$$($(SUDO) find $$M -name "$$name.ko.gz" 2>/dev/null | head -1); \
-	   if [ -n "$$f" ]; then $(SUDO) sh -c "gunzip -c '$$f' > $(BLD)/crdir/mod/$$name.ko"; \
-	   else f=$$($(SUDO) find $$M -name "$$name.ko" 2>/dev/null | head -1); \
-	        [ -n "$$f" ] && $(SUDO) cp "$$f" $(BLD)/crdir/mod/$$name.ko || echo "  [warn] module not found: $$name"; fi; done
+	@# Take the DEPENDENCY CLOSURE from the kernel's own modules.dep, not the names above:
+	@# busybox insmod resolves nothing, so a module whose dependency is absent silently never
+	@# loads -- which is how this initramfs ended up with no scsi_mod/libata/ahci and no nvme at
+	@# all, and the decoy found no disk on real hardware.  Numbered so insmod order is satisfiable.
+	@set -e; MR=$(DROOT)/lib/modules/$(KVER); n=0; \
+	 python3 $(PROJECT_ROOT)/scripts/decoy-initramfs-mods.py $$MR $(CRYPT_MODS) | while read -r f; do \
+	   n=$$((n+1)); b=$$(basename "$$f"); b=$${b%.gz}; b=$${b%.ko}; \
+	   case "$$f" in *.gz) gunzip -c "$$f" > $(BLD)/crdir/mod/$$(printf '%02d' $$n)-$$b.ko ;; \
+	                 *)    cp "$$f" $(BLD)/crdir/mod/$$(printf '%02d' $$n)-$$b.ko ;; esac; \
+	 done
 	@$(SUDO) chown -R $(UGID) $(BLD)/crdir
 	@( cd $(BLD)/crdir && find . | $(BLD)/busybox.static cpio -o -H newc 2>/dev/null | gzip > $(BLD)/initramfs-crypt.gz )
 	@echo "[decoy-os] built initramfs-crypt.gz ($$(du -h $(BLD)/initramfs-crypt.gz|cut -f1)), $$(ls $(BLD)/crdir/mod|wc -l) modules"

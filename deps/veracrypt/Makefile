@@ -37,7 +37,7 @@ VC_CFLAGS := -O2 -DNDEBUG -DCRYPTOPP_DISABLE_ASM -fPIC -I$(VCSRC) -I$(VCSRC)/Cry
 
 RUN := $(BUILD_RESOURCE_RUN)
 
-.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk mkinstall decrypt-boot-check fat-boot-check clean
+.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk mkinstall decrypt-boot-check fat-boot-check decoy-boot-check clean
 all: crypto
 
 $(BLD) $(SYSROOT)/lib:
@@ -154,6 +154,34 @@ fat-boot-check: mkinstall
 	@BOOT_MARKER="STAGE2 RUNNING" VOLUME_MARKERS=1 python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img decoy-password  DECOY
 	@BOOT_MARKER="STAGE2 RUNNING" VOLUME_MARKERS=1 python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img hidden-password HIDDEN
 	@python3 $(EFI)/decrypt-boot-test.py $(BLD)/install.img not-the-password REJECT
+
+# §E5d/§H1 — the REAL decoy: the Alpine desktop payload (deps/decoy-os decoy-boot.img =
+# [ANOSBOOT descriptor][14 MB crypt UKI][~1 GB encrypted squashfs]) written into a decoy system
+# partition and booted through the production chain in OVMF.  Asserts the loader decrypts and
+# StartImages the UKI, that Linux comes up, and that init-crypt dm-crypt-mounts the on-disk
+# rootfs the loader pointed it at ("DECOY-CRYPT-OK") -- i.e. the decoy really boots, not just
+# "the descriptor parsed".  This is the case a 14 MB software-AES decrypt made look like a
+# machine that refuses to boot the decoy.
+DECOY_PAYLOAD ?= $(abspath ../decoy-os/build/decoy-boot.img)
+decoy-boot-check: crypto efi | $(BLD)
+	@test -f $(DECOY_PAYLOAD) || { echo "[veracrypt] no $(DECOY_PAYLOAD) — build it with: make -C deps/decoy-os decoy-boot"; exit 1; }
+	@echo "=== §E5d/§H1 decoy decrypt-and-boot (real Alpine desktop payload) ==="
+	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
+	    $(SELF)/vcheader.c $(SELF)/test/mkinstall.c \
+	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-mkinstall
+	@set -e; img=$(BLD)/decoy-install.img; \
+	  sz=$$(stat -c%s $(DECOY_PAYLOAD)); sysmb=$$(( sz / 1048576 + 64 )); \
+	  rm -f $$img; \
+	  dd if=/dev/zero of=$$img bs=1M count=$$(( sysmb + 200 )) status=none; \
+	  sgdisk --clear -n 1:0:+64M -t 1:EF00 -n 2:0:+$${sysmb}M -t 2:0700 -n 3:0:0 -t 3:0700 $$img >/dev/null; \
+	  sL=$$(sgdisk -i 2 $$img | awk '/First sector/{print $$3}'); \
+	  sS=$$(sgdisk -i 2 $$img | awk '/Partition size/{print $$3}'); \
+	  oL=$$(sgdisk -i 3 $$img | awk '/First sector/{print $$3}'); \
+	  oS=$$(sgdisk -i 3 $$img | awk '/Partition size/{print $$3}'); \
+	  echo "  decoy payload $$(( sz / 1048576 )) MiB -> sys partition $$sysmb MiB at LBA $$sL"; \
+	  $(BLD)/vc-mkinstall $$img $(DECOY_PAYLOAD) decoy-password $$sL $$sS $$oL $$oS wrapped
+	@BOOT_MARKER="DECOY-CRYPT-OK" BOOT_TIMEOUT=300 \
+	  python3 $(EFI)/decrypt-boot-test.py $(BLD)/decoy-install.img decoy-password DECOY
 
 # §E5 — validate the pre-boot authenticator (decoy vs hidden routing) on a disk image.
 preboot-check: crypto | $(BLD)

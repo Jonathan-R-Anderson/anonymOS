@@ -621,6 +621,21 @@ payload off the raw disk → boot it.
   <password> EPIN|DECOY|REJECT` boots the installed disk under OVMF, types the password at the prompt via
   QMP and asserts what boots (`[dkernel] … starting`, `[fde] key module accepted`, a present).
 
+- **The decoy now boots on real hardware (2026-09-22).** The hidden OS came up while the decoy
+  "tried and wouldn't", and the cause was entirely inside the decoy's own initramfs, not the
+  loader: `deps/veracrypt/decoy-boot-check` (new) writes the real 975 MB Alpine desktop payload
+  into a decoy system partition and boots it through the production chain in OVMF, which showed
+  `[decoy-crypt] NO-DISK`. Three defects, all fixed: (1) the initramfs carried **no NVMe driver at
+  all** (virtio + IDE/AHCI only), so on any machine with an NVMe SSD there was no block device to
+  find; (2) busybox insmod resolves nothing and the module list was hand-written, so `scsi_mod`
+  (needs `scsi_common`), `libata`, `libahci`, `ahci` and `nvme` silently never loaded -- the set is
+  now the **dependency closure taken from the kernel's own modules.dep**
+  (`scripts/decoy-initramfs-mods.py`), numbered so insmod order is satisfiable; (3) init-crypt took
+  the first of three hard-coded device names, which is the wrong disk on a multi-disk machine -- it
+  now enumerates `/sys/block` and TRIES each candidate, since a wrong device or key cannot produce
+  a valid squashfs superblock. Proven: `candidate disks: /dev/sda /dev/sdb` -> `root found on
+  /dev/sda` -> `DECOY-CRYPT-OK switch_root`, 3/3.
+
 - **The install no longer freezes the desktop (2026-09-22).** Every byte of an encrypted install is
   CSPRNG output or XTS ciphertext, and it was all computed inside the kernel loop with the BKL held,
   one 128 KiB batch per millisecond at 15-45 ms a batch: the compositor got what was left of each

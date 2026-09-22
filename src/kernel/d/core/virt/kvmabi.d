@@ -74,6 +74,12 @@ enum ulong KVM_GET_VCPU_EVENTS  = 0x8040ae9f; // _IOR(AE,0x9f,size=64)
 enum ulong KVM_SET_VCPU_EVENTS  = 0x4040aea0; // _IOW(AE,0xa0,size=64)
 enum ulong KVM_SET_TSC_KHZ      = 0xaea2;     // _IO(AE,0xa2)
 enum ulong KVM_GET_TSC_KHZ      = 0xaea3;
+enum ulong KVM_GET_DEBUGREGS    = 0x8080aea1; // _IOR(AE,0xa1,size=128)
+enum ulong KVM_SET_DEBUGREGS    = 0x4080aea2; // _IOW(AE,0xa2,size=128)
+enum ulong KVM_GET_XSAVE        = 0x9000aea4; // _IOR(AE,0xa4,size=4096)
+enum ulong KVM_SET_XSAVE        = 0x5000aea5; // _IOW(AE,0xa5,size=4096)
+enum ulong KVM_GET_XCRS         = 0x8188aea6; // _IOR(AE,0xa6,size=392)
+enum ulong KVM_SET_XCRS         = 0x4188aea7; // _IOW(AE,0xa7,size=392)
 
 enum uint KVM_API_VERSION = 12;
 
@@ -363,6 +369,38 @@ enum uint KVM_MP_STATE_OPERATING       = 7;
 enum uint KVM_MP_STATE_LOAD            = 8;
 enum uint KVM_MP_STATE_AP_RESET_HOLD   = 9;
 enum uint KVM_MP_STATE_SUSPENDED       = 10;
+
+// ---------------------------------------------------------------------------
+// struct kvm_debugregs (128), struct kvm_xsave (4096), struct kvm_xcrs (392)
+// ---------------------------------------------------------------------------
+struct KvmDebugregs {
+    ulong[4] db;
+    ulong dr6;
+    ulong dr7;
+    ulong flags;
+    ulong[9] reserved;
+}
+static assert(KvmDebugregs.sizeof == 128);
+
+struct KvmXsave {
+    uint[1024] region;
+}
+static assert(KvmXsave.sizeof == 4096);
+
+struct KvmXcr {
+    uint xcr;
+    uint reserved;
+    ulong value;
+}
+static assert(KvmXcr.sizeof == 16);
+
+struct KvmXcrs {
+    uint nrXcrs;
+    uint flags;
+    KvmXcr[16] xcrs;
+    ulong[16] padding;
+}
+static assert(KvmXcrs.sizeof == 392);
 
 // ---------------------------------------------------------------------------
 // struct kvm_irqfd (32), struct kvm_ioeventfd (64), struct kvm_enable_cap (104)

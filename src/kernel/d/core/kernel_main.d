@@ -5629,6 +5629,7 @@ void d_kernel_main() {
     domainBuildAllNamespaces();  // DOMAIN_MANAGER DM10.2: give every domain a restricted ns so the GUI's Filesystem RuntimeView shows a policy for each
     domainControlProof();        // DOMAIN_MANAGER DM10.3: drive a domain through its lifecycle via parsed control strings (the action-panel executor)
     domDeviceProof();            // DOMAIN_MANAGER DM8: §7 device-class enforcement (deviceClassGate)
+    { import core.virt.selftest : virtSelfTest; virtSelfTest(); } // VIRT: native VMM + KVM ABI boot proof
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)

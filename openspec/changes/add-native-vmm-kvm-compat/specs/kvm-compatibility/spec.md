@@ -41,7 +41,6 @@ implementation supports and `0` otherwise. The supported set SHALL include
 at minimum the extensions Cloud Hypervisor probes as mandatory:
 `KVM_CAP_USER_MEMORY`, `KVM_CAP_SET_TSS_ADDR`,
 `KVM_CAP_SET_IDENTITY_MAP_ADDR`, `KVM_CAP_SPLIT_IRQCHIP`,
-`KVM_CAP_IOEVENTFD`, `KVM_CAP_IRQFD`, `KVM_CAP_IRQ_ROUTING`,
 `KVM_CAP_MP_STATE`, `KVM_CAP_ADJUST_CLOCK`, `KVM_CAP_XSAVE`,
 `KVM_CAP_VCPU_EVENTS`, `KVM_CAP_TSC_DEADLINE_TIMER`, `KVM_CAP_USER_NMI`,
 `KVM_CAP_EXT_CPUID`, `KVM_CAP_GET_TSC_KHZ`, `KVM_CAP_IMMEDIATE_EXIT`,
@@ -142,16 +141,22 @@ with EINTR semantics and the vCPU thread observes the signal.
 The implementation SHALL support `KVM_SET_TSS_ADDR`,
 `KVM_SET_IDENTITY_MAP_ADDR`, `KVM_ENABLE_CAP` with
 `KVM_CAP_SPLIT_IRQCHIP` (24 IOAPIC pins; only the local APIC is
-kernel-modeled, PICs/IOAPIC stay in userspace), `KVM_SET_GSI_ROUTING`,
-`KVM_IRQFD` (eventfd-triggered virtual IRQ injection), and
-`KVM_IOEVENTFD` (MMIO, no datamatch). `KVM_CREATE_IRQCHIP` and
+kernel-modeled, PICs/IOAPIC stay in userspace). `KVM_SET_GSI_ROUTING`,
+`KVM_IRQFD`, `KVM_IOEVENTFD`, and `KVM_IRQ_LINE` SHALL fail with `ENOTTY`
+and their capabilities (`KVM_CAP_IRQ_ROUTING`, `KVM_CAP_IRQFD`,
+`KVM_CAP_IOEVENTFD`) SHALL return `0`: advertising interrupt delivery
+without an injection backend would be a fake hardware claim.
+Split-irqchip delivery (eventfd bridge → LAPIC injection) is an explicit
+later tier. `KVM_CREATE_IRQCHIP` and
 `KVM_CREATE_PIT2` SHALL fail with `ENOTTY`/`EINVAL` and be documented as
 the later full-irqchip tier.
 
-#### Scenario: split irqchip setup and irqfd delivery
+#### Scenario: split irqchip setup fails fast without delivery
 
-A VMM enables split irqchip, sets GSI routing, and registers an irqfd.
-Writing to the eventfd → the guest's local APIC receives the interrupt.
+A VMM enables split irqchip, then calls `KVM_SET_GSI_ROUTING` or
+`KVM_IRQFD`. The calls fail with `ENOTTY` (not silent success, not a
+guest hang later). When the delivery tier lands, the scenario becomes:
+writing to the eventfd → the guest's local APIC receives the interrupt.
 `KVM_CREATE_IRQCHIP` → fails cleanly with documentation pointing at the
 later tier.
 

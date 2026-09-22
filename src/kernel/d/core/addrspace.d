@@ -63,6 +63,15 @@ public bool userPageMapped(int taskId, ulong va) {
     return pte !is null && (*pte & PTE_PRESENT) != 0;
 }
 
+// Is the page containing `va` present AND writable in task `taskId`'s address
+// space?  Used by the KVM compat layer's userspace-write guard: a copy-out to
+// a read-only mapping must fail with -EFAULT, not silently corrupt or fault.
+public bool userPageWritable(int taskId, ulong va) {
+    if (taskId < 0 || taskId >= MAX_TASKS) return false;
+    auto pte = leafPTEPtr(g_tasks[taskId].pml4Phys, va & ~0xFFFUL);
+    return pte !is null && (*pte & PTE_PRESENT) != 0 && (*pte & PTE_RW) != 0;
+}
+
 // L3b: translate a userspace virtual address in task `taskId` to its physical address — the LKL PCI
 // backend's .map_page uses this as the no-IOMMU DMA IOVA so a device can DMA into LKL's buffers.
 // Returns 0 if `va` is not backed by a present 4K page.

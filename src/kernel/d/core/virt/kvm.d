@@ -1,5 +1,4 @@
 // VIRT: KVM compatibility ABI — ioctl dispatch over native VM objects.
-// SPDX-License-Identifier: LicenseRef-AnonymOS-Proprietary
 //
 // This is the COMPATIBILITY layer, not the authority.  Every ioctl resolves
 // its fd to a native (objId, generation) handle and goes through the
@@ -29,7 +28,7 @@ import core.virt.vmx : vmxIsReady, vmxEnter, VMX_NOHW;
 import core.virt.svm : svmAvailable, svmEnter;
 import core.task : g_tasks, findRegion, MAX_TASKS;
 import core.objmgr : objGet;
-import core.addrspace : userPageMapped, handlePageFault;
+import core.addrspace : userPageMapped, userPageWritable, handlePageFault;
 import core.exports : phys_to_virt;
 import core.cap : CAP_RIGHT_VM_CREATE, CAP_RIGHT_VM_MEM,
                   CAP_RIGHT_VM_RUN, CAP_RIGHT_VM_CONTROL;
@@ -47,8 +46,10 @@ private enum long E_NOMEM = -12;
 private enum long E_ACCES = -13;
 private enum long E_FAULT = -14;
 private enum long E_BUSY  = -16;
+private enum long E_EXIST = -17;  // EEXIST (duplicate registration)
 private enum long E_NODEV = -19;
 private enum long E_INVAL = -22;
+private enum long E_IO    = -5;   // Linux -EIO (e.g. KVM_GET_TSC_KHZ w/o TSC)
 private enum long E_NOTTY = -25;
 private enum long E_NOSPC = -28;
 private enum long E_BIG   = -7;  // E2BIG
@@ -96,18 +97,34 @@ uint kvmRequiredRight(KvmFdKind kind, ulong cmd) {
 // Validate a userspace range before touching it: non-zero, no wrap, inside the
 // low canonical half, and every page resolvable in the caller's address space
 // (present, or demand-fillable via the same path a userspace fault would take).
-// A bad pointer is -EFAULT at the ioctl boundary, never a kernel #PF.
-private bool kvmUserOk(int tid, ulong addr, ulong len) {
+// forWrite=true resolves pages for write (CoW break / dirty); a read-only
+// mapping fails the write guard.  A bad pointer is -EFAULT at the ioctl
+// boundary, never a kernel #PF.
+//
+// SMAP convention (mirrors core.syscalls.posix): every direct userspace
+// dereference below runs inside kvmSmapBegin/kvmSmapEnd.  The bodies are
+// no-ops until SMAP (CLAC/STAC) enablement lands; the call sites are in place
+// so that is a one-spot change.
+private void kvmSmapBegin() @nogc nothrow {}
+private void kvmSmapEnd() @nogc nothrow {}
+
+private bool kvmUserOk(int tid, ulong addr, ulong len, bool forWrite) {
     if (addr == 0 || len == 0 || len > 0x10_0000) return false; // 1 MiB sanity cap
     ulong end = addr + len;
     if (end < addr) return false;                              // wrap
     if (end > 0x0000_8000_0000_0000UL) return false;            // low half only
     if (tid < 0 || tid >= MAX_TASKS) return false;
     for (ulong p = addr & ~0xFFFUL; ; ) {
-        if (!userPageMapped(tid, p)) {
+        bool present = forWrite ? userPageWritable(tid, p)
+                                : userPageMapped(tid, p);
+        if (!present) {
             // Same resolution a userspace touch would get (demand-zero, CoW…).
-            if (!handlePageFault(tid, p, false)) return false;
-            if (!userPageMapped(tid, p)) return false;
+            // A write fault on a CoW page resolves writable here; a genuinely
+            // read-only mapping stays unwritable and fails the guard below.
+            if (!handlePageFault(tid, p, forWrite)) return false;
+            present = forWrite ? userPageWritable(tid, p)
+                               : userPageMapped(tid, p);
+            if (!present) return false;
         }
         if (p + 0x1000 < p) break;                             // overflow guard
         p += 0x1000;
@@ -117,20 +134,38 @@ private bool kvmUserOk(int tid, ulong addr, ulong len) {
 }
 
 private T kvmUserRead(T)(ulong addr) {
-    return *cast(T*)addr;
+    kvmSmapBegin();
+    T v = *cast(T*)addr;
+    kvmSmapEnd();
+    return v;
 }
 private void kvmUserWrite(T)(ulong addr, T v) {
+    kvmSmapBegin();
     *cast(T*)addr = v;
+    kvmSmapEnd();
 }
 private void kvmUserCopyOut(ulong dst, const(void)* src, size_t n) {
+    kvmSmapBegin();
     auto d = cast(ubyte*)dst;
     auto s = cast(const(ubyte)*)src;
     foreach (i; 0 .. n) d[i] = s[i];
+    kvmSmapEnd();
 }
 private void kvmUserCopyIn(void* dst, ulong src, size_t n) {
+    kvmSmapBegin();
     auto d = cast(ubyte*)dst;
     auto s = cast(const(ubyte)*)src;
     foreach (i; 0 .. n) d[i] = s[i];
+    kvmSmapEnd();
+}
+
+// Self-test hook: expose the userspace guard for the boot proof
+// (core.virt.selftest).  Not part of the ABI.
+public bool kvmTestUserOk(int tid, ulong addr, ulong len) {
+    return kvmUserOk(tid, addr, len, false);
+}
+public bool kvmTestUserOkWrite(int tid, ulong addr, ulong len) {
+    return kvmUserOk(tid, addr, len, true);
 }
 
 // --- /dev/kvm (system) fd -----------------------------------------------------
@@ -145,9 +180,12 @@ private long kvmCheckExtension(ulong cap) {
         case KVM_CAP_USER_NMI:         return 1;
         case KVM_CAP_HLT:              return 1;
         case KVM_CAP_NOP_IO_DELAY:     return 1;
-        case KVM_CAP_IRQ_ROUTING:      return 1;
-        case KVM_CAP_IRQFD:            return 1;
-        case KVM_CAP_IOEVENTFD:        return 1;
+        case KVM_CAP_IRQ_ROUTING:      return 0; // routing stored, but no
+        case KVM_CAP_IRQFD:            return 0; // interrupt/eventfd delivery
+        case KVM_CAP_IOEVENTFD:        return 0; // not yet implemented — fail
+                                                     // fast rather than claim
+                                                     // and hang.  Split-irqchip
+                                                     // delivery is the next tier.
         case KVM_CAP_SET_IDENTITY_MAP_ADDR: return 1;
         case KVM_CAP_ADJUST_CLOCK:     return 1;
         case KVM_CAP_VCPU_EVENTS:      return 1;
@@ -158,7 +196,7 @@ private long kvmCheckExtension(ulong cap) {
         case KVM_CAP_GET_TSC_KHZ:      return 1;
         case KVM_CAP_TSC_CONTROL:      return 1;
         case KVM_CAP_TSC_DEADLINE_TIMER: return 1;
-        case KVM_CAP_SIGNAL_MSI:       return 1;
+        case KVM_CAP_SIGNAL_MSI:       return 0; // not used by any VMM we target
         case KVM_CAP_READONLY_MEM:     return 1;
         case KVM_CAP_IMMEDIATE_EXIT:   return 1;
         // --- Cloud Hypervisor's hard probe gate: answered 1 even though
@@ -199,6 +237,9 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
         case KVM_CHECK_EXTENSION:
             return kvmCheckExtension(arg);
         case KVM_CREATE_VM:
+            // arg is the VM type: only KVM_X86_DEFAULT_VM (0) is supported.
+            // Anything else (SEV/TDX types) is a clean EINVAL, not silent.
+            if (arg != 0) return E_INVAL;
             return kvmCreateVm(tid);
         case KVM_GET_VCPU_MMAP_SIZE:
             return 4096; // one page: struct kvm_run
@@ -206,14 +247,14 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
             // arg -> struct kvm_cpuid2 { nent, pad, entries[] }.
             // Honest minimal list: the host leaves we actually vouch for.
             // Cloud Hypervisor reads host CPUID itself; this satisfies the probe.
-            if (!kvmUserOk(tid, arg, 8)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8, true)) return E_FAULT;
             uint nent = kvmUserRead!uint(arg);
             enum uint PROVIDE = 4;
             if (nent < PROVIDE) {
                 kvmUserWrite!uint(arg, PROVIDE);
                 return E_BIG; // tell caller to retry with a bigger buffer
             }
-            if (!kvmUserOk(tid, arg, 8 + PROVIDE * 32)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8 + PROVIDE * 32, true)) return E_FAULT;
             kvmUserWrite!uint(arg, PROVIDE);
             kvmUserWrite!uint(arg + 4, 0);
             // Leaf 0: max basic leaf + vendor.  Leaf 1: feature flags with the
@@ -237,7 +278,7 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
         }
         case KVM_GET_MSR_INDEX_LIST: {
             // Minimal honest list: the MSRs our SET/GET_MSRS cache understands.
-            if (!kvmUserOk(tid, arg, 8)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8, true)) return E_FAULT;
             uint nent = kvmUserRead!uint(arg);
             enum uint PROVIDE = 8;
             static immutable uint[8] idx = [
@@ -254,7 +295,7 @@ long kvmSystemIoctl(int tid, ulong cmd, ulong arg) {
                 kvmUserWrite!uint(arg, PROVIDE);
                 return E_BIG;
             }
-            if (!kvmUserOk(tid, arg, 8 + PROVIDE * 4)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8 + PROVIDE * 4, true)) return E_FAULT;
             kvmUserWrite!uint(arg, PROVIDE);
             kvmUserWrite!uint(arg + 4, 0);
             foreach (i; 0 .. PROVIDE)
@@ -319,13 +360,14 @@ private void kvmFillCpuidFeatures(ulong base) {
     kvmUserWrite!uint(base + 64 + 12, eax);
 }
 // --- VM fd -------------------------------------------------------------------
-// Create a vCPU on the VM.  Returns a packed (objId, generation) handle >= 0,
-// or -errno.  posix.d allocates the fd and stores the handle in f.fileSize.
-long kvmCreateVcpu(uint vmObj, uint vmGen) {
+// Create a vCPU on the VM at the requested KVM vCPU id (the ioctl arg).
+// Returns a packed (objId, generation) handle >= 0, or -errno.  posix.d
+// allocates the fd and stores the handle in f.fileSize.
+long kvmCreateVcpu(uint vmObj, uint vmGen, uint vcpuId) {
     Vm* vm = vmCheck(vmObj, vmGen);
     if (vm is null) return E_BADF; // stale VM handle
-    int idx = vmCreateVcpu(vm);
-    if (idx < 0) return E_NOSPC;   // vCPU ceiling reached
+    int idx = vmCreateVcpu(vm, vcpuId);
+    if (idx < 0) return E_NOSPC;   // id taken/out of range, or ceiling reached
     Vcpu* vc = &vm.vcpus[idx];
     return cast(long)kvmPackHandle(vc.objId, vc.gen);
 }
@@ -336,9 +378,12 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
     if (vm is null) return E_BADF; // stale handle: the VM is gone
     switch (cmd) {
         case KVM_CREATE_VCPU:
-            return kvmCreateVcpu(vmObj, vmGen);
+            // The ioctl arg IS the vCPU id (a ulong, not a pointer).
+            // Reject ids that don't fit in 32 bits instead of truncating.
+            if (arg > uint.max) return E_INVAL;
+            return kvmCreateVcpu(vmObj, vmGen, cast(uint)arg);
         case KVM_SET_USER_MEMORY_REGION: {
-            if (!kvmUserOk(tid, arg, KvmUserspaceMemoryRegion.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmUserspaceMemoryRegion.sizeof, false)) return E_FAULT;
             KvmUserspaceMemoryRegion r;
             kvmUserCopyIn(&r, arg, KvmUserspaceMemoryRegion.sizeof);
             return vmSetMemoryRegion(vm, r.slot, r.flags, r.guestPhysAddr,
@@ -350,7 +395,7 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_SET_IDENTITY_MAP_ADDR: {
-            if (!kvmUserOk(tid, arg, 8)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8, false)) return E_FAULT;
             vm.identityMapAddr = kvmUserRead!ulong(arg);
             return 0;
         }
@@ -360,7 +405,7 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
             // PIC/IOAPIC/PIT.  ENOTTY = "not implemented here", clean probe.
             return E_NOTTY;
         case KVM_ENABLE_CAP: {
-            if (!kvmUserOk(tid, arg, KvmEnableCap.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmEnableCap.sizeof, false)) return E_FAULT;
             KvmEnableCap c;
             kvmUserCopyIn(&c, arg, KvmEnableCap.sizeof);
             if (c.cap == KVM_CAP_SPLIT_IRQCHIP) {
@@ -372,47 +417,31 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
             return E_INVAL;
         }
         case KVM_SET_GSI_ROUTING: {
-            if (!kvmUserOk(tid, arg, 8)) return E_FAULT;
-            uint nr = kvmUserRead!uint(arg);
-            if (nr > 1024) return E_INVAL;
-            if (!kvmUserOk(tid, arg, 8 + cast(ulong)nr * KvmIrqRoutingEntry.sizeof))
-                return E_FAULT;
-            // Validate entry types; the routing table itself is a later tier
-            // (userspace IOAPIC owns delivery under split irqchip).
-            foreach (i; 0 .. nr) {
-                ulong eaddr = arg + 8 + cast(ulong)i * KvmIrqRoutingEntry.sizeof;
-                uint type = kvmUserRead!uint(eaddr + 4);
-                if (type != KVM_IRQ_ROUTING_IRQCHIP && type != KVM_IRQ_ROUTING_MSI)
-                    return E_INVAL;
-            }
-            vm.gsiRoutes = nr;
-            return 0;
+            // Not yet: routing without delivery is a fake claim.  The GSI
+            // table structs stay (the delivery tier consumes them); the
+            // ioctl fails fast until interrupt injection exists.
+            return E_NOTTY;
         }
         case KVM_IRQ_LINE: {
-            // Split irqchip: the userspace IOAPIC owns line state; the kernel
-            // acks a well-formed level so probe/setup sequences proceed.
-            if (!kvmUserOk(tid, arg, 8)) return E_FAULT;
-            uint irq = kvmUserRead!uint(arg);
-            if (irq >= 24) return E_INVAL;
-            return 0;
+            // Not yet: acking without LAPIC injection would hang guests.
+            // Fail fast until the delivery backend exists.
+            return E_NOTTY;
         }
         case KVM_IRQFD: {
-            if (!kvmUserOk(tid, arg, KvmIrqfd.sizeof)) return E_FAULT;
-            // Later tier: irqfd needs the eventfd object bridge.  Validate the
-            // struct shape now so the probe path is honest about EINVAL vs OK.
-            KvmIrqfd f;
-            kvmUserCopyIn(&f, arg, KvmIrqfd.sizeof);
-            if (f.gsi >= 1024) return E_INVAL;
-            return E_INVAL; // not wired yet (no eventfd bridge)
+            // Not yet: no eventfd bridge, no injection.  Fail fast.
+            return E_NOTTY;
         }
-        case KVM_IOEVENTFD:
-            return E_INVAL; // later tier (no MMIO bus yet)
+        case KVM_IOEVENTFD: {
+            // Not yet: no MMIO-bus matching without the exit backend.
+            // Fail fast.
+            return E_NOTTY;
+        }
         case KVM_SET_CLOCK: {
-            if (!kvmUserOk(tid, arg, KvmClockData.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmClockData.sizeof, false)) return E_FAULT;
             return 0; // accepted; kvmclock is a later tier
         }
         case KVM_GET_CLOCK: {
-            if (!kvmUserOk(tid, arg, KvmClockData.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmClockData.sizeof, true)) return E_FAULT;
             KvmClockData c;
             // Zeroed clock: honest "no kvmclock" rather than fake timestamps.
             foreach (i; 0 .. KvmClockData.sizeof) (cast(ubyte*)&c)[i] = 0;
@@ -453,6 +482,23 @@ private KvmCpuidPage* kvmCpuidFor(Vcpu* vc, bool create) {
     return cast(KvmCpuidPage*)phys_to_virt(vc.cpuidPhys);
 }
 
+// Lazily-allocated XSAVE area (struct kvm_xsave, 4096 bytes).  The legacy
+// region defaults match a freshly-reset FPU (FCW=0x37f, MXCSR=0x1f80).
+private KvmXsave* kvmXsaveFor(Vcpu* vc, bool create) {
+    if (vc.xsavePhys == 0) {
+        if (!create) return null;
+        ulong p = alloc_phys_page();
+        if (p == 0) return null;
+        auto x = cast(KvmXsave*)phys_to_virt(p);
+        foreach (i; 0 .. KvmXsave.sizeof) (cast(ubyte*)x)[i] = 0;
+        // x87 state (bytes 0..159): FCW and MXCSR reset values.
+        (cast(ushort*)x)[0] = 0x37f;             // fcw
+        *cast(uint*)(cast(ubyte*)x + 24) = 0x1f80; // mxcsr
+        vc.xsavePhys = p;
+    }
+    return cast(KvmXsave*)phys_to_virt(vc.xsavePhys);
+}
+
 // Fixed part of the cache (fits one page with 64 MSRs).
 private struct KvmVcpuFixed {
     KvmSRegs sregs;
@@ -460,6 +506,12 @@ private struct KvmVcpuFixed {
     KvmVcpuEvents events;
     uint mpState;
     uint tscKhz;
+    ulong[2] xcrs;        // XCR0 (+1); KVM_GET/SET_XCRS
+    ulong[4] dr;          // DB0..DB3; KVM_GET/SET_DEBUGREGS
+    ulong dr6;
+    ulong dr7;
+    bool xcrsSet;
+    bool debugSet;
     uint msrCount;
     uint pad_;
     KvmMsrEntry[KVM_CACHE_MAX_MSRS] msrs;
@@ -538,14 +590,14 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
         case KVM_RUN:
             return kvmVcpuRun(tid, vcpuObj, vcpuGen);
         case KVM_GET_REGS: {
-            if (!kvmUserOk(tid, arg, KvmRegs.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmRegs.sizeof, true)) return E_FAULT;
             KvmRegs r;
             foreach (i; 0 .. 18) (&r.rax)[i] = vc.regs[i];
             kvmUserCopyOut(arg, &r, KvmRegs.sizeof);
             return 0;
         }
         case KVM_SET_REGS: {
-            if (!kvmUserOk(tid, arg, KvmRegs.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmRegs.sizeof, false)) return E_FAULT;
             KvmRegs r;
             kvmUserCopyIn(&r, arg, KvmRegs.sizeof);
             foreach (i; 0 .. 18) vc.regs[i] = (&r.rax)[i];
@@ -554,7 +606,7 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_GET_SREGS: {
-            if (!kvmUserOk(tid, arg, KvmSRegs.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmSRegs.sizeof, true)) return E_FAULT;
             auto c = kvmCacheFor(vc, false);
             KvmSRegs s;
             if (c !is null) s = c.sregs;
@@ -563,7 +615,7 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_SET_SREGS: {
-            if (!kvmUserOk(tid, arg, KvmSRegs.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmSRegs.sizeof, false)) return E_FAULT;
             auto c = kvmCacheFor(vc, true);
             if (c is null) return E_NOMEM;
             kvmUserCopyIn(&c.sregs, arg, KvmSRegs.sizeof);
@@ -571,7 +623,7 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_GET_FPU: {
-            if (!kvmUserOk(tid, arg, KvmFpu.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmFpu.sizeof, true)) return E_FAULT;
             auto c = kvmCacheFor(vc, false);
             KvmFpu f;
             if (c !is null) f = c.fpu;
@@ -580,14 +632,14 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_SET_FPU: {
-            if (!kvmUserOk(tid, arg, KvmFpu.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmFpu.sizeof, false)) return E_FAULT;
             auto c = kvmCacheFor(vc, true);
             if (c is null) return E_NOMEM;
             kvmUserCopyIn(&c.fpu, arg, KvmFpu.sizeof);
             return 0;
         }
         case KVM_GET_VCPU_EVENTS: {
-            if (!kvmUserOk(tid, arg, KvmVcpuEvents.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmVcpuEvents.sizeof, true)) return E_FAULT;
             auto c = kvmCacheFor(vc, false);
             KvmVcpuEvents e;
             if (c !is null) e = c.events;
@@ -596,21 +648,21 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_SET_VCPU_EVENTS: {
-            if (!kvmUserOk(tid, arg, KvmVcpuEvents.sizeof)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, KvmVcpuEvents.sizeof, false)) return E_FAULT;
             auto c = kvmCacheFor(vc, true);
             if (c is null) return E_NOMEM;
             kvmUserCopyIn(&c.events, arg, KvmVcpuEvents.sizeof);
             return 0;
         }
         case KVM_GET_MP_STATE: {
-            if (!kvmUserOk(tid, arg, 4)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 4, true)) return E_FAULT;
             auto c = kvmCacheFor(vc, false);
             uint s = (c !is null) ? c.mpState : vc.mpState;
             kvmUserWrite!uint(arg, s);
             return 0;
         }
         case KVM_SET_MP_STATE: {
-            if (!kvmUserOk(tid, arg, 4)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 4, false)) return E_FAULT;
             uint s = kvmUserRead!uint(arg);
             if (s > 6) return E_INVAL; // KVM_MP_STATE_SIPI_RECEIVED max
             auto c = kvmCacheFor(vc, true);
@@ -622,20 +674,20 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
         case KVM_GET_LAPIC: {
             // Later tier: local-APIC state lives in the kernel APIC model.
             // Return zeros (honest "not modeled") rather than fake state.
-            if (!kvmUserOk(tid, arg, 1024)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 1024, true)) return E_FAULT;
             foreach (i; 0 .. 1024) kvmUserWrite!ubyte(arg + i, 0);
             return 0;
         }
         case KVM_SET_LAPIC: {
-            if (!kvmUserOk(tid, arg, 1024)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 1024, false)) return E_FAULT;
             vc.lapicSet = true;
             return 0; // accepted; applied when the APIC model lands
         }
         case KVM_SET_CPUID2: {
-            if (!kvmUserOk(tid, arg, 8)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8, false)) return E_FAULT;
             uint nent = kvmUserRead!uint(arg);
             if (nent > KVM_CACHE_MAX_CPUID) return E_BIG;
-            if (!kvmUserOk(tid, arg, 8 + cast(ulong)nent * 40)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8 + cast(ulong)nent * 40, false)) return E_FAULT;
             auto p = kvmCpuidFor(vc, true);
             if (p is null) return E_NOMEM;
             p.count = nent;
@@ -643,10 +695,10 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_SET_MSRS: {
-            if (!kvmUserOk(tid, arg, 8)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8, false)) return E_FAULT;
             uint n = kvmUserRead!uint(arg);
             if (n > KVM_CACHE_MAX_MSRS) return E_BIG;
-            if (!kvmUserOk(tid, arg, 8 + cast(ulong)n * 16)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8 + cast(ulong)n * 16, false)) return E_FAULT;
             auto fx = kvmCacheFor(vc, true);
             if (fx is null) return E_NOMEM;
             fx.msrCount = n;
@@ -654,12 +706,12 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return cast(long)n; // Linux returns the number applied
         }
         case KVM_GET_MSRS: {
-            if (!kvmUserOk(tid, arg, 8)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8, true)) return E_FAULT;
             uint n = kvmUserRead!uint(arg);
             auto c = kvmCacheFor(vc, false);
             uint have = (c !is null) ? c.msrCount : 0;
             if (n > KVM_CACHE_MAX_MSRS) return E_BIG;
-            if (!kvmUserOk(tid, arg, 8 + cast(ulong)n * 16)) return E_FAULT;
+            if (!kvmUserOk(tid, arg, 8 + cast(ulong)n * 16, true)) return E_FAULT;
             // Fill what we have; unknown indices read back as 0 (honest:
             // the MSR was never programmed through us).
             foreach (i; 0 .. n) {
@@ -690,7 +742,89 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
         case KVM_GET_TSC_KHZ: {
             auto c = kvmCacheFor(vc, false);
             uint khz = (c !is null) ? c.tscKhz : 0;
-            return khz == 0 ? E_INVAL : cast(long)khz;
+            // Linux returns -EIO when the TSC frequency is unknown; Cloud
+            // Hypervisor treats EIO as "no TSC frequency", not fatal.
+            return khz == 0 ? E_IO : cast(long)khz;
+        }
+        case KVM_GET_XSAVE: {
+            if (!kvmUserOk(tid, arg, KvmXsave.sizeof, true)) return E_FAULT;
+            auto x = kvmXsaveFor(vc, false);
+            KvmXsave tmp;
+            if (x !is null) tmp = *x;
+            else {
+                // Same reset defaults as the lazily-allocated page.
+                foreach (i; 0 .. KvmXsave.sizeof) (cast(ubyte*)&tmp)[i] = 0;
+                (cast(ushort*)&tmp)[0] = 0x37f;
+                *cast(uint*)(cast(ubyte*)&tmp + 24) = 0x1f80;
+            }
+            kvmUserCopyOut(arg, &tmp, KvmXsave.sizeof);
+            return 0;
+        }
+        case KVM_SET_XSAVE: {
+            if (!kvmUserOk(tid, arg, KvmXsave.sizeof, false)) return E_FAULT;
+            auto x = kvmXsaveFor(vc, true);
+            if (x is null) return E_NOMEM;
+            kvmUserCopyIn(x, arg, KvmXsave.sizeof);
+            return 0;
+        }
+        case KVM_GET_XCRS: {
+            if (!kvmUserOk(tid, arg, KvmXcrs.sizeof, true)) return E_FAULT;
+            auto c = kvmCacheFor(vc, false);
+            KvmXcrs x;
+            foreach (i; 0 .. KvmXcrs.sizeof) (cast(ubyte*)&x)[i] = 0;
+            if (c !is null && c.xcrsSet) {
+                x.nrXcrs = 2;
+                x.xcrs[0].xcr = 0; x.xcrs[0].value = c.xcrs[0];
+                x.xcrs[1].xcr = 1; x.xcrs[1].value = c.xcrs[1];
+            } else {
+                // XCR0 reset value: x87 only.
+                x.nrXcrs = 2;
+                x.xcrs[0].xcr = 0; x.xcrs[0].value = 1;
+                x.xcrs[1].xcr = 1; x.xcrs[1].value = 0;
+            }
+            kvmUserCopyOut(arg, &x, KvmXcrs.sizeof);
+            return 0;
+        }
+        case KVM_SET_XCRS: {
+            if (!kvmUserOk(tid, arg, KvmXcrs.sizeof, false)) return E_FAULT;
+            KvmXcrs x;
+            kvmUserCopyIn(&x, arg, KvmXcrs.sizeof);
+            if (x.nrXcrs > 16) return E_INVAL;
+            auto c = kvmCacheFor(vc, true);
+            if (c is null) return E_NOMEM;
+            c.xcrs[0] = 0; c.xcrs[1] = 0;
+            foreach (i; 0 .. x.nrXcrs) {
+                if (x.xcrs[i].xcr == 0) c.xcrs[0] = x.xcrs[i].value;
+                else if (x.xcrs[i].xcr == 1) c.xcrs[1] = x.xcrs[i].value;
+                else return E_INVAL; // unknown XCR
+            }
+            c.xcrsSet = true;
+            return 0;
+        }
+        case KVM_GET_DEBUGREGS: {
+            if (!kvmUserOk(tid, arg, KvmDebugregs.sizeof, true)) return E_FAULT;
+            auto c = kvmCacheFor(vc, false);
+            KvmDebugregs d;
+            foreach (i; 0 .. KvmDebugregs.sizeof) (cast(ubyte*)&d)[i] = 0;
+            if (c !is null && c.debugSet) {
+                foreach (i; 0 .. 4) d.db[i] = c.dr[i];
+                d.dr6 = c.dr6; d.dr7 = c.dr7;
+            } else {
+                d.dr6 = 0xFFFF0FF0; // DR6 reset value
+            }
+            kvmUserCopyOut(arg, &d, KvmDebugregs.sizeof);
+            return 0;
+        }
+        case KVM_SET_DEBUGREGS: {
+            if (!kvmUserOk(tid, arg, KvmDebugregs.sizeof, false)) return E_FAULT;
+            KvmDebugregs d;
+            kvmUserCopyIn(&d, arg, KvmDebugregs.sizeof);
+            auto c = kvmCacheFor(vc, true);
+            if (c is null) return E_NOMEM;
+            foreach (i; 0 .. 4) c.dr[i] = d.db[i];
+            c.dr6 = d.dr6; c.dr7 = d.dr7;
+            c.debugSet = true;
+            return 0;
         }
         default:
             return E_INVAL;

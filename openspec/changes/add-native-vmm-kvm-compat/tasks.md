@@ -92,9 +92,13 @@ sandbox.
 - [ ] 5.3 VM-fd ioctls: `KVM_SET_USER_MEMORY_REGION` (flags 0/READONLY,
   size-0 removal, overlap rejection), `KVM_SET_TSS_ADDR`,
   `KVM_SET_IDENTITY_MAP_ADDR`, `KVM_ENABLE_CAP(SPLIT_IRQCHIP)`,
-  `KVM_CREATE_VCPU`, `KVM_SET_GSI_ROUTING`, `KVM_IRQFD`,
-  `KVM_IOEVENTFD` (MMIO, no datamatch). `KVM_CREATE_IRQCHIP` /
-  `KVM_CREATE_PIT2` fail cleanly. Verify: dispatch tests per ioctl.
+  `KVM_CREATE_VCPU`. `KVM_CREATE_IRQCHIP` /
+  `KVM_CREATE_PIT2` fail cleanly. **Interrupt ioctls
+  (`KVM_SET_GSI_ROUTING`, `KVM_IRQFD`, `KVM_IOEVENTFD`, `KVM_IRQ_LINE`)
+  return `ENOTTY` and their caps read 0**: advertising delivery without
+  an injection backend would be a fake hardware claim; split-irqchip
+  delivery (eventfd bridge → LAPIC injection) is an explicit later tier.
+  Verify: dispatch tests per ioctl.
 - [ ] 5.4 vCPU-fd ioctls: `KVM_SET_CPUID2`, `KVM_SET_MSRS`,
   `KVM_SET_REGS`, `KVM_GET/SET_SREGS`, `KVM_SET_FPU`,
   `KVM_GET/SET_LAPIC`, `KVM_GET_TSC_KHZ`; hostile values rejected

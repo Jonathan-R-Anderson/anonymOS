@@ -91,8 +91,11 @@ private ulong* eptWalk(Ept* e, ulong gpa, bool create) {
             if (!create) return null;
             ulong nt = eptNewTable(e);
             if (nt == 0) return null;
-            // R|W|X + WB memory type on intermediate entries.
-            tab[idx] = nt | 0x7 | (EPT_MT_WB << 3);
+            // Non-leaf: R|W|X only.  Bits 5:3 (EPT memory type) are RESERVED
+            // and must be zero on entries that reference another EPT table
+            // (SDM Vol 3C Table 28-3); only leaf entries carry a memory type.
+            // Setting them here would be an EPT misconfiguration on VM entry.
+            tab[idx] = nt | 0x7;
             ent = tab[idx];
         }
         tabPhys = ent & 0x000FFFFFFFFFF000UL;

@@ -21,6 +21,8 @@ import core.cap : Capability, CAP_INVALID,
                   CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CLOSE,
                   CAP_RIGHT_STAT, CAP_RIGHT_IOCTL, CAP_RIGHT_MMAP,
                   CAP_RIGHT_DUP, CAP_RIGHT_PASS, CAP_RIGHT_ALL,
+                  CAP_RIGHT_VM_CREATE, CAP_RIGHT_VM_MEM,
+                  CAP_RIGHT_VM_RUN, CAP_RIGHT_VM_CONTROL,
                   CAP_RIGHT_ADMIN_MOUNT, CAP_RIGHT_ADMIN_REBOOT,
                   CAP_RIGHT_ADMIN_USER, CAP_RIGHT_ADMIN_DEVICE,
                   CAP_RIGHT_ADMIN_INSPECT,
@@ -36,7 +38,13 @@ import core.domain : domainControlWrite,                     // DM10.3: /config/
 import core.identity : identityDeviceAllowed, identityByName, // DM8: §7 device-class enforcement
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
                        DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB, DEVCLASS_NET,
+                       DEVCLASS_VIRT,                                 // VIRT: /dev/kvm class
                        IDENTITY_BORDER_NEUTRAL;   // ROADMAP 4.0c: shared neutral border colour
+import core.virt.kvm : KvmFdKind, kvmRequiredRight, kvmSystemIoctl, kvmVmIoctl,
+                       kvmVcpuIoctl, kvmVcpuMmap, kvmCreateVm, kvmCreateVcpu;
+import core.virt.kvmabi : KVM_CREATE_VM, KVM_CREATE_VCPU;
+import core.virt.vm : kvmPackHandle, kvmUnpackHandle,
+                      kvmVmFdDuped, kvmVmFdClosed, kvmVcpuFdDuped, kvmVcpuFdClosed;
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userByUid, userByGid,
                    userSetActiveSubject, userDefaultNameContent; // Phase 10 / IR-P3 User objects
@@ -121,6 +129,13 @@ enum FileType {
     // pixels bisected to precisely that -- the window border changed identity colour because some
     // numeric FileType value elsewhere no longer meant what it used to.  New file types go here.
     FD_INOTIFY,
+    // VIRT: KVM compatibility fds (/dev/kvm, VM fds, vCPU fds).  Appended for the
+    // same renumbering reason.  These are Linux-compat VIEWS: the authority is
+    // the native Vm/Vcpu object in core.virt.vm, reached via the packed
+    // (objId, generation) handle in File.fileSize (stale-checked on every use).
+    FD_KVM_SYSTEM, // /dev/kvm itself; fileSize unused
+    FD_KVM_VM,     // VM fd; fileSize = packed (vmObjId, vmGen)
+    FD_KVM_VCPU,   // vCPU fd; fileSize = packed (vcpuObjId, vcpuGen)
 }
 
 struct File {
@@ -248,11 +263,15 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
         } else if (f.type == FileType.FD_PIPE_WRITE) {
             auto p = getPipe(cast(size_t)pipeIdFromFd(f));
             if (p !is null) ++p.writers;
+        } else if (f.type == FileType.FD_KVM_VM || f.type == FileType.FD_KVM_VCPU) {
+            kvmFdDuped(f); // fork copies every fd; the child's copies are live views
         } else {
             fdInstanceRef(f);   // epoll/eventfd/memfd instance refs (see helper)
         }
         if (f.type != FileType.FD_NONE)
             publishFdInTable(dstTabId, cast(int)i, f, srcTabId, cast(int)i);
+        if (f.type == FileType.FD_KVM_VM || f.type == FileType.FD_KVM_VCPU)
+            kvmFdAddEdge(f);
     }
 }
 __gshared bool g_fdTableInitialized = false;
@@ -782,6 +801,9 @@ private ObjType objTypeForFile(File* f) {
         case FileType.FD_URANDOM:
         case FileType.FD_PTY_MASTER:
         case FileType.FD_PTY_SLAVE:
+        case FileType.FD_KVM_SYSTEM:
+        case FileType.FD_KVM_VM:
+        case FileType.FD_KVM_VCPU:
             return ObjType.Device;
         case FileType.FD_MEMFD:
             return ObjType.Vmo;
@@ -881,6 +903,21 @@ private uint capRightsForFile(File* f) {
         case FileType.FD_PTY_SLAVE:
             rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL;
             break;
+        case FileType.FD_KVM_SYSTEM:
+            // /dev/kvm: ioctl-only.  The open itself was gated on DEVCLASS_VIRT
+            // (explicit `devon <domain> virt`), which IS the VM_CREATE grant —
+            // so the system fd carries it, and every child fd derives narrower.
+            rights |= CAP_RIGHT_IOCTL | CAP_RIGHT_VM_CREATE;
+            break;
+        case FileType.FD_KVM_VM:
+            // VM fd: memory setup + control ioctls, no guest entry.
+            rights |= CAP_RIGHT_IOCTL | CAP_RIGHT_VM_MEM | CAP_RIGHT_VM_CONTROL;
+            break;
+        case FileType.FD_KVM_VCPU:
+            // vCPU fd: guest entry + state ioctls + the shared kvm_run page.
+            rights |= CAP_RIGHT_IOCTL | CAP_RIGHT_MMAP |
+                      CAP_RIGHT_VM_RUN | CAP_RIGHT_VM_CONTROL;
+            break;
         default:
             // Preserve current Linux-shim behaviour: most compatibility
             // backends tolerate both reads and writes even when synthetic.
@@ -970,6 +1007,8 @@ private bool deriveActiveFd(int dstFd, int srcFd) {
     if (src !is null && src.objId != 0 && src.revoked == 0)
         rights &= src.rights;
     capDeriveObjectTo(cast(uint)srcFd, cast(uint)dstFd, oh.id, rights);
+    kvmFdDuped(dst); // dup of a KVM fd: another live view on the VM/vCPU
+    kvmFdAddEdge(dst);
     return true;
 }
 
@@ -1543,6 +1582,15 @@ private void closeLocalSocket(File* f)
     if (sock.refCount > 0) --sock.refCount;
     if (sock.refCount > 0)
         return;
+
+    // Drain any SCM_RIGHTS-passed fds still queued: each holds a queue-time pin
+    // on its native object (see sendmsg); release them so a socket closed
+    // without recvmsg does not leak VM/vCPU pins.
+    while (sock.passedTail != sock.passedHead) {
+        kvmFdClosed(&sock.passedFiles[sock.passedTail]);
+        sock.passedCaps[sock.passedTail] = IpcCapDesc.init;
+        sock.passedTail = (sock.passedTail + 1) % scmRightsCapacity;
+    }
 
     if (sock.state == LocalSocketState.listener || sock.state == LocalSocketState.bound || sock.state == LocalSocketState.created)
     {
@@ -2566,6 +2614,7 @@ private uint devClassForPath(const(char)* path) {
     if (cstrEqPrefix(path, "/dev/video"))        return DEVCLASS_CAMERA;
     if (cstrEqPrefix(path, "/dev/bus/usb/"))     return DEVCLASS_USB;
     if (cstrEqPrefix(path, "/dev/snd/"))         return DEVCLASS_AUDIO;
+    if (cstrEq(path, "/dev/kvm"))                  return DEVCLASS_VIRT;
     return 0;
 }
 
@@ -3592,6 +3641,21 @@ public int sys_open(const(char)* path, int flags) {
     // (input/gpu/camera/mic/audio/usb) — a domain that denies a class cannot open its node.
     { const int dg = deviceClassGate(path); if (dg < 0) return dg; }
 
+    // /dev/kvm — KVM compatibility device.  The gate above already enforced
+    // DEVCLASS_VIRT (explicit `devon <domain> virt`; never in a default mask,
+    // not even DEV_FULL).  The system fd it returns is ioctl-only; VM/vCPU
+    // fds are minted by KVM_CREATE_VM / KVM_CREATE_VCPU with narrower rights.
+    if (cstrEq(path, "/dev/kvm")) {
+        g_fdTable[fd].type     = FileType.FD_KVM_SYSTEM;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        g_fdTable[fd].objId    = 0;
+        deviceNoteOpen(path);
+        return publishActiveFdReturn(fd);
+    }
+
     // /dev/dri/card0, /dev/dri/renderD128 → DRM/KMS device
     if (cstrEq(path, "/dev/dri/card0") || cstrEq(path, "/dev/dri/renderD128")) {
         g_fdTable[fd].type    = FileType.FD_DRM;
@@ -4173,7 +4237,16 @@ private long fileObjClose(ObjHeader* oh) {
     ++g_objOpsDispatch;
     uint oid = oh.id;
 
-    if (f.type == FileType.FD_SOCKET) {
+    if (f.type == FileType.FD_KVM_VM || f.type == FileType.FD_KVM_VCPU) {
+        // Release this fd's view on the native object; the LAST close tears
+        // the VM/vCPU down.  Stale packed handles stay rejected afterwards.
+        // Drop the fd→native delegation edge first.
+        uint objId, gen;
+        kvmUnpackHandle(f.fileSize, objId, gen);
+        kvmFdRemoveEdge(f);
+        if (f.type == FileType.FD_KVM_VM) kvmVmFdClosed(objId, gen);
+        else kvmVcpuFdClosed(objId, gen);
+    } else if (f.type == FileType.FD_SOCKET) {
         closeLocalSocket(f);
     } else if (f.type == FileType.FD_EPOLL) {
         // Instance is shared across fork-copied tables and dups (see fdInstanceRef);
@@ -8646,10 +8719,125 @@ private long handleSocketIoctl(ulong cmd, ulong arg) {
     }
 }
 
+// --- VIRT: KVM fd glue ----------------------------------------------------------
+// A KVM fd is a Linux-compat VIEW: File.fileSize holds the packed (objId,
+// generation) handle of the authoritative native Vm/Vcpu object in
+// core.virt.vm.  Every use unpacks and stale-checks; a torn-down VM/vCPU
+// makes its fds fail with EBADF, never use-after-free.
+
+// Bump the native fd refcount when a KVM fd is duplicated, fork-copied, or
+// received via SCM_RIGHTS (the File struct was just copied).
+private void kvmFdDuped(File* f) {
+    if (f is null) return;
+    if (f.type != FileType.FD_KVM_VM && f.type != FileType.FD_KVM_VCPU) return;
+    uint objId, gen;
+    kvmUnpackHandle(f.fileSize, objId, gen);
+    if (f.type == FileType.FD_KVM_VM) kvmVmFdDuped(objId, gen);
+    else kvmVcpuFdDuped(objId, gen);
+}
+
+// Release a queued-but-never-received KVM fd's pin on the native object.
+// Used when a socket carrying SCM_RIGHTS-passed fds is closed with items
+// still in its queue.
+private void kvmFdClosed(File* f) {
+    if (f is null) return;
+    if (f.type != FileType.FD_KVM_VM && f.type != FileType.FD_KVM_VCPU) return;
+    uint objId, gen;
+    kvmUnpackHandle(f.fileSize, objId, gen);
+    if (f.type == FileType.FD_KVM_VM) kvmVmFdClosed(objId, gen);
+    else kvmVcpuFdClosed(objId, gen);
+}
+
+// Formalize the fd→native authority delegation in the object graph: the fd's
+// Device object holds a StrongRef edge to the authoritative native VM/vCPU
+// object named by the fd's packed handle.  The Linux fd capability names the
+// per-fd Device object; this edge is what ties that capability to the native
+// object it delegates to.  Added whenever a new fd view is published
+// (create/dup/fork/SCM_RIGHTS receive); removed when the fd closes.
+private void kvmFdAddEdge(File* f) {
+    if (f is null || f.objId == 0) return;
+    if (f.type != FileType.FD_KVM_VM && f.type != FileType.FD_KVM_VCPU) return;
+    uint objId, gen;
+    kvmUnpackHandle(f.fileSize, objId, gen);
+    if (objId != 0) edgeAdd(f.objId, objId, EdgeKind.StrongRef, 0);
+}
+private void kvmFdRemoveEdge(File* f) {
+    if (f is null || f.objId == 0) return;
+    if (f.type != FileType.FD_KVM_VM && f.type != FileType.FD_KVM_VCPU) return;
+    uint objId, gen;
+    kvmUnpackHandle(f.fileSize, objId, gen);
+    if (objId != 0) edgeRemove(f.objId, objId, EdgeKind.StrongRef);
+}
+
+// Allocate a child fd (VM or vCPU) around a packed native handle.  If the fd
+// table is full, unwind the handle's fd view so the object does not leak with
+// fdRefs=1 and no fd pointing at it.
+private long kvmAllocChildFd(FileType kind, ulong packed) {
+    initFdTable();
+    int nfd = allocFd();
+    if (nfd < 0) {
+        uint objId, gen;
+        kvmUnpackHandle(packed, objId, gen);
+        if (kind == FileType.FD_KVM_VM) kvmVmFdClosed(objId, gen);
+        else kvmVcpuFdClosed(objId, gen);
+        return negErrno(EMFILE);
+    }
+    g_fdTable[nfd].type     = kind;
+    g_fdTable[nfd].flags    = 0;
+    g_fdTable[nfd].offset   = 0;
+    g_fdTable[nfd].backend  = null;
+    g_fdTable[nfd].fileSize = packed;
+    g_fdTable[nfd].objId    = 0;
+    int fdOut = publishActiveFdReturn(nfd);
+    if (fdOut >= 0) kvmFdAddEdge(&g_fdTable[fdOut]);
+    return fdOut;
+}
+
+// Dispatch a KVM ioctl.  The generic ioctl path already checked CAP_RIGHT_IOCTL;
+// kvmRequiredRight() names the extra per-operation right, enforced against the
+// fd's own (possibly narrowed by dup) capability.
+private long kvmFdIoctl(int fd, File* f, ulong cmd, ulong arg) {
+    int tid = cast(int)g_current_task_id;
+    KvmFdKind kind;
+    uint objId = 0, gen = 0;
+    if (f.type == FileType.FD_KVM_SYSTEM) {
+        kind = KvmFdKind.System;
+    } else {
+        kvmUnpackHandle(f.fileSize, objId, gen);
+        kind = (f.type == FileType.FD_KVM_VM) ? KvmFdKind.Vm : KvmFdKind.Vcpu;
+    }
+    uint extra = kvmRequiredRight(kind, cmd);
+    if (extra != 0 && !fdRequireCap(cast(ulong)fd, extra)) return negErrno(EBADF);
+
+    if (kind == KvmFdKind.System) {
+        if (cmd == KVM_CREATE_VM) {
+            long h = kvmCreateVm(tid);
+            if (h < 0) return h; // -errno already
+            return kvmAllocChildFd(FileType.FD_KVM_VM, cast(ulong)h);
+        }
+        return kvmSystemIoctl(tid, cmd, arg);
+    }
+    if (kind == KvmFdKind.Vm) {
+        if (cmd == KVM_CREATE_VCPU) {
+            // The ioctl arg IS the vCPU id (a ulong, not a pointer).
+            long h = kvmCreateVcpu(objId, gen, cast(uint)arg);
+            if (h < 0) return h;
+            return kvmAllocChildFd(FileType.FD_KVM_VCPU, cast(ulong)h);
+        }
+        return kvmVmIoctl(tid, objId, gen, cmd, arg);
+    }
+    return kvmVcpuIoctl(tid, objId, gen, cmd, arg);
+}
+
 private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     File* f = fileFromObj(oh);
     if (f is null) return negErrno(EBADF);
     ++g_objOpsDispatch;
+
+    if (f.type == FileType.FD_KVM_SYSTEM || f.type == FileType.FD_KVM_VM ||
+        f.type == FileType.FD_KVM_VCPU) {
+        return kvmFdIoctl(fdIndexForFile(f), f, cmd, arg);
+    }
 
     if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
         return ptyIoctl(cast(int)cast(size_t)f.backend, cmd, arg);
@@ -9941,6 +10129,14 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
                     int passFd = fdArray[k];
                     size_t nextHead = (peer.passedHead + 1) % scmRightsCapacity;
                     peer.passedFiles[peer.passedHead] = g_fdTable[passFd];
+                    // SCM_RIGHTS pin: the queued copy is a live view on the
+                    // native object from the moment it is queued.  Without this
+                    // a sender that closes its fd before the receiver calls
+                    // recvmsg would tear the VM/vCPU down out from under the
+                    // queued handle (the receiver would materialise a stale fd).
+                    // The pin transfers to the receiver's new fd at recvmsg, or
+                    // is released if the socket is closed with items queued.
+                    kvmFdDuped(&g_fdTable[passFd]);
                     // Delegate the fd's authority by value through the IPC router
                     // (validates the object id, clamps rights); a raw pointer is
                     // never queued.
@@ -10021,8 +10217,11 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
                 if (newFd < 0) break;
                 g_fdTable[newFd] = sock.passedFiles[sock.passedTail];
                 g_fdTable[newFd].objId = 0;
+                // No kvmFdDuped here: the queue-time pin (see sendmsg) transfers
+                // to this fd — the receiver's copy IS the queued live view.
                 auto oh = ensureFileObject(&g_fdTable[newFd]);
                 if (oh !is null) {
+                    kvmFdAddEdge(&g_fdTable[newFd]);
                     uint rights = capRightsForFile(&g_fdTable[newFd]);
                     // Accept the delegated capability descriptor through the IPC
                     // router; the receiver materialises its own handle narrowed
@@ -12472,6 +12671,20 @@ public long linux_sys_fallocate(ulong fd, ulong mode, ulong offset, ulong len) {
     if (mode != 0) return 0;                       // FALLOC_FL_* → no-op success
     File* f = &g_fdTable[ifd];
     const ulong end = offset + len;
+    if (f.type == FileType.FD_KVM_VCPU) {
+        // Only offset 0 is mappable: the single shared struct kvm_run page.
+        // The mmap path already checked CAP_RIGHT_MMAP on the fd.
+        uint objId, gen;
+        kvmUnpackHandle(f.fileSize, objId, gen);
+        ulong phys = 0;
+        long rc = kvmVcpuMmap(objId, gen, offset, &phys);
+        if (rc != 0) return rc; // -errno already
+        if (physOut !is null)   *physOut = phys;
+        if (sizeOut !is null)   *sizeOut = 4096;
+        if (sharedOut !is null) *sharedOut = true;
+        return 1;
+    }
+
     if (f.type == FileType.FD_MEMFD) {
         if (end > f.fileSize) return linux_sys_ftruncate(fd, end);  // grow only
         return 0;
@@ -12536,6 +12749,20 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
         if (sizeOut !is null)   *sizeOut = gemEnd - offset;
         if (physOut !is null)   *physOut = offset;
         if (vmoOut !is null)    *vmoOut = drmVmoForPhys(offset);
+        if (sharedOut !is null) *sharedOut = true;
+        return 1;
+    }
+
+    if (f.type == FileType.FD_KVM_VCPU) {
+        // Only offset 0 is mappable: the single shared struct kvm_run page.
+        // The mmap path already checked CAP_RIGHT_MMAP on the fd.
+        uint objId, gen;
+        kvmUnpackHandle(f.fileSize, objId, gen);
+        ulong phys = 0;
+        long rc = kvmVcpuMmap(objId, gen, offset, &phys);
+        if (rc != 0) return rc; // -errno already
+        if (physOut !is null)   *physOut = phys;
+        if (sizeOut !is null)   *sizeOut = 4096;
         if (sharedOut !is null) *sharedOut = true;
         return 1;
     }

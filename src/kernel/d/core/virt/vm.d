@@ -40,7 +40,9 @@ import core.task : g_tasks, MAX_TASKS;
 import core.untyped : untypedRetype, untypedRelease;
 import memory.mm : alloc_phys_page, free_phys_page, physPageRefInc, physPageRefDec;
 import core.virt.ept;
-import core.virt.kvmabi : KVM_MEM_READONLY;
+import core.virt.kvmabi : KVM_MEM_READONLY, KvmIrqRoutingEntry;
+
+// Routing entries are 48 bytes; 85 fit per 4 KiB page.
 
 extern (C) @nogc nothrow:
 
@@ -95,6 +97,7 @@ struct Vcpu {
     ulong runPhys;      // host-phys of the shared kvm_run page (0 = none)
     ulong cachePhys;    // host-phys of the KVM state-cache page (0 = not set yet)
     ulong cpuidPhys;    // host-phys of the cached CPUID2 page (0 = not set yet)
+    ulong xsavePhys;    // host-phys of the cached XSAVE page (0 = not set yet)
     bool  lapicSet;     // KVM_SET_LAPIC seen (split-irqchip bookkeeping)
     ulong[18] regs;     // KvmRegs order: rax..rflags (cached SET_REGS)
     bool  regsSet;
@@ -102,6 +105,13 @@ struct Vcpu {
     // (sregs/fpu/msr/cpuid blobs live in the KVM layer's per-vCPU cache;
     //  the native object keeps only scheduling-relevant state.)
 }
+
+// KVM compat: interrupt injection registrations.  Delivery to the guest is
+// deferred until the vCPU execution backend exists; these tables record what
+// userspace asked for so setup sequences (Cloud Hypervisor device plug)
+// proceed instead of failing at -EINVAL.
+
+
 
 struct Vm {
     VmState state;
@@ -118,8 +128,11 @@ struct Vm {
     ulong tssAddr;      // KVM_SET_TSS_ADDR value (recorded)
     ulong identityMapAddr; // KVM_SET_IDENTITY_MAP_ADDR value
     bool  splitIrqchip; // KVM_ENABLE_CAP(SPLIT_IRQCHIP) seen
-    uint  gsiRoutes;    // KVM_SET_GSI_ROUTING entry count (accounting)
-    bool  memLock;      // region registration/teardown serialization
+    // NB: GSI routing / IRQFD / IOEVENTFD tables were removed: advertising
+    // those capabilities without interrupt delivery is a fake hardware claim.
+    // The ABI structs (KvmIrqRoutingEntry/KvmIrqfd/KvmIoeventfd in kvmabi.d)
+    // stay for the delivery tier; the ioctls currently return ENOTTY.
+    uint  memLock;      // region registration/teardown serialization (xchg)
 }
 
 __gshared Vm[VIRT_MAX_VMS] g_vmPool;
@@ -130,6 +143,9 @@ __gshared ulong g_virtPagesTotal = 0; // system-wide guest pages pinned
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+// phys -> writable kernel virtual for EPT table access (HHDM mapping).
+private void* eptMapPhys(ulong phys) { return cast(void*)phys_to_virt(phys); }
+
 private uint nextVmGen() {
     if (++g_vmGen == 0) g_vmGen = 1; // skip 0 on wrap
     return g_vmGen;
@@ -141,14 +157,19 @@ private uint nextVcpuGen() {
 }
 
 // Serialize region registration/removal/teardown per VM.  The syscall layer
-// is per-task serial, but two threads of the VMM share the VM.
-private bool vmLockMem(Vm* vm) {
-    if (vm.memLock) return false;
-    vm.memLock = true;
-    return true;
+// is per-task serial, but two threads of the VMM share the VM — so this is an
+// atomic xchg spin-try, not a plain bool (a bool test-and-set races).
+private bool vmLockMem(Vm* vm) @nogc nothrow {
+    uint* p = &vm.memLock;
+    uint old = void;
+    asm @nogc nothrow { mov RDX,p; mov EAX,1; xchg [RDX],EAX; mov old,EAX; }
+    return old == 0;
 }
 
-private void vmUnlockMem(Vm* vm) { vm.memLock = false; }
+private void vmUnlockMem(Vm* vm) @nogc nothrow {
+    uint* p = &vm.memLock;
+    asm @nogc nothrow { mov RDX,p; xor EAX,EAX; mov [RDX],EAX; }
+}
 
 // ---------------------------------------------------------------------------
 // VM lifecycle
@@ -185,6 +206,9 @@ public uint vmAlloc() {
     h.version_ = vm.gen; // mirror generation for stale-handle checks
     vm.objId = id;
     eptInit(&vm.ept);
+    // Wire the real kernel callbacks: without this, eptMap() fail-closes and
+    // no guest memory can ever be mapped.
+    eptWireKernel(&vm.ept, &alloc_phys_page, &free_phys_page, &eptMapPhys);
     return id;
 }
 
@@ -229,16 +253,19 @@ public Vcpu* vcpuCheckObj(uint objId, uint gen) {
     return vc;
 }
 
-// Create a vCPU on a live VM.  Returns the vCPU index, or -1 on failure.
-public int vmCreateVcpu(Vm* vm) {
+// Create a vCPU on a live VM at the requested KVM vCPU id.  Returns the vCPU
+// index (= the id), or -1 if the id is out of range, taken, or the ceiling
+// is reached.
+public int vmCreateVcpu(Vm* vm, uint vcpuId) {
     if (vm is null || vm.state != VmState.Active) return -1;
+    if (vcpuId >= VIRT_MAX_VCPUS_PER_VM) return -1;
     if (vm.vcpuCount >= VIRT_MAX_VCPUS_PER_VM) return -1;
-    foreach (i; 0 .. VIRT_MAX_VCPUS_PER_VM) {
-        if (vm.vcpus[i].state != VcpuState.Empty) continue;
-        Vcpu* vc = &vm.vcpus[i];
+    if (vm.vcpus[vcpuId].state != VcpuState.Empty) return -1; // EEXIST
+    {
+        Vcpu* vc = &vm.vcpus[vcpuId];
         *vc = Vcpu.init;
         vc.state = VcpuState.Created;
-        vc.index = i;
+        vc.index = vcpuId;
         vc.gen = nextVcpuGen();
         vc.mpState = 0; // KVM_MP_STATE_RUNNABLE
         vc.fdRefs = 1;  // the creating fd's view
@@ -262,9 +289,8 @@ public int vmCreateVcpu(Vm* vm) {
         vc.runPhys = rp;
         ++vm.fdRefs; // the vCPU pins its parent VM (Linux: VM outlives vCPU fds)
         ++vm.vcpuCount;
-        return cast(int)i;
+        return cast(int)vcpuId;
     }
-    return -1;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +347,11 @@ public long vmSetMemoryRegion(Vm* vm, uint slotId, uint flags,
     }
 
     // Charge the untyped budget BEFORE touching pages (fail fast, no
-    // partial pin on budget exhaustion).
+    // partial pin on budget exhaustion).  This charges the PIN, not page
+    // ownership: the pages belong to the VMM's address space (already
+    // accounted there); what the VM consumes is the right to hold them
+    // pinned and EPT-mapped.  Hard ceilings (VIRT_MAX_PAGES_PER_VM/TOTAL)
+    // bound the total independently of the budget.
     if (vm.untypedObjId != 0 && !untypedRetype(vm.untypedObjId, pages)) {
         klog("[virt] memRegion: untyped budget exhausted\n");
         rc = -12;
@@ -387,7 +417,7 @@ fail:
 private long vmRemoveMemoryRegionLocked(Vm* vm, uint slotId) {
     if (slotId >= VIRT_MAX_MEMSLOTS) return -22;
     VmMemSlot* s = &vm.slots[slotId];
-    if (!s.used) return -2; // ENOENT
+    if (!s.used) return 0; // no-op: deleting a slot that was never added
     vmUnpinRange(vm, s.guestPhys, s.pages);
     if (vm.untypedObjId != 0) untypedRelease(vm.untypedObjId, s.pages);
     vm.pagesCharged -= s.pages;
@@ -405,6 +435,7 @@ public long vmRemoveMemoryRegion(Vm* vm, uint slotId) {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Teardown — idempotent, reclaims everything.
 // ---------------------------------------------------------------------------
 public void vmTeardown(Vm* vm) {
@@ -421,6 +452,7 @@ public void vmTeardown(Vm* vm) {
         if (vc.runPhys != 0) { free_phys_page(vc.runPhys); vc.runPhys = 0; }
         if (vc.cachePhys != 0) { free_phys_page(vc.cachePhys); vc.cachePhys = 0; }
         if (vc.cpuidPhys != 0) { free_phys_page(vc.cpuidPhys); vc.cpuidPhys = 0; }
+        if (vc.xsavePhys != 0) { free_phys_page(vc.xsavePhys); vc.xsavePhys = 0; }
         if (vc.objId != 0) { objRelease(vc.objId); vc.objId = 0; }
     }
     vm.vcpuCount = 0;
@@ -437,6 +469,8 @@ public void vmTeardown(Vm* vm) {
 
     // 3. EPT tables.
     eptFree(&vm.ept);
+
+    // 4. Persisted GSI routing table pages.
 
     // 4. Object-table slot.  The pool record is re-initialized by the next
     //    vmAlloc; the generation in ObjHeader.version_ already stales old
@@ -457,13 +491,20 @@ public void vcpuRelease(Vcpu* vc) {
     if (vc.runPhys != 0) { free_phys_page(vc.runPhys); vc.runPhys = 0; }
     if (vc.cachePhys != 0) { free_phys_page(vc.cachePhys); vc.cachePhys = 0; }
     if (vc.cpuidPhys != 0) { free_phys_page(vc.cpuidPhys); vc.cpuidPhys = 0; }
+    if (vc.xsavePhys != 0) { free_phys_page(vc.xsavePhys); vc.xsavePhys = 0; }
     if (vc.objId != 0) { objRelease(vc.objId); vc.objId = 0; }
-    vc.state = VcpuState.Dead;
-    vc.fdRefs = 0;
-    // Drop the vCPU's pin on the parent VM.
     Vm* vm = vmCheck(vmObj, vmGen);
-    if (vm !is null && vm.fdRefs > 0 && --vm.fdRefs == 0)
-        vmTeardown(vm);
+    // The slot is immediately reusable (state back to Empty): closing a vCPU
+    // fd destroys the vCPU, and the KVM id may be created again.
+    *vc = Vcpu.init;
+    // Drop the vCPU's pin on the parent VM (and its head-count slot, so
+    // create/close churn can reuse vCPU indices instead of wedging at the
+    // 64-vCPU ceiling).
+    if (vm !is null) {
+        if (vm.vcpuCount > 0) --vm.vcpuCount;
+        if (vm.fdRefs > 0 && --vm.fdRefs == 0)
+            vmTeardown(vm);
+    }
 }
 
 // --- fd lifecycle ----------------------------------------------------------

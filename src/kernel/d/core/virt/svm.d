@@ -1,5 +1,4 @@
 // VIRT: AMD SVM detection backend — fail-closed, no execution path yet.
-// SPDX-License-Identifier: LicenseRef-AnonymOS-Proprietary
 //
 // anonymOS is its own OS: the kernel owns the privileged virtualization
 // substrate.  This module detects AMD SVM (CPUID.8000_0001:ECX[2]) and reports

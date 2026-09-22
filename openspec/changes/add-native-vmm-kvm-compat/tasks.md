@@ -116,6 +116,11 @@ sandbox.
 
 ## 6. Vertical slices
 
+Hardware harness: `scripts/virt-hw-test.sh` boot-tests the ISO with VMX/SVM
+exposed and asserts `[vmx] VMXON ok` + `[virt] selftest PASS` on the serial
+log. It covers boot-time bring-up only; the guest-execution slices below
+still need a test program inside the guest.
+
 - [ ] 6.1 Native smoke `[HW]`: VM cap → memory page → vCPU → guest
   executes `HLT` → known exit → teardown, via native objects.
   Verify: serial log shows the full sequence with exit reason.

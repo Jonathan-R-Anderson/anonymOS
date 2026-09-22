@@ -24,6 +24,10 @@ import core.virt.kvmabi;
 import core.virt.ept;
 import core.virt.vmx : vmxIsReady;
 import core.virt.svm : svmAvailable;
+import core.virt.vmexit : vmxDispatchExit, VmExitInfo, VmExitAction,
+    EXIT_REASON_HLT, EXIT_REASON_TRIPLE_FAULT, EXIT_REASON_IO_INSTRUCTION,
+    EXIT_REASON_EPT_VIOLATION, EXIT_REASON_VMCALL,
+    vmxValidateSRegs, vmxValidateRegs, vmxValidateMsrs;
 import core.exports : phys_to_virt;
 import core.io : klog;
 import memory.mm : alloc_phys_page, free_phys_page;
@@ -247,6 +251,159 @@ public void virtSelfTest() {
         }
         foreach (i; 0 .. n) kvmVmFdClosed(objs[i], gens[i]);
         vtCheck(vmCheck(objs[0], gens[0]) is null, "vm-ceiling-cleanup");
+    }
+
+    // --- 8. synthetic exit dispatch (3.4/5.6/6.1; HW-independent) --------------
+    // Drives vmxDispatchExit with synthetic exits against real VM/vCPU
+    // objects.  Real guest entry stays [HW]; the dispatch *logic* is fully
+    // verified here and runs at every boot.
+    {
+        long h = kvmCreateVm(tid);
+        vtCheck(h >= 0, "xd-vm");
+        if (h >= 0) {
+            uint vo, vg;
+            kvmUnpackHandle(cast(ulong)h, vo, vg);
+            Vm* vm = vmCheck(vo, vg);
+            vtCheck(vm !is null, "xd-vm-live");
+
+            ulong rp = alloc_phys_page();
+            vtCheck(rp != 0, "xd-runpage");
+            if (rp != 0 && vm !is null) {
+                KvmRun* run = cast(KvmRun*)phys_to_virt(rp);
+                foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
+
+                uint[4] vco; uint[4] vcg;
+                bool ok = true;
+                foreach (i; 0 .. 4) {
+                    long vh = kvmCreateVcpu(vo, vg, i);
+                    if (vh < 0) { ok = false; break; }
+                    kvmUnpackHandle(cast(ulong)vh, vco[i], vcg[i]);
+                }
+                vtCheck(ok, "xd-vcpus");
+                if (ok) {
+                    VmExitInfo xi;
+                    xi.gpa = 0; xi.data = 0; xi.count = 0;
+
+                    // HLT -> KVM_EXIT_HLT, vCPU Exited, VcpuStopped
+                    xi.reason = EXIT_REASON_HLT; xi.qual = 0;
+                    Vcpu* vc0 = vcpuCheckObj(vco[0], vcg[0]);
+                    vtCheck(vmxDispatchExit(xi, run, vm, vc0)
+                            == VmExitAction.VcpuStopped, "xd-hlt-action");
+                    vtCheck(run.exitReason == KVM_EXIT_HLT, "xd-hlt-reason");
+                    vtCheck(vc0.state == VcpuState.Exited, "xd-hlt-state");
+
+                    // I/O OUT: outb 0xAB -> port 0x10
+                    foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
+                    xi.reason = EXIT_REASON_IO_INSTRUCTION;
+                    xi.qual = (0x10UL << 16); // size=1, OUT, port 0x10
+                    xi.data = 0xAB;
+                    Vcpu* vc1 = vcpuCheckObj(vco[1], vcg[1]);
+                    vtCheck(vmxDispatchExit(xi, run, vm, vc1)
+                            == VmExitAction.ToUserspace, "xd-io-action");
+                    vtCheck(run.exitReason == KVM_EXIT_IO, "xd-io-reason");
+                    vtCheck(run.u.io.direction == KVM_EXIT_IO_OUT, "xd-io-dir");
+                    vtCheck(run.u.io.size == 1 && run.u.io.port == 0x10,
+                            "xd-io-port");
+                    vtCheck(run.u.io.count == 1, "xd-io-count");
+                    vtCheck(run.u.io.dataOffset == KvmRun.sizeof,
+                            "xd-io-dataoff");
+                    vtCheck((cast(ubyte*)run)[KvmRun.sizeof] == 0xAB,
+                            "xd-io-data");
+
+                    // I/O IN: in ax, 0x3F8 (size=2)
+                    foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
+                    xi.qual = 1 | (1UL << 3) | (0x3F8UL << 16);
+                    vtCheck(vmxDispatchExit(xi, run, vm, vc1)
+                            == VmExitAction.ToUserspace, "xd-ioin-action");
+                    vtCheck(run.u.io.direction == KVM_EXIT_IO_IN,
+                            "xd-ioin-dir");
+                    vtCheck(run.u.io.size == 2 && run.u.io.port == 0x3F8,
+                            "xd-ioin-port");
+
+                    // EPT violation (write) -> KVM_EXIT_MMIO
+                    foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
+                    xi.reason = EXIT_REASON_EPT_VIOLATION;
+                    xi.qual = (1UL << 1); xi.gpa = 0xFEC0_0000UL;
+                    vtCheck(vmxDispatchExit(xi, run, vm, vc1)
+                            == VmExitAction.ToUserspace, "xd-ept-action");
+                    vtCheck(run.exitReason == KVM_EXIT_MMIO, "xd-ept-reason");
+                    vtCheck(run.u.mmio.physAddr == 0xFEC0_0000UL,
+                            "xd-ept-gpa");
+                    vtCheck(run.u.mmio.isWrite == 1 && run.u.mmio.len == 0,
+                            "xd-ept-flags");
+
+                    // VMCALL -> hypercall
+                    xi.reason = EXIT_REASON_VMCALL; xi.qual = 0; xi.gpa = 0;
+                    xi.data = 0x1234;
+                    vtCheck(vmxDispatchExit(xi, run, vm, vc1)
+                            == VmExitAction.ToUserspace, "xd-hc-action");
+                    vtCheck(run.exitReason == KVM_EXIT_HYPERCALL,
+                            "xd-hc-reason");
+                    vtCheck(run.u.hypercall.nr == 0x1234, "xd-hc-nr");
+
+                    // Triple fault -> SHUTDOWN, vCPU Exited
+                    xi.reason = EXIT_REASON_TRIPLE_FAULT; xi.data = 0;
+                    Vcpu* vc2 = vcpuCheckObj(vco[2], vcg[2]);
+                    vtCheck(vmxDispatchExit(xi, run, vm, vc2)
+                            == VmExitAction.VcpuStopped, "xd-tf-action");
+                    vtCheck(run.exitReason == KVM_EXIT_SHUTDOWN,
+                            "xd-tf-reason");
+                    vtCheck(vc2.state == VcpuState.Exited, "xd-tf-state");
+
+                    // Unknown reason -> KVM_EXIT_UNKNOWN, contained
+                    xi.reason = 0xFF;
+                    Vcpu* vc3 = vcpuCheckObj(vco[3], vcg[3]);
+                    vtCheck(vmxDispatchExit(xi, run, vm, vc3)
+                            == VmExitAction.ToUserspace, "xd-unk-action");
+                    vtCheck(run.exitReason == KVM_EXIT_UNKNOWN,
+                            "xd-unk-reason");
+                    vtCheck(run.u.hwReason == 0xFF, "xd-unk-hwreason");
+
+                    // Bad I/O size (5 bytes) -> contained, VM Dying
+                    xi.reason = EXIT_REASON_IO_INSTRUCTION; xi.qual = 4;
+                    vtCheck(vmxDispatchExit(xi, run, vm, vc3)
+                            == VmExitAction.VmContained, "xd-badio-contained");
+                    vtCheck(vm.state == VmState.Dying, "xd-badio-vmdying");
+                    vtCheck(run.exitReason == KVM_EXIT_INTERNAL_ERROR,
+                            "xd-badio-reason");
+
+                    // --- 6.3 hostile-state validation -------------------------
+                    KvmSRegs sr;
+                    foreach (i; 0 .. KvmSRegs.sizeof)
+                        (cast(ubyte*)&sr)[i] = 0;
+                    vtCheck(vmxValidateSRegs(&sr) == 0, "xd-sregs-zero-ok");
+                    sr.cr4 = 1UL << 13; // VMXE in guest: never
+                    vtCheck(vmxValidateSRegs(&sr) == -22, "xd-sregs-vmxe");
+                    sr.cr4 = 0; sr.efer = 1UL << 10; // LMA without LME
+                    vtCheck(vmxValidateSRegs(&sr) == -22, "xd-sregs-lma");
+                    sr.efer = 0; sr.cr8 = 16;
+                    vtCheck(vmxValidateSRegs(&sr) == -22, "xd-sregs-cr8");
+
+                    KvmRegs rg;
+                    foreach (i; 0 .. KvmRegs.sizeof)
+                        (cast(ubyte*)&rg)[i] = 0;
+                    rg.rip = 0xFFFF_8000_0000_0000UL; // non-canonical
+                    vtCheck(vmxValidateRegs(&rg) == -22, "xd-regs-rip");
+                    rg.rip = 0x1000;
+                    vtCheck(vmxValidateRegs(&rg) == 0, "xd-regs-ok");
+
+                    KvmMsrEntry[2] me;
+                    me[0].index = 0x480; me[0].reserved = 0; me[0].data = 0;
+                    me[1].index = 0xC000_0080; me[1].reserved = 0;
+                    me[1].data = 0xD01;
+                    vtCheck(vmxValidateMsrs(me.ptr, 2) == -22, "xd-msr-vmx");
+                    me[0].index = 0x10; // TSC: fine
+                    vtCheck(vmxValidateMsrs(me.ptr, 2) == 0, "xd-msr-ok");
+                    me[1].data = 0xFFFF; // bad EFER
+                    vtCheck(vmxValidateMsrs(me.ptr, 2) == -22, "xd-msr-efer");
+
+                    foreach (i; 0 .. 4) kvmVcpuFdClosed(vco[i], vcg[i]);
+                }
+                free_phys_page(rp);
+            }
+            kvmVmFdClosed(vo, vg);
+            vtCheck(vmCheck(vo, vg) is null, "xd-vm-gone");
+        }
     }
 
 done:

@@ -178,10 +178,20 @@ struct KvmExitMmio {
 }
 static assert(KvmExitMmio.sizeof == 24);
 
+struct KvmExitHypercall {
+    ulong nr;
+    ulong[6] args;
+    ulong ret;
+    uint longMode;
+    uint pad;
+}
+static assert(KvmExitHypercall.sizeof == 72);
+
 union KvmRunExit {
     ulong hwReason;      // KVM_EXIT_UNKNOWN
     KvmExitIo io;        // KVM_EXIT_IO
     KvmExitMmio mmio;    // KVM_EXIT_MMIO
+    KvmExitHypercall hypercall; // KVM_EXIT_HYPERCALL
     ubyte vector;        // KVM_EXIT_IOAPIC_EOI (first byte)
     ubyte[256] raw;
 }

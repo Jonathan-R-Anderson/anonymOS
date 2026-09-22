@@ -25,6 +25,8 @@ module core.virt.kvm;
 import core.virt.kvmabi;
 import core.virt.vm;
 import core.virt.vmx : vmxIsReady, vmxEnter, VMX_NOHW;
+import core.virt.vmexit : vmxDispatchExit, VmExitInfo, VmExitAction,
+    vmxValidateSRegs, vmxValidateRegs, vmxValidateMsrs;
 import core.virt.svm : svmAvailable, svmEnter;
 import core.task : g_tasks, findRegion, MAX_TASKS;
 import core.objmgr : objGet;
@@ -576,9 +578,19 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
         vc.state = VcpuState.Runnable;
         return E_NODEV;
     }
-    // [HW] real exit path: translate exitReason into kvm_run here.
-    run.exitReason = exitReason;
-    vc.state = VcpuState.Exited;
+    // Real exit path: the backend filled exitReason (+ qualification/GPA in
+    // the [HW] phase); the HW-pure dispatcher populates struct kvm_run.
+    VmExitInfo xi;
+    xi.reason = exitReason;
+    xi.qual   = 0;
+    xi.gpa    = 0;
+    xi.data   = 0;
+    xi.count  = 0;
+    // [HW]: vmxEnter extracts qual/gpa/data/count from the VMCS and guest
+    // registers before returning.  Until then only synthetic exits flow here.
+    VmExitAction act = vmxDispatchExit(xi, run, vm, vc);
+    if (act == VmExitAction.VmContained)
+        return E_IO; // contained failure; VM is Dying, never re-entered
     return 0;
 }
 
@@ -600,6 +612,7 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             if (!kvmUserOk(tid, arg, KvmRegs.sizeof, false)) return E_FAULT;
             KvmRegs r;
             kvmUserCopyIn(&r, arg, KvmRegs.sizeof);
+            if (vmxValidateRegs(&r) != 0) return E_INVAL; // non-canonical RIP etc.
             foreach (i; 0 .. 18) vc.regs[i] = (&r.rax)[i];
             vc.regsSet = true;
             if (vc.state == VcpuState.Created) vc.state = VcpuState.Runnable;
@@ -616,9 +629,14 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
         }
         case KVM_SET_SREGS: {
             if (!kvmUserOk(tid, arg, KvmSRegs.sizeof, false)) return E_FAULT;
+            KvmSRegs tmp;
+            kvmUserCopyIn(&tmp, arg, KvmSRegs.sizeof);
+            // Validate BEFORE committing: hostile control state (VMX/SMX in
+            // guest CR4, non-canonical EFER, bad CR0/CR3/CR8) is rejected.
+            if (vmxValidateSRegs(&tmp) != 0) return E_INVAL;
             auto c = kvmCacheFor(vc, true);
             if (c is null) return E_NOMEM;
-            kvmUserCopyIn(&c.sregs, arg, KvmSRegs.sizeof);
+            c.sregs = tmp;
             vc.sregsSet = true;
             return 0;
         }
@@ -699,10 +717,15 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             uint n = kvmUserRead!uint(arg);
             if (n > KVM_CACHE_MAX_MSRS) return E_BIG;
             if (!kvmUserOk(tid, arg, 8 + cast(ulong)n * 16, false)) return E_FAULT;
+            // Validate before committing: VMX MSRs, FEATURE_CONTROL,
+            // microcode and bad EFER are never valid guest state.
+            KvmMsrEntry[KVM_CACHE_MAX_MSRS] tmp;
+            if (n > 0) kvmUserCopyIn(tmp.ptr, arg + 8, cast(size_t)(n * 16));
+            if (vmxValidateMsrs(n ? tmp.ptr : null, n) != 0) return E_INVAL;
             auto fx = kvmCacheFor(vc, true);
             if (fx is null) return E_NOMEM;
             fx.msrCount = n;
-            kvmUserCopyIn(fx.msrs.ptr, arg + 8, cast(size_t)(n * 16));
+            foreach (i; 0 .. n) fx.msrs[i] = tmp[i];
             return cast(long)n; // Linux returns the number applied
         }
         case KVM_GET_MSRS: {

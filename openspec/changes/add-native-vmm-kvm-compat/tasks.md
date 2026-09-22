@@ -84,7 +84,9 @@ sandbox.
   `EACCES` without the grant.
 - [ ] 5.2 System-fd ioctls: `KVM_GET_API_VERSION` (=12),
   `KVM_CHECK_EXTENSION` (supported set = 1 incl. the 17 Cloud
-  Hypervisor caps; `KVM_CAP_IRQCHIP` = 0), `KVM_CREATE_VM`,
+  Hypervisor caps **plus `KVM_CAP_IRQCHIP` = 1** — Cloud Hypervisor
+  hard-requires this probe even though it never calls
+  `KVM_CREATE_IRQCHIP`; see kvm-compatibility spec), `KVM_CREATE_VM`,
   `KVM_GET_VCPU_MMAP_SIZE`, `KVM_GET_MSR_INDEX_LIST`. Verify:
   host-side ioctl dispatch tests + in-guest assertions.
 - [ ] 5.3 VM-fd ioctls: `KVM_SET_USER_MEMORY_REGION` (flags 0/READONLY,

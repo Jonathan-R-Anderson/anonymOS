@@ -19,7 +19,7 @@ module core.identity;
 
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
 import core.cap : CAP_RIGHT_UNIVERSE, CAP_RIGHT_ADMIN_ALL, CAP_RIGHT_ALL,
-                  CAP_RIGHT_ADMIN_IDENTITY, CAPTAB_COUNT,
+                  CAP_RIGHT_ADMIN_IDENTITY, CAP_RIGHT_VM_ALL, CAPTAB_COUNT,
                   capLiveCount, capTableClear, capTableCloneNarrowing, capClearIn;
 import core.admin : adminInstallCapIn, adminRequireIn; // §3 identity-transition cap
 import core.audit : auditLog, AuditKind;               // §H identity decisions
@@ -86,8 +86,10 @@ enum uint DEVCLASS_MIC    = 1u << 3;   // /dev/snd/* capture
 enum uint DEVCLASS_AUDIO  = 1u << 4;   // /dev/snd/* playback
 enum uint DEVCLASS_USB    = 1u << 5;   // /dev/bus/usb/*
 enum uint DEVCLASS_NET    = 1u << 6;   // WiFi/network via the cap-gated LKL provider socket
+enum uint DEVCLASS_VIRT   = 1u << 7;   // VIRT: /dev/kvm (native VM capability provider)
 enum uint DEVCLASS_ALL    = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_CAMERA |
-                            DEVCLASS_MIC | DEVCLASS_AUDIO | DEVCLASS_USB | DEVCLASS_NET;
+                            DEVCLASS_MIC | DEVCLASS_AUDIO | DEVCLASS_USB | DEVCLASS_NET |
+                            DEVCLASS_VIRT;
 
 // DM8: true iff the identity may open the given device class.  An unknown identity fails OPEN
 // (returns true) — only a *known* identity with the bit clear denies, so non-identity kernel
@@ -289,12 +291,21 @@ public void identityInitDefaults() {
     if (g_idDefaultsInited) return;
     g_idDefaultsInited = true;
     enum uint CEIL_FULL = CAP_RIGHT_UNIVERSE;                          // System only
-    enum uint CEIL_USER = CAP_RIGHT_UNIVERSE & ~CAP_RIGHT_ADMIN_ALL;   // no admin caps
+    // VIRT: VM rights are NEVER ambient.  Even a non-admin identity must receive
+    // CAP_RIGHT_VM_* by explicit grant (capTableInsert/admin delegation), because
+    // VM_CREATE+VM_MEM+VM_RUN together amount to arbitrary guest-code execution
+    // plus control over host-pinned memory.  Only System (the granter) keeps them
+    // in its default ceiling.
+    enum uint CEIL_USER = CAP_RIGHT_UNIVERSE & ~CAP_RIGHT_ADMIN_ALL & ~CAP_RIGHT_VM_ALL;
     enum uint GUI_BASE  = cast(uint)(GuiPolicy.BorderAlways | GuiPolicy.TitleLabel);
     enum uint GUI_WORK  = GUI_BASE | cast(uint)GuiPolicy.NoScreenshotAcrossId;
     enum uint GUI_BANK  = GUI_WORK | cast(uint)GuiPolicy.NoGlobalGrab;
     // DM8 §7 device policy: all get INPUT+GPU (a window needs both); higher trust adds peripherals.
-    enum uint DEV_FULL = DEVCLASS_ALL;
+    // VIRT: /dev/kvm is NEVER in a default mask, not even System's (DEV_FULL): the
+    // open right is granted explicitly by System (domainSetDevice / device grant),
+    // so a VMM task carries exactly the authority its launcher chose.  System itself
+    // can still self-grant through the same explicit path; nothing ambient changes.
+    enum uint DEV_FULL = DEVCLASS_ALL & ~DEVCLASS_VIRT;
     enum uint DEV_HOME = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_CAMERA | DEVCLASS_MIC | DEVCLASS_USB | DEVCLASS_NET;
     enum uint DEV_WORK = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_USB | DEVCLASS_NET;   // no camera/mic
     enum uint DEV_LOCK = DEVCLASS_INPUT | DEVCLASS_GPU;                                    // no cam/mic/usb/audio/net

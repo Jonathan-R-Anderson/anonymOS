@@ -19,7 +19,7 @@ import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
 import core.identity : identityById, identityByName, IdentityRec,
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
                        DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB,
-                       DEVCLASS_NET;  // DM8/DM10.7 device policy
+                       DEVCLASS_NET, DEVCLASS_VIRT;  // DM8/DM10.7 device policy
                        // DEVCLASS_NET was missing from this list, which is exactly why
                        // domainDeviceClassByName() had no "net" case: the name could not be
                        // resolved here, so per-domain network control was unreachable.
@@ -393,6 +393,9 @@ public uint domainDeviceClassByName(const(char)* n) {
     if (verbEq(n, "mic"))    return DEVCLASS_MIC;
     if (verbEq(n, "audio"))  return DEVCLASS_AUDIO;
     if (verbEq(n, "usb"))    return DEVCLASS_USB;
+    // VIRT: the explicit /dev/kvm grant ("devon <domain> virt").  This is the ONLY
+    // way a non-System task gets /dev/kvm: no default identity mask includes the bit.
+    if (verbEq(n, "virt"))   return DEVCLASS_VIRT;
     // DEVCLASS_NET was the one class with no name here, which made the whole per-domain
     // network control dead: "devon Work net" resolved to 0, and domainSetDevice() bails on
     // `devClass == 0`, so it silently returned false.  The bit itself (identity.d:87) is real

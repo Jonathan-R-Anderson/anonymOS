@@ -37,6 +37,17 @@ enum uint CAP_RIGHT_ADMIN_IDENTITY = 1u << 17; // IDENTITY_DOMAIN §1: privilege
                                                // identity transition / signed policy load
 enum uint CAP_RIGHT_ID_SHARE       = 1u << 18; // IDENTITY_DOMAIN §1: hold a
                                                // cross-identity object share
+// VIRT: virtualization rights (bits 19-22).  Granted explicitly, never ambient:
+// the default identity/domain ceilings exclude CAP_RIGHT_VM_ALL (see
+// identity.d).  Least authority per fd role:
+//   VM_CREATE  — KVM_CREATE_VM on the /dev/kvm system fd
+//   VM_MEM     — KVM_SET_USER_MEMORY_REGION (guest-physical memory authority)
+//   VM_RUN     — KVM_RUN (enter the guest)
+//   VM_CONTROL — all other VM/vCPU control ioctls (state, irq, cpuid, msrs…)
+enum uint CAP_RIGHT_VM_CREATE  = 1u << 19;
+enum uint CAP_RIGHT_VM_MEM     = 1u << 20;
+enum uint CAP_RIGHT_VM_RUN     = 1u << 21;
+enum uint CAP_RIGHT_VM_CONTROL = 1u << 22;
 enum uint CAP_RIGHT_ALL   = CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_CLOSE |
                             CAP_RIGHT_STAT | CAP_RIGHT_IOCTL | CAP_RIGHT_MMAP |
                             CAP_RIGHT_DUP | CAP_RIGHT_PASS;
@@ -44,8 +55,11 @@ enum uint CAP_RIGHT_ADMIN_ALL = CAP_RIGHT_ADMIN_MOUNT | CAP_RIGHT_ADMIN_REBOOT |
                                 CAP_RIGHT_ADMIN_UPDATE | CAP_RIGHT_ADMIN_USER |
                                 CAP_RIGHT_ADMIN_DEVICE | CAP_RIGHT_ADMIN_INSPECT |
                                 CAP_RIGHT_ADMIN_IDENTITY;
+enum uint CAP_RIGHT_VM_ALL = CAP_RIGHT_VM_CREATE | CAP_RIGHT_VM_MEM |
+                             CAP_RIGHT_VM_RUN | CAP_RIGHT_VM_CONTROL;
 enum uint CAP_RIGHT_UNIVERSE = CAP_RIGHT_ALL | CAP_RIGHT_RETYPE | CAP_RIGHT_CALL |
-                               CAP_RIGHT_ADMIN_ALL | CAP_RIGHT_EXEC | CAP_RIGHT_ID_SHARE;
+                               CAP_RIGHT_ADMIN_ALL | CAP_RIGHT_EXEC | CAP_RIGHT_ID_SHARE |
+                               CAP_RIGHT_VM_ALL;
 
 struct Capability {
     uint objId;

@@ -44,16 +44,26 @@ at minimum the extensions Cloud Hypervisor probes as mandatory:
 `KVM_CAP_IOEVENTFD`, `KVM_CAP_IRQFD`, `KVM_CAP_IRQ_ROUTING`,
 `KVM_CAP_MP_STATE`, `KVM_CAP_ADJUST_CLOCK`, `KVM_CAP_XSAVE`,
 `KVM_CAP_VCPU_EVENTS`, `KVM_CAP_TSC_DEADLINE_TIMER`, `KVM_CAP_USER_NMI`,
-`KVM_CAP_EXT_CPUID`, `KVM_CAP_GET_TSC_KHZ`, `KVM_CAP_IMMEDIATE_EXIT`.
-`KVM_CAP_IRQCHIP` (full in-kernel irqchip) SHALL return `0` and be listed
-as an explicit non-goal with the reason documented (device models stay in
-userspace).
+`KVM_CAP_EXT_CPUID`, `KVM_CAP_GET_TSC_KHZ`, `KVM_CAP_IMMEDIATE_EXIT`,
+`KVM_CAP_IRQCHIP`.
+`KVM_CAP_IRQCHIP` SHALL return `1`: Cloud Hypervisor hard-requires this
+probe (`check_required_kvm_extensions` aborts the process when it is
+missing), even though it never issues `KVM_CREATE_IRQCHIP` — it enables
+the split-irqchip model via `KVM_CAP_SPLIT_IRQCHIP` instead. Claiming the
+probe while rejecting `KVM_CREATE_IRQCHIP`/`KVM_CREATE_PIT2` with
+`-ENOTTY` is a deliberate, documented split: the probe is a
+feature-gate the pinned VMM requires; the creation ioctls are the
+in-kernel device-model surface this OS refuses to provide (device
+models stay in userspace). Any VMM that actually calls
+`KVM_CREATE_IRQCHIP` fails fast with `-ENOTTY` and a documented reason.
 
 #### Scenario: capability probe
 
 Cloud Hypervisor probes its 17 mandatory extensions → all return `1`, so
-it proceeds. It probes `KVM_CAP_IRQCHIP` → returns `0`; since Cloud
-Hypervisor does not require it, boot continues.
+it proceeds. It probes `KVM_CAP_IRQCHIP` → returns `1` (probe gate
+passes); it then enables split irqchip and never calls
+`KVM_CREATE_IRQCHIP`. A VMM that does call `KVM_CREATE_IRQCHIP` →
+`-ENOTTY` with the split-irqchip-only reason documented.
 
 ### Requirement: VM and vCPU file descriptors
 

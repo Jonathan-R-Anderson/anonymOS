@@ -146,8 +146,12 @@ in kernel primitives. The kernel does not know about profiles.
   fail loudly (`ENOTTY`) instead of half-working.
 - [Risk] Full-irqchip VMMs (Firecracker/crosvm/libkrun/StratoVirt) won't
   boot → **Mitigation**: documented as the later tier in specs and docs;
-  `KVM_CHECK_EXTENSION(KVM_CAP_IRQCHIP)` returns 0 so VMMs fail fast with
-  a clear message instead of mysterious hangs.
+  `KVM_CHECK_EXTENSION(KVM_CAP_IRQCHIP)` returns 1 because the pinned
+  Cloud Hypervisor hard-requires that probe (it aborts without it) even
+  though it never calls `KVM_CREATE_IRQCHIP` — split irqchip is the only
+  model. `KVM_CREATE_IRQCHIP`/`KVM_CREATE_PIT2` fail with `ENOTTY` and a
+  documented reason, so full-irqchip VMMs still fail fast with a clear
+  message instead of mysterious hangs.
 - [Risk] Multi-hour kernel build slows iteration → **Mitigation**:
   develop pure logic host-side first; batch kernel changes; keep new
   modules self-contained to limit rebuild scope.

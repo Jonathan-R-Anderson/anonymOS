@@ -54,6 +54,8 @@ enum ObjType : uint {
     Template,           // DOMAIN_MANAGER DM6: an immutable domain template
     Overlay,            // DOMAIN_MANAGER DM6: a domain's writable overlay layer
     Snapshot,           // DOMAIN_MANAGER DM6: a domain/overlay snapshot
+    Vm,                 // VIRT: a native virtual machine (core.virt.vm)
+    Vcpu,               // VIRT: a native virtual CPU (core.virt.vm)
     Count
 }
 

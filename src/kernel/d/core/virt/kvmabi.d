@@ -496,6 +496,56 @@ enum uint KVM_IRQ_ROUTING_IRQCHIP = 1;
 enum uint KVM_IRQ_ROUTING_MSI     = 2;
 
 // ---------------------------------------------------------------------------
+// anonymOS-specific extensions (NOT Linux UAPI).
+//
+// These live in numbering space Linux never assigned: the ioctl is nr 0xf0
+// (well above the highest KVM VM-fd nr in UAPI, and KVM_CREATE_DEVICE's 0xe0
+// is a device-fd ioctl, not a VM-fd one); the cap numbers are 250/251,
+// above the highest KVM_CAP_* Linux defines.  A Linux VMM that does not
+// know them is unaffected: KVM_CHECK_EXTENSION simply reports them as 1 and
+// unknown-ioctl probing returns -EINVAL as usual.
+// ---------------------------------------------------------------------------
+enum uint KVM_CAP_ANON_VM_PROFILE = 250; // KVM_ENABLE_CAP: set VmProfile
+                                        // (args[0]: 0=Lightweight, 1=Compatibility)
+enum uint KVM_CAP_ANON_VM_STATE   = 251; // KVM_CHECK_EXTENSION: ANONVM_GET_VM_STATE supported
+
+// VM-fd ioctl: query native VmState/VcpuState + the named diagnostic.
+// _IOR('A', 0xf0, struct AnonVmState).  Works on Active AND Dying VMs so a
+// VMM can read the post-mortem of a contained VM; a fully torn-down VM
+// (stale handle) returns -EBADF like any other fd use.
+enum ulong ANONVM_GET_VM_STATE = 0x8060aef0;
+
+// VmState values, mirrored from core.virt.vm for userspace readers.
+enum ubyte ANON_VMSTATE_EMPTY  = 0;
+enum ubyte ANON_VMSTATE_ACTIVE = 1;
+enum ubyte ANON_VMSTATE_DYING  = 2;
+
+// VmProfile values, mirrored from core.virt.vm.
+enum ubyte ANON_VMPROFILE_LIGHTWEIGHT   = 0;
+enum ubyte ANON_VMPROFILE_COMPATIBILITY = 1;
+
+// Named failure/fault diagnostics (VirtDiag in core.virt.vm): last event
+// wins; None means "no fault recorded since the last successful entry".
+enum uint ANON_DIAG_NONE             = 0;
+enum uint ANON_DIAG_NOHARDWARE      = 1; // KVM_RUN -> -ENODEV: no VMX/SVM hardware
+enum uint ANON_DIAG_CONTAINED        = 2; // VM entered Dying via vmContained (see klog)
+enum uint ANON_DIAG_BUDGETEXHAUSTED = 3; // -ENOMEM: untyped pin budget exhausted
+enum uint ANON_DIAG_EPTVIOLATION     = 4; // last EPT violation; diagInfo = faulting GPA
+
+struct AnonVmState {
+    uint  magic;        // 0x41565356 'AVMS'
+    ubyte vmState;      // VmState (2=Dying post-mortem)
+    ubyte profile;      // VmProfile
+    ushort vcpuCount;
+    uint  diag;         // VirtDiag: the named diagnostic
+    ulong diagInfo;     // EPTVIOLATION -> faulting GPA; else 0
+    ulong pagesCharged; // pinned guest pages currently charged to this VM
+    ubyte[64] vcpuState; // VcpuState per vCPU index (Empty for unused)
+}
+static assert(AnonVmState.sizeof == 96);
+enum uint ANONVM_STATE_MAGIC = 0x41565356;
+
+// ---------------------------------------------------------------------------
 // struct kvm_msr_list (4) — variable tail of u32 indices
 // ---------------------------------------------------------------------------
 struct KvmMsrList {

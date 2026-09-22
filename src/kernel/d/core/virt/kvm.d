@@ -85,6 +85,7 @@ uint kvmRequiredRight(KvmFdKind kind, ulong cmd) {
                 case KVM_GET_CLOCK:          return CAP_RIGHT_VM_CONTROL;
                 case KVM_ENABLE_CAP:         return CAP_RIGHT_VM_CONTROL;
                 case KVM_GET_DIRTY_LOG:      return CAP_RIGHT_VM_CONTROL;
+                case ANONVM_GET_VM_STATE:    return CAP_RIGHT_VM_CONTROL;
                 default: break;
             }
             return 0;
@@ -212,6 +213,9 @@ private long kvmCheckExtension(ulong cap) {
         case KVM_CAP_MAX_VCPUS:        return VIRT_MAX_VCPUS_PER_VM; // 64
         case KVM_CAP_NR_MEMSLOTS:      return VIRT_MAX_MEMSLOTS;     // 32
         case KVM_CAP_SPLIT_IRQCHIP:    return 24; // #GSIs, nonzero = supported
+        // --- anonymOS-specific (never in UAPI numbering) ---
+        case KVM_CAP_ANON_VM_PROFILE:  return 1; // KVM_ENABLE_CAP sets VmProfile
+        case KVM_CAP_ANON_VM_STATE:    return 1; // ANONVM_GET_VM_STATE supported
         // --- explicitly not implemented ---
         case KVM_CAP_PIT:              return 0;
         case KVM_CAP_PIT2:             return 0;
@@ -429,7 +433,20 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
             if (!kvmUserOk(tid, arg, KvmEnableCap.sizeof, false)) return E_FAULT;
             KvmEnableCap c;
             kvmUserCopyIn(&c, arg, KvmEnableCap.sizeof);
+            // 7.4: profile switching.  Profiles are policy bundles over one
+            // substrate: this changes defaults/advertised policy only, never
+            // the security or lifecycle of the VM.
+            if (c.cap == KVM_CAP_ANON_VM_PROFILE) {
+                if (c.args[0] > 1) return E_INVAL; // 0=Lightweight, 1=Compatibility
+                vm.profile = cast(VmProfile)c.args[0];
+                // Compatibility pre-enables the split-irqchip policy it
+                // implies; Lightweight opts out.
+                vm.splitIrqchip = (vm.profile == VmProfile.Compatibility);
+                return 0;
+            }
             if (c.cap == KVM_CAP_SPLIT_IRQCHIP) {
+                // Lightweight opts out of the compat policy bundle.
+                if (vm.profile == VmProfile.Lightweight) return E_INVAL;
                 if (c.args[0] > 24) return E_INVAL;
                 vm.splitIrqchip = true;
                 return 0;
@@ -458,10 +475,14 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
             return E_NOTTY;
         }
         case KVM_SET_CLOCK: {
+            // 7.4: kvmclock is part of the Compatibility bundle only.
+            if (vm.profile == VmProfile.Lightweight) return E_NOTTY;
             if (!kvmUserOk(tid, arg, KvmClockData.sizeof, false)) return E_FAULT;
             return 0; // accepted; kvmclock is a later tier
         }
         case KVM_GET_CLOCK: {
+            // 7.4: kvmclock is part of the Compatibility bundle only.
+            if (vm.profile == VmProfile.Lightweight) return E_NOTTY;
             if (!kvmUserOk(tid, arg, KvmClockData.sizeof, true)) return E_FAULT;
             KvmClockData c;
             // Zeroed clock: honest "no kvmclock" rather than fake timestamps.
@@ -471,6 +492,27 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
         }
         case KVM_GET_DIRTY_LOG:
             return E_INVAL; // no dirty tracking yet (later tier)
+        case ANONVM_GET_VM_STATE: {
+            // 8.1: kernel-side AppVM interface — native state + named
+            // diagnostic.  Uses vmCheckQuery (not vmCheck) so a Dying VM
+            // still yields its post-mortem; a fully torn-down VM (stale
+            // handle) is -EBADF like any other fd use.
+            Vm* qvm = vmCheckQuery(vmObj, vmGen);
+            if (qvm is null) return E_BADF;
+            if (!kvmUserOk(tid, arg, AnonVmState.sizeof, true)) return E_FAULT;
+            AnonVmState st;
+            st.magic = ANONVM_STATE_MAGIC;
+            st.vmState = cast(ubyte)qvm.state;
+            st.profile = cast(ubyte)qvm.profile;
+            st.vcpuCount = cast(ushort)qvm.vcpuCount;
+            st.diag = cast(uint)qvm.diag;
+            st.diagInfo = qvm.diagInfo;
+            st.pagesCharged = qvm.pagesCharged;
+            foreach (i; 0 .. VIRT_MAX_VCPUS_PER_VM)
+                st.vcpuState[i] = cast(ubyte)qvm.vcpus[i].state;
+            kvmUserCopyOut(arg, &st, AnonVmState.sizeof);
+            return 0;
+        }
         default:
             return E_INVAL;
     }
@@ -573,6 +615,11 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
         return E_INVAL; // Running re-entry or Exited/Dead
     if (vc.runPhys == 0) return E_NODEV;
 
+    // 8.1: fresh attempt, fresh story.  The diagnostic describes the
+    // outcome of THIS run (or the last setup call): stale failures from
+    // before are cleared here and re-recorded below if they recur.
+    vmSetDiag(vm, VirtDiag.None, 0);
+
     KvmRun* run = cast(KvmRun*)phys_to_virt(vc.runPhys);
     // immediate_exit: userspace asked for an immediate KVM_EXIT_INTR.
     if (run.immediateExit != 0) {
@@ -594,6 +641,10 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
     if (rc == VMX_NOHW) {
         // Fail-soft: back out to Runnable, no exit reason written (we never
         // entered).  The VMM sees -ENODEV, exactly like Linux without /dev/kvm.
+        // 8.1/8.2: name the cause both ways — the sticky named diagnostic
+        // and the klog line the AppVM contract documents.
+        vmSetDiag(vm, VirtDiag.NoHardware, 0);
+        klog("[virt] kvmVcpuRun: no virtualization hardware (ENODEV)\n");
         vc.state = VcpuState.Runnable;
         return E_NODEV;
     }

@@ -58,6 +58,8 @@ backend. Error constants are Linux negatives (`E_NOTTY` = -25, etc.).
 | `KVM_CAP_MULTI_ADDRESS_SPACE` | 118 | 0 | |
 | `KVM_CAP_SPLIT_IRQCHIP` | 121 | 24 | nonzero = supported; value is the #GSIs |
 | `KVM_CAP_IMMEDIATE_EXIT` | 136 | 1 | `immediate_exit` honored → `KVM_EXIT_INTR` |
+| `KVM_CAP_ANON_VM_PROFILE` | 250 | 1 | **anonymOS-specific**: `KVM_ENABLE_CAP` accepts a machine profile (§ "VM fd") |
+| `KVM_CAP_ANON_VM_STATE` | 251 | 1 | **anonymOS-specific**: `ANONVM_GET_VM_STATE` supported (§ "VM fd") |
 | anything else | — | 0 | |
 
 **The `KVM_CAP_IRQCHIP=1` shim, precisely:** Linux semantics of this cap mean
@@ -81,13 +83,14 @@ to create one fails.
 | `KVM_SET_IDENTITY_MAP_ADDR` | 0x4008ae48 | supported | arg is a u64 pointer; stored |
 | `KVM_CREATE_IRQCHIP` | 0xae60 | **ENOTTY** | split irqchip is the only first-tier model |
 | `KVM_CREATE_PIT2` | 0x4040ae77 | **ENOTTY** | no in-kernel PIT (non-goal) |
-| `KVM_ENABLE_CAP` | 0x4068aea3 | partial | `KVM_CAP_SPLIT_IRQCHIP` accepted (`args[0]` ≤ 24); `DISABLE_QUIRKS` and all others → `EINVAL` |
+| `KVM_ENABLE_CAP` | 0x4068aea3 | partial | `KVM_CAP_SPLIT_IRQCHIP` accepted (`args[0]` ≤ 24; rejected with `EINVAL` on a `Lightweight` VM); `KVM_CAP_ANON_VM_PROFILE` (250) sets the machine profile (`args[0]`: 0=Lightweight, 1=Compatibility); `DISABLE_QUIRKS` and all others → `EINVAL` |
+| `ANONVM_GET_VM_STATE` | 0x8060aef0 | supported | **anonymOS-specific** `_IOR`: fills `struct AnonVmState` (96 bytes: magic, VmState, VmProfile, vcpuCount, named diagnostic + faulting GPA, pagesCharged, per-vCPU states); works on Active **and** Dying VMs (post-mortem) |
+| `KVM_SET_CLOCK` | 0x4030ae7b | supported (no-op) / `ENOTTY` | accepted on `Compatibility`; `-ENOTTY` on `Lightweight` (not in the bundle); kvmclock is a later tier |
+| `KVM_GET_CLOCK` | 0x8030ae7c | supported / `ENOTTY` | returns a **zeroed** `kvm_clock_data` — honest "no kvmclock", not fake timestamps — on `Compatibility`; `-ENOTTY` on `Lightweight` |
 | `KVM_SET_GSI_ROUTING` | 0x4008ae6a | **ENOTTY** | routing structs exist for the delivery tier; ioctl fails fast until injection exists |
 | `KVM_IRQ_LINE` | 0x4008ae61 | **ENOTTY** | acking without LAPIC injection would hang guests |
 | `KVM_IRQFD` | 0x4020ae76 | **ENOTTY** | no eventfd bridge / injection yet |
 | `KVM_IOEVENTFD` | 0x4040ae79 | **ENOTTY** | no MMIO-bus doorbell matching yet |
-| `KVM_SET_CLOCK` | 0x4030ae7b | supported (no-op) | accepted; kvmclock is a later tier |
-| `KVM_GET_CLOCK` | 0x8030ae7c | supported | returns a **zeroed** `kvm_clock_data` — honest "no kvmclock", not fake timestamps |
 | `KVM_GET_DIRTY_LOG` | 0x4010ae42 | `EINVAL` | no dirty tracking yet (later tier) |
 | anything else | — | `EINVAL` | |
 

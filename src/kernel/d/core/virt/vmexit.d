@@ -15,13 +15,13 @@
 // Constraints: -betterC, @nogc nothrow.
 module core.virt.vmexit;
 
-import core.virt.vm : Vm, Vcpu, VmState, VcpuState;
+import core.virt.vm : Vm, Vcpu, VmState, VcpuState, VirtDiag, vmSetDiag;
 import core.virt.kvmabi : KvmRun, KvmExitIo, KvmExitMmio, KvmMsrEntry,
     KvmRegs, KvmSRegs,
     KVM_EXIT_UNKNOWN, KVM_EXIT_IO, KVM_EXIT_HYPERCALL, KVM_EXIT_HLT,
     KVM_EXIT_MMIO, KVM_EXIT_SHUTDOWN, KVM_EXIT_INTERNAL_ERROR,
     KVM_EXIT_IO_IN, KVM_EXIT_IO_OUT;
-import core.io : klog;
+import core.io : klog, klog_dec;
 
 extern (C) @nogc nothrow:
 
@@ -65,16 +65,55 @@ enum ulong KVM_RUN_IO_DATA_OFF = KvmRun.sizeof;
 static assert(KVM_RUN_IO_DATA_OFF + 8 <= 4096); // worst-case OUT copy fits
 
 private VmExitAction vmContained(Vm* vm, Vcpu* vc, KvmRun* run, const(char)* why) {
-    if (vm !is null) vm.state = VmState.Dying;
+    if (vm !is null) {
+        vm.state = VmState.Dying;
+        vmSetDiag(vm, VirtDiag.Contained, 0); // 8.1: named post-mortem
+    }
     if (vc !is null) vc.state = VcpuState.Dead;
     if (run !is null) {
         run.exitReason = KVM_EXIT_INTERNAL_ERROR;
         run.u.hwReason = 0;
     }
+    // 8.2: the boot-failure diagnostic contract.  This line names the cause;
+    // a VMM reads it from the klog ring (/run/klog).  Formats are stable:
+    //   "[vmexit] contained failure: <why>"
     klog("[vmexit] contained failure: ");
     klog(why);
     klog("\n");
     return VmExitAction.VmContained;
+}
+
+// ---------------------------------------------------------------------------
+// Guest console tap (8.2): guest 1-byte OUTs to COM1 (0x3f8, the serial port
+// every x86 guest firmware/OS knows) are mirrored into the klog ring as
+// "[guest<N>] ..." lines, where N is the vCPU index.  The KVM_EXIT_IO exit
+// still reaches the VMM unchanged — this is a read-only tap, and the
+// kernel never interprets the bytes.  A VMM (AppVM) reads guest serial
+// output from the existing klog consumer path (/run/klog -> Logs app),
+// exactly like any other kernel log line.
+// ---------------------------------------------------------------------------
+__gshared char[256] g_guestSerLine;
+__gshared uint g_guestSerLen = 0;
+__gshared uint g_guestSerVcpu = uint.max; // forces the prefix on the first byte
+
+private void guestSerFlush() {
+    if (g_guestSerLen == 0) return;
+    klog("\n");
+    g_guestSerLen = 0;
+}
+
+private void guestSerByte(uint vcpuIdx, ubyte b) {
+    if (vcpuIdx != g_guestSerVcpu || g_guestSerLen >= g_guestSerLine.length) {
+        guestSerFlush();           // vCPU switch or line full: end the line
+        g_guestSerVcpu = vcpuIdx;
+    }
+    if (g_guestSerLen == 0) {
+        klog("[guest");
+        klog_dec(vcpuIdx);
+        klog("] ");
+    }
+    if (b == '\n') { guestSerFlush(); return; }
+    g_guestSerLine[g_guestSerLen++] = cast(char)b;
 }
 
 // Decode one VM exit into the shared kvm_run page.
@@ -114,6 +153,9 @@ VmExitAction vmxDispatchExit(const ref VmExitInfo info, KvmRun* run, Vm* vm, Vcp
             run.u.io.port       = cast(ushort)port;
             run.u.io.count      = count;
             run.u.io.dataOffset = KVM_RUN_IO_DATA_OFF;
+            // 8.2: guest console tap — 1-byte OUT to COM1 mirrors to klog.
+            if (!dirIn && !str && size == 1 && port == 0x3f8)
+                guestSerByte(vc.index, cast(ubyte)info.data);
             // OUT data: the HW wrapper put the guest register bytes in
             // info.data.  String-OUT data lives in guest memory; copying it
             // is the HW wrapper's job (it walks the guest EPT).
@@ -130,6 +172,9 @@ VmExitAction vmxDispatchExit(const ref VmExitInfo info, KvmRun* run, Vm* vm, Vcp
             // can emulate or kill the guest.  The access length is NOT in
             // the qualification; reporting a guessed length would be a fake
             // hardware claim, so len=0 means "unknown".
+            // 8.1: record the faulting GPA as the named diagnostic
+            // (informational — not every EPT violation is terminal).
+            vmSetDiag(vm, VirtDiag.EptViolation, info.gpa);
             run.exitReason = KVM_EXIT_MMIO;
             run.u.mmio.physAddr = info.gpa;
             run.u.mmio.isWrite  = cast(ubyte)((info.qual >> 1) & 1);

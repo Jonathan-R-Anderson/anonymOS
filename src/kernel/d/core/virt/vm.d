@@ -29,6 +29,36 @@
 //   - EPT is built eagerly at region registration (fail fast) and updated on
 //     removal.
 //
+// Machine profiles (task 7.4): `VmProfile` (Lightweight | Compatibility) is
+// a *userspace policy bundle over one substrate*, not a security class
+// (StratoVirt precedent).  Both profiles allocate the same native objects,
+// run the same EPT builder, the same guest-state validators, and the same
+// VM-exit dispatcher — there is exactly one kernel execution path.  What
+// the profile changes is the *defaults/policy bundle* a VMM sees:
+//   - Compatibility (the default): the Linux-VMM bundle.  Split-irqchip is
+//     pre-enabled at creation (no KVM_ENABLE_CAP needed), the KVM clock
+//     ioctls are accepted, and every capability the compat ABI advertises
+//     keeps its documented value.  Cloud Hypervisor-style VMMs need no
+//     changes.
+//   - Lightweight: opts out of the compat bundle.  KVM_ENABLE_CAP for
+//     SPLIT_IRQCHIP is rejected (-EINVAL), and KVM_SET_CLOCK/KVM_GET_CLOCK
+//     are -ENOTTY.  A VMM that wants neither pays for neither.
+// The profile is set with KVM_ENABLE_CAP(KVM_CAP_ANON_VM_PROFILE, args[0])
+// on the VM fd (see core.virt.kvm); it may be changed any time before
+// first KVM_RUN — it affects defaults and advertised policy only, never
+// the security or lifecycle of the VM.
+//
+// AppVM state query (task 8.1): the Vm record carries the *named
+// diagnostic* (`VirtDiag` + `diagInfo`) — the kernel-side half of the
+// AppVM contract (docs/virtualization/APPVM_CONTRACT.md).  Semantics:
+// last event wins.  KVM_RUN clears the diagnostic at entry (fresh attempt,
+// fresh story) and re-records if the run fails; setup calls (memory
+// region registration) record directly.  The synchronous -errno is always
+// the primary signal; the diagnostic is the pollable post-mortem.
+// ANONVM_GET_VM_STATE reads VmState, the per-vCPU states, the profile,
+// and this diagnostic through `vmCheckQuery`, which accepts Dying VMs
+// (the ordinary stale-handle gate `vmCheck` does not).
+//
 // Constraints: -betterC, @nogc nothrow.
 module core.virt.vm;
 
@@ -71,6 +101,25 @@ enum VcpuState : ubyte {
     Running = 3,  // currently inside KVM_RUN (transient)
     Exited  = 4,  // guest exited (HLT/SHUTDOWN); KVM_RUN re-entry rejected
     Dead    = 5,  // torn down
+}
+
+// ---------------------------------------------------------------------------
+// Machine profiles (7.4): policy bundles, not security classes.
+// ---------------------------------------------------------------------------
+enum VmProfile : ubyte {
+    Lightweight   = 0, // opts out of the Linux-compat policy bundle
+    Compatibility = 1, // the default: Linux-VMM bundle pre-enabled
+}
+
+// Named diagnostics (8.1): the kernel-side half of the AppVM contract.
+// Reported via ANONVM_GET_VM_STATE (see core.virt.kvmabi).  diagInfo
+// carries the faulting GPA for EptViolation and is 0 otherwise.
+enum VirtDiag : uint {
+    None            = 0, // no fault recorded for the current attempt
+    NoHardware      = 1, // KVM_RUN -> -ENODEV: no VMX/SVM hardware present
+    Contained       = 2, // VM entered Dying via vmContained (why is in klog)
+    BudgetExhausted = 3, // -ENOMEM: untyped pin budget exhausted
+    EptViolation    = 4, // last EPT violation (informational, not terminal)
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +185,10 @@ struct Vm {
     uint  creatorDom;   // VMM policy (core.virt.vmm_policy): creating task's domainObjId
                        // (0 = no domain).  Appended, never inserted.  Set once at
                        // alloc; drives the per-VMM-domain resource accounting.
+    // 7.4/8.1 fields, appended (never inserted) per the same convention:
+    VmProfile profile;  // policy bundle: Lightweight | Compatibility
+    VirtDiag diag;      // named diagnostic: last fault/failure, sticky
+    ulong diagInfo;     // EptViolation -> faulting GPA; 0 otherwise
 }
 
 __gshared Vm[VIRT_MAX_VMS] g_vmPool;
@@ -200,6 +253,13 @@ public uint vmAlloc() {
     vm.fdRefs = 1; // the creating fd's view
     vm.untypedObjId = g_tasks[tid].untypedObjId;
     vm.gen = nextVmGen();
+    // 7.4: default profile is Compatibility — the Linux-VMM bundle.  The
+    // split-irqchip policy it implies is pre-enabled here (pre-enables the
+    // advertisement), so existing VMMs need no enable call.
+    vm.profile = VmProfile.Compatibility;
+    vm.splitIrqchip = true;
+    vm.diag = VirtDiag.None;
+    vm.diagInfo = 0;
 
     uint id = objAlloc(ObjType.Vm, cast(void*)vm);
     if (id == 0) {
@@ -227,6 +287,29 @@ public Vm* vmCheck(uint objId, uint gen) {
     if (vm is null || vm.objId != objId || vm.gen != gen) return null;
     if (vm.state != VmState.Active) return null;
     return vm;
+}
+
+// Validated lookup for the state-query path (8.1): same stale-handle gate
+// as vmCheck, but ALSO accepts Dying VMs so a VMM can read the post-mortem
+// (VmState + named diagnostic) of a contained VM.  Never used for ioctls
+// that mutate the VM — containment is one-way.
+public Vm* vmCheckQuery(uint objId, uint gen) {
+    if (gen == 0) return null;
+    auto h = objGet(objId);
+    if (h is null || h.type != ObjType.Vm) return null;
+    if (h.version_ != gen) return null; // slot reused: stale handle
+    Vm* vm = cast(Vm*)h.impl;
+    if (vm is null || vm.objId != objId || vm.gen != gen) return null;
+    if (vm.state != VmState.Active && vm.state != VmState.Dying) return null;
+    return vm;
+}
+
+// Record a named diagnostic on the VM.  Last event wins; cleared at the
+// start of the next KVM_RUN (see kvmVcpuRun in core.virt.kvm).
+public void vmSetDiag(Vm* vm, VirtDiag d, ulong info) {
+    if (vm is null) return;
+    vm.diag = d;
+    vm.diagInfo = info;
 }
 
 // Look up a vCPU by (vmObj, vmGen, index) with full stale checks.
@@ -358,6 +441,7 @@ public long vmSetMemoryRegion(Vm* vm, uint slotId, uint flags,
     // bound the total independently of the budget.
     if (vm.untypedObjId != 0 && !untypedRetype(vm.untypedObjId, pages)) {
         klog("[virt] memRegion: untyped budget exhausted\n");
+        vmSetDiag(vm, VirtDiag.BudgetExhausted, 0);
         rc = -12;
         goto fail;
     }

@@ -42,6 +42,15 @@ enum AuditKind : uint {
     // previously-captured audit record would silently change meaning.
     NativeVerbOk,     // a privileged native verb succeeded (detail = return value)
     NativeVerbDeny,   // a privileged native verb was refused (detail = -errno)
+    // VIRT VMM confinement (core.virt.vmm_policy, OpenSpec task 7.1) — appended,
+    // never inserted (see above).
+    VirtVmCreate,     // a VM was created (subject=Vm objId, detail=creator domainObjId)
+    VirtVmTeardown,   // a VM was torn down (subject=Vm objId, detail=creator domainObjId)
+    VirtCapDerive,    // a VM/vCPU fd derived narrowed rights from the /dev/kvm fd
+                      // (subject=fd number, detail=FileType kind)
+    VirtVmDeny,       // a VMM-domain VM operation was refused (subject=domainObjId,
+                      // detail=vmm_policy.d VMM_DENY_* reason)
+    VirtNsDeny,       // reserved: explicit namespace-deny hits on a VMM domain's view
     Count
 }
 

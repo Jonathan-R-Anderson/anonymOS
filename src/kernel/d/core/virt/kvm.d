@@ -24,6 +24,8 @@ module core.virt.kvm;
 
 import core.virt.kvmabi;
 import core.virt.vm;
+import core.virt.vmm_policy : vmmMayCreateVm, vmmAuditCreate, vmmAuditDeny,
+                              VMM_DENY_VM_CEILING, VMM_DENY_POOL_EXHAUSTED;
 import core.virt.vmx : vmxIsReady, vmxEnter, VMX_NOHW;
 import core.virt.vmexit : vmxDispatchExit, VmExitInfo, VmExitAction,
     vmxValidateSRegs, vmxValidateRegs, vmxValidateMsrs;
@@ -224,10 +226,27 @@ private long kvmCheckExtension(ulong cap) {
 // posix.d allocates the fd and stores the handle in f.fileSize.
 long kvmCreateVm(int tid) {
     if (tid < 0 || tid >= MAX_TASKS) return E_INVAL;
+    const uint dom = g_tasks[tid].domainObjId;
+    // VMM confinement (core.virt.vmm_policy): a VMM-confined domain has its own
+    // VM budget inside the global pool — creating over it is -ENOSPC, audited.
+    // Tasks with no domain (or outside a VMM domain) are decided by the
+    // existing gates: the DEVCLASS_VIRT device grant, the fd rights, and the
+    // global pool ceiling below.
+    if (!vmmMayCreateVm(dom)) {
+        vmmAuditDeny(dom, VMM_DENY_VM_CEILING);
+        klog("[virt] kvmCreateVm: VMM domain VM ceiling reached\n");
+        return E_NOSPC;
+    }
     uint objId = vmAlloc(); // uses g_current_task_id
-    if (objId == 0) return E_NOSPC; // VM ceiling reached
+    if (objId == 0) {
+        // Global pool exhausted — for a VMM domain this is the "second VMM
+        // over the ceiling" denial; audit it as such.
+        if (dom != 0) vmmAuditDeny(dom, VMM_DENY_POOL_EXHAUSTED);
+        return E_NOSPC; // VM ceiling reached
+    }
     auto h = objGet(objId);
     if (h is null) return E_NOENT;
+    vmmAuditCreate(objId, dom);
     return cast(long)kvmPackHandle(objId, h.version_);
 }
 

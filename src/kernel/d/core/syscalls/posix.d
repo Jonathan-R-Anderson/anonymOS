@@ -2628,8 +2628,18 @@ private int deviceClassGate(const(char)* path) {
     int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS) return 0;
     const uint dom = g_tasks[tid].domainObjId;
-    if (dom != 0)                                 // DM10.7: a domain-bound task → the domain's mask
-        return domainDeviceAllowed(dom, cls) ? 0 : negErrno(EACCES);
+    if (dom != 0) {                               // DM10.7: a domain-bound task → the domain's mask
+        if (!domainDeviceAllowed(dom, cls)) {
+            // VMM policy (core.virt.vmm_policy): a refused /dev/kvm open on a
+            // confined domain is a confinement event — audit it (VirtVmDeny).
+            if (cls == DEVCLASS_VIRT) {
+                import core.virt.vmm_policy : vmmAuditDeny, VMM_DENY_DEVICE_CLASS;
+                vmmAuditDeny(dom, VMM_DENY_DEVICE_CLASS);
+            }
+            return negErrno(EACCES);
+        }
+        return 0;
+    }
     const uint idObj = g_tasks[tid].identityObjId;
     if (idObj == 0) return 0;                     // no identity → unrestricted (kernel/desktop)
     if (!identityDeviceAllowed(idObj, cls)) return negErrno(EACCES);
@@ -8789,7 +8799,13 @@ private long kvmAllocChildFd(FileType kind, ulong packed) {
     g_fdTable[nfd].fileSize = packed;
     g_fdTable[nfd].objId    = 0;
     int fdOut = publishActiveFdReturn(nfd);
-    if (fdOut >= 0) kvmFdAddEdge(&g_fdTable[fdOut]);
+    if (fdOut >= 0) {
+        kvmFdAddEdge(&g_fdTable[fdOut]);
+        // VMM policy (core.virt.vmm_policy): the child fd derives narrowed VM
+        // rights from the /dev/kvm system fd — log the derivation
+        // (VirtCapDerive: subject=fd, detail=FileType kind).
+        { import core.audit : auditLog, AuditKind; auditLog(AuditKind.VirtCapDerive, cast(uint)fdOut, cast(ulong)kind); }
+    }
     return fdOut;
 }
 

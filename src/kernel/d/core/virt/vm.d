@@ -133,6 +133,9 @@ struct Vm {
     // The ABI structs (KvmIrqRoutingEntry/KvmIrqfd/KvmIoeventfd in kvmabi.d)
     // stay for the delivery tier; the ioctls currently return ENOTTY.
     uint  memLock;      // region registration/teardown serialization (xchg)
+    uint  creatorDom;   // VMM policy (core.virt.vmm_policy): creating task's domainObjId
+                       // (0 = no domain).  Appended, never inserted.  Set once at
+                       // alloc; drives the per-VMM-domain resource accounting.
 }
 
 __gshared Vm[VIRT_MAX_VMS] g_vmPool;
@@ -193,6 +196,7 @@ public uint vmAlloc() {
     *vm = Vm.init;
     vm.state = VmState.Active;
     vm.creatorTid = tid;
+    vm.creatorDom = g_tasks[tid].domainObjId;  // VMM policy: per-domain accounting
     vm.fdRefs = 1; // the creating fd's view
     vm.untypedObjId = g_tasks[tid].untypedObjId;
     vm.gen = nextVmGen();
@@ -520,8 +524,13 @@ public void kvmVmFdDuped(uint objId, uint gen) {
 // A VM-fd view closed: release the VM when the last view goes away.
 public void kvmVmFdClosed(uint objId, uint gen) {
     Vm* vm = vmCheck(objId, gen);
-    if (vm !is null && vm.fdRefs > 0 && --vm.fdRefs == 0)
+    if (vm !is null && vm.fdRefs > 0 && --vm.fdRefs == 0) {
+        // VMM policy audit (core.virt.vmm_policy): VM teardown is logged.
+        // vm.d cannot import vmm_policy (it imports vm.d — a cycle), so the
+        // ring is written directly with the documented (subject, detail).
+        { import core.audit : auditLog, AuditKind; auditLog(AuditKind.VirtVmTeardown, objId, vm.creatorDom); }
         vmTeardown(vm);
+    }
 }
 
 // A vCPU-fd view was duplicated.
@@ -552,5 +561,23 @@ public ulong kvmPackHandle(uint objId, uint gen) {
 public uint virtVmLive() {
     uint n = 0;
     foreach (ref s; g_vmPool) if (s.state == VmState.Active) ++n;
+    return n;
+}
+
+// VMM policy (core.virt.vmm_policy): per-domain accounting over the shared
+// pool.  Live VMs and pinned guest pages attributed to one VMM domain — the
+// per-VMM-identity scoping of the vm.d ceilings.
+public uint virtVmLiveForDomain(uint domObjId) {
+    if (domObjId == 0) return 0;
+    uint n = 0;
+    foreach (ref s; g_vmPool)
+        if (s.state == VmState.Active && s.creatorDom == domObjId) ++n;
+    return n;
+}
+public ulong virtPagesForDomain(uint domObjId) {
+    if (domObjId == 0) return 0;
+    ulong n = 0;
+    foreach (ref s; g_vmPool)
+        if (s.state == VmState.Active && s.creatorDom == domObjId) n += s.pagesCharged;
     return n;
 }

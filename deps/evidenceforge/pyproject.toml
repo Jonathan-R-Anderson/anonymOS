@@ -1,0 +1,147 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+[project]
+name = "evidence-forge"
+version = "2.1.1"
+description = "Generate realistic synthetic security logs for cybersecurity threat hunting training and research"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Cisco Talos" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.4.2",
+    "pydantic>=2.13.4",
+    "typer>=0.27.1",
+    "rich>=15.0.0",
+    "pyyaml>=6.0",
+    "pytz>=2026.3.post1",
+    "jinja2>=3.1.0",
+    "python-dotenv>=1.2.2",
+    "cryptography>=50.0.0",
+    "psutil>=7.0.0",
+    "tzdata>=2026.4 ; sys_platform == 'win32'",
+]
+
+[project.scripts]
+eforge = "evidenceforge.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/Cisco-Talos/EvidenceForge"
+Repository = "https://github.com/Cisco-Talos/EvidenceForge"
+Issues = "https://github.com/Cisco-Talos/EvidenceForge/issues"
+Changelog = "https://github.com/Cisco-Talos/EvidenceForge/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-asyncio>=1.4.0",
+    "pytest-mock>=3.12.0",
+    "pytest-benchmark>=4.0.0",
+    "ruff>=0.16.2",
+    "pre-commit>=4.6.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/evidenceforge"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# Recursively includes all skills, references, and future additions.
+# No need to add individual files — just put them in commands/eforge/.
+"commands/eforge" = "evidenceforge/_data/commands/eforge"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "slow: Extended release-gate tests excluded from the routine inner-loop suite",
+    "soak: Exceptional scale, duration, exhaustive-matrix, or full-demo diagnostics",
+    "external_parser: Tests that run third-party parser containers",
+]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "-m",
+    "not slow and not soak",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+fail_under = 70
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function calls in defaults — required by Typer's API pattern
+    "N806",  # constant-style names in functions — intentional for lookup tables
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py files
+"src/evidenceforge/cli/commands.py" = ["B904"]  # typer.Exit() in except blocks shouldn't chain

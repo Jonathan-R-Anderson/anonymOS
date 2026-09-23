@@ -1,0 +1,1393 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Pillar 2: Plausibility scoring.
+
+Sub-scores (weights sum to 1.0):
+  value_plausibility  (0.25): No impossible field values / OS cross-contamination.
+  co_occurrence       (0.20): Field combinations that must/must not co-occur.
+  distribution_fit    (0.15): Event-type proportions vs reference profiles.
+  field_agreement     (0.15): Cross-source field agreement via pivot-key joins.
+  user_diversity      (0.15): Different users behave differently.
+  anomaly_rate        (0.10): Realistic 1-5% anomalous-but-benign event rate.
+"""
+
+import hashlib
+import itertools
+import logging
+import math
+from collections import Counter, defaultdict
+from datetime import UTC, datetime
+from typing import Any
+
+from evidenceforge.evaluation._shared import (
+    _extract_hostname,
+    _extract_username,
+    _jensen_shannon_divergence,
+)
+from evidenceforge.evaluation.anomaly import detect_anomalies
+from evidenceforge.evaluation.context import EvaluationContext
+from evidenceforge.evaluation.dimensions import (
+    DimensionScorer,
+    ProgressCallback,
+    _noop_callback,
+    aggregate_sub_scores,
+)
+from evidenceforge.evaluation.models import PillarScore, SubScore
+from evidenceforge.evaluation.parsers import ParsedRecord
+from evidenceforge.evaluation.rules import load_rules_file
+from evidenceforge.evaluation.visibility import VisibilityModel
+from evidenceforge.events.ids_evaluation import new_ids_digest, update_ids_digest
+from evidenceforge.models.scenario import Scenario
+
+logger = logging.getLogger(__name__)
+
+# Formats whose records are tied to a specific host OS
+_OS_BOUND_FORMATS = {
+    "windows_event_security": "windows",
+    "syslog": "linux",
+    "bash_history": "linux",
+}
+
+# Cross-source agreement uses attacker-controlled eval log input. Keep pivot joins bounded so
+# a single high-cardinality collision bucket cannot force quadratic CPU work.
+_MAX_PIVOT_BUCKET_RECORDS = 256
+_MAX_FIELD_AGREEMENT_MATCHES = 100_000
+
+
+class PlausibilityScorer(DimensionScorer):
+    number = 2
+    name = "Plausibility"
+    weight = 0.25
+
+    def score(
+        self,
+        records: dict[str, list[ParsedRecord]],
+        scenario: Scenario,
+        context: EvaluationContext | None = None,
+        progress: ProgressCallback = _noop_callback,
+    ) -> PillarScore:
+        context = context or EvaluationContext()
+        enabled = {log_spec["format"] for log_spec in scenario.output.logs if "format" in log_spec}
+        vis = VisibilityModel(scenario, enabled)
+
+        progress("sub_score_start", {"name": "Value & OS Plausibility", "step": 1, "total": 7})
+        s1 = self._score_value_plausibility(records, vis)
+        progress("sub_score_done", {"name": "Value & OS Plausibility", "score": s1.score})
+
+        progress("sub_score_start", {"name": "Co-occurrence Rules", "step": 2, "total": 7})
+        s2 = self._score_co_occurrence(records)
+        progress("sub_score_done", {"name": "Co-occurrence Rules", "score": s2.score})
+
+        progress("sub_score_start", {"name": "Distribution Fit", "step": 3, "total": 7})
+        s3 = self._score_distribution_fit(records)
+        progress("sub_score_done", {"name": "Distribution Fit", "score": s3.score})
+
+        progress("sub_score_start", {"name": "Cross-Source Field Agreement", "step": 4, "total": 7})
+        s4 = self._score_field_agreement(records)
+        progress("sub_score_done", {"name": "Cross-Source Field Agreement", "score": s4.score})
+
+        progress("sub_score_start", {"name": "User Behavioral Diversity", "step": 5, "total": 7})
+        s5 = self._score_user_diversity(records)
+        progress("sub_score_done", {"name": "User Behavioral Diversity", "score": s5.score})
+
+        progress("sub_score_start", {"name": "Anomaly Rate", "step": 6, "total": 7})
+        s6 = self._score_anomaly_rate(records, scenario)
+        progress("sub_score_done", {"name": "Anomaly Rate", "score": s6.score})
+
+        progress("sub_score_start", {"name": "IDS Correlation Integrity", "step": 7, "total": 7})
+        s7 = self._score_ids_integrity(records, scenario, context)
+        progress("sub_score_done", {"name": "IDS Correlation Integrity", "score": s7.score})
+
+        sub_scores = [s1, s2, s3, s4, s5, s6, s7]
+        dim_score = aggregate_sub_scores(sub_scores)
+
+        return PillarScore(
+            number=self.number,
+            name=self.name,
+            weight=self.weight,
+            score=dim_score,
+            sub_scores=sub_scores,
+        )
+
+    # --- Sub-score 1: Value & OS Plausibility ---
+
+    def _score_value_plausibility(
+        self,
+        records: dict[str, list[ParsedRecord]],
+        vis: VisibilityModel,
+    ) -> SubScore:
+        """Merged source_correctness + activity_plausibility.
+
+        Checks:
+        1. OS-bound formats appear on correct OS hosts (container check).
+        2. Record content is OS-appropriate (content check).
+        """
+        total = 0
+        plausible = 0
+        failures: list[str] = []
+
+        for format_name, record_list in records.items():
+            expected_os = _OS_BOUND_FORMATS.get(format_name)
+
+            for record in record_list:
+                hostname = _extract_hostname(record)
+
+                # Determine whether record is checkable
+                if not hostname and not expected_os:
+                    content_check = _check_os_plausibility(record, format_name)
+                    if content_check is None:
+                        continue
+                    # No hostname → can't do container check, only content
+                    total += 1
+                    if content_check:
+                        plausible += 1
+                    continue
+
+                if not hostname:
+                    continue  # OS-bound but no hostname → unverifiable, skip
+
+                # Container check: OS-bound formats on wrong OS
+                if expected_os:
+                    host_os = vis.get_os_category(hostname)
+                    if vis.resolve_hostname(hostname) is None:
+                        total += 1
+                        if len(failures) < 10:
+                            failures.append(f"[{format_name}] Host '{hostname}' not in scenario")
+                        continue
+                    if host_os != expected_os and host_os != "unknown":
+                        total += 1
+                        if len(failures) < 10:
+                            failures.append(
+                                f"[{format_name}] Host '{hostname}' is {host_os}, "
+                                f"expected {expected_os}"
+                            )
+                        continue
+
+                # Content check: OS-implausible field values
+                content_check = _check_os_plausibility(record, format_name)
+                if content_check is None:
+                    if expected_os:
+                        # OS-bound format passed container check → count as pass
+                        total += 1
+                        plausible += 1
+                    continue
+
+                total += 1
+                if content_check:
+                    plausible += 1
+                elif len(failures) < 10:
+                    failures.append(
+                        f"[{format_name}] Implausible content on {hostname} "
+                        f"({vis.get_os_category(hostname)})"
+                    )
+
+        if total == 0:
+            return SubScore(
+                name="Value & OS Plausibility",
+                key="value_plausibility",
+                weight=0.25,
+                score=None,
+                skipped=True,
+                details="No records expose a checkable host or OS/value contract",
+            )
+        score = 100.0 * plausible / total
+        return SubScore(
+            name="Value & OS Plausibility",
+            key="value_plausibility",
+            weight=0.25,
+            score=score,
+            details=f"{plausible}/{total} records pass OS/value plausibility checks",
+            sample_failures=failures,
+        )
+
+    # --- Sub-score 2: Co-occurrence Rules ---
+
+    def _score_co_occurrence(self, records: dict[str, list[ParsedRecord]]) -> SubScore:
+        from evidenceforge.evaluation.pillars.parseability import (
+            _get_variant,
+            _normalize_for_validation,
+        )
+        from evidenceforge.evaluation.validation_routes import (
+            get_validation_route,
+            require_evaluated,
+        )
+        from evidenceforge.formats.loader import load_format
+        from evidenceforge.formats.rules import evaluate_rule, rule_fields
+        from evidenceforge.formats.validator import validate_field
+
+        total_applicable = 0
+        passing = 0
+        failures: list[str] = []
+        for format_name, record_list in records.items():
+            route = get_validation_route(format_name)
+            if route.kind == "artifact":
+                continue  # Structural checks run in parseability; email joins run below.
+            definition = load_format(route.validator)
+            diagnostic_rules = [r for r in definition.validators or [] if r.severity == "warning"]
+            if not diagnostic_rules:
+                continue
+            diagnostic_fields = {name for rule in diagnostic_rules for name in rule_fields(rule)}
+            for record in record_list:
+                if record.parse_errors:
+                    continue
+                normalized = _normalize_for_validation(format_name, record.fields, record.timestamp)
+                variant = _get_variant(format_name, record)
+                fields = definition.validation_fields(variant) or {}
+                invalid_fields = {
+                    name
+                    for name, field in fields.items()
+                    if name in diagnostic_fields
+                    and (
+                        (field.required and name not in normalized)
+                        or (
+                            name in normalized and not validate_field(field, normalized[name]).valid
+                        )
+                    )
+                }
+                for rule in diagnostic_rules:
+                    finding = evaluate_rule(rule, normalized, format_name, variant, invalid_fields)
+                    require_evaluated(finding)
+                    if finding.severity != "warning" or finding.outcome == "not_applicable":
+                        continue
+                    total_applicable += 1
+                    if finding.outcome == "pass":
+                        passing += 1
+                    elif len(failures) < 10:
+                        failures.append(f"[{format_name}] {finding.rule_id}: {finding.message}")
+
+        if total_applicable == 0:
+            return SubScore(
+                name="Co-occurrence Rules",
+                key="co_occurrence",
+                weight=0.20,
+                score=None,
+                skipped=True,
+                details="No configured co-occurrence rule applies to this dataset",
+            )
+        score = 100.0 * passing / total_applicable
+        return SubScore(
+            name="Co-occurrence Rules",
+            key="co_occurrence",
+            weight=0.20,
+            score=score,
+            details=f"{passing}/{total_applicable} co-occurrence checks pass",
+            sample_failures=failures,
+        )
+
+    # --- Sub-score 3: Distribution Fit ---
+
+    def _score_distribution_fit(self, records: dict[str, list[ParsedRecord]]) -> SubScore:
+        dist_profiles = load_rules_file("distributions.yaml")
+        divergence_scores: list[float] = []
+        details_parts: list[str] = []
+
+        for format_name, record_list in records.items():
+            profiles = dist_profiles.get(format_name, [])
+            if not profiles:
+                continue
+            valid = [r for r in record_list if not r.parse_errors]
+            if not valid:
+                continue
+
+            for profile in profiles:
+                field_name = profile["field"]
+                reference = profile["reference"]
+                tolerance = profile.get("tolerance", 0.25)
+
+                observed_counts: Counter = Counter()
+                total = 0
+                for record in valid:
+                    val = record.fields.get(field_name)
+                    if val is not None:
+                        key = _coerce_key(val, reference)
+                        observed_counts[key] += 1
+                        total += 1
+
+                if total == 0:
+                    continue
+
+                observed = {k: v / total for k, v in observed_counts.items()}
+                jsd = _jensen_shannon_divergence(reference, observed)
+
+                if jsd <= 0:
+                    field_score = 100.0
+                elif jsd >= tolerance * 2:
+                    field_score = 0.0
+                else:
+                    field_score = max(0.0, 100.0 * (1.0 - jsd / (tolerance * 2)))
+
+                divergence_scores.append(field_score)
+                details_parts.append(f"{format_name}.{field_name}: {field_score:.0f}")
+
+        score = sum(divergence_scores) / len(divergence_scores) if divergence_scores else None
+        return SubScore(
+            name="Distribution Fit",
+            key="distribution_fit",
+            weight=0.15,
+            score=score,
+            skipped=not divergence_scores,
+            details="; ".join(details_parts) if details_parts else "No distribution profiles",
+        )
+
+    # --- Sub-score 4: Cross-Source Field Agreement ---
+
+    def _score_field_agreement(self, records: dict[str, list[ParsedRecord]]) -> SubScore:
+        pairs_config = load_rules_file("cross_source_pairs.yaml").get("pairs", [])
+        if not pairs_config:
+            return SubScore(
+                name="Cross-Source Field Agreement",
+                key="field_agreement",
+                weight=0.15,
+                score=None,
+                skipped=True,
+                details="No pair definitions loaded",
+            )
+
+        total_matched = 0
+        total_agreeing = 0
+        failures: list[str] = []
+
+        for pair_def in pairs_config:
+            fmt_a = pair_def.get("format_a", "")
+            fmt_b = pair_def.get("format_b", "")
+            recs_a = records.get(fmt_a, [])
+            recs_b = records.get(fmt_b, [])
+            if not recs_a or not recs_b:
+                continue
+
+            cond_a = pair_def.get("condition_a") or {}
+            cond_b = pair_def.get("condition_b") or {}
+            pivot = pair_def.get("pivot_key", {})
+            agree_on = pair_def.get("agree_on", [])
+
+            filtered_a = [r for r in recs_a if _matches_condition(r, cond_a)]
+            filtered_b = [r for r in recs_b if _matches_condition(r, cond_b)]
+            if not filtered_a or not filtered_b:
+                continue
+
+            b_index = _build_pivot_index(filtered_b, pivot)
+            m, ag, fails = _score_pair(pair_def["name"], filtered_a, b_index, pivot, agree_on)
+            total_matched += m
+            total_agreeing += ag
+            if len(failures) < 10:
+                failures.extend(fails[: 10 - len(failures)])
+
+        email_matched, email_agreeing, email_failures = _score_email_evidence_consistency(records)
+        total_matched += email_matched
+        total_agreeing += email_agreeing
+        if len(failures) < 10:
+            failures.extend(email_failures[: 10 - len(failures)])
+
+        http_matched, http_agreeing, http_failures = _score_http_file_consistency(records)
+        total_matched += http_matched
+        total_agreeing += http_agreeing
+        if len(failures) < 10:
+            failures.extend(http_failures[: 10 - len(failures)])
+
+        crypto_matched, crypto_agreeing, crypto_failures = (
+            _score_cryptographic_protocol_consistency(records)
+        )
+        total_matched += crypto_matched
+        total_agreeing += crypto_agreeing
+        if len(failures) < 10:
+            failures.extend(crypto_failures[: 10 - len(failures)])
+
+        if total_matched == 0:
+            return SubScore(
+                name="Cross-Source Field Agreement",
+                key="field_agreement",
+                weight=0.15,
+                score=None,
+                skipped=True,
+                details="No configured cross-source pivots were jointly observable",
+            )
+        score = 100.0 * total_agreeing / total_matched
+        return SubScore(
+            name="Cross-Source Field Agreement",
+            key="field_agreement",
+            weight=0.15,
+            score=score,
+            details=f"{total_agreeing}/{total_matched} matched pivot pairs agree",
+            sample_failures=failures,
+        )
+
+    # --- Sub-score 5: User Behavioral Diversity ---
+
+    def _score_user_diversity(self, records: dict[str, list[ParsedRecord]]) -> SubScore:
+        user_types: dict[str, Counter] = defaultdict(Counter)
+        for _fmt, record_list in records.items():
+            for record in record_list:
+                user = _extract_username(record)
+                if not user:
+                    continue
+                user_types[user][_extract_event_type(record)] += 1
+
+        users_with_data = {u: c for u, c in user_types.items() if sum(c.values()) >= 5}
+        if len(users_with_data) < 2:
+            return SubScore(
+                name="User Behavioral Diversity",
+                key="user_diversity",
+                weight=0.15,
+                score=100.0,
+                details="Fewer than 2 users with sufficient data — skipped",
+            )
+
+        user_list = sorted(users_with_data)
+        total_pairs = len(user_list) * (len(user_list) - 1) // 2
+        max_pairs = 200
+
+        if total_pairs <= max_pairs:
+            pairs = list(itertools.combinations(range(len(user_list)), 2))
+        else:
+            pairs = sorted(
+                itertools.combinations(range(len(user_list)), 2),
+                key=lambda pair: hashlib.sha256(
+                    f"{user_list[pair[0]]}\0{user_list[pair[1]]}".encode()
+                ).digest(),
+            )[:max_pairs]
+
+        similarities: list[float] = []
+        for i, j in pairs:
+            sim = _cosine_similarity(users_with_data[user_list[i]], users_with_data[user_list[j]])
+            similarities.append(sim)
+
+        avg_sim = sum(similarities) / len(similarities) if similarities else 0.0
+
+        if avg_sim <= 0.5:
+            score = 100.0
+        elif avg_sim >= 0.9:
+            score = 0.0
+        else:
+            score = 100.0 * (0.9 - avg_sim) / 0.4
+
+        return SubScore(
+            name="User Behavioral Diversity",
+            key="user_diversity",
+            weight=0.15,
+            score=score,
+            details=f"Avg pairwise similarity: {avg_sim:.2f} across {len(user_list)} users",
+        )
+
+    # --- Sub-score 6: Anomaly Rate ---
+
+    def _score_anomaly_rate(
+        self,
+        records: dict[str, list[ParsedRecord]],
+        scenario: Scenario,
+    ) -> SubScore:
+        anomalous, total = detect_anomalies(records, scenario)
+        if total == 0:
+            return SubScore(
+                name="Anomaly Rate",
+                key="anomaly_rate",
+                weight=0.10,
+                score=100.0,
+                details="No records to check",
+            )
+
+        rate = anomalous / total
+        if 0.01 <= rate <= 0.05:
+            score = 100.0
+        elif rate == 0:
+            score = 0.0
+        elif rate < 0.01:
+            score = 100.0 * (rate / 0.01)
+        elif rate <= 0.10:
+            score = max(0.0, 100.0 * (1.0 - (rate - 0.05) / 0.05))
+        else:
+            score = 0.0
+
+        return SubScore(
+            name="Anomaly Rate",
+            key="anomaly_rate",
+            weight=0.10,
+            score=score,
+            details=f"{anomalous}/{total} events anomalous ({rate:.1%}), target 1-5%",
+        )
+
+    def _score_ids_integrity(
+        self,
+        records: dict[str, list[ParsedRecord]],
+        scenario: Scenario,
+        context: EvaluationContext,
+    ) -> SubScore:
+        """Reconcile rendered alerts with canonical sensor-local IDS ground truth."""
+
+        document = context.ground_truth
+        if document is None or document.ids_evaluation is None:
+            if _scenario_has_ids_attachments(scenario):
+                return SubScore(
+                    name="IDS Correlation Integrity",
+                    key="ids_integrity",
+                    weight=0.0,
+                    score=0.0,
+                    details="Authored ids_alerts require GROUND_TRUTH.json ids_evaluation",
+                    sample_failures=["Missing or invalid IDS evaluation ground truth"],
+                )
+            return SubScore(
+                name="IDS Correlation Integrity",
+                key="ids_integrity",
+                weight=0.0,
+                score=None,
+                skipped=True,
+                details="Legacy dataset has no IDS evaluation summary; check skipped",
+            )
+
+        checks = 0
+        passing = 0
+        failures: list[str] = []
+
+        def check(condition: bool, message: str) -> None:
+            nonlocal checks, passing
+            checks += 1
+            if condition:
+                passing += 1
+            elif len(failures) < 10:
+                failures.append(message)
+
+        for event in document.events:
+            for attachment in event.attributes.ids_alerts or []:
+                candidate = int(attachment.get("candidate", 0))
+                emitted = int(attachment.get("emitted", 0))
+                filtered = int(attachment.get("policy_filtered", 0))
+                check(
+                    candidate == emitted + filtered,
+                    f"{event.storyline_id} SID {attachment.get('sid')} totals disagree",
+                )
+
+        actual: dict[str, dict[str, dict[str, Any]]] = {}
+        for record in records.get("snort_alert", []):
+            if record.parse_errors or record.timestamp is None:
+                continue
+            sensor = record.source_instance or "__direct__"
+            key = f"{int(record.fields.get('gid', 1))}:{int(record.fields['sid'])}"
+            summary = actual.setdefault(sensor, {}).setdefault(
+                key,
+                {"emitted": 0, "digest": new_ids_digest()},
+            )
+            summary["emitted"] += 1
+            update_ids_digest(
+                summary["digest"],
+                sensor,
+                record.fields | {"timestamp": record.timestamp},
+            )
+
+        expected_keys = {
+            (sensor, key)
+            for sensor, signatures in document.ids_evaluation.sensors.items()
+            for key in signatures
+        }
+        actual_keys = {(sensor, key) for sensor, signatures in actual.items() for key in signatures}
+        for sensor, key in sorted(expected_keys | actual_keys):
+            expected = document.ids_evaluation.sensors.get(sensor, {}).get(key)
+            observed = actual.get(sensor, {}).get(key)
+            check(expected is not None, f"Unexpected Snort rows for {sensor} {key}")
+            check(observed is not None, f"Missing Snort rows for {sensor} {key}")
+            if expected is None or observed is None:
+                continue
+            check(
+                expected.emitted == observed["emitted"],
+                f"{sensor} {key} emitted {observed['emitted']} != expected {expected.emitted}",
+            )
+            check(
+                expected.emitted_sha256 == observed["digest"].hexdigest(),
+                f"{sensor} {key} normalized alert digest differs",
+            )
+
+        observation = document.ids_evaluation.observation
+        signatures = [
+            signature
+            for sensor_signatures in document.ids_evaluation.sensors.values()
+            for signature in sensor_signatures.values()
+        ]
+        rendered = sum(signature.emitted for signature in signatures)
+        policy_filtered = sum(signature.policy_filtered for signature in signatures)
+        check(
+            rendered == observation.get("visible", 0) + observation.get("delayed", 0),
+            "IDS visible/delayed totals do not equal rendered alerts",
+        )
+        check(
+            observation.get("filtered", 0) >= policy_filtered,
+            "IDS filtered observation total is lower than policy-filtered candidates",
+        )
+        source_observation: dict[str, int] = {}
+        for source_status in document.source_evidence_status.values():
+            for status, count in source_status.get("ids", {}).items():
+                source_observation[status] = source_observation.get(status, 0) + count
+        check(
+            source_observation == observation,
+            "IDS summary disagrees with ground-truth source_evidence_status",
+        )
+        if context.observation_manifest is not None:
+            check(
+                context.observation_manifest.source_summary.get("ids", {}) == observation,
+                "IDS summary disagrees with OBSERVATION_MANIFEST.json",
+            )
+
+        score = 100.0 * passing / checks if checks else 100.0
+        return SubScore(
+            name="IDS Correlation Integrity",
+            key="ids_integrity",
+            weight=0.0,
+            score=score,
+            details=f"{passing}/{checks} IDS integrity checks pass",
+            sample_failures=failures,
+        )
+
+
+# --- Module-level helpers ---
+
+
+def _stable_records(records: list[ParsedRecord], limit: int) -> list[ParsedRecord]:
+    """Select a repeatable bounded record sample independent of process RNG state."""
+
+    return sorted(
+        records,
+        key=lambda record: hashlib.sha256(
+            (
+                f"{record.source_format}\0{record.source_instance or ''}\0"
+                f"{record.line_number or 0}\0{record.raw}"
+            ).encode()
+        ).digest(),
+    )[:limit]
+
+
+def _scenario_has_ids_attachments(scenario: Scenario) -> bool:
+    """Return whether a typed storyline or red-herring event authors IDS attachments."""
+
+    return any(
+        bool(getattr(spec, "ids_alerts", None))
+        for cluster in (*(scenario.storyline or []), *(scenario.red_herrings or []))
+        for spec in cluster.events
+    )
+
+
+def _check_os_plausibility(record: ParsedRecord, fmt: str) -> bool | None:
+    """Return True/False for OS-content plausibility, None if not checkable."""
+    f = record.fields
+    if fmt == "bash_history":
+        cmd = f.get("command", "")
+        if "C:\\" in cmd or "cmd.exe" in cmd.lower():
+            return False
+        return True
+    if fmt == "windows_event_security":
+        proc = f.get("NewProcessName", "")
+        if proc and proc.startswith("/"):
+            return False
+        return True
+    return None
+
+
+def _coerce_key(value: Any, reference: dict) -> Any:
+    sample_key = next(iter(reference), None)
+    if sample_key is None:
+        return value
+    if isinstance(sample_key, int) and not isinstance(value, int):
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return value
+    if isinstance(sample_key, str) and not isinstance(value, str):
+        return str(value)
+    return value
+
+
+def _process_category(process_path: str) -> str:
+    p = process_path.lower()
+    if any(x in p for x in ["chrome", "firefox", "edge", "iexplore", "safari", "opera"]):
+        return "browser"
+    if any(
+        x in p
+        for x in [
+            "word",
+            "excel",
+            "outlook",
+            "powerpoint",
+            "teams",
+            "onedrive",
+            "acrobat",
+            "onenote",
+            "libreoffice",
+            "thunderbird",
+        ]
+    ):
+        return "office"
+    if any(
+        x in p
+        for x in [
+            "code",
+            "vim",
+            "nvim",
+            "emacs",
+            "devenv",
+            "idea",
+            "pycharm",
+            "git",
+            "node",
+            "python",
+            "java",
+            "dotnet",
+            "npm",
+            "cargo",
+            "make",
+            "cmake",
+            "gcc",
+            "msbuild",
+            "pytest",
+            "docker",
+            "kubectl",
+        ]
+    ):
+        return "dev_tool"
+    if any(
+        x in p
+        for x in [
+            "powershell",
+            "cmd.exe",
+            "regedit",
+            "mmc",
+            "taskmgr",
+            "eventvwr",
+            "compmgmt",
+            "services.msc",
+            "wmic",
+            "netstat",
+            "ipconfig",
+            "ssh",
+            "curl",
+            "wget",
+        ]
+    ):
+        return "admin_tool"
+    if any(
+        x in p
+        for x in [
+            "svchost",
+            "lsass",
+            "csrss",
+            "winlogon",
+            "services.exe",
+            "smss",
+            "wininit",
+            "spoolsv",
+            "searchindexer",
+            "taskhostw",
+            "conhost",
+            "explorer.exe",
+            "systemd",
+            "cron",
+            "sshd",
+            "rsyslog",
+        ]
+    ):
+        return "system"
+    return "other"
+
+
+def _extract_event_type(record: ParsedRecord) -> str:
+    fmt = record.source_format
+    f = record.fields
+    if fmt == "windows_event_security":
+        eid = f.get("EventID")
+        if eid == 4688:
+            return f"win_4688_{_process_category(f.get('NewProcessName', ''))}"
+        if eid == 4624:
+            return f"win_4624_type{f.get('LogonType', 0)}"
+        if eid == 4689:
+            return "win_4689_terminate"
+        return f"win_{eid}" if eid else "win_unknown"
+    if fmt == "windows_event_sysmon":
+        eid = f.get("EventID")
+        if eid == 1:
+            return f"sysmon_1_{_process_category(f.get('Image', ''))}"
+        if eid == 5:
+            return "sysmon_5_terminate"
+        if eid == 8:
+            return "sysmon_8_remote_thread"
+        if eid == 10:
+            return "sysmon_10_process_access"
+        return f"sysmon_{eid}" if eid else "sysmon_unknown"
+    if fmt == "ecar":
+        obj = f.get("object", "?")
+        act = f.get("action", "?")
+        if obj == "PROCESS" and act == "CREATE":
+            return f"ecar_PROCESS_CREATE_{_process_category(f.get('image_path', ''))}"
+        if obj == "PROCESS" and act == "TERMINATE":
+            return "ecar_PROCESS_TERMINATE"
+        if obj == "THREAD" and act == "REMOTE_CREATE":
+            return "ecar_THREAD_REMOTE_CREATE"
+        if obj == "PROCESS" and act == "OPEN":
+            return "ecar_PROCESS_OPEN"
+        return f"ecar_{obj}_{act}"
+    if fmt == "bash_history":
+        cmd = f.get("command", "")
+        return f"bash_{cmd.split()[0]}" if cmd else "bash_empty"
+    if fmt == "syslog":
+        return f"syslog_{f.get('app_name', 'unknown')}"
+    if fmt == "web_access":
+        method = f.get("method", "GET")
+        code = f.get("status_code", 0)
+        return f"web_{method}_{code // 100}xx"
+    if fmt == "zeek_conn":
+        svc = f.get("service", f.get("proto", "unknown"))
+        return f"zeek_{svc}"
+    return fmt
+
+
+def _cosine_similarity(a: Counter, b: Counter) -> float:
+    all_keys = set(a.keys()) | set(b.keys())
+    dot = sum(a.get(k, 0) * b.get(k, 0) for k in all_keys)
+    mag_a = math.sqrt(sum(v**2 for v in a.values()))
+    mag_b = math.sqrt(sum(v**2 for v in b.values()))
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+# Field-agreement helpers (extracted from cross_source.py)
+
+
+def _score_email_evidence_consistency(
+    records: dict[str, list[ParsedRecord]],
+) -> tuple[int, int, list[str]]:
+    """Return basic email cross-source consistency counts."""
+    smtp_records = records.get("zeek_smtp", [])
+    conn_uids = {record.fields.get("uid") for record in records.get("zeek_conn", [])}
+    file_fuids = {record.fields.get("fuid") for record in records.get("zeek_files", [])}
+    artifacts_by_msg_id = {
+        record.fields.get("message_id"): record
+        for record in records.get("email_artifacts", [])
+        if record.fields.get("message_id")
+    }
+
+    matched = 0
+    agreeing = 0
+    failures: list[str] = []
+
+    for smtp in smtp_records:
+        uid = smtp.fields.get("uid")
+        if uid:
+            matched += 1
+            if uid in conn_uids:
+                agreeing += 1
+            elif len(failures) < 10:
+                failures.append(f"email SMTP uid {uid} has no matching zeek_conn row")
+
+        fuids = smtp.fields.get("fuids") or []
+        if isinstance(fuids, list):
+            for fuid in fuids:
+                matched += 1
+                if fuid in file_fuids:
+                    agreeing += 1
+                elif len(failures) < 10:
+                    failures.append(f"email SMTP fuid {fuid} has no matching zeek_files row")
+
+        msg_id = smtp.fields.get("msg_id")
+        artifact = artifacts_by_msg_id.get(msg_id)
+        if artifact is not None and smtp.fields.get("subject") is not None:
+            matched += 1
+            if smtp.fields.get("subject") == artifact.fields.get("subject"):
+                agreeing += 1
+            elif len(failures) < 10:
+                failures.append(f"email artifact subject disagrees for msg_id {msg_id}")
+
+    return matched, agreeing, failures
+
+
+def _score_http_file_consistency(
+    records: dict[str, list[ParsedRecord]],
+) -> tuple[int, int, list[str]]:
+    """Return HTTP-to-files FUID, direction, MIME, size, and UID agreement."""
+
+    file_index = {
+        (record.source_instance, str(record.fields.get("fuid"))): record
+        for record in records.get("zeek_files", [])
+        if record.fields.get("fuid")
+    }
+    matched = 0
+    agreeing = 0
+    failures: list[str] = []
+
+    def check(condition: bool, message: str) -> None:
+        nonlocal matched, agreeing
+        matched += 1
+        if condition:
+            agreeing += 1
+        elif len(failures) < 10:
+            failures.append(message)
+
+    for http in records.get("zeek_http", []):
+        for side, is_orig, body_field in (
+            ("orig", True, "request_body_len"),
+            ("resp", False, "response_body_len"),
+        ):
+            fuids = http.fields.get(f"{side}_fuids") or []
+            if not isinstance(fuids, list):
+                fuids = [fuids]
+            mime_types = http.fields.get(f"{side}_mime_types") or []
+            filenames = http.fields.get(f"{side}_filenames") or []
+            referenced_files: list[ParsedRecord] = []
+            for fuid in fuids:
+                file_record = file_index.get((http.source_instance, str(fuid)))
+                check(file_record is not None, f"HTTP {side} fuid {fuid} has no files.log row")
+                if file_record is None:
+                    continue
+                referenced_files.append(file_record)
+                fields = file_record.fields
+                check(
+                    fields.get("is_orig") is is_orig, f"HTTP {side} fuid {fuid} direction differs"
+                )
+                conn_uids = fields.get("conn_uids") or []
+                check(http.fields.get("uid") in conn_uids, f"HTTP {side} fuid {fuid} UID differs")
+            body_len = http.fields.get(body_field)
+            if isinstance(body_len, int) and referenced_files:
+                ordinary = (
+                    len(referenced_files) == 1
+                    and referenced_files[0].fields.get("total_bytes") == body_len
+                )
+                if ordinary:
+                    check(
+                        referenced_files[0].fields.get("total_bytes") == body_len,
+                        f"HTTP {side} fuid {fuids[0]} size differs",
+                    )
+                else:
+                    observed_leaf_bytes = sum(
+                        int(record.fields.get("seen_bytes") or 0) for record in referenced_files
+                    )
+                    check(
+                        observed_leaf_bytes <= body_len,
+                        f"HTTP {side} multipart leaf bytes exceed the entity body",
+                    )
+
+            candidate_mimes = [
+                record.fields.get("mime_type")
+                for record in referenced_files
+                if record.fields.get("mime_type")
+            ]
+            candidate_filenames = [
+                record.fields.get("filename")
+                for record in referenced_files
+                if record.fields.get("filename")
+            ]
+            if mime_types:
+                check(
+                    all(
+                        candidate_mimes.count(value) >= mime_types.count(value)
+                        for value in mime_types
+                    ),
+                    f"HTTP {side} sparse MIME projection differs from files.log",
+                )
+            if filenames:
+                check(
+                    all(
+                        candidate_filenames.count(value) >= filenames.count(value)
+                        for value in filenames
+                    ),
+                    f"HTTP {side} sparse filename projection differs from files.log",
+                )
+    return matched, agreeing, failures
+
+
+def _score_cryptographic_protocol_consistency(
+    records: dict[str, list[ParsedRecord]],
+) -> tuple[int, int, list[str]]:
+    """Probe rendered DKIM, OCSP, and TLS-chain payload contracts."""
+
+    import base64
+    import binascii
+    from urllib.parse import unquote
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.ocsp import load_der_ocsp_request
+
+    matched = 0
+    agreeing = 0
+    failures: list[str] = []
+
+    for record in records.get("zeek_dns", []):
+        query = str(record.fields.get("query", "")).lower()
+        if "._domainkey." not in query:
+            continue
+        answers = record.fields.get("answers") or []
+        answers = answers if isinstance(answers, list) else [answers]
+        for answer in answers:
+            value = str(answer)
+            public_value = next(
+                (
+                    segment.split("=", 1)[1].strip()
+                    for segment in value.split(";")
+                    if segment.strip().lower().startswith("p=")
+                ),
+                "",
+            )
+            matched += 1
+            try:
+                padded = public_value + "=" * ((4 - len(public_value) % 4) % 4)
+                public_key = serialization.load_der_public_key(
+                    base64.b64decode(padded, validate=True)
+                )
+                valid = (
+                    isinstance(public_key, rsa.RSAPublicKey)
+                    and public_key.key_size >= 2048
+                    and public_key.public_numbers().e == 65537
+                )
+            except (ValueError, TypeError, binascii.Error):
+                valid = False
+            if valid:
+                agreeing += 1
+            elif len(failures) < 10:
+                failures.append(f"DKIM TXT key for {query} is not valid RSA SPKI")
+
+    ocsp_by_id = {
+        str(record.fields.get("id")): record
+        for record in records.get("zeek_ocsp", [])
+        if record.fields.get("id")
+    }
+    for record in records.get("zeek_http", []):
+        mime_types = record.fields.get("resp_mime_types") or []
+        if "application/ocsp-response" not in mime_types:
+            continue
+        fuids = record.fields.get("resp_fuids") or []
+        if not isinstance(fuids, list):
+            fuids = [fuids]
+        response = next((ocsp_by_id.get(str(fuid)) for fuid in fuids if fuid), None)
+        matched += 1
+        try:
+            encoded = unquote(str(record.fields.get("uri", "")).lstrip("/"))
+            request = load_der_ocsp_request(base64.b64decode(encoded, validate=True))
+            response_fields = response.fields if response is not None else {}
+            hash_algorithm = response_fields.get(
+                "hash_algorithm", response_fields.get("hashAlgorithm")
+            )
+            issuer_name_hash = response_fields.get(
+                "issuer_name_hash", response_fields.get("issuerNameHash")
+            )
+            issuer_key_hash = response_fields.get(
+                "issuer_key_hash", response_fields.get("issuerKeyHash")
+            )
+            serial_number = response_fields.get(
+                "serial_number", response_fields.get("serialNumber", "0")
+            )
+            valid = (
+                response is not None
+                and request.hash_algorithm.name == hash_algorithm
+                and request.issuer_name_hash.hex() == issuer_name_hash
+                and request.issuer_key_hash.hex() == issuer_key_hash
+                and request.serial_number == int(str(serial_number), 16)
+            )
+        except (ValueError, TypeError, binascii.Error):
+            valid = False
+        if valid:
+            agreeing += 1
+        elif len(failures) < 10:
+            failures.append("OCSP HTTP request does not match its ocsp.log response identity")
+
+    x509_by_id = {
+        str(record.fields.get("id")): record.fields
+        for record in records.get("zeek_x509", [])
+        if record.fields.get("id")
+    }
+    presentations: dict[tuple[str, str], tuple[str, ...]] = {}
+    for record in records.get("zeek_ssl", []):
+        fuids = record.fields.get("cert_chain_fuids") or []
+        if not isinstance(fuids, list) or not fuids:
+            continue
+        # A partial input sample cannot establish chain composition. This is
+        # common when evaluating a filtered source slice, so only score fully
+        # observable presentations rather than treating missing x509 rows as
+        # malformed cryptographic material.
+        if any(str(fuid) not in x509_by_id for fuid in fuids):
+            continue
+        chain = tuple(str(x509_by_id.get(str(fuid), {}).get("fingerprint", "")) for fuid in fuids)
+        if any(not fingerprint for fingerprint in chain):
+            continue
+        leaf_fingerprint = chain[0]
+        key = (str(record.fields.get("server_name", "")), leaf_fingerprint)
+        matched += 1
+        root_transmitted = any(
+            x509_by_id.get(str(fuid), {}).get("basic_constraints.ca") is True
+            and x509_by_id.get(str(fuid), {}).get("certificate.subject")
+            == x509_by_id.get(str(fuid), {}).get("certificate.issuer")
+            for fuid in fuids[1:]
+        )
+        previous = presentations.setdefault(key, chain)
+        valid = bool(leaf_fingerprint) and not root_transmitted and previous == chain
+        if valid:
+            agreeing += 1
+        elif len(failures) < 10:
+            failures.append(
+                "TLS chain presentation is unstable or includes a self-signed trust anchor"
+            )
+
+    return matched, agreeing, failures
+
+
+def _matches_condition(record: ParsedRecord, condition: dict) -> bool:
+    for field, expected in condition.items():
+        if field == "msg_id_in":
+            if record.fields.get("msg_id") not in expected:
+                return False
+        elif field.endswith("_not"):
+            if record.fields.get(field[:-4]) == expected:
+                return False
+        else:
+            if record.fields.get(field) != expected:
+                return False
+    return True
+
+
+def _normalize_ts(ts: datetime) -> datetime:
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=UTC)
+    return ts
+
+
+def _coerce_value(val: Any, coerce: str | None) -> Any:
+    if coerce == "hex_to_int":
+        if isinstance(val, str) and val.startswith("0x"):
+            try:
+                return int(val, 16)
+            except ValueError:
+                return val
+        try:
+            return int(val)
+        except (TypeError, ValueError):
+            return val
+    return val
+
+
+def _get_hostname_for_record(record: ParsedRecord) -> str | None:
+    hn = _extract_hostname(record)
+    if hn:
+        return hn
+    return record.fields.get("hostname")
+
+
+def _get_pivot_key_a(record: ParsedRecord, pivot: dict) -> Any:
+    coerce = pivot.get("coerce")
+    require_hn = pivot.get("require_hostname_match", False)
+
+    if "a_fields" in pivot:
+        parts = []
+        for f in pivot["a_fields"]:
+            if f == "timestamp_bucket_10s":
+                ts = record.timestamp
+                if ts is None:
+                    return None
+                parts.append(int(ts.timestamp()) // 10)
+            else:
+                v = record.fields.get(f)
+                if v is None:
+                    return None
+                parts.append(v)
+        return tuple(parts)
+    else:
+        a_field = pivot.get("a_field")
+        if not a_field:
+            return None
+        if pivot.get("list_contains"):
+            v = record.fields.get(a_field)
+            if not isinstance(v, list) or not v:
+                return None
+            return ("__list__", tuple(_coerce_value(item, coerce) for item in v))
+        val = record.fields.get(a_field)
+        if val is None:
+            return None
+        raw_key = _coerce_value(val, coerce)
+        if require_hn:
+            hn = _get_hostname_for_record(record)
+            return (hn.lower() if hn else None, raw_key)
+        return raw_key
+
+
+def _build_pivot_index(
+    records: list[ParsedRecord],
+    pivot: dict,
+    max_bucket_records: int = _MAX_PIVOT_BUCKET_RECORDS,
+) -> dict:
+    index: dict = defaultdict(list)
+    coerce = pivot.get("coerce")
+    require_hn = pivot.get("require_hostname_match", False)
+
+    for rec in records:
+        key: object | None = None
+        if pivot.get("b_fields"):
+            parts = []
+            for f in pivot["b_fields"]:
+                if f == "ts_bucket_10s":
+                    ts = rec.timestamp
+                    if ts is None:
+                        break
+                    parts.append(int(ts.timestamp()) // 10)
+                else:
+                    v = rec.fields.get(f)
+                    if v is None:
+                        break
+                    parts.append(v)
+            else:
+                key = tuple(parts)
+        else:
+            b_field = pivot.get("b_field")
+            if not b_field:
+                continue
+            val = rec.fields.get(b_field)
+            if val is None:
+                continue
+            raw_key = _coerce_value(val, coerce)
+            if require_hn:
+                hn = _get_hostname_for_record(rec)
+                key = (hn.lower() if hn else None, raw_key)
+            else:
+                key = raw_key
+
+        if key is None:
+            continue
+        bucket = index[key]
+        if len(bucket) < max_bucket_records:
+            bucket.append(rec)
+    return dict(index)
+
+
+def _normalize_value(val: Any, normalize: str | None) -> Any:
+    if val is None:
+        return None
+    if normalize == "lower":
+        return str(val).lower()
+    if normalize == "path_basename_ci":
+        path_str = str(val)
+        basename = path_str.replace("\\", "/").split("/")[-1]
+        return basename.lower()
+    if normalize == "cn_from_dn":
+        s = str(val)
+        for part in s.split(","):
+            part = part.strip()
+            if part.upper().startswith("CN="):
+                return part[3:].lower()
+        return s.lower()
+    return val
+
+
+def _extract_agree_field(
+    record: ParsedRecord, field: str | None, spec: dict, is_b: bool = False
+) -> object:
+    if not field:
+        return None
+    val = record.fields.get(field)
+    if val is None and is_b and spec.get("b_nested"):
+        nested = record.fields.get(spec["b_nested"])
+        if isinstance(nested, dict):
+            val = nested.get(field)
+    return val
+
+
+def _values_agree(a_val: Any, b_val: Any, spec: dict) -> bool:
+    normalize = spec.get("normalize")
+    tolerance = spec.get("tolerance")
+    b_is_list = spec.get("b_is_list", False)
+
+    if b_is_list:
+        if not isinstance(b_val, list):
+            return False
+        a_norm = _normalize_value(a_val, normalize)
+        return any(_normalize_value(v, normalize) == a_norm for v in b_val)
+
+    if tolerance is not None:
+        try:
+            a_num = float(a_val)
+            b_num = float(b_val)
+            if b_num == 0:
+                return a_num == 0
+            return abs(a_num - b_num) / abs(b_num) <= tolerance
+        except (TypeError, ValueError):
+            pass
+
+    return _normalize_value(a_val, normalize) == _normalize_value(b_val, normalize)
+
+
+def _score_pair(
+    pair_name: str,
+    filtered_a: list[ParsedRecord],
+    b_index: dict,
+    pivot: dict,
+    agree_on: list,
+    max_matches: int = _MAX_FIELD_AGREEMENT_MATCHES,
+) -> tuple[int, int, list[str]]:
+    total_matched = 0
+    agreeing = 0
+    failures: list[str] = []
+    time_window = pivot.get("time_window_seconds")
+
+    for rec_a in filtered_a:
+        if total_matched >= max_matches:
+            break
+
+        key_a = _get_pivot_key_a(rec_a, pivot)
+        if key_a is None:
+            continue
+
+        if isinstance(key_a, tuple) and key_a and key_a[0] == "__list__":
+            matching_b: list = []
+            for sub_key in key_a[1]:
+                matching_b.extend(b_index.get(sub_key, []))
+        else:
+            matching_b = b_index.get(key_a, [])
+
+        if not matching_b:
+            continue
+
+        if time_window is not None and rec_a.timestamp is not None:
+            ts_a = _normalize_ts(rec_a.timestamp)
+            matching_b = [
+                r
+                for r in matching_b
+                if r.timestamp is not None
+                and abs((_normalize_ts(r.timestamp) - ts_a).total_seconds()) <= time_window
+            ]
+            if not matching_b:
+                continue
+
+        for rec_b in matching_b:
+            if total_matched >= max_matches:
+                break
+            total_matched += 1
+            all_agree = True
+            for agree_spec in agree_on:
+                a_val = _extract_agree_field(rec_a, agree_spec.get("a_field"), agree_spec)
+                b_val = _extract_agree_field(
+                    rec_b, agree_spec.get("b_field"), agree_spec, is_b=True
+                )
+                if a_val is None or b_val is None:
+                    continue
+                if not _values_agree(a_val, b_val, agree_spec):
+                    all_agree = False
+                    if len(failures) < 5:
+                        failures.append(
+                            f"[{pair_name}] {agree_spec['a_field']}={a_val!r} vs "
+                            f"{agree_spec['b_field']}={b_val!r}"
+                        )
+                    break
+            if all_agree:
+                agreeing += 1
+
+    return total_matched, agreeing, failures

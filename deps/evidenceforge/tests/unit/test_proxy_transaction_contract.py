@@ -1,0 +1,426 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""Contract tests for explicit-proxy phase and byte ownership."""
+
+from __future__ import annotations
+
+import random
+from dataclasses import FrozenInstanceError, replace
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, Mock
+
+import pytest
+
+from evidenceforge.events.base import OccurrenceBuilder
+from evidenceforge.events.contexts import HttpContext, NetworkTransactionDraft, ProxyContext
+from evidenceforge.events.dispatcher import EventDispatcher
+from evidenceforge.events.lifecycle import ActionLifecycleContext
+from evidenceforge.generation.actions.proxy_phase_planner import ProxyPhasePlanner
+from evidenceforge.generation.actions.proxy_transaction import (
+    ProxyTransactionActionBundle,
+    ProxyTransactionRequest,
+)
+from evidenceforge.generation.activity.generator import (
+    ActivityGenerator,
+    _attach_http_file_transfers,
+)
+from evidenceforge.generation.activity.proxy_phase_profiles import proxy_resolver_profiles
+from evidenceforge.generation.state_manager import StateManager
+from evidenceforge.generation.timing import TimingRuntime, TimingScope
+from evidenceforge.models.scenario import System
+from tests.network_factories import network_plan
+
+_BASE_TIME = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+
+
+def _systems() -> tuple[System, System]:
+    workstation = System(
+        hostname="WKS-01",
+        ip="10.0.1.10",
+        os="Windows 11",
+        type="workstation",
+    )
+    proxy = System(
+        hostname="PROXY-01",
+        ip="10.0.3.10",
+        os="Ubuntu 22.04",
+        type="server",
+        roles=["forward_proxy"],
+    )
+    return workstation, proxy
+
+
+def _request(index: int = 0, *, duration: float | None = 1.0) -> ProxyTransactionRequest:
+    workstation, proxy = _systems()
+    return ProxyTransactionRequest(
+        src_ip=workstation.ip,
+        dst_ip="93.184.216.34",
+        time=_BASE_TIME + timedelta(milliseconds=index * 17),
+        dst_port=80,
+        proto="tcp",
+        service="http",
+        duration=duration,
+        orig_bytes=4600,
+        resp_bytes=18_000,
+        src_port=None,
+        pid=-1,
+        source_system=workstation,
+        conn_state="SF",
+        dns=None,
+        http=HttpContext(
+            method="POST",
+            host="example.com",
+            uri="/api/v1/data",
+            request_body_len=4096,
+            response_body_len=16_384,
+        ),
+        file_transfer=None,
+        ocsp=None,
+        proxy=None,
+        firewall=None,
+        hostname="example.com",
+        process_image=None,
+        proxy_chain=[proxy],
+        preserve_explicit_proxy_dst_ip=False,
+        caller_provided_conn_state=True,
+        ad_domain="example.org",
+    )
+
+
+def _proxy_context(
+    *,
+    cache_result: str = "MISS",
+    status_code: int = 200,
+) -> ProxyContext:
+    return ProxyContext(
+        client_ip="10.0.1.10",
+        method="POST",
+        url="http://example.com/api/v1/data",
+        host="example.com",
+        status_code=status_code,
+        sc_bytes=16_620,
+        cs_bytes=4_310,
+        request_body_bytes=4096,
+        response_body_bytes=16_384,
+        cache_result=cache_result,
+        proxy_fqdn="PROXY-01.example.org",
+    )
+
+
+def test_proxy_timing_scope_accepts_connection_planning_rng() -> None:
+    """Large proxy transfers must use their exact scope with a revocable RNG."""
+
+    owner = random.Random(42)
+    owner_state = owner.getstate()
+    manager = StateManager()
+    cursor = manager.begin_connection_planning(owner)
+    event = OccurrenceBuilder(
+        timestamp=_BASE_TIME,
+        event_type="connection",
+        network=NetworkTransactionDraft(
+            src_ip="10.0.1.10",
+            src_port=51_000,
+            dst_ip="10.0.3.10",
+            dst_port=3128,
+            protocol="tcp",
+            service="http",
+            conn_state="SF",
+            duration=0.12,
+            orig_bytes=1_573_500,
+            resp_bytes=500,
+        ),
+        http=HttpContext(
+            method="POST",
+            host="support.example.test",
+            uri="/upload",
+            request_body_len=1_572_864,
+            request_content_type="application/octet-stream",
+        ),
+        proxy=_proxy_context(),
+    )
+
+    _attach_http_file_transfers(
+        event,
+        dst_ip="10.0.3.10",
+        rng=cursor.rng,
+        timing_runtime=TimingRuntime(reference_time=_BASE_TIME, namespace="proxy-upload"),
+        timing_scope=TimingScope(
+            stable_id="proxy-upload",
+            host="PROXY-01",
+            source="network",
+            lifecycle_id="proxy-upload",
+        ),
+    )
+
+    assert event.network.duration > 0.12
+    assert event.proxy.time_taken > 0
+    assert owner.getstate() == owner_state
+    cursor.cancel()
+
+
+def test_proxy_phase_plan_is_deterministic_ordered_and_immutable() -> None:
+    request = _request(7)
+    proxy = _proxy_context()
+    planner = ProxyPhasePlanner()
+
+    first = planner.plan(request, proxy, request.time)
+    second = planner.plan(request, proxy, request.time)
+
+    assert first == second
+    assert first.client_connect_at <= first.request_at <= first.decision_at
+    assert first.origin_connect_at is not None
+    assert first.origin_close_at is not None
+    assert first.decision_at < first.origin_connect_at < first.origin_close_at <= first.close_at
+    assert first.time_taken_ms == round(
+        (first.client_flush_at - first.request_at).total_seconds() * 1000
+    )
+    with pytest.raises(FrozenInstanceError):
+        first.request_at = request.time  # type: ignore[misc]
+
+
+def test_proxy_http_legs_share_canonical_authority_and_referrer() -> None:
+    """Sibling HTTP legs must consume the normalized proxy transaction truth."""
+
+    request = _request()
+    assert request.http is not None
+    request = replace(
+        request,
+        hostname="20-205-68-81.microsoft.com",
+        http=replace(
+            request.http,
+            host="20.205.68.81",
+            referrer="https://www.reddit.com/",
+        ),
+    )
+    proxy_context = replace(
+        _proxy_context(),
+        host="20-205-68-81.microsoft.com",
+        url="http://20-205-68-81.microsoft.com/api/v1/data",
+        referrer="",
+    )
+    bundle = ProxyTransactionActionBundle(request=request, executor=MagicMock())
+
+    client_http = bundle._build_client_http(proxy_context)
+    egress_http = bundle._build_egress_http(proxy_context, client_http)
+
+    assert egress_http is not None
+    assert client_http.host == egress_http.host == proxy_context.host
+    assert client_http.referrer == egress_http.referrer == proxy_context.referrer
+
+
+def test_proxy_transaction_can_preserve_unknown_client_process_ownership() -> None:
+    """Explicit proxy routing must honor a caller's no-fabricated-owner contract."""
+    request = replace(_request(), suppress_source_pid_inference=True)
+    executor = MagicMock()
+    executor._caller_explicit_proxy_process_image.return_value = None
+    bundle = ProxyTransactionActionBundle(request=request, executor=executor)
+
+    pid, process_image = bundle._resolve_client_process(_proxy_context(), _systems()[1])
+
+    assert pid == -1
+    assert process_image is None
+    executor._ensure_explicit_proxy_client_process.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("cache_result", "status_code", "expected_outcome"),
+    [
+        ("HIT", 200, "cache_hit"),
+        ("DENIED", 403, "denied"),
+        ("AUTH_REQUIRED", 407, "authentication_required"),
+    ],
+)
+def test_proxy_terminal_policy_paths_stop_before_dns_and_origin(
+    cache_result: str,
+    status_code: int,
+    expected_outcome: str,
+) -> None:
+    request = _request(status_code)
+    plan = ProxyPhasePlanner().plan(
+        request,
+        _proxy_context(cache_result=cache_result, status_code=status_code),
+        request.time,
+    )
+
+    assert plan.terminal_outcome == expected_outcome
+    assert plan.resolver_mode is None
+    assert plan.dns_query_at is None
+    assert plan.origin_connect_at is None
+
+
+def test_gateway_failure_keeps_attempted_origin_without_success_phases() -> None:
+    request = _request(504)
+    plan = ProxyPhasePlanner().plan(
+        request,
+        _proxy_context(cache_result="GATEWAY_ERROR", status_code=504),
+        request.time,
+    )
+
+    assert plan.terminal_outcome == "gateway_failure"
+    assert plan.origin_connect_at is not None
+    assert plan.origin_close_at is not None
+    assert plan.origin_conn_state == "S0"
+    assert plan.origin_response_at is None
+    assert plan.tls_complete_at is None
+
+
+def test_resolver_mixture_matches_configured_contract_and_has_retry_tail() -> None:
+    profiles = proxy_resolver_profiles()
+    assert {profile.name: profile.weight for profile in profiles} == {
+        "resolver_cache_hit": 65.0,
+        "ordinary_lookup": 32.0,
+        "retry_queue": 3.0,
+    }
+
+    planner = ProxyPhasePlanner()
+    counts = {profile.name: 0 for profile in profiles}
+    lookup_to_connect_gaps_ms: list[float] = []
+    for index in range(1200):
+        request = _request(index, duration=0.2)
+        plan = planner.plan(request, _proxy_context(), request.time)
+        assert plan.resolver_mode is not None
+        counts[plan.resolver_mode] += 1
+        if plan.resolver_mode == "resolver_cache_hit":
+            assert plan.dns_query_at is None
+            assert plan.origin_connect_at is not None
+            gap_ms = (plan.origin_connect_at - plan.request_at).total_seconds() * 1000
+            assert 5 <= gap_ms <= 75
+            continue
+        assert plan.dns_query_at is not None
+        assert plan.dns_response_at is not None
+        assert plan.origin_connect_at is not None
+        completion_ms = (plan.dns_response_at - plan.request_at).total_seconds() * 1000
+        origin_after_dns_ms = (plan.origin_connect_at - plan.dns_response_at).total_seconds() * 1000
+        lookup_to_connect_gaps_ms.append(
+            (plan.origin_connect_at - plan.dns_query_at).total_seconds() * 1000
+        )
+        if plan.resolver_mode == "ordinary_lookup":
+            assert 8 <= completion_ms <= 120
+            assert 2 <= origin_after_dns_ms <= 35
+        else:
+            assert 350 <= completion_ms <= 2500
+            assert 5 <= origin_after_dns_ms <= 80
+
+    assert 0.60 <= counts["resolver_cache_hit"] / 1200 <= 0.70
+    assert 0.27 <= counts["ordinary_lookup"] / 1200 <= 0.37
+    assert 0.01 <= counts["retry_queue"] / 1200 <= 0.05
+    assert (
+        sum(gap < 250 for gap in lookup_to_connect_gaps_ms) / len(lookup_to_connect_gaps_ms) >= 0.75
+    )
+    assert any(gap > 500 for gap in lookup_to_connect_gaps_ms)
+    assert any(gap < 1000 for gap in lookup_to_connect_gaps_ms)
+
+
+def test_proxy_origin_dns_uses_order_independent_microsecond_timing() -> None:
+    """Resolver phases use shared typed draws without exact-millisecond texture."""
+
+    runtime = TimingRuntime(reference_time=_BASE_TIME)
+    planner = ProxyPhasePlanner(runtime)
+    indices = tuple(range(1600))
+
+    forward = {
+        index: planner.plan(_request(index, duration=0.2), _proxy_context(), _request(index).time)
+        for index in indices
+    }
+    reverse = {
+        index: planner.plan(_request(index, duration=0.2), _proxy_context(), _request(index).time)
+        for index in reversed(indices)
+    }
+
+    assert forward == reverse
+    lookup_plans = [plan for plan in forward.values() if plan.dns_query_at is not None]
+    assert len(lookup_plans) > 400
+    residues: list[int] = []
+    for plan in lookup_plans:
+        assert plan.dns_response_at is not None
+        assert plan.origin_connect_at is not None
+        assert plan.request_at < plan.dns_response_at < plan.origin_connect_at
+        residues.extend(
+            (
+                plan.dns_query_at.microsecond % 1000,
+                plan.dns_response_at.microsecond % 1000,
+                plan.origin_connect_at.microsecond % 1000,
+            )
+        )
+    assert sum(residue == 0 for residue in residues) / len(residues) < 0.02
+
+    audit = runtime.audit.snapshot()
+    expected_draws = len(lookup_plans) * 2
+    assert audit.sample_counts["proxy.dns.query_after_decision"] == expected_draws
+    assert audit.sample_counts["proxy.dns.response_after_request"] == expected_draws
+    assert audit.sample_counts["proxy.origin.connect_after_dns"] == expected_draws
+
+
+def test_proxy_context_separates_body_sizes_from_transfer_totals() -> None:
+    workstation, proxy = _systems()
+    generator = ActivityGenerator(StateManager(), {})
+    context = generator._build_proxy_context(
+        src_ip=workstation.ip,
+        dst_ip="93.184.216.34",
+        dst_port=80,
+        service="http",
+        duration=1.0,
+        orig_bytes=4600,
+        resp_bytes=18_000,
+        hostname="example.com",
+        source_system=workstation,
+        proxy_sys=proxy,
+        http=HttpContext(
+            method="POST",
+            host="example.com",
+            uri="/api/v1/data",
+            request_body_len=4096,
+            response_body_len=16_384,
+        ),
+        explicit_mode=True,
+        time=_BASE_TIME,
+    )
+
+    assert context.request_body_bytes == 4096
+    assert context.response_body_bytes == 16_384
+    assert context.cs_bytes > context.request_body_bytes
+    assert context.sc_bytes > context.response_body_bytes
+
+
+def test_output_window_admits_transport_but_suppresses_late_proxy_request() -> None:
+    request = _request(33)
+    proxy = _proxy_context(cache_result="HIT")
+    plan = ProxyPhasePlanner().plan(request, proxy, request.time)
+    proxy = replace(proxy, transaction=plan)
+    connection_emitter = Mock()
+    connection_emitter.can_handle.return_value = True
+    proxy_emitter = Mock()
+    proxy_emitter.can_handle.return_value = True
+    dispatcher = EventDispatcher(
+        StateManager(),
+        {"zeek_conn": connection_emitter, "proxy_access": proxy_emitter},
+        output_end_time=plan.request_at,
+    )
+    event = OccurrenceBuilder(
+        timestamp=plan.client_connect_at,
+        event_type="connection",
+        network=network_plan(
+            src_ip="10.0.1.10",
+            src_port=52000,
+            dst_ip="10.0.3.10",
+            dst_port=8080,
+            protocol="tcp",
+            service="http",
+            duration=plan.client_duration_seconds,
+            conn_state="SF",
+            zeek_uid="CProxyWindowTest01",
+        ),
+        proxy=proxy,
+        lifecycle=ActionLifecycleContext(
+            group_id="proxy-client-transport",
+            canonical_start=plan.client_connect_at,
+            phase="start",
+            parent_group_id=plan.stable_id,
+        ),
+    )
+
+    dispatcher.dispatch_builder(event)
+
+    connection_emitter.emit.assert_called_once()
+    proxy_emitter.emit.assert_not_called()

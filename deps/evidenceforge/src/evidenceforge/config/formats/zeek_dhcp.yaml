@@ -1,0 +1,103 @@
+# zeek_dhcp format definition — Zeek dhcp.log format (JSON output) - DHCP transaction logging
+#
+# Category: network
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: zeek_dhcp
+version: "1.0"
+description: "Zeek dhcp.log format (JSON output) - DHCP transaction logging"
+category: network
+
+fields:
+  - name: ts
+    type: timestamp
+    required: true
+    description: "Timestamp of DHCP transaction"
+
+  - name: uids
+    type: list
+    required: true
+    description: Connection UIDs (JSON array of strings)
+    item_type: string
+  - name: client_addr
+    type: ip_address
+    required: true
+    description: "DHCP client IP address"
+
+  - name: server_addr
+    type: ip_address
+    required: false
+    description: "DHCP server IP address"
+
+  - name: assigned_addr
+    type: ip_address
+    required: false
+    description: "Assigned client lease IP address"
+
+  - name: mac
+    type: string
+    required: true
+    description: "Client MAC address"
+
+  - name: host_name
+    type: string
+    required: false
+    description: "Client hostname"
+
+  - name: domain
+    type: string
+    required: false
+    description: "Client domain"
+
+  - name: msg_types
+    type: list
+    required: true
+    description: DHCP message types (JSON array of strings)
+    item_type: string
+  - name: lease_time
+    type: float
+    required: false
+    description: Lease lifetime in seconds
+    constraints:
+      min_value: 0
+  - name: duration
+    type: float
+    required: false
+    description: Transaction duration in seconds
+    constraints:
+      min_value: 0
+output:
+  format: json
+  file_extension: ".json"
+  encoding: utf-8
+  template: |
+    {
+      "ts": {{ ts | tojson }},
+      "uids": {{ uids | tojson }},
+      "client_addr": {{ client_addr | tojson }}
+      {%- if server_addr is not none %},
+      "server_addr": {{ server_addr | tojson }}
+      {%- endif %}
+      {%- if assigned_addr is not none %},
+      "assigned_addr": {{ assigned_addr | tojson }}
+      {%- endif %}
+      {%- if mac is not none %},
+      "mac": {{ mac | tojson }}
+      {%- endif %}
+      {%- if host_name is not none %},
+      "host_name": {{ host_name | tojson }}
+      {%- endif %}
+      {%- if domain is not none %},
+      "domain": {{ domain | tojson }}
+      {%- endif %},
+      "msg_types": {{ msg_types | tojson }}
+      {%- if lease_time is not none %},
+      "lease_time": {{ lease_time | tojson }}
+      {%- endif %}
+      {%- if duration is not none %},
+      "duration": {{ duration | tojson }}
+      {%- endif %}
+    }

@@ -1,0 +1,290 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Runtime state models for EvidenceForge.
+
+This module defines dataclass containers for tracking runtime state during log generation.
+Unlike the Pydantic models in config.py and scenario.py, these use standard Python
+dataclasses since they are runtime containers, not input validation models.
+
+No validation is performed in these dataclasses - they are mutable containers for
+runtime state tracking.
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from evidenceforge.events.lifecycle import SessionEndPlan
+from evidenceforge.events.network import NetworkTrafficLedger
+
+
+@dataclass
+class ActiveSession:
+    """Active logon session (Windows Security Event Log concept).
+
+    Tracks an active user session on a system. Used to maintain consistency
+    across logon/logoff events in Windows Security Event Logs.
+
+    Attributes:
+        logon_id: Unique logon session identifier (hex string like "0x3e7")
+        username: Username for this session
+        system: System hostname where session is active
+        logon_type: Windows logon type (2=interactive, 3=network, 10=remote, etc.)
+        start_time: When the session started
+        source_ip: Source IP address for the logon
+        session_id: Windows terminal/session ID rendered by Security/Sysmon sources
+        explorer_pid: PID of explorer.exe instance for this interactive session
+        windows_shell_bootstrapped: Whether the initial Windows shell chain was created
+        process_tree_root: Root PID for this session's process tree
+        last_activity_time: Last baseline activity timestamp (for login cooldown)
+        network_close_time: Close time for a transport connection backing the session
+        source_ready_time: Earliest source-visible time for session-owned child activity
+    """
+
+    logon_id: str
+    username: str
+    system: str
+    logon_type: int
+    start_time: datetime
+    source_ip: str
+    session_id: int = 0
+    explorer_pid: int | None = None
+    windows_shell_bootstrapped: bool = False
+    initial_explorer_pid: int | None = None
+    session_shell_pid: int | None = None  # Linux: per-session bash login shell
+    session_user_manager_pid: int | None = None  # Linux: per-session systemd --user
+    session_winlogon_pid: int | None = None  # Windows: per-RDP-session winlogon
+    login_occurrence_emitted: bool = False
+    process_tree_root: int | None = None
+    last_activity_time: datetime | None = None
+    network_close_time: datetime | None = None
+    source_ready_time: datetime | None = None
+    source_port: int = 0
+    session_kind: str = "logon"
+    transport_pid: int | None = None
+    closure_owned_by_bundle: bool = False
+    ecar_object_id: str = ""
+    storyline_protected: bool = False
+    logon_guid: str = ""  # Final once first published; null/non-null policy is immutable
+    lifecycle_group_id: str = ""
+    parent_lifecycle_group_id: str = ""
+    end_plan: SessionEndPlan | None = None
+    auth_protocol: str = ""
+    smb_principal: str = ""
+    account_scope: str = ""
+    auth_session_ref: str = ""
+    effective_uid: int | None = None
+    effective_gid: int | None = None
+
+
+@dataclass
+class RunningProcess:
+    """Running process state.
+
+    Tracks a running process on a system. Used to maintain consistency
+    across process creation/termination events.
+
+    Attributes:
+        pid: Process ID
+        parent_pid: Parent process ID
+        image: Process image path/name (e.g., "C:\\Windows\\System32\\cmd.exe")
+        command_line: Full command line with arguments
+        username: User running this process
+        system: System hostname where process is running
+        start_time: When the process started
+        integrity_level: Windows integrity level (System, High, Medium, Low)
+        last_activity_time: Last dependent activity timestamp for this process
+    """
+
+    pid: int
+    parent_pid: int
+    image: str
+    command_line: str
+    username: str
+    system: str
+    start_time: datetime
+    integrity_level: str
+    last_activity_time: datetime | None = None
+    logon_id: str = ""
+    token_logon_id: str = ""
+    auth_session_id: int | None = None
+    auth_logon_type: int | None = None
+    ecar_object_id: str = ""
+    story_created: bool = False
+    primary_tid: int = -1
+    lifecycle_group_id: str = ""
+    parent_lifecycle_group_id: str = ""
+    concurrency_group_id: str = ""
+    pid_logical_position: int = -1
+    end_time: datetime | None = None
+
+
+@dataclass
+class RunningThread:
+    """Durable state for one explicitly modeled host-native thread.
+
+    Thread identity is never keyed by PID or TID alone. The owning process
+    object's host- and start-scoped UUID is part of the canonical key, so
+    identical numeric identifiers across hosts and PID reuse cannot collide.
+    """
+
+    hostname: str
+    process_object_id: str
+    pid: int
+    tid: int
+    object_id: str
+    start_time: datetime
+    kind: str = "worker"
+    end_time: datetime | None = None
+
+
+@dataclass
+class OpenConnection:
+    """Open network connection.
+
+    Tracks an open network connection between two endpoints. Used for
+    consistency in network logs (Zeek, firewall logs, etc.).
+
+    Attributes:
+        conn_id: Unique connection identifier
+        zeek_uid: Zeek UID for cross-log correlation (shared across conn/dns/http/etc.)
+        src_ip: Source IP address
+        src_port: Source port number
+        dst_ip: Destination IP address
+        dst_port: Destination port number
+        protocol: Network protocol ("tcp", "udp", etc.)
+    state: Connection state ("established", "closed", "time_wait", etc.)
+    start_time: When the connection opened
+    close_time: When the connection closed (if known)
+    bytes_sent: Bytes sent (cumulative)
+    bytes_received: Bytes received (cumulative)
+    """
+
+    conn_id: str
+    zeek_uid: str
+    src_ip: str
+    src_port: int
+    dst_ip: str
+    dst_port: int
+    protocol: str
+    state: str
+    start_time: datetime
+    source_system: str = ""
+    source_hostname: str = ""
+    hostname: str = ""
+    initiating_pid: int = -1
+    close_time: datetime | None = None
+    bytes_sent: int = 0
+    bytes_received: int = 0
+    traffic_ledger: NetworkTrafficLedger = field(default_factory=NetworkTrafficLedger)
+    transaction_id: str = ""
+    conn_state: str = ""
+    history: str = ""
+    duration: float | None = None
+
+
+@dataclass
+class SmbSessionState:
+    """Active SMB application session attached to one authenticated transport."""
+
+    session_id: str
+    client_ip: str
+    principal: str
+    server: str
+    security_policy: str
+    logon_id: str
+    transport_uid: str
+    started_at: datetime
+    expires_at: datetime
+    auth_session_ref: str = ""
+    auth_protocol: str = ""
+    account_scope: str = ""
+    effective_uid: int | None = None
+    effective_gid: int | None = None
+    client_access: str = ""
+    closed_at: datetime | None = None
+
+
+@dataclass
+class SmbTreeState:
+    """Reusable tree connection to one share."""
+
+    tree_id: str
+    session_id: str
+    share: str
+    connected_at: datetime
+    last_activity_at: datetime
+    closed_at: datetime | None = None
+
+
+@dataclass
+class SmbHandleState:
+    """Minimal active file handle and share-mode state."""
+
+    handle_id: str
+    tree_id: str
+    file_id: str
+    opened_at: datetime
+    access: str
+    deny_write: bool = False
+    closed_at: datetime | None = None
+
+
+@dataclass
+class SmbFileState:
+    """Copy-on-write mutable view over one compiled storage file."""
+
+    file_id: str
+    share: str
+    path: str
+    version: int
+    size_bytes: int
+    mime_type: str
+    tags: tuple[str, ...] = ()
+    deleted: bool = False
+    prior_paths: tuple[str, ...] = ()
+
+
+@dataclass
+class GeneratorState:
+    """Complete runtime state for log generation.
+
+    Central state container that tracks all active sessions, processes,
+    connections, and other runtime information during log generation.
+
+    This is the "world state" that the generation engine maintains to
+    ensure cross-log consistency.
+
+    Attributes:
+        active_sessions: Map of logon_id -> ActiveSession
+        running_processes: Map of (system, pid) -> RunningProcess
+        open_connections: Map of conn_id -> OpenConnection
+        dns_cache: Map of hostname -> IP address (simulated DNS resolution)
+        current_time: Current simulation time (advances during generation)
+    """
+
+    active_sessions: dict[str, ActiveSession] = field(default_factory=dict)
+    running_processes: dict[tuple[str, int], RunningProcess] = field(default_factory=dict)
+    running_threads: dict[tuple[str, str, int], RunningThread] = field(default_factory=dict)
+    open_connections: dict[str, OpenConnection] = field(default_factory=dict)
+    dns_cache: dict[str, str] = field(default_factory=dict)
+    current_time: datetime | None = None

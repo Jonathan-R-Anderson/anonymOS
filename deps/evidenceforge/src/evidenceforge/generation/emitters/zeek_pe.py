@@ -1,0 +1,96 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Zeek pe.log emitter."""
+
+from datetime import datetime
+from typing import Any
+
+from evidenceforge.events.base import CanonicalOccurrence
+from evidenceforge.generation.emitters.zeek_base import SensorMultiplexEmitter
+from evidenceforge.generation.emitters.zeek_files import _frozen_source_time
+from evidenceforge.generation.network_observation import network_source_timing_key
+
+
+class ZeekPeEmitter(SensorMultiplexEmitter):
+    """Emitter for Zeek pe.log format (NDJSON).
+
+    Generates Portable Executable analysis logs.
+    Uses dispatch_raw since PE analysis is a side-effect of file transfers.
+    """
+
+    _log_filename = "pe.json"
+    _flat_filename = "zeek_pe.json"
+    _supported_types: set[str] = {"connection"}
+
+    def can_handle(self, event: CanonicalOccurrence) -> bool:
+        return event.event_type in self._supported_types and bool(event.protocol.pe_analyses)
+
+    def emit(self, event: CanonicalOccurrence) -> None:
+        for pe in event.protocol.pe_analyses:
+            event_data: dict[str, Any] = {
+                "ts": _pe_analyzer_timestamp(event, pe),
+                "id": pe.id,
+                "machine": pe.machine,
+                "compile_ts": pe.compile_ts,
+                "os": pe.os,
+                "subsystem": pe.subsystem,
+                "is_exe": pe.is_exe,
+                "is_64bit": pe.is_64bit,
+                "uses_aslr": pe.uses_aslr,
+                "uses_dep": pe.uses_dep,
+                "uses_code_integrity": pe.uses_code_integrity,
+                "uses_seh": pe.uses_seh,
+                "has_import_table": pe.has_import_table,
+                "has_export_table": pe.has_export_table,
+                "has_cert_table": pe.has_cert_table,
+                "has_debug_data": pe.has_debug_data,
+                "section_names": pe.section_names,
+                "_source_timing_key": network_source_timing_key("zeek_pe", pe.id),
+                **self._sensor_metadata(
+                    event,
+                    self.format_def.name if self.format_def else "zeek_pe",
+                    analyzer_file_id=pe.id,
+                ),
+            }
+            self.emit_event(event_data)
+
+    def _render_event(self, event_data: dict[str, Any]) -> str:
+        optional_fields = ["section_names"]
+        for f in optional_fields:
+            if f not in event_data:
+                event_data[f] = None
+        return self._render_zeek_json(event_data)
+
+
+def _pe_analyzer_timestamp(event: CanonicalOccurrence, pe: Any | None = None) -> datetime:
+    """Return a planner-frozen PE analyzer timestamp."""
+
+    pe = pe or event.protocol.pe
+    if pe is None:
+        return event.timestamp
+    fallback = event.network.started_at if event.network is not None else event.timestamp
+    return _frozen_source_time(
+        event,
+        network_source_timing_key("zeek_pe", pe.id),
+        fallback,
+    )

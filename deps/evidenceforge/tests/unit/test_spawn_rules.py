@@ -1,0 +1,2107 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""Tests for rule-based process tree parent selection (P0 fix).
+
+Process trees should use spawn rules to determine valid parent-child
+relationships instead of defaulting everything to explorer.exe.
+"""
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock
+
+import pytest
+
+from evidenceforge.generation.activity.generator import ActivityGenerator
+from evidenceforge.generation.activity.spawn_rules import load_spawn_rules
+from evidenceforge.generation.lifecycle_authority import GeneratorLifecycleAuthority
+from evidenceforge.generation.lifecycle_registry import LifecycleRegistry
+from evidenceforge.generation.lifecycle_shadow import LifecycleShadow
+from evidenceforge.generation.state_manager import StateManager
+from evidenceforge.models.exceptions import StateError
+from evidenceforge.models.scenario import System, User
+
+
+def test_long_lived_desktop_spawn_rules_do_not_recursively_bootstrap() -> None:
+    """Singleton desktop parents must not spawn another copy of themselves."""
+    rules = load_spawn_rules()["windows"]
+    singleton_parents = {
+        "teams.exe",
+        "onedrive.exe",
+        "slack.exe",
+        "zoom.exe",
+        "webex.exe",
+        "dropbox.exe",
+        "googledrivefs.exe",
+    }
+
+    for parent in singleton_parents:
+        children = {str(child).lower() for child in rules[parent].get("children", [])}
+        assert parent not in children
+
+
+@pytest.fixture
+def state_manager():
+    sm = StateManager()
+    sm.set_current_time(datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC))
+    return sm
+
+
+@pytest.fixture
+def mock_emitters():
+    return {
+        "windows_event_security": Mock(),
+        "windows_event_sysmon": Mock(),
+        "zeek_conn": Mock(),
+        "ecar": Mock(),
+        "syslog": Mock(),
+    }
+
+
+@pytest.fixture
+def win_system():
+    return System(hostname="WKS-01", ip="10.0.10.1", os="Windows 10", type="workstation")
+
+
+@pytest.fixture
+def linux_system():
+    return System(hostname="LNX-01", ip="10.0.10.2", os="Ubuntu 22.04", type="server")
+
+
+@pytest.fixture
+def user():
+    return User(
+        username="test.user",
+        full_name="Test User",
+        email="t@t.com",
+        enabled=True,
+        persona="developer",
+    )
+
+
+def _setup_activity_gen(state_manager, mock_emitters, system):
+    """Set up ActivityGenerator with seeded process tree for a system."""
+    from evidenceforge.generation.engine import GenerationEngine
+
+    original_time = state_manager.state.current_time
+    if original_time is not None:
+        state_manager.set_current_time(original_time - timedelta(hours=4))
+    engine = object.__new__(GenerationEngine)
+    engine.state_manager = state_manager
+    engine._system_pids = {}
+
+    pids: dict[str, int] = {}
+    if "windows" in system.os.lower():
+        engine._seed_windows_process_tree(system, pids)
+    else:
+        engine._seed_linux_process_tree(system, pids)
+    if original_time is not None:
+        state_manager.set_current_time(original_time)
+    engine._system_pids[system.hostname] = pids
+
+    ag = ActivityGenerator(state_manager, mock_emitters)
+    ag._system_pids = engine._system_pids
+    return ag, pids
+
+
+class TestSpawnRulesYaml:
+    """Test that spawn rules YAML loads correctly."""
+
+    def test_spawn_rules_yaml_loads(self):
+        """Spawn rules YAML should parse without error."""
+        from evidenceforge.generation.activity.spawn_rules import load_spawn_rules
+
+        rules = load_spawn_rules()
+        assert "windows" in rules
+        assert "linux" in rules
+
+    def test_reverse_index_built(self):
+        """Every child in rules should map to at least one parent in reverse index."""
+        from evidenceforge.generation.activity.spawn_rules import (
+            build_reverse_index,
+            load_spawn_rules,
+        )
+
+        rules = load_spawn_rules()
+        reverse_win = build_reverse_index(rules["windows"])
+        reverse_linux = build_reverse_index(rules["linux"])
+
+        # Check some known children have parents
+        assert "dotnet.exe" in reverse_win, "dotnet.exe should be a known child"
+        assert len(reverse_win["dotnet.exe"]) > 0
+        assert "git" in reverse_linux, "git should be a known child"
+        assert len(reverse_linux["git"]) > 0
+
+    def test_windows_rules_have_command_templates(self):
+        """Each Windows parent should have command_templates for auto-creation."""
+        from evidenceforge.generation.activity.spawn_rules import load_spawn_rules
+
+        rules = load_spawn_rules()
+        for parent_name, parent_config in rules["windows"].items():
+            assert "command_templates" in parent_config, (
+                f"Windows parent {parent_name} missing command_templates"
+            )
+            assert len(parent_config["command_templates"]) > 0
+
+
+class TestWindowsProcessTreeRealism:
+    """Windows process trees should use spawn rules for parent selection."""
+
+    def test_singleton_service_reuse_does_not_reap_seeded_windows_parent(
+        self, state_manager, mock_emitters
+    ):
+        """Reused boot-seeded Windows services should not be terminated as transient noise."""
+        dc_system = System(
+            hostname="DC-01",
+            ip="10.0.10.10",
+            os="Windows Server 2019",
+            type="domain_controller",
+        )
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, dc_system)
+        dns_pid = pids["dns"]
+        services_pid = pids["services"]
+        timestamp = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+
+        reused_pid = ag.generate_system_process(
+            system=dc_system,
+            time=timestamp,
+            process_name=r"C:\Windows\System32\dns.exe",
+            command_line="dns.exe",
+            parent_pid=services_pid,
+            username="SYSTEM",
+        )
+
+        assert reused_pid == dns_pid
+        assert state_manager.get_process(dc_system.hostname, dns_pid) is not None
+        system_create_events = [
+            call.args[0]
+            for call in mock_emitters["ecar"].emit.call_args_list
+            if call.args[0].event_type == "system_process_create"
+        ]
+        assert system_create_events == []
+
+        ag.generate_system_process_termination(
+            system=dc_system,
+            time=timestamp + timedelta(seconds=30),
+            pid=reused_pid,
+            process_name=r"C:\Windows\System32\dns.exe",
+            parent_pid=services_pid,
+            username="SYSTEM",
+        )
+
+        assert state_manager.get_process(dc_system.hostname, dns_pid) is not None
+        terminate_events = [
+            call.args[0]
+            for call in mock_emitters["ecar"].emit.call_args_list
+            if call.args[0].event_type == "process_terminate"
+        ]
+        assert terminate_events == []
+
+        child_pid = ag.generate_system_process(
+            system=dc_system,
+            time=timestamp + timedelta(minutes=1),
+            process_name=r"C:\Windows\System32\conhost.exe",
+            command_line="conhost.exe 0x4",
+            parent_pid=dns_pid,
+            username="SYSTEM",
+        )
+        child_proc = state_manager.get_process(dc_system.hostname, child_pid)
+
+        assert child_proc is not None
+        assert child_proc.parent_pid == dns_pid
+
+    def test_search_indexer_user_noise_reuses_seeded_system_singleton(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """User-noise requests must reuse the SCM-owned Windows Search service root."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        timestamp = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        logon_id = ag.generate_logon(user, win_system, timestamp)
+        mock_emitters["ecar"].emit.reset_mock()
+
+        first_pid = ag.generate_process(
+            user=user,
+            system=win_system,
+            time=timestamp + timedelta(minutes=5),
+            logon_id=logon_id,
+            process_name=r"C:\Windows\System32\SearchIndexer.exe",
+            command_line=r"C:\Windows\System32\SearchIndexer.exe /Embedding",
+            parent_pid=pids["services"],
+        )
+        second_pid = ag.generate_process(
+            user=user,
+            system=win_system,
+            time=timestamp + timedelta(minutes=3),
+            logon_id=logon_id,
+            process_name=r"C:\Windows\System32\SearchIndexer.exe",
+            command_line=r"C:\Windows\System32\SearchIndexer.exe /Embedding",
+            parent_pid=pids["explorer"],
+        )
+
+        assert first_pid == second_pid == pids["search_indexer"]
+        indexers = [
+            process
+            for process in state_manager.get_processes_on_system(win_system.hostname)
+            if process.image.lower().endswith(r"\searchindexer.exe")
+        ]
+        assert len(indexers) == 1
+        assert indexers[0].parent_pid == pids["services"]
+        assert indexers[0].username == "SYSTEM"
+        assert indexers[0].logon_id == "0x3e7"
+        assert indexers[0].integrity_level == "System"
+        duplicate_creates = [
+            call.args[0]
+            for call in mock_emitters["ecar"].emit.call_args_list
+            if call.args[0].event_type == "process_create"
+            and call.args[0].process is not None
+            and call.args[0].process.image.lower().endswith(r"\searchindexer.exe")
+        ]
+        assert duplicate_creates == []
+
+    def test_search_indexer_system_noise_reuses_and_preserves_seeded_singleton(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """System-service requests and cleanup must not duplicate or reap WSearch."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        timestamp = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        mock_emitters["ecar"].emit.reset_mock()
+
+        reused_pid = ag.generate_system_process(
+            system=win_system,
+            time=timestamp,
+            process_name=r"C:\Windows\System32\SearchIndexer.exe",
+            command_line=r"C:\Windows\System32\SearchIndexer.exe /Embedding",
+            parent_pid=pids["services"],
+            username="SYSTEM",
+        )
+        ag.generate_system_process_termination(
+            system=win_system,
+            time=timestamp + timedelta(minutes=30),
+            pid=reused_pid,
+            process_name=r"C:\Windows\System32\SearchIndexer.exe",
+            parent_pid=pids["services"],
+            username="SYSTEM",
+        )
+
+        assert reused_pid == pids["search_indexer"]
+        assert state_manager.get_process(win_system.hostname, reused_pid) is not None
+        lifecycle_events = [
+            call.args[0]
+            for call in mock_emitters["ecar"].emit.call_args_list
+            if call.args[0].event_type in {"system_process_create", "process_terminate"}
+            and call.args[0].process is not None
+            and call.args[0].process.image.lower().endswith(r"\searchindexer.exe")
+        ]
+        assert lifecycle_events == []
+
+    def test_search_indexer_singleton_reuse_rejects_alternate_path(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """A basename collision outside System32 must not alias the WSearch service."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        assert (
+            ag._existing_windows_singleton_pid(
+                win_system,
+                r"C:\Temp\SearchIndexer.exe",
+                datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            )
+            is None
+        )
+
+    def test_program_files_singleton_service_reuses_active_agent(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """Catalog-marked service agents should not overlap as duplicate SCM children."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        services_pid = pids["services"]
+        first_time = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        second_time = first_time + timedelta(minutes=7)
+
+        first_pid = ag.generate_system_process(
+            system=win_system,
+            time=first_time,
+            process_name=r"C:\Program Files\Palo Alto Networks\GlobalProtect\PanGPS.exe",
+            command_line="PanGPS.exe",
+            parent_pid=services_pid,
+            username="SYSTEM",
+        )
+        second_pid = ag.generate_system_process(
+            system=win_system,
+            time=second_time,
+            process_name=r"C:\Program Files\Palo Alto Networks\GlobalProtect\PanGPS.exe",
+            command_line="PanGPS.exe",
+            parent_pid=services_pid,
+            username="SYSTEM",
+        )
+
+        assert second_pid == first_pid
+        process_creates = [
+            call.args[0]
+            for call in mock_emitters["ecar"].emit.call_args_list
+            if call.args[0].event_type == "system_process_create"
+            and call.args[0].process is not None
+            and call.args[0].process.image.endswith("PanGPS.exe")
+        ]
+        assert len(process_creates) == 1
+
+    def test_regular_process_path_reuses_active_program_files_singleton_service(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """SYSTEM process generation should adapt service-agent children into singleton reuse."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        services_pid = pids["services"]
+        first_time = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        second_time = first_time + timedelta(minutes=8)
+        system_user = User(
+            username="SYSTEM",
+            full_name="Local System",
+            email="system@example.test",
+            enabled=True,
+        )
+
+        first_pid = ag.generate_system_process(
+            system=win_system,
+            time=first_time,
+            process_name=r"C:\Program Files\Zscaler\ZSATunnel\ZSATunnel.exe",
+            command_line="ZSATunnel.exe",
+            parent_pid=services_pid,
+            username="SYSTEM",
+        )
+        mock_emitters["ecar"].emit.reset_mock()
+
+        second_pid = ag.generate_process(
+            user=system_user,
+            system=win_system,
+            time=second_time,
+            logon_id="0x3e7",
+            process_name=r"C:\Program Files\Zscaler\ZSATunnel\ZSATunnel.exe",
+            command_line="ZSATunnel.exe",
+            parent_pid=services_pid,
+        )
+
+        assert second_pid == first_pid
+        process_creates = [
+            call.args[0]
+            for call in mock_emitters["ecar"].emit.call_args_list
+            if call.args[0].event_type == "process_create"
+            and call.args[0].process is not None
+            and call.args[0].process.image.endswith("ZSATunnel.exe")
+        ]
+        assert process_creates == []
+
+    def test_out_of_order_program_files_singleton_service_reuses_future_candidate(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """Out-of-order generation should not create overlapping service-agent siblings."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        services_pid = pids["services"]
+        earlier_time = datetime(2024, 3, 18, 12, 13, 6, tzinfo=UTC)
+        later_time = datetime(2024, 3, 18, 12, 21, 52, tzinfo=UTC)
+        system_user = User(
+            username="SYSTEM",
+            full_name="Local System",
+            email="system@example.test",
+            enabled=True,
+        )
+
+        later_pid = ag.generate_system_process(
+            system=win_system,
+            time=later_time,
+            process_name=r"C:\Program Files\Zscaler\ZSATunnel\ZSATunnel.exe",
+            command_line="ZSATunnel.exe",
+            parent_pid=services_pid,
+            username="SYSTEM",
+        )
+        earlier_pid = ag.generate_process(
+            user=system_user,
+            system=win_system,
+            time=earlier_time,
+            logon_id="0x3e7",
+            process_name=r"C:\Program Files\Zscaler\ZSATunnel\ZSATunnel.exe",
+            command_line="ZSATunnel.exe",
+            parent_pid=services_pid,
+        )
+
+        assert earlier_pid == later_pid
+        matching_creates = [
+            call.args[0]
+            for call in mock_emitters["ecar"].emit.call_args_list
+            if call.args[0].event_type in {"process_create", "system_process_create"}
+            and call.args[0].process is not None
+            and call.args[0].process.image.endswith("ZSATunnel.exe")
+        ]
+        assert len(matching_creates) == 1
+
+    def test_cli_process_gets_shell_parent(self, state_manager, mock_emitters, win_system, user):
+        """CLI process (dotnet.exe) should get cmd.exe or powershell.exe as parent."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        logon_id = ag.generate_logon(user, win_system, datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC))
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\dotnet\dotnet.exe",
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None, f"Parent PID {parent_pid} not found"
+        parent_exe = parent_proc.image.rsplit("\\", 1)[-1].lower()
+        assert parent_exe in ("cmd.exe", "powershell.exe", "pwsh.exe"), (
+            f"CLI process parent should be a shell, got {parent_proc.image}"
+        )
+
+    def test_gui_app_gets_explorer_parent(self, state_manager, mock_emitters, win_system, user):
+        """GUI app (chrome.exe) should get explorer.exe as parent."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        logon_id = ag.generate_logon(user, win_system, datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC))
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        assert "explorer.exe" in parent_proc.image.lower(), (
+            f"GUI app parent should be explorer, got {parent_proc.image}"
+        )
+
+    def test_gui_app_repairs_missing_session_explorer(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """GUI apps should not fall back to winlogon when session Explorer state is absent."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+        session = state_manager.get_session(logon_id)
+        assert session is not None
+        session.explorer_pid = None
+        pids["explorer"] = pids["winlogon"]
+
+        created_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 2, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument https://example.com/',
+            parent_pid=pids["winlogon"],
+        )
+
+        created_proc = state_manager.get_process(win_system.hostname, created_pid)
+        assert created_proc is not None
+        parent_proc = state_manager.get_process(win_system.hostname, created_proc.parent_pid)
+        assert parent_proc is not None
+        assert parent_proc.image.lower().endswith(r"\explorer.exe")
+        assert session.explorer_pid == parent_proc.pid
+
+    def test_user_process_repairs_stale_explicit_parent_pid(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """A stale explicit parent PID should be replaced before process allocation."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_time = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            logon_time,
+            logon_type=2,
+        )
+        session = state_manager.get_session(logon_id)
+        assert session is not None
+        assert session.explorer_pid is not None
+
+        state_manager.set_current_time(logon_time + timedelta(seconds=2))
+        stale_parent = state_manager.create_process(
+            win_system.hostname,
+            session.explorer_pid,
+            r"C:\Windows\System32\cmd.exe",
+            "cmd.exe",
+            user.username,
+            "Medium",
+            logon_id,
+        )
+        ag._record_user_process(win_system, user, stale_parent, r"C:\Windows\System32\cmd.exe")
+        assert state_manager.end_process(
+            win_system.hostname,
+            stale_parent,
+            end_time=logon_time + timedelta(seconds=3),
+        )
+
+        child_pid = ag.generate_process(
+            user,
+            win_system,
+            logon_time + timedelta(seconds=5),
+            logon_id,
+            r"C:\Windows\System32\ipconfig.exe",
+            "ipconfig.exe /all",
+            parent_pid=stale_parent,
+        )
+        child_proc = state_manager.get_process(win_system.hostname, child_pid)
+
+        assert child_proc is not None
+        assert child_proc.parent_pid != stale_parent
+        assert state_manager.get_process(win_system.hostname, child_proc.parent_pid) is not None
+
+    def test_gui_process_repairs_stale_session_explorer_pid(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Stale Explorer session pointers should be rematerialized for GUI children."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_time = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            logon_time,
+            logon_type=2,
+        )
+        session = state_manager.get_session(logon_id)
+        assert session is not None
+        assert session.explorer_pid is not None
+        stale_explorer = session.explorer_pid
+        assert state_manager.end_process(
+            win_system.hostname,
+            stale_explorer,
+            end_time=logon_time + timedelta(seconds=4),
+        )
+        session.explorer_pid = stale_explorer
+
+        child_pid = ag.generate_process(
+            user,
+            win_system,
+            logon_time + timedelta(seconds=5),
+            logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument https://example.com/',
+            parent_pid=stale_explorer,
+        )
+        child_proc = state_manager.get_process(win_system.hostname, child_pid)
+        assert child_proc is not None
+        parent_proc = state_manager.get_process(win_system.hostname, child_proc.parent_pid)
+
+        assert child_proc.parent_pid != stale_explorer
+        assert parent_proc is not None
+        assert parent_proc.image.lower().endswith(r"\explorer.exe")
+        assert session.explorer_pid == parent_proc.pid
+
+    def test_system_process_repairs_stale_service_parent_pid(self, state_manager, mock_emitters):
+        """System process creation should fall back from stale service parents."""
+        dc_system = System(
+            hostname="DC-01",
+            ip="10.0.10.10",
+            os="Windows Server 2019",
+            type="domain_controller",
+        )
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, dc_system)
+        timestamp = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        stale_parent = ag.generate_system_process(
+            system=dc_system,
+            time=timestamp,
+            process_name=r"C:\Windows\System32\cmd.exe",
+            command_line="cmd.exe /c hostname",
+            parent_pid=pids["services"],
+            username="SYSTEM",
+        )
+        assert state_manager.end_process(dc_system.hostname, stale_parent)
+
+        child_pid = ag.generate_system_process(
+            system=dc_system,
+            time=timestamp + timedelta(minutes=1),
+            process_name=r"C:\Windows\System32\conhost.exe",
+            command_line="conhost.exe 0x4",
+            parent_pid=stale_parent,
+            username="SYSTEM",
+        )
+        child_proc = state_manager.get_process(dc_system.hostname, child_pid)
+
+        assert child_proc is not None
+        assert child_proc.parent_pid != stale_parent
+        assert child_proc.parent_pid == pids["services"]
+
+    def test_long_window_stale_parent_churn_does_not_crash(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Multi-week stale parent churn should repair parents instead of raising StateError."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        start = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        logon_id = ag.generate_logon(user, win_system, start, logon_type=2)
+        session = state_manager.get_session(logon_id)
+        assert session is not None
+        assert session.explorer_pid is not None
+        stale_parent = session.explorer_pid
+
+        for day in range(1, 17):
+            event_time = start + timedelta(days=day)
+            state_manager.end_process(
+                win_system.hostname,
+                stale_parent,
+                end_time=event_time - timedelta(seconds=1),
+            )
+            session.explorer_pid = stale_parent
+            child_pid = ag.generate_process(
+                user,
+                win_system,
+                event_time,
+                logon_id,
+                r"C:\Windows\System32\ipconfig.exe",
+                "ipconfig.exe /all",
+                parent_pid=stale_parent,
+            )
+            child_proc = state_manager.get_process(win_system.hostname, child_pid)
+            assert child_proc is not None
+            assert child_proc.parent_pid != stale_parent
+            assert state_manager.get_process(win_system.hostname, child_proc.parent_pid) is not None
+            stale_parent = child_pid
+
+    def test_top_level_browser_reuses_existing_session_browser(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Repeated navigations in one session should reuse the open browser process."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+
+        first_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 2, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument https://example.com/',
+        )
+        second_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 3, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\Mozilla Firefox\firefox.exe",
+            r'"C:\Program Files\Mozilla Firefox\firefox.exe" -osint -url https://example.org/',
+        )
+
+        assert second_pid == first_pid
+        browser_processes = [
+            proc
+            for proc in state_manager.get_processes_on_system(win_system.hostname)
+            if proc.username == user.username
+            and proc.image.rsplit("\\", 1)[-1].lower()
+            in {"chrome.exe", "firefox.exe", "msedge.exe", "iexplore.exe"}
+        ]
+        assert len(browser_processes) == 1
+
+    def test_browser_launch_spacing_avoids_same_second_duplicates(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Out-of-order generation should not leave same-second browser launch bursts."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_id = "0xabc123"
+        first = datetime(2024, 3, 18, 12, 0, 10, tzinfo=UTC)
+        second = datetime(2024, 3, 18, 12, 0, 9, tzinfo=UTC)
+
+        first_adjusted = ag._space_browser_launch(
+            system=win_system,
+            username=user.username,
+            logon_id=logon_id,
+            process_name=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            command_line=r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument https://example.com/',
+            time=first,
+        )
+        second_adjusted = ag._space_browser_launch(
+            system=win_system,
+            username=user.username,
+            logon_id=logon_id,
+            process_name=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            command_line=r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument https://example.org/',
+            time=second,
+        )
+
+        assert first_adjusted == first
+        assert (second_adjusted - first_adjusted).total_seconds() >= 4.0
+
+    def test_browser_renderer_children_are_not_reused_as_top_level_browser(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Browser child processes should still get distinct child PIDs."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+        parent_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 2, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument https://example.com/',
+        )
+
+        child_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 3, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --type=renderer --enable-features=NetworkService',
+            parent_pid=parent_pid,
+        )
+
+        assert child_pid != parent_pid
+        child_proc = state_manager.get_process(win_system.hostname, child_pid)
+        assert child_proc is not None
+        assert child_proc.parent_pid == parent_pid
+
+    def test_browser_child_rejects_cross_family_explicit_parent(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Browser utility children should not inherit a different browser family as parent."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+        firefox_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 2, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\Mozilla Firefox\firefox.exe",
+            r'"C:\Program Files\Mozilla Firefox\firefox.exe" -osint -url https://example.org/',
+        )
+
+        chrome_child_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 3, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --type=renderer',
+            parent_pid=firefox_pid,
+        )
+
+        chrome_child = state_manager.get_process(win_system.hostname, chrome_child_pid)
+        assert chrome_child is not None
+        parent_proc = state_manager.get_process(win_system.hostname, chrome_child.parent_pid)
+        assert parent_proc is not None
+        assert parent_proc.image.lower().endswith(r"\chrome.exe")
+        assert chrome_child.parent_pid != firefox_pid
+
+    def test_electron_child_keeps_same_family_parent(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Electron utility children should parent to their owning app, not Explorer."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+        teams_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 2, tzinfo=UTC),
+            logon_id,
+            r"C:\Users\test.user\AppData\Local\Microsoft\Teams\current\Teams.exe",
+            r'"C:\Users\test.user\AppData\Local\Microsoft\Teams\current\Teams.exe" --processStart Teams.exe',
+        )
+
+        utility_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 3, tzinfo=UTC),
+            logon_id,
+            r"C:\Users\test.user\AppData\Local\Microsoft\Teams\current\Teams.exe",
+            r'"C:\Users\test.user\AppData\Local\Microsoft\Teams\current\Teams.exe" --type=utility',
+            parent_pid=teams_pid,
+        )
+
+        utility_proc = state_manager.get_process(win_system.hostname, utility_pid)
+        assert utility_proc is not None
+        assert utility_proc.parent_pid == teams_pid
+
+    def test_reused_browser_effects_spawn_actual_browser_family_children(
+        self, state_manager, mock_emitters, win_system, user, monkeypatch
+    ):
+        """Baseline child effects should follow the reused browser PID's actual image."""
+        from evidenceforge.generation.activity import application_catalog
+
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+        calls = iter(
+            [
+                (
+                    r"C:\Program Files\Mozilla Firefox\firefox.exe",
+                    r'"C:\Program Files\Mozilla Firefox\firefox.exe" -osint -url https://example.org/',
+                ),
+                (
+                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                    r'"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument https://example.com/',
+                ),
+            ]
+        )
+        monkeypatch.setattr(
+            application_catalog,
+            "pick_app_and_command",
+            lambda *args, **kwargs: next(calls),
+        )
+
+        def fake_children(os_category: str, parent_exe: str) -> list[dict[str, str]]:
+            if os_category != "windows":
+                return []
+            if parent_exe == "firefox.exe":
+                return [
+                    {
+                        "image": r"C:\Program Files\Mozilla Firefox\firefox.exe",
+                        "command_line": (
+                            r'"C:\Program Files\Mozilla Firefox\firefox.exe" '
+                            r"-contentproc -childID 3 -isForBrowser"
+                        ),
+                    }
+                ]
+            if parent_exe == "chrome.exe":
+                return [
+                    {
+                        "image": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                        "command_line": (
+                            r'"C:\Program Files\Google\Chrome\Application\chrome.exe" '
+                            r"--type=renderer"
+                        ),
+                    }
+                ]
+            return []
+
+        monkeypatch.setattr(application_catalog, "get_child_processes", fake_children)
+        monkeypatch.setattr(ag, "_emit_process_network_correlation", lambda *args: None)
+
+        ag.execute_baseline_activity(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 2, tzinfo=UTC),
+            "process_user_apps",
+        )
+        ag.execute_baseline_activity(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 4, tzinfo=UTC),
+            "process_user_apps",
+        )
+
+        user_processes = [
+            proc
+            for proc in state_manager.get_processes_on_system(win_system.hostname)
+            if proc.username == user.username
+        ]
+        chrome_children = [
+            proc
+            for proc in user_processes
+            if proc.image.lower().endswith(r"\chrome.exe")
+            and "--type=renderer" in proc.command_line
+        ]
+        firefox_children = [
+            proc
+            for proc in user_processes
+            if proc.image.lower().endswith(r"\firefox.exe") and "-contentproc" in proc.command_line
+        ]
+
+        assert not chrome_children
+        assert len(firefox_children) == 2
+        parent_pids = {proc.parent_pid for proc in firefox_children}
+        assert len(parent_pids) == 1
+        parent_proc = state_manager.get_process(win_system.hostname, next(iter(parent_pids)))
+        assert parent_proc is not None
+        assert parent_proc.image.lower().endswith(r"\firefox.exe")
+
+    def test_explorer_process_cannot_parent_from_browser_renderer(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """explorer.exe should stay anchored to the logon chain, not browser children."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+        session = state_manager.get_session(logon_id)
+        assert session is not None
+        assert session.explorer_pid is not None
+
+        state_manager.set_current_time(datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC))
+        firefox_pid = state_manager.create_process(
+            win_system.hostname,
+            session.explorer_pid,
+            r"C:\Program Files\Mozilla Firefox\firefox.exe",
+            r'"C:\Program Files\Mozilla Firefox\firefox.exe"',
+            user.username,
+            "Medium",
+            logon_id=logon_id,
+        )
+        state_manager.set_current_time(datetime(2024, 3, 18, 12, 0, 2, tzinfo=UTC))
+        renderer_pid = state_manager.create_process(
+            win_system.hostname,
+            firefox_pid,
+            r"C:\Program Files\Mozilla Firefox\firefox.exe",
+            r'"C:\Program Files\Mozilla Firefox\firefox.exe" -contentproc',
+            user.username,
+            "Low",
+            logon_id=logon_id,
+        )
+
+        created_pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 3, tzinfo=UTC),
+            logon_id,
+            r"C:\Windows\explorer.exe",
+            r"C:\Windows\explorer.exe",
+            parent_pid=renderer_pid,
+        )
+
+        created_proc = state_manager.get_process(win_system.hostname, created_pid)
+        assert created_proc is not None
+        parent_proc = state_manager.get_process_identity(
+            win_system.hostname, created_proc.parent_pid
+        )
+        assert parent_proc is not None
+        parent_exe = parent_proc.image.rsplit("\\", 1)[-1].lower()
+        assert parent_exe in {"userinit.exe", "winlogon.exe", "services.exe"}, (
+            f"explorer.exe parent should come from the logon chain, got {parent_proc.image}"
+        )
+
+    def test_system_process_gets_services_parent(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """System process (taskhostw.exe) should get svchost.exe as parent."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            "",
+            r"C:\Windows\System32\taskhostw.exe",
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        parent_exe = parent_proc.image.rsplit("\\", 1)[-1].lower()
+        assert parent_exe in ("svchost.exe", "services.exe"), (
+            f"System process parent should be svchost/services, got {parent_proc.image}"
+        )
+
+    def test_auto_created_parent_exists_in_state(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """When a shell is auto-created as parent, it should exist in StateManager."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        child_time = datetime(2024, 3, 18, 14, 0, 0, tzinfo=UTC)
+        logon_id = ag.generate_logon(user, win_system, datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC))
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            child_time,
+            logon_id,
+            r"C:\Program Files\dotnet\dotnet.exe",
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        # The parent should exist in StateManager with a valid image
+        assert parent_proc is not None, f"Parent PID {parent_pid} not found in StateManager"
+        assert parent_proc.image != "", "Parent should have an image path"
+        assert parent_proc.command_line != "", "Parent should have a command line"
+
+    def test_preexisting_auto_parent_is_registered_without_creation_row(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """A warm-up parent remains rowless but is live in both canonical owners."""
+        compatibility_ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        session_time = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        child_time = session_time + timedelta(minutes=5)
+        logon_id = compatibility_ag.generate_logon(user, win_system, session_time)
+
+        registry = LifecycleRegistry(shard_count=8)
+        shadow = LifecycleShadow(state_manager, registry)
+        authority = GeneratorLifecycleAuthority(state_manager, shadow, shard_count=8)
+        authority.bootstrap_active_state()
+        ag = ActivityGenerator(
+            state_manager,
+            mock_emitters,
+            lifecycle_shadow=shadow,
+            lifecycle_authority=authority,
+        )
+        ag._system_pids = {win_system.hostname: pids}
+        ag._scenario_start_time = child_time
+        for emitter in mock_emitters.values():
+            emitter.reset_mock()
+
+        parent_pid = ag._ensure_parent_chain(
+            win_system,
+            user,
+            child_time,
+            logon_id,
+            "ssh.exe",
+            "windows",
+        )
+
+        state_identity = state_manager.get_process_identity(win_system.hostname, parent_pid)
+        assert state_identity is not None
+        registry_process = ag._lifecycle_authority.registry.get_process(state_identity.object_id)
+        assert registry_process is not None
+        assert registry_process.closed_at is None
+        assert registry_process.identity.object_id == state_identity.object_id
+        assert registry_process.identity.pid == state_identity.pid
+        assert registry_process.identity.started_at == state_identity.started_at
+        assert not any(
+            call[0][0].event_type == "process_create"
+            and call[0][0].process is not None
+            and call[0][0].process.pid == parent_pid
+            for emitter in mock_emitters.values()
+            for call in emitter.emit.call_args_list
+        )
+
+    def test_auto_parent_rejects_unregistered_grandparent_before_state_mutation(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Strict parent creation fails closed before publishing State or evidence."""
+        compatibility_ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        session_time = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        child_time = session_time + timedelta(minutes=5)
+        logon_id = compatibility_ag.generate_logon(user, win_system, session_time)
+
+        registry = LifecycleRegistry(shard_count=8)
+        shadow = LifecycleShadow(state_manager, registry)
+        authority = GeneratorLifecycleAuthority(state_manager, shadow, shard_count=8)
+        strict_ag = ActivityGenerator(
+            state_manager,
+            mock_emitters,
+            lifecycle_shadow=shadow,
+            lifecycle_authority=authority,
+        )
+        strict_ag._system_pids = {win_system.hostname: pids}
+        for emitter in mock_emitters.values():
+            emitter.reset_mock()
+
+        def process_snapshot() -> tuple[tuple[object, ...], ...]:
+            return tuple(
+                sorted(
+                    (
+                        process.system,
+                        process.pid,
+                        process.ecar_object_id,
+                        process.start_time,
+                        process.last_activity_time,
+                    )
+                    for process in state_manager.list_running_processes()
+                )
+            )
+
+        before_processes = process_snapshot()
+        before_time = state_manager.get_current_time()
+        before_version = state_manager.materialization_version
+
+        with pytest.raises(StateError, match="parent is not registered and live"):
+            strict_ag._ensure_parent_chain(
+                win_system,
+                user,
+                child_time,
+                logon_id,
+                "ssh.exe",
+                "windows",
+            )
+
+        assert process_snapshot() == before_processes
+        assert state_manager.get_current_time() == before_time
+        assert state_manager.materialization_version == before_version
+        assert registry.stats().process_entries == 0
+        assert all(emitter.emit.call_count == 0 for emitter in mock_emitters.values())
+
+    def test_parent_command_line_populated(self, state_manager, mock_emitters, win_system, user):
+        """ProcessContext.parent_command_line should be populated, not '-'."""
+
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        logon_id = ag.generate_logon(user, win_system, datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC))
+
+        mock_emitters["ecar"].emit.reset_mock()
+        pid = ag.generate_process(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            logon_id,
+            r"C:\Windows\System32\notepad.exe",
+            "notepad.exe test.txt",
+            parent_pid=pids["explorer"],
+        )
+
+        # Find the process create event
+        proc_ctx = next(
+            call.args[0].process
+            for call in mock_emitters["ecar"].emit.call_args_list
+            if call.args[0].event_type == "process_create"
+            and call.args[0].process is not None
+            and call.args[0].process.pid == pid
+        )
+        assert proc_ctx.parent_command_line != "", "parent_command_line should be populated"
+        assert proc_ctx.parent_command_line != "-", "parent_command_line should not be '-'"
+
+    def test_network_logon_uses_services_parent(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """Type 3 (network) logon processes should parent from services.exe."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        # Create a type 3 (network) logon
+        logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=3,
+        )
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            logon_id,
+            r"C:\Windows\System32\cmd.exe",
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        parent_exe = parent_proc.image.rsplit("\\", 1)[-1].lower()
+        assert parent_exe in ("services.exe", "svchost.exe"), (
+            f"Network logon parent should be services/svchost, got {parent_proc.image}"
+        )
+
+    def test_service_logon_process_uses_service_parent_and_token(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """Type 5 service logon processes should not look like Explorer children."""
+        ag, _pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        svc_user = User(
+            username="svc_mhsync",
+            full_name="Meridian Sync Service",
+            email="svc_mhsync@example.com",
+            enabled=True,
+            persona="service",
+        )
+        logon_time = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        process_time = datetime(2024, 3, 18, 12, 0, 2, tzinfo=UTC)
+
+        state_manager.set_current_time(logon_time)
+        logon_id = state_manager.create_session(
+            username=svc_user.username,
+            system=win_system.hostname,
+            logon_type=5,
+            source_ip="-",
+            session_kind="service",
+        )
+        parent_pid = ag._resolve_parent(
+            win_system,
+            svc_user,
+            process_time,
+            logon_id,
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        )
+        pid = ag.generate_process(
+            user=svc_user,
+            system=win_system,
+            time=process_time,
+            logon_id=logon_id,
+            process_name=r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            command_line=r"powershell.exe -NoP -EncodedCommand SQBtAHAAbwByAHQ=",
+            parent_pid=parent_pid,
+        )
+
+        proc = state_manager.get_process(win_system.hostname, pid)
+        assert proc is not None
+        parent_proc = state_manager.get_process(win_system.hostname, proc.parent_pid)
+        assert parent_proc is not None
+        parent_exe = parent_proc.image.rsplit("\\", 1)[-1].lower()
+        assert parent_exe in {"services.exe", "svchost.exe"}
+        assert proc.integrity_level == "High"
+
+        process_events = [
+            call.args[0]
+            for call in mock_emitters["windows_event_security"].emit.call_args_list
+            if call.args[0].event_type == "process_create"
+        ]
+        assert process_events
+        event = process_events[-1]
+        assert event.auth.logon_type == 5
+        assert event.process.parent_image.rsplit("\\", 1)[-1].lower() in {
+            "services.exe",
+            "svchost.exe",
+        }
+        assert event.process.current_directory == "C:\\Windows\\System32\\"
+
+
+class TestLinuxProcessTreeRealism:
+    """Linux process trees should use spawn rules for parent selection."""
+
+    def test_linux_process_gets_bash_parent(self, state_manager, mock_emitters, linux_system, user):
+        """Linux user command (git) should get bash as parent."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+
+        logon_id = ag.generate_logon(
+            user, linux_system, datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        )
+        parent_pid = ag._resolve_parent(
+            linux_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            logon_id,
+            "/usr/bin/git",
+        )
+        parent_proc = state_manager.get_process(linux_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        parent_exe = parent_proc.image.rsplit("/", 1)[-1].lower()
+        assert parent_exe in ("bash", "sh", "zsh"), (
+            f"Linux user process parent should be a shell, got {parent_proc.image}"
+        )
+
+    def test_linux_bash_gets_sshd_parent(self, state_manager, mock_emitters, linux_system, user):
+        """Login shell (bash) on a server should get sshd as parent."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+
+        parent_pid = ag._resolve_parent(
+            linux_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            "",
+            "/bin/bash",
+        )
+        parent_proc = state_manager.get_process(linux_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        parent_exe = parent_proc.image.rsplit("/", 1)[-1].lower()
+        # bash can be parented by sshd (seeded), systemd (seeded), or another
+        # bash shell (seeded login shell) — all are valid per spawn rules
+        assert parent_exe in ("sshd", "systemd", "bash", "sh"), (
+            f"Bash parent should be sshd/systemd/bash, got {parent_proc.image}"
+        )
+
+
+class TestChainDepthLimit:
+    """Auto-created parent chains should not exceed depth 3."""
+
+    def test_chain_depth_limited(self, state_manager, mock_emitters, win_system, user):
+        """Recursive parent chain creation should not exceed 3 levels."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        logon_id = ag.generate_logon(user, win_system, datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC))
+
+        # Request parent for a deeply nested process
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            logon_id,
+            r"C:\Program Files\dotnet\dotnet.exe",
+        )
+
+        # Walk the chain from parent up to root and count depth
+        depth = 0
+        current_pid = parent_pid
+        visited = set()
+        while current_pid and current_pid not in visited:
+            visited.add(current_pid)
+            proc = state_manager.get_process(win_system.hostname, current_pid)
+            if proc is None:
+                break
+            current_pid = proc.parent_pid
+            depth += 1
+            if depth > 10:
+                break
+
+        # Seeded tree has depth ~5-6 (System→smss→wininit→services→svchost),
+        # plus up to 3 auto-created levels → max ~9
+        assert depth <= 10, (
+            f"Process chain depth is {depth}, expected ≤ 10 "
+            f"(seeded system tree + up to 3 auto-created levels)"
+        )
+
+    def test_stale_cached_anchor_is_repaired_at_depth_limit(
+        self,
+        state_manager,
+        mock_emitters,
+        win_system,
+        user,
+        monkeypatch,
+    ):
+        """A stale cached system PID must not escape the recursive depth fallback."""
+        from evidenceforge.generation.activity import spawn_rules
+
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        stale_services_pid = pids["services"]
+        assert state_manager.end_process(win_system.hostname, stale_services_pid)
+
+        reverse = {
+            "child.exe": ["parent-0.exe"],
+            "parent-0.exe": ["parent-1.exe"],
+            "parent-1.exe": ["parent-2.exe"],
+            "parent-2.exe": ["parent-3.exe"],
+            "parent-3.exe": ["parent-4.exe"],
+        }
+        monkeypatch.setattr(spawn_rules, "get_reverse_index_windows", lambda: reverse)
+        monkeypatch.setattr(
+            spawn_rules,
+            "get_parent_config",
+            lambda _os, executable: {
+                "command_templates": [executable],
+                "spawn_delay": [0.1, 0.1],
+                "lifetime": "short",
+            },
+        )
+
+        parent_pid = ag._ensure_parent_chain(
+            system=win_system,
+            user=user,
+            time=datetime(2024, 3, 18, 12, 0, 5, tzinfo=UTC),
+            logon_id="",
+            child_exe="child.exe",
+            os_cat="windows",
+        )
+
+        parent = state_manager.get_process(win_system.hostname, parent_pid)
+        assert parent is not None
+        assert parent.parent_pid != stale_services_pid
+        assert state_manager.get_process(win_system.hostname, parent.parent_pid) is not None
+
+
+class TestDualSessionParentSelection:
+    """When a user has both interactive and network sessions, parent selection
+    must use the correct session's logon type."""
+
+    def test_network_logon_gets_services_parent_when_interactive_exists(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """With both type 2 and type 3 sessions, type 3 processes should parent
+        from services.exe, not explorer.exe.
+
+        Bug: _resolve_parent() grabbed the first session for (user, system)
+        regardless of logon_id, so type 3 processes used the interactive
+        session and got explorer as parent.
+        """
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        # Create type 2 (interactive) session first — must exist to trigger the bug
+        ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 10, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+
+        # Create type 3 (network) session for same user on same system
+        network_logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=3,
+        )
+
+        # Resolve parent for a process under the NETWORK logon
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            network_logon_id,
+            r"C:\Windows\System32\cmd.exe",
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        parent_exe = parent_proc.image.rsplit("\\", 1)[-1].lower()
+        assert parent_exe in ("services.exe", "svchost.exe"), (
+            f"Network logon (type 3) process should parent from services/svchost, "
+            f"got {parent_proc.image}. The interactive session's explorer was "
+            f"incorrectly selected."
+        )
+
+    def test_network_logon_prefers_existing_remote_execution_wrapper(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """PsExec follow-on commands should parent from PSEXESVC, not flatten to services.exe."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        network_logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=3,
+        )
+        state_manager.set_current_time(datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC))
+        wrapper_pid = state_manager.create_process(
+            system=win_system.hostname,
+            parent_pid=pids["services"],
+            image=r"C:\Windows\PSEXESVC.exe",
+            command_line=r"C:\Windows\PSEXESVC.exe",
+            username="SYSTEM",
+            integrity_level="System",
+            logon_id="0x3e7",
+        )
+        ag._record_user_process(win_system, user, wrapper_pid, r"C:\Windows\PSEXESVC.exe")
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 12, 1, 0, tzinfo=UTC),
+            network_logon_id,
+            r"C:\Windows\System32\net.exe",
+        )
+
+        assert parent_pid == wrapper_pid
+
+    def test_system_storyline_process_prefers_existing_remote_execution_wrapper(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """SYSTEM follow-on commands should also parent from a live remote wrapper."""
+        system_user = User(
+            username="SYSTEM",
+            full_name="SYSTEM",
+            email="system@example.com",
+            enabled=True,
+        )
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        state_manager.set_current_time(datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC))
+        wrapper_pid = state_manager.create_process(
+            system=win_system.hostname,
+            parent_pid=pids["services"],
+            image=r"C:\Windows\PSEXESVC.exe",
+            command_line=r"C:\Windows\PSEXESVC.exe",
+            username="SYSTEM",
+            integrity_level="System",
+            logon_id="0x3e7",
+        )
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            system_user,
+            datetime(2024, 3, 18, 12, 1, 0, tzinfo=UTC),
+            "0x3e7",
+            r"C:\Windows\System32\net.exe",
+        )
+
+        assert parent_pid == wrapper_pid
+
+    def test_system_admin_utility_gets_service_shell_parent(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """Later SYSTEM admin utilities should not flatten directly to services.exe."""
+        system_user = User(
+            username="SYSTEM",
+            full_name="SYSTEM",
+            email="system@example.com",
+            enabled=True,
+        )
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        command_line = "net user svc_mhsync MhsSvc!2024 /add /domain"
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            system_user,
+            datetime(2024, 3, 18, 12, 15, 0, tzinfo=UTC),
+            "0x3e7",
+            r"C:\Windows\System32\net.exe",
+            command_line,
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        assert parent_proc.image == r"C:\Windows\System32\cmd.exe"
+        assert parent_proc.command_line == rf"C:\Windows\System32\cmd.exe /c {command_line}"
+        assert parent_proc.parent_pid == pids["wmiprvse"]
+
+    def test_network_command_keeps_matching_one_shot_shell_parent(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """A service shell wrapper should remain the parent of the child it invoked."""
+        service_user = User(
+            username="svc_mhsync",
+            full_name="MHS Sync",
+            email="svc_mhsync@example.com",
+            enabled=True,
+        )
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        logon_time = datetime(2024, 3, 18, 17, 0, 59, tzinfo=UTC)
+        command_time = datetime(2024, 3, 18, 17, 1, 2, tzinfo=UTC)
+        command_line = r"net view \\FILE-SRV-01"
+        logon_id = ag.generate_logon(
+            service_user,
+            win_system,
+            logon_time,
+            logon_type=3,
+            source_ip="10.0.10.50",
+            emit_network_evidence=False,
+        )
+
+        shell_pid = ag._resolve_parent(
+            win_system,
+            service_user,
+            command_time,
+            logon_id,
+            r"C:\Windows\System32\net.exe",
+            command_line,
+        )
+        shell_proc = state_manager.get_process(win_system.hostname, shell_pid)
+
+        assert shell_proc is not None
+        assert shell_proc.image == r"C:\Windows\System32\cmd.exe"
+        assert shell_proc.command_line == rf"C:\Windows\System32\cmd.exe /c {command_line}"
+        assert shell_proc.parent_pid == pids["wmiprvse"]
+
+        child_pid = ag.generate_process(
+            service_user,
+            win_system,
+            command_time,
+            logon_id,
+            r"C:\Windows\System32\net.exe",
+            command_line,
+            parent_pid=shell_pid,
+            from_storyline=True,
+        )
+        child_proc = state_manager.get_process(win_system.hostname, child_pid)
+        shell_commands = [
+            proc.command_line
+            for proc in state_manager.get_processes_on_system(win_system.hostname)
+            if proc.image == r"C:\Windows\System32\cmd.exe" and " /c " in proc.command_line
+        ]
+
+        assert child_proc is not None
+        assert child_proc.parent_pid == shell_pid
+        assert rf"C:\Windows\System32\cmd.exe /c {command_line}" in shell_commands
+        assert r"C:\Windows\System32\cmd.exe /c net.exe" not in shell_commands
+
+    @pytest.mark.parametrize(
+        ("process_name", "command_line", "expected_parent_key"),
+        [
+            (
+                r"C:\Windows\System32\net.exe",
+                "net user svc_mhsync MhsSvc!2024 /add /domain",
+                "wmiprvse",
+            ),
+            (
+                r"C:\Windows\System32\sc.exe",
+                "sc.exe create DeviceSyncSvc binPath= C:\\ProgramData\\sync.exe",
+                "wmiprvse",
+            ),
+            (
+                r"C:\Windows\System32\schtasks.exe",
+                r'schtasks.exe /Create /TN "\Ops\Sync" /TR "C:\ProgramData\sync.exe"',
+                "wmiprvse",
+            ),
+            (
+                r"C:\Windows\System32\wevtutil.exe",
+                "wevtutil cl Security",
+                "wmiprvse",
+            ),
+        ],
+    )
+    def test_system_admin_utility_owner_depends_on_remote_execution_family(
+        self,
+        state_manager,
+        mock_emitters,
+        win_system,
+        process_name,
+        command_line,
+        expected_parent_key,
+    ):
+        """Remote/service admin shells should not all collapse to one svchost parent."""
+        system_user = User(
+            username="SYSTEM",
+            full_name="SYSTEM",
+            email="system@example.com",
+            enabled=True,
+        )
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            system_user,
+            datetime(2024, 3, 18, 12, 15, 0, tzinfo=UTC),
+            "0x3e7",
+            process_name,
+            command_line,
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        assert parent_proc.image == r"C:\Windows\System32\cmd.exe"
+        assert parent_proc.command_line == rf"C:\Windows\System32\cmd.exe /c {command_line}"
+        assert parent_proc.parent_pid == pids[expected_parent_key]
+        assert parent_proc.parent_pid != pids["svchost_netsvcs"]
+
+    def test_scheduled_task_execution_can_still_use_taskhostw_owner(
+        self, state_manager, mock_emitters, win_system
+    ):
+        """Task actions can remain taskhostw-owned while task authoring avoids taskhostw."""
+        system_user = User(
+            username="SYSTEM",
+            full_name="SYSTEM",
+            email="system@example.com",
+            enabled=True,
+        )
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        command_line = r'schtasks.exe /Run /TN "\Ops\Sync"'
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            system_user,
+            datetime(2024, 3, 18, 12, 15, 0, tzinfo=UTC),
+            "0x3e7",
+            r"C:\Windows\System32\schtasks.exe",
+            command_line,
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        assert parent_proc.image == r"C:\Windows\System32\cmd.exe"
+        assert parent_proc.parent_pid == pids["taskhostw"]
+
+    def test_interactive_logon_still_gets_explorer_when_network_exists(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """With both sessions, type 2 processes should still parent from explorer."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+
+        interactive_logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 10, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+        _network_logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC),
+            logon_type=3,
+        )
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            interactive_logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        )
+        parent_proc = state_manager.get_process(win_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        assert "explorer.exe" in parent_proc.image.lower(), (
+            f"Interactive logon process should parent from explorer, got {parent_proc.image}"
+        )
+
+    def test_interactive_parent_uses_matching_session_explorer(
+        self, state_manager, mock_emitters, win_system, user
+    ):
+        """One explorer.exe PID must not parent children from unrelated LogonIDs."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, win_system)
+        state_manager.set_current_time(datetime(2024, 3, 18, 9, 45, 0, tzinfo=UTC))
+        global_explorer_pid = state_manager.create_process(
+            win_system.hostname,
+            pids["userinit"],
+            r"C:\Windows\explorer.exe",
+            "explorer.exe",
+            user.username,
+            "Medium",
+        )
+        pids["explorer"] = global_explorer_pid
+
+        first_logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 10, 0, 0, tzinfo=UTC),
+            logon_type=2,
+        )
+        second_logon_id = ag.generate_logon(
+            user,
+            win_system,
+            datetime(2024, 3, 18, 11, 0, 0, tzinfo=UTC),
+            logon_type=10,
+            source_ip="10.0.10.50",
+        )
+        first_session = state_manager.get_session(first_logon_id)
+        second_session = state_manager.get_session(second_logon_id)
+        assert first_session is not None
+        assert second_session is not None
+
+        parent_pid = ag._resolve_parent(
+            win_system,
+            user,
+            datetime(2024, 3, 18, 11, 0, 1, tzinfo=UTC),
+            second_logon_id,
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        )
+
+        assert parent_pid == second_session.explorer_pid
+        assert parent_pid != first_session.explorer_pid
+        assert parent_pid != global_explorer_pid
+
+
+class TestLinuxParentSelection:
+    """Linux process parents should preserve session and service ownership."""
+
+    def test_ssh_user_process_prefers_matching_session_shell(
+        self, state_manager, mock_emitters, linux_system, user
+    ):
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+        event_time = datetime(2024, 3, 18, 12, 0, 5, tzinfo=UTC)
+        logon_id = state_manager.create_session(
+            username=user.username,
+            system=linux_system.hostname,
+            logon_type=10,
+            source_ip="10.0.10.50",
+            session_kind="ssh",
+        )
+        session_sshd = state_manager.create_process(
+            linux_system.hostname,
+            pids["sshd"],
+            "/usr/sbin/sshd",
+            f"sshd: {user.username} [priv]",
+            "root",
+            "System",
+            logon_id=logon_id,
+        )
+        bash_pid = state_manager.create_process(
+            linux_system.hostname,
+            session_sshd,
+            "/bin/bash",
+            "-bash",
+            user.username,
+            "Medium",
+            logon_id=logon_id,
+        )
+        session = state_manager.get_session(logon_id)
+        assert session is not None
+        session.session_shell_pid = bash_pid
+
+        parent_pid = ag._resolve_parent(
+            linux_system,
+            user,
+            event_time,
+            logon_id,
+            "/usr/bin/scp",
+        )
+
+        assert parent_pid == bash_pid
+
+    def test_unknown_command_uses_requested_concurrent_session_shell(
+        self, state_manager, mock_emitters, linux_system, user
+    ):
+        """Legacy fallback must not borrow an earlier shell for the same user."""
+
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+        first_logon_id = state_manager.create_session(
+            username=user.username,
+            system=linux_system.hostname,
+            logon_type=10,
+            source_ip="10.0.10.50",
+            session_kind="ssh",
+        )
+        second_logon_id = state_manager.create_session(
+            username=user.username,
+            system=linux_system.hostname,
+            logon_type=10,
+            source_ip="10.0.10.51",
+            session_kind="ssh",
+        )
+        first_shell = state_manager.create_process(
+            linux_system.hostname,
+            pids["sshd"],
+            "/bin/bash",
+            "-bash",
+            user.username,
+            "Medium",
+            logon_id=first_logon_id,
+        )
+        second_shell = state_manager.create_process(
+            linux_system.hostname,
+            pids["sshd"],
+            "/bin/bash",
+            "-bash",
+            user.username,
+            "Medium",
+            logon_id=second_logon_id,
+        )
+        first_session = state_manager.get_session(first_logon_id)
+        second_session = state_manager.get_session(second_logon_id)
+        assert first_session is not None
+        assert second_session is not None
+        first_session.session_shell_pid = first_shell
+        second_session.session_shell_pid = second_shell
+
+        parent_pid = ag._select_parent_pid(
+            linux_system,
+            user,
+            "/opt/example/bin/unmapped-command",
+            time=datetime(2024, 3, 18, 12, 0, 5, tzinfo=UTC),
+            logon_id=second_logon_id,
+        )
+
+        assert parent_pid == second_shell
+        assert parent_pid != first_shell
+
+    def test_ssh_login_shell_keeps_privileged_sshd_parent(
+        self, state_manager, mock_emitters, linux_system, user
+    ):
+        """The root-owned sshd privilege process may parent the user login shell."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+        event_time = datetime(2024, 3, 18, 12, 0, 5, tzinfo=UTC)
+        logon_id = state_manager.create_session(
+            username=user.username,
+            system=linux_system.hostname,
+            logon_type=10,
+            source_ip="10.0.10.50",
+            session_kind="ssh",
+        )
+        session_sshd = state_manager.create_process(
+            linux_system.hostname,
+            pids["sshd"],
+            "/usr/sbin/sshd",
+            f"sshd: {user.username} [priv]",
+            "root",
+            "System",
+            logon_id="0x3e7",
+        )
+
+        bash_pid = ag.generate_process(
+            user=user,
+            system=linux_system,
+            time=event_time,
+            logon_id=logon_id,
+            process_name="/bin/bash",
+            command_line="-bash",
+            parent_pid=session_sshd,
+            suppress_command_file_effect=True,
+        )
+
+        bash_proc = state_manager.get_process(linux_system.hostname, bash_pid)
+        assert bash_proc is not None
+        assert bash_proc.parent_pid == session_sshd
+        assert bash_proc.logon_id == logon_id
+
+    def test_linux_generate_process_replaces_untracked_parent_pid(
+        self, state_manager, mock_emitters, linux_system, user
+    ):
+        """Linux user processes should not render a fabricated shell parent for PID 4."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+        event_time = datetime(2024, 3, 18, 12, 0, 5, tzinfo=UTC)
+        logon_id = state_manager.create_session(
+            username=user.username,
+            system=linux_system.hostname,
+            logon_type=10,
+            source_ip="10.0.10.50",
+            session_kind="ssh",
+        )
+
+        pid = ag.generate_process(
+            user=user,
+            system=linux_system,
+            time=event_time,
+            logon_id=logon_id,
+            process_name="/usr/bin/last",
+            command_line="last -n 50",
+            parent_pid=4,
+        )
+
+        proc = state_manager.get_process(linux_system.hostname, pid)
+        assert proc is not None
+        assert proc.parent_pid != 4
+        assert proc.parent_pid != pids["bash"]
+        session = state_manager.get_session(logon_id)
+        assert session is not None
+        assert proc.parent_pid == session.session_shell_pid
+        parent = state_manager.get_process(linux_system.hostname, proc.parent_pid)
+        assert parent is not None
+        assert parent.image == "/bin/bash"
+
+    def test_linux_generate_process_replaces_hidden_boot_shell_parent(
+        self, state_manager, mock_emitters, linux_system, user
+    ):
+        """Visible Linux process telemetry should materialize the owning shell parent."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+        scenario_start = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        ag._scenario_start_time = scenario_start
+        event_time = scenario_start + timedelta(minutes=12)
+        state_manager.set_current_time(scenario_start - timedelta(minutes=30))
+        logon_id = state_manager.create_session(
+            username=user.username,
+            system=linux_system.hostname,
+            logon_type=5,
+            source_ip="-",
+            session_kind="service",
+            start_time=scenario_start + timedelta(minutes=10),
+        )
+
+        pid = ag.generate_process(
+            user=user,
+            system=linux_system,
+            time=event_time,
+            logon_id=logon_id,
+            process_name="/usr/bin/last",
+            command_line="last -n 50",
+            parent_pid=pids["bash"],
+        )
+
+        proc = state_manager.get_process(linux_system.hostname, pid)
+        session = state_manager.get_session(logon_id)
+        assert proc is not None
+        assert session is not None
+        assert proc.parent_pid != pids["bash"]
+        assert proc.parent_pid == session.session_shell_pid
+        parent = state_manager.get_process(linux_system.hostname, proc.parent_pid)
+        assert parent is not None
+        assert parent.image == "/bin/bash"
+        assert parent.start_time >= scenario_start
+
+    def test_linux_generate_process_replaces_hidden_boot_shell_without_session(
+        self, state_manager, mock_emitters, linux_system, user
+    ):
+        """No-session Linux work should still avoid hidden boot bash parents."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+        scenario_start = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        ag._scenario_start_time = scenario_start
+        event_time = scenario_start + timedelta(minutes=20)
+
+        first_pid = ag.generate_process(
+            user=user,
+            system=linux_system,
+            time=event_time,
+            logon_id="",
+            process_name="/usr/bin/grep",
+            command_line="grep -i error /var/log/syslog",
+            parent_pid=pids["bash"],
+        )
+        second_pid = ag.generate_process(
+            user=user,
+            system=linux_system,
+            time=event_time + timedelta(seconds=5),
+            logon_id="",
+            process_name="/usr/bin/tail",
+            command_line="tail -20 /var/log/syslog",
+            parent_pid=pids["bash"],
+        )
+
+        first = state_manager.get_process(linux_system.hostname, first_pid)
+        second = state_manager.get_process(linux_system.hostname, second_pid)
+        assert first is not None
+        assert second is not None
+        assert first.parent_pid != pids["bash"]
+        assert second.parent_pid == first.parent_pid
+        parent = state_manager.get_process(linux_system.hostname, first.parent_pid)
+        assert parent is not None
+        assert parent.image == "/bin/bash"
+        assert parent.start_time >= scenario_start
+
+    def test_linux_process_creation_guard_materializes_hidden_shell_parent(
+        self, state_manager, mock_emitters, linux_system, user, monkeypatch
+    ):
+        """The process boundary should repair hidden shell parents from any caller."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+        scenario_start = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        ag._scenario_start_time = scenario_start
+        event_time = scenario_start + timedelta(minutes=20)
+
+        monkeypatch.setattr(
+            ag,
+            "_sanitize_user_parent_pid",
+            lambda **kwargs: kwargs["parent_pid"],
+        )
+
+        pid = ag.generate_process(
+            user=user,
+            system=linux_system,
+            time=event_time,
+            logon_id="",
+            process_name="/usr/bin/grep",
+            command_line="grep -i error /var/log/syslog",
+            parent_pid=pids["bash"],
+        )
+
+        proc = state_manager.get_process(linux_system.hostname, pid)
+        assert proc is not None
+        assert proc.parent_pid != pids["bash"]
+        parent = state_manager.get_process(linux_system.hostname, proc.parent_pid)
+        assert parent is not None
+        assert parent.image == "/bin/bash"
+        assert parent.start_time >= scenario_start
+
+    def test_linux_resolve_parent_materializes_visible_shell_without_session(
+        self, state_manager, mock_emitters, linux_system, user
+    ):
+        """Linux parent resolution should return the visible shell it materializes."""
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, linux_system)
+        scenario_start = datetime(2024, 3, 18, 12, 0, 0, tzinfo=UTC)
+        ag._scenario_start_time = scenario_start
+        event_time = scenario_start + timedelta(hours=1, minutes=18)
+
+        parent_pid = ag._resolve_parent(
+            linux_system,
+            user,
+            event_time,
+            "",
+            "/usr/bin/grep",
+        )
+
+        assert parent_pid != pids["bash"]
+        parent = state_manager.get_process(linux_system.hostname, parent_pid)
+        assert parent is not None
+        assert parent.image == "/bin/bash"
+        assert parent.username == user.username
+        assert parent.start_time >= scenario_start
+
+    def test_web_service_account_process_uses_web_daemon_parent(self, state_manager, mock_emitters):
+        web_system = System(
+            hostname="WEB-EXT-01",
+            ip="10.0.20.10",
+            os="Ubuntu 22.04",
+            type="server",
+            roles=["web_server"],
+        )
+        web_user = User(
+            username="apache",
+            full_name="Apache Service",
+            email="apache@example.com",
+            enabled=True,
+            persona="service",
+        )
+        ag, pids = _setup_activity_gen(state_manager, mock_emitters, web_system)
+
+        parent_pid = ag._resolve_parent(
+            web_system,
+            web_user,
+            datetime(2024, 3, 18, 12, 0, 1, tzinfo=UTC),
+            "",
+            "/bin/bash",
+        )
+        parent_proc = state_manager.get_process(web_system.hostname, parent_pid)
+
+        assert parent_proc is not None
+        assert parent_pid == pids["apache2"]
+        assert parent_proc.image == "/usr/sbin/apache2"

@@ -1,0 +1,7003 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Canonical network-connection action planner."""
+
+from __future__ import annotations
+
+import copy
+import logging
+import math
+import random
+import re
+from contextvars import ContextVar, Token
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
+from threading import Lock
+from typing import TYPE_CHECKING, Any
+
+from evidenceforge.events.base import OccurrenceBuilder
+from evidenceforge.events.contexts import (
+    AuthContext,
+    DnsContext,
+    FileContext,
+    HttpContext,
+    NetworkTransactionDraft,
+    ProcessContext,
+)
+from evidenceforge.events.contracts import (
+    EffectOccurrenceKind,
+    OccurrenceRole,
+    OwnedEffectOccurrencePlan,
+    SemanticOccurrenceKey,
+)
+from evidenceforge.events.identity import (
+    EventIdentityPlan,
+)
+from evidenceforge.events.lifecycle import (
+    ActionLifecycleContext,
+)
+from evidenceforge.generation.actions import (
+    NetworkConnectionRequest,
+    http_response_parent_duration_floor,
+)
+from evidenceforge.generation.actions.network_connection import (
+    DeferredSessionNetworkAuthority,
+)
+from evidenceforge.generation.actions.network_identity import (
+    _network_transport_occurrence_stable_id,
+    _trusted_network_request_stable_id,
+)
+from evidenceforge.generation.activity.helpers import (
+    _get_os_category,
+    _get_rng,
+)
+from evidenceforge.generation.activity.network import (
+    REVERSE_DNS,
+    _generate_internal_hostname,
+    _generate_random_hostname,
+    _is_private_ip,
+)
+from evidenceforge.generation.activity.network_common import (
+    _extract_ssh_attempted_username,
+    _get_http_status,
+    _is_invalid_network_connection,
+    _is_modeled_local_ip,
+    _zeek_conn_observation_time,
+    get_timing_window,
+)
+from evidenceforge.generation.activity.network_dns import (
+    _dns_base_ttl,
+    _dns_is_internal_name,
+    _dns_observation_cache_key,
+    _dns_payload_accounting,
+)
+from evidenceforge.generation.activity.network_http import (
+    _apply_plaintext_http_policy,
+    _attach_http_file_transfers,
+    _http_context_flow_body_len,
+    _http_context_from_process_command,
+    _http_flow_payload_bytes,
+    _is_tool_http_user_agent,
+    _normalize_http_context_for_source_native_response,
+    _source_native_http_referrer,
+)
+from evidenceforge.generation.activity.network_ntp import (
+    _NTP_STRATUM_TIMING,
+    _ntp_observed_response_fields,
+    _ntp_parser_min_gap_seconds,
+    _ntp_payload_accounting,
+    _ntp_stratum_and_ref_id,
+    _select_public_ntp_ip,
+)
+from evidenceforge.generation.activity.network_proxy import (
+    _PROXY_CS_OVERHEAD,
+    _PROXY_SC_OVERHEAD,
+    _proxy_action_for_context,
+    _proxy_request_allows_cache_hit,
+    _proxy_time_taken_ms,
+)
+from evidenceforge.generation.activity.network_transport import (
+    _AUTO_WEIRD_ENABLED,
+    _TCP_CONN_ENTRIES,
+    _TCP_CONN_WEIGHTS,
+    _TCP_OVERHEAD_VALUES,
+    _TCP_OVERHEAD_WEIGHTS,
+    _UDP_CONN_ENTRIES,
+    _UDP_CONN_WEIGHTS,
+    _UDP_OVERHEAD_VALUES,
+    _UDP_OVERHEAD_WEIGHTS,
+    _align_tcp_network_payload_with_history,
+    _ephemeral_port,
+    _icmp_echo_duration,
+    _icmp_echo_payload_size,
+    _preserve_explicit_tcp_payload_overrides,
+    _tcp_ip_byte_count,
+    _tcp_packet_counts_from_payload_and_history,
+    _tcp_payload_bytes_consistent_with_history,
+    _tcp_success_history,
+)
+from evidenceforge.generation.http_channels import HttpChannelAffinity
+from evidenceforge.generation.lifecycle_authority import (
+    GeneratorLifecycleAuthority,
+)
+from evidenceforge.generation.network_runtime import (
+    NetworkConnectionCommitResult,
+    NetworkRuntimePointFamily,
+)
+from evidenceforge.generation.persistent_smb_continuation import (
+    NetworkConnectionPublicationOutcome,
+    PersistentSmbPreparedRoot,
+    PersistentSmbRootHandoff,
+    PersistentSmbTerminalContinuation,
+    PersistentSmbTerminalContinuationAuthority,
+)
+from evidenceforge.generation.state_manager import (
+    ConnectionExistingSessionLifecycleDisposition,
+    ConnectionMaterializationMode,
+    ProcessMaterializationPlan,
+    SessionMaterializationPlan,
+)
+from evidenceforge.generation.timing import (
+    ClockWanderSpec,
+    ConstantDistribution,
+    MixtureDistribution,
+    SourceClockKey,
+    SourceClockSpec,
+    TimingDistributionError,
+    TimingScope,
+    TriangularDistribution,
+    TruncatedLognormalDistribution,
+    WeightedDistribution,
+)
+from evidenceforge.models.exceptions import EventContractError, StateError
+from evidenceforge.models.scenario import (
+    User,
+)
+from evidenceforge.utils.rng import _stable_seed, stable_uuid
+from evidenceforge.utils.time import ensure_utc
+
+from .network_execution_stages import (
+    CommittedNetworkPublication,
+    NetworkApplicationIntents,
+    NetworkProtocolEvidence,
+    NetworkPublicationInputs,
+    NetworkRequestFacts,
+    PlannedNetworkEvidence,
+    PlannedNetworkTransport,
+    PreparedNetworkPublication,
+    PreparedNetworkSources,
+    ResolvedNetworkEndpoints,
+    ResolvedNetworkRequest,
+)
+
+logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from evidenceforge.events.base import OccurrenceBuilder
+    from evidenceforge.generation.actions.network_connection import (
+        NetworkConnectionExecutor,
+        NetworkConnectionRequest,
+    )
+    from evidenceforge.generation.network_runtime import NetworkTransactionPreparation
+    from evidenceforge.models.scenario import System
+    from evidenceforge.models.state import RunningProcess
+
+
+_ACTIVE_NETWORK_TIMING_RUNTIME: ContextVar[Any | None] = ContextVar(
+    "evidenceforge_active_network_timing_runtime",
+    default=None,
+)
+
+
+def _normalize_udp_syslog_flow(
+    *,
+    proto: str,
+    dst_port: int,
+    conn_state: str,
+    history: str,
+    duration: float | None,
+    resp_bytes: int | None,
+) -> tuple[str, str, float | None, int | None]:
+    """Return source-native one-way transport semantics for UDP/514 syslog."""
+
+    if proto != "udp" or dst_port != 514:
+        return conn_state, history, duration, resp_bytes
+    return "S0", "D", None, 0
+
+
+_NETWORK_IDENTITY_CAPTURE_LOCK_TYPE = type(Lock())
+_DNS_TRANSPORT_CLOSE_SLACK_MAXIMUM_US = 12_001
+_TLS_COMPLETED_EXTENSION_MAXIMUM_US = 8_000_000
+_TLS_GENERATED_CERTIFICATE_CHAIN_MAXIMUM_LENGTH = 3
+_TLS_CERTIFICATE_CLOSE_SLACK_SECONDS = 0.005
+_TLS_CERTIFICATE_MINIMUM_BASE_SECONDS = 1.05
+_TLS_CERTIFICATE_MINIMUM_PER_CERTIFICATE_SECONDS = 0.075
+_HTTP_DURATION_FLOOR_SLACK_MAXIMUM_US = 25_001
+_NETWORK_PACKET_OBSERVATION_MAX_SUFFIX_US = 997
+_NTP_RTT_MAXIMUM_US = 300_001
+_NTP_PROCESSING_MAXIMUM_US = 10_001
+_NTP_CLOSE_SLACK_MAXIMUM_US = 8_001
+
+
+def dns_transport_close_headroom_seconds(*, caller_rtt_maximum: float) -> float:
+    """Return the canonical DNS close bound for a caller-owned RTT maximum."""
+
+    maximum_us = math.ceil(caller_rtt_maximum * 1_000_000) + _DNS_TRANSPORT_CLOSE_SLACK_MAXIMUM_US
+    return ((maximum_us + 999) // 1_000) / 1_000
+
+
+def tls_completed_extension_headroom_seconds() -> float:
+    """Return the maximum canonical extension for a completed TLS transport."""
+
+    return _TLS_COMPLETED_EXTENSION_MAXIMUM_US / 1_000_000
+
+
+def _tls_completed_duration_floor_bounds_seconds() -> tuple[float, float]:
+    """Return the configured TLS minimum and its maximum sampled floor slack."""
+
+    from evidenceforge.generation.activity.timing_profiles import get_timing_window
+
+    timing_window = get_timing_window(
+        "network.tls_completed_min_duration",
+        default_min_ms=800,
+        default_max_ms=2500,
+        default_position="after",
+        default_class="same_observation",
+    )
+    minimum_seconds = timing_window.min_ms / 1000
+    floor_slack_maximum_seconds = max(
+        0.016,
+        min(0.65, (timing_window.max_ms - timing_window.min_ms) / 1000),
+    )
+    return minimum_seconds, floor_slack_maximum_seconds
+
+
+def _tls_certificate_duration_floor_bound_seconds() -> float:
+    """Return the maximum generated-chain analyzer duration floor."""
+
+    from evidenceforge.generation.activity.tls_realism import (
+        certificate_analyzer_delay_bound_ms,
+    )
+
+    maximum_position = _TLS_GENERATED_CERTIFICATE_CHAIN_MAXIMUM_LENGTH - 1
+    analyzer_floor_seconds = (
+        certificate_analyzer_delay_bound_ms(maximum_position=maximum_position) / 1_000
+        + _TLS_CERTIFICATE_CLOSE_SLACK_SECONDS
+    )
+    chain_floor_seconds = _TLS_CERTIFICATE_MINIMUM_BASE_SECONDS + (
+        _TLS_CERTIFICATE_MINIMUM_PER_CERTIFICATE_SECONDS
+        * _TLS_GENERATED_CERTIFICATE_CHAIN_MAXIMUM_LENGTH
+    )
+    return max(analyzer_floor_seconds, chain_floor_seconds)
+
+
+def _http_completed_duration_floor_bounds_seconds() -> tuple[float, float]:
+    """Return the configured HTTP minimum and sampled floor slack maximum."""
+
+    from evidenceforge.generation.activity.timing_profiles import get_timing_window
+
+    timing_window = get_timing_window(
+        "source.zeek_http_request",
+        default_min_ms=1,
+        default_max_ms=35,
+        default_position="after",
+        default_class="same_observation",
+    )
+    minimum_seconds = (timing_window.max_ms + 5) / 1_000
+    return minimum_seconds, _HTTP_DURATION_FLOOR_SLACK_MAXIMUM_US / 1_000_000
+
+
+def http_completed_transport_close_bound_seconds(
+    *,
+    caller_duration_maximum: float,
+) -> float:
+    """Return the absolute start-to-close bound for a completed HTTP transport.
+
+    The result already includes ``caller_duration_maximum``. Callers must use
+    it as the complete physical-leg duration, not add it to their own duration.
+    """
+
+    minimum_seconds, floor_slack_maximum_seconds = _http_completed_duration_floor_bounds_seconds()
+    return max(caller_duration_maximum, minimum_seconds + floor_slack_maximum_seconds)
+
+
+def tls_completed_transport_close_bound_seconds(
+    *,
+    caller_duration_maximum: float,
+) -> float:
+    """Return the generated-TLS absolute start-to-close transport bound.
+
+    A caller duration at or above the configured TLS floor can receive the
+    completed-session extension. A shorter caller duration is replaced by the
+    configured protocol floor plus its sampled slack. Certificate projection
+    can extend the transport again, so the bound also reserves the analyzer
+    maximum for the engine-generated chain cap of three certificates.
+
+    The result already includes ``caller_duration_maximum`` and must not be
+    added to it. The raw ``NetworkConnectionRequest.x509_chain`` escape hatch
+    accepts caller-supplied chains of arbitrary length; those callers must own
+    a chain-specific end plan and cannot use this generated-chain admission
+    contract as a finite bound.
+    """
+
+    minimum_seconds, floor_slack_maximum_seconds = _tls_completed_duration_floor_bounds_seconds()
+    return max(
+        caller_duration_maximum + tls_completed_extension_headroom_seconds(),
+        minimum_seconds + floor_slack_maximum_seconds,
+        _tls_certificate_duration_floor_bound_seconds(),
+    )
+
+
+def network_transport_open_positive_headroom_seconds() -> float:
+    """Return the maximum generated physical-transport start displacement."""
+
+    from evidenceforge.generation.activity.timing_profiles import get_timing_window
+
+    timing_window = get_timing_window(
+        "network.connection_start_jitter",
+        default_min_ms=0,
+        default_max_ms=0,
+        default_position="after",
+    )
+    return (timing_window.max_ms * 1_000 + _NETWORK_PACKET_OBSERVATION_MAX_SUFFIX_US) / 1_000_000
+
+
+def tls_generated_family_close_bound_seconds(
+    *,
+    caller_duration_maximum: float,
+) -> float:
+    """Return the parent-TLS plus possible automatic-OCSP family close bound.
+
+    The OCSP branch reserves its maximum request delay, responder latency and
+    transfer time, a direct HTTP physical leg including its independent open
+    jitter, or the complete explicit-proxy HTTP transaction. DNS prerequisites
+    precede either HTTP leg and their companion close maximum remains inside
+    the minimum completed-HTTP interval. The calculation consumes no runtime
+    sampler, connection identity, port, or mutable state.
+    """
+
+    parent_close = tls_completed_transport_close_bound_seconds(
+        caller_duration_maximum=caller_duration_maximum,
+    )
+    from evidenceforge.generation.actions.ocsp_transaction import (
+        ocsp_generated_child_bound_inputs,
+    )
+
+    child_inputs = ocsp_generated_child_bound_inputs()
+    if child_inputs is None:
+        return parent_close
+    request_delay, direct_duration, proxy_origin_duration = child_inputs
+    direct_child_close = (
+        network_transport_open_positive_headroom_seconds()
+        + http_completed_transport_close_bound_seconds(
+            caller_duration_maximum=direct_duration,
+        )
+    )
+
+    # Import lazily: proxy_phase_planner imports the parent-only TLS helper.
+    # Its port-80 branch does not recurse into this TLS-family calculation.
+    from evidenceforge.generation.actions.proxy_phase_planner import (
+        proxy_transaction_close_bound_seconds,
+    )
+
+    proxy_child_close = proxy_transaction_close_bound_seconds(
+        origin_duration_max_seconds=proxy_origin_duration,
+        origin_close_extension_seconds=0.0,
+        dst_port=80,
+    )
+    family_close = max(
+        parent_close,
+        request_delay + max(direct_child_close, proxy_child_close),
+    )
+    if not math.isfinite(family_close):
+        raise ValueError("generated TLS/OCSP family close bound must be finite")
+    try:
+        return math.ceil(family_close * 1_000_000) / 1_000_000
+    except OverflowError as exc:
+        raise ValueError("generated TLS/OCSP family close bound exceeds supported range") from exc
+
+
+def ntp_transport_close_headroom_seconds() -> float:
+    """Return the maximum canonical NTP RTT, processing, and close tail."""
+
+    maximum_us = _NTP_RTT_MAXIMUM_US + _NTP_PROCESSING_MAXIMUM_US + _NTP_CLOSE_SLACK_MAXIMUM_US
+    return ((maximum_us + 999) // 1_000) / 1_000
+
+
+@dataclass(slots=True)
+class _PreparedNetworkBoundary:
+    """Own every revocable capability until the outer authority accepts transfer."""
+
+    timing_context: Any = None
+    timing_preparation: Any = None
+    timing_runtime_token: Token[Any | None] | None = None
+    network_runtime: Any = None
+    network_preparation: Any = None
+    root: Any = None
+    application_manager: Any = None
+    application_token: Any = None
+    prerequisite_receipts: tuple[Any, ...] = ()
+    lifecycle_adapter: Any = None
+    lifecycle_token: Any = None
+    identity_capture: Any = None
+    identity_capture_claim: Any = None
+    network_dependent_dispatcher: Any = None
+    network_dependent_batch: Any = None
+    terminal_materialization: Any = None
+    deferred_session_dispatcher: Any = None
+    deferred_session_publication_batch: Any = None
+    transferred: bool = False
+
+    def claim_identity_capture(self, capture: Any) -> None:
+        """Claim one exact empty handoff before any prerequisite can mutate truth."""
+
+        if capture is None:
+            return
+        from evidenceforge.generation.actions.network_connection import (
+            NetworkConnectionIdentityCapture,
+        )
+
+        if type(capture) is not NetworkConnectionIdentityCapture:
+            raise TypeError("Network request identity capture must be the exact carrier type")
+        self.identity_capture = capture
+        self.identity_capture_claim = capture._claim_empty()
+
+    def validate_identity_capture_claim(self) -> None:
+        """Authenticate the exact private handoff at the final precommit barrier."""
+
+        if self.identity_capture is None:
+            return
+        if not self.identity_capture._authenticates_claim(self.identity_capture_claim):
+            raise StateError("Network identity capture claim changed before publication")
+
+    def publish_committed_capture_no_fail(
+        self,
+        *,
+        root: Any,
+        receipt: Any,
+        application_receipt: Any,
+        persistent_smb_root_handoff: Any = None,
+        outcome: Any,
+    ) -> Any:
+        """Populate the prevalidated occurrence-local capture after authority success."""
+
+        if self.identity_capture is None:
+            return None
+        capture = self.identity_capture
+        claim = self.identity_capture_claim
+        publication_result = capture._publish_committed_claimed(
+            claim,
+            root=root,
+            receipt=receipt,
+            application_receipt=application_receipt,
+            persistent_smb_root_handoff=persistent_smb_root_handoff,
+            outcome=outcome,
+        )
+        if publication_result is not None:
+            raise StateError("Network identity capture returned a forged publication result")
+        if not capture._authenticates_committed_claimed_publication(
+            claim,
+            root=root,
+            receipt=receipt,
+            application_receipt=application_receipt,
+            persistent_smb_root_handoff=persistent_smb_root_handoff,
+            outcome=outcome,
+        ):
+            raise StateError("Network identity capture did not publish its exact committed owner")
+        self.identity_capture = None
+        self.identity_capture_claim = None
+        return capture
+
+    @staticmethod
+    def authenticate_committed_capture_for_ack(
+        capture: Any,
+        *,
+        authority: Any,
+        root: Any,
+        receipt: Any,
+        application_receipt: Any,
+        persistent_smb_root_handoff: Any,
+        outcome: Any,
+    ) -> tuple[Any, ...] | None:
+        """Reauthenticate one exact durable handoff across its final callback."""
+
+        if capture is None:
+            return None
+        from evidenceforge.generation.actions.network_connection import (
+            NetworkConnectionIdentityCapture,
+            NetworkConnectionPublicationOutcome,
+        )
+
+        if type(capture) is not NetworkConnectionIdentityCapture:
+            raise StateError("Prepared network durable identity capture changed type")
+        capture_lock = object.__getattribute__(capture, "_lock")
+        if type(capture_lock) is not _NETWORK_IDENTITY_CAPTURE_LOCK_TYPE:
+            raise StateError("Prepared network durable identity capture changed lock")
+
+        def snapshot() -> tuple[Any, ...]:
+            with capture_lock:
+                return (
+                    object.__getattribute__(capture, "_transaction"),
+                    object.__getattribute__(capture, "_lifecycle_mode"),
+                    object.__getattribute__(capture, "_prepared_root"),
+                    object.__getattribute__(capture, "_source_timing_preparation"),
+                    object.__getattribute__(capture, "_prepared_dispatch"),
+                    object.__getattribute__(capture, "_persistent_smb_root_handoff"),
+                    object.__getattribute__(capture, "_receipt"),
+                    object.__getattribute__(capture, "_application_receipt"),
+                    object.__getattribute__(capture, "_outcome"),
+                    object.__getattribute__(capture, "_claim"),
+                )
+
+        def matches_expected(observed: tuple[Any, ...]) -> bool:
+            return (
+                len(observed) == 10
+                and observed[0] is root.transaction
+                and type(observed[1]) is str
+                and observed[1] == root.runtime_token.lifecycle_mode
+                and observed[2] is root
+                and observed[4] is None
+                and observed[5] is persistent_smb_root_handoff
+                and observed[6] is receipt
+                and observed[7] is application_receipt
+                and type(observed[8]) is NetworkConnectionPublicationOutcome
+                and observed[8] is outcome
+                and observed[9] is None
+            )
+
+        before = snapshot()
+        if not matches_expected(before):
+            raise StateError("Prepared network durable identity capture changed before ack")
+        authenticated = authority.authenticates_prepared_network_receipt(root, receipt)
+        after = snapshot()
+        exact_snapshot = all(
+            (
+                type(current) is str and type(expected) is str and current == expected
+                if index == 1
+                else current is expected
+            )
+            for index, (current, expected) in enumerate(zip(after, before, strict=True))
+        )
+        if authenticated is not True or not matches_expected(after) or not exact_snapshot:
+            raise StateError("Prepared network durable identity capture changed before ack")
+        return after
+
+    @staticmethod
+    def restore_committed_capture_after_ack(
+        capture: Any,
+        facts: tuple[Any, ...] | None,
+        *,
+        authority: Any,
+        root: Any,
+        receipt: Any,
+        application_receipt: Any,
+        persistent_smb_root_handoff: Any,
+        outcome: Any,
+    ) -> None:
+        """Restore and reauthenticate the exact public handoff after acknowledgement."""
+
+        if capture is None:
+            if facts is not None:
+                raise StateError("Prepared network durable identity capture facts are orphaned")
+            return
+        from evidenceforge.generation.actions.network_connection import (
+            NetworkConnectionIdentityCapture,
+            NetworkConnectionPublicationOutcome,
+        )
+
+        if (
+            type(capture) is not NetworkConnectionIdentityCapture
+            or type(facts) is not tuple
+            or len(facts) != 10
+            or facts[0] is not root.transaction
+            or type(facts[1]) is not str
+            or facts[1] != root.runtime_token.lifecycle_mode
+            or facts[2] is not root
+            or facts[4] is not None
+            or facts[5] is not persistent_smb_root_handoff
+            or facts[6] is not receipt
+            or facts[7] is not application_receipt
+            or type(facts[8]) is not NetworkConnectionPublicationOutcome
+            or facts[8] is not outcome
+            or facts[9] is not None
+        ):
+            raise StateError("Prepared network durable identity capture facts changed after ack")
+
+        def restore() -> None:
+            # Replaced slot values may own arbitrary objects, so their decref must
+            # happen outside the capture lock. The subsequent locked snapshot is
+            # the atomic publication barrier.
+            object.__setattr__(capture, "_transaction", facts[0])
+            object.__setattr__(capture, "_lifecycle_mode", facts[1])
+            object.__setattr__(capture, "_prepared_root", facts[2])
+            object.__setattr__(capture, "_source_timing_preparation", facts[3])
+            object.__setattr__(capture, "_prepared_dispatch", facts[4])
+            object.__setattr__(capture, "_persistent_smb_root_handoff", facts[5])
+            object.__setattr__(capture, "_receipt", facts[6])
+            object.__setattr__(capture, "_application_receipt", facts[7])
+            object.__setattr__(capture, "_outcome", facts[8])
+            object.__setattr__(capture, "_claim", facts[9])
+
+        restore()
+        try:
+            observed = _PreparedNetworkBoundary.authenticate_committed_capture_for_ack(
+                capture,
+                authority=authority,
+                root=root,
+                receipt=receipt,
+                application_receipt=application_receipt,
+                persistent_smb_root_handoff=persistent_smb_root_handoff,
+                outcome=outcome,
+            )
+        except BaseException:
+            restore()
+            raise
+        if type(observed) is not tuple or len(observed) != len(facts):
+            restore()
+            raise StateError("Prepared network durable identity capture changed after ack")
+        for index, (current, expected) in enumerate(zip(observed, facts, strict=True)):
+            exact = (
+                type(current) is str and type(expected) is str and current == expected
+                if index == 1
+                else current is expected
+            )
+            if not exact:
+                restore()
+                raise StateError("Prepared network durable identity capture changed after ack")
+
+    def recover_committed_capture_no_fail(self, *, executor: Any, root: Any) -> bool:
+        """Publish exact transport identity when a postcommit bridge return is lost."""
+
+        if self.identity_capture is None:
+            return False
+        capture = self.identity_capture
+        claim = self.identity_capture_claim
+        if not capture._authenticates_claim(claim):
+            return False
+        transaction = root.transaction
+        if not executor.state_manager.authenticates_materialization_plan(root.state_plan):
+            return False
+        connection = executor.state_manager.get_connection_by_transaction_id(transaction.stable_id)
+        if connection is None:
+            return False
+        committed = (
+            connection.conn_id,
+            connection.zeek_uid,
+            connection.src_ip,
+            connection.src_port,
+            connection.dst_ip,
+            connection.dst_port,
+            connection.protocol,
+            connection.start_time,
+            connection.close_time,
+            connection.bytes_sent,
+            connection.bytes_received,
+            connection.transaction_id,
+            connection.conn_state,
+            connection.history,
+            connection.duration,
+            connection.traffic_ledger,
+        )
+        expected = (
+            transaction.conn_id,
+            transaction.zeek_uid,
+            transaction.src_ip,
+            transaction.src_port,
+            transaction.dst_ip,
+            transaction.dst_port,
+            transaction.protocol,
+            transaction.started_at,
+            transaction.closed_at,
+            transaction.traffic.orig.payload_bytes,
+            transaction.traffic.resp.payload_bytes,
+            transaction.stable_id,
+            transaction.conn_state,
+            transaction.history,
+            transaction.duration,
+            transaction.traffic,
+        )
+        if committed != expected:
+            return False
+        capture._publish_claimed(
+            claim,
+            transaction,
+            lifecycle_mode=root.runtime_token.lifecycle_mode,
+        )
+        self.identity_capture = None
+        self.identity_capture_claim = None
+        return True
+
+    def recover_committed_materialization_no_fail(
+        self,
+        *,
+        executor: Any,
+        root: Any,
+        materialization: Any,
+    ) -> bool:
+        """Publish and acknowledge one authenticated deferred postcommit result."""
+
+        from evidenceforge.generation.actions.network_connection import (
+            NetworkConnectionPublicationOutcome,
+        )
+        from evidenceforge.generation.lifecycle_authority import (
+            LifecyclePreparedNetworkResult,
+        )
+
+        if (
+            type(materialization) is not LifecyclePreparedNetworkResult
+            or type(root.runtime_token.lifecycle_mode) is not str
+            or root.runtime_token.lifecycle_mode != "deferred_session"
+        ):
+            raise StateError("Deferred-session committed materialization is malformed")
+        authority = executor._lifecycle_authority
+        recovery_projection = authority.retained_prepared_network_recovery_projection(
+            root,
+            materialization,
+        )
+        if type(recovery_projection) is not tuple or len(recovery_projection) != 2:
+            raise StateError("Deferred-session committed materialization is not authentic")
+        network_receipt, application_receipt = recovery_projection
+        if application_receipt is None:
+            raise StateError("Deferred-session committed materialization lost its application")
+        outcome = NetworkConnectionPublicationOutcome.PUBLISHED
+        durable_capture = self.publish_committed_capture_no_fail(
+            root=root,
+            receipt=network_receipt,
+            application_receipt=application_receipt,
+            outcome=outcome,
+        )
+        durable_capture_facts = self.authenticate_committed_capture_for_ack(
+            durable_capture,
+            authority=authority,
+            root=root,
+            receipt=network_receipt,
+            application_receipt=application_receipt,
+            persistent_smb_root_handoff=None,
+            outcome=outcome,
+        )
+        if durable_capture is not None:
+            GeneratorLifecycleAuthority._bind_prepared_network_durable_capture_for_ack(
+                authority,
+                root,
+                materialization,
+                durable_capture,
+                durable_capture_facts,
+                expected_persistent_smb_root_handoff=None,
+            )
+        try:
+            authority.acknowledge_prepared_network_transaction_if_retained(
+                root,
+                materialization,
+                durable_capture=durable_capture,
+                durable_capture_facts=durable_capture_facts,
+            )
+        except BaseException:
+            self.restore_committed_capture_after_ack(
+                durable_capture,
+                durable_capture_facts,
+                authority=authority,
+                root=root,
+                receipt=network_receipt,
+                application_receipt=application_receipt,
+                persistent_smb_root_handoff=None,
+                outcome=outcome,
+            )
+            raise
+        self.restore_committed_capture_after_ack(
+            durable_capture,
+            durable_capture_facts,
+            authority=authority,
+            root=root,
+            receipt=network_receipt,
+            application_receipt=application_receipt,
+            persistent_smb_root_handoff=None,
+            outcome=outcome,
+        )
+        return True
+
+    def track_network_dependent_batch(self, dispatcher: Any, batch: Any) -> None:
+        """Own one claimed projection-only dependent batch until root acceptance."""
+
+        if self.network_dependent_batch is not None:
+            raise StateError("Network root cannot own multiple dependent dispatch batches")
+        self.network_dependent_dispatcher = dispatcher
+        self.network_dependent_batch = batch
+
+    def validate_network_dependent_batch(self) -> None:
+        """Authenticate the exact claimed dependent batch at the final precommit barrier."""
+
+        if self.network_dependent_batch is None:
+            return
+        if not self.network_dependent_dispatcher.authenticates_prepared_network_dependent_batch(
+            self.network_dependent_batch
+        ):
+            raise StateError("Network-dependent dispatch batch changed before publication")
+
+    def track_deferred_session_publication_batch(self, dispatcher: Any, batch: Any) -> None:
+        """Own one exact SSH/RDP source batch until lifecycle transfer."""
+
+        if self.deferred_session_publication_batch is not None:
+            raise StateError("Network root cannot own two deferred-session source batches")
+        self.deferred_session_dispatcher = dispatcher
+        self.deferred_session_publication_batch = batch
+
+    def validate_deferred_session_publication_batch(self) -> None:
+        """Authenticate the exact deferred-session source batch before transfer."""
+
+        if self.deferred_session_publication_batch is None:
+            return
+        if not self.deferred_session_dispatcher.authenticates_prepared_deferred_session_publication_batch(
+            self.deferred_session_publication_batch
+        ):
+            raise StateError("Deferred-session source publication batch changed before transfer")
+
+    def track_application(
+        self,
+        manager: Any,
+        token: Any,
+        *,
+        prerequisite_receipts: tuple[Any, ...] = (),
+    ) -> None:
+        """Retain at most one application admission for cancellation or transfer."""
+
+        if token is None:
+            return
+        if self.application_token is not None:
+            raise StateError("Network root cannot own multiple application admissions")
+        self.application_manager = manager
+        self.application_token = token
+        self.prerequisite_receipts = prerequisite_receipts
+
+    def begin(
+        self,
+        *,
+        executor: NetworkConnectionExecutor,
+        owner_rng: Any,
+        stable_id: str,
+        linearization_time: datetime,
+        action_group_id: str,
+    ) -> Any:
+        """Open the shared timing overlay followed by the network runtime cursor."""
+
+        self.timing_context = executor._source_timing_planner.prepared_planning()
+        self.timing_preparation = self.timing_context.__enter__()
+        staged_timing_runtime = self.timing_preparation.planning_runtime
+        self.timing_runtime_token = _ACTIVE_NETWORK_TIMING_RUNTIME.set(staged_timing_runtime)
+        self.network_runtime = executor._network_transaction_runtime
+        try:
+            self.network_preparation = self.network_runtime.begin(
+                owner_rng=owner_rng,
+                stable_id=stable_id,
+                linearization_time=linearization_time,
+                action_group_id=action_group_id,
+            )
+        except BaseException as error:
+            self._close_timing(error)
+            raise
+        return self.network_preparation
+
+    def seal_timing(self) -> None:
+        """Seal the shared timing preparation after every related dispatch is prepared."""
+
+        if self.timing_context is None:
+            raise StateError("Network timing preparation was not opened")
+        context = self.timing_context
+        self.timing_context = None
+        self._reset_timing_runtime()
+        context.__exit__(None, None, None)
+
+    def transfer(self) -> None:
+        """Mark every capability as transferred to the outer no-fail coordinator."""
+
+        self.transferred = True
+
+    def cancel(self, error: BaseException) -> None:
+        """Best-effort exact cancellation without masking the planner failure."""
+
+        if self.identity_capture is not None and self.identity_capture_claim is not None:
+            self.identity_capture._release_claim(self.identity_capture_claim)
+            self.identity_capture = None
+            self.identity_capture_claim = None
+        if self.network_dependent_batch is not None:
+            try:
+                self.network_dependent_dispatcher.cancel_prepared_network_dependent_batch(
+                    self.network_dependent_batch
+                )
+            except (AttributeError, EventContractError, StateError, TypeError, ValueError):
+                pass
+            self.network_dependent_dispatcher = None
+            self.network_dependent_batch = None
+        if self.transferred:
+            return
+        if self.deferred_session_publication_batch is not None:
+            try:
+                self.deferred_session_dispatcher.cancel_prepared_deferred_session_publication_batch(
+                    self.deferred_session_publication_batch
+                )
+            except (AttributeError, EventContractError, StateError, TypeError, ValueError):
+                pass
+            self.deferred_session_dispatcher = None
+            self.deferred_session_publication_batch = None
+        if self.lifecycle_token is not None and self.lifecycle_adapter is not None:
+            try:
+                self.lifecycle_adapter.cancel_closed_transport_publication(self.lifecycle_token)
+            except (AttributeError, StateError, TypeError, ValueError):
+                pass
+        if self.application_token is not None and self.application_manager is not None:
+            try:
+                self.application_manager.cancel_prepared_admission(self.application_token)
+            except (AttributeError, StateError, TypeError, ValueError):
+                pass
+        if self.root is not None and self.network_runtime is not None:
+            try:
+                self.network_runtime.cancel_preparation(self.root.runtime_token)
+            except (AttributeError, StateError, TypeError, ValueError):
+                pass
+        elif self.network_preparation is not None:
+            try:
+                self.network_preparation.cancel()
+            except (AttributeError, StateError, TypeError, ValueError):
+                pass
+        if self.timing_context is not None:
+            self._close_timing(error)
+        elif self.timing_preparation is not None and not self.timing_preparation.committed:
+            try:
+                self.timing_preparation.cancel()
+            except StateError:
+                pass
+
+    def _close_timing(self, error: BaseException) -> None:
+        context = self.timing_context
+        self.timing_context = None
+        self._reset_timing_runtime()
+        if context is not None:
+            context.__exit__(type(error), error, error.__traceback__)
+
+    def _reset_timing_runtime(self) -> None:
+        token = self.timing_runtime_token
+        self.timing_runtime_token = None
+        if token is not None:
+            _ACTIVE_NETWORK_TIMING_RUNTIME.reset(token)
+
+
+@dataclass(slots=True)
+class _NetworkOccurrenceDraft:
+    """Mutable planning surface used before the canonical event is constructed.
+
+    Protocol and source metadata sometimes need to repair the initial transport
+    estimates. Keeping those mutations on an action-owned draft prevents an
+    incompletely planned ``OccurrenceBuilder`` from escaping into state or renderers.
+    """
+
+    timestamp: datetime
+    src_host: Any = None
+    dst_host: Any = None
+    local_only: bool = False
+    process: Any = None
+    network: Any = None
+    dns: Any = None
+    email: Any = None
+    smtp: Any = None
+    ids_alerts: list[Any] = field(default_factory=list)
+    ssl: Any = None
+    http: Any = None
+    file_transfer: Any = None
+    file_transfers: list[Any] = field(default_factory=list)
+    x509: Any = None
+    x509_chain: list[Any] = field(default_factory=list)
+    tls_presentation: Any = None
+    ntp: Any = None
+    ocsp: Any = None
+    ocsp_transaction: Any = None
+    pe: Any = None
+    pe_analyses: list[Any] = field(default_factory=list)
+    proxy: Any = None
+    firewall: Any = None
+    parent_action_group_id: str | None = None
+
+    def build_event(self) -> OccurrenceBuilder:
+        """Construct the canonical event only after the transaction is frozen."""
+
+        if self.network is None or self.network.transaction is None:
+            raise ValueError("Cannot construct a network event before transaction finalization")
+
+        transaction = self.network.transaction
+        return OccurrenceBuilder(
+            timestamp=self.timestamp,
+            event_type="connection",
+            src_host=self.src_host,
+            dst_host=self.dst_host,
+            local_only=self.local_only,
+            process=self.process,
+            network=transaction,
+            dns=self.dns,
+            email=self.email,
+            smtp=self.smtp,
+            ids_alerts=tuple(self.ids_alerts),
+            ssl=self.ssl,
+            http=self.http,
+            file_transfer=self.file_transfer,
+            file_transfers=self.file_transfers,
+            x509=self.x509,
+            x509_chain=self.x509_chain,
+            tls_presentation=self.tls_presentation,
+            ntp=self.ntp,
+            ocsp=self.ocsp,
+            ocsp_transaction=self.ocsp_transaction,
+            pe=self.pe,
+            pe_analyses=self.pe_analyses,
+            proxy=self.proxy,
+            firewall=self.firewall,
+            lifecycle=ActionLifecycleContext(
+                group_id=transaction.stable_id,
+                canonical_start=transaction.started_at,
+                phase="start",
+                parent_group_id=(
+                    self.parent_action_group_id
+                    or (transaction.conn_id if self.network.application_layer_only else None)
+                ),
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _HttpMultipartEndpointReadPlan:
+    """One exact ordered owned-effect plan and its prebuilt projection members."""
+
+    plan: Any
+    builders: tuple[Any, ...]
+    process_activity: tuple[Any, ...]
+
+
+class NetworkTransactionPlanner:
+    """Expand one network intent into a finalized canonical transaction."""
+
+    def __init__(self, executor: NetworkConnectionExecutor) -> None:
+        self._executor = executor
+        self._active_request: NetworkConnectionRequest | None = None
+        self._active_request_stable_id = ""
+
+    def _deferred_session_dependent_builders(
+        self,
+        authority: Any,
+        event: OccurrenceBuilder,
+        root: Any,
+    ) -> tuple[tuple[OccurrenceBuilder, Any], ...]:
+        """Resolve inert SSH dependent specifications into canonical builders.
+
+        The protocol caller owns only frozen semantic specifications.  This network
+        boundary resolves them after the physical tuple and exact State batch are
+        frozen, but before any State, lifecycle, timing, application, or source
+        publication capability transfers.
+        """
+
+        from evidenceforge.events.base import OccurrenceBuilder
+        from evidenceforge.events.contexts import ProcessContext
+        from evidenceforge.events.contracts import (
+            EventKind,
+        )
+        from evidenceforge.events.lifecycle import ActionLifecycleContext
+        from evidenceforge.generation.deferred_session_composition import DeferredSessionKind
+        from evidenceforge.generation.deferred_session_preseal import (
+            DeferredSessionDependentOccurrenceSpec,
+        )
+        from evidenceforge.generation.state_manager import (
+            ConnectionExistingSessionPatch,
+        )
+        from evidenceforge.generation.windows_tokens import windows_process_token_profile
+
+        if type(authority) is not DeferredSessionNetworkAuthority:
+            raise TypeError("Deferred session dependent authority changed exact type")
+        if not self._executor.state_manager.authenticates_materialization_plan(root.state_plan):
+            raise StateError("Deferred session State plan integrity validation failed")
+        specs = DeferredSessionNetworkAuthority.validate_dependent_occurrences(authority)
+        if not specs:
+            return ()
+        batch = root.state_plan.batch
+        if batch is None:
+            raise StateError("Deferred session dependent specifications lost their State batch")
+        if batch is not authority.state_batch:
+            raise StateError("Deferred session dependent specifications changed their State owner")
+        members = (
+            *((batch.session,) if batch.session is not None else ()),
+            *batch.processes,
+            *(
+                (root.state_plan.existing_session_patch,)
+                if root.state_plan.existing_session_patch is not None
+                else ()
+            ),
+        )
+        members_by_object_id = {
+            (
+                member.after.identity.object_id
+                if type(member) is ConnectionExistingSessionPatch
+                else member.identity.object_id
+            ): member
+            for member in members
+        }
+        transaction = root.transaction
+        resolved: list[tuple[OccurrenceBuilder, Any]] = []
+        for spec in specs:
+            if type(spec) is not DeferredSessionDependentOccurrenceSpec:
+                raise TypeError("Deferred session dependent specification changed type")
+            member = members_by_object_id.get(spec.member_references[0])
+            if member is None:
+                raise StateError("Deferred session dependent specification names no State member")
+            identity = (
+                member.after.identity
+                if type(member) is ConnectionExistingSessionPatch
+                else member.identity
+            )
+            occurrence_key = SemanticOccurrenceKey(
+                action_id=transaction.stable_id,
+                role=OccurrenceRole.DEPENDENT,
+                instance_key=spec.occurrence_id,
+            )
+            if type(member) in {SessionMaterializationPlan, ConnectionExistingSessionPatch}:
+                if event.dst_host is None:
+                    raise StateError("Deferred session login projection requires its target host")
+                is_rdp = authority.kind is DeferredSessionKind.RDP
+                is_reconnect = type(member) is ConnectionExistingSessionPatch
+                rdp_winlogon = (
+                    next(
+                        (
+                            process.identity
+                            for process in batch.processes
+                            if process.auth_session_id == identity.session_id
+                            and process.identity.image.replace("/", "\\")
+                            .rsplit("\\", 1)[-1]
+                            .casefold()
+                            == "winlogon.exe"
+                        ),
+                        None,
+                    )
+                    if is_rdp and not is_reconnect
+                    else None
+                )
+                if is_reconnect and (not is_rdp or spec.event_type is not EventKind.RDP_RECONNECT):
+                    raise StateError("Deferred live-session dependent is not an RDP reconnect")
+                builder = OccurrenceBuilder(
+                    timestamp=spec.canonical_time,
+                    event_type=spec.event_type.value,
+                    src_host=event.src_host if is_rdp and not is_reconnect else None,
+                    dst_host=event.dst_host,
+                    auth=AuthContext(
+                        username=identity.principal,
+                        user_sid=(
+                            self._executor._preview_sid(identity.principal) if is_rdp else ""
+                        ),
+                        logon_id=identity.logon_id,
+                        session_id=identity.session_id,
+                        logon_type=10,
+                        auth_package="Negotiate" if is_rdp else "SSH",
+                        source_ip=transaction.src_ip,
+                        source_port=transaction.src_port,
+                        elevated=False,
+                        emit_special_privileges=False,
+                        logon_process="User32" if is_rdp else "",
+                        lm_package="-" if is_rdp else "",
+                        logon_guid=identity.logon_guid,
+                        subject_sid="S-1-5-18" if is_rdp else "",
+                        subject_username="SYSTEM" if is_rdp else "",
+                        subject_domain="NT AUTHORITY" if is_rdp else "",
+                        subject_logon_id="0x3e7" if is_rdp else "",
+                        privilege_list="",
+                        session_kind=authority.kind.value,
+                        auth_protocol="rdp" if is_rdp else "ssh",
+                        process_pid=rdp_winlogon.pid if rdp_winlogon is not None else 0,
+                        process_name=rdp_winlogon.image if rdp_winlogon is not None else "",
+                    ),
+                    occurrence_key=occurrence_key,
+                    identity_plan=EventIdentityPlan(subject=identity, session=identity),
+                    lifecycle=ActionLifecycleContext(
+                        group_id=identity.lifecycle_group_id,
+                        canonical_start=identity.started_at,
+                        phase="dependent" if is_reconnect else "start",
+                        parent_group_id=(identity.parent_lifecycle_group_id or None),
+                    ),
+                )
+            elif type(member) is ProcessMaterializationPlan:
+                candidate_hosts = tuple(
+                    host
+                    for host in (event.src_host, event.dst_host)
+                    if host is not None and identity.hostname in {host.hostname, host.fqdn}
+                )
+                if len(candidate_hosts) != 1:
+                    raise StateError(
+                        "Deferred session process projection has no unique transport endpoint"
+                    )
+                is_rdp = authority.kind is DeferredSessionKind.RDP
+                user_sid = (
+                    (
+                        "S-1-5-18"
+                        if identity.principal.casefold() == "system"
+                        else self._executor._preview_sid(identity.principal)
+                    )
+                    if is_rdp
+                    else ""
+                )
+                parent_identity = member.parent_identity
+                system_subject = identity.principal.casefold() == "system"
+                integrity_level, token_elevation, mandatory_label = (
+                    windows_process_token_profile(
+                        identity.principal,
+                        member.integrity_level,
+                    )
+                    if is_rdp
+                    else (member.integrity_level, "", "")
+                )
+                owning_session = (
+                    batch.session.identity
+                    if batch.session is not None
+                    and member.auth_session_id == batch.session.identity.session_id
+                    and identity.logon_id == batch.session.identity.logon_id
+                    else None
+                )
+                builder = OccurrenceBuilder(
+                    timestamp=spec.canonical_time,
+                    event_type=spec.event_type.value,
+                    src_host=candidate_hosts[0],
+                    process=ProcessContext(
+                        pid=identity.pid,
+                        parent_pid=identity.parent_pid,
+                        image=identity.image,
+                        command_line=identity.command_line,
+                        username=identity.principal,
+                        integrity_level=integrity_level,
+                        logon_id=identity.logon_id,
+                        start_time=identity.started_at,
+                        parent_image=(parent_identity.image if parent_identity is not None else ""),
+                        parent_command_line=(
+                            parent_identity.command_line if parent_identity is not None else ""
+                        ),
+                        parent_username=(
+                            parent_identity.principal if parent_identity is not None else ""
+                        ),
+                        parent_start_time=(
+                            parent_identity.started_at if parent_identity is not None else None
+                        ),
+                        token_elevation=token_elevation,
+                        mandatory_label=mandatory_label,
+                    ),
+                    auth=(
+                        AuthContext(
+                            username=identity.principal,
+                            user_sid=user_sid,
+                            logon_id=identity.logon_id,
+                            session_id=member.auth_session_id or 0,
+                            logon_type=member.auth_logon_type or 0,
+                            subject_sid="S-1-5-18" if system_subject else "",
+                            subject_username="SYSTEM" if system_subject else "",
+                            subject_domain="NT AUTHORITY" if system_subject else "",
+                            subject_logon_id="0x3e7" if system_subject else "",
+                            session_kind="rdp",
+                            auth_protocol="rdp",
+                            logon_guid=(
+                                owning_session.logon_guid if owning_session is not None else ""
+                            ),
+                        )
+                        if is_rdp
+                        else None
+                    ),
+                    occurrence_key=occurrence_key,
+                    identity_plan=EventIdentityPlan(
+                        subject=identity,
+                        actor=member.parent_identity,
+                    ),
+                    lifecycle=ActionLifecycleContext(
+                        group_id=identity.lifecycle_group_id,
+                        canonical_start=identity.started_at,
+                        phase="start",
+                        parent_group_id=(identity.parent_lifecycle_group_id or None),
+                    ),
+                )
+            else:
+                raise TypeError("Deferred session State-start member changed exact type")
+            resolved.append((builder, member))
+        return tuple(resolved)
+
+    @property
+    def _timing_runtime(self) -> Any:
+        """Return the active prepared timing overlay or the prerequisite runtime."""
+
+        return _ACTIVE_NETWORK_TIMING_RUNTIME.get() or self._executor.timing_runtime
+
+    def _stage_dns_observation(
+        self,
+        preparation: Any,
+        *,
+        src_ip: str,
+        resolver_ip: str,
+        dns: Any,
+        time: datetime,
+    ) -> bool:
+        """Stage one resolver observation and report an overlapping visible TTL window."""
+
+        cache_key = _dns_observation_cache_key(src_ip, resolver_ip, dns)
+        if cache_key is None or not self._executor._dns_observation_time_is_visible(time):
+            return False
+        start = time.timestamp()
+        ttl = max(1.0, min(float(value) for value in dns.TTLs))
+        end = start + ttl
+        retained = preparation.read_point(
+            NetworkRuntimePointFamily.DNS_OBSERVATION,
+            cache_key,
+            (),
+            at=ensure_utc(time),
+        )
+        windows = [
+            (float(old_start), float(old_end))
+            for old_start, old_end in tuple(retained)
+            if float(old_end) >= start - 86_400
+        ][-32:]
+        duplicate = any(start < old_end and end > old_start for old_start, old_end in windows)
+        if not duplicate:
+            windows.append((start, end))
+            windows.sort()
+            windows = windows[-32:]
+            latest_end = max(old_end for _old_start, old_end in windows)
+            retained_until = min(
+                datetime.fromtimestamp(latest_end, tz=UTC),
+                self._executor._network_transaction_runtime.window_end,
+            )
+            preparation.stage_point(
+                NetworkRuntimePointFamily.DNS_OBSERVATION,
+                cache_key,
+                tuple(windows),
+                expires_at=retained_until,
+            )
+        return duplicate
+
+    def _timing_scope(self, request: NetworkConnectionRequest) -> TimingScope:
+        """Return the durable scope shared by one canonical network transaction."""
+
+        stable_id = (
+            self._active_request_stable_id
+            if request is self._active_request and self._active_request_stable_id
+            else request.stable_id
+        )
+        hostname = request.source_system.hostname if request.source_system is not None else ""
+        return TimingScope(
+            stable_id=stable_id,
+            host=hostname,
+            source="network",
+            lifecycle_id=request.parent_action_group_id or stable_id,
+        )
+
+    def _tls_floor_slack_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        maximum_seconds: float,
+    ) -> float:
+        """Sample right-skew TLS completion slack above the protocol floor."""
+
+        maximum_us = max(16_000, round(maximum_seconds * 1_000_000))
+        median_us = min(maximum_us - 1.0, max(15_001.0, maximum_us * 0.24))
+        return self._timing_runtime.sampler.sample_timedelta(
+            TruncatedLognormalDistribution(
+                median=median_us,
+                sigma=0.72,
+                minimum=15_000.0,
+                maximum=float(maximum_us),
+            ),
+            relationship_key="network.tls.completed_floor_slack",
+            scope=self._timing_scope(request),
+            sample_key="tls_floor",
+        ).total_seconds()
+
+    def _tls_completed_extension_seconds(self, request: NetworkConnectionRequest) -> float:
+        """Sample ordinary and long-tail TLS session extension time."""
+
+        distribution = MixtureDistribution(
+            components=(
+                WeightedDistribution(
+                    weight=0.92,
+                    distribution=TruncatedLognormalDistribution(
+                        median=240_000.0,
+                        sigma=0.82,
+                        minimum=15_000.0,
+                        maximum=1_500_000.0,
+                    ),
+                ),
+                WeightedDistribution(
+                    weight=0.08,
+                    distribution=TruncatedLognormalDistribution(
+                        median=2_700_000.0,
+                        sigma=0.55,
+                        minimum=1_500_000.0,
+                        maximum=float(_TLS_COMPLETED_EXTENSION_MAXIMUM_US),
+                    ),
+                ),
+            )
+        )
+        return self._timing_runtime.sampler.sample_timedelta(
+            distribution,
+            relationship_key="network.tls.completed_extension",
+            scope=self._timing_scope(request),
+            sample_key="tls_extension",
+        ).total_seconds()
+
+    def _completed_tls_duration_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        duration: float | None,
+    ) -> float:
+        """Return one sampled completed-TLS lifetime through the owning branches."""
+
+        minimum_seconds, floor_slack_maximum_seconds = (
+            _tls_completed_duration_floor_bounds_seconds()
+        )
+        if duration is None or duration < minimum_seconds:
+            return minimum_seconds + self._tls_floor_slack_seconds(
+                request,
+                floor_slack_maximum_seconds,
+            )
+        return duration + self._tls_completed_extension_seconds(request)
+
+    def _http_floor_slack_seconds(self, request: NetworkConnectionRequest) -> float:
+        """Sample positive source-admission slack above an HTTP duration floor."""
+
+        return self._timing_runtime.sampler.sample_timedelta(
+            TruncatedLognormalDistribution(
+                median=3_600.0,
+                sigma=0.88,
+                minimum=0.0,
+                maximum=float(_HTTP_DURATION_FLOOR_SLACK_MAXIMUM_US),
+            ),
+            relationship_key="network.http.duration_floor_slack",
+            scope=self._timing_scope(request),
+            sample_key="http_floor",
+        ).total_seconds()
+
+    def _completed_http_duration_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        duration: float | None,
+    ) -> float:
+        """Return one completed-HTTP lifetime through the owning floor branch."""
+
+        minimum_seconds, _floor_slack_maximum_seconds = (
+            _http_completed_duration_floor_bounds_seconds()
+        )
+        if duration is None or duration < minimum_seconds:
+            return minimum_seconds + self._http_floor_slack_seconds(request)
+        return duration
+
+    def _http_default_duration_seconds(self, request: NetworkConnectionRequest) -> float:
+        """Sample a right-skew completed HTTP transport duration."""
+
+        return self._timing_runtime.sampler.sample_timedelta(
+            TruncatedLognormalDistribution(
+                median=180_000.0,
+                sigma=0.92,
+                minimum=10_000.0,
+                maximum=2_000_001.0,
+            ),
+            relationship_key="network.http.default_duration",
+            scope=self._timing_scope(request),
+            sample_key="http_default",
+        ).total_seconds()
+
+    def _sample_duration_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        relationship_key: str,
+        sample_key: str,
+        minimum_us: int,
+        median_us: int,
+        maximum_us: int,
+        sigma: float = 0.82,
+    ) -> float:
+        """Sample one open-support right-skew duration in whole microseconds."""
+
+        if maximum_us <= minimum_us + 2:
+            raise TimingDistributionError(
+                f"{relationship_key} requires at least one interior microsecond: "
+                f"minimum_us={minimum_us} maximum_us={maximum_us}"
+            )
+        bounded_median = min(maximum_us - 1, max(minimum_us + 1, median_us))
+        return self._timing_runtime.sampler.sample_timedelta(
+            TruncatedLognormalDistribution(
+                median=float(bounded_median),
+                sigma=sigma,
+                minimum=float(minimum_us),
+                maximum=float(maximum_us),
+            ),
+            relationship_key=relationship_key,
+            scope=self._timing_scope(request),
+            sample_key=sample_key,
+        ).total_seconds()
+
+    def _dns_rtt_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        is_public_resolver: bool,
+    ) -> float:
+        """Sample a canonical DNS response RTT without uniform-bin fingerprints."""
+
+        if is_public_resolver:
+            components = (
+                (0.15, 2_001, 5_000, 8_001, 0.46),
+                (0.55, 8_001, 17_000, 35_001, 0.68),
+                (0.25, 35_001, 62_000, 120_001, 0.72),
+                (0.05, 120_001, 178_000, 350_001, 0.68),
+            )
+        else:
+            components = (
+                (0.60, 99, 420, 1_001, 0.72),
+                (0.25, 1_001, 3_200, 10_001, 0.76),
+                (0.12, 10_001, 29_000, 80_001, 0.78),
+                (0.03, 80_001, 128_000, 250_001, 0.72),
+            )
+        distribution = MixtureDistribution(
+            components=tuple(
+                WeightedDistribution(
+                    weight=weight,
+                    distribution=TruncatedLognormalDistribution(
+                        median=float(median_us),
+                        sigma=sigma,
+                        minimum=float(minimum_us),
+                        maximum=float(maximum_us),
+                    ),
+                )
+                for weight, minimum_us, median_us, maximum_us, sigma in components
+            )
+        )
+        return self._timing_runtime.sampler.sample_timedelta(
+            distribution,
+            relationship_key="network.dns.response_rtt",
+            scope=self._timing_scope(request),
+            sample_key="public" if is_public_resolver else "internal",
+        ).total_seconds()
+
+    def _dns_transport_duration_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        rtt_seconds: float,
+    ) -> float:
+        """Return packet-owned DNS transport duration for the requested protocol."""
+
+        if request.proto == "udp":
+            return rtt_seconds
+
+        return rtt_seconds + self._sample_duration_seconds(
+            request,
+            relationship_key="network.dns.transport_close_slack",
+            sample_key="dns_close",
+            minimum_us=1_037,
+            median_us=2_100,
+            maximum_us=_DNS_TRANSPORT_CLOSE_SLACK_MAXIMUM_US,
+            sigma=0.86,
+        )
+
+    def _kerberos_udp_duration_seconds(self, request: NetworkConnectionRequest) -> float:
+        """Sample one response-bearing UDP Kerberos exchange lifetime."""
+
+        return self._sample_duration_seconds(
+            request,
+            relationship_key="network.kerberos.udp_duration",
+            sample_key="udp_exchange",
+            minimum_us=3_000,
+            median_us=14_000,
+            maximum_us=160_001,
+            sigma=0.78,
+        )
+
+    def _kerberos_tcp_duration_seconds(self, request: NetworkConnectionRequest) -> float:
+        """Sample a response-bearing TCP Kerberos exchange with a small long tail."""
+
+        distribution = MixtureDistribution(
+            components=(
+                WeightedDistribution(
+                    weight=0.92,
+                    distribution=TruncatedLognormalDistribution(
+                        median=24_000.0,
+                        sigma=0.82,
+                        minimum=3_000.0,
+                        maximum=180_001.0,
+                    ),
+                ),
+                WeightedDistribution(
+                    weight=0.08,
+                    distribution=TruncatedLognormalDistribution(
+                        median=1_350_000.0,
+                        sigma=0.48,
+                        minimum=500_000.0,
+                        maximum=2_500_001.0,
+                    ),
+                ),
+            )
+        )
+        return self._timing_runtime.sampler.sample_timedelta(
+            distribution,
+            relationship_key="network.kerberos.tcp_duration",
+            scope=self._timing_scope(request),
+            sample_key="tcp_exchange",
+        ).total_seconds()
+
+    def _kerberos_audit_floor_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        count: int,
+    ) -> float:
+        """Sample a lifecycle-coherent floor for DC audit companions."""
+
+        per_exchange = self._sample_duration_seconds(
+            request,
+            relationship_key="network.kerberos.audit_exchange_duration",
+            sample_key=f"audit:{count}",
+            minimum_us=6_000,
+            median_us=10_500,
+            maximum_us=22_001,
+            sigma=0.58,
+        )
+        return count * per_exchange
+
+    def _generator_owned_duration_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        duration: float | None,
+    ) -> float | None:
+        """Diversify engine-owned placeholder durations through the shared runtime."""
+
+        if duration is None:
+            return None
+        anchors = (0.8, 2.0, 0.2, 0.1, 0.02, 0.01)
+        if not any(abs(duration - anchor) <= 1e-9 for anchor in anchors):
+            return duration
+        duration_us = max(1_000, round(duration * 1_000_000))
+        if duration <= 0.02:
+            minimum_us = max(100, round(duration_us * 0.55))
+            maximum_us = round(duration_us * 1.85) + 4_001
+            median_us = round(duration_us * 0.94) + 700
+        else:
+            minimum_us = max(1_000, round(duration_us * 0.82) - 14_999)
+            maximum_us = round(duration_us * 1.24) + 35_001
+            median_us = max(minimum_us + 1, round(duration_us * 0.98))
+        return self._sample_duration_seconds(
+            request,
+            relationship_key="network.default_transport_duration",
+            sample_key=f"anchor:{duration_us}",
+            minimum_us=minimum_us,
+            median_us=median_us,
+            maximum_us=maximum_us,
+            sigma=0.64,
+        )
+
+    def _failed_transport_duration_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        state: str,
+        duration: float,
+        sample_key: str,
+    ) -> float:
+        """Sample a state-specific partial transport lifetime within its base budget."""
+
+        base_us = max(10, round(duration * 1_000_000))
+        if state in {"S1", "SH", "SHR"}:
+            minimum_us, median_us, maximum_us = 37, 28_000, 500_001
+        elif state in {"S2", "S3"}:
+            minimum_us = max(3, round(base_us * 0.30))
+            median_us = max(minimum_us + 1, round(base_us * 0.43))
+            maximum_us = max(minimum_us + 3, round(base_us * 0.80) + 1)
+        elif state in {"RSTO", "RSTR"}:
+            minimum_us = max(3, round(base_us * 0.10))
+            median_us = max(minimum_us + 1, round(base_us * 0.19))
+            maximum_us = max(minimum_us + 3, round(base_us * 0.50) + 1)
+        else:
+            minimum_us, median_us, maximum_us = 1_000, 44_000, 500_001
+        return self._sample_duration_seconds(
+            request,
+            relationship_key=f"network.failed_transport.{state.lower()}_duration",
+            sample_key=sample_key,
+            minimum_us=minimum_us,
+            median_us=median_us,
+            maximum_us=maximum_us,
+            sigma=0.88,
+        )
+
+    def _ntp_timing_components(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        median_rtt_ms: float,
+        rtt_sigma: float,
+    ) -> tuple[float, float, float, timedelta]:
+        """Sample canonical NTP RTT, server processing, close slack, and reference age."""
+
+        median_rtt_us = max(201, round(median_rtt_ms * 1_000))
+        rtt_seconds = self._sample_duration_seconds(
+            request,
+            relationship_key="network.ntp.response_rtt",
+            sample_key="rtt",
+            minimum_us=200,
+            median_us=median_rtt_us,
+            maximum_us=max(median_rtt_us + 3, _NTP_RTT_MAXIMUM_US),
+            sigma=rtt_sigma,
+        )
+        processing_seconds = self._sample_duration_seconds(
+            request,
+            relationship_key="network.ntp.server_processing",
+            sample_key="processing",
+            minimum_us=50,
+            median_us=500,
+            maximum_us=_NTP_PROCESSING_MAXIMUM_US,
+            sigma=0.52,
+        )
+        close_slack_seconds = self._sample_duration_seconds(
+            request,
+            relationship_key="network.ntp.transport_close_slack",
+            sample_key="close",
+            minimum_us=1_000,
+            median_us=2_700,
+            maximum_us=_NTP_CLOSE_SLACK_MAXIMUM_US,
+            sigma=0.64,
+        )
+        reference_age = self._timing_runtime.sampler.sample_timedelta(
+            TruncatedLognormalDistribution(
+                median=75_000_000.0,
+                sigma=0.72,
+                minimum=30_000_000.0,
+                maximum=300_000_001.0,
+            ),
+            relationship_key="network.ntp.reference_age",
+            scope=self._timing_scope(request),
+            sample_key="reference",
+        )
+        return rtt_seconds, processing_seconds, close_slack_seconds, reference_age
+
+    def _ntp_clock_time(
+        self,
+        request: NetworkConnectionRequest,
+        canonical_time: datetime,
+        *,
+        role: str,
+        identity: str,
+    ) -> datetime:
+        """Project an NTP packet field through one stable endpoint clock."""
+
+        maximum_offset = 35.0 if role == "client" else 25.0
+        maximum_wander = 5.0
+        spec = SourceClockSpec(
+            offset_microseconds=TriangularDistribution(
+                minimum=-maximum_offset,
+                mode=0.0,
+                maximum=maximum_offset,
+            ),
+            drift_ppm=ConstantDistribution(0.0),
+            wander=ClockWanderSpec(
+                knot_distribution_microseconds=TriangularDistribution(
+                    minimum=-maximum_wander,
+                    mode=0.0,
+                    maximum=maximum_wander,
+                ),
+                knot_interval=timedelta(minutes=5),
+            ),
+        )
+        return self._timing_runtime.clocks.project(
+            ensure_utc(canonical_time),
+            key=SourceClockKey(kind="ntp_endpoint", identity=identity, profile=role),
+            spec=spec,
+        )
+
+    def _foreground_teardown_delay_seconds(
+        self,
+        request: NetworkConnectionRequest,
+        minimum_seconds: float,
+        maximum_seconds: float,
+    ) -> float:
+        """Sample process teardown after a connection-owned foreground action."""
+
+        minimum_us = max(1, round(minimum_seconds * 1_000_000))
+        maximum_us = max(minimum_us + 3, round(maximum_seconds * 1_000_000) + 1)
+        return self._sample_duration_seconds(
+            request,
+            relationship_key="network.foreground_process.teardown_delay",
+            sample_key="process_terminate",
+            minimum_us=minimum_us,
+            median_us=minimum_us + max(1, round((maximum_us - minimum_us) * 0.18)),
+            maximum_us=maximum_us,
+            sigma=0.78,
+        )
+
+    def _cap_to_owning_session(
+        self,
+        *,
+        start: datetime,
+        duration: float | None,
+        source_system: Any,
+        pid: int,
+        stable_id: str,
+    ) -> float | None:
+        """Bound process-owned transport lifetime by an authoritative session end."""
+
+        if source_system is None or pid <= 0:
+            return duration
+        end_plan = self._executor.state_manager.process_session_end_plan(
+            source_system.hostname,
+            pid,
+        )
+        if end_plan is None or not end_plan.is_authoritative:
+            return duration
+        canonical_start = ensure_utc(start)
+        deadline = ensure_utc(end_plan.canonical_end)
+        if canonical_start >= deadline:
+            process = self._executor.state_manager.get_process(source_system.hostname, pid)
+            process_detail = (
+                f" image={process.image!r} logon_id={process.logon_id}"
+                if process is not None
+                else ""
+            )
+            raise StateError(
+                "Process-owned network activity cannot begin at or after its authoritative "
+                f"session end: {source_system.hostname} pid={pid} "
+                f"start={canonical_start.isoformat()} end={deadline.isoformat()}"
+                f"{process_detail}"
+            )
+        available_us = round((deadline - canonical_start).total_seconds() * 1_000_000)
+        if available_us <= 3:
+            self._timing_runtime.audit.record_saturation("network.authoritative_session_close_gap")
+            raise StateError(
+                "Process-owned network activity has no microsecond interior before its "
+                f"authoritative session end: {source_system.hostname} pid={pid} "
+                f"start={canonical_start.isoformat()} end={deadline.isoformat()}"
+            )
+        maximum_gap_us = min(1_500_001, available_us)
+        minimum_gap_us = min(100_000, max(0, maximum_gap_us // 8))
+        if maximum_gap_us <= minimum_gap_us + 2:
+            minimum_gap_us = max(0, maximum_gap_us - 3)
+        scope = TimingScope(
+            stable_id=stable_id,
+            host=source_system.hostname,
+            source="network",
+            lifecycle_id=f"pid:{pid}",
+        )
+        close_gap = self._timing_runtime.sampler.sample_timedelta(
+            TruncatedLognormalDistribution(
+                median=float(
+                    min(
+                        maximum_gap_us - 1,
+                        minimum_gap_us + max(1, (maximum_gap_us - minimum_gap_us) // 5),
+                    )
+                ),
+                sigma=0.76,
+                minimum=float(minimum_gap_us),
+                maximum=float(maximum_gap_us),
+            ),
+            relationship_key="network.authoritative_session_close_gap",
+            scope=scope,
+            sample_key=deadline.isoformat(),
+        )
+        latest_duration = (deadline - close_gap - canonical_start).total_seconds()
+        return latest_duration if duration is None else min(duration, latest_duration)
+
+    def _reconcile_application_payload(
+        self,
+        event: _NetworkOccurrenceDraft,
+    ) -> bool:
+        """Fit canonical application objects and framing inside transport payload."""
+
+        network = event.network
+        if network is None or network.protocol != "tcp" or network.conn_state != "SF":
+            return False
+
+        orig_floor = 0
+        resp_floor = 0
+        if event.http is not None:
+            http_orig, http_resp = _http_flow_payload_bytes(event.http)
+            orig_floor = max(orig_floor, http_orig)
+            resp_floor = max(resp_floor, http_resp)
+
+        grouped: dict[bool, list[Any]] = {True: [], False: []}
+        for transfer in (event.file_transfer, *event.file_transfers):
+            if transfer is not None and transfer not in grouped[transfer.is_orig]:
+                grouped[transfer.is_orig].append(transfer)
+        for is_orig, transfers in grouped.items():
+            if not transfers:
+                continue
+            accounted_bytes = [
+                transfer.total_bytes
+                if transfer.total_bytes is not None
+                else transfer.seen_bytes + transfer.missing_bytes
+                for transfer in transfers
+            ]
+            total_bytes = sum(accounted_bytes)
+            framing_bytes = sum(
+                max(128, 96 * max(1, (max(1, size) + 65_535) // 65_536))
+                if transfer.source.upper() == "SMB"
+                else 192
+                for transfer, size in zip(transfers, accounted_bytes, strict=True)
+            )
+            file_floor = total_bytes + framing_bytes
+            if is_orig:
+                orig_floor = max(orig_floor, file_floor)
+            else:
+                resp_floor = max(resp_floor, file_floor)
+
+        previous = (network.orig_bytes or 0, network.resp_bytes or 0)
+        network.orig_bytes = max(previous[0], orig_floor)
+        network.resp_bytes = max(previous[1], resp_floor)
+        if (network.orig_bytes, network.resp_bytes) == previous:
+            return False
+
+        accounting_rng = random.Random(
+            _stable_seed(
+                "network_application_payload_accounting:"
+                f"{network.src_ip}:{network.src_port}:{network.dst_ip}:{network.dst_port}:"
+                f"{network.protocol}:{network.zeek_uid}"
+            )
+        )
+        network.orig_pkts, network.resp_pkts = _tcp_packet_counts_from_payload_and_history(
+            network.orig_bytes,
+            network.resp_bytes,
+            network.history,
+            accounting_rng,
+        )
+        network.orig_ip_bytes = _tcp_ip_byte_count(
+            network.orig_bytes,
+            network.orig_pkts,
+            accounting_rng,
+        )
+        network.resp_ip_bytes = _tcp_ip_byte_count(
+            network.resp_bytes,
+            network.resp_pkts,
+            accounting_rng,
+        )
+        return True
+
+    def _plan_http_multipart_endpoint_reads(
+        self,
+        event: Any,
+        source_system: Any | None,
+        target_system: Any | None,
+        source_pid: int,
+        source_process: Any | None,
+        endpoint_time: datetime,
+    ) -> _HttpMultipartEndpointReadPlan | None:
+        """Freeze exact endpoint-read builders and State activity patches before commit."""
+
+        http = event.protocol.http
+        network = event.network
+        if http is None or network is None:
+            return None
+
+        from evidenceforge.events.base import OccurrenceBuilder
+        from evidenceforge.events.contexts import ProcessContext
+        from evidenceforge.events.contracts import (
+            EffectOccurrenceOwner,
+        )
+        from evidenceforge.generation.state_manager import ProcessActivityPatch
+
+        effective_source_pid = (
+            source_pid if source_pid > 0 else int(getattr(source_process, "pid", -1) or -1)
+        )
+        directions = (
+            (http.request_multipart, source_system, effective_source_pid, source_process),
+            (http.response_multipart, target_system, network.responding_pid, None),
+        )
+        reads: list[tuple[Any, int, Any, Any, Any, Any, datetime, str, str]] = []
+        for multipart, system, pid, canonical_process in directions:
+            if multipart is None or system is None or pid <= 0:
+                continue
+            if multipart.local_reads_emitted:
+                continue
+            running = self._executor.state_manager.get_process(system.hostname, pid)
+            if running is None and canonical_process is None:
+                continue
+            process_identity = self._executor.state_manager.get_process_identity(
+                system.hostname,
+                pid,
+            )
+            if process_identity is None:
+                raise StateError(
+                    "HTTP multipart local read has no exact State process actor before root seal"
+                )
+            local_parts = [part for part in multipart.leaf_parts() if part.local_source_path]
+            for index, part in enumerate(local_parts):
+                transfer_anchor = endpoint_time
+                read_time = transfer_anchor - timedelta(milliseconds=max(1, 150 - min(index, 100)))
+                process_start = (
+                    running.start_time
+                    if running is not None
+                    else canonical_process.start_time
+                    if canonical_process is not None
+                    else None
+                )
+                if process_start is not None:
+                    read_time = max(
+                        read_time,
+                        process_start + timedelta(milliseconds=1 + index),
+                    )
+                username = (
+                    running.username
+                    if running is not None
+                    else canonical_process.username
+                    if canonical_process is not None
+                    else ""
+                )
+                logon_id = (
+                    running.logon_id
+                    if running is not None
+                    else canonical_process.logon_id
+                    if canonical_process is not None
+                    else ""
+                )
+                reads.append(
+                    (
+                        system,
+                        pid,
+                        running,
+                        canonical_process,
+                        process_identity,
+                        part,
+                        read_time,
+                        username,
+                        logon_id,
+                    )
+                )
+
+        if not reads:
+            return None
+        plan = OwnedEffectOccurrencePlan(
+            owner=EffectOccurrenceOwner.HTTP_MULTIPART_LOCAL_READ,
+            kind=EffectOccurrenceKind.FILE,
+            root_action_id=network.stable_id,
+            instance_key=stable_uuid(
+                "http-multipart-local-read-instance",
+                network.stable_id,
+                *(
+                    f"{system.hostname.casefold()}:{pid}:{part.local_source_path.casefold()}:"
+                    f"{read_time.isoformat()}"
+                    for system, pid, _running, _canonical, _identity, part, read_time, _user, _logon in reads
+                ),
+            ),
+            occurrence_count=len(reads),
+        )
+        builders: list[OccurrenceBuilder] = []
+        activity_by_object_id: dict[str, ProcessActivityPatch] = {}
+        for ordinal, (
+            system,
+            pid,
+            running,
+            canonical_process,
+            process_identity,
+            part,
+            read_time,
+            username,
+            logon_id,
+        ) in enumerate(reads):
+            builders.append(
+                OccurrenceBuilder(
+                    timestamp=read_time,
+                    event_type="file_read",
+                    src_host=self._executor._build_host_context(system),
+                    auth=AuthContext(
+                        username=username,
+                        logon_id=logon_id,
+                    ),
+                    process=ProcessContext(
+                        pid=pid,
+                        parent_pid=(
+                            running.parent_pid
+                            if running is not None
+                            else canonical_process.parent_pid
+                        ),
+                        image=(running.image if running is not None else canonical_process.image),
+                        command_line=(
+                            running.command_line
+                            if running is not None
+                            else canonical_process.command_line
+                        ),
+                        username=username,
+                        logon_id=logon_id,
+                        start_time=(
+                            running.start_time
+                            if running is not None
+                            else canonical_process.start_time
+                        ),
+                    ),
+                    file=FileContext(path=part.local_source_path, action="read", pid=pid),
+                    effect_provenance=plan.provenance(ordinal),
+                )
+            )
+            prior = activity_by_object_id.get(process_identity.object_id)
+            if prior is not None and prior.identity != process_identity:
+                raise StateError("HTTP multipart process actor identity changed during planning")
+            activity_frontier = network.closed_at or network.started_at
+            if prior is None or activity_frontier > prior.activity_time:
+                activity_by_object_id[process_identity.object_id] = ProcessActivityPatch(
+                    process_identity,
+                    activity_frontier,
+                )
+        return _HttpMultipartEndpointReadPlan(
+            plan=plan,
+            builders=tuple(builders),
+            process_activity=tuple(activity_by_object_id.values()),
+        )
+
+    @staticmethod
+    def _merge_process_activity_patches(
+        existing: tuple[Any, ...],
+        additions: tuple[Any, ...],
+    ) -> tuple[Any, ...]:
+        """Merge exact actor frontiers without changing first-occurrence ordering."""
+
+        merged: dict[str, Any] = {}
+        for patch in (*existing, *additions):
+            object_id = patch.identity.object_id
+            prior = merged.get(object_id)
+            if prior is not None and prior.identity != patch.identity:
+                raise StateError("Network process activity actor identity changed during merge")
+            if prior is None or patch.activity_time > prior.activity_time:
+                merged[object_id] = patch
+        return tuple(merged.values())
+
+    @staticmethod
+    def _merge_session_activity_patches(
+        existing: tuple[Any, ...],
+        additions: tuple[Any, ...],
+    ) -> tuple[Any, ...]:
+        """Merge exact session frontiers without changing first-occurrence ordering."""
+
+        merged: dict[str, Any] = {}
+        for patch in (*existing, *additions):
+            object_id = patch.identity.object_id
+            prior = merged.get(object_id)
+            if prior is not None and prior.identity != patch.identity:
+                raise StateError("Network session activity identity changed during merge")
+            if prior is None or patch.activity_time > prior.activity_time:
+                merged[object_id] = patch
+        return tuple(merged.values())
+
+    def _build_persistent_smb_root_handoff(
+        self,
+        preparation: PersistentSmbPreparedRoot,
+        materialization: Any,
+    ) -> PersistentSmbRootHandoff:
+        """Authenticate and retain every exact child returned with one SMB root."""
+
+        from evidenceforge.generation.lifecycle_authority import (
+            LifecyclePreparedNetworkResult,
+        )
+        from evidenceforge.generation.smb_channels import SmbChannelAdmissionResult
+
+        executor = self._executor
+        if type(materialization) is not LifecyclePreparedNetworkResult:
+            raise StateError("Persistent SMB root returned an invalid materialization")
+        if not executor._lifecycle_authority.authenticates_prepared_network_receipt(
+            preparation.root,
+            materialization.receipt,
+        ):
+            raise StateError("Persistent SMB root returned an unauthenticated receipt")
+        state = materialization.connection.state
+        pin_install = state.smb_connection_pin_install
+        file_mutation = state.smb_file_mutation
+        application = materialization.connection.application
+        if (
+            pin_install is None
+            or file_mutation is None
+            or type(application) is not SmbChannelAdmissionResult
+            or not executor.state_manager.authenticates_smb_connection_pin_install_receipt(
+                pin_install
+            )
+            or not executor.state_manager.authenticates_smb_file_mutation_commit_receipt(
+                file_mutation.receipt
+            )
+            or not executor._smb_channel_manager.authenticates_admission_receipt(
+                application.receipt
+            )
+        ):
+            raise StateError("Persistent SMB root lost an exact terminal child result")
+        lifecycle_binding = executor._lifecycle_authority.detach_prepared_network_receipt(
+            materialization.receipt
+        )
+        return PersistentSmbRootHandoff(
+            materialization=materialization,
+            lifecycle_binding=lifecycle_binding,
+            file_journal=preparation.file_journal,
+            prepared_dispatch=preparation.prepared_dispatch,
+            observations=preparation.observations,
+            pin_install_receipt=pin_install,
+            file_mutation=file_mutation,
+            application_token=preparation.application_token,
+            application_result=application,
+        )
+
+    def _resume_or_publish_persistent_smb_root(
+        self,
+        *,
+        boundary: _PreparedNetworkBoundary,
+        authority: PersistentSmbTerminalContinuationAuthority,
+        continuation: PersistentSmbTerminalContinuation,
+    ) -> str:
+        """Materialize or adopt one exact retained SMB root and publish its full handoff."""
+
+        executor = self._executor
+        facts = authority.root_facts(continuation)
+        preparation = facts.prepared_root
+        if type(preparation) is not PersistentSmbPreparedRoot:
+            raise StateError("Persistent SMB continuation has no exact prepared root")
+        phase_before = facts.phase
+        boundary.root = preparation.root
+        boundary.timing_preparation = preparation.source_timing_preparation
+        boundary.lifecycle_adapter = executor._lifecycle_authority.registry
+        boundary.lifecycle_token = preparation.lifecycle_token
+        boundary.application_manager = executor._smb_channel_manager
+        boundary.application_token = preparation.application_token
+        boundary.prerequisite_receipts = preparation.prerequisite_receipts
+        boundary.transfer()
+
+        if phase_before == "root_prepared":
+            materialization = (
+                executor._lifecycle_authority.materialize_prepared_network_transaction(
+                    preparation.root,
+                    preparation.owner_rng,
+                    source_timing_preparation=preparation.source_timing_preparation,
+                    lifecycle_token=preparation.lifecycle_token,
+                    application_token=preparation.application_token,
+                    prerequisite_receipts=preparation.prerequisite_receipts,
+                )
+            )
+            boundary.terminal_materialization = materialization
+            handoff = self._build_persistent_smb_root_handoff(preparation, materialization)
+            authority.bind_committed_root(
+                continuation,
+                materialization=materialization,
+                handoff=handoff,
+                outcome=preparation.outcome,
+            )
+        elif phase_before in {"root_committed", "source_prepared", "source_published"}:
+            materialization = facts.materialization
+            handoff = facts.handoff
+            if (
+                materialization is None
+                or type(handoff) is not PersistentSmbRootHandoff
+                or handoff.materialization is not materialization
+                or facts.outcome is not preparation.outcome
+            ):
+                raise StateError("Persistent SMB committed continuation changed exact owners")
+            boundary.terminal_materialization = materialization
+        else:
+            raise StateError(
+                f"Persistent SMB root cannot resume from continuation phase {phase_before!r}"
+            )
+
+        application_receipt = handoff.application_result.receipt
+        receipt_retained = executor._lifecycle_authority.authenticates_prepared_network_receipt(
+            preparation.root,
+            materialization.receipt,
+        )
+        if not receipt_retained and phase_before == "root_prepared":
+            raise StateError("Fresh persistent SMB root lost its lifecycle receipt authority")
+        durable_capture = boundary.publish_committed_capture_no_fail(
+            root=preparation.root,
+            receipt=materialization.receipt,
+            application_receipt=application_receipt,
+            persistent_smb_root_handoff=handoff,
+            outcome=preparation.outcome,
+        )
+        if receipt_retained:
+            durable_capture_facts = boundary.authenticate_committed_capture_for_ack(
+                durable_capture,
+                authority=executor._lifecycle_authority,
+                root=preparation.root,
+                receipt=materialization.receipt,
+                application_receipt=application_receipt,
+                persistent_smb_root_handoff=handoff,
+                outcome=preparation.outcome,
+            )
+        else:
+            durable_capture_facts = None
+        if receipt_retained and durable_capture is not None:
+            from evidenceforge.generation.lifecycle_authority import (
+                GeneratorLifecycleAuthority,
+            )
+
+            GeneratorLifecycleAuthority._bind_prepared_network_durable_capture_for_ack(
+                executor._lifecycle_authority,
+                preparation.root,
+                materialization,
+                durable_capture,
+                durable_capture_facts,
+                expected_persistent_smb_root_handoff=handoff,
+            )
+        if receipt_retained:
+            acknowledged = (
+                executor._lifecycle_authority.acknowledge_prepared_network_transaction_if_retained(
+                    preparation.root,
+                    materialization,
+                    durable_capture=durable_capture,
+                    durable_capture_facts=durable_capture_facts,
+                )
+            )
+            if not acknowledged:
+                raise StateError("Persistent SMB retained lifecycle receipt was not acknowledged")
+            boundary.restore_committed_capture_after_ack(
+                durable_capture,
+                durable_capture_facts,
+                authority=executor._lifecycle_authority,
+                root=preparation.root,
+                receipt=materialization.receipt,
+                application_receipt=application_receipt,
+                persistent_smb_root_handoff=handoff,
+                outcome=preparation.outcome,
+            )
+
+        transaction = preparation.root.transaction
+        executor._last_connection_effective_dst_ip = transaction.dst_ip
+        executor._last_connection_effective_tuple = (
+            transaction.src_ip,
+            transaction.src_port,
+            transaction.dst_ip,
+            transaction.dst_port,
+            transaction.protocol,
+        )
+        executor._last_connection_effective_time = transaction.started_at
+        executor._last_connection_effective_transaction_id = transaction.stable_id
+        return (
+            ""
+            if preparation.outcome is NetworkConnectionPublicationOutcome.COMMITTED_SUPPRESSED
+            else transaction.zeek_uid
+        )
+
+    def execute(self, request: NetworkConnectionRequest) -> str:
+        """Expand one request while retaining exact cancellation ownership."""
+
+        self._active_request = request
+        self._active_request_stable_id = _trusted_network_request_stable_id(request, type(request))
+        boundary = _PreparedNetworkBoundary()
+        try:
+            boundary.claim_identity_capture(request.identity_capture)
+            result = self._execute(request, boundary)
+        except BaseException as error:
+            if boundary.transferred and boundary.root is not None:
+                attached_materialization_present = False
+                recovered_materialization = False
+                try:
+                    error_state = object.__getattribute__(error, "__dict__")
+                    attached_materialization_present = bool(
+                        type(error_state) is dict
+                        and "deferred_session_materialization" in error_state
+                    )
+                    attached_materialization = (
+                        error_state.get("deferred_session_materialization")
+                        if attached_materialization_present
+                        else None
+                    )
+                    if attached_materialization_present:
+                        recovered_materialization = (
+                            boundary.recover_committed_materialization_no_fail(
+                                executor=self._executor,
+                                root=boundary.root,
+                                materialization=attached_materialization,
+                            )
+                        )
+                except BaseException as recovery_error:
+                    try:
+                        object.__setattr__(
+                            error,
+                            "deferred_session_commit_indeterminate",
+                            True,
+                        )
+                    except BaseException:
+                        pass
+                    error.add_note(
+                        "Committed deferred-session materialization recovery also failed: "
+                        f"{recovery_error!r}"
+                    )
+                if not attached_materialization_present and not recovered_materialization:
+                    try:
+                        boundary.recover_committed_capture_no_fail(
+                            executor=self._executor,
+                            root=boundary.root,
+                        )
+                    except BaseException as recovery_error:
+                        error.add_note(
+                            f"Committed network identity recovery also failed: {recovery_error!r}"
+                        )
+                boundary.transferred = False
+            if boundary.terminal_materialization is not None and boundary.root is not None:
+                try:
+                    object.__setattr__(error, "prepared_network_root", boundary.root)
+                    object.__setattr__(
+                        error,
+                        "prepared_network_materialization",
+                        boundary.terminal_materialization,
+                    )
+                    error.add_note(
+                        "Prepared network canonical root committed; acknowledge or retry "
+                        "the attached exact materialization"
+                    )
+                except BaseException:
+                    pass
+            boundary.cancel(error)
+            raise
+        if not boundary.transferred:
+            boundary.cancel(StateError("Network request ended before prepared publication"))
+        return result
+
+    def _execute(
+        self, request: NetworkConnectionRequest, boundary: _PreparedNetworkBoundary
+    ) -> str:
+        """Run six ordered stages without transferring transaction ownership to helpers.
+
+        Resolution may independently commit DNS/client-process prerequisites or
+        delegate a proxy/retained-SMB operation. A string ends this root: a UID
+        reports delegation/recovery; an empty string reports rejection or source
+        suppression. It does not prove that prerequisites were rolled back.
+
+        Transport opens the prepared RNG/timing/state scope. Evidence mutates
+        only its occurrence draft; publication preparation authenticates those
+        exact facts. Commit precedes source publication. Only the outer boundary
+        owns claims, cancellation, timing seals and uncertain-commit recovery.
+        Stage helpers must not acquire another transaction authority.
+
+        Contracts: test_network_stages_share_facts_and_exact_publication_inputs,
+        test_network_stage_failure_keeps_commit_and_cancellation_distinct, and
+        test_committed_dns_prerequisite_survives_later_root_rejection_without_orphan_claim
+        in tests/unit/test_network_prepared_runtime_integration.py.
+        """
+        resolved = self._resolve_network_request(request, boundary)
+        if isinstance(resolved, str):
+            return resolved
+        transport = self._plan_network_transport(request, boundary, resolved)
+        if isinstance(transport, str):
+            return transport
+        evidence = self._plan_network_protocol_evidence(request, boundary, transport)
+        if isinstance(evidence, str):
+            return evidence
+        prepared = self._prepare_network_publication(request, boundary, evidence)
+        if isinstance(prepared, str):
+            return prepared
+        committed = self._commit_prepared_network(request, boundary, prepared)
+        if isinstance(committed, str):
+            return committed
+        return self._publish_committed_network(request, boundary, committed)
+
+    def _resolve_kerberos_transport(
+        self, request: NetworkConnectionRequest, conn_state: str | None
+    ) -> tuple[str, int | None, int | None, str | None, str | None]:
+        """Shape discovery from request-scoped seeds; defer duration to root preparation."""
+        proto, service, dst_port = request.proto, request.service, request.dst_port
+        src_ip, dst_ip, time = request.src_ip, request.dst_ip, request.time
+        src_port, pid = request.src_port, request.pid
+        orig_bytes, resp_bytes = request.orig_bytes, request.resp_bytes
+        deferred_kerberos_duration_proto = None
+        if service == "kerberos" and dst_port == 88 and proto == "tcp":
+            from evidenceforge.generation.activity.kerberos_realism import (
+                pick_kerberos_transport,
+            )
+
+            proto = pick_kerberos_transport(
+                random.Random(
+                    _stable_seed(
+                        "kerberos_transport:"
+                        f"{src_ip}:{dst_ip}:{time.isoformat()}:{src_port or ''}:{pid}"
+                    )
+                )
+            )
+        if service == "kerberos" and dst_port == 88 and proto == "tcp":
+            deferred_kerberos_duration_proto = "tcp"
+        if service == "kerberos" and dst_port == 88 and proto == "udp":
+            udp_kerberos_rng = random.Random(
+                _stable_seed(
+                    "kerberos_udp_shape:"
+                    f"{src_ip}:{dst_ip}:{time.isoformat()}:{src_port or ''}:{pid}"
+                )
+            )
+            deferred_kerberos_duration_proto = "udp"
+            orig_bytes = min(
+                max(orig_bytes or udp_kerberos_rng.randint(180, 900), 160),
+                udp_kerberos_rng.randint(700, 1300),
+            )
+            resp_bytes = min(
+                max(resp_bytes or udp_kerberos_rng.randint(120, 1200), 80),
+                udp_kerberos_rng.randint(600, 1400),
+            )
+            if conn_state not in {None, "SF", "S0", "REJ", "OTH"}:
+                conn_state = "SF" if resp_bytes else "S0"
+
+        return proto, orig_bytes, resp_bytes, conn_state, deferred_kerberos_duration_proto
+
+    @staticmethod
+    def _is_ownerless_linux_server_request(
+        source_system: System | None, pid: int, proto: str, dst_port: int
+    ) -> bool:
+        """Keep role-level server traffic unattributed when no process owner is known."""
+        source_roles = {str(role).lower() for role in (getattr(source_system, "roles", None) or [])}
+        source_type = (
+            str(getattr(source_system, "type", "") or "").lower()
+            if source_system is not None
+            else ""
+        )
+        linux_server_without_owner = (
+            pid <= 0
+            and source_system is not None
+            and _get_os_category(source_system.os) == "linux"
+            and (
+                source_type in {"server", "domain_controller"}
+                or bool(
+                    source_roles
+                    & {
+                        "app_server",
+                        "database",
+                        "dns_server",
+                        "file_server",
+                        "forward_proxy",
+                        "log_server",
+                        "mail_server",
+                        "monitoring",
+                        "web_server",
+                    }
+                )
+            )
+            and proto == "tcp"
+            and dst_port in {80, 443}
+        )
+        return linux_server_without_owner
+
+    def _resolve_explicit_network_endpoint(
+        self,
+        *,
+        hostname: str,
+        dst_ip: str,
+        src_ip: str,
+        source_system: System | None,
+        emit_dns: bool,
+    ) -> str:
+        """Honor scenario identity and stable fallback before registry destination lookup."""
+        executor = self._executor
+        from evidenceforge.generation.activity.dns_registry import get_domain_ips
+
+        src_host = source_system.hostname if source_system else src_ip
+        resolver = getattr(executor, "_network_resolver", None)
+        resolved = resolver.resolve_host(hostname, src_host=src_host) if resolver else None
+        if (
+            resolved is not None
+            and resolved.source == "scenario_identity"
+            and resolved.ip
+            and dst_ip != resolved.ip
+        ):
+            dst_ip = resolved.ip
+        elif resolved is not None and resolved.source == "stable_fallback":
+            pass
+        else:
+            from evidenceforge.generation.activity.dns_registry import resolve_domain_ip
+
+            domain_ips = get_domain_ips(hostname)
+            if domain_ips and dst_ip not in domain_ips:
+                dst_ip = resolve_domain_ip(hostname, src_host=src_host)
+            elif not domain_ips and emit_dns and not _is_private_ip(dst_ip):
+                dst_ip = resolve_domain_ip(hostname, src_host=src_host)
+
+        return dst_ip
+
+    def _resolve_network_source_process(
+        self,
+        *,
+        resolved_source_system: System,
+        pid: int,
+        time: datetime,
+        dst_ip: str,
+        dst_port: int,
+        caller_supplied_pid: bool,
+        suppress_source_pid_inference: bool,
+    ) -> tuple[int, RunningProcess | None, bool]:
+        """Reject stale attribution without replacing an invalid explicit caller PID.
+
+        Session and foreground lifetimes are queried from their existing owners;
+        this decision neither creates nor releases a process reservation.
+        """
+        executor = self._executor
+        resolved_process = executor.state_manager.get_process(resolved_source_system.hostname, pid)
+        drop_explicit_pid_without_inference = False
+        if resolved_process and resolved_process.start_time and time < resolved_process.start_time:
+            logger.debug(
+                "Dropping future connection PID attribution: "
+                "host=%s pid=%s process_start=%s connection_time=%s dst=%s:%s",
+                resolved_source_system.hostname,
+                pid,
+                resolved_process.start_time,
+                time,
+                dst_ip,
+                dst_port,
+            )
+            pid = -1
+            resolved_process = None
+            drop_explicit_pid_without_inference = caller_supplied_pid
+        elif executor._process_termination_recorded(
+            resolved_source_system.hostname,
+            pid,
+            resolved_process.start_time if resolved_process is not None else None,
+        ):
+            logger.debug(
+                "Dropping terminated process connection attribution: host=%s pid=%s dst=%s:%s",
+                resolved_source_system.hostname,
+                pid,
+                dst_ip,
+                dst_port,
+            )
+            pid = -1
+            resolved_process = None
+            drop_explicit_pid_without_inference = caller_supplied_pid
+        elif (
+            (
+                owning_end_plan := executor.state_manager.process_session_end_plan(
+                    resolved_source_system.hostname, pid
+                )
+            )
+            is not None
+            and owning_end_plan.is_authoritative
+            and ensure_utc(time) >= ensure_utc(owning_end_plan.canonical_end)
+        ):
+            logger.debug(
+                "Dropping connection PID after its owning session ended: "
+                "host=%s pid=%s session_end=%s connection_time=%s dst=%s:%s",
+                resolved_source_system.hostname,
+                pid,
+                owning_end_plan.canonical_end,
+                time,
+                dst_ip,
+                dst_port,
+            )
+            pid = -1
+            resolved_process = None
+            drop_explicit_pid_without_inference = caller_supplied_pid
+        elif (
+            resolved_process
+            and resolved_process.start_time
+            and executor._foreground_process_expired_for_attribution(
+                resolved_source_system,
+                resolved_process,
+                time,
+            )
+        ):
+            logger.debug(
+                "Dropping expired foreground process attribution: "
+                "host=%s pid=%s image=%s dst=%s:%s",
+                resolved_source_system.hostname,
+                pid,
+                resolved_process.image,
+                dst_ip,
+                dst_port,
+            )
+            pid = -1
+            resolved_process = None
+            drop_explicit_pid_without_inference = caller_supplied_pid
+        elif resolved_process is None and pid != 4:
+            logger.debug(
+                "Dropping stale connection PID attribution: host=%s pid=%s dst=%s:%s",
+                resolved_source_system.hostname,
+                pid,
+                dst_ip,
+                dst_port,
+            )
+            pid = -1
+            drop_explicit_pid_without_inference = caller_supplied_pid
+        if drop_explicit_pid_without_inference:
+            suppress_source_pid_inference = True
+
+        return pid, resolved_process, suppress_source_pid_inference
+
+    def _resolve_command_http_request(
+        self, source_system: System, pid: int, resp_bytes: int | None
+    ) -> tuple[tuple[HttpContext, str, int, str, System | None] | None, bool]:
+        """Parse an existing command without owner RNG draws or endpoint allocation."""
+        executor = self._executor
+        proc = executor.state_manager.get_process(source_system.hostname, pid)
+        if proc is not None:
+            command_http = _http_context_from_process_command(
+                proc.image,
+                proc.command_line,
+                # Response sizing belongs to the prepared root. Parse the
+                # command without consuming the owner RNG, then fill an
+                # ordinary non-stable entity after boundary.begin().
+                response_body_len=resp_bytes or 0,
+            )
+            if command_http is not None:
+                command_http_context, command_host, command_port, command_service = command_http
+                command_http_needs_response_size = bool(
+                    not resp_bytes
+                    and command_http_context.method != "HEAD"
+                    and command_http_context.response_body_len <= 0
+                )
+                command_target = executor._system_for_hostname(command_host)
+                host_lower = command_host.lower().rstrip(".")
+                ad_domain_for_command = (
+                    str(
+                        getattr(executor, "_ad_domain", "") or "",
+                    )
+                    .lower()
+                    .rstrip(".")
+                )
+                command_is_unknown_internal = command_target is None and (
+                    host_lower.endswith(".local")
+                    or (ad_domain_for_command and host_lower.endswith(f".{ad_domain_for_command}"))
+                )
+                resolved = (
+                    (
+                        command_http_context,
+                        command_host,
+                        command_port,
+                        command_service,
+                        command_target,
+                    )
+                    if not command_is_unknown_internal
+                    else None
+                )
+                # The sizing flag was discovered before endpoint admission and
+                # remains true even when an unknown internal target is rejected.
+                return resolved, command_http_needs_response_size
+        return None, False
+
+    def _resolve_network_request(
+        self, request: NetworkConnectionRequest, boundary: _PreparedNetworkBoundary
+    ) -> ResolvedNetworkRequest | str:
+        """Resolve the request and existing owners before opening transaction preparation."""
+        from evidenceforge.generation.actions.proxy_transaction import (
+            ExplicitProxyRequestPreparation,
+            ProxyTransactionActionBundle,
+            ProxyTransactionRequest,
+        )
+
+        executor = self._executor
+        stable_id = self._active_request_stable_id
+        if request is not self._active_request or not stable_id:
+            raise StateError("Network request stable identity was not captured at execution entry")
+        from evidenceforge.generation.actions.network_connection import PersistentSmbRootIntent
+
+        deferred_authority = request.deferred_session_authority
+        persistent_smb_intent = (
+            None
+            if request.persistent_smb_root_intent is None
+            else PersistentSmbRootIntent.from_identity_snapshot(request.persistent_smb_root_intent)
+        )
+        persistent_smb_application_intent = request.persistent_smb_application_intent
+        persistent_smb_file_journal = request.persistent_smb_file_mutation_journal
+        persistent_smb_terminal_authority = request.persistent_smb_terminal_authority
+        persistent_smb_terminal_continuation = request.persistent_smb_terminal_continuation
+        if persistent_smb_intent is not None:
+            if (
+                type(persistent_smb_terminal_authority)
+                is not PersistentSmbTerminalContinuationAuthority
+                or type(persistent_smb_terminal_continuation)
+                is not PersistentSmbTerminalContinuation
+                or not persistent_smb_terminal_authority.authenticates_claimed(
+                    persistent_smb_terminal_continuation
+                )
+            ):
+                raise StateError("Persistent SMB root lost its exact continuation claim")
+            persistent_phase = persistent_smb_terminal_authority.root_facts(
+                persistent_smb_terminal_continuation
+            ).phase
+            if persistent_phase in {
+                "root_prepared",
+                "root_committed",
+                "source_prepared",
+                "source_published",
+            }:
+                return self._resume_or_publish_persistent_smb_root(
+                    boundary=boundary,
+                    authority=persistent_smb_terminal_authority,
+                    continuation=persistent_smb_terminal_continuation,
+                )
+        prepared_application_token = request.prepared_application_token
+        explicit_proxy_request_preparation = request.explicit_proxy_request_preparation
+        if prepared_application_token is not None:
+            from evidenceforge.generation.proxy_channels import ExplicitProxyAdmissionToken
+
+            if not isinstance(prepared_application_token, ExplicitProxyAdmissionToken):
+                raise StateError("Network request has no authentic proxy request admission")
+            boundary.track_application(
+                executor._proxy_channel_manager,
+                prepared_application_token,
+            )
+            if (
+                prepared_application_token.kind != "request"
+                or not executor._proxy_channel_manager.authenticates_admission_token(
+                    prepared_application_token
+                )
+            ):
+                raise StateError("Network request has no authentic proxy request admission")
+        elif explicit_proxy_request_preparation is not None:
+            if (
+                not isinstance(
+                    explicit_proxy_request_preparation,
+                    ExplicitProxyRequestPreparation,
+                )
+                or not executor._proxy_channel_manager.authenticates_request_snapshot(
+                    explicit_proxy_request_preparation.snapshot
+                )
+                or explicit_proxy_request_preparation.affinity.digest
+                != explicit_proxy_request_preparation.snapshot.affinity_digest
+            ):
+                raise StateError("Network request has no authentic proxy request snapshot")
+        src_ip = request.src_ip
+        dst_ip = request.dst_ip
+        time = request.time
+        dst_port = request.dst_port
+        proto = request.proto
+        service = request.service
+        duration = request.duration
+        orig_bytes = request.orig_bytes
+        resp_bytes = request.resp_bytes
+        explicit_orig_bytes = request.orig_bytes
+        explicit_resp_bytes = request.resp_bytes
+        src_port = request.src_port
+        automatic_source_port = request.src_port is None
+        emit_dns = request.emit_dns
+        pid = request.pid
+        source_system = request.source_system
+        conn_state = request.conn_state
+        # Resolver normalization mutates its working context. Keep that mutation
+        # inside the prepared occurrence so a rejected transaction cannot rewrite
+        # the caller-owned request object.
+        dns = copy.deepcopy(request.dns)
+        email = request.email
+        smtp = request.smtp
+        x509 = request.x509
+        x509_chain = request.x509_chain
+        ids_alerts = list(request.ids_alerts)
+        http = request.http
+        file_transfer = request.file_transfer
+        file_transfers = request.file_transfers
+        pe = request.pe
+        ocsp = request.ocsp
+        proxy = request.proxy
+        firewall = request.firewall
+        hostname = request.hostname
+        proxy_bypass = request.proxy_bypass
+        process_image = request.process_image
+        preserve_dst_ip = request.preserve_dst_ip
+        preserve_http_outcome = request.preserve_http_outcome
+        suppress_application_side_effects = request.suppress_application_side_effects
+        suppress_source_pid_inference = request.suppress_source_pid_inference
+        preserve_explicit_payload = request.preserve_explicit_payload
+        suppress_prereq_dns = request.suppress_prereq_dns
+        packet_overhead_bytes = request.packet_overhead_bytes
+        responding_pid = request.responding_pid
+        ssh_attempted_username = request.ssh_attempted_username
+        parent_action_group_id = request.parent_action_group_id
+        preserve_start_time = request.preserve_start_time
+        caller_supplied_pid = pid > 0
+        caller_owned_pid = pid if caller_supplied_pid else None
+
+        if http is not None:
+            http = _normalize_http_context_for_source_native_response(http)
+
+        caller_provided_duration = duration is not None
+        caller_provided_conn_state = conn_state is not None
+        caller_provided_payload = (
+            service is not None
+            and duration is not None
+            and (orig_bytes or 0) > 0
+            and (resp_bytes or 0) > 0
+        )
+        ntp_timing: tuple[float, float, float, timedelta] | None = None
+        command_http_needs_response_size = False
+        deferred_kerberos_duration_proto: str | None = None
+
+        def independent_discovery_rng(purpose: str) -> Any:
+            """Return a pure pre-boundary RNG for prerequisite/routing discovery.
+
+            A committed DNS prerequisite or delegated proxy transaction may own
+            the discovered hostname/destination. If neither is emitted, the
+            value is still pure request-derived input to the later prepared root;
+            the generator's owner RNG is never advanced by discovery alone.
+            """
+
+            return random.Random(
+                _stable_seed(f"network_discovery:{purpose}:{stable_id}:{src_ip}:{dst_ip}")
+            )
+
+        if http is not None and proto == "tcp" and conn_state is None:
+            conn_state = "SF"
+        process_exe = (process_image or "").rsplit("\\", 1)[-1].rsplit("/", 1)[-1].lower()
+        is_tcp_probe = process_exe in {"nmap", "nmap.exe"}
+        if source_system is None and hasattr(executor, "_ip_to_system"):
+            source_system = executor._ip_to_system.get(src_ip)
+        proto, orig_bytes, resp_bytes, conn_state, deferred_kerberos_duration_proto = (
+            self._resolve_kerberos_transport(request, conn_state)
+        )
+
+        if (
+            http is None
+            and pid > 0
+            and source_system is not None
+            and proto == "tcp"
+            and (dst_port in {80, 443, 8080} or service is None or service in {"http", "ssl"})
+        ):
+            command_http, command_http_needs_response_size = self._resolve_command_http_request(
+                source_system, pid, resp_bytes
+            )
+            if command_http is not None:
+                (
+                    command_http_context,
+                    command_host,
+                    command_port,
+                    command_service,
+                    command_target,
+                ) = command_http
+                http = command_http_context
+                hostname = command_host
+                dst_port = command_port
+                service = command_service
+                if command_target is not None:
+                    dst_ip = command_target.ip
+                    emit_dns = True
+
+        # Resolve hostname ONCE for DNS/proxy consistency.
+        # All downstream uses (causal DNS expansion, proxy hostname)
+        # share this single resolved value instead of doing independent lookups.
+        #
+        # hostname semantics (preserved through all downstream builders):
+        #   None  → auto-resolve from REVERSE_DNS or generate random
+        #   ""    → suppress resolution (raw-IP C2, exposed hosts w/o public_hostnames)
+        #   "x.y" → use this hostname explicitly
+        hostname_was_explicit = hostname not in (None, "")
+        hostname_from_reverse_dns = False
+        if hostname is None:
+            reverse_hostname = executor._scenario_fqdn_for_ip(dst_ip) or REVERSE_DNS.get(dst_ip)
+            if reverse_hostname is not None:
+                hostname = reverse_hostname
+                hostname_from_reverse_dns = True
+            elif emit_dns and proto == "tcp" and dst_port not in (53,) and _is_private_ip(dst_ip):
+                hostname = _generate_internal_hostname(
+                    independent_discovery_rng("internal-hostname"),
+                    dst_ip,
+                    getattr(executor, "_ad_domain", "corp.local"),
+                )
+            else:
+                hostname = None
+        if hostname is None and emit_dns and proto == "tcp" and dst_port not in (53,):
+            if not _is_private_ip(dst_ip):
+                hostname = _generate_random_hostname(
+                    independent_discovery_rng("public-hostname"), dst_ip
+                )
+
+        proxy_routes = getattr(executor, "_proxy_routes", {})
+        proxy_chain = proxy_routes.get(src_ip)
+        preserve_explicit_proxy_dst_ip = (
+            preserve_dst_ip
+            and hostname_was_explicit
+            and not proxy_bypass
+            and getattr(executor, "_proxy_mode", "transparent") == "explicit"
+            and bool(proxy_chain)
+            and proto == "tcp"
+            and dst_port in (80, 443)
+        )
+
+        if (
+            hostname
+            and hostname_was_explicit
+            and not preserve_dst_ip
+            and not preserve_explicit_proxy_dst_ip
+            and not (service == "dns" and proto in ("udp", "tcp") and dst_port == 53)
+        ):
+            dst_ip = self._resolve_explicit_network_endpoint(
+                hostname=hostname,
+                dst_ip=dst_ip,
+                src_ip=src_ip,
+                source_system=source_system,
+                emit_dns=emit_dns,
+            )
+
+        ad_domain = getattr(executor, "_ad_domain", "corp.local")
+        hostname_is_external = (
+            bool(hostname)
+            and "." in hostname
+            and not hostname.endswith(f".{ad_domain}")
+            and not hostname.endswith(".local")
+        )
+        proxyable_external_destination = hostname_is_external or not _is_private_ip(dst_ip)
+        # Role-level server traffic often knows that a request occurred without
+        # knowing which local process owned it. Preserve that uncertainty rather
+        # than turning a sampled HTTP User-Agent into a fabricated PID-1 child.
+        # Explicit caller PIDs remain authoritative, and interactive workstation
+        # traffic can still materialize a source-native browser/client process.
+        linux_server_without_owner = self._is_ownerless_linux_server_request(
+            source_system, pid, proto, dst_port
+        )
+        if linux_server_without_owner:
+            suppress_source_pid_inference = True
+        dns_server_ips = set(getattr(executor, "_dns_server_ips", []))
+        if (
+            proto == "tcp"
+            and dst_port in (80, 443)
+            and hostname_is_external
+            and dst_ip in dns_server_ips
+        ):
+            src_host = source_system.hostname if source_system else src_ip
+            resolver = getattr(executor, "_network_resolver", None)
+            resolved = resolver.resolve_host(hostname, src_host=src_host) if resolver else None
+            if resolved is not None and resolved.ip:
+                dst_ip = resolved.ip
+            else:
+                from evidenceforge.generation.activity.dns_registry import resolve_domain_ip
+
+                dst_ip = resolve_domain_ip(hostname, src_host=src_host)
+
+        # Infer common payload service from destination port before proxy
+        # routing and DNS expansion. Some callers provide only port/protocol or
+        # source-common aliases (for example "https"); explicit proxy semantics
+        # still need to catch 80/443 before a client-side origin DNS lookup is
+        # emitted. Keep the empty-string raw-TCP sentinel unchanged.
+        if proto == "tcp" and dst_port in (80, 443) and service != "" and not is_tcp_probe:
+            service = "http" if dst_port == 80 else "ssl"
+        if proto == "udp" and dst_port == 123 and (service != "" or (resp_bytes or 0) > 0):
+            service = "ntp"
+            if not _is_private_ip(dst_ip):
+                from evidenceforge.generation.activity.network_params import public_ntp_ips
+
+                configured_ntp_ips = set(public_ntp_ips())
+                if configured_ntp_ips and dst_ip not in configured_ntp_ips:
+                    selected_ntp_ip = _select_public_ntp_ip(src_ip, dst_ip, time)
+                    if selected_ntp_ip:
+                        dst_ip = selected_ntp_ip
+
+        if (
+            proto == "tcp"
+            and service == "ssl"
+            and dst_port == 443
+            and emit_dns
+            and dns is None
+            and http is None
+            and not hostname_was_explicit
+            and _is_private_ip(src_ip)
+            and not _is_private_ip(dst_ip)
+        ):
+            hostname, dst_ip = executor._pick_profiled_tls_destination(
+                rng=independent_discovery_rng("profiled-tls-destination"),
+                src_ip=src_ip,
+                source_system=source_system,
+                purpose_tags=("web", "saas", "background"),
+            )
+
+        tls_hostname = hostname
+        if hostname_from_reverse_dns and not emit_dns and dns is None and http is None:
+            # A PTR/reverse-DNS-style fallback is useful for proxy URL rendering
+            # but should not become TLS SNI unless the client actually resolved
+            # or was explicitly configured to use that hostname.
+            tls_hostname = ""
+
+        will_route_explicit_proxy = (
+            not proxy_bypass
+            and getattr(executor, "_proxy_mode", "transparent") == "explicit"
+            and bool(proxy_chain)
+            and proto == "tcp"
+            and service in ("ssl", "http")
+            and dst_port in (80, 443)
+            and proxyable_external_destination
+            and conn_state not in ("S0", "REJ", "S1", "SH", "SHR", "RSTO", "RSTR")
+            and (
+                getattr(executor, "_scenario_end_time", None) is None
+                or ensure_utc(time) < ensure_utc(executor._scenario_end_time)
+            )
+        )
+
+        if http is not None and not preserve_http_outcome and not will_route_explicit_proxy:
+            http = _apply_plaintext_http_policy(
+                http,
+                hostname=hostname,
+                dst_ip=dst_ip,
+                dst_port=dst_port,
+            )
+
+        explicit_proxy = will_route_explicit_proxy
+        if explicit_proxy:
+            if command_http_needs_response_size and http is not None:
+                # The delegated proxy transaction, not this never-opened
+                # network root, owns this command-derived response estimate.
+                http = replace(
+                    http,
+                    response_body_len=independent_discovery_rng(
+                        "delegated-command-http-response"
+                    ).randint(500, 50000),
+                )
+                command_http_needs_response_size = False
+            proxy_request = ProxyTransactionRequest(
+                src_ip=src_ip,
+                dst_ip=dst_ip,
+                time=time,
+                dst_port=dst_port,
+                proto=proto,
+                service=service,
+                duration=duration,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                src_port=src_port,
+                pid=pid,
+                source_system=source_system,
+                conn_state=conn_state,
+                dns=dns,
+                ids_alerts=ids_alerts,
+                http=http,
+                file_transfer=file_transfer,
+                ocsp=ocsp,
+                ocsp_transaction=request.ocsp_transaction,
+                proxy=proxy,
+                firewall=firewall,
+                hostname=hostname,
+                process_image=process_image,
+                proxy_chain=list(proxy_chain),
+                preserve_explicit_proxy_dst_ip=preserve_explicit_proxy_dst_ip,
+                caller_provided_conn_state=caller_provided_conn_state,
+                ad_domain=ad_domain,
+                parent_action_group_id=parent_action_group_id,
+                suppress_source_pid_inference=suppress_source_pid_inference,
+            )
+            return ProxyTransactionActionBundle(
+                request=proxy_request,
+                executor=executor,
+            ).execute()
+
+        # Emit DNS lookup before connection via causal expansion.
+        # The DnsBeforeConnection rule handles caching, SERVFAIL, multi-answer, etc.
+        # Only internal hosts generate DNS lookups — external source IPs (e.g.,
+        # attacker IPs in storylines) don't query the victim's internal resolver.
+        src_ip_is_local = _is_modeled_local_ip(executor, src_ip)
+        dst_ip_is_local = _is_modeled_local_ip(executor, dst_ip)
+        force_visible_prereq_dns = (
+            source_system is not None
+            and "forward_proxy" in (source_system.roles or [])
+            and hostname_is_external
+            and proto == "tcp"
+            and dst_port in (80, 443)
+            and src_ip_is_local
+            and not suppress_prereq_dns
+        )
+        # Same-host connections are valid for host-based logs (eCAR FLOW)
+        # but invisible to network sensors (Zeek/Snort)
+        local_only = src_ip == dst_ip
+
+        # Validate connection is not fundamentally invalid (localhost, link-local, multicast)
+        is_invalid, reason = _is_invalid_network_connection(src_ip, dst_ip)
+        if is_invalid:
+            logger.warning(
+                "Skipping invalid network connection: %s:%s -> %s:%s proto=%s. "
+                "Reason: %s. Check that all systems have routable IPs in the scenario.",
+                src_ip,
+                src_port or "?",
+                dst_ip,
+                dst_port,
+                proto,
+                reason,
+            )
+            return ""
+
+        is_fw_deny = firewall is not None and firewall.action == "deny"
+
+        resolved_source_system = source_system
+        if (
+            resolved_source_system is None
+            and hasattr(executor, "_ip_to_system")
+            and src_ip in executor._ip_to_system
+        ):
+            resolved_source_system = executor._ip_to_system[src_ip]
+
+        http_application_layer_only = False
+        reused_http_uid = ""
+        reused_http_conn_id = ""
+        http_channel_affinity: HttpChannelAffinity | None = None
+        if prepared_application_token is not None:
+            from evidenceforge.generation.proxy_channels import (
+                ExplicitProxyRequestReuse,
+                ExplicitProxyTerminalRequest,
+            )
+
+            reuse = prepared_application_token.result
+            if not isinstance(reuse, (ExplicitProxyRequestReuse, ExplicitProxyTerminalRequest)):
+                raise StateError("Proxy request admission has no reusable transport")
+            parent = executor.state_manager.get_connection_by_transaction_id(
+                reuse.tunnel.client_transport_id
+            )
+            if parent is None:
+                raise StateError("Proxy request admission references no canonical client transport")
+            if (
+                src_ip != parent.src_ip
+                or src_port != parent.src_port
+                or dst_ip != parent.dst_ip
+                or dst_port != parent.dst_port
+                or proto != parent.protocol
+            ):
+                raise StateError("Proxy request admission changed its client transport tuple")
+            time = reuse.canonical_request_time
+            duration = (
+                reuse.canonical_complete_time - reuse.canonical_request_time
+            ).total_seconds()
+            reused_http_uid = parent.zeek_uid
+            reused_http_conn_id = parent.conn_id
+            http_application_layer_only = True
+            preserve_start_time = True
+        elif explicit_proxy_request_preparation is not None:
+            tunnel = explicit_proxy_request_preparation.snapshot.tunnel
+            parent = executor.state_manager.get_connection_by_transaction_id(
+                tunnel.client_transport_id
+            )
+            if parent is None:
+                raise StateError("Proxy request snapshot references no canonical client transport")
+            if (
+                src_ip != parent.src_ip
+                or src_port != parent.src_port
+                or dst_ip != parent.dst_ip
+                or dst_port != parent.dst_port
+                or proto != parent.protocol
+            ):
+                raise StateError("Proxy request snapshot changed its client transport tuple")
+            reused_http_uid = parent.zeek_uid
+            reused_http_conn_id = parent.conn_id
+            http_application_layer_only = True
+            preserve_start_time = True
+        if (
+            http is not None
+            and proxy is None
+            and not request.suppress_direct_http_channel
+            and proto == "tcp"
+            and service in {"http", "ssl"}
+            and dst_port > 0
+        ):
+            http_channel_affinity = HttpChannelAffinity.from_request(
+                src_ip=src_ip,
+                dst_ip=dst_ip,
+                dst_port=dst_port,
+                http_host=http.host,
+                resolved_hostname=hostname or "",
+                user_agent=http.user_agent or "",
+                transport_security="tls" if service == "ssl" else "cleartext",
+            )
+            if http.trans_depth > 1:
+                requested_http_time = http.canonical_request_time or time
+                http_timing = get_timing_window(
+                    "source.zeek_http_request",
+                    default_min_ms=1,
+                    default_max_ms=35,
+                    default_position="after",
+                    default_class="same_observation",
+                )
+                request_file_floor = http_response_parent_duration_floor(http.request_body_len or 0)
+                response_file_floor = http_response_parent_duration_floor(
+                    http.response_body_len or 0
+                )
+                required_http_duration = max(
+                    0.0,
+                    duration or 0.0,
+                    (http_timing.max_ms + 5) / 1000 + 0.025,
+                    request_file_floor + 0.55 if request_file_floor > 0 else 0.0,
+                    response_file_floor + 0.55 if response_file_floor > 0 else 0.0,
+                )
+                reuse_token = executor._http_channel_manager.prepare_reuse(
+                    http_channel_affinity,
+                    requested_at=requested_http_time,
+                    required_until=requested_http_time + timedelta(seconds=required_http_duration),
+                    request_body_bytes=http.request_body_len or 0,
+                    response_body_bytes=http.response_body_len or 0,
+                )
+                boundary.track_application(executor._http_channel_manager, reuse_token)
+                reuse = reuse_token.result if reuse_token is not None else None
+                if reuse is not None:
+                    time = reuse.canonical_request_time
+                    src_port = reuse.src_port
+                    reused_http_uid = reuse.zeek_uid
+                    reused_http_conn_id = reuse.conn_id
+                    http_application_layer_only = True
+                    preserve_start_time = True
+                    http = replace(
+                        http,
+                        trans_depth=reuse.trans_depth,
+                        canonical_request_time=reuse.canonical_request_time,
+                    )
+                if not http_application_layer_only:
+                    http = replace(http, trans_depth=1)
+
+        # A reused HTTPS request is an application child of the immutable TLS
+        # parent. TLS-specific planning below excludes the child, while HTTP
+        # and file analysis remain ordinary application evidence.
+
+        kerberos_dc_hostname = None
+        if proto in {"tcp", "udp"} and dst_port == 88:
+            kerberos_dc = executor._dc_system_for_ip(dst_ip)
+            if kerberos_dc is not None:
+                kerberos_dc_hostname = str(getattr(kerberos_dc, "hostname", "") or "")
+
+        source_os_category = (
+            _get_os_category(resolved_source_system.os)
+            if resolved_source_system is not None
+            else "windows"
+        )
+
+        if proto == "icmp":
+            src_port = 0
+            dst_port = 0
+
+        if (
+            service == "dns"
+            and proto in ("udp", "tcp")
+            and dst_port == 53
+            and not suppress_source_pid_inference
+        ):
+            dns_pid = executor._infer_connection_pid(
+                resolved_source_system, service, dst_port, proto
+            )
+            if dns_pid > 0:
+                pid = dns_pid
+        elif pid <= 0 and not suppress_source_pid_inference:
+            pid = executor._infer_connection_pid(resolved_source_system, service, dst_port, proto)
+
+        resolved_process = None
+        if service == "dns" and proto in ("udp", "tcp") and dst_port == 53:
+            query_len = len(dns.query) if dns is not None and dns.query else 12
+            query_type = (dns.query_type if dns is not None else "").upper()
+            min_query_payload = max(40, query_len + 16)
+            if query_type in {"TXT", "NULL"}:
+                min_query_payload += 18
+            elif query_type == "SRV":
+                min_query_payload += 10
+            if orig_bytes is None or orig_bytes < min_query_payload:
+                orig_bytes = min_query_payload
+            if dns is not None and dns.rtt is not None:
+                duration = max(duration or 0.001, dns.rtt)
+
+        if pid > 0 and resolved_source_system:
+            pid, resolved_process, suppress_source_pid_inference = (
+                self._resolve_network_source_process(
+                    resolved_source_system=resolved_source_system,
+                    pid=pid,
+                    time=time,
+                    dst_ip=dst_ip,
+                    dst_port=dst_port,
+                    caller_supplied_pid=caller_supplied_pid,
+                    suppress_source_pid_inference=suppress_source_pid_inference,
+                )
+            )
+
+        if (
+            resolved_source_system is not None
+            and http is not None
+            and not suppress_source_pid_inference
+        ):
+            # Direct HTTP and client-to-proxy listener traffic own a real client
+            # process prerequisite (for example curl/wget/browser), independent of
+            # whether the later transport root is admitted. Resolve or start that
+            # process before NetworkRuntime.begin(), then carry only its stable
+            # identity into the prepared root. The existing helpers remain the sole
+            # owners of source-native UA/process compatibility and prerequisite
+            # publication.
+            attribution = _NetworkOccurrenceDraft(
+                timestamp=time,
+                http=http,
+                network=NetworkTransactionDraft(
+                    src_ip=src_ip,
+                    src_port=src_port or 0,
+                    dst_ip=dst_ip,
+                    dst_port=dst_port,
+                    protocol=proto,
+                    service=service or "",
+                    duration=duration,
+                    initiating_pid=pid,
+                ),
+            )
+            if pid > 0:
+                executor._set_connection_process_context(
+                    attribution,
+                    source_system=resolved_source_system,
+                    pid=pid,
+                    image=process_image,
+                )
+            executor._repair_explicit_proxy_listener_process_attribution(
+                attribution,
+                source_system=resolved_source_system,
+                time=time,
+            )
+            executor._repair_browser_http_process_attribution(
+                attribution,
+                source_system=resolved_source_system,
+                time=time,
+            )
+            if attribution.network.initiating_pid != pid:
+                pid = attribution.network.initiating_pid
+                process_image = (
+                    attribution.process.image if attribution.process is not None else None
+                )
+                resolved_process = (
+                    executor.state_manager.get_process(resolved_source_system.hostname, pid)
+                    if pid > 0
+                    else None
+                )
+            http = attribution.http
+
+        if pid <= 0 and resolved_source_system is not None and not suppress_source_pid_inference:
+            pid, process_image = executor._ensure_high_confidence_connection_owner(
+                source_system=resolved_source_system,
+                time=time,
+                service=service,
+                dst_port=dst_port,
+                proto=proto,
+                hostname=hostname,
+                http=http,
+                ssh_attempted_username=ssh_attempted_username,
+            )
+            if pid > 0:
+                resolved_process = executor.state_manager.get_process(
+                    resolved_source_system.hostname,
+                    pid,
+                )
+
+        if (
+            ssh_attempted_username is None
+            and proto == "tcp"
+            and dst_port == 22
+            and resolved_process is not None
+        ):
+            ssh_attempted_username = _extract_ssh_attempted_username(resolved_process.command_line)
+
+        # Preserve the initiating application on the canonical DNS occurrence
+        # after connection ownership has been resolved. The DNS bundle still
+        # assigns resolver-service ownership to its separate UDP/53 transport.
+        if force_visible_prereq_dns:
+            planned_query_time = time - timedelta(seconds=2)
+            executor._emit_dns_lookup(
+                src_ip,
+                dst_ip,
+                time,
+                hostname=hostname,
+                force_address=True,
+                bypass_cache=True,
+                source_system=resolved_source_system,
+                source_pid=pid,
+                source_process_image=process_image or "",
+                planned_query_time=planned_query_time,
+            )
+        elif (
+            (emit_dns or (hostname and not hostname_from_reverse_dns and not suppress_prereq_dns))
+            and proto == "tcp"
+            and dst_port not in (53,)
+            and src_ip_is_local
+        ):
+            executor._expand_and_emit(
+                "connection",
+                time,
+                src_ip=src_ip,
+                dst_ip=dst_ip,
+                dst_port=dst_port,
+                proto=proto,
+                service=service,
+                hostname=hostname,
+                source_system=resolved_source_system,
+                source_pid=pid,
+                source_image=process_image or "",
+            )
+
+        if (
+            dns is None
+            and resolved_source_system is not None
+            and "forward_proxy" in (resolved_source_system.roles or [])
+            and hostname_is_external
+            and proto == "tcp"
+            and dst_port in (80, 443)
+            and src_ip_is_local
+            and not suppress_prereq_dns
+        ):
+            planned_query_time = time - timedelta(seconds=2)
+            executor._emit_dns_lookup(
+                src_ip,
+                dst_ip,
+                time,
+                hostname=hostname,
+                force_address=True,
+                bypass_cache=True,
+                planned_query_time=planned_query_time,
+            )
+
+        kerberos_prerequisite_success = conn_state not in {
+            "S0",
+            "S1",
+            "SH",
+            "SHR",
+            "REJ",
+            "OTH",
+        } and ((resp_bytes or 0) > 0 or conn_state in {None, "SF"})
+        state_source_system = resolved_source_system.hostname if resolved_source_system else ""
+        state_source_hostname = ""
+        if resolved_source_system:
+            state_source_hostname = executor._build_host_context(resolved_source_system).fqdn
+
+        return ResolvedNetworkRequest(
+            facts=NetworkRequestFacts(
+                automatic_source_port=automatic_source_port,
+                caller_owned_pid=caller_owned_pid,
+                caller_provided_conn_state=caller_provided_conn_state,
+                caller_provided_duration=caller_provided_duration,
+                caller_provided_payload=caller_provided_payload,
+                command_http_needs_response_size=command_http_needs_response_size,
+                explicit_orig_bytes=explicit_orig_bytes,
+                explicit_resp_bytes=explicit_resp_bytes,
+                parent_action_group_id=parent_action_group_id,
+                preserve_explicit_payload=preserve_explicit_payload,
+                preserve_start_time=preserve_start_time,
+                suppress_application_side_effects=suppress_application_side_effects,
+                ssh_attempted_username=ssh_attempted_username,
+                kerberos_prerequisite_success=kerberos_prerequisite_success,
+                stable_id=stable_id,
+                local_only=local_only,
+                http_application_layer_only=http_application_layer_only,
+                is_fw_deny=is_fw_deny,
+                is_tcp_probe=is_tcp_probe,
+                dns_server_ips=dns_server_ips,
+                packet_overhead_bytes=packet_overhead_bytes,
+                deferred_kerberos_duration_proto=deferred_kerberos_duration_proto,
+                kerberos_dc_hostname=kerberos_dc_hostname,
+            ),
+            endpoints=ResolvedNetworkEndpoints(
+                dst_ip=dst_ip,
+                dst_port=dst_port,
+                hostname=hostname,
+                hostname_was_explicit=hostname_was_explicit,
+                resolved_source_system=resolved_source_system,
+                source_os_category=source_os_category,
+                source_system=source_system,
+                src_ip=src_ip,
+                src_port=src_port,
+                state_source_hostname=state_source_hostname,
+                state_source_system=state_source_system,
+                src_ip_is_local=src_ip_is_local,
+                dst_ip_is_local=dst_ip_is_local,
+                tls_hostname=tls_hostname,
+            ),
+            protocol=NetworkProtocolEvidence(
+                dns=dns,
+                email=email,
+                file_transfer=file_transfer,
+                file_transfers=file_transfers,
+                firewall=firewall,
+                http=http,
+                ntp_timing=ntp_timing,
+                ocsp=ocsp,
+                pe=pe,
+                proxy=proxy,
+                smtp=smtp,
+                x509=x509,
+                x509_chain=x509_chain,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                duration=duration,
+                conn_state=conn_state,
+                proto=proto,
+                service=service,
+                ids_alerts=ids_alerts,
+            ),
+            applications=NetworkApplicationIntents(
+                persistent_smb_application_intent=persistent_smb_application_intent,
+                persistent_smb_intent=persistent_smb_intent,
+                persistent_smb_file_journal=persistent_smb_file_journal,
+                persistent_smb_terminal_authority=persistent_smb_terminal_authority,
+                persistent_smb_terminal_continuation=persistent_smb_terminal_continuation,
+                deferred_authority=deferred_authority,
+                http_channel_affinity=http_channel_affinity,
+            ),
+            explicit_proxy_request_preparation=explicit_proxy_request_preparation,
+            pid=pid,
+            process_image=process_image,
+            resolved_process=resolved_process,
+            responding_pid=responding_pid,
+            reused_http_conn_id=reused_http_conn_id,
+            reused_http_uid=reused_http_uid,
+            time=time,
+        )
+
+    def _plan_icmp_payload(
+        self,
+        *,
+        rng: random.Random,
+        orig_bytes: int | None,
+        resp_bytes: int | None,
+        duration: float | None,
+        stable_id: str,
+        conn_id: str,
+    ) -> tuple[int, int, float | None]:
+        """Sample one echo payload and its existing scoped duration without allocating identity."""
+        if resp_bytes and resp_bytes > 0:
+            request_size = _icmp_echo_payload_size(rng, orig_bytes)
+            response_size = request_size
+            orig_bytes = request_size
+            resp_bytes = response_size
+            duration = _icmp_echo_duration(
+                rng,
+                duration,
+                timing_runtime=self._timing_runtime,
+                stable_id=f"{stable_id}:{conn_id}:icmp-echo-duration",
+            )
+        else:
+            orig_bytes = _icmp_echo_payload_size(rng, orig_bytes)
+            resp_bytes = 0
+            duration = _icmp_echo_duration(
+                rng,
+                duration,
+                timing_runtime=self._timing_runtime,
+                stable_id=f"{stable_id}:{conn_id}:icmp-no-response-duration",
+            )
+        return orig_bytes, resp_bytes, duration
+
+    def _plan_explicit_transport_state(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        proto: str,
+        service: str | None,
+        dst_port: int,
+        conn_state: str,
+        duration: float | None,
+        orig_bytes: int | None,
+        resp_bytes: int | None,
+        rng: random.Random,
+    ) -> tuple[str, float | None, int | None, int | None]:
+        """Apply caller-selected state accounting while retaining eager RNG argument evaluation."""
+        # Explicit conn_state for TCP/UDP (e.g., UFW BLOCK → REJ)
+        if proto == "udp":
+            history = {
+                "SF": "Dd" if resp_bytes else "D",
+                "S0": "D",
+                "REJ": "D",
+                "OTH": "D",
+            }.get(conn_state, "Dd" if resp_bytes else "D")
+        else:
+            if conn_state == "SF":
+                history = _tcp_success_history(rng)
+            else:
+                history = {
+                    "REJ": "Sr",
+                    "S0": "S",
+                    "OTH": rng.choice(("DAd", "DdA", "ADad")),
+                    "S2": "ShADadF",
+                    "S3": "ShADadf",
+                    "RSTO": "ShADaR",
+                    "RSTR": "ShADadr",
+                    "S1": "Sh",
+                }.get(conn_state, _tcp_success_history(rng))
+        if conn_state in ("S0", "REJ"):
+            duration = None
+            resp_bytes = 0
+            if service == "dns" and proto == "udp" and dst_port == 53:
+                orig_bytes = max(orig_bytes or 0, 40)
+            else:
+                orig_bytes = 0
+        elif conn_state in ("S2", "S3"):
+            if duration is not None:
+                duration = self._failed_transport_duration_seconds(
+                    request,
+                    state=conn_state,
+                    duration=duration,
+                    sample_key="explicit_half_close",
+                )
+            if resp_bytes:
+                resp_bytes = int(resp_bytes * rng.uniform(0.2, 0.7))
+        elif conn_state in ("RSTO", "RSTR"):
+            if duration is not None:
+                duration = self._failed_transport_duration_seconds(
+                    request,
+                    state=conn_state,
+                    duration=duration,
+                    sample_key="explicit_reset",
+                )
+            if resp_bytes:
+                resp_bytes = int(resp_bytes * rng.uniform(0.1, 0.5))
+        elif conn_state in ("S1", "SH", "SHR"):
+            # Handshake-only observations still own a finite physical
+            # interval even when the caller omits a duration.  Without a
+            # close time the lifecycle authority cannot publish the root.
+            orig_bytes = 0
+            resp_bytes = 0
+            duration = self._failed_transport_duration_seconds(
+                request,
+                state=conn_state,
+                duration=duration or 0.5,
+                sample_key="explicit_handshake",
+            )
+        return history, duration, orig_bytes, resp_bytes
+
+    @staticmethod
+    def _plan_sampled_udp_state(
+        *,
+        service: str | None,
+        resp_bytes: int | None,
+        duration: float | None,
+        rng: random.Random,
+    ) -> tuple[str, str, float | None, int | None]:
+        """Select UDP observation state, retaining service-specific response precedence."""
+        # DNS connections with responses must not be S0 (no-response)
+        if service == "kerberos" and resp_bytes and resp_bytes > 0:
+            conn_state, history = "SF", "Dd"
+        elif service == "dns" and resp_bytes and resp_bytes > 0:
+            # ~5% retransmissions, ~2% multi-packet responses (large TXT/DNSSEC)
+            dns_roll = rng.random()
+            if dns_roll < 0.05:
+                conn_state, history = "SF", "DDd"  # Retransmitted query
+            elif dns_roll < 0.07:
+                conn_state, history = "SF", "Ddd"  # Multi-packet response
+            else:
+                conn_state, history = "SF", "Dd"
+        elif service == "ntp" and resp_bytes and resp_bytes > 0:
+            conn_state, history = "SF", "Dd"
+        else:
+            entry = rng.choices(
+                _UDP_CONN_ENTRIES,
+                weights=_UDP_CONN_WEIGHTS,
+                k=1,
+            )[0]
+            conn_state, _, history = entry
+        if conn_state == "S0":
+            duration = None
+            resp_bytes = 0
+        return conn_state, history, duration, resp_bytes
+
+    def _plan_sampled_tcp_state(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        caller_provided_payload: bool,
+        duration: float | None,
+        orig_bytes: int | None,
+        resp_bytes: int | None,
+        rng: random.Random,
+    ) -> tuple[str, str, float | None, int | None, int | None]:
+        """Choose an observation state and reconcile its payload and finite attempt interval."""
+        if duration is not None:
+            tcp_entries = _TCP_CONN_ENTRIES
+            tcp_weights = _TCP_CONN_WEIGHTS
+            if caller_provided_payload:
+                candidates = [
+                    entry
+                    for entry in _TCP_CONN_ENTRIES
+                    if entry[0] not in {"S0", "S1", "SH", "SHR", "REJ"}
+                ]
+                if candidates:
+                    tcp_entries = candidates
+                    tcp_weights = [entry[1] for entry in candidates]
+            entry = rng.choices(tcp_entries, weights=tcp_weights, k=1)[0]
+            conn_state, _, history = entry
+            if conn_state == "OTH":
+                history = rng.choice(("DAd", "DdA", "ADad"))
+        else:
+            conn_state = "S0"
+            history = "S"
+        if conn_state in ("S0", "REJ"):
+            duration = None
+            resp_bytes = 0
+            # S0/REJ: Zeek orig_bytes/resp_bytes are payload (application
+            # data), not packet overhead.  No handshake completed → zero payload.
+            orig_bytes = 0
+        elif conn_state in ("S1", "SH", "SHR"):
+            # S1/SH/SHR = partial handshake, no application data transferred.
+            # Zeek orig_bytes/resp_bytes are payload bytes (always 0 for
+            # handshake-only states); IP-byte totals are computed from packet
+            # counts + header overhead downstream.
+            orig_bytes = 0
+            resp_bytes = 0
+            if duration is not None:
+                duration = self._failed_transport_duration_seconds(
+                    request,
+                    state=conn_state,
+                    duration=duration,
+                    sample_key="selected_handshake",
+                )
+        elif conn_state in ("S2", "S3"):
+            # S2/S3 = half-closed: connection established, one side sent FIN
+            # but the other never replied. Some data transferred before close.
+            if duration is not None:
+                duration = self._failed_transport_duration_seconds(
+                    request,
+                    state=conn_state,
+                    duration=duration,
+                    sample_key="selected_half_close",
+                )
+            if resp_bytes:
+                resp_bytes = int(resp_bytes * rng.uniform(0.2, 0.7))
+        elif conn_state in ("RSTO", "RSTR"):
+            if duration is not None:
+                duration = self._failed_transport_duration_seconds(
+                    request,
+                    state=conn_state,
+                    duration=duration,
+                    sample_key="selected_reset",
+                )
+            if resp_bytes:
+                resp_bytes = int(resp_bytes * rng.uniform(0.1, 0.5))
+        elif conn_state == "OTH":
+            # OTH/Cc = midstream capture fragment — minimal data visible
+            orig_bytes = rng.randint(0, 200)
+            resp_bytes = rng.randint(0, 200)
+            if duration is not None:
+                duration = self._failed_transport_duration_seconds(
+                    request,
+                    state=conn_state,
+                    duration=duration,
+                    sample_key="selected_midstream",
+                )
+        return conn_state, history, duration, orig_bytes, resp_bytes
+
+    @staticmethod
+    def _stage_icmp_observation_time(
+        *,
+        endpoints: ResolvedNetworkEndpoints,
+        src_port: int | None,
+        dst_port: int,
+        time: datetime,
+        duration: float | None,
+        network_preparation: NetworkTransactionPreparation,
+        window_end: datetime,
+    ) -> datetime:
+        """Stage tuple spacing on the supplied preparation; cancellation remains with its boundary."""
+        zeek_type = src_port if src_port else 8
+        zeek_code = dst_port if dst_port else 0
+        icmp_key = (endpoints.src_ip, zeek_type, endpoints.dst_ip, zeek_code)
+        requested_ts_us = int(round(time.timestamp() * 1_000_000))
+        next_ts_us = network_preparation.read_point(
+            NetworkRuntimePointFamily.ICMP_OBSERVATION,
+            icmp_key,
+            requested_ts_us,
+            at=ensure_utc(time),
+        )
+        adjusted_ts_us = max(requested_ts_us, int(next_ts_us))
+        gap_seed = _stable_seed(
+            f"icmp_observation_gap:{endpoints.src_ip}:{zeek_type}:{endpoints.dst_ip}:{zeek_code}:{adjusted_ts_us}"
+        )
+        interval_us = max(0, int(round((duration or 0.0) * 1_000_000)))
+        network_preparation.stage_point(
+            NetworkRuntimePointFamily.ICMP_OBSERVATION,
+            icmp_key,
+            adjusted_ts_us + interval_us + 7_000 + (gap_seed % 77_000),
+            expires_at=min(
+                window_end,
+                ensure_utc(time) + timedelta(days=1),
+            ),
+        )
+        if adjusted_ts_us != requested_ts_us:
+            time += timedelta(microseconds=adjusted_ts_us - requested_ts_us)
+        return time
+
+    def _plan_network_transport(
+        self,
+        request: NetworkConnectionRequest,
+        boundary: _PreparedNetworkBoundary,
+        stage_input: ResolvedNetworkRequest,
+    ) -> PlannedNetworkTransport | str:
+        """Open preparation after resolution, then allocate identity and transport facts.
+
+        Prerequisites are already committed. All new root reservations and RNG
+        draws belong to the supplied boundary; protocol helpers may revise local
+        accounting but must not publish, cancel, or allocate a second root.
+        """
+        executor = self._executor
+        facts = stage_input.facts
+        endpoints = stage_input.endpoints
+        protocol_evidence = stage_input.protocol
+        applications = stage_input.applications
+        conn_state = protocol_evidence.conn_state
+        deferred_authority = applications.deferred_authority
+        dst_port = endpoints.dst_port
+        duration = protocol_evidence.duration
+        explicit_proxy_request_preparation = stage_input.explicit_proxy_request_preparation
+        http = protocol_evidence.http
+        ntp_timing = protocol_evidence.ntp_timing
+        orig_bytes = protocol_evidence.orig_bytes
+        pid = stage_input.pid
+        process_image = stage_input.process_image
+        proxy = protocol_evidence.proxy
+        resolved_process = stage_input.resolved_process
+        resp_bytes = protocol_evidence.resp_bytes
+        responding_pid = stage_input.responding_pid
+        reused_http_conn_id = stage_input.reused_http_conn_id
+        service = protocol_evidence.service
+        src_port = endpoints.src_port
+        time = stage_input.time
+
+        owner_rng = _get_rng()
+        network_preparation = boundary.begin(
+            executor=executor,
+            owner_rng=owner_rng,
+            stable_id=facts.stable_id,
+            linearization_time=ensure_utc(time),
+            action_group_id=facts.parent_action_group_id or facts.stable_id,
+        )
+        if deferred_authority is not None:
+            deferred_authority = deferred_authority.prepare_timing_authority(
+                boundary.timing_preparation.planning_runtime,
+            )
+        rng = network_preparation.rng
+        if explicit_proxy_request_preparation is not None:
+            prepared_application_token, proxy = explicit_proxy_request_preparation.prepare(
+                manager=executor._proxy_channel_manager,
+                timing_runtime=boundary.timing_preparation.planning_runtime,
+            )
+            boundary.track_application(
+                executor._proxy_channel_manager,
+                prepared_application_token,
+            )
+            from evidenceforge.generation.proxy_channels import (
+                ExplicitProxyRequestReuse,
+                ExplicitProxyTerminalRequest,
+            )
+
+            deferred_reuse = prepared_application_token.result
+            if not isinstance(
+                deferred_reuse,
+                (ExplicitProxyRequestReuse, ExplicitProxyTerminalRequest),
+            ):
+                raise StateError("Deferred proxy request has no reusable transport result")
+            time = deferred_reuse.canonical_request_time
+            duration = (
+                deferred_reuse.canonical_complete_time - deferred_reuse.canonical_request_time
+            ).total_seconds()
+
+        # Root-only sizing and duration draws start here so a rejected root can
+        # cancel them with the network/timing preparation. The earlier DNS,
+        # owner, and Kerberos audit/port work is intentionally independent and
+        # may already have committed its own canonical prerequisite truth.
+        if facts.command_http_needs_response_size and http is not None:
+            http = replace(http, response_body_len=rng.randint(500, 50000))
+        if facts.deferred_kerberos_duration_proto is not None:
+            sampled_kerberos_duration = (
+                self._kerberos_tcp_duration_seconds(request)
+                if facts.deferred_kerberos_duration_proto == "tcp"
+                else self._kerberos_udp_duration_seconds(request)
+            )
+            duration = (
+                min(duration, sampled_kerberos_duration)
+                if duration is not None
+                else sampled_kerberos_duration
+            )
+        if (
+            service == "dns"
+            and protocol_evidence.proto in ("udp", "tcp")
+            and dst_port == 53
+            and protocol_evidence.dns is not None
+        ):
+            ad_domain = getattr(executor, "_ad_domain", "corp.local")
+            protocol_evidence.dns.AA = _dns_is_internal_name(
+                protocol_evidence.dns.query or "", ad_domain
+            )
+            if not facts.is_fw_deny:
+                dns_has_protocol_response = bool(
+                    protocol_evidence.dns.rtt is not None
+                    or protocol_evidence.dns.answers
+                    or protocol_evidence.dns.rcode.upper()
+                    in {"NOERROR", "NXDOMAIN", "SERVFAIL", "REFUSED"}
+                    or protocol_evidence.dns.rcode_num in {0, 2, 3, 5}
+                )
+                if dns_has_protocol_response and protocol_evidence.dns.rtt is None:
+                    protocol_evidence.dns.rtt = self._dns_rtt_seconds(
+                        request,
+                        is_public_resolver=not _is_private_ip(endpoints.dst_ip),
+                    )
+                duration, orig_bytes, resp_bytes = _dns_payload_accounting(
+                    dns=protocol_evidence.dns,
+                    duration=duration,
+                    orig_bytes=orig_bytes,
+                    resp_bytes=resp_bytes,
+                )
+                if protocol_evidence.dns.rtt is not None:
+                    duration = self._dns_transport_duration_seconds(
+                        request, protocol_evidence.dns.rtt
+                    )
+        elif service == "dns" and protocol_evidence.proto in ("udp", "tcp") and dst_port == 53:
+            if endpoints.hostname and resp_bytes is not None and resp_bytes > 0:
+                dns_query = (
+                    endpoints.hostname
+                    or REVERSE_DNS.get(endpoints.dst_ip)
+                    or f"host-{endpoints.dst_ip.replace('.', '-')}"
+                )
+                fallback_dns = DnsContext(
+                    query=dns_query,
+                    trans_id=0,
+                    qtype=1,
+                    query_type="A",
+                    rcode="NOERROR",
+                    rcode_num=0,
+                    answers=[endpoints.dst_ip],
+                    rtt=duration,
+                )
+                duration, orig_bytes, resp_bytes = _dns_payload_accounting(
+                    dns=fallback_dns,
+                    duration=duration,
+                    orig_bytes=orig_bytes,
+                    resp_bytes=resp_bytes,
+                )
+            else:
+                duration = self._sample_duration_seconds(
+                    request,
+                    relationship_key="network.dns.contextless_duration",
+                    sample_key="dns_default",
+                    minimum_us=2_000,
+                    median_us=14_000,
+                    maximum_us=80_001,
+                    sigma=0.78,
+                )
+                orig_bytes = min(max(orig_bytes or 40, 40), 260)
+                if resp_bytes is None:
+                    resp_bytes = 120
+                elif resp_bytes <= 0:
+                    resp_bytes = 0
+                else:
+                    resp_bytes = min(max(resp_bytes, 70), 512)
+        if (
+            pid > 0
+            and endpoints.resolved_source_system is not None
+            and resolved_process is not None
+        ):
+            adjusted_time = executor._clamp_after_visible_process_create(
+                endpoints.resolved_source_system,
+                pid,
+                time,
+                "source.windows_wfp_connection",
+                timing_runtime=self._timing_runtime,
+            )
+            if facts.preserve_start_time and adjusted_time > time:
+                # Higher-level action bundles already own this transport's phase
+                # anchor. A late endpoint process observation must not move the
+                # canonical connection behind a dependent sibling; retain the
+                # transport and omit unsafe process attribution instead.
+                pid = -1
+                resolved_process = None
+                process_image = None
+            else:
+                time = adjusted_time
+        if src_port is None:
+            if facts.kerberos_dc_hostname:
+                src_port = executor._find_reserved_kerberos_source_port(
+                    endpoints.src_ip,
+                    facts.kerberos_dc_hostname,
+                    time,
+                    dst_ip=endpoints.dst_ip,
+                )
+            # Preserve the former candidate-draw location for unrelated RNG
+            # scopes. The runtime replaces this provisional value with the
+            # atomically leased port after the interval is final.
+            if src_port is None:
+                src_port = _ephemeral_port(rng, endpoints.source_os_category)
+
+        committed_suppressed = False
+        if (
+            service == "dns"
+            and protocol_evidence.proto in ("udp", "tcp")
+            and dst_port == 53
+            and protocol_evidence.dns is None
+            and endpoints.hostname
+        ):
+            ad_domain = getattr(executor, "_ad_domain", "corp.local")
+            dns_cache_key = (endpoints.src_ip, endpoints.dst_ip, endpoints.hostname, "A")
+            cache_ttl = _dns_base_ttl(
+                endpoints.hostname,
+                _dns_is_internal_name(endpoints.hostname, ad_domain),
+            )
+            cached = network_preparation.read_point(
+                NetworkRuntimePointFamily.DIRECT_DNS_TTL,
+                dns_cache_key,
+                None,
+                at=ensure_utc(time),
+            )
+            if cached is not None:
+                committed_suppressed = True
+            else:
+                network_preparation.stage_point(
+                    NetworkRuntimePointFamily.DIRECT_DNS_TTL,
+                    dns_cache_key,
+                    (time.timestamp(), time.timestamp() + cache_ttl),
+                    expires_at=min(
+                        ensure_utc(time) + timedelta(seconds=cache_ttl),
+                        boundary.network_runtime.window_end,
+                    ),
+                )
+
+        # Allocate one physical identity, or reuse the immutable parent identity
+        # without consuming a second allocator slot for an application child.
+        if reused_http_conn_id:
+            conn_id = reused_http_conn_id
+            uid = stage_input.reused_http_uid
+        else:
+            identity = network_preparation.reserve_physical_identity()
+            conn_id = identity.conn_id
+            uid = identity.zeek_uid
+
+        # Protocol-aware connection state selection
+
+        # REJ/S0 are source-native observations with no rendered duration, but the
+        # canonical physical transaction still needs a terminal interval for State
+        # and lifecycle authority. Preserve the already planned attempt budget so
+        # finalization can close internal truth without inventing a second draw.
+        canonical_terminal_duration = duration
+
+        dns_has_response = (
+            protocol_evidence.proto == "udp"
+            and service == "dns"
+            and protocol_evidence.dns is not None
+            and (
+                protocol_evidence.dns.rtt is not None
+                or bool(protocol_evidence.dns.answers)
+                or protocol_evidence.dns.rcode.upper()
+                in {"NOERROR", "NXDOMAIN", "SERVFAIL", "REFUSED"}
+            )
+        )
+
+        # ICMP is connectionless — always OTH regardless of what the caller passed
+        if protocol_evidence.proto == "icmp":
+            conn_state = "OTH"
+            history = "-"
+            src_port = 0  # ICMP has no ports; Zeek emits 0
+            dst_port = 0
+            orig_bytes, resp_bytes, duration = self._plan_icmp_payload(
+                rng=rng,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                duration=duration,
+                stable_id=facts.stable_id,
+                conn_id=conn_id,
+            )
+        elif dns_has_response:
+            conn_state = "SF"
+            history = "Dd"
+            orig_bytes = max(orig_bytes or 0, 28)
+            resp_bytes = max(resp_bytes or 0, 40)
+            if protocol_evidence.dns.rtt is not None and (
+                duration is None or duration < protocol_evidence.dns.rtt
+            ):
+                duration = protocol_evidence.dns.rtt
+        elif conn_state is not None:
+            history, duration, orig_bytes, resp_bytes = self._plan_explicit_transport_state(
+                request,
+                proto=protocol_evidence.proto,
+                service=service,
+                dst_port=dst_port,
+                conn_state=conn_state,
+                duration=duration,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                rng=rng,
+            )
+        elif protocol_evidence.proto == "udp":
+            conn_state, history, duration, resp_bytes = self._plan_sampled_udp_state(
+                service=service,
+                resp_bytes=resp_bytes,
+                duration=duration,
+                rng=rng,
+            )
+        else:
+            conn_state, history, duration, orig_bytes, resp_bytes = self._plan_sampled_tcp_state(
+                request,
+                caller_provided_payload=facts.caller_provided_payload,
+                duration=duration,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                rng=rng,
+            )
+
+        if (
+            not facts.suppress_application_side_effects
+            and not facts.http_application_layer_only
+            and protocol_evidence.proto == "tcp"
+            and dst_port == 443
+            and conn_state == "SF"
+        ):
+            # A completed TLS session with ssl.log/SNI evidence must include
+            # at least a ClientHello and server handshake payload at conn.log
+            # accounting level, even when the logical request body is empty.
+            if http is not None:
+                request_body_len = _http_context_flow_body_len(http, "request")
+                response_body_len = _http_context_flow_body_len(http, "response")
+                request_records = max(1, (request_body_len + 16_383) // 16_384)
+                response_records = max(1, (response_body_len + 16_383) // 16_384)
+                orig_bytes = (
+                    request_body_len + rng.randint(350, 950) + request_records * rng.randint(22, 38)
+                )
+                resp_bytes = (
+                    response_body_len
+                    + rng.randint(1200, 5200)
+                    + response_records * rng.randint(22, 38)
+                )
+            else:
+                orig_bytes = max(orig_bytes or 0, rng.randint(180, 900))
+                resp_bytes = max(resp_bytes or 0, rng.randint(900, 4500))
+            duration = self._completed_tls_duration_seconds(request, duration)
+
+        if not facts.suppress_application_side_effects and http is not None and conn_state == "SF":
+            duration = self._completed_http_duration_seconds(request, duration)
+
+        dns_owns_duration = (
+            service == "dns"
+            and protocol_evidence.proto in {"udp", "tcp"}
+            and dst_port == 53
+            and protocol_evidence.dns is not None
+            and protocol_evidence.dns.rtt is not None
+        )
+        if not facts.caller_provided_duration and not dns_owns_duration:
+            duration = self._generator_owned_duration_seconds(request, duration)
+        kerberos_audit_count = 0
+        if (
+            not facts.suppress_application_side_effects
+            and service == "kerberos"
+            and dst_port == 88
+            and protocol_evidence.proto in {"tcp", "udp"}
+            and facts.kerberos_dc_hostname
+            and src_port is not None
+            and src_port > 0
+            and not (
+                protocol_evidence.proto == "tcp"
+                and conn_state in {"S0", "S1", "SH", "SHR", "REJ", "OTH"}
+            )
+        ):
+            if request.kerberos_audit_mode in {"tgt", "tgs"}:
+                kerberos_audit_count = 1
+            elif request.kerberos_audit_mode == "pair":
+                kerberos_audit_count = 2
+            elif request.kerberos_audit_mode == "none":
+                kerberos_audit_count = 0
+            else:
+                kerberos_audit_count = executor._kerberos_audit_count_for_connection(
+                    endpoints.src_ip,
+                    facts.kerberos_dc_hostname,
+                    src_port,
+                    time,
+                )
+            if kerberos_audit_count == 0 and facts.kerberos_prerequisite_success:
+                # A successful internal KDC transport with no existing tuple
+                # companions will publish a TGT/TGS pair after the leased
+                # transport commits. Reserve packet shape for that canonical
+                # companion contract without publishing endpoint evidence early.
+                kerberos_audit_count = 2
+            if kerberos_audit_count > 0:
+                conn_state = "SF"
+                min_orig_bytes = kerberos_audit_count * rng.randint(260, 520)
+                min_resp_bytes = kerberos_audit_count * rng.randint(320, 760)
+                orig_bytes = max(orig_bytes or 0, min_orig_bytes)
+                resp_bytes = max(resp_bytes or 0, min_resp_bytes)
+                min_duration = self._kerberos_audit_floor_seconds(
+                    request,
+                    kerberos_audit_count,
+                )
+                duration = max(duration or 0.0, min_duration)
+                if protocol_evidence.proto == "udp":
+                    history = "Dd" * kerberos_audit_count
+                else:
+                    history = _tcp_success_history(rng)
+
+        if protocol_evidence.proto == "tcp":
+            orig_bytes, resp_bytes = _tcp_payload_bytes_consistent_with_history(
+                orig_bytes,
+                resp_bytes,
+                history,
+            )
+
+        conn_state, history, duration, resp_bytes = _normalize_udp_syslog_flow(
+            proto=protocol_evidence.proto,
+            dst_port=dst_port,
+            conn_state=conn_state,
+            history=history,
+            duration=duration,
+            resp_bytes=resp_bytes,
+        )
+
+        # Calculate packet counts — enforce consistency with history
+        if protocol_evidence.proto == "udp" and history:
+            orig_pkts = max(history.count("D"), math.ceil((orig_bytes or 0) / 1232))
+            resp_pkts = max(history.count("d"), math.ceil((resp_bytes or 0) / 1232))
+            if orig_pkts > 0 and orig_bytes:
+                orig_bytes = max(orig_bytes, orig_pkts * 28)
+            if resp_pkts > 0 and resp_bytes:
+                resp_bytes = max(resp_bytes, resp_pkts * 28)
+            elif resp_pkts == 0:
+                resp_bytes = 0
+        elif protocol_evidence.proto == "tcp" and history and history != "-":
+            orig_pkts, resp_pkts = _tcp_packet_counts_from_payload_and_history(
+                orig_bytes,
+                resp_bytes,
+                history,
+                rng,
+            )
+            if dst_port == 443 and conn_state == "SF":
+                orig_pkts += rng.choices([0, 1, 2, 3, 5], weights=[45, 25, 15, 10, 5], k=1)[0]
+                resp_pkts += rng.choices([0, 1, 2, 4, 8], weights=[35, 25, 20, 15, 5], k=1)[0]
+        elif protocol_evidence.proto == "icmp":
+            orig_pkts = 1
+            resp_pkts = 1 if resp_bytes and resp_bytes > 0 else 0
+        else:
+            orig_pkts = max(1, (orig_bytes // 1500)) if orig_bytes else 1
+            resp_pkts = max(1, (resp_bytes // 1500)) if resp_bytes else 0
+        if kerberos_audit_count > 0:
+            orig_pkts = max(orig_pkts, kerberos_audit_count)
+            resp_pkts = max(resp_pkts, kerberos_audit_count)
+
+        if protocol_evidence.proto == "udp" and dst_port == 123:
+            orig_bytes, resp_bytes, duration = _ntp_payload_accounting(
+                src_ip=endpoints.src_ip,
+                dst_ip=endpoints.dst_ip,
+                time=time,
+                conn_state=conn_state,
+                history=history,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                duration=duration,
+            )
+            orig_pkts = max(1, (history or "").count("D"))
+            resp_pkts = (history or "").count("d") if (resp_bytes or 0) > 0 else 0
+            if conn_state == "SF" and resp_pkts > 0 and (resp_bytes or 0) > 0:
+                ntp_stratum, _ntp_ref_id = _ntp_stratum_and_ref_id(endpoints.dst_ip)
+                median_rtt_ms, rtt_sigma = _NTP_STRATUM_TIMING.get(
+                    ntp_stratum,
+                    (10.0, 0.7),
+                )
+                ntp_timing = self._ntp_timing_components(
+                    request,
+                    median_rtt_ms=median_rtt_ms,
+                    rtt_sigma=rtt_sigma,
+                )
+                ntp_transport_duration = sum(ntp_timing[:3])
+                if duration is None or duration < ntp_transport_duration:
+                    duration = ntp_transport_duration
+
+        if facts.packet_overhead_bytes is not None:
+            overhead = facts.packet_overhead_bytes
+        elif protocol_evidence.proto == "udp":
+            overhead = rng.choices(
+                _UDP_OVERHEAD_VALUES,
+                weights=_UDP_OVERHEAD_WEIGHTS,
+                k=1,
+            )[0]
+        elif protocol_evidence.proto == "icmp":
+            overhead = 28
+        else:
+            overhead = rng.choices(
+                _TCP_OVERHEAD_VALUES,
+                weights=_TCP_OVERHEAD_WEIGHTS,
+                k=1,
+            )[0]
+        # Zeek count fields are source-observed IP payload totals. TCP gets
+        # per-side header/control texture; UDP/ICMP keeps protocol-specific
+        # fixed accounting for source-native packet sizes.
+        if protocol_evidence.proto == "tcp":
+            orig_ip_bytes = _tcp_ip_byte_count(
+                orig_bytes,
+                orig_pkts,
+                rng,
+                overhead_override=facts.packet_overhead_bytes,
+            )
+            resp_ip_bytes = _tcp_ip_byte_count(
+                resp_bytes,
+                resp_pkts,
+                rng,
+                overhead_override=facts.packet_overhead_bytes,
+            )
+        else:
+            orig_ip_bytes = (orig_bytes or 0) + orig_pkts * overhead
+            resp_ip_bytes = (resp_bytes or 0) + resp_pkts * overhead
+
+        ip_proto = (
+            6 if protocol_evidence.proto == "tcp" else 17 if protocol_evidence.proto == "udp" else 1
+        )
+
+        # Capture loss is source-observation truth, not a canonical connection property.
+        missed_bytes = 0
+        if protocol_evidence.proto == "tcp" and duration and duration > 10.0:
+            # Preserve this planner's RNG scope while source observation takes
+            # ownership of the resulting loss; unrelated protocol choices must
+            # not change merely because the fact moved to its canonical owner.
+            capture_loss_shape_roll = rng.random()
+            if capture_loss_shape_roll < 0.03:
+                rng.randint(500, 50000)
+
+        if not facts.preserve_start_time:
+            time = _zeek_conn_observation_time(
+                time,
+                endpoints.src_ip,
+                src_port,
+                endpoints.dst_ip,
+                dst_port,
+                protocol_evidence.proto,
+                service or "",
+                timing_runtime=self._timing_runtime,
+            )
+        if protocol_evidence.proto == "icmp":
+            time = self._stage_icmp_observation_time(
+                endpoints=endpoints,
+                src_port=src_port,
+                dst_port=dst_port,
+                time=time,
+                duration=duration,
+                network_preparation=network_preparation,
+                window_end=boundary.network_runtime.window_end,
+            )
+        else:
+            if pid > 0 and endpoints.resolved_source_system is not None:
+                final_end_plan = executor.state_manager.process_session_end_plan(
+                    endpoints.resolved_source_system.hostname,
+                    pid,
+                )
+                if (
+                    final_end_plan is not None
+                    and final_end_plan.is_authoritative
+                    and ensure_utc(time) >= ensure_utc(final_end_plan.canonical_end)
+                ):
+                    logger.debug(
+                        "Dropping connection PID after source timing crossed its session end: "
+                        "host=%s pid=%s session_end=%s connection_time=%s dst=%s:%s",
+                        endpoints.resolved_source_system.hostname,
+                        pid,
+                        final_end_plan.canonical_end,
+                        time,
+                        endpoints.dst_ip,
+                        dst_port,
+                    )
+                    pid = -1
+                    resolved_process = None
+                    process_image = None
+            duration = self._cap_to_owning_session(
+                start=time,
+                duration=duration,
+                source_system=endpoints.resolved_source_system,
+                pid=pid,
+                stable_id=facts.stable_id,
+            )
+        # Port-based service correction (Zeek detects service from payload, not scenario labels)
+        _PORT_SERVICE = {
+            80: "http",
+            443: "ssl",
+            22: "ssh",
+            53: "dns",
+            25: "smtp",
+            587: "smtp",
+            88: "kerberos",
+            389: "ldap",
+            445: "smb",
+        }
+        if (
+            service
+            and dst_port in _PORT_SERVICE
+            and service != _PORT_SERVICE[dst_port]
+            and not facts.is_tcp_probe
+        ):
+            service = _PORT_SERVICE[dst_port]
+        if (
+            protocol_evidence.proto == "tcp"
+            and conn_state in {"S0", "REJ", "S1", "SH", "SHR"}
+            and service != "dns"
+            and http is None
+        ):
+            service = ""
+        if (
+            protocol_evidence.proto == "udp"
+            and conn_state in {"S0", "REJ", "OTH"}
+            and (orig_bytes or 0) == 0
+            and (resp_bytes or 0) == 0
+            and service != "dns"
+        ):
+            service = ""
+
+        # Phase 2: Resolve event-side ownership into an action-owned draft. The
+        # canonical OccurrenceBuilder is constructed only after the transaction is
+        # finalized below.
+        # Resolve source system for src_host (needed by eCAR emitter for hostname/routing)
+        src_host_ctx = None
+        if endpoints.resolved_source_system:
+            src_host_ctx = executor._build_host_context(endpoints.resolved_source_system)
+
+        # Resolve destination system for dst_host
+        dst_host_ctx = None
+        if hasattr(executor, "_ip_to_system") and endpoints.dst_ip in executor._ip_to_system:
+            dst_host_ctx = executor._build_host_context(executor._ip_to_system[endpoints.dst_ip])
+        elif executor.dispatcher and executor.dispatcher.visibility_engine:
+            real_dst_ip = executor.dispatcher.visibility_engine._vip_to_real_ip.get(
+                endpoints.dst_ip
+            )
+            if real_dst_ip and real_dst_ip in executor._ip_to_system:
+                dst_host_ctx = executor._build_host_context(executor._ip_to_system[real_dst_ip])
+
+        # Resolve the canonical initiating process when its PID is known.
+        process_ctx = None
+        if pid > 0 and endpoints.resolved_source_system:
+            running = resolved_process or executor.state_manager.get_process(
+                endpoints.resolved_source_system.hostname, pid
+            )
+            if running is not None:
+                process_ctx = ProcessContext(
+                    pid=pid,
+                    parent_pid=running.parent_pid,
+                    image=running.image,
+                    command_line=running.command_line,
+                    username=running.username,
+                    logon_id=running.logon_id,
+                    start_time=running.start_time,
+                    parent_start_time=executor._lookup_parent_start_time(
+                        endpoints.resolved_source_system.hostname, running.parent_pid
+                    ),
+                )
+            elif process_image:
+                process_ctx = ProcessContext(
+                    pid=pid,
+                    parent_pid=0,
+                    image=process_image,
+                    command_line="",
+                    username="",
+                )
+
+        target_system = None
+        if dst_host_ctx is not None and hasattr(executor, "_ip_to_system"):
+            target_system = executor._ip_to_system.get(dst_host_ctx.ip)
+        target_has_ssh = target_system is not None and "ssh" in {
+            str(service_name).lower() for service_name in (target_system.services or [])
+        }
+        target_has_smb = False
+        if target_system is not None:
+            world_planner = getattr(executor, "_world_planner", None)
+            world_model = getattr(world_planner, "world_model", None)
+            target_world = (
+                world_model.hosts.get(target_system.hostname) if world_model is not None else None
+            )
+            if target_world is not None:
+                from evidenceforge.generation.world_model import HostCapability
+
+                target_has_smb = target_world.supports(HostCapability.SMB_SERVER)
+            else:
+                smb_server_services = {"lanmanserver", "samba", "smb-server", "smbd"}
+                target_has_smb = bool(
+                    {
+                        str(service_name).casefold().replace("_", "-")
+                        for service_name in (target_system.services or [])
+                    }.intersection(smb_server_services)
+                )
+        generic_ssh_preauth_pid: int | None = None
+        prepared_responder = None
+        prepare_generic_ssh_responder = False
+        prepare_generic_smb_responder = False
+        if (
+            target_system is not None
+            and dst_host_ctx is not None
+            and dst_host_ctx.os_category == "windows"
+            and applications.persistent_smb_intent is None
+            and responding_pid <= 0
+        ):
+            responding_pid = executor._resolve_windows_inbound_service_pid(
+                target_system,
+                dst_port,
+                time,
+            )
+        if (
+            dst_host_ctx is not None
+            and dst_host_ctx.os_category == "linux"
+            and target_system is not None
+            and protocol_evidence.proto == "tcp"
+            and dst_port == 22
+            and conn_state == "SF"
+            and (service in {"", "ssh"} or target_has_ssh)
+            and deferred_authority is None
+        ):
+            prepare_generic_ssh_responder = True
+        if (
+            dst_host_ctx is not None
+            and dst_host_ctx.os_category == "linux"
+            and target_system is not None
+            and target_has_smb
+            and protocol_evidence.proto == "tcp"
+            and dst_port == 445
+            and conn_state == "SF"
+            and service in {"", "smb"}
+        ):
+            prepare_generic_smb_responder = True
+
+        event = _NetworkOccurrenceDraft(
+            timestamp=time,
+            parent_action_group_id=facts.parent_action_group_id,
+            src_host=src_host_ctx,
+            dst_host=dst_host_ctx,
+            local_only=facts.local_only,
+            process=process_ctx,
+            network=NetworkTransactionDraft(
+                src_ip=endpoints.src_ip,
+                src_port=src_port,
+                dst_ip=endpoints.dst_ip,
+                dst_port=dst_port,
+                protocol=protocol_evidence.proto,
+                service=service or "",
+                zeek_uid=uid,
+                conn_id=conn_id,
+                duration=duration,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                orig_pkts=orig_pkts,
+                resp_pkts=resp_pkts,
+                orig_ip_bytes=orig_ip_bytes,
+                resp_ip_bytes=resp_ip_bytes,
+                conn_state=conn_state,
+                history=history,
+                local_orig=endpoints.src_ip_is_local,
+                local_resp=endpoints.dst_ip_is_local,
+                ip_proto=ip_proto,
+                missed_bytes=missed_bytes,
+                initiating_pid=pid,
+                responding_pid=responding_pid,
+                application_layer_only=facts.http_application_layer_only,
+            ),
+        )
+
+        return PlannedNetworkTransport(
+            facts=facts,
+            endpoints=replace(
+                endpoints,
+                dst_port=dst_port,
+                src_port=src_port,
+                target_system=target_system,
+                dst_host_ctx=dst_host_ctx,
+            ),
+            protocol=replace(
+                protocol_evidence,
+                http=http,
+                ntp_timing=ntp_timing,
+                proxy=proxy,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                duration=duration,
+                conn_state=conn_state,
+                service=service,
+            ),
+            applications=(
+                applications
+                if deferred_authority is applications.deferred_authority
+                else replace(applications, deferred_authority=deferred_authority)
+            ),
+            canonical_terminal_duration=canonical_terminal_duration,
+            committed_suppressed=committed_suppressed,
+            event=event,
+            generic_ssh_preauth_pid=generic_ssh_preauth_pid,
+            network_preparation=network_preparation,
+            overhead=overhead,
+            owner_rng=owner_rng,
+            prepare_generic_smb_responder=prepare_generic_smb_responder,
+            prepare_generic_ssh_responder=prepare_generic_ssh_responder,
+            prepared_responder=prepared_responder,
+            responding_pid=responding_pid,
+            rng=rng,
+            time=time,
+            uid=uid,
+        )
+
+    def _prepare_dns_protocol_evidence(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        event: _NetworkOccurrenceDraft,
+        facts: NetworkRequestFacts,
+        endpoints: ResolvedNetworkEndpoints,
+        protocol_evidence: NetworkProtocolEvidence,
+        network_preparation: NetworkTransactionPreparation,
+        rng: random.Random,
+        time: datetime,
+        overhead: int,
+        committed_suppressed: bool,
+    ) -> bool:
+        """Normalize the root-local DNS copy and stage cache observation, never publish it."""
+        executor = self._executor
+        # DNS context for Zeek dns.log fan-out
+        if protocol_evidence.dns is not None:
+            event.dns = protocol_evidence.dns
+            if (
+                event.firewall is not None
+                and event.firewall.action == "deny"
+                and protocol_evidence.proto in ("udp", "tcp")
+                and endpoints.dst_port == 53
+            ):
+                event.dns.rcode = "NOERROR"
+                event.dns.rcode_num = 0
+                event.dns.answers = []
+                event.dns.TTLs = []
+                event.dns.rtt = None
+                event.network.conn_state = "S0"
+                event.network.history = "D" if protocol_evidence.proto == "udp" else "S"
+                event.network.duration = None
+                event.network.resp_bytes = 0
+                event.network.resp_pkts = 0
+                event.network.resp_ip_bytes = None
+            else:
+                executor._normalize_dns_context_for_resolver(
+                    event.dns,
+                    resolver_ip=endpoints.dst_ip,
+                    time=time,
+                )
+                if self._stage_dns_observation(
+                    network_preparation,
+                    src_ip=endpoints.src_ip,
+                    resolver_ip=endpoints.dst_ip,
+                    dns=event.dns,
+                    time=time,
+                ):
+                    committed_suppressed = True
+        elif (
+            protocol_evidence.service == "dns"
+            and protocol_evidence.proto in ("udp", "tcp")
+            and endpoints.dst_port == 53
+            and endpoints.hostname
+            and (endpoints.hostname_was_explicit or endpoints.dst_ip in facts.dns_server_ips)
+            and not facts.is_fw_deny
+        ):
+            dns_query = (
+                endpoints.hostname
+                or REVERSE_DNS.get(endpoints.dst_ip)
+                or f"host-{endpoints.dst_ip.replace('.', '-')}"
+            )
+            dns_is_internal = _dns_is_internal_name(
+                dns_query,
+                getattr(executor, "_ad_domain", ""),
+            )
+            had_response_payload = bool(protocol_evidence.resp_bytes)
+            dns_answers = [endpoints.dst_ip] if had_response_payload else []
+            synthesized_rtt = self._dns_rtt_seconds(
+                request,
+                is_public_resolver=not _is_private_ip(endpoints.dst_ip),
+            )
+            event.dns = DnsContext(
+                query=dns_query,
+                trans_id=rng.randint(1, 65535),
+                qtype=1,
+                query_type="A",
+                rcode="NOERROR" if had_response_payload else "SERVFAIL",
+                rcode_num=0 if had_response_payload else 2,
+                answers=dns_answers,
+                TTLs=executor._dns_observed_ttls(
+                    resolver_ip=endpoints.dst_ip,
+                    query=dns_query,
+                    qtype_name="A",
+                    answers=dns_answers,
+                    is_internal=dns_is_internal,
+                    base_ttl=_dns_base_ttl(dns_query, dns_is_internal),
+                    time=time,
+                ),
+                rtt=synthesized_rtt,
+                AA=dns_is_internal,
+            )
+            if self._stage_dns_observation(
+                network_preparation,
+                src_ip=endpoints.src_ip,
+                resolver_ip=endpoints.dst_ip,
+                dns=event.dns,
+                time=time,
+            ):
+                committed_suppressed = True
+            if not had_response_payload:
+                event.network.conn_state = "SF"
+                event.network.history = "Dd"
+                event.network.resp_bytes = rng.randint(80, 220)
+                if protocol_evidence.proto == "udp":
+                    event.network.orig_pkts = event.network.history.count("D")
+                    event.network.resp_pkts = event.network.history.count("d")
+                    event.network.orig_bytes = max(
+                        event.network.orig_bytes or 0,
+                        event.network.orig_pkts * 28,
+                    )
+                    event.network.orig_ip_bytes = (
+                        event.network.orig_bytes + event.network.orig_pkts * overhead
+                    )
+                    event.network.resp_ip_bytes = (
+                        event.network.resp_bytes + event.network.resp_pkts * overhead
+                    )
+                else:
+                    event.network.resp_pkts = max(event.network.resp_pkts or 0, 1)
+                    event.network.resp_ip_bytes = event.network.resp_bytes + overhead
+            event.network.duration = self._dns_transport_duration_seconds(
+                request,
+                synthesized_rtt,
+            )
+
+        return committed_suppressed
+
+    @staticmethod
+    def _proxy_request_presentation(
+        http: HttpContext | None,
+        *,
+        endpoints: ResolvedNetworkEndpoints,
+        proxy_hostname: str,
+        domain_tags: list[str],
+        rng: random.Random,
+    ) -> tuple[str, str, str, str | None, str, str]:
+        """Use supplied HTTP metadata or the same scheme-specific URI/referrer draws."""
+        from evidenceforge.generation.activity.proxy_uri import pick_proxy_uri
+
+        user_agent = ""
+
+        # When a pre-built HttpContext exists (from browsing session
+        # generator), derive proxy fields from it.  The proxy emitter
+        # handles CONNECT tunnel deduplication automatically.
+        if http is not None:
+            from evidenceforge.generation.activity.http_content import (
+                normalize_mime_type_for_path,
+            )
+
+            scheme = "https" if endpoints.dst_port == 443 else "http"
+            proxy_method = http.method
+            url = f"{scheme}://{proxy_hostname}{http.uri}"
+            if http.resp_mime_types or http.status_code == 304:
+                proxy_content_type = normalize_mime_type_for_path(
+                    http.uri,
+                    (http.resp_mime_types[0] if http.resp_mime_types else "text/html"),
+                )
+            else:
+                proxy_content_type = "text/html"
+            proxy_ua_override = None  # session UA is already on HttpContext
+            user_agent = http.user_agent
+            proxy_referrer = http.referrer
+        else:
+            # Sample the URI before its referrer to preserve the request RNG sequence.
+            _src_os = (
+                _get_os_category(endpoints.source_system.os) if endpoints.source_system else None
+            )
+            (
+                path,
+                proxy_content_type,
+                proxy_method,
+                proxy_ua_override,
+                referrer_policy,
+            ) = pick_proxy_uri(
+                rng,
+                proxy_hostname,
+                domain_tags,
+                source_os=_src_os,
+                source_system_type=getattr(endpoints.source_system, "type", None),
+                allow_canonical_protocol_templates=False,
+            )
+            scheme = "https" if endpoints.dst_port == 443 else "http"
+            url = f"{scheme}://{proxy_hostname}{path}"
+            from evidenceforge.generation.activity.referrer import pick_referrer
+
+            proxy_referrer = (
+                ""
+                if referrer_policy == "none"
+                else pick_referrer(
+                    rng,
+                    proxy_hostname,
+                    context="general",
+                    port=443 if endpoints.dst_port == 443 else 80,
+                )
+            )
+        return proxy_method, url, proxy_content_type, proxy_ua_override, user_agent, proxy_referrer
+
+    def _prepare_transparent_proxy_evidence(
+        self,
+        *,
+        event: _NetworkOccurrenceDraft,
+        endpoints: ResolvedNetworkEndpoints,
+        protocol_evidence: NetworkProtocolEvidence,
+        rng: random.Random,
+        stable_id: str,
+    ) -> None:
+        """Populate one source-native proxy context after established-egress admission."""
+        executor = self._executor
+        proxy_routes = getattr(executor, "_proxy_routes", {})
+        chain = proxy_routes.get(endpoints.src_ip)
+        if chain:
+            from evidenceforge.events.contexts import ProxyContext
+
+            proxy_sys = chain[0]
+            proxy_fqdn = getattr(proxy_sys, "hostname", "")
+            # Build proxy FQDN from hostname + domain
+            ad_domain = getattr(executor, "_ad_domain", "")
+            if ad_domain and "." not in proxy_fqdn:
+                proxy_fqdn = f"{proxy_fqdn}.{ad_domain}"
+            # Hostname was resolved once at the top of generate_connection().
+            proxy_hostname = endpoints.hostname
+            if (
+                proxy_hostname is None
+                and protocol_evidence.dns is not None
+                and protocol_evidence.dns.query
+            ):
+                proxy_hostname = protocol_evidence.dns.query
+            if proxy_hostname is None:
+                proxy_hostname = REVERSE_DNS.get(endpoints.dst_ip)
+            if proxy_hostname is None:
+                proxy_hostname = _generate_random_hostname(rng, endpoints.dst_ip)
+            # Suppressed hostname → use raw IP for proxy logging
+            if proxy_hostname == "":
+                proxy_hostname = endpoints.dst_ip
+            from evidenceforge.generation.activity.dns_registry import get_domain_tags
+
+            domain_tags = get_domain_tags(proxy_hostname)
+            proxy_method, url, proxy_content_type, proxy_ua_override, user_agent, proxy_referrer = (
+                self._proxy_request_presentation(
+                    event.http,
+                    endpoints=endpoints,
+                    proxy_hostname=proxy_hostname,
+                    domain_tags=domain_tags,
+                    rng=rng,
+                )
+            )
+            from evidenceforge.generation.activity.proxy_uri import is_browser_like_proxy_domain
+
+            apply_domain_user_agent = event.http is None or (
+                not _is_tool_http_user_agent(event.http.user_agent)
+                and not is_browser_like_proxy_domain(proxy_hostname, domain_tags=domain_tags)
+            )
+            user_agent = executor._proxy_user_agent_for_context(
+                rng,
+                endpoints.source_system,
+                hostname=proxy_hostname,
+                domain_tags=domain_tags,
+                existing_user_agent=user_agent,
+                override_user_agent=proxy_ua_override,
+                apply_domain_override=apply_domain_user_agent,
+                source_identity=endpoints.src_ip,
+            )
+            proxy_referrer = _source_native_http_referrer(
+                user_agent,
+                proxy_referrer,
+                request_scheme="https" if endpoints.dst_port == 443 else "http",
+                request_port=endpoints.dst_port,
+            )
+            cache_roll = rng.random()
+            proxy_cacheable = _proxy_request_allows_cache_hit(
+                method=proxy_method,
+                url=url,
+                content_type=proxy_content_type,
+                domain_tags=domain_tags,
+            )
+            if event.http is not None:
+                if event.http.status_code == 304:
+                    cache_result = "REVALIDATED"
+                elif proxy_cacheable and cache_roll < 0.30 and event.http.status_code < 400:
+                    cache_result = "HIT"
+                else:
+                    cache_result = "MISS"
+            elif proxy_cacheable and cache_roll < 0.30:
+                cache_result = "HIT"
+            elif cache_roll < 0.91:
+                cache_result = "MISS"
+            elif cache_roll < 0.945:
+                cache_result = "DENIED"
+            elif cache_roll < 0.975:
+                cache_result = "AUTH_REQUIRED"
+            else:
+                cache_result = "GATEWAY_ERROR"
+            # Proxy sc_bytes/cs_bytes are source-side accounting fields:
+            # payload plus HTTP/proxy headers for allowed responses,
+            # or proxy-generated error pages for failures.
+            _cs = (protocol_evidence.orig_bytes or 0) + rng.randint(*_PROXY_CS_OVERHEAD)
+            _response_bytes = (
+                event.http.response_body_len
+                if event.http is not None
+                else (protocol_evidence.resp_bytes or 0)
+            )
+            if cache_result == "DENIED":
+                _sc = rng.randint(500, 2000)  # proxy error page
+            elif cache_result == "AUTH_REQUIRED":
+                _sc = rng.randint(300, 1200)
+            elif cache_result == "GATEWAY_ERROR":
+                _sc = rng.randint(250, 1800)
+            elif cache_result == "HIT":
+                _sc = _response_bytes + rng.randint(*_PROXY_SC_OVERHEAD)
+            else:
+                _sc = _response_bytes + rng.randint(*_PROXY_SC_OVERHEAD)
+            proxy_status_code = (
+                event.http.status_code
+                if event.http is not None
+                else {
+                    "DENIED": 403,
+                    "AUTH_REQUIRED": 407,
+                    "GATEWAY_ERROR": rng.choice([502, 503, 504]),
+                }.get(cache_result, 200)
+            )
+            event.proxy = ProxyContext(
+                client_ip=endpoints.src_ip,
+                username=executor._proxy_username_for_source(
+                    source_system=endpoints.source_system,
+                    user_agent=user_agent,
+                    cache_result=cache_result,
+                    hostname=proxy_hostname,
+                    time=event.timestamp,
+                ),
+                method=proxy_method,
+                url=url,
+                host=proxy_hostname,
+                status_code=proxy_status_code,
+                sc_bytes=_sc,
+                cs_bytes=_cs,
+                time_taken=_proxy_time_taken_ms(
+                    protocol_evidence.duration,
+                    rng,
+                    method=proxy_method,
+                    status_code=proxy_status_code,
+                    cache_result=cache_result,
+                    timing_runtime=self._timing_runtime,
+                    stable_id=f"{stable_id}:proxy-context",
+                ),
+                user_agent=user_agent,
+                content_type=proxy_content_type,
+                cache_result=cache_result,
+                referrer=proxy_referrer,
+                proxy_fqdn=proxy_fqdn,
+                proxy_action=_proxy_action_for_context(
+                    method=proxy_method,
+                    url=url,
+                    status_code=proxy_status_code,
+                    cache_result=cache_result,
+                    dst_port=endpoints.dst_port,
+                ),
+            )
+
+    def _prepare_automatic_http_evidence(
+        self,
+        *,
+        event: _NetworkOccurrenceDraft,
+        endpoints: ResolvedNetworkEndpoints,
+        response_bytes: int | None,
+        rng: random.Random,
+    ) -> None:
+        """Choose HTTP request/response evidence and raise only its local payload floor."""
+        executor = self._executor
+        # Use the already-resolved hostname for HTTP Host header and URI templates.
+        # Honor hostname="" (suppressed) — use raw IP instead of REVERSE_DNS.
+        host = (
+            endpoints.hostname
+            if endpoints.hostname is not None
+            else REVERSE_DNS.get(endpoints.dst_ip, endpoints.dst_ip)
+        )
+        if host == "":
+            host = endpoints.dst_ip
+        if endpoints.dst_port not in (80, 443):
+            host = f"{host}:{endpoints.dst_port}"
+        from evidenceforge.generation.activity.dns_registry import get_domain_tags
+        from evidenceforge.generation.activity.http_content import (
+            apply_transfer_size_variance,
+            coerce_response_size_for_mime,
+            http_status_message,
+            is_stable_resource_path,
+            response_mime_types_for_status,
+            response_size_for_status,
+        )
+        from evidenceforge.generation.activity.proxy_uri import (
+            pick_proxy_uri,
+            plaintext_http_redirect_status,
+        )
+
+        web_host = (
+            endpoints.hostname
+            if endpoints.hostname is not None
+            else REVERSE_DNS.get(endpoints.dst_ip, endpoints.dst_ip)
+        )
+        if web_host == "":
+            web_host = endpoints.dst_ip
+        web_domain_tags = get_domain_tags(web_host)
+        _src_os_http = (
+            _get_os_category(endpoints.source_system.os) if endpoints.source_system else None
+        )
+        uri, mime_type, http_method, http_ua_override, http_referrer_policy = pick_proxy_uri(
+            rng,
+            web_host,
+            web_domain_tags,
+            source_os=_src_os_http,
+            source_system_type=getattr(endpoints.source_system, "type", None),
+            allow_canonical_protocol_templates=False,
+        )
+        ua = executor._proxy_user_agent_for_context(
+            rng,
+            endpoints.source_system,
+            hostname=web_host,
+            domain_tags=web_domain_tags,
+            existing_user_agent="",
+            override_user_agent=http_ua_override,
+            apply_domain_override=True,
+            source_identity=endpoints.src_ip,
+        )
+        redirect_status = plaintext_http_redirect_status(
+            web_host,
+            port=endpoints.dst_port,
+            path=uri,
+            dst_ip=endpoints.dst_ip,
+        )
+        if redirect_status is not None:
+            status_code = redirect_status
+            status_msg = http_status_message(status_code)
+        else:
+            status_code, status_msg = _get_http_status(
+                endpoints.dst_ip,
+                uri,
+                publish_cache=False,
+            )
+
+        if status_code in {204, 304}:
+            resp_body_len = 0
+        else:
+            if status_code >= 300 or is_stable_resource_path(uri):
+                resp_body_len = apply_transfer_size_variance(
+                    response_size_for_status(status_code, host, uri),
+                    status_code=status_code,
+                    host=host,
+                    uri=uri,
+                    content_type=mime_type,
+                    variant_key=f"{endpoints.src_ip}:{ua}",
+                )
+            else:
+                resp_body_len = coerce_response_size_for_mime(rng, mime_type, response_bytes)
+        if event.network.conn_state == "SF" and resp_body_len > (event.network.resp_bytes or 0):
+            event.network.resp_bytes = resp_body_len
+            min_resp_pkts = max(1, math.ceil(resp_body_len / 1460))
+            event.network.resp_pkts = max(event.network.resp_pkts or 0, min_resp_pkts)
+            min_resp_ip_bytes = resp_body_len + event.network.resp_pkts * 40
+            event.network.resp_ip_bytes = max(
+                event.network.resp_ip_bytes or 0,
+                min_resp_ip_bytes,
+            )
+        from evidenceforge.generation.activity.referrer import pick_referrer
+
+        _http_referer = (
+            ""
+            if http_referrer_policy == "none"
+            else pick_referrer(rng, host, context="general", port=endpoints.dst_port)
+        )
+        _http_referer = _source_native_http_referrer(
+            ua,
+            _http_referer,
+            request_scheme="https" if endpoints.dst_port == 443 else "http",
+            request_port=endpoints.dst_port,
+        )
+        event.http = HttpContext(
+            method=http_method,
+            host=host,
+            uri=uri,
+            version="1.1",
+            user_agent=ua,
+            request_body_len=rng.randint(50, 2000) if http_method == "POST" else 0,
+            response_body_len=resp_body_len,
+            status_code=status_code,
+            status_msg=status_msg,
+            referrer=_http_referer,
+            resp_mime_types=response_mime_types_for_status(
+                status_code,
+                mime_type,
+                resp_body_len,
+                method=http_method,
+            ),
+            tags=[],
+        )
+
+    def _prepare_ntp_protocol_evidence(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        event: _NetworkOccurrenceDraft,
+        endpoints: ResolvedNetworkEndpoints,
+        network_preparation: NetworkTransactionPreparation,
+        window_end: datetime,
+        ntp_timing: tuple[float, float, float, timedelta] | None,
+    ) -> tuple[float, float, float, timedelta] | None:
+        """Stage parser spacing and response-clock evidence inside the supplied runtime window."""
+        executor = self._executor
+        from evidenceforge.events.contexts import NtpContext
+
+        stratum, ref_id = _ntp_stratum_and_ref_id(endpoints.dst_ip)
+        association = executor._ntp_association_profile(
+            event.network.src_ip,
+            endpoints.dst_ip,
+            network_preparation=network_preparation,
+            expires_at=window_end,
+        )
+        poll_seconds = float(association["poll"])
+        parser_key = (event.network.src_ip, endpoints.dst_ip)
+        last_parser_time = network_preparation.read_point(
+            NetworkRuntimePointFamily.NTP_PARSER,
+            parser_key,
+            None,
+            at=ensure_utc(event.timestamp),
+        )
+        parser_gap = (
+            None
+            if last_parser_time is None
+            else (event.timestamp - last_parser_time).total_seconds()
+        )
+        if parser_gap is None or parser_gap >= _ntp_parser_min_gap_seconds(poll_seconds):
+            network_preparation.stage_point(
+                NetworkRuntimePointFamily.NTP_PARSER,
+                parser_key,
+                event.timestamp,
+                expires_at=min(
+                    window_end,
+                    ensure_utc(event.timestamp)
+                    + timedelta(seconds=_ntp_parser_min_gap_seconds(poll_seconds)),
+                ),
+            )
+            server_response = executor._ntp_server_response_profile(
+                endpoints.dst_ip,
+                network_preparation=network_preparation,
+                timing_runtime=self._timing_runtime,
+                expires_at=window_end,
+            )
+            observed_response = _ntp_observed_response_fields(
+                server_response,
+                dst_ip=endpoints.dst_ip,
+                event_time=event.timestamp,
+                timing_runtime=self._timing_runtime,
+            )
+            if ntp_timing is None:
+                median_rtt_ms, rtt_sigma = _NTP_STRATUM_TIMING.get(
+                    stratum,
+                    (10.0, 0.7),
+                )
+                ntp_timing = self._ntp_timing_components(
+                    request,
+                    median_rtt_ms=median_rtt_ms,
+                    rtt_sigma=rtt_sigma,
+                )
+            rtt_sec, proc_sec, close_slack_sec, reference_age = ntp_timing
+            ntp_duration = rtt_sec + proc_sec + close_slack_sec
+            if event.network.duration is None or event.network.duration < ntp_duration:
+                event.network.duration = ntp_duration
+            canonical_server_receive = event.timestamp + timedelta(seconds=rtt_sec / 2)
+            canonical_server_transmit = canonical_server_receive + timedelta(seconds=proc_sec)
+            reference_time = self._ntp_clock_time(
+                request,
+                event.timestamp - reference_age,
+                role="server",
+                identity=endpoints.dst_ip,
+            )
+            origin_time = self._ntp_clock_time(
+                request,
+                event.timestamp,
+                role="client",
+                identity=event.network.src_ip,
+            )
+            receive_time = self._ntp_clock_time(
+                request,
+                canonical_server_receive,
+                role="server",
+                identity=endpoints.dst_ip,
+            )
+            transmit_time = self._ntp_clock_time(
+                request,
+                canonical_server_transmit,
+                role="server",
+                identity=endpoints.dst_ip,
+            )
+            event.ntp = NtpContext(
+                version=int(association["version"]),
+                mode=4,  # server response
+                stratum=stratum,
+                poll=poll_seconds,
+                precision=observed_response["precision"],
+                root_delay=observed_response["root_delay"],
+                root_disp=observed_response["root_disp"],
+                ref_id=ref_id,
+                ref_ts=round(reference_time.timestamp(), 6),
+                org_ts=round(origin_time.timestamp(), 6),
+                rec_ts=round(receive_time.timestamp(), 6),
+                xmt_ts=round(transmit_time.timestamp(), 6),
+            )
+        else:
+            event.network.service = ""
+
+        return ntp_timing
+
+    def _reconcile_http_transport_accounting(
+        self,
+        request: NetworkConnectionRequest,
+        *,
+        event: _NetworkOccurrenceDraft,
+        facts: NetworkRequestFacts,
+        rng: random.Random,
+    ) -> None:
+        """Reconcile body, packet and duration facts before source visibility fixes the interval."""
+        # Enforce conn_state/HTTP consistency: if HTTP context exists,
+        # the connection must have completed successfully (SF). A connection
+        # with a handshake-only, reset, or half-close state cannot have served
+        # a Zeek HTTP transaction with request/response body accounting.
+        if (
+            event.http is not None
+            and event.network.protocol == "tcp"
+            and event.network.conn_state != "SF"
+        ):
+            event.network.conn_state = "SF"
+            event.network.history = _tcp_success_history(rng)
+            if event.network.duration is None:
+                event.network.duration = self._http_default_duration_seconds(request)
+
+        if (
+            event.http is not None
+            and event.network.protocol == "tcp"
+            and event.network.conn_state == "SF"
+        ):
+            event.network.duration = self._completed_http_duration_seconds(
+                request,
+                event.network.duration,
+            )
+
+        if event.network.protocol == "tcp" and event.network.conn_state == "SF":
+            if event.http is not None:
+                method = (event.http.method or "GET").upper()
+                if event.network.service == "http" and method != "CONNECT":
+                    event.network.orig_bytes, event.network.resp_bytes = _http_flow_payload_bytes(
+                        event.http
+                    )
+                else:
+                    request_body_len = _http_context_flow_body_len(event.http, "request")
+                    response_body_len = _http_context_flow_body_len(event.http, "response")
+                    request_overhead = rng.randint(180, 620)
+                    response_overhead = rng.randint(180, 900)
+                    if event.http.status_code in {204, 304} or method == "HEAD":
+                        response_overhead = rng.randint(90, 360)
+                    event.network.orig_bytes = max(
+                        event.network.orig_bytes or 0,
+                        request_body_len + request_overhead,
+                        rng.randint(180, 520),
+                    )
+                    event.network.resp_bytes = max(
+                        event.network.resp_bytes or 0,
+                        response_body_len + response_overhead,
+                        rng.randint(90, 450),
+                    )
+            if (
+                event.network.service == "ssl"
+                and not facts.suppress_application_side_effects
+                and not facts.http_application_layer_only
+            ):
+                event.network.orig_bytes = max(event.network.orig_bytes or 0, rng.randint(180, 900))
+                event.network.resp_bytes = max(
+                    event.network.resp_bytes or 0, rng.randint(900, 4500)
+                )
+            event.network.orig_pkts, event.network.resp_pkts = (
+                _tcp_packet_counts_from_payload_and_history(
+                    event.network.orig_bytes,
+                    event.network.resp_bytes,
+                    event.network.history,
+                    rng,
+                )
+            )
+            if (
+                event.network.service == "ssl"
+                and not facts.suppress_application_side_effects
+                and not facts.http_application_layer_only
+            ):
+                event.network.orig_pkts += rng.choices(
+                    [0, 1, 2, 3, 5],
+                    weights=[45, 25, 15, 10, 5],
+                    k=1,
+                )[0]
+                event.network.resp_pkts += rng.choices(
+                    [0, 1, 2, 4, 8],
+                    weights=[35, 25, 20, 15, 5],
+                    k=1,
+                )[0]
+            event.network.orig_ip_bytes = _tcp_ip_byte_count(
+                event.network.orig_bytes,
+                event.network.orig_pkts,
+                rng,
+            )
+            event.network.resp_ip_bytes = _tcp_ip_byte_count(
+                event.network.resp_bytes,
+                event.network.resp_pkts,
+                rng,
+            )
+
+    def _plan_network_protocol_evidence(
+        self,
+        request: NetworkConnectionRequest,
+        boundary: _PreparedNetworkBoundary,
+        stage_input: PlannedNetworkTransport,
+    ) -> PlannedNetworkEvidence | str:
+        """Enrich the root-local draft, then settle its interval before tuple reservation.
+
+        Input identity and accounting come from transport preparation. Helpers
+        mutate this draft or stage points through that same preparation; they
+        neither publish sources nor commit/cancel another owner. Protocol body
+        sizes settle before process visibility and session-end bounds. Only then
+        can the coordinator reserve the exact physical tuple and build responders.
+        """
+        executor = self._executor
+        facts = stage_input.facts
+        endpoints = stage_input.endpoints
+        protocol_evidence = stage_input.protocol
+        applications = stage_input.applications
+        committed_suppressed = stage_input.committed_suppressed
+        event = stage_input.event
+        generic_ssh_preauth_pid = stage_input.generic_ssh_preauth_pid
+        network_preparation = stage_input.network_preparation
+        ntp_timing = protocol_evidence.ntp_timing
+        overhead = stage_input.overhead
+        prepared_responder = stage_input.prepared_responder
+        responding_pid = stage_input.responding_pid
+        rng = stage_input.rng
+        time = stage_input.time
+
+        if protocol_evidence.ids_alerts:
+            event.ids_alerts = list(protocol_evidence.ids_alerts)
+        if protocol_evidence.email is not None:
+            event.email = protocol_evidence.email
+        if protocol_evidence.smtp is not None:
+            event.smtp = protocol_evidence.smtp
+        if request.ssl is not None and not facts.http_application_layer_only:
+            event.ssl = request.ssl
+        if protocol_evidence.x509 is not None and not facts.http_application_layer_only:
+            event.x509 = protocol_evidence.x509
+        if protocol_evidence.x509_chain and not facts.http_application_layer_only:
+            event.x509_chain = list(protocol_evidence.x509_chain)
+        if request.tls_presentation is not None and not facts.http_application_layer_only:
+            event.tls_presentation = request.tls_presentation
+            if not event.x509_chain:
+                event.x509_chain = executor._tls_certificate_planner.x509_contexts(
+                    request.tls_presentation
+                )
+            executor._tls_certificate_planner.validate_projection(
+                request.tls_presentation,
+                event.x509_chain,
+            )
+            event.x509 = event.x509_chain[0]
+            if event.ssl is not None:
+                event.ssl = replace(
+                    event.ssl,
+                    cert_chain_fuids=tuple(cert.fuid for cert in event.x509_chain),
+                )
+        if protocol_evidence.http is not None:
+            event.http = protocol_evidence.http
+        if protocol_evidence.file_transfer is not None:
+            event.file_transfer = protocol_evidence.file_transfer
+        if protocol_evidence.file_transfers:
+            event.file_transfers = list(protocol_evidence.file_transfers)
+        if protocol_evidence.pe is not None:
+            event.pe = protocol_evidence.pe
+        if request.pe_analyses:
+            event.pe_analyses = list(request.pe_analyses)
+        if protocol_evidence.ocsp is not None:
+            event.ocsp = protocol_evidence.ocsp
+        if request.ocsp_transaction is not None:
+            event.ocsp_transaction = request.ocsp_transaction
+        if protocol_evidence.proxy is not None:
+            event.proxy = protocol_evidence.proxy
+        if protocol_evidence.firewall is not None:
+            event.firewall = protocol_evidence.firewall
+
+        committed_suppressed = self._prepare_dns_protocol_evidence(
+            request,
+            event=event,
+            facts=facts,
+            endpoints=endpoints,
+            protocol_evidence=protocol_evidence,
+            network_preparation=network_preparation,
+            rng=rng,
+            time=time,
+            overhead=overhead,
+            committed_suppressed=committed_suppressed,
+        )
+
+        # Proxy context: attach only for established outbound internet traffic.
+        # Forward proxies only see egress that completes (not blocked/denied flows).
+        if (
+            not facts.local_only
+            and protocol_evidence.service in ("ssl", "http")
+            and endpoints.dst_port in (80, 443)
+            and event.proxy is None
+            and not _is_private_ip(endpoints.dst_ip)
+            and protocol_evidence.conn_state not in ("S0", "REJ", "S1", "SH", "SHR", "RSTO", "RSTR")
+        ):
+            self._prepare_transparent_proxy_evidence(
+                event=event,
+                endpoints=endpoints,
+                protocol_evidence=protocol_evidence,
+                rng=rng,
+                stable_id=facts.stable_id,
+            )
+
+        # Zeek protocol-layer contexts: populate SSL/HTTP/files for fan-out
+        # Skip for local-only events (no network sensor will see them)
+        rng = network_preparation.rng
+        if (
+            not facts.suppress_application_side_effects
+            and not facts.http_application_layer_only
+            and not facts.local_only
+            and protocol_evidence.service == "ssl"
+            and protocol_evidence.proto == "tcp"
+            and protocol_evidence.conn_state == "SF"
+        ):
+            executor._attach_ssl_context(
+                event,
+                hostname=endpoints.tls_hostname,
+                dns=protocol_evidence.dns,
+                dst_ip=endpoints.dst_ip,
+                rng=rng,
+                allow_failure=not facts.caller_provided_conn_state,
+                timing_stable_id=facts.stable_id,
+                network_preparation=network_preparation,
+                timing_runtime=self._timing_runtime,
+                network_point_expires_at=boundary.network_runtime.window_end,
+            )
+        if (
+            protocol_evidence.proto == "tcp"
+            and event.network.conn_state in {"S0", "REJ", "SH", "SHR"}
+            and event.network.service in {"http", "ssl"}
+            and event.http is None
+            and event.ssl is None
+        ):
+            event.network.service = ""
+
+        elif (
+            not facts.local_only
+            and not facts.suppress_application_side_effects
+            and protocol_evidence.service == "http"
+            and protocol_evidence.proto == "tcp"
+            and protocol_evidence.conn_state == "SF"
+            and event.http is None  # Skip auto-generation if caller provided HttpContext
+        ):
+            self._prepare_automatic_http_evidence(
+                event=event,
+                endpoints=endpoints,
+                response_bytes=protocol_evidence.resp_bytes,
+                rng=rng,
+            )
+
+        if not facts.suppress_application_side_effects:
+            _attach_http_file_transfers(
+                event,
+                dst_ip=endpoints.dst_ip,
+                rng=rng,
+                timing_runtime=self._timing_runtime,
+                timing_scope=self._timing_scope(request),
+                deployment_registry=getattr(executor.dispatcher, "deployment_registry", None),
+            )
+
+        # NTP context for Zeek ntp.log fan-out. Zeek ntp.log records server response
+        # fields, so only attach the context when the matching conn.log row has a
+        # responder payload.
+        if (
+            not facts.local_only
+            and protocol_evidence.service == "ntp"
+            and protocol_evidence.proto == "udp"
+            and event.network.conn_state == "SF"
+            and (event.network.resp_pkts or 0) > 0
+            and (event.network.resp_bytes or 0) > 0
+        ):
+            ntp_timing = self._prepare_ntp_protocol_evidence(
+                request,
+                event=event,
+                endpoints=endpoints,
+                network_preparation=network_preparation,
+                window_end=boundary.network_runtime.window_end,
+                ntp_timing=ntp_timing,
+            )
+
+        self._reconcile_http_transport_accounting(request, event=event, facts=facts, rng=rng)
+
+        if (
+            not facts.suppress_application_side_effects
+            and not facts.http_application_layer_only
+            and not facts.local_only
+            and event.network.service == "ssl"
+            and event.network.conn_state == "SF"
+            and event.ssl is None
+        ):
+            executor._attach_ssl_context(
+                event,
+                hostname=endpoints.tls_hostname,
+                dns=protocol_evidence.dns,
+                dst_ip=endpoints.dst_ip,
+                rng=rng,
+                allow_failure=False,
+                timing_stable_id=facts.stable_id,
+                network_preparation=network_preparation,
+                timing_runtime=self._timing_runtime,
+                network_point_expires_at=boundary.network_runtime.window_end,
+            )
+
+        _align_tcp_network_payload_with_history(event.network, rng)
+        if facts.preserve_explicit_payload:
+            _preserve_explicit_tcp_payload_overrides(
+                event.network,
+                explicit_orig_bytes=facts.explicit_orig_bytes,
+                explicit_resp_bytes=facts.explicit_resp_bytes,
+                rng=rng,
+            )
+        if (
+            not event.network.application_layer_only
+            and executor._ensure_tls_conn_covers_certificate_bytes(
+                event,
+                timing_runtime=self._timing_runtime,
+            )
+        ):
+            pass
+
+        self._reconcile_application_payload(event)
+
+        scenario_end = getattr(executor, "_scenario_end_time", None)
+        if scenario_end is not None and ensure_utc(request.time) == ensure_utc(scenario_end):
+            # Output/application owners retain their historical exclusive end
+            # fence, while the public generator still returns the committed UID
+            # for one call exactly on that boundary. Keep the invisible physical
+            # interval inside NetworkRuntime's one-microsecond sentinel.
+            event.timestamp = ensure_utc(scenario_end)
+            event.network.duration = min(event.network.duration or 0.000001, 0.000001)
+            time = event.timestamp
+
+        pid = event.network.initiating_pid
+        process_ctx = event.process
+        if pid > 0 and endpoints.resolved_source_system is not None and process_ctx is not None:
+            adjusted_time = executor._clamp_after_visible_process_create(
+                endpoints.resolved_source_system,
+                pid,
+                event.timestamp,
+                "source.windows_wfp_connection",
+                timing_runtime=self._timing_runtime,
+            )
+            if adjusted_time > event.timestamp:
+                if facts.preserve_start_time:
+                    # A higher-level bundle already owns the transport anchor.
+                    # Omit late attribution before leasing that immutable interval.
+                    executor._set_connection_process_context(
+                        event,
+                        source_system=endpoints.resolved_source_system,
+                        pid=-1,
+                    )
+                    pid = -1
+                    process_ctx = None
+                else:
+                    # Ordinary transport planning may still settle its interval;
+                    # the lease is acquired only after this adjustment completes.
+                    event.timestamp = adjusted_time
+                    time = adjusted_time
+
+        # Finalize the canonical source-visible interval only after every protocol,
+        # payload, and process-visibility adjustment has settled. Dispatch creates
+        # source-local event copies with collection delay, so the immutable interval
+        # must live on the finalized transaction rather than be re-derived from those copies.
+        canonical_duration = event.network.duration
+        if canonical_duration is None and event.network.conn_state in {"REJ", "S0"}:
+            canonical_duration = max(0.000001, stage_input.canonical_terminal_duration or 0.000001)
+        event.network.duration = self._cap_to_owning_session(
+            start=event.timestamp,
+            duration=canonical_duration,
+            source_system=endpoints.resolved_source_system,
+            pid=pid,
+            stable_id=facts.stable_id,
+        )
+        event.network.source_visible_start_time = event.timestamp
+        event.network.source_visible_close_time = (
+            event.timestamp + timedelta(seconds=max(0.0, event.network.duration))
+            if event.network.duration is not None
+            else None
+        )
+        if (
+            event.network.service
+            and event.network.protocol != "icmp"
+            and (event.network.orig_bytes or 0) + (event.network.resp_bytes or 0) == 0
+        ):
+            # Zeek's conn.log service field records a protocol analyzer that
+            # confirmed payload parsing, not a well-known-port guess. Retain
+            # the requested service while planning children, then clear it at
+            # the canonical boundary when no application bytes were observed.
+            event.network.service = ""
+        canonical_start = event.network.source_visible_start_time
+        canonical_close = event.network.source_visible_close_time
+        if event.network.protocol in {"tcp", "udp"} and not event.network.application_layer_only:
+            if canonical_close is None:
+                raise StateError("Physical TCP/UDP transport requires a canonical close time")
+            transport_lease = network_preparation.reserve_transport_tuple(
+                intent_stable_id=facts.stable_id,
+                src_ip=event.network.src_ip,
+                dst_ip=event.network.dst_ip,
+                dst_port=event.network.dst_port,
+                protocol=event.network.protocol,
+                opened_at=canonical_start,
+                closed_at=canonical_close,
+                source_port=(None if facts.automatic_source_port else event.network.src_port),
+                preferred_source_port=(
+                    event.network.src_port if facts.automatic_source_port else None
+                ),
+                source_os_category=endpoints.source_os_category,
+            )
+            event.network.src_ip = transport_lease.src_ip
+            event.network.src_port = transport_lease.src_port
+            event.network.dst_ip = transport_lease.dst_ip
+            transport_stable_id = transport_lease.occurrence_stable_id
+        else:
+            transport_stable_id = _network_transport_occurrence_stable_id(
+                facts.stable_id,
+                src_ip=event.network.src_ip,
+                src_port=event.network.src_port,
+                dst_ip=event.network.dst_ip,
+                dst_port=event.network.dst_port,
+                protocol=event.network.protocol,
+                opened_at=canonical_start,
+            )
+            network_preparation.bind_transaction_identity(transport_stable_id)
+
+        if stage_input.prepare_generic_ssh_responder and endpoints.target_system is not None:
+            infer_generic_ssh_preauth = responding_pid <= 0
+            prepared_responder = executor.prepare_network_responder(
+                kind="ssh",
+                target_system=endpoints.target_system,
+                time=canonical_start,
+                close_time=canonical_close,
+                source_ip=event.network.src_ip,
+                source_port=event.network.src_port,
+                target_user=facts.ssh_attempted_username,
+                responding_pid=responding_pid,
+                network_preparation=network_preparation,
+                source_timing_preparation=boundary.timing_preparation,
+                runtime_expires_at=boundary.network_runtime.window_end,
+            )
+            responding_pid = prepared_responder.responding_pid
+            event.network.responding_pid = responding_pid
+            if infer_generic_ssh_preauth:
+                generic_ssh_preauth_pid = responding_pid
+        elif stage_input.prepare_generic_smb_responder and endpoints.target_system is not None:
+            prepared_responder = executor.prepare_network_responder(
+                kind="smb",
+                target_system=endpoints.target_system,
+                time=canonical_start,
+                close_time=canonical_close,
+                source_ip=event.network.src_ip,
+                source_port=event.network.src_port,
+                target_user=None,
+                responding_pid=responding_pid,
+                network_preparation=network_preparation,
+                source_timing_preparation=boundary.timing_preparation,
+                runtime_expires_at=boundary.network_runtime.window_end,
+            )
+            responding_pid = prepared_responder.responding_pid
+            event.network.responding_pid = responding_pid
+
+        application_request_time: datetime | None = None
+        if any((event.dns, event.http, event.ssl, event.smtp, event.proxy)):
+            if event.http is not None and event.http.canonical_request_time is not None:
+                application_request_time = event.http.canonical_request_time
+            elif event.http is not None:
+                minimum_request_gap = timedelta(milliseconds=1)
+                if canonical_close is not None:
+                    available = canonical_close - canonical_start
+                    minimum_request_gap = min(minimum_request_gap, available * 0.45)
+                if event.network.application_layer_only:
+                    application_request_time = max(
+                        event.timestamp,
+                        canonical_start + minimum_request_gap,
+                    )
+                else:
+                    delay_ms = 12 + (
+                        _stable_seed(
+                            "http_request_after_transport:"
+                            f"{event.network.src_ip}:{event.network.src_port}:"
+                            f"{event.network.dst_ip}:{event.network.dst_port}:"
+                            f"{canonical_start.isoformat()}"
+                        )
+                        % 74
+                    )
+                    application_request_time = canonical_start + timedelta(milliseconds=delay_ms)
+                if canonical_close is not None:
+                    available = canonical_close - canonical_start
+                    application_request_time = min(
+                        application_request_time,
+                        canonical_start + available * 0.45,
+                    )
+                application_request_time = max(
+                    application_request_time,
+                    canonical_start + minimum_request_gap,
+                )
+                event.http = replace(
+                    event.http,
+                    canonical_request_time=application_request_time,
+                )
+            else:
+                application_request_time = canonical_start
+
+        phase_times: list[tuple[str, datetime]] = [("transport_start", canonical_start)]
+        if any((event.dns, event.http, event.ssl, event.smtp, event.proxy)) and not (
+            event.network.application_layer_only
+        ):
+            phase_times.append(("application_request", application_request_time or canonical_start))
+        if (
+            canonical_close is not None
+            and (event.network.resp_bytes or 0) > 0
+            and canonical_close > canonical_start
+            and not event.network.application_layer_only
+        ):
+            response_time = canonical_start + timedelta(
+                seconds=(canonical_close - canonical_start).total_seconds() * 0.75
+            )
+            if application_request_time is not None:
+                response_time = max(response_time, application_request_time)
+            phase_times.append(("application_response", response_time))
+        if canonical_close is not None:
+            phase_times.append(("transport_close", canonical_close))
+        if event.firewall is not None and event.firewall.action == "deny":
+            transaction_outcome = "denied"
+        elif event.network.conn_state in {"SF", "S1", "S2", "S3", "OTH"}:
+            transaction_outcome = "success"
+        else:
+            transaction_outcome = "failure"
+        event.network.finalize_transaction(
+            transport_stable_id,
+            hostname=endpoints.hostname or event.network.dst_ip,
+            outcome=transaction_outcome,
+            phase_times=tuple(phase_times),
+        )
+        from evidenceforge.generation.actions.ids_alert import (
+            ids_alert_matches_transaction,
+            normalize_ids_alerts,
+        )
+
+        transaction = event.network.transaction
+        if transaction is None:
+            raise ValueError("Network transaction disappeared after finalization")
+        persistent_smb_batch = None
+        persistent_smb_client_identity = None
+        if applications.persistent_smb_intent is not None:
+            persistent_smb_batch = applications.persistent_smb_intent.prepare(
+                executor.state_manager,
+                transaction,
+            )
+            persistent_smb_client_identity = (
+                applications.persistent_smb_intent.client_process_identity(
+                    executor.state_manager,
+                    persistent_smb_batch,
+                )
+            )
+            client_process = applications.persistent_smb_intent.client_process
+            if (
+                persistent_smb_client_identity is not None
+                and client_process.transport_attribution == "process"
+            ):
+                pid = persistent_smb_client_identity.pid
+                process_ctx = ProcessContext(
+                    pid=persistent_smb_client_identity.pid,
+                    parent_pid=persistent_smb_client_identity.parent_pid,
+                    image=persistent_smb_client_identity.image,
+                    command_line=persistent_smb_client_identity.command_line,
+                    username=persistent_smb_client_identity.principal,
+                    logon_id=persistent_smb_client_identity.logon_id,
+                    start_time=persistent_smb_client_identity.started_at,
+                    parent_start_time=executor._lookup_parent_start_time(
+                        persistent_smb_client_identity.hostname,
+                        persistent_smb_client_identity.parent_pid,
+                    ),
+                )
+                event.process = process_ctx
+                event.network.initiating_pid = pid
+            else:
+                pid = -1
+                process_ctx = None
+                event.process = None
+                event.network.initiating_pid = -1
+        attached_files = tuple(
+            candidate
+            for candidate in (event.file_transfer, *event.file_transfers)
+            if candidate is not None
+        )
+        event.ids_alerts = list(
+            normalize_ids_alerts(
+                [
+                    alert
+                    for alert in event.ids_alerts
+                    if ids_alert_matches_transaction(
+                        alert,
+                        transaction,
+                        http=event.http,
+                        dns=event.dns,
+                        ssl=event.ssl,
+                        file_transfers=attached_files,
+                    )
+                ]
+            )
+        )
+        event = event.build_event()
+
+        return PlannedNetworkEvidence(
+            publication=NetworkPublicationInputs(
+                facts=facts,
+                endpoints=endpoints,
+                event=event,
+                generic_ssh_preauth_pid=generic_ssh_preauth_pid,
+                prepared_responder=prepared_responder,
+                process_ctx=process_ctx,
+                pid=pid,
+                time=time,
+                uid=stage_input.uid,
+                committed_suppressed=committed_suppressed,
+            ),
+            applications=applications,
+            network_preparation=network_preparation,
+            owner_rng=stage_input.owner_rng,
+            rng=rng,
+            persistent_smb_batch=persistent_smb_batch,
+        )
+
+    def _prepare_network_publication(
+        self,
+        request: NetworkConnectionRequest,
+        boundary: _PreparedNetworkBoundary,
+        stage_input: PlannedNetworkEvidence,
+    ) -> PreparedNetworkPublication | str:
+        """Assemble and validate state, lifecycle, and source publication capabilities."""
+        from evidenceforge.generation.actions.proxy_transaction import ExplicitProxyOpenPreparation
+
+        executor = self._executor
+        publication_inputs = stage_input.publication
+        applications = stage_input.applications
+        endpoints = publication_inputs.endpoints
+        deferred_authority = applications.deferred_authority
+        network_preparation = stage_input.network_preparation
+        owner_rng = stage_input.owner_rng
+        persistent_smb_batch = stage_input.persistent_smb_batch
+
+        if not _AUTO_WEIRD_ENABLED:
+            stage_input.rng.random()
+
+        application_window_end = getattr(executor, "_scenario_end_time", None)
+        transport_inside_application_window = (
+            publication_inputs.event.network.closed_at is not None
+            and (
+                application_window_end is None
+                or (
+                    publication_inputs.event.network.started_at < ensure_utc(application_window_end)
+                    and publication_inputs.event.network.closed_at
+                    <= ensure_utc(application_window_end)
+                )
+            )
+        )
+        if (
+            applications.http_channel_affinity is not None
+            and publication_inputs.event.http is not None
+            and publication_inputs.event.network.conn_state == "SF"
+            and not publication_inputs.event.network.application_layer_only
+            and publication_inputs.event.network.duration is not None
+            and transport_inside_application_window
+        ):
+            assert publication_inputs.event.network.closed_at is not None
+            http_open_token = executor._http_channel_manager.prepare_open_transport(
+                applications.http_channel_affinity,
+                transport_id=publication_inputs.event.network.stable_id,
+                zeek_uid=publication_inputs.event.network.zeek_uid,
+                conn_id=publication_inputs.event.network.conn_id,
+                src_port=publication_inputs.event.network.src_port,
+                opened_at=publication_inputs.event.network.started_at,
+                closes_at=publication_inputs.event.network.closed_at,
+                initial_request_time=publication_inputs.event.http.canonical_request_time
+                or publication_inputs.event.network.started_at,
+                orig_budget=max(
+                    publication_inputs.event.network.orig_bytes or 0,
+                    publication_inputs.event.http.request_body_len or 0,
+                ),
+                resp_budget=max(
+                    publication_inputs.event.network.resp_bytes or 0,
+                    publication_inputs.event.http.response_body_len or 0,
+                ),
+                initial_request_body_bytes=publication_inputs.event.http.request_body_len or 0,
+                initial_response_body_bytes=publication_inputs.event.http.response_body_len or 0,
+            )
+            boundary.track_application(executor._http_channel_manager, http_open_token)
+
+        explicit_proxy_open = request.explicit_proxy_open_preparation
+        if explicit_proxy_open is not None:
+            if not isinstance(explicit_proxy_open, ExplicitProxyOpenPreparation):
+                raise StateError("Network request has an invalid explicit-proxy open preparation")
+            if publication_inputs.event.network.application_layer_only:
+                raise StateError("Explicit-proxy open requires a physical origin transport")
+            client_root = explicit_proxy_open.client_root
+            client_receipt = explicit_proxy_open.client_receipt
+            if not executor._lifecycle_authority.authenticates_prepared_network_receipt(
+                client_root,
+                client_receipt,
+            ):
+                raise StateError("Explicit-proxy open has no authentic client prerequisite")
+            client = client_root.result.transaction
+            if client.stable_id != explicit_proxy_open.client_transport_id:
+                raise StateError("Explicit-proxy open changed its client prerequisite identity")
+            proxy_open_token = explicit_proxy_open.prepare_token(
+                manager=executor._proxy_channel_manager,
+                origin_transaction=publication_inputs.event.network,
+            )
+            if proxy_open_token is None:
+                raise StateError("Explicit-proxy manager rejected the prepared origin transport")
+            boundary.track_application(
+                executor._proxy_channel_manager,
+                proxy_open_token,
+                prerequisite_receipts=(client_receipt,),
+            )
+
+        lifecycle_mode = request.lifecycle_plan_mode(publication_inputs.event.network)
+        materialization_mode = (
+            ConnectionMaterializationMode.APPLICATION_CHILD
+            if publication_inputs.event.network.application_layer_only
+            else ConnectionMaterializationMode.PHYSICAL
+        )
+        if lifecycle_mode == "deferred_session":
+            if deferred_authority is None:
+                raise StateError(
+                    "Deferred-session network request requires its prepared session authority"
+                )
+            if materialization_mode is not ConnectionMaterializationMode.PHYSICAL:
+                raise StateError("Deferred-session authority requires a physical transport")
+            deferred_authority = deferred_authority.prepare_state_authority(
+                executor.state_manager,
+                publication_inputs.event.network,
+            )
+            deferred_authority = deferred_authority.prepare_application_authority(
+                publication_inputs.event.network,
+            )
+            boundary.track_application(
+                deferred_authority.application_manager,
+                deferred_authority.application_token,
+            )
+        elif deferred_authority is not None:
+            raise StateError("Ordinary network root cannot consume deferred session authority")
+        process_activity = ()
+        session_activity = ()
+        process_holds = ()
+        if (
+            materialization_mode is ConnectionMaterializationMode.PHYSICAL
+            and applications.persistent_smb_intent is None
+            and publication_inputs.pid > 0
+            and endpoints.resolved_source_system is not None
+        ):
+            from evidenceforge.events.lifecycle import LifecycleEntityRef, LifecycleHold
+            from evidenceforge.generation.state_manager import (
+                ProcessActivityPatch,
+                SessionActivityPatch,
+            )
+
+            process_identity = executor.state_manager.get_process_identity(
+                endpoints.resolved_source_system.hostname,
+                publication_inputs.pid,
+            )
+            activity_time = (
+                publication_inputs.event.network.closed_at
+                or publication_inputs.event.network.started_at
+            )
+            lifecycle_process = (
+                None
+                if process_identity is None
+                else executor._lifecycle_authority.registry.get_process(process_identity.object_id)
+            )
+            if (
+                process_identity is not None
+                and lifecycle_process is not None
+                and lifecycle_process.closed_at is None
+            ):
+                session_identity = (
+                    executor.state_manager.get_session_identity(process_identity.logon_id)
+                    if process_identity.logon_id
+                    else None
+                )
+                if not process_identity.logon_id or session_identity is not None:
+                    process_activity = (ProcessActivityPatch(process_identity, activity_time),)
+                    session_activity = (
+                        ()
+                        if session_identity is None
+                        else (SessionActivityPatch(session_identity, activity_time),)
+                    )
+                    hold_action_id = stable_uuid(
+                        "network-process-hold-action",
+                        publication_inputs.event.network.stable_id,
+                        process_identity.object_id,
+                    )
+                    process_holds = (
+                        LifecycleHold(
+                            hold_id=stable_uuid(
+                                "network-process-hold",
+                                publication_inputs.event.network.stable_id,
+                                process_identity.object_id,
+                            ),
+                            subject=LifecycleEntityRef("process", process_identity.object_id),
+                            acquired_at=publication_inputs.event.network.started_at,
+                            hold_until=activity_time,
+                            action_id=hold_action_id,
+                            reason="canonical_transport_close",
+                        ),
+                    )
+
+        multipart_reads = self._plan_http_multipart_endpoint_reads(
+            publication_inputs.event,
+            endpoints.resolved_source_system or endpoints.source_system,
+            endpoints.target_system,
+            publication_inputs.pid,
+            publication_inputs.process_ctx,
+            request.time,
+        )
+        if multipart_reads is not None:
+            process_activity = self._merge_process_activity_patches(
+                process_activity,
+                multipart_reads.process_activity,
+            )
+            if materialization_mode is ConnectionMaterializationMode.PHYSICAL:
+                from evidenceforge.events.lifecycle import LifecycleEntityRef, LifecycleHold
+
+                held_object_ids = {hold.subject.object_id for hold in process_holds}
+                additional_holds = []
+                for patch in process_activity:
+                    if patch.identity.object_id in held_object_ids:
+                        continue
+                    held_object_ids.add(patch.identity.object_id)
+                    hold_action_id = stable_uuid(
+                        "network-multipart-process-hold-action",
+                        publication_inputs.event.network.stable_id,
+                        patch.identity.object_id,
+                    )
+                    additional_holds.append(
+                        LifecycleHold(
+                            hold_id=stable_uuid(
+                                "network-multipart-process-hold",
+                                publication_inputs.event.network.stable_id,
+                                patch.identity.object_id,
+                            ),
+                            subject=LifecycleEntityRef("process", patch.identity.object_id),
+                            acquired_at=publication_inputs.event.network.started_at,
+                            hold_until=publication_inputs.event.network.closed_at
+                            or publication_inputs.event.network.started_at,
+                            action_id=hold_action_id,
+                            reason="http_multipart_local_read",
+                        )
+                    )
+                process_holds = (*process_holds, *additional_holds)
+
+        commit_result = NetworkConnectionCommitResult(
+            transaction=publication_inputs.event.network,
+            lifecycle_mode=lifecycle_mode,
+            effective_dst_ip=publication_inputs.event.network.dst_ip,
+            http=publication_inputs.event.protocol.http,
+            file_transfers=publication_inputs.event.protocol.file_transfers,
+        )
+        deferred_batch = deferred_authority.state_batch if deferred_authority is not None else None
+        if applications.persistent_smb_intent is not None:
+            if materialization_mode is not ConnectionMaterializationMode.PHYSICAL:
+                raise StateError("Persistent SMB root requires physical network materialization")
+            if persistent_smb_batch is None:
+                raise StateError("Persistent SMB root lost its prepared State batch")
+            session_plan = persistent_smb_batch.session
+            if (
+                applications.persistent_smb_application_intent is None
+                or applications.persistent_smb_file_journal is None
+                or session_plan is None
+                or applications.persistent_smb_application_intent.manager
+                is not executor._smb_channel_manager
+                or not executor.state_manager.authenticates_smb_file_mutation_journal(
+                    applications.persistent_smb_file_journal
+                )
+            ):
+                raise StateError("Persistent SMB root lost an exact prepared child owner")
+            application_token = applications.persistent_smb_application_intent.prepare(
+                session_plan.identity,
+                publication_inputs.event.network,
+            )
+            boundary.track_application(
+                executor._smb_channel_manager,
+                application_token,
+            )
+            network_preparation.terminalize_smb_file_mutation(
+                applications.persistent_smb_file_journal
+            )
+            network_preparation.reserve_smb_connection_pin()
+        deferred_existing_session_patch = (
+            deferred_authority.existing_state_patch if deferred_authority is not None else None
+        )
+        deferred_existing_session_process_roles_patch = (
+            deferred_authority.strict_state_authority.existing_session_process_roles_patch
+            if deferred_authority is not None
+            and deferred_authority.strict_state_authority is not None
+            else None
+        )
+        if deferred_authority is not None:
+            process_activity = self._merge_process_activity_patches(
+                process_activity,
+                deferred_authority.application_process_activity,
+            )
+            session_activity = self._merge_session_activity_patches(
+                session_activity,
+                deferred_authority.application_session_activity,
+            )
+            held_processes = {hold.subject.object_id for hold in process_holds}
+            process_holds = (
+                *process_holds,
+                *(
+                    hold
+                    for hold in deferred_authority.application_process_holds
+                    if hold.subject.object_id not in held_processes
+                ),
+            )
+        responder_batch = (
+            publication_inputs.prepared_responder.batch
+            if publication_inputs.prepared_responder is not None
+            else None
+        )
+        owned_batches = tuple(
+            candidate
+            for candidate in (deferred_batch, responder_batch, persistent_smb_batch)
+            if candidate is not None
+        )
+        if len(owned_batches) > 1:
+            raise StateError("Network root cannot own multiple State batches")
+        root = network_preparation.seal(
+            transaction=publication_inputs.event.network,
+            lifecycle_mode=lifecycle_mode,
+            materialization_mode=materialization_mode,
+            source_system=endpoints.state_source_system,
+            source_hostname=endpoints.state_source_hostname,
+            hostname=endpoints.hostname or publication_inputs.event.network.dst_ip,
+            initiating_pid=publication_inputs.pid,
+            batch=owned_batches[0] if owned_batches else None,
+            rdp_existing_session_patch=deferred_existing_session_patch,
+            existing_session_process_roles_patch=(deferred_existing_session_process_roles_patch),
+            process_activity=process_activity,
+            session_activity=session_activity,
+            result=commit_result,
+        )
+        boundary.root = root
+
+        lifecycle_token = None
+        if materialization_mode is ConnectionMaterializationMode.PHYSICAL:
+            from evidenceforge.generation.lifecycle_production_adapters import (
+                closed_transport_publication_plan,
+                lifecycle_production_adapter_for,
+            )
+
+            lifecycle_adapter = lifecycle_production_adapter_for(executor)
+            if lifecycle_adapter is None:
+                raise StateError("Prepared network publication requires lifecycle authority")
+            authority_hostname = (
+                endpoints.state_source_system or publication_inputs.event.network.src_ip
+            )
+            source_lifecycle_hostname = (
+                endpoints.state_source_system or publication_inputs.event.network.src_ip
+            )
+            destination_lifecycle_hostname = (
+                endpoints.target_system.hostname
+                if endpoints.target_system is not None
+                else (endpoints.hostname or publication_inputs.event.network.dst_ip)
+            )
+            deferred_lifecycle_kwargs = (
+                {
+                    "session_object_id": deferred_authority.session_object_id,
+                    "binding_role": "session",
+                    "bound_at": deferred_authority.bound_at,
+                }
+                if deferred_authority is not None
+                else {}
+            )
+            lifecycle_plan = closed_transport_publication_plan(
+                transaction=publication_inputs.event.network,
+                authority_hostname=authority_hostname,
+                src_hostname=source_lifecycle_hostname,
+                dst_hostname=destination_lifecycle_hostname,
+                action_id=stable_uuid(
+                    "network-transport-lifecycle",
+                    publication_inputs.event.network.stable_id,
+                ),
+                **deferred_lifecycle_kwargs,
+            )
+            lifecycle_token = lifecycle_adapter.prepare_closed_transport_publication(
+                lifecycle_plan,
+                start_members=executor._lifecycle_authority.connection_composite_start_members(
+                    root.state_plan
+                ),
+                process_holds=process_holds,
+            )
+            boundary.lifecycle_adapter = lifecycle_adapter
+            boundary.lifecycle_token = lifecycle_token
+
+        prepared_dispatch = None
+        persistent_smb_observations = ()
+        prepared_multipart_dispatches = ()
+        prepared_deferred_session_dispatches = ()
+        if lifecycle_mode == "deferred_session" and publication_inputs.committed_suppressed:
+            raise StateError("Deferred-session transport cannot suppress its root occurrence")
+        if lifecycle_mode == "deferred_session" or (
+            not publication_inputs.committed_suppressed or multipart_reads is not None
+        ):
+            from evidenceforge.events.dispatcher import PreparedDispatchStateIntent
+
+            if not publication_inputs.committed_suppressed:
+                prepared_dispatch = executor.dispatcher.prepare_builder(
+                    publication_inputs.event,
+                    state_intent=(
+                        PreparedDispatchStateIntent.EXTERNAL_DEFERRED_TRANSPORT
+                        if lifecycle_mode == "deferred_session"
+                        else PreparedDispatchStateIntent.EXTERNAL_TRANSPORT
+                    ),
+                    lifecycle_ticket=root,
+                    source_timing_preparation=boundary.timing_preparation,
+                )
+            prepared_multipart_dispatches = (
+                ()
+                if multipart_reads is None
+                else tuple(
+                    executor.dispatcher.prepare_builder(
+                        builder,
+                        state_intent=PreparedDispatchStateIntent.EXTERNAL_NETWORK_DEPENDENT,
+                        lifecycle_ticket=root,
+                        source_timing_preparation=boundary.timing_preparation,
+                    )
+                    for builder in multipart_reads.builders
+                )
+            )
+            if deferred_authority is not None:
+                deferred_state_starts = self._deferred_session_dependent_builders(
+                    deferred_authority,
+                    publication_inputs.event,
+                    root,
+                )
+                prepared_deferred_session_dispatches = tuple(
+                    executor.dispatcher.prepare_builder(
+                        builder,
+                        state_intent=(PreparedDispatchStateIntent.EXTERNAL_DEFERRED_DEPENDENT),
+                        lifecycle_ticket=state_member,
+                        source_timing_preparation=boundary.timing_preparation,
+                    )
+                    for builder, state_member in deferred_state_starts
+                )
+
+        if prepared_deferred_session_dispatches:
+            if prepared_dispatch is None:
+                raise StateError("Deferred-session timing lost its transport projection")
+            executor.dispatcher.stage_deferred_session_publication_timing(
+                (prepared_dispatch, *prepared_deferred_session_dispatches),
+                boundary.timing_preparation,
+            )
+        boundary.seal_timing()
+        if prepared_dispatch is not None:
+            executor.dispatcher.validate_prepared(prepared_dispatch)
+            if applications.persistent_smb_intent is not None:
+                prepared_transaction, persistent_smb_observations = (
+                    executor.dispatcher.persistent_smb_prepared_transport_facts(prepared_dispatch)
+                )
+                if prepared_transaction != publication_inputs.event.network:
+                    raise StateError("Persistent SMB prepared transport changed identity")
+        for dependent_dispatch in prepared_deferred_session_dispatches:
+            executor.dispatcher.validate_prepared(dependent_dispatch)
+        if publication_inputs.prepared_responder is not None:
+            for responder_process in publication_inputs.prepared_responder.processes:
+                executor.dispatcher.validate_prepared(responder_process.publication)
+        prepared_multipart_batch = None
+        if multipart_reads is not None:
+            prepared_multipart_batch = executor.dispatcher.prepare_network_dependent_batch(
+                root,
+                multipart_reads.plan,
+                prepared_multipart_dispatches,
+            )
+            boundary.track_network_dependent_batch(
+                executor.dispatcher,
+                prepared_multipart_batch,
+            )
+        boundary.validate_network_dependent_batch()
+        boundary.validate_identity_capture_claim()
+        deferred_composition = None
+        if deferred_authority is not None:
+            from evidenceforge.generation.deferred_session_composition import (
+                DeferredSessionExistingStateBinding,
+                DeferredSessionStateMemberBinding,
+            )
+
+            if lifecycle_token is None or prepared_dispatch is None:
+                raise StateError("Deferred session root lost its lifecycle or transport authority")
+            state_batch = root.state_plan.batch
+            state_plans = (
+                ()
+                if state_batch is None
+                else (
+                    *((state_batch.session,) if state_batch.session is not None else ()),
+                    *state_batch.processes,
+                )
+            )
+            lifecycle_by_token = {
+                member.publication_token: member for member in lifecycle_token.request.start_members
+            }
+            state_members = tuple(
+                DeferredSessionStateMemberBinding(
+                    state_member=state_plan,
+                    lifecycle_member=lifecycle_by_token[state_plan.publication_token],
+                )
+                for state_plan in state_plans
+            )
+            existing_state_session = (
+                None
+                if deferred_existing_session_patch is None
+                else DeferredSessionExistingStateBinding(
+                    state_patch=deferred_existing_session_patch,
+                    lifecycle_member=(
+                        lifecycle_by_token[root.state_plan.publication_token]
+                        if deferred_existing_session_patch.lifecycle_disposition
+                        is ConnectionExistingSessionLifecycleDisposition.START
+                        else None
+                    ),
+                )
+            )
+            deferred_composition = deferred_authority.coordinator.issue(
+                prepared_root=root,
+                source_timing_preparation=boundary.timing_preparation,
+                lifecycle_token=lifecycle_token,
+                state_members=state_members,
+                application_token=deferred_authority.application_token,
+                transport_dispatch=prepared_dispatch,
+                dependent_dispatches=prepared_deferred_session_dispatches,
+                existing_state_session=existing_state_session,
+                binding_disposition=(
+                    deferred_authority.binding_disposition
+                    if deferred_authority.has_strict_state_authority
+                    else None
+                ),
+                state_authority=deferred_authority.strict_state_authority,
+            )
+            deferred_authority.bind_strict_state_authority(executor.state_manager)
+        deferred_publication_batch = None
+        if deferred_composition is not None:
+            if not prepared_deferred_session_dispatches:
+                raise StateError(
+                    "Deferred-session network callers require the exact publication bridge "
+                    "with typed dependent starts"
+                )
+            try:
+                deferred_publication_batch = (
+                    executor.dispatcher.prepare_deferred_session_publication_batch(
+                        deferred_composition,
+                        deferred_authority.coordinator,
+                    )
+                )
+            except BaseException as error:
+                retained_batch = getattr(
+                    error,
+                    "deferred_session_publication_batch",
+                    None,
+                )
+                if retained_batch is not None and (
+                    executor.dispatcher.authenticates_prepared_deferred_session_publication_batch(
+                        retained_batch
+                    )
+                ):
+                    boundary.track_deferred_session_publication_batch(
+                        executor.dispatcher,
+                        retained_batch,
+                    )
+                raise
+            boundary.track_deferred_session_publication_batch(
+                executor.dispatcher,
+                deferred_publication_batch,
+            )
+        boundary.validate_deferred_session_publication_batch()
+        if applications.persistent_smb_intent is not None:
+            if (
+                applications.persistent_smb_terminal_authority is None
+                or applications.persistent_smb_terminal_continuation is None
+                or prepared_dispatch is None
+                or lifecycle_token is None
+                or boundary.application_token is None
+            ):
+                raise StateError("Persistent SMB root lost a prepared continuation owner")
+            applications.persistent_smb_terminal_authority.bind_prepared_root(
+                applications.persistent_smb_terminal_continuation,
+                PersistentSmbPreparedRoot(
+                    root=root,
+                    owner_rng=owner_rng,
+                    source_timing_preparation=boundary.timing_preparation,
+                    lifecycle_token=lifecycle_token,
+                    application_token=boundary.application_token,
+                    file_journal=applications.persistent_smb_file_journal,
+                    prerequisite_receipts=boundary.prerequisite_receipts,
+                    prepared_dispatch=prepared_dispatch,
+                    observations=persistent_smb_observations,
+                    outcome=(
+                        NetworkConnectionPublicationOutcome.COMMITTED_SUPPRESSED
+                        if publication_inputs.committed_suppressed
+                        else NetworkConnectionPublicationOutcome.PUBLISHED
+                    ),
+                ),
+            )
+        boundary.transfer()
+        if (
+            applications.persistent_smb_intent is not None
+            and applications.persistent_smb_terminal_authority is not None
+            and applications.persistent_smb_terminal_continuation is not None
+        ):
+            return self._resume_or_publish_persistent_smb_root(
+                boundary=boundary,
+                authority=applications.persistent_smb_terminal_authority,
+                continuation=applications.persistent_smb_terminal_continuation,
+            )
+
+        return PreparedNetworkPublication(
+            publication=publication_inputs,
+            sources=PreparedNetworkSources(
+                prepared_dispatch=prepared_dispatch,
+                prepared_multipart_batch=prepared_multipart_batch,
+                materialization_mode=materialization_mode,
+            ),
+            applications=(
+                applications
+                if deferred_authority is applications.deferred_authority
+                else replace(applications, deferred_authority=deferred_authority)
+            ),
+            owner_rng=owner_rng,
+            application_token=application_token
+            if applications.persistent_smb_intent is not None
+            else None,
+            deferred_composition=deferred_composition,
+            deferred_publication_batch=deferred_publication_batch,
+            lifecycle_token=lifecycle_token,
+            persistent_smb_observations=persistent_smb_observations,
+            root=root,
+        )
+
+    def _commit_prepared_network(
+        self,
+        request: NetworkConnectionRequest,
+        boundary: _PreparedNetworkBoundary,
+        stage_input: PreparedNetworkPublication,
+    ) -> CommittedNetworkPublication | str:
+        """Commit through the existing authority and preserve exact receipt recovery."""
+        executor = self._executor
+        publication_inputs = stage_input.publication
+        sources = stage_input.sources
+        applications = stage_input.applications
+        deferred_composition = stage_input.deferred_composition
+        owner_rng = stage_input.owner_rng
+        root = stage_input.root
+
+        try:
+            deferred_published = (
+                executor._lifecycle_authority.materialize_prepared_deferred_session_publication(
+                    deferred_composition,
+                    applications.deferred_authority.coordinator,
+                    owner_rng,
+                    dispatcher=executor.dispatcher,
+                    publication_batch=stage_input.deferred_publication_batch,
+                )
+                if deferred_composition is not None and applications.deferred_authority is not None
+                else None
+            )
+            materialized = (
+                deferred_published.materialization
+                if deferred_published is not None
+                else executor._lifecycle_authority.materialize_prepared_network_transaction(
+                    root,
+                    owner_rng,
+                    source_timing_preparation=boundary.timing_preparation,
+                    lifecycle_token=stage_input.lifecycle_token,
+                    application_token=boundary.application_token,
+                    prerequisite_receipts=boundary.prerequisite_receipts,
+                )
+            )
+            boundary.terminal_materialization = materialized
+
+            outcome = (
+                NetworkConnectionPublicationOutcome.COMMITTED_SUPPRESSED
+                if publication_inputs.committed_suppressed
+                else NetworkConnectionPublicationOutcome.PUBLISHED
+            )
+            application_result = materialized.connection.application
+            application_receipt = (
+                getattr(application_result, "receipt", None)
+                if application_result is not None
+                else None
+            )
+            persistent_smb_handoff = None
+            if applications.persistent_smb_intent is not None:
+                from evidenceforge.generation.smb_channels import SmbChannelAdmissionResult
+
+                pin_install = materialized.connection.state.smb_connection_pin_install
+                file_mutation = materialized.connection.state.smb_file_mutation
+                smb_application = materialized.connection.application
+                if (
+                    sources.prepared_dispatch is None
+                    or pin_install is None
+                    or file_mutation is None
+                    or type(smb_application) is not SmbChannelAdmissionResult
+                    or not executor.state_manager.authenticates_smb_connection_pin_install_receipt(
+                        pin_install
+                    )
+                    or not executor.state_manager.authenticates_smb_file_mutation_commit_receipt(
+                        file_mutation.receipt
+                    )
+                    or not executor._smb_channel_manager.authenticates_admission_receipt(
+                        smb_application.receipt
+                    )
+                ):
+                    raise StateError("Persistent SMB root lost an exact terminal child result")
+                persistent_smb_handoff = PersistentSmbRootHandoff(
+                    materialization=materialized,
+                    lifecycle_binding=(
+                        executor._lifecycle_authority.detach_prepared_network_receipt(
+                            materialized.receipt
+                        )
+                    ),
+                    file_journal=applications.persistent_smb_file_journal,
+                    prepared_dispatch=sources.prepared_dispatch,
+                    observations=stage_input.persistent_smb_observations,
+                    pin_install_receipt=pin_install,
+                    file_mutation=file_mutation,
+                    application_token=stage_input.application_token,
+                    application_result=smb_application,
+                )
+                if (
+                    applications.persistent_smb_terminal_authority is None
+                    or applications.persistent_smb_terminal_continuation is None
+                ):
+                    raise StateError("Persistent SMB root lost its continuation owner")
+                applications.persistent_smb_terminal_authority.bind_committed_root(
+                    applications.persistent_smb_terminal_continuation,
+                    materialization=materialized,
+                    handoff=persistent_smb_handoff,
+                    outcome=outcome,
+                )
+            try:
+                authenticated_materialization = (
+                    executor._lifecycle_authority.authenticates_prepared_network_receipt(
+                        root,
+                        materialized.receipt,
+                    )
+                )
+            except BaseException:
+                boundary.publish_committed_capture_no_fail(
+                    root=root,
+                    receipt=materialized.receipt,
+                    application_receipt=application_receipt,
+                    persistent_smb_root_handoff=persistent_smb_handoff,
+                    outcome=outcome,
+                )
+                raise
+            if not authenticated_materialization:
+                boundary.publish_committed_capture_no_fail(
+                    root=root,
+                    receipt=materialized.receipt,
+                    application_receipt=application_receipt,
+                    persistent_smb_root_handoff=persistent_smb_handoff,
+                    outcome=outcome,
+                )
+                raise AssertionError("Prepared network authority returned an invalid receipt")
+            durable_capture = boundary.publish_committed_capture_no_fail(
+                root=root,
+                receipt=materialized.receipt,
+                application_receipt=application_receipt,
+                persistent_smb_root_handoff=persistent_smb_handoff,
+                outcome=outcome,
+            )
+            durable_capture_facts = boundary.authenticate_committed_capture_for_ack(
+                durable_capture,
+                authority=executor._lifecycle_authority,
+                root=root,
+                receipt=materialized.receipt,
+                application_receipt=application_receipt,
+                persistent_smb_root_handoff=persistent_smb_handoff,
+                outcome=outcome,
+            )
+            if durable_capture is not None:
+                from evidenceforge.generation.lifecycle_authority import (
+                    GeneratorLifecycleAuthority,
+                )
+
+                GeneratorLifecycleAuthority._bind_prepared_network_durable_capture_for_ack(
+                    executor._lifecycle_authority,
+                    root,
+                    materialized,
+                    durable_capture,
+                    durable_capture_facts,
+                    expected_persistent_smb_root_handoff=persistent_smb_handoff,
+                )
+            try:
+                executor._lifecycle_authority.acknowledge_prepared_network_transaction(
+                    root,
+                    materialized,
+                    durable_capture=durable_capture,
+                    durable_capture_facts=durable_capture_facts,
+                )
+            except BaseException:
+                boundary.restore_committed_capture_after_ack(
+                    durable_capture,
+                    durable_capture_facts,
+                    authority=executor._lifecycle_authority,
+                    root=root,
+                    receipt=materialized.receipt,
+                    application_receipt=application_receipt,
+                    persistent_smb_root_handoff=persistent_smb_handoff,
+                    outcome=outcome,
+                )
+                raise
+            boundary.restore_committed_capture_after_ack(
+                durable_capture,
+                durable_capture_facts,
+                authority=executor._lifecycle_authority,
+                root=root,
+                receipt=materialized.receipt,
+                application_receipt=application_receipt,
+                persistent_smb_root_handoff=persistent_smb_handoff,
+                outcome=outcome,
+            )
+        except BaseException:
+            raise
+
+        return CommittedNetworkPublication(
+            publication=publication_inputs,
+            sources=sources,
+            deferred_published=deferred_published,
+            materialized=materialized,
+        )
+
+    def _publish_committed_network(
+        self,
+        request: NetworkConnectionRequest,
+        boundary: _PreparedNetworkBoundary,
+        stage_input: CommittedNetworkPublication,
+    ) -> str:
+        """Publish committed evidence and update the established runtime observations."""
+        executor = self._executor
+        publication_inputs = stage_input.publication
+        sources = stage_input.sources
+        facts = publication_inputs.facts
+        endpoints = publication_inputs.endpoints
+        deferred_published = stage_input.deferred_published
+        materialized = stage_input.materialized
+
+        executor._last_connection_effective_dst_ip = publication_inputs.event.network.dst_ip
+        executor._last_connection_effective_tuple = None
+        executor._last_connection_effective_time = None
+        executor._last_connection_effective_transaction_id = ""
+        process_owner_system = endpoints.resolved_source_system or endpoints.source_system
+        if process_owner_system is not None and publication_inputs.event.network.initiating_pid > 0:
+            executor._remember_process_connection_hold(
+                system=process_owner_system,
+                pid=publication_inputs.event.network.initiating_pid,
+                close_time=publication_inputs.event.network.closed_at,
+            )
+        if sources.materialization_mode is ConnectionMaterializationMode.PHYSICAL:
+            executor._last_connection_effective_tuple = (
+                publication_inputs.event.network.src_ip,
+                publication_inputs.event.network.src_port,
+                publication_inputs.event.network.dst_ip,
+                publication_inputs.event.network.dst_port,
+                publication_inputs.event.network.protocol,
+            )
+            executor._last_connection_effective_time = publication_inputs.event.timestamp
+            executor._last_connection_effective_transaction_id = (
+                publication_inputs.event.network.stable_id
+            )
+            executor._last_connection_http_context = publication_inputs.event.protocol.http
+            executor._last_connection_file_transfers = (
+                publication_inputs.event.protocol.file_transfers
+            )
+        kerberos_target_wfp_published = False
+        if (
+            facts.kerberos_prerequisite_success
+            and not facts.suppress_application_side_effects
+            and publication_inputs.event.network.service == "kerberos"
+            and publication_inputs.event.network.dst_port == 88
+            and publication_inputs.event.network.protocol in {"tcp", "udp"}
+            and publication_inputs.event.network.src_port > 0
+        ):
+            if (
+                not publication_inputs.committed_suppressed
+                and deferred_published is None
+                and endpoints.target_system is not None
+                and endpoints.dst_host_ctx is not None
+                and endpoints.dst_host_ctx.os_category == "windows"
+                and not publication_inputs.event.network.application_layer_only
+                and executor._should_emit_windows_inbound_wfp(
+                    publication_inputs.event, endpoints.target_system
+                )
+            ):
+                inbound_pid = publication_inputs.event.network.responding_pid
+                inbound_application = executor._lookup_process_name(
+                    endpoints.target_system.hostname,
+                    inbound_pid,
+                    "windows",
+                )
+                executor.generate_wfp_connection(
+                    system=endpoints.target_system,
+                    time=publication_inputs.time,
+                    network=publication_inputs.event.network,
+                    pid=inbound_pid,
+                    application=inbound_application,
+                    parent_action_group_id=facts.parent_action_group_id,
+                )
+                kerberos_target_wfp_published = True
+            # Publish endpoint audit evidence only after the canonical transport
+            # and its final leased tuple have committed.  When target WFP is
+            # visible, admit that exact source frontier before dependent KDC
+            # processing is planned.
+            executor._emit_dc_audit_for_kerberos_connection(
+                src_ip=publication_inputs.event.network.src_ip,
+                src_port=publication_inputs.event.network.src_port,
+                dst_ip=publication_inputs.event.network.dst_ip,
+                time=publication_inputs.event.network.started_at,
+                dst_port=publication_inputs.event.network.dst_port,
+                proto=publication_inputs.event.network.protocol,
+                conn_state=publication_inputs.event.network.conn_state,
+                service=publication_inputs.event.network.service,
+                source_system=endpoints.resolved_source_system,
+                transport=publication_inputs.event.network,
+                audit_mode=request.kerberos_audit_mode,
+                audit_username=request.kerberos_audit_username,
+                audit_service_name=request.kerberos_audit_service_name,
+            )
+        if deferred_published is not None:
+            publication = deferred_published.publication
+            identifiers_by_member = getattr(publication, "identifiers", ())
+            if type(identifiers_by_member) is not tuple or not identifiers_by_member:
+                raise AssertionError("Deferred-session bridge returned no exact source identifiers")
+            network_identifiers_by_format = dict(identifiers_by_member[0])
+            identifier_publisher = getattr(
+                executor.dispatcher,
+                "publish_network_identifiers",
+                None,
+            )
+            if callable(identifier_publisher):
+                identifier_publisher(publication_inputs.uid, network_identifiers_by_format)
+            return publication_inputs.uid
+        if publication_inputs.committed_suppressed:
+            if sources.prepared_multipart_batch is not None:
+                executor.dispatcher.publish_prepared_network_dependent_batch(
+                    sources.prepared_multipart_batch,
+                    materialization_receipt=materialized.receipt,
+                )
+            # The typed capture exposes the committed internal root, while the
+            # long-standing public compatibility contract reports no emitted
+            # connection identity for a suppressed observation.
+            return ""
+
+        if (
+            publication_inputs.prepared_responder is not None
+            and endpoints.target_system is not None
+        ):
+            executor.publish_prepared_network_responder(
+                publication_inputs.prepared_responder,
+                materialization_receipt=materialized.receipt,
+                target_system=endpoints.target_system,
+                close_time=publication_inputs.event.network.closed_at,
+            )
+        assert sources.prepared_dispatch is not None
+        if request.defer_source_publication:
+            return publication_inputs.uid
+        network_identifiers_by_format = (
+            executor.dispatcher.publish_prepared(
+                sources.prepared_dispatch,
+                materialization_receipt=materialized.receipt,
+            )
+            or {}
+        )
+        if sources.prepared_multipart_batch is not None:
+            executor.dispatcher.publish_prepared_network_dependent_batch(
+                sources.prepared_multipart_batch,
+                materialization_receipt=materialized.receipt,
+            )
+        executor._maybe_emit_ocsp_transaction(publication_inputs.event)
+        if (
+            publication_inputs.generic_ssh_preauth_pid is not None
+            and endpoints.target_system is not None
+        ):
+            executor._emit_generic_ssh_preauth_failure_syslog(
+                target_system=endpoints.target_system,
+                target_host=endpoints.dst_host_ctx,
+                time=publication_inputs.event.timestamp,
+                source_ip=endpoints.src_ip,
+                source_port=endpoints.src_port,
+                sshd_pid=publication_inputs.generic_ssh_preauth_pid,
+                attempted_username=facts.ssh_attempted_username,
+                duration=publication_inputs.event.network.duration,
+            )
+        logger.debug(
+            f"Generated connection: {endpoints.src_ip} -> {endpoints.dst_ip}:{endpoints.dst_port} (UID: {publication_inputs.uid})"
+        )
+
+        # Emit 5156 (WFP connection) on Windows source hosts when process ownership is known.
+        # Unknown ownership is not PID 4 by default; rendering it as System makes ordinary
+        # user/proxy flows look kernel-originated.
+        wfp_system = endpoints.resolved_source_system or endpoints.source_system
+        wfp_application = (
+            publication_inputs.event.process.image
+            if publication_inputs.event.process is not None
+            else None
+        )
+        if (
+            wfp_system
+            and _get_os_category(wfp_system.os) == "windows"
+            and (publication_inputs.pid > 0 or wfp_application is not None)
+            and not publication_inputs.event.network.application_layer_only
+        ):
+            executor.generate_wfp_connection(
+                system=wfp_system,
+                time=publication_inputs.time,
+                network=publication_inputs.event.network,
+                pid=publication_inputs.pid,
+                application=wfp_application,
+                parent_action_group_id=facts.parent_action_group_id,
+            )
+
+        if (
+            not kerberos_target_wfp_published
+            and endpoints.target_system is not None
+            and endpoints.dst_host_ctx is not None
+            and endpoints.dst_host_ctx.os_category == "windows"
+            and not publication_inputs.event.network.application_layer_only
+            and executor._should_emit_windows_inbound_wfp(
+                publication_inputs.event, endpoints.target_system
+            )
+        ):
+            inbound_pid = publication_inputs.event.network.responding_pid
+            inbound_application = executor._lookup_process_name(
+                endpoints.target_system.hostname,
+                inbound_pid,
+                "windows",
+            )
+            executor.generate_wfp_connection(
+                system=endpoints.target_system,
+                time=publication_inputs.time,
+                network=publication_inputs.event.network,
+                pid=inbound_pid,
+                application=inbound_application,
+                parent_action_group_id=facts.parent_action_group_id,
+            )
+
+        if (
+            publication_inputs.pid != facts.caller_owned_pid
+            and publication_inputs.pid > 0
+            and endpoints.resolved_source_system is not None
+            and publication_inputs.process_ctx is not None
+        ):
+            running = executor.state_manager.get_process(
+                endpoints.resolved_source_system.hostname, publication_inputs.pid
+            )
+            if executor._process_termination_recorded(
+                endpoints.resolved_source_system.hostname,
+                publication_inputs.pid,
+                running.start_time if running is not None else None,
+            ):
+                identifier_publisher = getattr(
+                    executor.dispatcher,
+                    "publish_network_identifiers",
+                    None,
+                )
+                if callable(identifier_publisher):
+                    identifier_publisher(publication_inputs.uid, network_identifiers_by_format)
+                return publication_inputs.uid
+            lifetime = (
+                executor._foreground_process_lifetime_for_attribution(
+                    endpoints.resolved_source_system, running
+                )
+                if running is not None
+                else None
+            )
+            if lifetime is not None and re.match(r"^[a-zA-Z0-9._$-]+$", running.username):
+                known_users = getattr(executor, "_users_by_username", {})
+                process_user = known_users.get(running.username) or User(
+                    username=running.username,
+                    full_name=running.username,
+                    email=f"{running.username}@example.local",
+                )
+                min_delay = min(max(lifetime[0], 0.5), 4.0)
+                max_delay = max(min_delay + 0.5, min(lifetime[1] + 8.0, 45.0))
+                executor.generate_process_termination(
+                    user=process_user,
+                    system=endpoints.resolved_source_system,
+                    time=publication_inputs.time
+                    + timedelta(
+                        seconds=self._foreground_teardown_delay_seconds(
+                            request,
+                            min_delay,
+                            max_delay,
+                        )
+                    ),
+                    pid=publication_inputs.pid,
+                    process_name=running.image,
+                    logon_id=running.logon_id,
+                )
+
+        identifier_publisher = getattr(
+            executor.dispatcher,
+            "publish_network_identifiers",
+            None,
+        )
+        if callable(identifier_publisher):
+            identifier_publisher(publication_inputs.uid, network_identifiers_by_format)
+        return publication_inputs.uid

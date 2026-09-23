@@ -1,0 +1,119 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""TLS certificate issuer configurations for realistic x509 generation.
+
+Loads issuer parameters from tls_issuers.yaml and provides pick_issuer()
+for weighted issuer selection with per-issuer validity and key type parameters.
+"""
+
+import random
+from datetime import datetime
+from typing import Any
+
+from evidenceforge.config import get_activity_directory
+from evidenceforge.config.overlay import load_with_overlay, merge_keyed_list
+
+_ISSUERS_PATH = get_activity_directory() / "tls_issuers.yaml"
+_CACHED_ISSUERS: dict[str, Any] | None = None
+
+
+def _merge_tls_issuers(default: dict, overlay: dict) -> dict:
+    """Merge issuers by name and domain overrides by glob pattern."""
+    result = dict(default)
+    if "issuers" in overlay:
+        result["issuers"] = merge_keyed_list(
+            default.get("issuers", []),
+            overlay["issuers"],
+            key_field="name",
+        )
+    if "domain_ca_overrides" in overlay:
+        overrides = dict(default.get("domain_ca_overrides", {}))
+        overrides.update(overlay["domain_ca_overrides"])
+        result["domain_ca_overrides"] = overrides
+    return result
+
+
+def load_tls_issuers() -> dict[str, Any]:
+    """Load TLS issuer configurations from YAML, merged with overlay if present. Cached after first call."""
+    global _CACHED_ISSUERS
+    if _CACHED_ISSUERS is not None:
+        return _CACHED_ISSUERS
+
+    _CACHED_ISSUERS = load_with_overlay(
+        _ISSUERS_PATH,
+        "activity/tls_issuers.yaml",
+        _merge_tls_issuers,
+    )
+    return _CACHED_ISSUERS
+
+
+def pick_issuer(
+    rng: random.Random,
+    server_name: str = "",
+    event_time: datetime | None = None,
+) -> dict[str, Any]:
+    """Pick a TLS certificate issuer, respecting domain-to-CA overrides.
+
+    Well-known domains (Google, Microsoft, etc.) always get their real CA.
+    Other domains use weighted random selection.
+
+    Returns a dict with keys: name, validity_days, not_before_max_days, key_types.
+    """
+    import fnmatch
+
+    data = load_tls_issuers()
+    issuers = data["issuers"]
+
+    # Check domain-to-CA overrides first
+    if server_name:
+        overrides = data.get("domain_ca_overrides", {})
+        for pattern, ca_name in overrides.items():
+            if fnmatch.fnmatch(server_name, pattern) or fnmatch.fnmatch(
+                f"*.{server_name}", pattern
+            ):
+                # Find the matching issuer config
+                for issuer in issuers:
+                    if issuer["name"] == ca_name:
+                        return issuer
+                # CA name in overrides but not in issuers list — return minimal config
+                return {
+                    "name": ca_name,
+                    "weight": 0,
+                    "validity_days": 397,
+                    "not_before_max_days": 300,
+                    "key_types": [{"type": "rsa", "length": 2048, "weight": 100}],
+                }
+
+    # No override — weighted random selection (exclude weight=0 override-only CAs).
+    # If an event timestamp is available, also filter out issuers whose configured
+    # authority profile is not valid at that point in time.
+    active_issuers = [i for i in issuers if i.get("weight", 0) > 0]
+    if event_time is not None:
+        from evidenceforge.generation.activity.tls_realism import certificate_authority_profile
+
+        event_epoch = int(event_time.timestamp())
+        time_valid_issuers: list[dict[str, Any]] = []
+        for issuer in active_issuers:
+            profile = certificate_authority_profile(str(issuer["name"]))
+            if profile is None:
+                time_valid_issuers.append(issuer)
+                continue
+            if int(profile["not_valid_before"]) <= event_epoch <= int(profile["not_valid_after"]):
+                time_valid_issuers.append(issuer)
+        if time_valid_issuers:
+            active_issuers = time_valid_issuers
+
+    weights = [i["weight"] for i in active_issuers]
+    return rng.choices(active_issuers, weights=weights, k=1)[0]
+
+
+def pick_key_type(rng: random.Random, issuer: dict[str, Any]) -> tuple[str, int]:
+    """Pick a key type (algorithm, length) from an issuer's key_types.
+
+    Returns (key_type, key_length) tuple, e.g., ("ecdsa", 256) or ("rsa", 2048).
+    """
+    key_types = issuer.get("key_types", [{"type": "rsa", "length": 2048, "weight": 100}])
+    weights = [k["weight"] for k in key_types]
+    chosen = rng.choices(key_types, weights=weights, k=1)[0]
+    return chosen["type"], chosen["length"]

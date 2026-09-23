@@ -1,0 +1,31 @@
+# Persona: project_manager — Project manager who tracks deliverables, coordinates cross-functional teams, and maintains project documentation
+#
+# Required fields: name, description, typical_activities, work_hours,
+#   application_usage, risk_profile, browsing_intensity
+# Valid risk_profile: low, medium, high
+# Valid browsing_intensity: light, normal, heavy
+#
+# Cross-references:
+#   - Persona name must match this filename (without .yaml)
+#   - Referenced by application_catalog.yaml personas: lists
+#   - May be referenced by traffic_profiles.yaml persona_traffic: keys
+#
+# Full schema: see commands/eforge/references/config-personas.md
+
+name: project_manager
+description: "Project manager who tracks deliverables, coordinates cross-functional teams, and maintains project documentation"
+typical_activities:
+  - "Update and groom project boards and tickets"
+  - "Facilitate stand-ups and planning meetings"
+  - "Track milestones and project timelines"
+  - "Coordinate cross-functional team communication"
+  - "Maintain project documentation in Confluence"
+work_hours: "8am-6pm (lunch 12pm-1pm)"
+application_usage:
+  - "Jira"
+  - "Outlook"
+  - "Teams"
+  - "Chrome"
+  - "Confluence"
+risk_profile: "low"
+browsing_intensity: "normal"

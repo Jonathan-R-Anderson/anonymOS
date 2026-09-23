@@ -1,0 +1,213 @@
+# network_params.yaml — Network parameters for realistic DHCP and MAC address generation.
+#
+# Purpose: Defines OUI prefixes and public infrastructure defaults for realistic
+#          DHCP, MAC address, DNS, and time synchronization evidence.
+#
+# Depended on by: generation engine (MAC address generation)
+# Depends on: nothing — standalone
+#
+# Authoring reference: commands/eforge/references/config-dns-network.md
+
+oui_prefixes:
+  - prefix: "D4:BE:D9"
+    vendor: "Dell"
+    weight: 25
+  - prefix: "3C:97:0E"
+    vendor: "HP/HPE"
+    weight: 20
+  - prefix: "F0:1F:AF"
+    vendor: "Dell"
+    weight: 15
+  - prefix: "A4:1F:72"
+    vendor: "Lenovo"
+    weight: 15
+  - prefix: "00:25:B5"
+    vendor: "Intel"
+    weight: 10
+  - prefix: "00:50:56"
+    vendor: "VMware"
+    weight: 10
+  - prefix: "8C:DC:D4"
+    vendor: "Intel"
+    weight: 5
+
+# Globally assigned networks that are implausible as ordinary Internet visitors.
+# These US Department of Defense allocations may satisfy ipaddress.is_global,
+# but should not appear in the synthetic residential/business client population.
+external_client_excluded_cidrs:
+  - "6.0.0.0/8"
+  - "7.0.0.0/8"
+  - "11.0.0.0/8"
+  - "21.0.0.0/8"
+  - "22.0.0.0/8"
+  - "26.0.0.0/8"
+  - "28.0.0.0/8"
+  - "29.0.0.0/8"
+  - "30.0.0.0/8"
+  - "33.0.0.0/8"
+  - "55.0.0.0/8"
+  - "214.0.0.0/8"
+  - "215.0.0.0/8"
+
+# Long-lived service identities that plausibly originate SMB from Linux server
+# roles. Roles without a profile keep the endpoint FLOW unattributed instead of
+# inventing a root-owned smbclient process for every connection.
+linux_smb_connection_owners:
+  - role: app_server
+    key: document_sync
+    image: /opt/meridian/bin/document-sync
+    command_line: /opt/meridian/bin/document-sync --share smb://{target}/Integration --mode poll
+    username: meridian-app
+  - role: database
+    key: database_backup_agent
+    image: /usr/local/sbin/database-backup-agent
+    command_line: /usr/local/sbin/database-backup-agent --repository smb://{target}/DatabaseBackups
+    username: backup
+  - role: mail_server
+    key: attachment_archive
+    image: /usr/libexec/meridian/attachment-archive
+    command_line: /usr/libexec/meridian/attachment-archive --share smb://{target}/MailArchive
+    username: dovecot
+  - role: web_server
+    key: content_publisher
+    image: /opt/meridian/bin/content-publisher
+    command_line: /opt/meridian/bin/content-publisher --share smb://{target}/WebContent
+    username: www-data
+
+# Process-owned nmap commands fully expand bounded small CIDRs and use
+# stratified silent-address sampling for larger ranges.
+nmap_command_probe:
+  full_cidr_max_hosts: 256
+  max_expanded_targets: 256
+  large_cidr_connect_targets: 20
+  large_cidr_discovery_targets: 24
+  large_cidr_unmodeled_targets: 12
+  max_ports: 12
+  connect_window_seconds_min: 6.0
+  connect_window_seconds_max: 12.0
+  discovery_window_seconds_min: 2.0
+  discovery_window_seconds_max: 5.0
+
+dns_tunnel_rtt:
+  min_seconds: 0.04
+  max_seconds: 0.35
+
+dns_tunnel_response_templates:
+  - "{token}"
+  - "{token}.{seq_hex}"
+  - "{seq_hex}.{token}"
+  - "{edge}{seq_hex}{token}"
+  - "{token}-{edge}{seq_hex}"
+  - "_{edge}{token}"
+  - "{seq_hex}-{token}"
+  - "x{edge}{token}"
+  - "r{seq_hex}{token}"
+  - "m{edge}{token}"
+
+dns_tunnel_ttl_choices:
+  - value: 0
+    weight: 4
+  - value: 1
+    weight: 11
+  - value: 2
+    weight: 17
+  - value: 3
+    weight: 7
+  - value: 5
+    weight: 22
+  - value: 7
+    weight: 5
+  - value: 10
+    weight: 14
+  - value: 15
+    weight: 8
+  - value: 20
+    weight: 3
+  - value: 30
+    weight: 5
+  - value: 45
+    weight: 2
+  - value: 60
+    weight: 2
+
+dns_tunnel_rcode_weights:
+  NOERROR: 92
+  NXDOMAIN: 5
+  SERVFAIL: 2
+  REFUSED: 1
+
+external_scanner_port_profiles:
+  - name: "web_recon"
+    weight: 32
+    ports:
+      - {port: 80, weight: 34}
+      - {port: 443, weight: 38}
+      - {port: 8080, weight: 16}
+      - {port: 8443, weight: 7}
+      - {port: 22, weight: 5}
+  - name: "windows_exposure"
+    weight: 24
+    ports:
+      - {port: 445, weight: 36}
+      - {port: 3389, weight: 28}
+      - {port: 135, weight: 14}
+      - {port: 139, weight: 10}
+      - {port: 5985, weight: 7}
+      - {port: 80, weight: 5}
+  - name: "iot_telnet"
+    weight: 15
+    ports:
+      - {port: 23, weight: 48}
+      - {port: 2323, weight: 18}
+      - {port: 22, weight: 16}
+      - {port: 80, weight: 10}
+      - {port: 8080, weight: 8}
+  - name: "mail_relay_probe"
+    weight: 10
+    ports:
+      - {port: 25, weight: 44}
+      - {port: 587, weight: 24}
+      - {port: 465, weight: 16}
+      - {port: 110, weight: 8}
+      - {port: 143, weight: 8}
+  - name: "database_probe"
+    weight: 9
+    ports:
+      - {port: 1433, weight: 32}
+      - {port: 3306, weight: 24}
+      - {port: 5432, weight: 22}
+      - {port: 6379, weight: 12}
+      - {port: 9200, weight: 10}
+  - name: "broad_low_rate"
+    weight: 10
+    ports:
+      - {port: 22, weight: 12}
+      - {port: 23, weight: 10}
+      - {port: 80, weight: 18}
+      - {port: 443, weight: 18}
+      - {port: 445, weight: 12}
+      - {port: 3389, weight: 12}
+      - {port: 8080, weight: 10}
+      - {port: 8443, weight: 8}
+
+proxy_connect_status_messages:
+  200:
+    - "Connection Established"
+  403:
+    - "Forbidden"
+    - "Access Denied"
+  407:
+    - "Proxy Authentication Required"
+    - "Authentication Required"
+  502:
+    - "Bad Gateway"
+    - "Upstream Connection Failed"
+    - "Connection Failed"
+  503:
+    - "Service Unavailable"
+    - "No Healthy Upstream"
+    - "Connection Limit Exceeded"
+  504:
+    - "Gateway Timeout"
+    - "Upstream Timeout"
+    - "Connection Timed Out"

@@ -48,6 +48,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #     deps/musl's musl-clang++ wrapper (it passes -rtlib=compiler-rt -unwindlib=none)
 #     dies on "cannot find .../libclang_rt.builtins-x86_64.a"
 #   * meson/ninja/cmake/autotools/gperf/flex/bison — the dependency tarballs
+#   * libelf-dev — deps/decoy-os builds the decoy's Linux 6.12 kernel from source;
+#     objtool (CONFIG_UNWINDER_ORC) needs libelf. BTF/pahole is disabled in the
+#     kernel config, so dwarves is not required.
 #   * libwayland-bin, libglib2.0-*-bin — HOST codegen (wayland-scanner,
 #     glib-compile-resources, gdbus-codegen) used by cross-built gtk/weston/mutter
 #   * libegl-dev/libgl-dev/libgles-dev — deps/gtk-stack's gl-headers step stages the
@@ -83,6 +86,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         gperf \
         ldc \
+        libelf-dev \
         libegl-dev \
         libgl-dev \
         libgles-dev \

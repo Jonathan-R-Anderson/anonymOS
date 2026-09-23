@@ -1,0 +1,47 @@
+[
+    {
+        "name": "x",
+        "class": "join",
+        "value": {
+            "class": "sequence",
+            "array": [
+                {
+                    "class": "int",
+                    "min": 3,
+                    "max": 4
+                },
+                {
+                    "class": "int",
+                    "min": 6,
+                    "max": 7
+                },
+                {
+                    "class": "int",
+                    "min": 8,
+                    "max": 9
+                }
+            ]
+        }
+    },
+    {
+        "name": "y",
+        "class": "int",
+        "min": 1,
+        "max": 5
+    },
+    {
+        "name": "z",
+        "class": "join",
+        "value": {
+            "class": "sequence",
+            "length": 5,
+            "base": {
+                "class": "string",
+                "dist": {
+                    "xyz": 1,
+                    "none": 0
+                }
+            }
+        }
+    }
+]

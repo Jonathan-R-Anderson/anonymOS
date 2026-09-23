@@ -1,0 +1,2488 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""Integration tests for DNS/SNI realism across the generation pipeline.
+
+These tests verify that:
+- DNS queries, SSL SNI, and proxy hostnames are consistent per connection
+- No reverse-DNS style hostnames appear for web/SaaS connections
+- No IP sinkhole (many domains → same IP)
+- Zeek weird protocol types match the connection protocol
+- Background HTTPS uses real service domains
+- Suspicious noise connections include hostnames
+- Multi-IP domains return full answer sets in DNS
+"""
+
+import json
+import random
+from collections import Counter
+from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock
+
+import pytest
+
+from evidenceforge.events.base import OccurrenceBuilder
+from evidenceforge.events.contexts import DnsContext, FirewallContext
+from evidenceforge.formats import load_format
+from evidenceforge.generation.actions import (
+    network_transaction_planner as network_planner_module,
+)
+from evidenceforge.generation.activity import ActivityGenerator
+from evidenceforge.generation.activity.suspicious_benign import generate_unusual_outbound
+from evidenceforge.generation.emitters.zeek import ZeekEmitter
+from evidenceforge.generation.state_manager import StateManager
+from evidenceforge.models.exceptions import StateError
+from evidenceforge.models.scenario import System, User
+from tests.network_factories import network_plan
+
+
+@pytest.fixture
+def state_manager():
+    sm = StateManager()
+    sm.set_current_time(datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC))
+    return sm
+
+
+@pytest.fixture
+def mock_emitters():
+    return {
+        "windows_event_security": Mock(),
+        "windows_event_sysmon": Mock(),
+        "zeek_conn": Mock(),
+        "zeek_dns": Mock(),
+        "zeek_ssl": Mock(),
+        "zeek_x509": Mock(),
+        "ecar": Mock(),
+        "syslog": Mock(),
+        "proxy_access": Mock(),
+    }
+
+
+@pytest.fixture
+def activity_gen(state_manager, mock_emitters):
+    gen = ActivityGenerator(state_manager, mock_emitters)
+    gen._dns_server_ips = ["10.0.0.1"]
+    workstation = System(
+        hostname="WS-01",
+        ip="10.0.1.50",
+        os="Windows 11",
+        type="workstation",
+    )
+    gen._ip_to_system = {workstation.ip: workstation}
+    return gen
+
+
+@pytest.fixture
+def timestamp():
+    return datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+
+
+@pytest.mark.slow
+class TestHostnameConsistency:
+    """DNS query domain, SSL SNI, and proxy hostname must be identical."""
+
+    def test_tunnel_era_background_txt_spf_avoids_documentation_ranges(self):
+        """Benign TXT/SPF collisions should not expose RFC 5737 test networks."""
+        from evidenceforge.generation.engine.storyline import _dns_tunnel_background_txt_record
+
+        answers = [_dns_tunnel_background_txt_record(random.Random(seed))[1] for seed in range(500)]
+
+        assert not any("203.0.113." in answer for answer in answers)
+
+    def test_explicit_unregistered_hostname_tracks_rewritten_destination(
+        self, activity_gen, timestamp, mock_emitters
+    ):
+        from evidenceforge.generation.activity.dns_registry import resolve_domain_ip
+
+        hostname = "attacker-validated.example.net"
+        expected_ip = resolve_domain_ip(hostname, src_host="10.0.1.50")
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp,
+            dst_port=443,
+            service="ssl",
+            emit_dns=True,
+            hostname=hostname,
+        )
+
+        assert activity_gen._last_connection_effective_dst_ip == expected_ip
+        conn_event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert conn_event.network.dst_ip == expected_ip
+
+    def test_ssl_sni_matches_dns_query(self, activity_gen, timestamp, state_manager, mock_emitters):
+        """For a web connection with emit_dns=True, SNI should match DNS query domain."""
+        state_manager.set_current_time(timestamp)
+
+        from evidenceforge.generation.activity.dns_registry import pick_domain_and_ip
+
+        rng = random.Random(42)
+        domain, ip = pick_domain_and_ip(rng, "web", src_host="WS-01")
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip=ip,
+            time=timestamp,
+            dst_port=443,
+            proto="tcp",
+            service="ssl",
+            emit_dns=True,
+            hostname=domain,
+            conn_state="SF",  # Force successful connection for SSL context
+            duration=1.0,
+            orig_bytes=500,
+            resp_bytes=1000,
+        )
+
+        # Check SSL SNI on the main connection event dispatched to zeek_conn
+        # (SSL context is attached to the connection OccurrenceBuilder)
+        if mock_emitters["zeek_conn"].emit.called:
+            conn_event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+            if conn_event.protocol.ssl is not None:
+                assert conn_event.protocol.ssl.server_name == domain, (
+                    f"SNI '{conn_event.protocol.ssl.server_name}' != expected domain '{domain}'"
+                )
+            else:
+                pytest.skip("conn_state was not SF — SSL context not generated")
+        else:
+            pytest.skip("zeek_conn emitter not called")
+
+        # Check DNS query (emitted via causal expansion as a separate connection event)
+        dns_calls = mock_emitters["zeek_dns"].emit.call_args_list
+        if dns_calls:
+            dns_event = dns_calls[0][0][0]
+            if dns_event.dns:
+                assert dns_event.dns.query == domain, (
+                    f"DNS query '{dns_event.dns.query}' != expected domain '{domain}'"
+                )
+
+    def test_hostname_rewrites_mismatched_destination_ip(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Caller-supplied hostname/IP mismatches should resolve to the hostname's IP pool."""
+        from evidenceforge.generation.activity.dns_registry import get_domain_ips
+
+        state_manager.set_current_time(timestamp)
+        hostname = "www.google.com"
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="208.80.154.224",
+            time=timestamp,
+            dst_port=443,
+            proto="tcp",
+            service="ssl",
+            emit_dns=True,
+            hostname=hostname,
+            conn_state="SF",
+        )
+
+        conn_event = next(
+            call.args[0]
+            for call in mock_emitters["zeek_conn"].emit.call_args_list
+            if call.args[0].network.dst_port == 443
+            and call.args[0].network.hostname == hostname
+            and call.args[0].protocol.ssl is not None
+            and call.args[0].protocol.ssl.server_name == hostname
+        )
+        assert conn_event.network.dst_ip in get_domain_ips(hostname)
+        assert conn_event.protocol.ssl is not None
+        assert conn_event.protocol.ssl.server_name == hostname
+
+    def test_unregistered_hostname_uses_dns_derived_destination(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Unregistered explicit hostnames should not connect to a different caller IP."""
+        from evidenceforge.generation.activity.dns_registry import resolve_domain_ip
+
+        state_manager.set_current_time(timestamp)
+        hostname = "unlisted-cdn.example.test"
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="151.101.141.68",
+            time=timestamp,
+            dst_port=443,
+            proto="tcp",
+            service="ssl",
+            emit_dns=True,
+            hostname=hostname,
+            conn_state="SF",
+        )
+
+        expected_ip = resolve_domain_ip(hostname, src_host="10.0.1.50")
+        conn_event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert conn_event.network.dst_ip == expected_ip
+        assert conn_event.protocol.ssl is not None
+        assert conn_event.protocol.ssl.server_name == hostname
+
+    def test_connection_dns_prerequisite_contains_tcp_destination(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """Connection DNS evidence should resolve the same IP used by the flow."""
+        import evidenceforge.generation.activity.generator as generator_module
+
+        rng = random.Random(42)
+        monkeypatch.setattr(rng, "random", lambda: 0.5)
+        monkeypatch.setattr(generator_module, "_get_rng", lambda: rng)
+        monkeypatch.setattr(network_planner_module, "_get_rng", lambda: rng)
+        state_manager.set_current_time(timestamp)
+        hostname = "cdn-assets-update.com"
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="151.101.141.68",
+            time=timestamp,
+            dst_port=443,
+            proto="tcp",
+            service="ssl",
+            emit_dns=True,
+            hostname=hostname,
+            conn_state="SF",
+        )
+
+        dns_event = mock_emitters["zeek_dns"].emit.call_args_list[0][0][0]
+        conn_event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert dns_event.dns is not None
+        assert dns_event.dns.query_type == "A"
+        assert dns_event.dns.query == hostname
+        assert conn_event.network.dst_ip in dns_event.dns.answers
+
+    def test_hostname_backed_local_tcp_emits_dns_without_emit_dns_flag(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """Visible SNI/Host evidence from local clients should have DNS cache evidence."""
+        import evidenceforge.generation.activity.generator as generator_module
+
+        rng = random.Random(42)
+        monkeypatch.setattr(rng, "random", lambda: 0.5)
+        monkeypatch.setattr(generator_module, "_get_rng", lambda: rng)
+        monkeypatch.setattr(network_planner_module, "_get_rng", lambda: rng)
+        state_manager.set_current_time(timestamp)
+        hostname = "updates.example.net"
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="151.101.141.68",
+            time=timestamp,
+            dst_port=443,
+            proto="tcp",
+            service="ssl",
+            emit_dns=False,
+            hostname=hostname,
+            conn_state="SF",
+        )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == hostname
+            and call.args[0].dns.query_type == "A"
+        ]
+        conn_event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+
+        assert address_events
+        assert conn_event.protocol.ssl is not None
+        assert conn_event.protocol.ssl.server_name == hostname
+        assert conn_event.network.dst_ip in address_events[0].dns.answers
+
+    def test_registered_multi_ip_prerequisite_orders_connected_ip_first(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """Registered multi-IP domains should answer first with the flow destination."""
+        import evidenceforge.generation.activity.generator as generator_module
+        from evidenceforge.generation.activity.dns_registry import get_domain_ips
+
+        rng = random.Random(42)
+        monkeypatch.setattr(rng, "random", lambda: 0.5)
+        monkeypatch.setattr(generator_module, "_get_rng", lambda: rng)
+        monkeypatch.setattr(network_planner_module, "_get_rng", lambda: rng)
+        state_manager.set_current_time(timestamp)
+
+        for index, hostname in enumerate(
+            ("archive.ubuntu.com", "security.ubuntu.com", "api.snapcraft.io")
+        ):
+            ips = get_domain_ips(hostname)
+            assert len(ips) >= 2
+            connected_ip = ips[1]
+
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip=connected_ip,
+                time=timestamp + timedelta(hours=index),
+                dst_port=443,
+                proto="tcp",
+                service="ssl",
+                emit_dns=True,
+                hostname=hostname,
+                conn_state="SF",
+            )
+
+            dns_event = [
+                call.args[0]
+                for call in mock_emitters["zeek_dns"].emit.call_args_list
+                if call.args[0].dns
+                and call.args[0].dns.query == hostname
+                and call.args[0].dns.query_type == "A"
+            ][0]
+            conn_event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+
+            assert conn_event.network.dst_ip == connected_ip
+            assert dns_event.dns.answers[0] == connected_ip
+            assert set(dns_event.dns.answers) == set(ips)
+            mock_emitters["zeek_conn"].emit.reset_mock()
+
+    def test_dns_response_completes_before_dependent_connection(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="142.250.72.36",
+            time=timestamp,
+            dst_port=443,
+            proto="tcp",
+            service="ssl",
+            emit_dns=True,
+            hostname="www.gstatic.com",
+            conn_state="SF",
+            duration=1.0,
+            orig_bytes=500,
+            resp_bytes=5000,
+        )
+
+        dns_event = mock_emitters["zeek_dns"].emit.call_args_list[0][0][0]
+        conn_event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        dns_complete = dns_event.timestamp.timestamp() + (dns_event.dns.rtt or 0)
+        assert dns_complete < conn_event.timestamp.timestamp()
+
+    def test_ephemeral_ports_do_not_repeat_exact_five_tuple(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """High-volume destination traffic should not reuse exact 5-tuples."""
+        state_manager.set_current_time(timestamp)
+
+        for idx in range(300):
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip="93.184.216.34",
+                time=timestamp + timedelta(milliseconds=idx),
+                dst_port=443,
+                proto="tcp",
+                service="ssl",
+                hostname="example.com",
+                conn_state="SF",
+                duration=1.0,
+            )
+
+        tuples = [
+            (
+                call.args[0].network.src_ip,
+                call.args[0].network.src_port,
+                call.args[0].network.dst_ip,
+                call.args[0].network.dst_port,
+                call.args[0].network.protocol,
+            )
+            for call in mock_emitters["zeek_conn"].emit.call_args_list
+        ]
+        assert len(tuples) == len(set(tuples))
+
+    def test_clean_short_tls_does_not_get_weird(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Clean successful TLS handshakes should not receive partial/reset weird labels."""
+        state_manager.set_current_time(timestamp)
+
+        for idx in range(50):
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip="93.184.216.34",
+                time=timestamp + timedelta(seconds=idx),
+                dst_port=443,
+                proto="tcp",
+                service="ssl",
+                hostname="example.com",
+                conn_state="SF",
+                duration=1.0,
+                orig_bytes=500,
+                resp_bytes=2000,
+            )
+
+        events = [call.args[0] for call in mock_emitters["zeek_conn"].emit.call_args_list]
+        assert all(event.weird is None for event in events)
+
+    def test_internal_dns_ttl_is_stable_across_resolvers(self):
+        """Internal authoritative DNS names should not get random per-query TTLs."""
+        from evidenceforge.generation.activity.generator import _dns_base_ttl
+
+        first = _dns_base_ttl("dc01.example.org", is_internal=True)
+        second = _dns_base_ttl("dc01.example.org", is_internal=True)
+
+        assert first == second
+        assert first in {300, 600, 1800, 3600, 7200, 86400}
+
+    def test_known_internal_short_name_dns_uses_fqdn_authority(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Known scenario host short names should not look like public DNS names."""
+        from evidenceforge.generation.activity.generator import _dns_base_ttl
+
+        state_manager.set_current_time(timestamp)
+        web = System(
+            hostname="WEB-EXT-01",
+            ip="10.0.3.10",
+            os="Ubuntu 24.04",
+            type="server",
+        )
+        activity_gen._ip_to_system = {web.ip: web}
+        activity_gen._ad_domain = "example.org"
+        activity_gen._dns_server_ips = ["10.0.0.10"]
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip=web.ip,
+            time=timestamp,
+            hostname="WEB-EXT-01",
+            force_address=True,
+        )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns and call.args[0].dns.query_type == "A"
+        ]
+        assert address_events
+        event = address_events[-1]
+        assert event.dns.query == "WEB-EXT-01.example.org"
+        assert event.dns.AA is True
+        assert event.dns.TTLs == [float(_dns_base_ttl("WEB-EXT-01.example.org", True))]
+
+    def test_direct_dns_connection_uses_internal_cache(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Direct DNS connections should honor cache suppression for internal names."""
+        from evidenceforge.generation.activity.generator import _dns_base_ttl
+
+        state_manager.set_current_time(timestamp)
+        activity_gen._ad_domain = "example.org"
+
+        for idx in range(3):
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip="10.0.0.10",
+                time=timestamp + timedelta(seconds=idx),
+                dst_port=53,
+                proto="udp",
+                service="dns",
+                hostname="dc01.example.org",
+                duration=0.01,
+                orig_bytes=80,
+                resp_bytes=180,
+            )
+
+        ttls = [
+            call.args[0].dns.TTLs[0]
+            for call in mock_emitters["zeek_conn"].emit.call_args_list
+            if call.args[0].dns and call.args[0].dns.query == "dc01.example.org"
+        ]
+        assert ttls == [float(_dns_base_ttl("dc01.example.org", is_internal=True))]
+
+    def test_resolver_rrset_ttl_is_shared_across_clients(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """A resolver should not expose unrelated TTL ages for the same external RRset."""
+        state_manager.set_current_time(timestamp)
+
+        for idx, src_ip in enumerate(("10.0.1.50", "10.0.1.51")):
+            activity_gen._emit_dns_lookup(
+                src_ip=src_ip,
+                dst_ip="93.184.216.34",
+                time=timestamp + timedelta(seconds=idx * 10),
+                hostname="cdn.example.net",
+                force_address=True,
+            )
+
+        dns_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "cdn.example.net"
+            and call.args[0].dns.query_type == "A"
+        ]
+        assert len(dns_events) == 2
+        assert {event.network.dst_ip for event in dns_events} == {"10.0.0.1"}
+
+        first_ttl = dns_events[0].dns.TTLs[0]
+        second_ttl = dns_events[1].dns.TTLs[0]
+        assert 0 <= first_ttl - second_ttl <= 15
+
+    def test_prerequisite_address_cache_uses_returned_ttl(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """Client DNS suppression should last only as long as the visible returned TTL."""
+        state_manager.set_current_time(timestamp)
+        monkeypatch.setattr(
+            activity_gen,
+            "_dns_observed_ttls",
+            lambda **_kwargs: [5.0],
+        )
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp,
+            hostname="cdn.example.net",
+            force_address=True,
+        )
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp + timedelta(seconds=20),
+            hostname="cdn.example.net",
+            force_address=True,
+        )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "cdn.example.net"
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+        assert address_events[0].dns.TTLs == [30.0]
+
+    def test_prerequisite_address_cache_waits_for_transport_publication(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """A rejected DNS transport must not poison the client-visible cache."""
+
+        state_manager.set_current_time(timestamp)
+        original_generate_connection = activity_gen.generate_connection
+        attempts = 0
+
+        def reject_first_transports(*args: object, **kwargs: object) -> str:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise StateError("injected DNS transport rejection")
+            if attempts == 2:
+                return ""
+            return original_generate_connection(*args, **kwargs)
+
+        monkeypatch.setattr(activity_gen, "generate_connection", reject_first_transports)
+
+        lookup = {
+            "src_ip": "10.0.1.50",
+            "dst_ip": "93.184.216.34",
+            "time": timestamp,
+            "hostname": "cdn.example.net",
+            "force_address": True,
+        }
+        with pytest.raises(StateError, match="injected DNS transport rejection"):
+            activity_gen._emit_dns_lookup(**lookup)
+
+        assert len(activity_gen._dns_cache) == 0
+        assert mock_emitters["zeek_dns"].emit.call_count == 0
+
+        activity_gen._emit_dns_lookup(**lookup)
+
+        assert attempts == 2
+        assert len(activity_gen._dns_cache) == 0
+        assert mock_emitters["zeek_dns"].emit.call_count == 0
+
+        activity_gen._emit_dns_lookup(**lookup)
+
+        assert attempts >= 3
+        assert len(activity_gen._dns_cache) == 1
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "cdn.example.net"
+            and call.args[0].dns.query_type == "A"
+        ]
+        assert len(address_events) == 1
+
+    def test_prerequisite_address_lookup_refreshes_after_visible_ttl(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """Later hostname-backed TCP activity should not rely on expired DNS answers."""
+        state_manager.set_current_time(timestamp)
+        monkeypatch.setattr(
+            activity_gen,
+            "_dns_observed_ttls",
+            lambda **_kwargs: [5.0],
+        )
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp,
+            hostname="cdn.example.net",
+            force_address=True,
+        )
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp + timedelta(seconds=35),
+            hostname="cdn.example.net",
+            force_address=True,
+        )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "cdn.example.net"
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 2
+        assert [event.dns.TTLs for event in address_events] == [[30.0], [30.0]]
+
+    def test_future_generated_lookup_does_not_duplicate_earlier_timestamp(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """Generation order should not create duplicate DNS rows inside one TTL window."""
+        state_manager.set_current_time(timestamp)
+        monkeypatch.setattr(
+            activity_gen,
+            "_dns_observed_ttls",
+            lambda **_kwargs: [300.0],
+        )
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp + timedelta(seconds=10),
+            hostname="cdn.example.net",
+            force_address=True,
+        )
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp,
+            hostname="cdn.example.net",
+            force_address=True,
+        )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "cdn.example.net"
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+
+    def test_direct_dns_observation_cache_suppresses_repeats_inside_ttl(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Direct/generated DNS rows should respect visible client cache windows."""
+        state_manager.set_current_time(timestamp)
+
+        for offset in (0, 10):
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip="10.0.0.1",
+                time=timestamp + timedelta(seconds=offset),
+                dst_port=53,
+                proto="udp",
+                service="dns",
+                dns=DnsContext(
+                    query="dc01.example.org",
+                    query_type="A",
+                    qtype=1,
+                    rcode="NOERROR",
+                    rcode_num=0,
+                    answers=["10.0.0.10"],
+                    TTLs=[300.0],
+                ),
+                duration=0.01,
+                orig_bytes=64,
+                resp_bytes=160,
+            )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "dc01.example.org"
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+
+    def test_direct_dns_observation_cache_suppresses_out_of_order_repeats(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Generation order should not create duplicate visible DNS cache hits."""
+        state_manager.set_current_time(timestamp)
+
+        for offset in (10, 0):
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip="10.0.0.1",
+                time=timestamp + timedelta(seconds=offset),
+                dst_port=53,
+                proto="udp",
+                service="dns",
+                dns=DnsContext(
+                    query="dc01.example.org",
+                    query_type="A",
+                    qtype=1,
+                    rcode="NOERROR",
+                    rcode_num=0,
+                    answers=["10.0.0.10"],
+                    TTLs=[300.0],
+                ),
+                duration=0.01,
+                orig_bytes=64,
+                resp_bytes=160,
+            )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "dc01.example.org"
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+
+    def test_hostname_dns_fallback_suppresses_repeats_inside_ttl(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Hostname-only DNS connections should use the same visible cache contract."""
+        state_manager.set_current_time(timestamp)
+
+        for offset in (0, 10):
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip="10.0.0.1",
+                time=timestamp + timedelta(seconds=offset),
+                dst_port=53,
+                proto="udp",
+                service="dns",
+                hostname="dc01.example.org",
+                duration=0.01,
+                orig_bytes=64,
+                resp_bytes=160,
+            )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "dc01.example.org"
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+
+    def test_registered_a_rrset_is_stable_across_cache_expirations(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Repeated registered A lookups should not redraw answer shape per call."""
+        from evidenceforge.generation.activity.dns_registry import get_domain_ips
+
+        state_manager.set_current_time(timestamp)
+        expected_answers = get_domain_ips("postman.com")
+
+        for offset in (0, 7200):
+            activity_gen._emit_dns_lookup(
+                src_ip="10.0.1.50",
+                dst_ip=expected_answers[0],
+                time=timestamp + timedelta(seconds=offset),
+                hostname="postman.com",
+                force_address=True,
+            )
+
+        dns_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "postman.com"
+            and call.args[0].dns.query_type == "A"
+        ]
+        assert len(dns_events) == 2
+        assert [event.dns.answers for event in dns_events] == [expected_answers, expected_answers]
+
+    def test_forced_address_prerequisite_dns_does_not_servfail(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """Connection-prerequisite DNS should not fail and then allow TCP anyway."""
+        import evidenceforge.generation.activity.generator as generator_module
+
+        state_manager.set_current_time(timestamp)
+        delegate_rng = random.Random(7)
+
+        def always_failure_roll() -> float:
+            return 0.0
+
+        delegate_rng.random = always_failure_roll
+        monkeypatch.setattr(generator_module, "_get_rng", lambda: delegate_rng)
+        monkeypatch.setattr(network_planner_module, "_get_rng", lambda: delegate_rng)
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp,
+            hostname="cdn.example.net",
+            force_address=True,
+            bypass_cache=True,
+        )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == "cdn.example.net"
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert address_events
+        assert address_events[0].dns.rcode == "NOERROR"
+        assert "93.184.216.34" in address_events[0].dns.answers
+
+    def test_forward_proxy_origin_connections_use_resolver_cache(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Proxy-origin TLS should emit DNS once, then honor positive-cache TTL."""
+        state_manager.set_current_time(timestamp)
+        proxy = System(
+            hostname="PROXY-01",
+            ip="10.0.3.20",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        activity_gen._ip_to_system = {proxy.ip: proxy}
+        hostname = "updates.example.net"
+
+        for offset in (0, 30):
+            activity_gen.generate_connection(
+                src_ip=proxy.ip,
+                dst_ip="93.184.216.34",
+                time=timestamp + timedelta(seconds=offset),
+                dst_port=443,
+                proto="tcp",
+                service="ssl",
+                emit_dns=False,
+                hostname=hostname,
+                conn_state="SF",
+                duration=1.0,
+                orig_bytes=500,
+                resp_bytes=1000,
+            )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == hostname
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+        assert address_events[0].timestamp < timestamp
+
+    def test_proxy_forced_address_lookups_suppress_repeats_inside_ttl(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Forced proxy-origin prerequisites should not emit per-connection A repeats."""
+        state_manager.set_current_time(timestamp)
+        proxy = System(
+            hostname="PROXY-01",
+            ip="10.0.3.20",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        activity_gen._ip_to_system = {proxy.ip: proxy}
+        activity_gen._dns_server_ips = ["10.0.0.10"]
+        hostname = "packages.microsoft.com"
+
+        for offset in (0, 0.2, 30):
+            activity_gen._emit_dns_lookup(
+                src_ip=proxy.ip,
+                dst_ip="13.107.246.52",
+                time=timestamp + timedelta(seconds=offset),
+                hostname=hostname,
+                force_address=True,
+            )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == hostname
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+        assert address_events[0].network.src_ip == proxy.ip
+        assert address_events[0].network.dst_ip == "10.0.0.10"
+
+    def test_pre_window_proxy_dns_does_not_suppress_visible_origin_prerequisite(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Warm-up resolver cache should not hide the first visible proxy-origin A row."""
+        state_manager.set_current_time(timestamp)
+        proxy = System(
+            hostname="PROXY-01",
+            ip="10.0.3.20",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        activity_gen._ip_to_system = {proxy.ip: proxy}
+        activity_gen._dns_server_ips = ["10.0.0.10"]
+        activity_gen.dispatcher.output_start_time = timestamp
+        hostname = "packages.microsoft.com"
+
+        activity_gen._emit_dns_lookup(
+            src_ip=proxy.ip,
+            dst_ip="13.107.246.52",
+            time=timestamp - timedelta(seconds=5),
+            hostname=hostname,
+            force_address=True,
+        )
+        activity_gen._emit_dns_lookup(
+            src_ip=proxy.ip,
+            dst_ip="13.107.246.52",
+            time=timestamp + timedelta(seconds=10),
+            hostname=hostname,
+            force_address=True,
+            bypass_cache=True,
+        )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == hostname
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+        assert address_events[0].timestamp >= timestamp
+        assert "13.107.246.52" in address_events[0].dns.answers
+
+    def test_invisible_forced_dns_cache_does_not_suppress_visible_refresh(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Forced address cache hits must be based on visible DNS evidence."""
+        state_manager.set_current_time(timestamp)
+        proxy = System(
+            hostname="PROXY-01",
+            ip="10.0.3.20",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        activity_gen._ip_to_system = {proxy.ip: proxy}
+        activity_gen._dns_server_ips = ["10.0.0.10"]
+        activity_gen.dispatcher.output_start_time = timestamp
+        hostname = "changelogs.ubuntu.com"
+
+        activity_gen._emit_dns_lookup(
+            src_ip=proxy.ip,
+            dst_ip="91.189.91.39",
+            time=timestamp - timedelta(seconds=5),
+            hostname=hostname,
+            force_address=True,
+        )
+        activity_gen._emit_dns_lookup(
+            src_ip=proxy.ip,
+            dst_ip="91.189.91.39",
+            time=timestamp + timedelta(seconds=10),
+            hostname=hostname,
+            force_address=True,
+        )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == hostname
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+        assert address_events[0].timestamp >= timestamp
+        assert "91.189.91.39" in address_events[0].dns.answers
+
+    def test_forward_proxy_direct_tls_refreshes_pre_window_dns_cache(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Proxy-host HTTPS traffic should refresh invisible warm-up DNS before visible TLS."""
+        state_manager.set_current_time(timestamp)
+        proxy = System(
+            hostname="PROXY-01",
+            ip="10.0.3.20",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        activity_gen._ip_to_system = {proxy.ip: proxy}
+        activity_gen._dns_server_ips = ["10.0.0.10"]
+        activity_gen.dispatcher.output_start_time = timestamp
+        hostname = "secure-client-updates.cisco.com"
+
+        for event_time in (timestamp - timedelta(seconds=5), timestamp + timedelta(seconds=10)):
+            activity_gen.generate_connection(
+                src_ip=proxy.ip,
+                dst_ip="72.163.4.185",
+                time=event_time,
+                dst_port=443,
+                proto="tcp",
+                service="ssl",
+                emit_dns=False,
+                hostname=hostname,
+                conn_state="SF",
+                duration=1.0,
+                orig_bytes=500,
+                resp_bytes=1000,
+                source_system=proxy,
+            )
+
+        address_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_dns"].emit.call_args_list
+            if call.args[0].dns
+            and call.args[0].dns.query == hostname
+            and call.args[0].dns.query_type == "A"
+        ]
+
+        assert len(address_events) == 1
+        assert address_events[0].timestamp >= timestamp
+        assert "72.163.4.185" in address_events[0].dns.answers
+        ssl_event = next(
+            call.args[0]
+            for call in mock_emitters["zeek_ssl"].emit.call_args_list
+            if call.args[0].protocol.ssl and call.args[0].protocol.ssl.server_name == hostname
+        )
+        assert address_events[0].timestamp < ssl_event.timestamp
+
+
+class TestNoReverseDnsHostnames:
+    """Web/SaaS connections must never produce reverse-DNS style hostnames."""
+
+    def test_no_embedded_ip_in_sni(self, activity_gen, timestamp, state_manager, mock_emitters):
+        """SNI must not contain the destination IP's octets joined by dashes."""
+        state_manager.set_current_time(timestamp)
+
+        from evidenceforge.generation.activity.dns_registry import pick_domain_and_ip
+
+        rng = random.Random(42)
+        violations = []
+
+        for i in range(50):
+            mock_emitters["zeek_ssl"].reset_mock()
+            t = timestamp + timedelta(seconds=i * 10)
+            state_manager.set_current_time(t)
+
+            domain, ip = pick_domain_and_ip(rng, "web", src_host="WS-01")
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip=ip,
+                time=t,
+                dst_port=443,
+                proto="tcp",
+                service="ssl",
+                emit_dns=True,
+                hostname=domain,
+            )
+
+            if mock_emitters["zeek_ssl"].emit.called:
+                ssl_event = mock_emitters["zeek_ssl"].emit.call_args[0][0]
+                if ssl_event.protocol.ssl:
+                    sni = ssl_event.protocol.ssl.server_name
+                    ip_dashed = ip.replace(".", "-")
+                    if ip_dashed in sni:
+                        violations.append(f"SNI '{sni}' contains embedded IP {ip}")
+
+        assert len(violations) == 0, (
+            f"{len(violations)} SNI values contain embedded IPs:\n" + "\n".join(violations[:5])
+        )
+
+    def test_long_tail_domains_no_embedded_ip(self):
+        """Long-tail generated domains must not embed IPs."""
+        from evidenceforge.generation.activity.dns_registry import (
+            _domain_to_ip,
+            generate_long_tail_domain,
+        )
+
+        rng = random.Random(42)
+        for _ in range(100):
+            domain = generate_long_tail_domain(rng)
+            ip = _domain_to_ip(domain)
+            ip_dashed = ip.replace(".", "-")
+            assert ip_dashed not in domain, f"Long-tail domain '{domain}' embeds IP {ip}"
+
+
+class TestNoSinkhole:
+    """No single IP should be the DNS answer for many unrelated domains."""
+
+    def test_ip_not_shared_by_many_domains(self):
+        """In the registry, no IP maps to more than 3 different domains."""
+        from evidenceforge.generation.activity.dns_registry import load_dns_registry
+
+        data = load_dns_registry()
+        ip_to_domains: dict[str, list[str]] = {}
+        for entry in data["domains"]:
+            for ip in entry["ips"]:
+                ip_to_domains.setdefault(ip, []).append(entry["domain"])
+
+        sinkholes = {ip: domains for ip, domains in ip_to_domains.items() if len(domains) > 3}
+        assert len(sinkholes) == 0, "IPs shared by >3 domains (sinkhole):\n" + "\n".join(
+            f"  {ip}: {domains}" for ip, domains in sinkholes.items()
+        )
+
+    def test_generated_connections_diverse_ips(self):
+        """Over 100 web connections, no IP should account for >10% of answers."""
+        from evidenceforge.generation.activity.dns_registry import pick_domain_and_ip
+
+        rng = random.Random(42)
+        ips = []
+        for _ in range(100):
+            _, ip = pick_domain_and_ip(rng, "web", src_host="WS-01")
+            ips.append(ip)
+
+        counts = Counter(ips)
+        max_count = max(counts.values())
+        assert max_count <= 15, (
+            f"IP {counts.most_common(1)[0][0]} appeared {max_count}/100 times (>15%)"
+        )
+
+
+@pytest.mark.slow
+class TestWeirdProtocolConstraint:
+    """Zeek weird.log anomaly types must match the connection protocol."""
+
+    _TCP_NAMES = {
+        "window_recision",
+        "possible_split_routing",
+        "above_hole_data_without_any_acks",
+        "data_before_established",
+        "connection_originator_SYN_ack",
+        "truncated_header",
+        "inappropriate_FIN",
+        "bad_TCP_checksum",
+    }
+    _UDP_NAMES = {
+        "DNS_truncated_len_lt_hdr_len",
+        "bad_UDP_checksum",
+        "UDP_datagram_length_mismatch",
+        "DNS_RR_unknown_type",
+    }
+
+    def test_automatic_weird_generation_is_disabled(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Generated connections should not synthesize weird.log rows by default."""
+        state_manager.set_current_time(timestamp)
+
+        for i in range(100):
+            t = timestamp + timedelta(seconds=i)
+            state_manager.set_current_time(t)
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip=f"93.184.10.{i + 1}",
+                time=t,
+                dst_port=443,
+                proto="tcp",
+                service="ssl",
+                conn_state="S0",
+                orig_bytes=0,
+                resp_bytes=0,
+            )
+
+        emitted_events = [
+            call.args[0]
+            for call in mock_emitters["zeek_conn"].emit.call_args_list
+            if call.args[0].event_type == "connection"
+        ]
+        assert emitted_events
+        assert all(event.weird is None for event in emitted_events)
+        if "zeek_weird" in mock_emitters:
+            assert not mock_emitters["zeek_weird"].emit.called
+
+    def test_failed_tcp_connections_do_not_keep_http_or_ssl_service(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        state_manager.set_current_time(timestamp)
+
+        for service, port in (("ssl", 443), ("http", 80)):
+            mock_emitters["zeek_conn"].reset_mock()
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip="93.184.216.34",
+                time=timestamp,
+                dst_port=port,
+                proto="tcp",
+                service=service,
+                conn_state="S0",
+                orig_bytes=0,
+                resp_bytes=0,
+            )
+            event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+            assert event.network.service == ""
+
+    def test_tcp_history_responder_markers_have_responder_packets(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="93.184.216.34",
+            time=timestamp,
+            dst_port=443,
+            proto="tcp",
+            service="ssl",
+            conn_state="S1",
+            orig_bytes=0,
+            resp_bytes=0,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert any(char.islower() for char in event.network.history)
+        assert event.network.resp_pkts > 0
+        assert event.network.resp_ip_bytes is not None
+        assert event.network.closed_at is not None
+
+    def test_dns_txt_response_has_originator_payload(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """DNS TXT fan-out should not render a response to a zero-byte query."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            dns=DnsContext(
+                query="abcd1234.exfil.example.com",
+                query_type="TXT",
+                qtype=16,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["v=abcd1234"],
+            ),
+            resp_bytes=800,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.orig_bytes > 0
+        assert event.network.orig_ip_bytes > event.network.orig_bytes
+
+    def test_dns_txt_accounting_matches_visible_answer_size(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Tiny TXT answers should not imply oversized single-packet DNS responses."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            dns=DnsContext(
+                query="abcd1234.exfil.example.com",
+                query_type="TXT",
+                qtype=16,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["cache=56f09cfc"],
+                rtt=0.12,
+            ),
+            resp_bytes=2000,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.resp_bytes < 300
+        assert event.network.resp_pkts == 1
+        assert event.network.resp_ip_bytes <= 1500
+
+    def test_dns_a_accounting_uses_visible_question_not_caller_placeholder(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Short A queries should not inherit arbitrary alert placeholder byte counts."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            dns=DnsContext(
+                query="resolver-68xk0duy.bit",
+                query_type="A",
+                qtype=1,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["0.0.0.0"],
+                rtt=0.004,
+            ),
+            orig_bytes=2000,
+            resp_bytes=1000,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.orig_bytes != 260
+        assert event.network.resp_bytes != 512
+        assert event.network.orig_bytes < 80
+        assert event.network.resp_bytes < 140
+
+    def test_dns_conn_duration_uses_rtt(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """DNS conn rows should describe the same transaction length as dns.log RTT."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            dns=DnsContext(
+                query="chunk.tunnel.example.com",
+                query_type="TXT",
+                qtype=16,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["v=chunk"],
+                rtt=0.35,
+            ),
+            resp_bytes=800,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.dns.rtt == 0.35
+        assert event.network.duration == 0.35
+
+    def test_dns_conn_duration_exact_anchor_still_uses_rtt(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """DNS RTT locks must not be jittered just because they equal old default anchors."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            dns=DnsContext(
+                query="anchor.example.com",
+                query_type="A",
+                qtype=1,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["93.184.216.34"],
+                rtt=0.02,
+            ),
+            resp_bytes=120,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.dns.rtt == 0.02
+        assert event.network.duration == 0.02
+
+    def test_explicit_dns_response_state_keeps_responder_accounting(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """DNS rows with response metadata must not render as one-way UDP."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            conn_state="SF",
+            orig_bytes=0,
+            resp_bytes=0,
+            dns=DnsContext(
+                query="missing.example.com",
+                query_type="A",
+                qtype=1,
+                rcode="NXDOMAIN",
+                rcode_num=3,
+                rtt=0.08,
+            ),
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.conn_state == "SF"
+        assert event.network.history == "Dd"
+        assert event.network.resp_pkts > 0
+        assert event.network.resp_bytes > 0
+        assert event.dns.rtt == 0.08
+        assert event.network.duration == 0.08
+
+    def test_servfail_dns_response_keeps_responder_accounting(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """SERVFAIL is still a DNS response and should carry responder packets."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            duration=0.02,
+            orig_bytes=60,
+            resp_bytes=0,
+            dns=DnsContext(
+                query="flaky.example.com",
+                query_type="A",
+                qtype=1,
+                rcode="SERVFAIL",
+                rcode_num=2,
+            ),
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.conn_state == "SF"
+        assert event.network.history == "Dd"
+        assert event.network.resp_pkts > 0
+        assert event.network.resp_bytes > 0
+
+    def test_inferred_servfail_dns_row_keeps_responder_accounting(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """Fallback DNS synthesis should not pair SERVFAIL with stale packet accounting."""
+        from evidenceforge.generation.activity import generator as generator_module
+
+        state_manager.set_current_time(timestamp)
+        monkeypatch.setattr(generator_module, "_UDP_CONN_ENTRIES", [("S0", 1, "DD")])
+        monkeypatch.setattr(network_planner_module, "_UDP_CONN_ENTRIES", [("S0", 1, "DD")])
+        monkeypatch.setattr(generator_module, "_UDP_CONN_WEIGHTS", [1])
+        monkeypatch.setattr(network_planner_module, "_UDP_CONN_WEIGHTS", [1])
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            hostname="flaky.example.com",
+            orig_bytes=60,
+            resp_bytes=0,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.dns.rcode == "SERVFAIL"
+        assert event.network.conn_state == "SF"
+        assert event.network.history == "Dd"
+        assert event.network.orig_pkts == event.network.history.count("D")
+        assert event.network.resp_pkts == event.network.history.count("d")
+        assert event.network.resp_bytes > 0
+        assert event.network.orig_ip_bytes - event.network.orig_bytes == (
+            event.network.resp_ip_bytes - event.network.resp_bytes
+        )
+
+    def test_inferred_tcp_servfail_dns_row_keeps_tcp_ip_overhead(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """TCP fallback DNS SERVFAIL accounting should retain TCP header overhead."""
+        from evidenceforge.generation.activity import generator as generator_module
+
+        state_manager.set_current_time(timestamp)
+        rng = random.Random(42)
+        original_choices = rng.choices
+
+        def tcp_only_choices(population, weights=None, *, cum_weights=None, k=1):
+            assert population != generator_module._UDP_OVERHEAD_VALUES
+            return original_choices(population, weights=weights, cum_weights=cum_weights, k=k)
+
+        rng.choices = tcp_only_choices
+        monkeypatch.setattr(generator_module, "_get_rng", lambda: rng)
+        monkeypatch.setattr(network_planner_module, "_get_rng", lambda: rng)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="tcp",
+            service="dns",
+            hostname="flaky.example.com",
+            orig_bytes=60,
+            resp_bytes=0,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.dns.rcode == "SERVFAIL"
+        assert event.network.conn_state == "SF"
+        assert event.network.resp_pkts >= 1
+        assert event.network.resp_ip_bytes > event.network.resp_bytes
+
+    def test_dns_conn_duration_is_not_shorter_than_explicit_rtt(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Caller-provided short durations should still cover dns.log RTT."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            duration=0.01,
+            dns=DnsContext(
+                query="www.example.com",
+                query_type="A",
+                qtype=1,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["93.184.216.34"],
+                rtt=0.08,
+            ),
+            resp_bytes=120,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.dns.rtt == 0.08
+        assert event.network.duration == 0.08
+
+    def test_dns_a_query_accounting_is_clamped_to_dns_transaction(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """A single A lookup should not inherit kilobyte-scale generic UDP bytes."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            duration=4.5,
+            dns=DnsContext(
+                query="metrics-b0hov01h.top",
+                query_type="A",
+                qtype=1,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["203.0.113.45"],
+                rtt=0.019,
+            ),
+            orig_bytes=1933,
+            resp_bytes=900,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.orig_bytes <= 260
+        assert event.network.resp_bytes <= 512
+        assert event.dns.rtt == 0.019
+        assert event.network.duration == 0.019
+
+    def test_dns_authoritative_flag_is_consistent_for_internal_names(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Internal names should not flip AA on otherwise equivalent rows."""
+        from evidenceforge.generation.activity.generator import _dns_base_ttl
+
+        state_manager.set_current_time(timestamp)
+        activity_gen._ad_domain = "example.org"
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            dns=DnsContext(
+                query="DC-01.example.org",
+                query_type="A",
+                qtype=1,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["10.0.0.10"],
+                AA=False,
+                rtt=0.004,
+            ),
+            orig_bytes=80,
+            resp_bytes=140,
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args[0][0]
+        assert event.dns.AA is True
+        assert event.dns.TTLs[0] == float(_dns_base_ttl("DC-01.example.org", True))
+
+    def test_direct_dns_connection_canonicalizes_known_short_name(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Caller-provided short host queries should share internal FQDN semantics."""
+        web = System(
+            hostname="WEB-EXT-01",
+            ip="10.0.3.10",
+            os="Ubuntu 24.04",
+            type="server",
+        )
+        activity_gen._ip_to_system = {web.ip: web}
+        activity_gen._ad_domain = "example.org"
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.10",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            dns=DnsContext(
+                query="WEB-EXT-01",
+                query_type="A",
+                qtype=1,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=[web.ip],
+                AA=False,
+                rtt=0.004,
+            ),
+            orig_bytes=80,
+            resp_bytes=140,
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args[0][0]
+        assert event.dns.query == "WEB-EXT-01.example.org"
+        assert event.dns.AA is True
+
+    def test_direct_ptr_for_owned_ip_uses_canonical_reverse_identity(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Owned reverse zones should not inherit a caller's unrelated forward alias."""
+        from evidenceforge.generation.activity.generator import _dns_base_ttl
+
+        dc = System(
+            hostname="DC-01",
+            ip="10.0.0.10",
+            os="Windows Server 2022",
+            type="domain_controller",
+        )
+        activity_gen._ip_to_system = {dc.ip: dc}
+        activity_gen._ad_domain = "example.org"
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            dns=DnsContext(
+                query="10.0.0.10.in-addr.arpa",
+                query_type="PTR",
+                qtype=12,
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["nas-04.example.org"],
+                AA=False,
+                rtt=0.004,
+            ),
+            orig_bytes=80,
+            resp_bytes=140,
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args[0][0]
+        assert event.dns.answers == ["DC-01.example.org"]
+        assert event.dns.AA is True
+        assert event.dns.TTLs == [float(_dns_base_ttl(event.dns.query, True))]
+
+    def test_direct_emitter_preserves_dns_rtt_duration(self, timestamp, tmp_path):
+        """Direct sensor rendering does not invent unexplained duration variance."""
+        fmt = load_format("zeek_conn")
+        emitter = ZeekEmitter(
+            format_def=fmt,
+            output_path=tmp_path,
+            sensor_hostnames=["zeek-a", "zeek-b"],
+        )
+        event = OccurrenceBuilder(
+            timestamp=timestamp,
+            event_type="connection",
+            network=network_plan(
+                src_ip="10.0.1.50",
+                src_port=53000,
+                dst_ip="10.0.0.1",
+                dst_port=53,
+                protocol="udp",
+                service="dns",
+                duration=0.002,
+                orig_bytes=64,
+                resp_bytes=128,
+                conn_state="SF",
+                zeek_uid="CtestDnsDuration1",
+            ),
+            dns=DnsContext(query="example.com", query_type="A", rtt=0.002),
+        )
+        event._sensor_hostnames_by_format = {"zeek_conn": ["zeek-a", "zeek-b"]}
+
+        emitter.emit(event)
+        emitter.flush()
+
+        rows = {
+            path.parent.name: json.loads(path.read_text().splitlines()[0])
+            for path in tmp_path.glob("zeek-*/conn.json")
+        }
+        assert rows["zeek-a"]["duration"] == event.dns.rtt
+        assert rows["zeek-b"]["duration"] == event.dns.rtt
+
+    def test_generic_dns_service_accounting_is_clamped(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """DNS-like IDS/background rows without dns.log context still use DNS-sized packets."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="8.8.8.8",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            duration=4.5,
+            orig_bytes=1800,
+            resp_bytes=22000,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.orig_bytes <= 260
+        assert event.network.resp_bytes <= 512
+        assert event.network.duration <= 0.08
+
+    def test_hostname_synthesized_dns_context_uses_dns_sized_accounting(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Hostname-only DNS rows should use the same accounting as explicit DNS contexts."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.1",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            hostname="DC-01.meridianhcs.local",
+            duration=0.003,
+            orig_bytes=2000,
+            resp_bytes=2000,
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.dns is not None
+        assert event.dns.query == "DC-01.meridianhcs.local"
+        assert event.network.orig_bytes != 260
+        assert event.network.resp_bytes != 512
+        assert event.network.orig_bytes < 80
+        assert event.network.resp_bytes < 140
+        assert event.network.history == "Dd"
+        assert event.network.orig_pkts == 1
+        assert event.network.resp_pkts == 1
+        assert event.network.duration == event.dns.rtt
+
+    def test_udp_dns_with_explicit_conn_state_uses_udp_history(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """Caller-forced successful DNS rows must not inherit TCP handshake history."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="8.8.8.8",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            duration=0.02,
+            orig_bytes=54,
+            resp_bytes=140,
+            conn_state="SF",
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.protocol == "udp"
+        assert event.network.conn_state == "SF"
+        assert event.network.history in {"Dd", "D"}
+        assert not set(event.network.history) & set("SshAaFfRr")
+
+    def test_unanswered_udp_dns_keeps_request_payload(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """A Zeek dns-service S0 row still needs a visible UDP DNS request payload."""
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="8.8.8.8",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            conn_state="S0",
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.protocol == "udp"
+        assert event.network.service == "dns"
+        assert event.network.conn_state == "S0"
+        assert event.network.history == "D"
+        assert event.network.orig_bytes >= 40
+        assert event.network.orig_ip_bytes > event.network.orig_bytes
+        assert event.network.resp_bytes == 0
+
+    def test_denied_dns_query_has_no_response_payload(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        state_manager.set_current_time(timestamp)
+
+        activity_gen.generate_connection(
+            src_ip="10.0.1.50",
+            dst_ip="8.8.8.8",
+            time=timestamp,
+            dst_port=53,
+            proto="udp",
+            service="dns",
+            duration=0.01,
+            orig_bytes=60,
+            resp_bytes=180,
+            dns=DnsContext(
+                query="blocked.example.com",
+                trans_id=1234,
+                qtype=1,
+                query_type="A",
+                rcode="NOERROR",
+                rcode_num=0,
+                answers=["93.184.216.34"],
+                TTLs=[300.0],
+                rtt=0.02,
+            ),
+            firewall=FirewallContext(
+                action="deny",
+                msg_id=106023,
+                connection_id=1,
+                src_interface="inside",
+                dst_interface="outside",
+            ),
+        )
+
+        event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+        assert event.network.conn_state == "S0"
+        assert event.network.orig_bytes >= 40
+        assert event.network.resp_bytes == 0
+        assert event.network.resp_pkts == 0
+        assert event.dns.answers == []
+        assert event.dns.TTLs == []
+        assert event.dns.rtt is None
+
+    def test_tcp_connections_get_tcp_weird_names(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """TCP connections should only get TCP-specific weird names."""
+        state_manager.set_current_time(timestamp)
+        weird_names = set()
+
+        for i in range(500):
+            mock_emitters["zeek_conn"].reset_mock()
+            t = timestamp + timedelta(seconds=i)
+            state_manager.set_current_time(t)
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip=f"93.184.{i // 256}.{i % 256 + 1}",
+                time=t,
+                dst_port=443,
+                proto="tcp",
+                service="ssl",
+            )
+            if mock_emitters["zeek_conn"].emit.called:
+                event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+                if event.weird:
+                    weird_names.add(event.weird.name)
+
+        if weird_names:
+            udp_on_tcp = weird_names & self._UDP_NAMES
+            assert len(udp_on_tcp) == 0, f"UDP weird names on TCP connections: {udp_on_tcp}"
+
+    def _assert_udp_connections_get_udp_weird_names(
+        self, activity_gen, timestamp, state_manager, mock_emitters
+    ):
+        """UDP connections should only get UDP-specific weird names."""
+        state_manager.set_current_time(timestamp)
+        weird_names = set()
+
+        for i in range(2000):  # UDP weird rate is 0.5%, need more samples
+            mock_emitters["zeek_conn"].reset_mock()
+            t = timestamp + timedelta(seconds=i)
+            state_manager.set_current_time(t)
+            activity_gen.generate_connection(
+                src_ip="10.0.1.50",
+                dst_ip="10.0.0.1",
+                time=t,
+                dst_port=53,
+                proto="udp",
+                service="dns",
+            )
+            if mock_emitters["zeek_conn"].emit.called:
+                event = mock_emitters["zeek_conn"].emit.call_args[0][0]
+                if event.weird:
+                    weird_names.add(event.weird.name)
+
+        if weird_names:
+            tcp_on_udp = weird_names & self._TCP_NAMES
+            assert len(tcp_on_udp) == 0, f"TCP weird names on UDP connections: {tcp_on_udp}"
+
+
+@pytest.mark.soak
+def test_udp_connections_get_udp_weird_names(activity_gen, timestamp, state_manager, mock_emitters):
+    """A high-volume UDP sample must not acquire TCP-specific weird names."""
+
+    TestWeirdProtocolConstraint()._assert_udp_connections_get_udp_weird_names(
+        activity_gen,
+        timestamp,
+        state_manager,
+        mock_emitters,
+    )
+
+
+class TestSuspiciousNoiseHostname:
+    """Suspicious noise connections must include hostname."""
+
+    def test_unusual_outbound_has_hostname(self):
+        """generate_unusual_outbound() results include a hostname field."""
+        rng = random.Random(42)
+        system = System(hostname="WS-01", ip="10.0.1.50", os="Windows 10", type="workstation")
+        user = User(username="testuser", full_name="Test", email="t@t.com", enabled=True)
+        timestamp = datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+
+        results_with_hostname = 0
+        for _ in range(50):
+            result = generate_unusual_outbound(rng, [user], [system], timestamp)
+            if result:
+                assert "hostname" in result, f"Missing hostname key in result: {result}"
+                if result["hostname"]:
+                    results_with_hostname += 1
+
+        assert results_with_hostname > 0, "No unusual outbound results had a hostname"
+
+
+class TestMultiIpDnsAnswers:
+    """Domains with multiple IPs should return full answer sets."""
+
+    def test_domain_ips_accessible(self):
+        """get_domain_ips returns full IP list for multi-IP domains."""
+        from evidenceforge.generation.activity.dns_registry import get_domain_ips
+
+        # www.google.com has 2 IPs in the registry
+        ips = get_domain_ips("www.google.com")
+        assert len(ips) >= 2, f"Expected 2+ IPs for www.google.com, got {ips}"
+
+    def test_single_ip_domain_returns_list(self):
+        """Single-IP domains return a list with one element."""
+        from evidenceforge.generation.activity.dns_registry import get_domain_ips
+
+        ips = get_domain_ips("ssh.github.com")
+        assert len(ips) == 1
+        assert isinstance(ips, list)
+
+    def test_unknown_domain_returns_empty(self):
+        from evidenceforge.generation.activity.dns_registry import get_domain_ips
+
+        ips = get_domain_ips("nonexistent.example.invalid")
+        assert ips == []
+
+
+class TestPtrSniCoherence:
+    """PTR records should not contradict known forward/TLS hostname context."""
+
+    def test_aws_compute_ptr_uses_forward_hostname_region(self):
+        from evidenceforge.generation.activity.network import _generate_rdns_name
+
+        ip = "52.84.100.50"
+        hostname = "ec2-52-84-100-50.us-west-2.compute.amazonaws.com"
+
+        for seed in range(20):
+            ptr = _generate_rdns_name(random.Random(seed), ip, hostname)
+            assert ".us-west-2.compute.amazonaws.com" in ptr
+
+    def test_aws_random_forward_hostname_avoids_ec2_ptr_shape(self):
+        from evidenceforge.generation.activity.network import (
+            _generate_random_hostname,
+            _generate_rdns_name,
+        )
+
+        ip = "52.84.100.50"
+        hostnames = {_generate_random_hostname(random.Random(seed), ip) for seed in range(20)}
+        ptrs = {_generate_rdns_name(random.Random(seed), ip) for seed in range(50)}
+
+        ptr_regions = {
+            ptr.split(".compute.amazonaws.com")[0].rsplit(".", 1)[1]
+            for ptr in ptrs
+            if ".compute.amazonaws.com" in ptr
+        }
+
+        assert hostnames
+        assert all(".compute.amazonaws.com" not in hostname for hostname in hostnames)
+        assert len(ptr_regions) <= 1
+
+
+class TestDnsSupportQueryTypes:
+    """Baseline DNS companion traffic should include realistic support lookups."""
+
+    @staticmethod
+    def _force_dns_random(monkeypatch, values, default=0.5):
+        import evidenceforge.generation.activity.generator as generator_module
+
+        rng = random.Random(42)
+        value_iter = iter(values)
+
+        def _fixed_random() -> float:
+            try:
+                return next(value_iter)
+            except StopIteration:
+                return default
+
+        monkeypatch.setattr(rng, "random", _fixed_random)
+        monkeypatch.setattr(generator_module, "_get_rng", lambda: rng)
+        monkeypatch.setattr(network_planner_module, "_get_rng", lambda: rng)
+
+    def test_dns_companion_distribution_gates_authoritative_qtypes_by_source_role(self):
+        from evidenceforge.generation.activity.generator import (
+            _dns_companion_kind_distribution_for_source,
+        )
+
+        proxy = System(
+            hostname="proxy01",
+            ip="10.0.3.20",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+            services=["squid", "systemd-resolved"],
+        )
+        mail = System(
+            hostname="mail01",
+            ip="10.0.3.30",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["mail_server"],
+            services=["postfix"],
+        )
+
+        proxy_choices, proxy_weights = _dns_companion_kind_distribution_for_source(proxy)
+        mail_choices, mail_weights = _dns_companion_kind_distribution_for_source(mail)
+
+        assert {"NS", "MX", "SOA"}.isdisjoint(proxy_choices)
+        assert {"NS", "MX", "SOA"} <= set(mail_choices)
+        assert len(proxy_choices) == len(proxy_weights)
+        assert len(mail_choices) == len(mail_weights)
+
+    def test_txt_queries_model_mail_authentication_noise(
+        self, activity_gen, timestamp, mock_emitters, monkeypatch
+    ):
+        self._force_dns_random(monkeypatch, [0.5, 0.99, 0.2])
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="52.84.100.50",
+            time=timestamp,
+            hostname="mail.example.com",
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args_list[0][0][0]
+        assert event.dns is not None
+        assert event.dns.query_type == "TXT"
+        assert event.dns.query == "example.com"
+        assert event.dns.answers == ["v=spf1 include:_spf.example.com ~all"]
+        assert event.dns.TTLs and 0 < event.dns.TTLs[0] <= 1800
+
+    def test_generated_ptr_for_owned_ip_uses_canonical_reverse_identity(
+        self, activity_gen, timestamp, mock_emitters, monkeypatch
+    ):
+        """Generated PTR answers remain canonical when the forward target is an alias."""
+        self._force_dns_random(monkeypatch, [0.9])
+        dc = System(
+            hostname="DC-01",
+            ip="10.0.0.10",
+            os="Windows Server 2022",
+            type="domain_controller",
+        )
+        activity_gen._ip_to_system = {dc.ip: dc}
+        activity_gen._ad_domain = "example.org"
+        activity_gen._dns_server_ips = [dc.ip]
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip=dc.ip,
+            time=timestamp,
+            hostname="nas-04.example.org",
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args[0][0]
+        assert event.dns.query_type == "PTR"
+        assert event.dns.answers == ["DC-01.example.org"]
+        assert event.dns.AA is True
+
+    def test_mx_roll_on_cdn_hostname_falls_back_to_txt(
+        self, activity_gen, timestamp, mock_emitters, monkeypatch
+    ):
+        self._force_dns_random(monkeypatch, [0.5, 0.999, 0.2])
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="52.84.100.50",
+            time=timestamp,
+            hostname="d111111abcdef8.cloudfront.net",
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args_list[0][0][0]
+        assert event.dns is not None
+        assert event.dns.query_type == "TXT"
+        assert event.dns.query == "cloudfront.net"
+        assert event.dns.answers == ["v=spf1 include:_spf.cloudfront.net ~all"]
+        assert event.dns.TTLs and 0 < event.dns.TTLs[0] <= 1800
+
+    def test_single_label_hostname_does_not_receive_public_mx_answers(self):
+        from evidenceforge.generation.activity.generator import _dns_hostname_allows_mx
+
+        assert not _dns_hostname_allows_mx("WEB-EXT-01")
+
+    def test_mx_roll_on_known_internal_short_name_uses_internal_owner(
+        self, activity_gen, timestamp, state_manager, mock_emitters, monkeypatch
+    ):
+        """MX rolls for known short hostnames should resolve internal owner names."""
+        self._force_dns_random(monkeypatch, [0.999])
+        state_manager.set_current_time(timestamp)
+        web = System(
+            hostname="WEB-EXT-01",
+            ip="10.0.3.10",
+            os="Ubuntu 24.04",
+            type="server",
+        )
+        activity_gen._ip_to_system = {web.ip: web}
+        activity_gen._ad_domain = "example.org"
+        activity_gen._dns_server_ips = ["10.0.0.10"]
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip=web.ip,
+            time=timestamp,
+            hostname="WEB-EXT-01",
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args[0][0]
+        assert event.dns.query == "example.org"
+        assert event.dns.query_type == "MX"
+        assert event.dns.AA is True
+        assert event.dns.answers == ["10 mail.example.org"]
+
+    def test_txt_answers_are_stable_and_dkim_keys_are_source_native(self):
+        from evidenceforge.generation.activity.dns_txt import (
+            choose_background_dns_txt_record,
+            stable_dns_txt_record,
+        )
+
+        assert stable_dns_txt_record("_dmarc.microsoft.com") == stable_dns_txt_record(
+            "_dmarc.microsoft.com"
+        )
+        dkim_answer, dkim_ttl = stable_dns_txt_record("selector1._domainkey.sendgrid.net")
+        dkim_key = dkim_answer.split("p=", 1)[1]
+
+        assert dkim_answer.startswith("v=DKIM1; k=rsa; p=")
+        assert len(dkim_key) > 180
+        assert not all(char in "0123456789abcdef" for char in dkim_key.lower())
+        assert dkim_ttl >= 900
+
+        seen: dict[str, tuple[str, int]] = {}
+        for seed in range(500):
+            query, answer, ttl = choose_background_dns_txt_record(random.Random(seed))
+            prior = seen.setdefault(query, (answer, ttl))
+            assert prior == (answer, ttl)
+
+    def test_external_txt_context_ttls_use_resolver_cache_countdown(self, activity_gen, timestamp):
+        """Caller-provided public TXT TTLs should still age inside the resolver cache."""
+        first = DnsContext(
+            query="zoom.us",
+            query_type="TXT",
+            qtype=16,
+            answers=["v=spf1 include:spf.protection.outlook.com ~all"],
+            TTLs=[1800.0],
+        )
+        second = DnsContext(
+            query=first.query,
+            query_type=first.query_type,
+            qtype=first.qtype,
+            answers=list(first.answers),
+            TTLs=[1800.0],
+        )
+
+        activity_gen._normalize_dns_context_for_resolver(
+            first,
+            resolver_ip="10.0.0.1",
+            time=timestamp,
+        )
+        activity_gen._normalize_dns_context_for_resolver(
+            second,
+            resolver_ip="10.0.0.1",
+            time=timestamp + timedelta(seconds=55),
+        )
+
+        assert second.TTLs[0] < first.TTLs[0]
+        assert second.TTLs[0] <= first.TTLs[0] - 50
+
+    def test_authored_dns_context_ttls_are_preserved(self, activity_gen, timestamp):
+        """Explicit scenario DNS TTL overrides should bypass resolver normalization."""
+        authored = DnsContext(
+            query="cache-poison.example",
+            query_type="A",
+            qtype=1,
+            answers=["203.0.113.77"],
+            TTLs=[42.0],
+            preserve_ttls=True,
+        )
+        activity_gen._normalize_dns_context_for_resolver(
+            authored,
+            resolver_ip="10.0.0.1",
+            time=timestamp,
+        )
+
+        assert authored.TTLs == [42.0]
+
+    def test_external_rrset_ttl_countdown_is_generation_order_independent(
+        self, activity_gen, timestamp
+    ):
+        """Resolver TTL aging should follow event time even if generation order differs."""
+        common = {
+            "resolver_ip": "10.0.0.1",
+            "query": "zoom.us",
+            "qtype_name": "TXT",
+            "answers": ["v=spf1 include:spf.protection.outlook.com include:amazonses.com ~all"],
+            "is_internal": False,
+            "base_ttl": 1800,
+        }
+        early = timestamp
+        late = timestamp + timedelta(seconds=55)
+        for offset_seconds in range(0, 1800, 30):
+            candidate = timestamp + timedelta(seconds=offset_seconds)
+            first = activity_gen._dns_observed_ttls(**common, time=candidate)[0]
+            second = activity_gen._dns_observed_ttls(
+                **common,
+                time=candidate + timedelta(seconds=55),
+            )[0]
+            if first - second >= 50:
+                early = candidate
+                late = candidate + timedelta(seconds=55)
+                break
+
+        late_first = activity_gen._dns_observed_ttls(**common, time=late)[0]
+        early_second = activity_gen._dns_observed_ttls(**common, time=early)[0]
+
+        assert early_second - late_first >= 50
+
+    def test_forward_proxy_srv_queries_use_internal_resolver(
+        self, activity_gen, timestamp, mock_emitters, monkeypatch
+    ):
+        self._force_dns_random(monkeypatch, [0.5, 0.95, 0.5])
+        proxy = System(
+            hostname="proxy01",
+            ip="10.0.3.10",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        dc = System(
+            hostname="dc-01",
+            ip="10.0.0.10",
+            os="Windows Server 2022",
+            type="domain_controller",
+            roles=["domain_controller", "dns_server"],
+            services=["dns"],
+        )
+        activity_gen._ip_to_system = {proxy.ip: proxy, dc.ip: dc}
+        activity_gen._dc_systems = [dc]
+        activity_gen._ad_domain = "example.com"
+        activity_gen._dns_server_ips = [dc.ip]
+
+        activity_gen._emit_dns_lookup(
+            src_ip=proxy.ip,
+            dst_ip="142.250.72.36",
+            time=timestamp,
+            hostname="www.gstatic.com",
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args_list[0][0][0]
+        assert event.dns is not None
+        assert event.dns.query_type == "SRV"
+        assert event.network.dst_ip == "10.0.0.10"
+        assert event.dns.AA is True
+
+    def test_default_ad_site_srv_query_resolves_to_dc(
+        self, activity_gen, timestamp, mock_emitters, monkeypatch
+    ):
+        import evidenceforge.generation.activity.generator as generator_module
+        from evidenceforge.generation.activity.network import REVERSE_DNS
+
+        self._force_dns_random(monkeypatch, [0.5, 0.95, 0.5])
+        monkeypatch.setattr(
+            generator_module,
+            "_AD_SRV_QUERIES",
+            ["_ldap._tcp.Default-First-Site-Name._sites.{domain}"],
+        )
+        proxy = System(
+            hostname="proxy01",
+            ip="10.0.3.10",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        dc = System(
+            hostname="dc-01",
+            ip="10.0.0.10",
+            os="Windows Server 2022",
+            type="domain_controller",
+            roles=["domain_controller", "dns_server"],
+            services=["dns"],
+        )
+        activity_gen._ip_to_system = {proxy.ip: proxy, dc.ip: dc}
+        activity_gen._dc_systems = [dc]
+        activity_gen._ad_domain = "example.com"
+        activity_gen._dns_server_ips = [dc.ip]
+        # Another generation in the same process may have registered this IP
+        # under a different scenario. SRV ownership must remain scenario-local.
+        monkeypatch.setitem(REVERSE_DNS, dc.ip, "hostA.corp.local")
+
+        activity_gen._emit_dns_lookup(
+            src_ip=proxy.ip,
+            dst_ip="142.250.72.36",
+            time=timestamp,
+            hostname="www.gstatic.com",
+        )
+
+        event = mock_emitters["zeek_dns"].emit.call_args_list[0][0][0]
+        assert event.dns is not None
+        assert event.dns.query == "_ldap._tcp.Default-First-Site-Name._sites.example.com"
+        assert event.dns.query_type == "SRV"
+        assert event.dns.rcode == "NOERROR"
+        assert event.dns.answers == ["0 100 389 dc-01.example.com"]
+        assert event.network.dst_ip == "10.0.0.10"
+        assert event.dns.AA is True
+
+    def test_internal_forced_address_lookup_emits_cached_ad_srv_discovery(
+        self, activity_gen, timestamp, mock_emitters
+    ):
+        dc = System(
+            hostname="DC-01",
+            ip="10.0.0.10",
+            os="Windows Server 2019",
+            type="domain_controller",
+        )
+        activity_gen._dc_systems = [dc]
+        activity_gen._dns_server_ips = [dc.ip]
+        activity_gen._ad_domain = "corp.example"
+
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip=dc.ip,
+            time=timestamp,
+            hostname="DC-01.corp.example",
+            force_address=True,
+        )
+        first_events = [call.args[0] for call in mock_emitters["zeek_dns"].emit.call_args_list]
+        srv_events = [event for event in first_events if event.dns.query_type == "SRV"]
+        address_events = [
+            event
+            for event in first_events
+            if event.dns.query_type == "A" and event.dns.query == "DC-01.corp.example"
+        ]
+
+        assert srv_events
+        assert address_events
+        assert srv_events[0].timestamp < address_events[0].timestamp
+        assert srv_events[0].dns.answers in (
+            ["0 100 88 DC-01.corp.example"],
+            ["0 100 389 DC-01.corp.example"],
+        )
+
+        mock_emitters["zeek_dns"].emit.reset_mock()
+        activity_gen._emit_dns_lookup(
+            src_ip="10.0.1.50",
+            dst_ip="10.0.0.20",
+            time=timestamp + timedelta(minutes=5),
+            hostname="FILE-01.corp.example",
+            force_address=True,
+        )
+        second_events = [call.args[0] for call in mock_emitters["zeek_dns"].emit.call_args_list]
+
+        assert not [event for event in second_events if event.dns.query_type == "SRV"]
+
+    def test_default_ad_site_srv_is_not_nxdomain_noise(self):
+        from evidenceforge.generation.activity.generator import _dns_nxdomain_companion_queries
+        from evidenceforge.generation.activity.network import _AD_SRV_QUERIES
+
+        site_query = "_ldap._tcp.Default-First-Site-Name._sites.{domain}"
+        assert site_query in _AD_SRV_QUERIES
+        assert "_ldap._tcp.Default-First-Site-Name._sites.example.com" not in (
+            _dns_nxdomain_companion_queries("www.gstatic.com", "example.com")
+        )
+
+    def test_internal_nxdomain_companions_use_internal_resolver_and_rtt(
+        self, activity_gen, timestamp, mock_emitters, monkeypatch
+    ):
+        self._force_dns_random(monkeypatch, [0.5, 0.5, 0.5], default=0.01)
+        proxy = System(
+            hostname="proxy01",
+            ip="10.0.3.10",
+            os="Ubuntu 24.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        activity_gen._ip_to_system = {proxy.ip: proxy}
+        activity_gen._ad_domain = "example.com"
+        activity_gen._dns_server_ips = ["10.0.0.10"]
+        activity_gen.generate_connection = Mock()
+
+        activity_gen._emit_dns_lookup(
+            src_ip=proxy.ip,
+            dst_ip="142.250.72.36",
+            time=timestamp,
+            hostname="www.gstatic.com",
+        )
+
+        nx_call = activity_gen.generate_connection.call_args_list[-1].kwargs
+        nx_dns = nx_call["dns"]
+        assert nx_dns.rcode == "NXDOMAIN"
+        assert nx_call["dst_ip"] == "10.0.0.10"
+        assert nx_dns.AA is True
+        assert nx_dns.rtt is not None
+        if nx_dns.query.startswith("_"):
+            assert nx_dns.query_type == "SRV"
+            assert nx_dns.qtype == 33

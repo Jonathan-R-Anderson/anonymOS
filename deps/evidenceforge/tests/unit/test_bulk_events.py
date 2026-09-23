@@ -1,0 +1,2264 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""Tests for bulk/periodic event types and shared timing engine."""
+
+import random
+import re
+from collections import Counter
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
+from pydantic import ValidationError
+
+from evidenceforge.generation.actions import (
+    PortScanActionBundle,
+    PortScanRequest,
+    ScheduledScanOverlapActionBundle,
+    ScheduledScanOverlapRequest,
+    WebScanActionBundle,
+    WebScanRequest,
+    WorkstationLockResult,
+)
+from evidenceforge.generation.actions import (
+    network_transaction_planner as network_planner_module,
+)
+from evidenceforge.generation.engine.baseline import BaselineMixin
+from evidenceforge.generation.engine.storyline import (
+    StorylineMixin,
+    _c2_http_response_size,
+    _dns_periodic_exclusive_start_fence,
+    _effective_rate_interval,
+    _is_c2_http_request,
+    _iter_dns_tunnel_ticks,
+    _iter_periodic_ticks,
+    _iter_shuffled_port_scan_pairs,
+    _observed_web_scan_status,
+    _port_scan_connection_profile,
+    _sample_network_hosts,
+    _scan_target_exposes_port,
+    _web_scan_connection_profile,
+    _web_scan_path_allows_referrer,
+    _web_scan_uri_with_runtime_variation,
+)
+from evidenceforge.generation.engine.storyline_helpers import periodic as periodic_helpers
+from evidenceforge.models import System, User
+from evidenceforge.models.scenario import (
+    BeaconEventSpec,
+    CredentialSprayEventSpec,
+    DgaQueriesEventSpec,
+    DnsQueryEventSpec,
+    DnsTunnelEventSpec,
+    ExplicitCredentialsEventSpec,
+    FailedLogonEventSpec,
+    LogonEventSpec,
+    NetworkConfig,
+    NetworkSegment,
+    NetworkSensor,
+    PortScanEventSpec,
+    WebScanEventSpec,
+    WorkstationLockEventSpec,
+    WorkstationUnlockEventSpec,
+    _PeriodicEventBase,
+)
+
+# ── _PeriodicEventBase validation ─────────────────────────────────────────
+
+
+class TestPeriodicEventBase:
+    """Test shared timing field validation on _PeriodicEventBase."""
+
+    def _make(self, **kw):
+        """Helper: create a concrete _PeriodicEventBase with a dummy type.
+
+        _PeriodicEventBase isn't a standalone event type, but BeaconEventSpec
+        inherits it and adds its own constraints. We test the base validators
+        via BeaconEventSpec to avoid needing a stub class.
+        """
+        defaults = {"dst_ip": "1.2.3.4", "interval": "5m", "duration": "1h", "action": "deny"}
+        defaults.update(kw)
+        return BeaconEventSpec(**defaults)
+
+    def test_exactly_one_termination_duration(self):
+        spec = self._make(duration="1h")
+        assert spec.duration == "1h"
+        assert spec.count is None
+        assert spec.end_time is None
+
+    def test_exactly_one_termination_count(self):
+        spec = self._make(duration=None, count=50)
+        assert spec.count == 50
+
+    def test_exactly_one_termination_end_time(self):
+        spec = self._make(duration=None, end_time="2026-04-20T12:00:00Z")
+        assert spec.end_time is not None
+
+    def test_rejects_multiple_terminations(self):
+        with pytest.raises(ValidationError, match="Exactly one"):
+            self._make(duration="1h", count=50)
+
+    def test_rejects_no_termination(self):
+        with pytest.raises(ValidationError, match="Exactly one"):
+            self._make(duration=None, count=None, end_time=None)
+
+    def test_rejects_interval_and_rate_together(self):
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            self._make(interval="5m", rate=10.0)
+
+    def test_rejects_neither_interval_nor_rate(self):
+        with pytest.raises(ValidationError, match="Either interval or rate"):
+            self._make(interval=None, rate=None)
+
+    def test_rejects_zero_interval(self):
+        with pytest.raises(ValidationError, match="greater than 0"):
+            self._make(interval="0s")
+
+    def test_rejects_zero_duration(self):
+        with pytest.raises(ValidationError, match="greater than 0"):
+            self._make(duration="0s")
+
+    def test_rejects_negative_count(self):
+        with pytest.raises(ValidationError):
+            self._make(duration=None, count=0)
+
+    def test_rejects_negative_rate(self):
+        """Rate must be positive (tested via a type that accepts rate)."""
+        with pytest.raises(ValidationError, match="greater than 0"):
+            # BeaconEventSpec rejects rate, so test the validator directly
+            # by temporarily using the base validation path
+            _PeriodicEventBase(interval=None, rate=-5.0, duration="1h")
+
+    def test_jitter_bounds(self):
+        with pytest.raises(ValidationError):
+            self._make(jitter=-0.1)
+        with pytest.raises(ValidationError):
+            self._make(jitter=1.5)
+
+    def test_jitter_default(self):
+        # Base class default is 0.2; concrete subclasses override with event-type defaults
+        spec = self._make()
+        assert 0.0 <= spec.jitter <= 1.0
+
+
+# ── BeaconEventSpec ───────────────────────────────────────────────────────
+
+
+class TestBeaconEventSpec:
+    def test_defaults(self):
+        spec = BeaconEventSpec(dst_ip="1.2.3.4", interval="5m", duration="1h")
+        assert spec.type == "beacon"
+        assert spec.action == "allow"
+        assert spec.dst_port == 443
+        assert spec.protocol == "tcp"
+        assert spec.jitter == 0.15  # Beacons are deliberately tight
+
+    def test_deny_action(self):
+        spec = BeaconEventSpec(dst_ip="1.2.3.4", interval="30m", count=10, action="deny")
+        assert spec.action == "deny"
+        assert spec.count == 10
+
+    def test_all_connection_fields(self):
+        spec = BeaconEventSpec(
+            dst_ip="1.2.3.4",
+            dst_port=8080,
+            hostname="evil.com",
+            service="http",
+            source_ip="10.0.0.5",
+            protocol="tcp",
+            method="GET",
+            uri="/callback",
+            status_code=200,
+            user_agent="Mozilla/5.0",
+            orig_bytes=500,
+            resp_bytes=1000,
+            conn_state="SF",
+            request_body_len=700,
+            response_body_len=1000,
+            interval="5m",
+            duration="2h",
+            action="allow",
+        )
+        assert spec.hostname == "evil.com"
+        assert spec.orig_bytes == 500
+        assert spec.request_body_len == 700
+
+    def test_http_sequence_accepts_request_body_ranges(self):
+        spec = BeaconEventSpec(
+            dst_ip="1.2.3.4",
+            service="http",
+            interval="5m",
+            count=2,
+            http_sequence=[
+                {"method": "POST", "uri": "/api/checkin", "request_body_len": [96, 144]}
+            ],
+        )
+
+        assert spec.http_sequence[0].request_body_len == [96, 144]
+
+    def test_rejects_rate(self):
+        with pytest.raises(ValidationError, match="interval"):
+            BeaconEventSpec(dst_ip="1.2.3.4", rate=10.0, duration="1h")
+
+    def test_requires_interval(self):
+        with pytest.raises(ValidationError, match="interval"):
+            BeaconEventSpec(dst_ip="1.2.3.4", duration="1h")
+
+    def test_hostname_validation(self):
+        with pytest.raises(ValidationError):
+            BeaconEventSpec(
+                dst_ip="1.2.3.4",
+                hostname="http://evil.com",
+                interval="5m",
+                duration="1h",
+            )
+
+    def test_blocked_c2_import_removed(self):
+        with pytest.raises(ImportError):
+            from evidenceforge.models.scenario import BlockedC2EventSpec  # noqa: F401
+
+
+# ── DnsQueryEventSpec ─────────────────────────────────────────────────────
+
+
+class TestDnsQueryEventSpec:
+    def test_defaults(self):
+        spec = DnsQueryEventSpec(query="evil.com", answer="1.2.3.4")
+        assert spec.type == "dns_query"
+        assert spec.qtype == "A"
+        assert spec.rcode == "NOERROR"
+        assert spec.answer == "1.2.3.4"
+
+    def test_nxdomain_no_answer(self):
+        spec = DnsQueryEventSpec(query="random.xyz", rcode="NXDOMAIN")
+        assert spec.answer is None
+
+    def test_servfail_no_answer(self):
+        spec = DnsQueryEventSpec(query="timeout.com", rcode="SERVFAIL")
+        assert spec.answer is None
+
+    def test_refused_no_answer(self):
+        spec = DnsQueryEventSpec(query="blocked.com", rcode="REFUSED")
+        assert spec.answer is None
+
+    def test_noerror_requires_answer(self):
+        with pytest.raises(ValidationError, match="answer is required"):
+            DnsQueryEventSpec(query="evil.com", rcode="NOERROR")
+
+    def test_answer_list(self):
+        spec = DnsQueryEventSpec(query="cdn.example.com", answer=["1.2.3.4", "5.6.7.8"])
+        assert spec.answer == ["1.2.3.4", "5.6.7.8"]
+
+    def test_valid_qtypes(self):
+        for qt in ("A", "AAAA", "TXT", "CNAME", "MX", "NULL", "SRV", "PTR"):
+            spec = DnsQueryEventSpec(query="test.com", qtype=qt, rcode="NXDOMAIN")
+            assert spec.qtype == qt
+
+    def test_invalid_qtype(self):
+        with pytest.raises(ValidationError, match="qtype"):
+            DnsQueryEventSpec(query="test.com", qtype="INVALID", rcode="NXDOMAIN")
+
+    def test_case_insensitive_qtype(self):
+        spec = DnsQueryEventSpec(query="test.com", qtype="txt", rcode="NXDOMAIN")
+        assert spec.qtype == "TXT"
+
+    def test_case_insensitive_rcode(self):
+        spec = DnsQueryEventSpec(query="test.com", rcode="nxdomain")
+        assert spec.rcode == "NXDOMAIN"
+
+    def test_invalid_rcode(self):
+        with pytest.raises(ValidationError, match="rcode"):
+            DnsQueryEventSpec(query="test.com", rcode="BADCODE")
+
+    def test_ttl_optional(self):
+        spec = DnsQueryEventSpec(query="test.com", answer="1.2.3.4")
+        assert spec.ttl is None
+
+    def test_ttl_explicit(self):
+        spec = DnsQueryEventSpec(query="test.com", answer="1.2.3.4", ttl=300)
+        assert spec.ttl == 300
+
+    def test_source_ip_optional(self):
+        spec = DnsQueryEventSpec(query="test.com", rcode="NXDOMAIN")
+        assert spec.source_ip is None
+
+
+# ── _iter_periodic_ticks ──────────────────────────────────────────────────
+
+
+class TestIterPeriodicTicks:
+    def test_count_based(self):
+        rng = random.Random(42)
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        ticks = list(_iter_periodic_ticks(start, 60.0, None, 5, 0.0, rng))
+        assert len(ticks) == 5
+
+    def test_duration_based(self):
+        rng = random.Random(42)
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        ticks = list(_iter_periodic_ticks(start, 60.0, 300.0, None, 0.0, rng))
+        # duration=300s, interval=60s → ticks at t=0,60,120,180,240,300 → 6 ticks
+        assert len(ticks) == 6
+
+    def test_exclusive_end_omits_exact_boundary_before_rng(self):
+        from unittest.mock import Mock
+
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        rng = Mock()
+        rng.uniform.side_effect = [0.0, 0.0]
+
+        ticks = list(
+            _iter_periodic_ticks(
+                start,
+                60.0,
+                180.0,
+                None,
+                0.0,
+                rng,
+                exclusive_end_time=start + timedelta(seconds=120),
+            )
+        )
+
+        assert ticks == [start, start + timedelta(seconds=60)]
+        assert rng.uniform.call_count == 2
+
+    def test_exclusive_end_omits_post_window_campaign_before_rng(self):
+        from unittest.mock import Mock
+
+        fence = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        rng = Mock()
+
+        ticks = list(
+            _iter_periodic_ticks(
+                fence + timedelta(microseconds=1),
+                60.0,
+                None,
+                2,
+                0.0,
+                rng,
+                exclusive_end_time=fence,
+            )
+        )
+
+        assert ticks == []
+        rng.uniform.assert_not_called()
+
+    def test_exclusive_end_preserves_inclusive_campaign_end_inside_fence(self):
+        rng = random.Random(42)
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+
+        ticks = list(
+            _iter_periodic_ticks(
+                start,
+                60.0,
+                120.0,
+                None,
+                0.0,
+                rng,
+                exclusive_end_time=start + timedelta(seconds=121),
+            )
+        )
+
+        assert ticks == [
+            start,
+            start + timedelta(seconds=60),
+            start + timedelta(seconds=120),
+        ]
+
+    def test_zero_jitter_exact_spacing(self):
+        rng = random.Random(42)
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        ticks = list(_iter_periodic_ticks(start, 60.0, None, 4, 0.0, rng))
+        for i, tick in enumerate(ticks):
+            expected = start + timedelta(seconds=60.0 * i)
+            assert tick == expected, f"tick {i}: {tick} != {expected}"
+
+    def test_jitter_within_bounds(self):
+        rng = random.Random(42)
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        interval = 60.0
+        jitter = 0.2
+        ticks = list(_iter_periodic_ticks(start, interval, None, 100, jitter, rng))
+        assert len(ticks) == 100
+        for i, tick in enumerate(ticks):
+            nominal = start + timedelta(seconds=interval * i)
+            max_offset = timedelta(seconds=jitter * interval)
+            # Tick should be within jitter window of nominal (clamped to >= start)
+            assert tick >= start
+            assert tick <= nominal + max_offset
+
+    def test_single_tick(self):
+        rng = random.Random(42)
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        ticks = list(_iter_periodic_ticks(start, 60.0, None, 1, 0.0, rng))
+        assert len(ticks) == 1
+        assert ticks[0] == start
+
+    def test_dns_tunnel_ticks_include_natural_gaps(self):
+        rng = random.Random(42)
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        ticks = list(_iter_dns_tunnel_ticks(start, 2.0, 900.0, None, 0.25, rng))
+        intervals = [
+            (later - earlier).total_seconds()
+            for earlier, later in zip(ticks, ticks[1:], strict=False)
+        ]
+
+        assert len(ticks) < 451
+        assert max(intervals) > 8.0
+        assert sum(interval < 3.0 for interval in intervals) < len(intervals) * 0.82
+        assert len({round(interval, 1) for interval in intervals}) > 20
+
+    def test_dns_tunnel_pacing_omits_exact_exclusive_end(self):
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        rng = random.Random(42)
+        initial_rng_state = rng.getstate()
+        probe_rng = random.Random()
+        probe_rng.setstate(initial_rng_state)
+        probe_rng.uniform(0.0, 0.0)
+        exact_spacing = probe_rng.expovariate(1.0 / (60.0 * 0.55))
+
+        ticks = list(
+            _iter_dns_tunnel_ticks(
+                start,
+                60.0,
+                None,
+                1,
+                0.0,
+                rng,
+                exclusive_end_time=start + timedelta(seconds=exact_spacing),
+            )
+        )
+
+        assert ticks == []
+        assert rng.getstate() == initial_rng_state
+
+    def test_duration_shorter_than_interval(self):
+        rng = random.Random(42)
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        # duration=30s, interval=60s → only tick at t=0 (0 <= 30)
+        ticks = list(_iter_periodic_ticks(start, 60.0, 30.0, None, 0.0, rng))
+        assert len(ticks) == 1
+
+    def test_beacon_count_contract_uses_exact_periodic_ticks(self, monkeypatch):
+        """Beacon handling must not inherit DNS-tunnel skip/pause pacing."""
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        from evidenceforge.generation.engine.storyline import StorylineMixin
+        from evidenceforge.models.scenario import System, User
+
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        expected_ticks = [start + timedelta(seconds=60 * i) for i in range(5)]
+
+        engine = object.__new__(StorylineMixin)
+        system = System(hostname="TEST-01", ip="10.0.0.1", os="Windows 10", type="workstation")
+        actor = User(username="alice", full_name="Alice Example", email="alice@example.com")
+        engine.scenario = SimpleNamespace(environment=SimpleNamespace(systems=[system]))
+        engine.state_manager = Mock()
+        engine.dispatcher = SimpleNamespace(visibility_engine=None)
+        engine.activity_generator = Mock()
+        engine.activity_generator._ip_to_system = {system.ip: system}
+        engine.activity_generator._proxy_routes = {}
+        engine.activity_generator._proxy_mode = "transparent"
+
+        periodic = Mock(return_value=iter(expected_ticks))
+        monkeypatch.setattr(periodic_helpers, "_iter_periodic_ticks", periodic)
+        monkeypatch.setattr(
+            periodic_helpers,
+            "_iter_dns_tunnel_ticks",
+            Mock(side_effect=AssertionError("generic beacons must not use DNS tunnel pacing")),
+        )
+
+        spec = BeaconEventSpec(
+            dst_ip="203.0.113.10",
+            interval="60s",
+            count=5,
+            action="allow",
+            jitter=0.0,
+        )
+
+        malicious_event = engine._execute_typed_event(
+            spec=spec,
+            actor=actor,
+            system=system,
+            time=start,
+            activity="C2 beacon",
+            explicit_types={"beacon"},
+        )
+
+        periodic.assert_called_once()
+        assert engine.activity_generator.generate_connection.call_count == 5
+        assert malicious_event["attempt_count"] == 5
+
+    def test_beacon_http_sequence_cycles_per_tick(self, monkeypatch):
+        """Beacon http_sequence should vary URI templates without hand-authored events."""
+        from unittest.mock import Mock
+
+        from evidenceforge.generation.engine.storyline import StorylineMixin
+
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        expected_ticks = [start + timedelta(seconds=60 * i) for i in range(4)]
+
+        engine = object.__new__(StorylineMixin)
+        system = System(hostname="TEST-01", ip="10.0.0.1", os="Windows 10", type="workstation")
+        actor = User(username="alice", full_name="Alice Example", email="alice@example.com")
+        engine.scenario = SimpleNamespace(environment=SimpleNamespace(systems=[system]))
+        engine.state_manager = Mock()
+        engine.dispatcher = SimpleNamespace(visibility_engine=None)
+        engine.activity_generator = Mock()
+        engine.activity_generator._ip_to_system = {system.ip: system}
+        engine.activity_generator._proxy_routes = {}
+        engine.activity_generator._proxy_mode = "transparent"
+
+        monkeypatch.setattr(
+            periodic_helpers, "_iter_periodic_ticks", Mock(return_value=iter(expected_ticks))
+        )
+
+        spec = BeaconEventSpec(
+            dst_ip="203.0.113.10",
+            hostname="c2.example.test",
+            interval="60s",
+            count=4,
+            action="allow",
+            jitter=0.0,
+            http_sequence=[
+                {
+                    "method": "GET",
+                    "uri": "/check?k={base64url:8}",
+                    "request_body_len": 0,
+                    "resp_bytes": [100, 200],
+                },
+                {
+                    "method": "POST",
+                    "uri": "/task/{hex8}",
+                    "request_body_len": 512,
+                    "orig_bytes": [300, 400],
+                },
+            ],
+        )
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=actor,
+            system=system,
+            time=start,
+            activity="C2 beacon",
+            explicit_types={"beacon"},
+        )
+
+        calls = engine.activity_generator.generate_connection.call_args_list
+        uris = [call.kwargs["http"].uri for call in calls]
+        methods = [call.kwargs["http"].method for call in calls]
+        request_sizes = [call.kwargs["http"].request_body_len for call in calls]
+        assert methods == ["GET", "POST", "GET", "POST"]
+        assert request_sizes == [0, 512, 0, 512]
+        assert uris[0].startswith("/check?k=")
+        assert uris[1].startswith("/task/")
+        assert uris[0] != uris[2]
+
+    def test_service_backed_beacon_uses_installed_service_process(self, monkeypatch):
+        """A SYSTEM beacon after service persistence should not fall back to svchost."""
+        from unittest.mock import Mock
+
+        start = datetime(2026, 4, 16, 16, 30, 0, tzinfo=UTC)
+        system = System(
+            hostname="DC-01",
+            ip="10.0.2.10",
+            os="Windows Server 2019",
+            type="server",
+            roles=["domain_controller"],
+        )
+        actor = User(username="SYSTEM", full_name="SYSTEM", email="system@example.com")
+
+        engine = object.__new__(StorylineMixin)
+        engine.scenario = SimpleNamespace(environment=SimpleNamespace(systems=[system]))
+        engine.dispatcher = SimpleNamespace(visibility_engine=None)
+        engine.state_manager = Mock()
+        engine.state_manager.get_processes_on_system.return_value = []
+        engine.activity_generator = Mock()
+        engine.activity_generator._ip_to_system = {system.ip: system}
+        engine.activity_generator._proxy_routes = {}
+        engine.activity_generator._proxy_mode = "transparent"
+        engine.activity_generator._get_system_pid.return_value = 700
+        engine.activity_generator.generate_process.return_value = 4242
+
+        engine._record_storyline_service_install(
+            system=system,
+            service_name="HealthMonitorSvc",
+            service_file_name=r"C:\Windows\System32\HealthMonitorSvc.exe",
+            service_account="LocalSystem",
+            time=start - timedelta(minutes=10),
+        )
+        monkeypatch.setattr(
+            periodic_helpers, "_iter_periodic_ticks", Mock(return_value=iter([start]))
+        )
+
+        spec = BeaconEventSpec(
+            dst_ip="45.33.32.30",
+            dst_port=443,
+            hostname="cdn-assets-update.com",
+            service="http",
+            method="GET",
+            uri="/api/v2/checkin",
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36"
+            ),
+            interval="10m",
+            count=1,
+            action="allow",
+            jitter=0.0,
+        )
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=actor,
+            system=system,
+            time=start,
+            activity="Allowed HTTPS beacon from DC-01",
+            explicit_types={"beacon"},
+        )
+
+        engine.activity_generator.generate_process.assert_called_once()
+        process_kwargs = engine.activity_generator.generate_process.call_args.kwargs
+        assert process_kwargs["process_name"] == r"C:\Windows\System32\HealthMonitorSvc.exe"
+        assert process_kwargs["parent_pid"] == 700
+        assert process_kwargs["logon_id"] == "0x3e7"
+
+        connection_kwargs = engine.activity_generator.generate_connection.call_args.kwargs
+        assert connection_kwargs["pid"] == 4242
+        assert connection_kwargs["process_image"] == r"C:\Windows\System32\HealthMonitorSvc.exe"
+
+    def test_v2_status_beacon_gets_c2_http_texture(self, monkeypatch):
+        """Beacon activity should not render /v2/status as stable text/html page traffic."""
+        from unittest.mock import Mock
+
+        start = datetime(2026, 4, 16, 16, 30, 0, tzinfo=UTC)
+        system = System(hostname="DC-01", ip="10.0.2.10", os="Windows Server 2019", type="server")
+        actor = User(username="SYSTEM", full_name="SYSTEM", email="system@example.com")
+
+        engine = object.__new__(StorylineMixin)
+        engine.scenario = SimpleNamespace(environment=SimpleNamespace(systems=[system]))
+        engine.dispatcher = SimpleNamespace(visibility_engine=None)
+        engine.state_manager = Mock()
+        engine.activity_generator = Mock()
+        engine.activity_generator._ip_to_system = {system.ip: system}
+        engine.activity_generator._proxy_routes = {}
+        engine.activity_generator._proxy_mode = "transparent"
+        monkeypatch.setattr(
+            periodic_helpers, "_iter_periodic_ticks", Mock(return_value=iter([start]))
+        )
+
+        spec = BeaconEventSpec(
+            dst_ip="45.33.32.30",
+            dst_port=443,
+            hostname="api.example.net",
+            service="http",
+            method="GET",
+            uri="/v2/status",
+            interval="10m",
+            count=1,
+            action="allow",
+            jitter=0.0,
+        )
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=actor,
+            system=system,
+            time=start,
+            activity="HTTPS beacon from DC-01",
+            explicit_types={"beacon"},
+        )
+
+        http = engine.activity_generator.generate_connection.call_args.kwargs["http"]
+        assert http.response_body_len != 54_400
+        assert http.resp_mime_types[0] in {
+            "application/json",
+            "text/plain",
+            "application/octet-stream",
+        }
+
+
+class TestC2HttpTexture:
+    def test_v2_paths_are_c2_even_without_spec_description(self):
+        assert _is_c2_http_request(
+            description=None,
+            technique=None,
+            uri="/v2/status",
+            activity=None,
+        )
+
+    def test_c2_status_response_sizes_have_multiple_bands(self):
+        sizes = [
+            _c2_http_response_size(random.Random(seed), method="GET", uri="/v2/status")
+            for seed in range(50)
+        ]
+
+        assert min(sizes) < 2_000
+        assert max(sizes) > 18_000
+        assert len({size // 1000 for size in sizes}) > 10
+
+
+class TestEffectiveRateInterval:
+    def test_count_based_rate_stays_exact(self):
+        rng = random.Random(42)
+        interval = _effective_rate_interval(10.0, 100, rng)
+        assert interval == 0.1
+
+    def test_duration_based_rate_gets_campaign_drift(self):
+        rng = random.Random(42)
+        interval = _effective_rate_interval(10.0, None, rng)
+        assert interval != 0.1
+        assert (1.0 / interval) >= 8.2
+        assert (1.0 / interval) <= 11.8
+
+    @pytest.mark.parametrize("rate", [0.0, -1.0, float("inf"), float("nan")])
+    def test_invalid_rate_rejected(self, rate):
+        with pytest.raises(ValueError, match="positive finite"):
+            _effective_rate_interval(rate, None, random.Random(42))
+
+    def test_duration_based_rate_drift_varies_by_campaign(self):
+        intervals = {
+            _effective_rate_interval(10.0, None, random.Random(seed)) for seed in range(10)
+        }
+        assert len(intervals) > 1
+
+
+class TestWebScanConnectionProfile:
+    def test_profile_includes_failed_connection_outcomes(self):
+        rng = random.Random(42)
+        states = {_web_scan_connection_profile(rng)[0] for _ in range(200)}
+        assert "SF" in states
+        assert states & {"S0", "RSTO", "RSTR"}
+
+    def test_s0_profile_has_no_response_bytes(self):
+        class S0Rng(random.Random):
+            def choices(self, population, weights=None, k=1):
+                return ["S0"]
+
+        state, _duration, _orig_bytes, resp_bytes = _web_scan_connection_profile(S0Rng(42))
+        assert state == "S0"
+        assert resp_bytes == 0
+
+    def test_tls_profile_has_wide_duration_and_byte_distribution(self):
+        rng = random.Random(42)
+        samples = []
+        for _ in range(400):
+            sample = _web_scan_connection_profile(rng, is_tls=True)
+            if sample[0] == "SF":
+                samples.append(sample)
+        durations = [sample[1] for sample in samples]
+        resp_bytes = [sample[3] for sample in samples]
+        assert max(durations) - min(durations) > 4.0
+        assert max(resp_bytes) - min(resp_bytes) > 6000
+
+    def test_scan_statuses_have_sparse_runtime_drift(self):
+        rng = random.Random(42)
+        statuses = [
+            _observed_web_scan_status({"uri": "/admin", "status": 404}, rng) for _ in range(300)
+        ]
+        assert 404 in statuses
+        assert set(statuses) & {403, 429, 500}
+
+    def test_referrer_only_allowed_for_crawl_like_successes(self):
+        assert _web_scan_path_allows_referrer({"uri": "/", "status": 200})
+        assert not _web_scan_path_allows_referrer({"uri": "/.git/HEAD", "status": 404})
+        assert not _web_scan_path_allows_referrer({"uri": "/wp-admin/", "status": 404})
+        assert not _web_scan_path_allows_referrer(
+            {"uri": "/robots.txt", "status": 200, "ids": {"sid": 1}}
+        )
+
+    def test_uri_variation_adds_sparse_query_noise_without_changing_path(self):
+        class AlwaysMutateRng(random.Random):
+            def random(self):
+                return 0.1
+
+        uri = _web_scan_uri_with_runtime_variation("/admin/login.php", 7, AlwaysMutateRng(42))
+
+        assert uri.startswith("/admin/login.php?")
+        assert uri != "/admin/login.php"
+
+
+class TestPortScanPairIteration:
+    def test_sample_network_hosts_handles_ipv6_64_without_enumeration(self):
+        import ipaddress
+
+        network = ipaddress.ip_network("2001:db8:1234::/64")
+        sampled = _sample_network_hosts(network, 3, random.Random(29))
+
+        assert len(sampled) == 3
+        assert len(set(sampled)) == 3
+        assert all(ipaddress.ip_address(address) in network for address in sampled)
+        assert str(network.network_address) not in sampled
+
+    def test_sample_network_hosts_matches_ipv4_host_semantics(self):
+        import ipaddress
+
+        network = ipaddress.ip_network("10.0.0.0/8")
+        sampled = _sample_network_hosts(network, 5, random.Random(31))
+
+        assert len(sampled) == 5
+        assert len(set(sampled)) == 5
+        assert all(ipaddress.ip_address(address) in network for address in sampled)
+        assert str(network.network_address) not in sampled
+        assert str(network.broadcast_address) not in sampled
+
+    def test_iter_shuffled_port_scan_pairs_covers_product_once(self):
+        targets = ["10.0.0.10", "10.0.0.11", "10.0.0.12"]
+        ports = [22, 80, 443, 3389]
+
+        pairs = list(_iter_shuffled_port_scan_pairs(targets, ports, random.Random(17)))
+
+        assert len(pairs) == len(targets) * len(ports)
+        assert set(pairs) == {(target, port) for target in targets for port in ports}
+        assert pairs != [(target, port) for target in targets for port in ports]
+
+    def test_iter_shuffled_port_scan_pairs_is_lazy_generator(self):
+        targets = [f"10.0.0.{index}" for index in range(1, 5001)]
+        ports = list(range(1, 5001))
+
+        iterator = _iter_shuffled_port_scan_pairs(targets, ports, random.Random(23))
+        first_pairs = [next(iterator) for _ in range(8)]
+
+        assert len(first_pairs) == 8
+        assert len(set(first_pairs)) == 8
+        assert all(target in targets for target, _port in first_pairs)
+        assert all(port in ports for _target, port in first_pairs)
+
+
+class TestScannerProbeActionBundles:
+    def test_port_scan_bundle_anchor_is_stable(self):
+        actor = User(username="scanner", full_name="Scanner", email="scanner@example.com")
+        system = System(hostname="SCAN-01", ip="10.0.0.5", os="Ubuntu 22.04", type="server")
+        spec = PortScanEventSpec(
+            source_ip="185.70.41.45",
+            target_ips=["10.0.0.10"],
+            ports=[22, 80],
+            scan_rate=20.0,
+        )
+        request = PortScanRequest(
+            spec=spec,
+            actor=actor,
+            system=system,
+            time=datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC),
+            rng=random.Random(7),
+            malicious_event={"type": "port_scan"},
+        )
+
+        anchor = PortScanActionBundle(executor=SimpleNamespace(), request=request).anchor
+
+        assert anchor.family == "port_scan"
+        assert anchor.stable_id == request.stable_id
+        assert anchor.stable_id.startswith("port-scan-")
+
+    def test_web_scan_bundle_anchor_is_stable(self):
+        actor = User(username="webscan", full_name="Web Scan", email="webscan@example.com")
+        system = System(hostname="SCAN-01", ip="10.0.0.5", os="Ubuntu 22.04", type="server")
+        spec = WebScanEventSpec(
+            dst_ip="10.0.0.20",
+            rate=5.0,
+            count=3,
+            paths=[{"uri": "/admin", "method": "GET", "status": 404}],
+            hostname="app.example.test",
+        )
+        request = WebScanRequest(
+            spec=spec,
+            actor=actor,
+            system=system,
+            time=datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC),
+            rng=random.Random(11),
+            malicious_event={"type": "web_scan"},
+        )
+
+        anchor = WebScanActionBundle(executor=SimpleNamespace(), request=request).anchor
+
+        assert anchor.family == "web_scan"
+        assert anchor.stable_id == request.stable_id
+        assert anchor.stable_id.startswith("web-scan-")
+
+    def test_scanner_bundles_delegate_to_adapter(self):
+        actor = User(username="scanner", full_name="Scanner", email="scanner@example.com")
+        system = System(hostname="SCAN-01", ip="10.0.0.5", os="Ubuntu 22.04", type="server")
+        target = System(hostname="WEB-01", ip="10.0.0.20", os="Ubuntu 22.04", type="server")
+        port_request = PortScanRequest(
+            spec=PortScanEventSpec(target_ips=["10.0.0.10"], ports=[22], scan_rate=10.0),
+            actor=actor,
+            system=system,
+            time=datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC),
+            rng=random.Random(13),
+            malicious_event={"type": "port_scan"},
+        )
+        web_request = WebScanRequest(
+            spec=WebScanEventSpec(
+                dst_ip="10.0.0.20",
+                rate=5.0,
+                count=1,
+                paths=[{"uri": "/", "method": "GET", "status": 200}],
+            ),
+            actor=actor,
+            system=system,
+            time=datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC),
+            rng=random.Random(17),
+            malicious_event={"type": "web_scan"},
+        )
+        overlap_request = ScheduledScanOverlapRequest(
+            scanner=system,
+            targets=(target,),
+            time=datetime(2026, 4, 16, 12, 5, 0, tzinfo=UTC),
+            rng=random.Random(19),
+        )
+
+        class Executor:
+            def __init__(self) -> None:
+                self.port_request = None
+                self.web_request = None
+                self.overlap_request = None
+
+            def _execute_port_scan_bundle(self, request: PortScanRequest) -> dict[str, str]:
+                self.port_request = request
+                return {"result": "port"}
+
+            def _execute_web_scan_bundle(self, request: WebScanRequest) -> dict[str, str]:
+                self.web_request = request
+                return {"result": "web"}
+
+            def _execute_scheduled_scan_overlap_bundle(
+                self, request: ScheduledScanOverlapRequest
+            ) -> None:
+                self.overlap_request = request
+
+        executor = Executor()
+
+        assert PortScanActionBundle(executor=executor, request=port_request).execute() == {
+            "result": "port"
+        }
+        assert WebScanActionBundle(executor=executor, request=web_request).execute() == {
+            "result": "web"
+        }
+        ScheduledScanOverlapActionBundle(executor=executor, request=overlap_request).execute()
+        assert executor.port_request is port_request
+        assert executor.web_request is web_request
+        assert executor.overlap_request is overlap_request
+
+    def test_scheduled_scan_overlap_bundle_anchor_is_stable(self):
+        scanner = System(hostname="SCAN-01", ip="10.0.0.5", os="Ubuntu 22.04", type="server")
+        targets = (
+            System(hostname="WEB-01", ip="10.0.0.20", os="Ubuntu 22.04", type="server"),
+            System(hostname="DB-01", ip="10.0.0.30", os="Ubuntu 22.04", type="server"),
+        )
+        request = ScheduledScanOverlapRequest(
+            scanner=scanner,
+            targets=targets,
+            time=datetime(2026, 4, 16, 12, 5, 0, tzinfo=UTC),
+            rng=random.Random(23),
+        )
+
+        anchor = ScheduledScanOverlapActionBundle(
+            executor=SimpleNamespace(), request=request
+        ).anchor
+
+        assert anchor.family == "scheduled_scan_overlap"
+        assert anchor.stable_id == request.stable_id
+        assert anchor.stable_id.startswith("scheduled-scan-overlap-")
+
+    def test_scheduled_scan_overlap_uses_closed_port_profile_for_missing_services(self):
+        scanner = System(hostname="SCAN-01", ip="10.0.0.5", os="Ubuntu 22.04", type="server")
+        target = System(
+            hostname="APP-01",
+            ip="10.0.0.20",
+            os="Ubuntu 22.04",
+            type="server",
+            services=["ssh", "gunicorn"],
+            roles=["app_server"],
+        )
+        captured: list[dict[str, object]] = []
+
+        class ScanRandom(random.Random):
+            def randint(self, a: int, b: int) -> int:
+                if (a, b) == (2, 4):
+                    return 2
+                return super().randint(a, b)
+
+            def sample(self, population: Sequence[int], k: int) -> list[int]:
+                return [445, 3389]
+
+        class StateManager:
+            def set_current_time(self, _time: datetime) -> None:
+                return None
+
+        class ActivityGenerator:
+            def generate_connection(self, **kwargs: object) -> None:
+                captured.append(kwargs)
+
+        executor = SimpleNamespace(
+            state_manager=StateManager(),
+            activity_generator=ActivityGenerator(),
+        )
+        request = ScheduledScanOverlapRequest(
+            scanner=scanner,
+            targets=(target,),
+            time=datetime(2026, 4, 16, 12, 5, 0, tzinfo=UTC),
+            rng=ScanRandom(29),
+        )
+
+        BaselineMixin._execute_scheduled_scan_overlap_bundle(executor, request)
+
+        assert {record["dst_port"] for record in captured} == {445, 3389}
+        assert all(record["conn_state"] != "SF" for record in captured)
+        assert all(record["service"] == "" for record in captured)
+
+
+class TestPortScanConnectionProfile:
+    def test_profile_uses_target_services_for_open_ports(self):
+        rng = random.Random(7)
+        target = System(
+            hostname="WEB-01",
+            ip="10.0.0.20",
+            os="Ubuntu 22.04",
+            type="server",
+            services=["apache2", "ssh"],
+            roles=["web_server"],
+        )
+
+        assert _scan_target_exposes_port(target, 80, external=True)
+        assert not _scan_target_exposes_port(target, 22, external=True)
+        assert _scan_target_exposes_port(
+            System(
+                hostname="APP-01",
+                ip="10.0.0.21",
+                os="Ubuntu 22.04",
+                type="server",
+                services=[],
+                roles=["web_server"],
+            ),
+            80,
+            external=True,
+        )
+        denied, conn_state, service, _duration, _orig_bytes, _resp_bytes = (
+            _port_scan_connection_profile(
+                rng,
+                port=80,
+                target_system=target,
+                external=True,
+                default_deny_state="S0",
+            )
+        )
+
+        assert not denied
+        assert conn_state in {"SF", "RSTO", "RSTR"}
+        assert service == "http"
+
+    def test_profile_includes_filtered_and_rejected_closed_ports(self):
+        rng = random.Random(42)
+        target = System(
+            hostname="DB-01",
+            ip="10.0.0.30",
+            os="Ubuntu 22.04",
+            type="server",
+            services=["mysql"],
+            roles=["database"],
+        )
+        samples = [
+            _port_scan_connection_profile(
+                rng,
+                port=3389,
+                target_system=target,
+                external=False,
+                default_deny_state="S0",
+            )
+            for _ in range(120)
+        ]
+
+        assert all(sample[0] for sample in samples)
+        assert {sample[1] for sample in samples} >= {"S0", "REJ"}
+
+
+class TestPortScanTargetResolution:
+    def test_external_target_segment_uses_inferred_segment_members(self):
+        """External segment scans should work when segment.systems is omitted."""
+        from unittest.mock import Mock
+
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        web = System(
+            hostname="WEB-01",
+            ip="10.10.3.10",
+            os="Ubuntu 22.04",
+            type="server",
+            roles=["web_server"],
+        )
+        proxy = System(
+            hostname="PROXY-01",
+            ip="10.10.3.20",
+            os="Ubuntu 22.04",
+            type="server",
+            roles=["forward_proxy"],
+        )
+        network = NetworkConfig(
+            public_cidrs=["203.14.220.0/28"],
+            segments=[
+                NetworkSegment(name="dmz", cidr="10.10.3.0/24", exposure="both"),
+            ],
+            sensors=[
+                NetworkSensor(
+                    type="firewall",
+                    name="fw-perimeter",
+                    monitoring_segments=["dmz"],
+                    log_formats=["cisco_asa"],
+                )
+            ],
+        )
+
+        class Visibility:
+            _vip_to_real_ip = {"203.14.220.10": "10.10.3.10"}
+
+            @staticmethod
+            def get_public_inbound_address(ip: str) -> str | None:
+                return "203.14.220.10" if ip == "10.10.3.10" else None
+
+        engine = object.__new__(StorylineMixin)
+        engine.scenario = SimpleNamespace(
+            environment=SimpleNamespace(systems=[web, proxy], network=network)
+        )
+        engine.dispatcher = SimpleNamespace(visibility_engine=Visibility())
+        engine.state_manager = SimpleNamespace(set_current_time=lambda _time: None)
+        engine.activity_generator = Mock()
+        engine.activity_generator._ip_to_system = {web.ip: web, proxy.ip: proxy}
+
+        spec = PortScanEventSpec(
+            source_ip="185.70.41.45",
+            target_segment="dmz",
+            target_count=8,
+            ports=[80],
+            scan_rate=10,
+        )
+        event = engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="apache", full_name="Apache", email="apache@example.com"),
+            system=web,
+            time=start,
+            activity="External DMZ scan",
+            explicit_types={"port_scan"},
+        )
+
+        assert event["target_count"] == 1
+        assert event["total_connections"] == 1
+        connection_kwargs = engine.activity_generator.generate_connection.call_args.kwargs
+        assert connection_kwargs["src_ip"] == "185.70.41.45"
+        assert connection_kwargs["dst_ip"] == "203.14.220.10"
+
+    def test_external_port_scan_honors_firewall_policy_denial(self):
+        """Public scan probes should not look open when firewall policy denies the port."""
+        from unittest.mock import Mock
+
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        web = System(
+            hostname="WEB-01",
+            ip="10.10.3.10",
+            os="Ubuntu 22.04",
+            type="server",
+            services=["apache2"],
+            roles=["web_server"],
+        )
+        network = NetworkConfig(
+            public_cidrs=["203.14.220.0/28"],
+            segments=[NetworkSegment(name="dmz", cidr="10.10.3.0/24", exposure="both")],
+            sensors=[
+                NetworkSensor(
+                    type="firewall",
+                    name="fw-perimeter",
+                    monitoring_segments=["dmz"],
+                    log_formats=["cisco_asa"],
+                    default_action="deny",
+                    drop_mode="drop",
+                )
+            ],
+        )
+
+        class Visibility:
+            _vip_to_real_ip = {"203.14.220.10": "10.10.3.10"}
+
+            @staticmethod
+            def get_public_inbound_address(ip: str) -> str | None:
+                return "203.14.220.10" if ip == "10.10.3.10" else None
+
+        engine = object.__new__(StorylineMixin)
+        engine.scenario = SimpleNamespace(
+            environment=SimpleNamespace(systems=[web], network=network)
+        )
+        engine.dispatcher = SimpleNamespace(visibility_engine=Visibility())
+        engine.state_manager = SimpleNamespace(set_current_time=lambda _time: None)
+        engine.activity_generator = Mock()
+        engine.activity_generator._ip_to_system = {web.ip: web}
+        engine._evaluate_firewall_policy = lambda *args: "deny"
+        engine._resolve_firewall_interface = lambda ip: (
+            "outside" if ip.startswith("185.") else "dmz"
+        )
+
+        spec = PortScanEventSpec(
+            source_ip="185.70.41.45",
+            target_ips=["10.10.3.10"],
+            ports=[8080],
+            scan_rate=10,
+        )
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="apache", full_name="Apache", email="apache@example.com"),
+            system=web,
+            time=start,
+            activity="External DMZ scan",
+            explicit_types={"port_scan"},
+        )
+
+        connection_kwargs = engine.activity_generator.generate_connection.call_args.kwargs
+        assert connection_kwargs["dst_ip"] == "203.14.220.10"
+        assert connection_kwargs["dst_port"] == 8080
+        assert connection_kwargs["service"] == ""
+        assert connection_kwargs["conn_state"] == "S0"
+        assert connection_kwargs["resp_bytes"] == 0
+        assert connection_kwargs["firewall"].action == "deny"
+
+
+# ── WebScanEventSpec ──────────────────────────────────────────────────────
+
+
+class TestWebScanEventSpec:
+    def test_defaults(self):
+        spec = WebScanEventSpec(dst_ip="10.0.0.5", rate=10.0, duration="1h", preset="nikto")
+        assert spec.type == "web_scan"
+        assert spec.dst_port == 80
+        assert spec.rate == 10.0
+        assert spec.preset == "nikto"
+
+    def test_custom_paths(self):
+        spec = WebScanEventSpec(
+            dst_ip="10.0.0.5",
+            rate=5.0,
+            count=20,
+            paths=[{"uri": "/test", "method": "GET", "status": 404}],
+        )
+        assert spec.paths is not None
+        assert len(spec.paths) == 1
+
+    def test_preset_and_paths(self):
+        spec = WebScanEventSpec(
+            dst_ip="10.0.0.5",
+            rate=10.0,
+            duration="30m",
+            preset="dirb",
+            paths=[{"uri": "/custom", "method": "GET", "status": 200}],
+        )
+        assert spec.preset == "dirb"
+        assert spec.paths is not None
+
+    def test_rejects_interval(self):
+        with pytest.raises(ValidationError, match="rate"):
+            WebScanEventSpec(dst_ip="10.0.0.5", interval="5s", duration="1h", preset="nikto")
+
+    def test_requires_rate(self):
+        with pytest.raises(ValidationError, match="rate"):
+            WebScanEventSpec(dst_ip="10.0.0.5", duration="1h", preset="nikto")
+
+    def test_requires_paths_or_preset(self):
+        with pytest.raises(ValidationError, match="preset or paths"):
+            WebScanEventSpec(dst_ip="10.0.0.5", rate=10.0, duration="1h")
+
+    def test_hostname_validation(self):
+        with pytest.raises(ValidationError):
+            WebScanEventSpec(
+                dst_ip="10.0.0.5",
+                hostname="http://evil.com",
+                rate=10.0,
+                duration="1h",
+                preset="nikto",
+            )
+
+
+# ── CredentialSprayEventSpec ──────────────────────────────────────────────
+
+
+class TestCredentialSprayEventSpec:
+    def test_defaults(self):
+        spec = CredentialSprayEventSpec(
+            target_accounts=["admin", "jsmith"], interval="2s", count=100
+        )
+        assert spec.type == "credential_spray"
+        assert spec.pattern == "spray"
+        assert spec.logon_type == 3
+        assert spec.success is None
+
+    def test_brute_force_pattern(self):
+        spec = CredentialSprayEventSpec(
+            target_accounts=["admin"],
+            pattern="brute_force",
+            interval="1s",
+            count=50,
+        )
+        assert spec.pattern == "brute_force"
+
+    def test_stuffing_pattern(self):
+        spec = CredentialSprayEventSpec(
+            target_accounts=["user1", "user2", "user3"],
+            pattern="stuffing",
+            interval="500ms",
+            duration="5m",
+        )
+        assert spec.pattern == "stuffing"
+
+    def test_success_field(self):
+        spec = CredentialSprayEventSpec(
+            target_accounts=["admin", "jsmith"],
+            interval="2s",
+            count=100,
+            success={"account": "jsmith", "after": 50},
+        )
+        assert spec.success["account"] == "jsmith"
+        assert spec.success["after"] == 50
+
+    def test_success_account_must_be_in_targets(self):
+        with pytest.raises(ValidationError, match="must be in target_accounts"):
+            CredentialSprayEventSpec(
+                target_accounts=["admin"],
+                interval="2s",
+                count=50,
+                success={"account": "nobody", "after": 10},
+            )
+
+    def test_success_after_must_be_positive(self):
+        with pytest.raises(ValidationError, match="after must be"):
+            CredentialSprayEventSpec(
+                target_accounts=["admin"],
+                interval="2s",
+                count=50,
+                success={"account": "admin", "after": 0},
+            )
+
+    def test_rejects_rate(self):
+        with pytest.raises(ValidationError, match="interval"):
+            CredentialSprayEventSpec(target_accounts=["admin"], rate=10.0, duration="1h")
+
+    def test_requires_interval(self):
+        with pytest.raises(ValidationError, match="interval"):
+            CredentialSprayEventSpec(target_accounts=["admin"], duration="1h")
+
+    def test_requires_target_accounts(self):
+        with pytest.raises(ValidationError):
+            CredentialSprayEventSpec(target_accounts=[], interval="2s", count=50)
+
+    def test_empty_target_accounts_rejected(self):
+        with pytest.raises(ValidationError):
+            CredentialSprayEventSpec(target_accounts=[], interval="2s", count=50)
+
+    def test_rejects_new_credentials_logon_type(self):
+        with pytest.raises(ValidationError, match="no remote authentication target"):
+            CredentialSprayEventSpec(
+                target_accounts=["admin"], interval="2s", count=10, logon_type=9
+            )
+
+
+def test_storyline_logon_accepts_new_credentials_for_contextual_resolution() -> None:
+    """Storyline execution supplies Type 9 caller and outbound identity facts."""
+
+    assert LogonEventSpec(logon_type=9).logon_type == 9
+
+
+def test_failed_logon_rejects_new_credentials() -> None:
+    """NewCredentials is not an inbound failed-logon transport."""
+
+    with pytest.raises(ValidationError, match="outbound authentication failure"):
+        FailedLogonEventSpec(logon_type=9)
+
+
+# ── Web Scan Presets Config ───────────────────────────────────────────────
+
+
+class TestWebScanPresets:
+    def test_load_presets(self):
+        from evidenceforge.config.web_scan_presets import list_preset_names, load_web_scan_presets
+
+        data = load_web_scan_presets()
+        assert "presets" in data
+        names = list_preset_names()
+        assert "nikto" in names
+        assert "dirb" in names
+        assert "gobuster" in names
+        assert "sqlmap" in names
+        assert "nmap_http" in names
+
+    def test_get_preset(self):
+        from evidenceforge.config.web_scan_presets import get_preset
+
+        nikto = get_preset("nikto")
+        assert nikto is not None
+        assert "paths" in nikto
+        assert len(nikto["paths"]) > 10
+        assert "user_agent" in nikto
+        assert "default_rate" in nikto
+        assert "max_effective_rate" in nikto
+
+    def test_presets_have_positive_effective_rate_cap(self):
+        from evidenceforge.config.web_scan_presets import get_preset, list_preset_names
+
+        for name in list_preset_names():
+            preset = get_preset(name)
+            assert preset is not None
+            assert 0 < preset["max_effective_rate"] <= preset["default_rate"]
+
+    def test_nikto_rate_cap_limits_repeated_probe_cycles(self):
+        from evidenceforge.config.web_scan_presets import get_preset
+
+        nikto = get_preset("nikto")
+        assert nikto is not None
+        assert nikto["max_effective_rate"] <= 0.35
+
+    def test_nikto_preset_includes_protocol_probe_methods(self):
+        from evidenceforge.config.web_scan_presets import get_preset
+
+        nikto = get_preset("nikto")
+        assert nikto is not None
+        methods = {path["method"] for path in nikto["paths"] if isinstance(path, dict)}
+        assert {"GET", "HEAD", "OPTIONS", "POST"} <= methods
+
+    def test_web_scan_head_requests_have_no_response_body(self, monkeypatch):
+        from evidenceforge.generation.engine import storyline
+
+        start = datetime(2026, 4, 16, 12, 0, 0, tzinfo=UTC)
+        engine = object.__new__(StorylineMixin)
+        captured = []
+        engine.state_manager = SimpleNamespace(
+            set_current_time=lambda _time: None,
+            get_process=lambda _host, _pid: None,
+        )
+        engine.dispatcher = SimpleNamespace(visibility_engine=None)
+        engine.activity_generator = SimpleNamespace(
+            _ip_to_system={},
+            generate_connection=lambda **kwargs: captured.append(kwargs),
+        )
+        monkeypatch.setattr(
+            periodic_helpers,
+            "_iter_periodic_ticks",
+            lambda *args, **kwargs: iter([start]),
+        )
+        monkeypatch.setattr(
+            storyline,
+            "_web_scan_connection_profile",
+            lambda rng, *, is_tls=False: ("SF", 0.25, 240, 1200),
+        )
+
+        spec = WebScanEventSpec(
+            dst_ip="10.0.0.20",
+            dst_port=80,
+            rate=1.0,
+            count=1,
+            hostname="app.example.test",
+            paths=[{"uri": "/", "method": "HEAD", "status": 200}],
+        )
+        request = WebScanRequest(
+            spec=spec,
+            actor=User(username="scanner", full_name="Scanner", email="scanner@example.com"),
+            system=System(hostname="SCAN-01", ip="10.0.0.5", os="Ubuntu 22.04", type="server"),
+            time=start,
+            rng=random.Random(29),
+            malicious_event={"type": "web_scan"},
+        )
+
+        engine._execute_web_scan_bundle(request)
+
+        assert len(captured) == 1
+        http = captured[0]["http"]
+        assert http.method == "HEAD"
+        assert http.response_body_len == 0
+        assert http.resp_mime_types == ()
+
+    def test_web_scan_paths_are_shuffled_between_passes(self):
+        import inspect
+
+        from evidenceforge.generation.engine.storyline import StorylineMixin
+
+        source = inspect.getsource(StorylineMixin)
+        assert "rng.shuffle(path_sequence)" in source
+        assert "skip_count = rng.randint" in source
+
+    @pytest.mark.parametrize("value", [0, -0.1, "bad", float("inf"), float("nan"), True])
+    def test_parse_positive_finite_rate_rejects_invalid_values(self, value):
+        from evidenceforge.config.web_scan_presets import parse_positive_finite_rate
+
+        assert parse_positive_finite_rate(value) is None
+
+    @pytest.mark.parametrize("value", [1, 0.5, "2.5"])
+    def test_parse_positive_finite_rate_accepts_valid_values(self, value):
+        from evidenceforge.config.web_scan_presets import parse_positive_finite_rate
+
+        assert parse_positive_finite_rate(value) == float(value)
+
+    def test_get_unknown_preset(self):
+        from evidenceforge.config.web_scan_presets import get_preset
+
+        assert get_preset("nonexistent") is None
+
+    def test_merge_presets_ignores_non_dict_overlay_presets(self, caplog):
+        import logging
+
+        from evidenceforge.config.web_scan_presets import _merge_presets
+
+        default = {"presets": {"nikto": {"paths": ["/admin"]}}}
+
+        with caplog.at_level(logging.WARNING, logger="evidenceforge.config.web_scan_presets"):
+            result_list = _merge_presets(default, {"presets": ["bad"]})
+        assert result_list == default
+        assert "invalid structure" in caplog.text
+
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="evidenceforge.config.web_scan_presets"):
+            result_str = _merge_presets(default, {"presets": "bad"})
+        assert result_str == default
+        assert "invalid structure" in caplog.text
+
+    def test_merge_presets_handles_non_dict_default_presets(self, caplog):
+        import logging
+
+        from evidenceforge.config.web_scan_presets import _merge_presets
+
+        with caplog.at_level(logging.WARNING, logger="evidenceforge.config.web_scan_presets"):
+            merged = _merge_presets(
+                {"presets": "bad-default"}, {"presets": {"nikto": {"paths": []}}}
+            )
+
+        assert merged["presets"] == {"nikto": {"paths": []}}
+        assert "invalid structure" in caplog.text
+
+
+# ── DgaQueriesEventSpec ───────────────────────────────────────────────────
+
+
+class TestDgaQueriesEventSpec:
+    def test_defaults(self):
+        spec = DgaQueriesEventSpec(interval="30s", count=100)
+        assert spec.type == "dga_queries"
+        assert spec.length_range == (8, 15)
+        assert spec.tld == ".com"
+        assert spec.seed is None
+
+    def test_custom_params(self):
+        spec = DgaQueriesEventSpec(
+            interval="10s",
+            duration="1h",
+            length_range=(12, 24),
+            charset="abcdef",
+            tld=".net",
+            seed=42,
+            rcode_distribution={"NXDOMAIN": 0.9, "NOERROR": 0.1},
+            answer_ip="1.2.3.4",
+        )
+        assert spec.length_range == (12, 24)
+        assert spec.charset == "abcdef"
+        assert spec.seed == 42
+
+    def test_length_range_min_gt_max(self):
+        with pytest.raises(ValidationError, match="minimum must be <= maximum"):
+            DgaQueriesEventSpec(interval="30s", count=100, length_range=(20, 5))
+
+    def test_length_range_max_gt_63(self):
+        with pytest.raises(ValidationError, match="63"):
+            DgaQueriesEventSpec(interval="30s", count=100, length_range=(1, 64))
+
+    def test_rcode_distribution_bad_sum(self):
+        with pytest.raises(ValidationError, match="sum to"):
+            DgaQueriesEventSpec(
+                interval="30s",
+                count=100,
+                rcode_distribution={"NXDOMAIN": 0.5, "NOERROR": 0.3},
+                answer_ip="1.2.3.4",
+            )
+
+    def test_rcode_distribution_invalid_key(self):
+        with pytest.raises(ValidationError, match="Invalid rcode"):
+            DgaQueriesEventSpec(
+                interval="30s",
+                count=100,
+                rcode_distribution={"BADCODE": 1.0},
+            )
+
+    def test_noerror_requires_answer_ip(self):
+        with pytest.raises(ValidationError, match="answer_ip is required"):
+            DgaQueriesEventSpec(
+                interval="30s",
+                count=100,
+                rcode_distribution={"NXDOMAIN": 0.9, "NOERROR": 0.1},
+            )
+
+    def test_nxdomain_only_no_answer_ip(self):
+        spec = DgaQueriesEventSpec(
+            interval="30s",
+            count=100,
+            rcode_distribution={"NXDOMAIN": 1.0},
+        )
+        assert spec.answer_ip is None
+
+    def test_rejects_rate(self):
+        with pytest.raises(ValidationError, match="interval"):
+            DgaQueriesEventSpec(rate=10.0, duration="1h")
+
+    def test_deterministic_seed(self):
+        """Same seed should produce same validation result."""
+        s1 = DgaQueriesEventSpec(interval="30s", count=10, seed=42)
+        s2 = DgaQueriesEventSpec(interval="30s", count=10, seed=42)
+        assert s1.seed == s2.seed
+
+
+# ── DnsTunnelEventSpec ────────────────────────────────────────────────────
+
+
+class TestDnsTunnelEventSpec:
+    def test_defaults(self):
+        spec = DnsTunnelEventSpec(base_domain="tunnel.evil.com", interval="5s", duration="1h")
+        assert spec.type == "dns_tunnel"
+        assert spec.encoding == "hex"
+        assert spec.qtype == "TXT"
+        assert spec.label_length == 30
+        assert spec.payload_size == 256
+
+    def test_custom_params(self):
+        spec = DnsTunnelEventSpec(
+            base_domain="exfil.bad.com",
+            encoding="base64",
+            qtype="CNAME",
+            label_length=50,
+            payload="secret data here",
+            interval="10s",
+            count=50,
+        )
+        assert spec.encoding == "base64"
+        assert spec.qtype == "CNAME"
+        assert spec.payload == "secret data here"
+
+    def test_invalid_qtype(self):
+        with pytest.raises(ValidationError, match="qtype"):
+            DnsTunnelEventSpec(
+                base_domain="tunnel.evil.com",
+                qtype="A",
+                interval="5s",
+                duration="1h",
+            )
+
+    def test_label_length_bounds(self):
+        with pytest.raises(ValidationError):
+            DnsTunnelEventSpec(
+                base_domain="tunnel.evil.com",
+                label_length=0,
+                interval="5s",
+                duration="1h",
+            )
+        with pytest.raises(ValidationError):
+            DnsTunnelEventSpec(
+                base_domain="tunnel.evil.com",
+                label_length=64,
+                interval="5s",
+                duration="1h",
+            )
+
+    def test_case_insensitive_qtype(self):
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.evil.com",
+            qtype="txt",
+            interval="5s",
+            count=10,
+        )
+        assert spec.qtype == "TXT"
+
+    def test_rejects_rate(self):
+        with pytest.raises(ValidationError, match="interval"):
+            DnsTunnelEventSpec(base_domain="tunnel.evil.com", rate=10.0, duration="1h")
+
+    def test_encodings(self):
+        for enc in ("base32", "base64", "hex"):
+            spec = DnsTunnelEventSpec(
+                base_domain="tunnel.evil.com",
+                encoding=enc,
+                interval="5s",
+                count=10,
+            )
+            assert spec.encoding == enc
+
+    def test_payload_size_upper_bound(self):
+        with pytest.raises(ValidationError, match="payload_size"):
+            DnsTunnelEventSpec(
+                base_domain="tunnel.evil.com",
+                interval="5s",
+                count=10,
+                payload_size=(1024 * 1024) + 1,
+            )
+
+    def test_payload_upper_bound(self):
+        with pytest.raises(ValidationError, match="payload"):
+            DnsTunnelEventSpec(
+                base_domain="tunnel.evil.com",
+                interval="5s",
+                count=10,
+                payload="a" * ((1024 * 1024) + 1),
+            )
+
+    def test_hex_labels_reserve_metadata_before_accounting_payload(self):
+        engine = object.__new__(StorylineMixin)
+        captured_dns = []
+
+        def capture_connection(**kwargs):
+            captured_dns.append(kwargs["dns"])
+
+        engine.state_manager = SimpleNamespace(set_current_time=lambda _time: None)
+        engine.activity_generator = SimpleNamespace(
+            _dns_server_ips=["10.0.0.53"],
+            generate_connection=capture_connection,
+        )
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.example.test",
+            encoding="hex",
+            label_length=14,
+            payload="ABCD",
+            interval="1s",
+            count=2,
+        )
+
+        event = engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="attacker", full_name="Attacker", email="a@example.com"),
+            system=System(hostname="WS-01", ip="10.0.0.10", os="Windows 10", type="workstation"),
+            time=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        visible_payload = b""
+        for dns_ctx in captured_dns:
+            raw_label = bytes.fromhex(dns_ctx.query.split(".", 1)[0])
+            visible_payload += raw_label[2:-4]
+        assert visible_payload == b"AB"
+        assert event["bytes_exfiltrated"] == len(visible_payload)
+
+    def test_tiny_hex_labels_do_not_report_truncated_payload_as_exfiltrated(self):
+        engine = object.__new__(StorylineMixin)
+        captured_dns = []
+
+        def capture_connection(**kwargs):
+            captured_dns.append(kwargs["dns"])
+
+        engine.state_manager = SimpleNamespace(set_current_time=lambda _time: None)
+        engine.activity_generator = SimpleNamespace(
+            _dns_server_ips=["10.0.0.53"],
+            generate_connection=capture_connection,
+        )
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.example.test",
+            encoding="hex",
+            label_length=8,
+            payload="ABCD",
+            interval="1s",
+            count=1,
+        )
+
+        event = engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="attacker", full_name="Attacker", email="a@example.com"),
+            system=System(hostname="WS-01", ip="10.0.0.10", os="Windows 10", type="workstation"),
+            time=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        raw_label = bytes.fromhex(captured_dns[0].query.split(".", 1)[0])
+        assert b"ABCD" not in raw_label
+        assert event["bytes_exfiltrated"] == 0
+
+    @pytest.mark.parametrize("offset", [timedelta(0), timedelta(microseconds=1)])
+    def test_dns_tunnel_outside_exclusive_end_has_no_owner_mutation(self, monkeypatch, offset):
+        from unittest.mock import Mock
+
+        from evidenceforge.generation.engine import storyline
+
+        fence = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        source = System(hostname="APP-01", ip="10.0.0.10", os="Ubuntu Server", type="server")
+        peer = System(hostname="WS-01", ip="10.0.0.20", os="Windows 10", type="workstation")
+        rng = random.Random(42)
+        rng_state = rng.getstate()
+        generate_connection = Mock()
+        set_current_time = Mock()
+        engine = object.__new__(StorylineMixin)
+        engine.end_time = fence
+        engine.scenario = SimpleNamespace(environment=SimpleNamespace(systems=[source, peer]))
+        engine.state_manager = SimpleNamespace(set_current_time=set_current_time)
+        engine.activity_generator = SimpleNamespace(
+            _dns_server_ips=["10.0.0.53"],
+            generate_connection=generate_connection,
+        )
+        monkeypatch.setattr(storyline, "_get_rng", lambda: rng)
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.example.test",
+            interval="2s",
+            duration="1m",
+        )
+
+        event = engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="attacker", full_name="Attacker", email="a@example.com"),
+            system=source,
+            time=fence + offset,
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        assert event["total_queries"] == 0
+        assert event["bytes_exfiltrated"] == 0
+        assert rng.getstate() == rng_state
+        set_current_time.assert_not_called()
+        generate_connection.assert_not_called()
+
+    def test_dns_tunnel_partial_campaign_bounds_all_owned_connections(self, monkeypatch):
+        from evidenceforge.generation.engine import storyline
+
+        start = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        fence = start + timedelta(seconds=10)
+        source = System(hostname="APP-01", ip="10.0.0.10", os="Ubuntu Server", type="server")
+        peers = [
+            System(hostname="WS-01", ip="10.0.0.20", os="Windows 10", type="workstation"),
+            System(hostname="MAIL-01", ip="10.0.0.30", os="Ubuntu Server", type="server"),
+        ]
+        captured = []
+        engine = object.__new__(StorylineMixin)
+        engine.start_time = start
+        engine.end_time = fence
+        engine.scenario = SimpleNamespace(environment=SimpleNamespace(systems=[source, *peers]))
+        engine.state_manager = SimpleNamespace(set_current_time=lambda _time: None)
+        engine.activity_generator = SimpleNamespace(
+            _dns_server_ips=["10.0.0.53"],
+            generate_connection=lambda **kwargs: captured.append(kwargs),
+        )
+        monkeypatch.setattr(storyline, "_get_rng", lambda: random.Random(42))
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.example.test",
+            interval="2s",
+            duration="1m",
+            jitter=0.0,
+        )
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="attacker", full_name="Attacker", email="a@example.com"),
+            system=source,
+            time=start,
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        assert any(item["dns"].query.endswith("tunnel.example.test") for item in captured)
+        assert any(not item["dns"].query.endswith("tunnel.example.test") for item in captured)
+        assert all(item["time"] >= start for item in captured)
+        assert all(item["time"] < fence for item in captured)
+
+    def test_dns_tunnel_real_generator_reserves_rendered_close_window(self, monkeypatch):
+        from unittest.mock import Mock
+
+        from evidenceforge.events.dispatcher import EventDispatcher
+        from evidenceforge.generation.activity import ActivityGenerator
+        from evidenceforge.generation.activity import generator as generator_module
+        from evidenceforge.generation.activity.network_params import dns_tunnel_rtt_range
+        from evidenceforge.generation.engine import storyline
+        from evidenceforge.generation.network_visibility import NetworkVisibilityEngine
+        from evidenceforge.generation.state_manager import StateManager
+        from evidenceforge.generation.timing import TimingRuntime
+        from evidenceforge.utils.time import ensure_utc
+
+        start = datetime(2024, 1, 15, 10, 0, tzinfo=UTC)
+        source = System(hostname="APP-01", ip="10.0.0.10", os="Ubuntu Server", type="server")
+        peer = System(hostname="WS-01", ip="10.0.0.20", os="Windows 10", type="workstation")
+        network = NetworkConfig(
+            segments=[
+                NetworkSegment(name="lan", cidr="10.0.0.0/24", exposure="internal"),
+            ],
+            sensors=[
+                NetworkSensor(
+                    type="network",
+                    name="zeek01",
+                    hostname="zeek01",
+                    monitoring_segments=["lan"],
+                    log_formats=["zeek_conn"],
+                ),
+            ],
+        )
+        visibility = NetworkVisibilityEngine(network, [source, peer])
+
+        def build_engine(fence: datetime, namespace: str):
+            state_manager = StateManager()
+            state_manager.set_current_time(start)
+            emitter = Mock()
+            emitter.can_handle.side_effect = lambda event: event.network is not None
+            timing_runtime = TimingRuntime(reference_time=start, namespace=namespace)
+            dispatcher = EventDispatcher(
+                state_manager=state_manager,
+                emitters={"zeek_conn": emitter},
+                visibility_engine=visibility,
+                output_start_time=start,
+                output_end_time=fence,
+                timing_runtime=timing_runtime,
+            )
+            activity_generator = ActivityGenerator(
+                state_manager,
+                {"zeek_conn": emitter},
+                network_visibility=visibility,
+                dispatcher=dispatcher,
+                timing_runtime=timing_runtime,
+                generation_window_start=start,
+                generation_window_end=fence,
+            )
+            activity_generator._ip_to_system = {source.ip: source, peer.ip: peer}
+            activity_generator._all_system_ips = [source.ip, peer.ip]
+            activity_generator._dns_server_ips = ["10.0.0.53"]
+            engine = object.__new__(StorylineMixin)
+            engine.start_time = start
+            engine.end_time = fence
+            engine.scenario = SimpleNamespace(
+                environment=SimpleNamespace(systems=[source, peer], network=network)
+            )
+            engine.state_manager = state_manager
+            engine.activity_generator = activity_generator
+            engine.dispatcher = dispatcher
+            return engine, activity_generator, state_manager, timing_runtime, emitter
+
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.example.test",
+            payload="bounded payload",
+            interval="500ms",
+            duration="1m",
+            jitter=0.0,
+        )
+        actor = User(username="attacker", full_name="Attacker", email="a@example.com")
+
+        short_fence = start + timedelta(seconds=1)
+        engine, activity_generator, state_manager, timing_runtime, emitter = build_engine(
+            short_fence,
+            "dns-periodic-short-window",
+        )
+        rng = random.Random(42)
+        monkeypatch.setattr(storyline, "_get_rng", lambda: rng)
+        monkeypatch.setattr(generator_module, "_get_rng", lambda: rng)
+        monkeypatch.setattr(network_planner_module, "_get_rng", lambda: rng)
+        before = (
+            state_manager.materialization_digest(),
+            activity_generator._network_transaction_runtime.state_digest(),
+            timing_runtime.state_digest(),
+            rng.getstate(),
+        )
+
+        event = engine._execute_typed_event(
+            spec=spec,
+            actor=actor,
+            system=source,
+            time=start,
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        assert event["total_queries"] == 0
+        assert event["bytes_exfiltrated"] == 0
+        assert before == (
+            state_manager.materialization_digest(),
+            activity_generator._network_transaction_runtime.state_digest(),
+            timing_runtime.state_digest(),
+            rng.getstate(),
+        )
+        emitter.emit.assert_not_called()
+
+        fence = start + timedelta(seconds=10)
+        engine, activity_generator, state_manager, timing_runtime, emitter = build_engine(
+            fence,
+            "dns-periodic-exact-start-fence",
+        )
+        exact_start_fence = _dns_periodic_exclusive_start_fence(
+            activity_generator,
+            window_start=start,
+            exclusive_end_time=fence,
+            maximum_rtt_seconds=dns_tunnel_rtt_range()[1],
+        )
+        assert exact_start_fence is not None
+        rng = random.Random(42)
+        before = (
+            state_manager.materialization_digest(),
+            activity_generator._network_transaction_runtime.state_digest(),
+            timing_runtime.state_digest(),
+            rng.getstate(),
+        )
+
+        event = engine._execute_typed_event(
+            spec=spec,
+            actor=actor,
+            system=source,
+            time=exact_start_fence,
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        assert event["total_queries"] == 0
+        assert before == (
+            state_manager.materialization_digest(),
+            activity_generator._network_transaction_runtime.state_digest(),
+            timing_runtime.state_digest(),
+            rng.getstate(),
+        )
+        emitter.emit.assert_not_called()
+
+        engine, _activity_generator, state_manager, _timing_runtime, emitter = build_engine(
+            fence,
+            "dns-periodic-partial-window",
+        )
+        rng = random.Random(42)
+        event = engine._execute_typed_event(
+            spec=spec,
+            actor=actor,
+            system=source,
+            time=start,
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        emitted = [call.args[0] for call in emitter.emit.call_args_list]
+        assert event["total_queries"] > 0
+        assert emitted
+        assert any(item.dns.query.endswith("tunnel.example.test") for item in emitted)
+        assert any(not item.dns.query.endswith("tunnel.example.test") for item in emitted)
+        connections = state_manager.list_open_connections()
+        assert len(connections) == len(emitted)
+        assert all(
+            start <= connection.start_time < fence
+            and connection.close_time is not None
+            and connection.close_time < fence
+            for connection in connections
+        )
+        rendered_times = []
+        for item in emitted:
+            rendered_times.append(item.timestamp)
+            rendered_times.extend((item.network.started_at, item.network.closed_at))
+            for observation in item.network_observations:
+                rendered_times.append(observation.observed_start_time)
+                if observation.observed_close_time is not None:
+                    rendered_times.append(observation.observed_close_time)
+                rendered_times.extend(timestamp for _key, timestamp in observation.source_times)
+        assert rendered_times
+        assert all(start <= ensure_utc(timestamp) < fence for timestamp in rendered_times)
+
+    def test_dns_tunnel_generation_uses_natural_pacing_and_variable_labels(self):
+        engine = object.__new__(StorylineMixin)
+        captured = []
+
+        def capture_connection(**kwargs):
+            captured.append((kwargs["time"], kwargs["dns"]))
+
+        engine.state_manager = SimpleNamespace(set_current_time=lambda _time: None)
+        engine.activity_generator = SimpleNamespace(
+            _dns_server_ips=["10.0.0.53"],
+            generate_connection=capture_connection,
+        )
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.example.test",
+            encoding="hex",
+            label_length=30,
+            payload_size=512,
+            interval="2s",
+            duration="15m",
+        )
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="attacker", full_name="Attacker", email="a@example.com"),
+            system=System(hostname="WS-01", ip="10.0.0.10", os="Windows 10", type="workstation"),
+            time=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        intervals = [
+            (later[0] - earlier[0]).total_seconds()
+            for earlier, later in zip(captured, captured[1:], strict=False)
+        ]
+        label_lengths = {len(dns.query.split(".", 1)[0]) for _ts, dns in captured}
+        label_depths = {len(dns.query.split(".")) for _ts, dns in captured}
+
+        assert len(captured) < 451
+        assert max(intervals) > 8.0
+        assert len(label_lengths) > 1
+        assert len(label_depths) > 1
+
+    def test_dns_tunnel_generation_adds_benign_txt_collisions_from_other_hosts(self):
+        engine = object.__new__(StorylineMixin)
+        captured = []
+
+        source = System(hostname="APP-01", ip="10.0.0.10", os="Ubuntu Server", type="server")
+        peers = [
+            System(hostname="WS-01", ip="10.0.0.20", os="Windows 10", type="workstation"),
+            System(hostname="MAIL-01", ip="10.0.0.30", os="Ubuntu Server", type="server"),
+        ]
+
+        def capture_connection(**kwargs):
+            captured.append(kwargs)
+
+        engine.state_manager = SimpleNamespace(set_current_time=lambda _time: None)
+        engine.scenario = SimpleNamespace(environment=SimpleNamespace(systems=[source, *peers]))
+        engine.activity_generator = SimpleNamespace(
+            _dns_server_ips=["10.0.0.53"],
+            generate_connection=capture_connection,
+        )
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.example.test",
+            encoding="hex",
+            label_length=30,
+            payload_size=128,
+            interval="2s",
+            duration="1m",
+        )
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="attacker", full_name="Attacker", email="a@example.com"),
+            system=source,
+            time=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        benign_txt = [
+            item
+            for item in captured
+            if item["dns"].query_type == "TXT"
+            and not item["dns"].query.endswith("tunnel.example.test")
+        ]
+        benign_sources = {item["src_ip"] for item in benign_txt}
+
+        assert len(benign_txt) >= 12
+        assert benign_sources <= {peer.ip for peer in peers}
+        assert len(benign_sources) > 1
+
+    def test_dns_tunnel_generation_skews_ttls_and_expands_answer_vocabulary(self):
+        engine = object.__new__(StorylineMixin)
+        captured = []
+
+        def capture_connection(**kwargs):
+            captured.append(kwargs["dns"])
+
+        engine.state_manager = SimpleNamespace(set_current_time=lambda _time: None)
+        engine.activity_generator = SimpleNamespace(
+            _dns_server_ips=["10.0.0.53"],
+            generate_connection=capture_connection,
+        )
+        spec = DnsTunnelEventSpec(
+            base_domain="tunnel.example.test",
+            encoding="hex",
+            label_length=30,
+            payload_size=2048,
+            interval="2s",
+            count=140,
+        )
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=User(username="attacker", full_name="Attacker", email="a@example.com"),
+            system=System(hostname="WS-01", ip="10.0.0.10", os="Windows 10", type="workstation"),
+            time=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            activity="DNS exfiltration",
+            explicit_types={"dns_tunnel"},
+        )
+
+        noerror_dns = [dns for dns in captured if dns.answers and dns.TTLs]
+        ttl_counts = Counter(int(dns.TTLs[0]) for dns in noerror_dns)
+        answers = [dns.answers[0] for dns in noerror_dns]
+
+        assert len(noerror_dns) > 90
+        assert len(ttl_counts) >= 3
+        assert ttl_counts.most_common(1)[0][1] > len(noerror_dns) * 0.35
+        assert all("{" not in answer and "}" not in answer for answer in answers)
+        assert not any(
+            answer.startswith(("status=", "node=", "cdn=", "cache=", "edge-", "ack."))
+            or "ttl=30" in answer
+            or re.search(r"\bslot-\d+-t\d+-", answer)
+            for answer in answers
+        )
+
+
+# ── ExplicitCredentialsEventSpec ──────────────────────────────────────────
+
+
+class TestExplicitCredentialsEventSpec:
+    def test_defaults(self):
+        spec = ExplicitCredentialsEventSpec(target_username="admin")
+        assert spec.type == "explicit_credentials"
+        assert spec.target_username == "admin"
+        assert spec.target_server is None
+        assert spec.process_name is None
+        assert spec.source_ip is None
+
+    def test_all_fields(self):
+        spec = ExplicitCredentialsEventSpec(
+            target_username="svc_backup",
+            target_server="FILE-SRV-01",
+            process_name=r"C:\Windows\System32\runas.exe",
+            source_ip="10.0.1.5",
+        )
+        assert spec.target_server == "FILE-SRV-01"
+        assert spec.process_name == r"C:\Windows\System32\runas.exe"
+
+    def test_requires_target_username(self):
+        with pytest.raises(ValidationError):
+            ExplicitCredentialsEventSpec()
+
+
+# ── WorkstationLockEventSpec / WorkstationUnlockEventSpec ─────────────────
+
+
+class TestWorkstationLockUnlockEventSpec:
+    def test_lock_defaults(self):
+        spec = WorkstationLockEventSpec()
+        assert spec.type == "workstation_lock"
+
+    def test_unlock_defaults(self):
+        spec = WorkstationUnlockEventSpec()
+        assert spec.type == "workstation_unlock"
+
+    def test_storyline_records_already_locked_transition_as_skipped(self):
+        """A realistic lock no-op must not be labeled as emitted ground truth."""
+        from unittest.mock import Mock
+
+        event_time = datetime(2026, 4, 16, 17, 20, tzinfo=UTC)
+        system = System(hostname="WS-01", ip="10.0.0.10", os="Windows 11", type="workstation")
+        actor = User(username="alice", full_name="Alice Example", email="alice@example.com")
+        session = SimpleNamespace(
+            system=system.hostname,
+            logon_type=2,
+            session_kind="interactive",
+            start_time=event_time - timedelta(hours=2),
+            logon_id="0x12345",
+        )
+        engine = object.__new__(StorylineMixin)
+        engine.state_manager = Mock()
+        engine.state_manager.get_sessions_for_user.return_value = [session]
+        engine.activity_generator = Mock()
+        engine.activity_generator.generate_workstation_lock.return_value = WorkstationLockResult(
+            emitted=False,
+            skipped_reason="workstation_already_locked",
+        )
+        engine.dispatcher = SimpleNamespace(storyline_cluster_id="evt-lock")
+
+        malicious_event = engine._execute_typed_event(
+            spec=WorkstationLockEventSpec(),
+            actor=actor,
+            system=system,
+            time=event_time,
+            activity="Lock workstation",
+            explicit_types={"workstation_lock"},
+        )
+
+        assert malicious_event["skipped_reason"] == "workstation_already_locked"
+        engine.activity_generator.generate_workstation_lock.assert_called_once_with(
+            user=actor,
+            system=system,
+            time=event_time,
+            logon_id="0x12345",
+        )

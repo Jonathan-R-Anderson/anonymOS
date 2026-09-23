@@ -1,0 +1,118 @@
+# syslog format definition — Linux syslog - OS-level authentication and daemon logs
+#
+# Category: host
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: syslog
+version: "1.0"
+description: "Linux syslog - OS-level authentication and daemon logs"
+category: host
+
+fields:
+  - name: timestamp
+    type: timestamp
+    required: true
+    description: "Event timestamp"
+
+  - name: hostname
+    type: string
+    required: true
+    description: "Source hostname"
+
+  - name: facility
+    type: integer
+    required: false
+    description: "Syslog facility (1=user, 4=auth, 3=daemon, 10=authpriv). Rendered into PRI."
+    constraints:
+      min_value: 0
+      max_value: 23
+
+  - name: severity
+    type: integer
+    required: false
+    description: "Syslog severity (6=info, 5=notice, 4=warning). Rendered into PRI."
+    constraints:
+      min_value: 0
+      max_value: 7
+
+  - name: app_name
+    type: string
+    required: true
+    description: "Application/process name (sshd, su, sudo, systemd, etc.)"
+
+  - name: pri
+    type: integer
+    required: false
+    description: "Syslog PRI value derived from facility * 8 + severity"
+    constraints:
+      min_value: 0
+      max_value: 191
+
+  - name: version
+    type: integer
+    required: false
+    description: "RFC 5424 protocol version field used by the default output target."
+    constraints:
+      allowed_values: [1]
+
+  - name: pid
+    type: integer
+    required: false
+    description: "Process ID"
+
+  - name: procid
+    type: string
+    required: false
+    description: "Legacy RFC 5424 PROCID token, usually the process ID or '-'"
+
+  - name: msgid
+    type: string
+    required: false
+    description: "RFC 5424 MSGID token used by the default output target."
+
+  - name: structured_data
+    type: string
+    required: false
+    description: "RFC 5424 structured-data field used by the default output target."
+
+  - name: syslog_protocol
+    type: string
+    required: false
+    description: "Parser metadata identifying generated or legacy syslog protocol variants."
+    constraints:
+      allowed_values: [rfc5424, rfc3164, rfc5424_legacy, rfc3164_legacy, iso_legacy]
+
+  - name: message
+    type: string
+    required: true
+    description: "Log message content"
+
+output:
+  format: text
+  file_extension: ".log"
+  encoding: utf-8
+  template: |
+    <{{ pri }}>1 {{ timestamp.isoformat().replace('+00:00', 'Z') }} {{ hostname }} {{ app_name }} {{ pid | default('-', true) }} {{ msgid | default('-', true) }} {{ structured_data | default('-', true) }} {{ message }}
+
+# Typed record contracts; evaluated after scalar validation.
+validators:
+- id: syslog.legacy-1
+  message: Syslog has non-empty message
+  severity: error
+  when: []
+  checks:
+  - op: length
+    field: message
+    minimum: 1
+- id: syslog.legacy-2
+  message: Syslog has hostname
+  severity: error
+  when: []
+  checks:
+  - op: compare
+    field: hostname
+    relation: ne
+    value: ''

@@ -1,0 +1,521 @@
+# Timing realism profiles for causal relationships and source-native rendering.
+#
+# Relationship classes:
+# - same_observation: same packet/action observed by one source; near-zero is acceptable.
+# - source_latency: same action rendered by different source pipelines.
+# - causal_prerequisite: prerequisite work before the trigger.
+# - human_workflow: human/operator actions; often seconds to minutes.
+# - teardown: cleanup/session/process end after final dependent evidence.
+#
+# Values are intentionally conservative. Scenario-specific projects can override
+# them with .eforge/config/activity/timing_profiles.yaml.
+
+# SSH authentication work begins only after the required transport/eCAR FLOW
+# visibility floor. Profiles mix fast, ordinary, and slow-tail outcomes, then
+# add deterministic route, receiver-load, credential-backend cache, and key-type
+# costs. This prevents the source-observation floor from collapsing every
+# public-key session into one narrow timing band.
+ssh_authentication:
+  profiles:
+    publickey:
+      fast_probability: 0.22
+      fast_ms: {min: 25, max: 180}
+      typical_ms: {min: 180, max: 1250}
+      tail_probability: 0.12
+      tail_ms: {min: 1250, max: 4800}
+      cache_miss_probability: 0.18
+      cache_miss_ms: {min: 120, max: 1500}
+    password:
+      fast_probability: 0.08
+      fast_ms: {min: 180, max: 550}
+      typical_ms: {min: 550, max: 3600}
+      tail_probability: 0.18
+      tail_ms: {min: 3600, max: 9000}
+      cache_miss_probability: 0.32
+      cache_miss_ms: {min: 250, max: 2800}
+  route_rtt_ms:
+    private: {min: 2, max: 55}
+    public: {min: 25, max: 320}
+  receiver_load_ms: {min: 0, max: 650}
+  public_key_penalty_ms:
+    ED25519: {min: 0, max: 35}
+    ECDSA: {min: 5, max: 75}
+    RSA: {min: 20, max: 240}
+
+relationships:
+  linux.pipeline_stage_start:
+    class: burst_fanout
+    position: after
+    min_ms: 6
+    max_ms: 115
+  network.dns_before_tcp:
+    class: causal_prerequisite
+    position: before
+    min_ms: 20
+    max_ms: 1500
+  auth.kerberos_before_logon:
+    class: causal_prerequisite
+    position: before
+    min_ms: 40
+    max_ms: 350
+  process.remote_thread_lsass_access:
+    class: source_latency
+    position: before
+    min_ms: 1
+    max_ms: 75
+  process.remote_thread_process_access:
+    class: source_latency
+    position: before
+    min_ms: 8
+    max_ms: 180
+  windows.audit_from_admin_command:
+    class: source_latency
+    position: after
+    min_ms: 100
+    max_ms: 900
+  windows.account_password_reset_from_add:
+    class: source_latency
+    position: after
+    min_ms: 950
+    max_ms: 1800
+  windows.account_attributes_from_add:
+    class: source_latency
+    position: after
+    min_ms: 1850
+    max_ms: 3200
+  windows.logoff_after_last_activity:
+    class: teardown
+    position: after
+    min_ms: 2000
+    max_ms: 15000
+  windows.logoff_after_rendered_dependents:
+    class: teardown
+    position: after
+    min_ms: 125
+    max_ms: 750
+  windows.process_create_before_logoff:
+    class: teardown
+    position: before
+    min_ms: 250
+    max_ms: 3000
+  windows.process_exit_after_visible_create:
+    class: teardown
+    position: after
+    min_ms: 25
+    max_ms: 350
+  windows.process_exit_after_visible_dependent:
+    class: teardown
+    position: after
+    min_ms: 25
+    max_ms: 450
+  windows.audit_after_visible_admin_command:
+    class: source_latency
+    position: after
+    min_ms: 120
+    max_ms: 900
+  source.windows_wfp_connection:
+    class: source_latency
+    position: after
+    min_ms: 3
+    max_ms: 35
+  windows.kerberos_after_wfp:
+    class: source_latency
+    position: after
+    min_ms: 1
+    max_ms: 45
+  windows.network_logon_after_transport:
+    class: source_latency
+    position: after
+    min_ms: 8
+    max_ms: 140
+  windows.machine_logon_after_service_ticket:
+    class: source_latency
+    position: after
+    min_ms: 3
+    max_ms: 135
+  source.session_dependent_after_login:
+    class: source_latency
+    position: after
+    min_ms: 8
+    max_ms: 75
+  windows.special_privilege_after_logon:
+    class: source_latency
+    position: after
+    min_ms: 2
+    max_ms: 45
+  windows.remote_logon_source_ready:
+    class: source_latency
+    position: after
+    min_ms: 850
+    max_ms: 1450
+  source.sysmon_network_connection:
+    class: source_latency
+    position: after
+    min_ms: 35
+    max_ms: 750
+  source.sysmon_dns_query:
+    class: source_latency
+    position: after
+    min_ms: 25
+    max_ms: 420
+  source.windows_security_process_create:
+    class: source_latency
+    position: after
+    min_ms: 4
+    max_ms: 24
+  source.windows_explicit_credentials_after_process_create:
+    class: source_latency
+    position: after
+    min_ms: 35
+    max_ms: 650
+  source.windows_security_process_terminate:
+    class: source_latency
+    position: after
+    min_ms: 15
+    max_ms: 420
+  source.windows_security_after_sysmon_process_create_gap:
+    class: source_latency
+    position: after
+    min_ms: 35
+    max_ms: 650
+  source.sysmon_process_create:
+    class: source_latency
+    position: after
+    min_ms: 3
+    max_ms: 22
+  source.sysmon_module_after_process_create:
+    class: source_latency
+    position: after
+    min_ms: 5
+    max_ms: 180
+  source.sysmon_process_terminate:
+    class: source_latency
+    position: after
+    min_ms: 12
+    max_ms: 520
+  source.ecar_process_create:
+    class: source_latency
+    position: after
+    min_ms: 8
+    max_ms: 950
+  source.ecar_after_sysmon_process_create_gap:
+    class: source_latency
+    position: after
+    min_ms: 85
+    max_ms: 3600
+  source.ecar_dependent_after_process_create:
+    class: source_latency
+    position: after
+    min_ms: 1
+    max_ms: 35
+  source.ecar_process_terminate:
+    class: source_latency
+    position: after
+    min_ms: 25
+    max_ms: 220
+  source.ecar_flow:
+    class: source_latency
+    position: after
+    min_ms: 180
+    max_ms: 1800
+  source.ecar_session:
+    class: source_latency
+    position: after
+    min_ms: 1
+    max_ms: 11
+  source.ecar_session_logout:
+    class: teardown
+    position: after
+    min_ms: 1800
+    max_ms: 2800
+  source.ecar_session_logout_after_dependents:
+    class: teardown
+    position: after
+    min_ms: 1800
+    max_ms: 2800
+  source.windows_security_session_logout:
+    class: teardown
+    position: after
+    min_ms: 125
+    max_ms: 750
+  source.syslog_session_logout:
+    class: teardown
+    position: after
+    min_ms: 120
+    max_ms: 2500
+  source.ecar_ssh_session_after_accept:
+    class: source_latency
+    position: after
+    min_ms: 275
+    max_ms: 650
+  source.ecar_smb_session_after_accept:
+    class: source_latency
+    position: after
+    min_ms: 8
+    max_ms: 140
+  smb.cross_server_delete_after_destination:
+    class: causal_prerequisite
+    position: after
+    min_ms: 250
+    max_ms: 1200
+  source.ecar_remote_thread:
+    class: source_latency
+    position: after
+    min_ms: 35
+    max_ms: 250
+  source.ecar_remote_thread_after_process_open:
+    class: source_latency
+    position: after
+    min_ms: 25
+    max_ms: 240
+  source.zeek_conn_start:
+    class: same_observation
+    position: after
+    min_ms: 0
+    max_ms: 0
+  network.connection_start_jitter:
+    class: same_observation
+    position: after
+    min_ms: 0
+    max_ms: 850
+  source.zeek_http_request:
+    class: same_observation
+    position: after
+    min_ms: 1
+    max_ms: 450
+  source.zeek_dns_query:
+    class: same_observation
+    position: after
+    min_ms: 1
+    max_ms: 95
+  source.zeek_ssl_analyzer:
+    class: same_observation
+    position: after
+    min_ms: 3
+    max_ms: 650
+  source.zeek_x509_analyzer:
+    class: same_observation
+    position: after
+    min_ms: 120
+    max_ms: 650
+  source.zeek_file_analyzer:
+    class: same_observation
+    position: after
+    min_ms: 25
+    max_ms: 250
+  network.tls_completed_min_duration:
+    class: same_observation
+    position: after
+    min_ms: 800
+    max_ms: 2500
+  web.session_navigation:
+    class: human_workflow
+    position: after
+    min_ms: 3000
+    max_ms: 30000
+  web.asset_stylesheet_script_after_page:
+    class: burst_fanout
+    position: after
+    min_ms: 1500
+    max_ms: 2600
+  web.asset_image_after_page:
+    class: burst_fanout
+    position: after
+    min_ms: 1700
+    max_ms: 3200
+  web.asset_font_after_page:
+    class: burst_fanout
+    position: after
+    min_ms: 1700
+    max_ms: 3000
+  web.asset_api_after_page:
+    class: burst_fanout
+    position: after
+    min_ms: 1800
+    max_ms: 3600
+  web.asset_other_after_page:
+    class: burst_fanout
+    position: after
+    min_ms: 1500
+    max_ms: 2800
+  web.tool_request_gap:
+    class: burst_fanout
+    position: after
+    min_ms: 120
+    max_ms: 1500
+
+endpoint_clock:
+  # Host-resident endpoint sources share the host clock. Windows Security,
+  # Sysmon, and eCAR on Windows use the Windows host profile; Linux syslog,
+  # bash history, and eCAR on Linux use the Linux host profile. Network,
+  # proxy, firewall, and IDS sensors keep their independent appliance clocks.
+  profiles:
+    complete:
+      windows:
+        host_offset_ms:
+          min: 0
+          max: 0
+        host_drift_ppm:
+          min: 0
+          max: 0
+      linux:
+        host_offset_ms:
+          min: 0
+          max: 0
+        host_drift_ppm:
+          min: 0
+          max: 0
+    enterprise_standard:
+      windows:
+        host_offset_ms:
+          min: -1250
+          max: 1800
+        host_drift_ppm:
+          min: -8
+          max: 8
+      linux:
+        host_offset_ms:
+          min: -900
+          max: 1500
+        host_drift_ppm:
+          min: -8
+          max: 8
+    messy_collection:
+      windows:
+        host_offset_ms:
+          min: -5500
+          max: 7800
+        host_drift_ppm:
+          min: -35
+          max: 35
+      linux:
+        host_offset_ms:
+          min: -4200
+          max: 6200
+        host_drift_ppm:
+          min: -30
+          max: 30
+
+network_sensor_observation:
+  # Default assumes distributed security infrastructure where core, DMZ, and
+  # packet-broker taps observe the same flow through different capture paths.
+  # Sensor clocks remain controlled. The event_jitter envelope is interpreted
+  # as slow clock wander shared by nearby observations, never independent
+  # per-flow timestamp noise.
+  default_profile: distributed_taps
+  profiles:
+    distributed_taps:
+      clock_offset_us:
+        min: -250000
+        max: 250000
+      clock_drift_ppm:
+        min: -1
+        max: 1
+      route_delay_us:
+        min: 200
+        max: 3500
+      event_jitter_us:
+        min: -1500
+        max: 1500
+      capture_loss:
+        probability: 0.12
+        min_fraction: 0.0005
+        max_fraction: 0.012
+        max_missed_bytes: 32768
+    well_synced:
+      clock_offset_us:
+        min: -4000
+        max: 4000
+      clock_drift_ppm:
+        min: -1
+        max: 1
+      route_delay_us:
+        min: 250
+        max: 8000
+      event_jitter_us:
+        min: -250
+        max: 250
+      capture_loss:
+        probability: 0.0
+        min_fraction: 0.0
+        max_fraction: 0.0
+        max_missed_bytes: 0
+    lossy_span:
+      clock_offset_us:
+        min: -24000
+        max: 28000
+      clock_drift_ppm:
+        min: -4
+        max: 4
+      route_delay_us:
+        min: 1800
+        max: 24000
+      event_jitter_us:
+        min: -1200
+        max: 1200
+      capture_loss:
+        probability: 0.12
+        min_fraction: 0.001
+        max_fraction: 0.035
+        max_missed_bytes: 65536
+
+firewall_observation:
+  # ASA connection-table timers are device policy, not per-flow randomness.
+  # Sensor-specific overrides may select another named policy without moving
+  # timeout synthesis back into the emitter.
+  default_policy: asa_default
+  sensor_policies: {}
+  policies:
+    asa_default:
+      tcp_embryonic_timeout_seconds: 30
+      tcp_idle_timeout_seconds: 3600
+
+windows_startup_modules:
+  # Source-visible loader telemetry commonly arrives in a tight burst, but
+  # dependency work and collector batching produce a heavy tail rather than
+  # one fixed per-process cadence.
+  initial_delay_us:
+    min: 1500
+    max: 85000
+  inter_load_gap_us:
+    median: 11000
+    sigma: 1.15
+    min: 800
+    max: 900000
+
+windows_event_time:
+  collision_spacing:
+    # For small tied clusters, near-zero remains realistic.
+    near_zero_until: 25
+    near_gap_min_us: 50
+    near_gap_max_us: 500
+    # Larger tied clusters usually represent compound activity that should
+    # unfold across seconds/minutes, not microseconds.
+    large_gap_min_ms: 1000
+    large_gap_max_ms: 4000
+
+sysmon_event_envelope:
+  # Sysmon EventData UtcTime is the semantic event time. The Windows event
+  # envelope is written later by the provider/ETW path and therefore has its
+  # own small, right-skewed latency distribution.
+  default:
+    median_us: 850
+    sigma: 0.8
+    min_us: 80
+    max_us: 18000
+    tail_probability: 0.012
+    tail_min_us: 12000
+    tail_max_us: 85000
+  event_ids:
+    "3":
+      median_us: 2100
+      sigma: 0.9
+      max_us: 35000
+    "5":
+      median_us: 1400
+      sigma: 0.85
+      max_us: 28000
+    "22":
+      median_us: 1750
+      sigma: 0.9
+      max_us: 32000

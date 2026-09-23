@@ -1,0 +1,61 @@
+# bash_history format definition — Bash command history with timestamps
+#
+# Category: host
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: bash_history
+version: "1.0"
+description: "Bash command history with timestamps"
+category: host
+
+fields:
+  - name: timestamp
+    type: timestamp
+    required: true
+    description: "Command execution time"
+
+  - name: username
+    type: string
+    required: true
+    description: "User who executed command"
+
+  - name: hostname
+    type: string
+    required: true
+    description: "System hostname"
+
+  - name: command
+    type: string
+    required: true
+    description: "Bash command executed"
+
+output:
+  format: text
+  file_extension: ".history"
+  encoding: utf-8
+  template: |
+    #{{ timestamp.timestamp() | int }}
+    {{ command }}
+
+# Typed record contracts; evaluated after scalar validation.
+validators:
+- id: bash_history.legacy-1
+  message: Command is non-empty
+  severity: error
+  when: []
+  checks:
+  - op: length
+    field: command
+    minimum: 1
+- id: bash_history.legacy-2
+  message: Has username
+  severity: error
+  when: []
+  checks:
+  - op: compare
+    field: username
+    relation: ne
+    value: ''

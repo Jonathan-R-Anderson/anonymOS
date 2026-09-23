@@ -1,0 +1,245 @@
+# How to Contribute
+
+Thanks for your interest in contributing to EvidenceForge! Here are a few
+general guidelines on contributing and reporting bugs that we ask you to review.
+Following these guidelines helps to communicate that you respect the time of the
+contributors managing and developing this open source project. In return, they
+should reciprocate that respect in addressing your issue, assessing changes, and
+helping you finalize your pull requests. In that spirit of mutual respect, we
+endeavor to review incoming issues and pull requests within 10 days, and will
+close any lingering issues or pull requests after 60 days of inactivity.
+
+Please note that all of your interactions in the project are subject to our
+[Code of Conduct](/CODE_OF_CONDUCT.md). This includes creation of issues or pull
+requests, commenting on issues or pull requests, and extends to all interactions
+in any real-time space e.g., Slack, Discord, etc.
+
+## Reporting Issues
+
+Before reporting a new issue, please ensure that the issue was not already
+reported or fixed by searching through our [issues
+list](https://github.com/Cisco-Talos/EvidenceForge/issues).
+
+When creating a new issue, please be sure to include a **title and clear
+description**, as much relevant information as possible, and, if possible, a
+test case.
+
+**If you discover a security bug, please do not report it through GitHub.
+Instead, please see security procedures in [SECURITY.md](/SECURITY.md).**
+
+## Suggesting Features
+
+Feature requests are welcome! Open a GitHub Issue with the **enhancement** label
+and include:
+
+- A clear description of the feature and the problem it solves
+- Example usage or scenario where the feature would be helpful
+- Any relevant references (e.g., log format specs, MITRE ATT&CK techniques)
+
+## Sending Pull Requests
+
+Before sending a new pull request, take a look at existing pull requests and
+issues to see if the proposed change or fix has been discussed in the past, or
+if the change was already implemented but not yet released.
+
+We expect new pull requests to include tests for any affected behavior, and, as
+we follow semantic versioning, we may reserve breaking changes until the next
+major version release.
+
+Before submitting a regular feature or fix pull request, install development
+dependencies and run the normal suite without coverage instrumentation plus
+lint/format checks:
+
+```bash
+uv sync --all-extras
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+```
+
+Run the extended release gate without coverage when your change touches
+generation behavior or before a release PR:
+
+```bash
+uv run pytest -m slow --no-cov --durations=20
+```
+
+Million-entry, multi-week, exhaustive-matrix, and full-demo diagnostics are
+not release gates. Run only the soak tests relevant to the changed owner:
+
+```bash
+uv run pytest -m soak --no-cov --durations=20
+```
+
+Run optional third-party parser validation when touching emitted log formats
+covered by an external parser harness. This lane requires Docker Compose v2 or
+Podman Compose:
+
+```bash
+uv run pytest --include-external-parsers -m external_parser --no-cov
+```
+
+See [External Parser Validation](docs/external-parser-validation/README.md)
+for the full-dataset runner command, SOF-ELK® harness architecture, coverage
+matrix, ignored-tag policy, and failure report details.
+
+If you add or change a log format that already has external parser support,
+update the external-parser smoke lane for that format and run it. If you add a
+new supported parser family, include discovery, staging, representative smoke
+fixtures, validation checks, docs coverage, and any explicit tag-policy rules.
+If there is no applicable third-party parser yet, update the coverage matrix
+and keep discovery warnings/tests in place so the unsupported format is not
+silently skipped.
+
+For target-dependent parser support, add or update smoke fixtures for the
+target that the parser expects. SOF-ELK checks for Windows/Sysmon, Linux syslog,
+and Cisco ASA use `eforge generate --target sof-elk`; default-target output
+must still be covered by normal generation/evaluation tests and should produce a
+clear diagnostic in the external-parser runner. The developer-facing SOF-ELK
+script requires `OUTPUT_TARGET.txt` to exist and contain `sof-elk`; legacy or
+default-target datasets exit before parser discovery/staging.
+
+Coverage is reserved for final readiness checks before opening a `dev` → `main`
+release PR. Do not combine slow tests with coverage during release validation:
+slow tests are intentionally run with `--no-cov`, and coverage is measured on
+the default non-slow suite.
+
+```bash
+uv run pytest --cov=evidenceforge --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+```
+
+### Commit Messages
+
+We follow [Conventional Commits](https://www.conventionalcommits.org/). Prefix
+your commit message with a type:
+
+- `feat:` — new feature or capability
+- `fix:` — bug fix
+- `docs:` — documentation changes
+- `test:` — adding or updating tests
+- `refactor:` — code changes that neither fix a bug nor add a feature
+- `chore:` — maintenance tasks (dependencies, CI, tooling)
+
+Examples:
+```
+feat: add SMTP log emitter
+fix: correct Zeek UID correlation for DNS queries
+docs: update scenario reference with dhcp_lease event type
+test: add integration tests for proxy emitter
+```
+
+### Pull Request Descriptions
+
+Describe what changed and why. Reference any related issues (e.g.,
+`Closes #42`). If the change affects log output or scenario schema, include
+a brief example of the before/after behavior.
+
+## Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Cisco-Talos/EvidenceForge.git
+cd EvidenceForge
+
+# Install dependencies and development tools (requires uv: https://docs.astral.sh/uv/)
+uv sync --all-extras
+
+# Run the routine test tier (coverage is opt-in)
+uv run pytest
+
+# Lint and format
+uv run ruff check .
+uv run ruff format --check .
+```
+
+### Test Markers
+
+- `@pytest.mark.slow`: extended release-gate tests, excluded by default and run with
+  `uv run pytest -m slow --no-cov`. This lane holds distinct expensive fault matrices,
+  fresh-process determinism checks, and representative end-to-end generation.
+- `@pytest.mark.soak`: exceptional million-entry, multi-week, exhaustive-matrix, or full-demo
+  diagnostics,
+  excluded by routine and release gates. Run only when relevant with
+  `uv run pytest -m soak --no-cov`. Slow and soak are mutually exclusive tiers.
+- `@pytest.mark.external_parser`: third-party parser container tests, skipped by default
+  and normally run only in an explicitly opted-in local or CI lane
+
+```bash
+# Normal fast run
+uv run pytest
+
+# Slow comprehensive run
+uv run pytest -m slow --no-cov --durations=20
+
+# External parser run
+uv run pytest --include-external-parsers -m external_parser --no-cov
+
+# Release coverage gate; do not combine with -m slow or -m soak
+uv run pytest --cov=evidenceforge --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+```
+
+## Code Style
+
+EvidenceForge follows strict coding conventions documented in [AGENTS.md](/AGENTS.md). Key points:
+
+- **Type hints everywhere** — all functions, methods, and variables
+- **Pydantic v2** for all structured data
+- **100 character** line length, **4 space** indentation, **double quotes**
+- **Google-style docstrings** for public functions
+- **`uv`** for all dependency management (never `pip`)
+- **`pathlib.Path`** for all path handling (never string paths)
+
+Linting is enforced via `ruff` with pycodestyle, pyflakes, isort, pep8-naming, pyupgrade, and flake8-bugbear rules.
+
+## Adding a New Log Format
+
+1. Create a format definition YAML in `src/evidenceforge/formats/definitions/`
+2. Create an emitter class in `src/evidenceforge/generation/emitters/` inheriting from `LogEmitter`
+3. Register the emitter in `src/evidenceforge/generation/emitters/__init__.py`
+4. Add emitter initialization in the engine (`src/evidenceforge/generation/engine/emitter_setup.py`)
+5. Create a parser in `src/evidenceforge/evaluation/parsers/` for eval support
+6. Add tests for the emitter and parser
+7. Document the format in `docs/reference/EVIDENCE_FORMATS.md`
+
+## Adding a New Event Type
+
+1. Add the event spec Pydantic model to `src/evidenceforge/models/scenario.py`
+2. Add a handler in `ActivityGenerator` (`src/evidenceforge/generation/activity/generator.py`)
+3. Add any needed context fields to `src/evidenceforge/events/contexts.py`
+4. Implement `_render_{event_type}()` on relevant emitters
+5. Update `src/evidenceforge/validation/schema.py` for cross-reference validation
+6. Update `docs/reference/scenario-reference.md`
+7. Add tests
+
+## Other Ways to Contribute
+
+We welcome anyone that wants to contribute to EvidenceForge to triage and
+reply to open issues to help troubleshoot and fix existing bugs. Here is what
+you can do:
+
+- Help ensure that existing issues follows the recommendations from the
+  _[Reporting Issues](#reporting-issues)_ section, providing feedback to the
+  issue's author on what might be missing.
+- Review existing pull requests, and testing patches against EvidenceForge.
+- Write a test, or add a missing test case to an existing test.
+- Create new example scenarios for different attack types.
+- Improve documentation or add tutorials.
+
+Thanks again for your interest in contributing to EvidenceForge!
+
+### Native Windows CI
+
+Routine CI runs Python 3.12 on Ubuntu and native Windows, with `uv run pytest --no-cov`.
+The routine suite includes a short real generation, checkpoint, cooperative suspension,
+verification, and fresh-process resume comparison against uninterrupted output. The same test
+runs during normal local macOS testing. Broad checkpoint fault/interruption tests remain in the
+Linux slow release gate for PRs into main.
+
+Native Windows uses an isolated local NTFS backend for protected output journals and checkpoints;
+macOS and Linux retain their POSIX implementations. The routine timeout is 45 minutes on Windows
+and 25 minutes on Linux. Small native API contracts run in the routine suite. A separate required
+Windows checkpoint durability job runs focused slow simulated power-loss recovery tests with a
+20-minute timeout. These tests validate the documented storage assumptions, not physical power-loss
+certification. See the
+[native Windows design](docs/design/native-windows-filesystem.md) for platform limits. Do not
+blanket-skip portable failures or disable publication protections to make the job green.

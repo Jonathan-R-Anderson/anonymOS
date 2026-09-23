@@ -1,0 +1,1283 @@
+# Per-domain and per-tag URI path templates for realistic proxy log generation.
+#
+# Lookup order: exact domain match -> tag-based fallback -> generic fallback.
+# Template variables:
+#   {guid}      - random UUID (e.g., a1b2c3d4-e5f6-7890-abcd-ef1234567890)
+#   {tenant_id} - random UUID for Azure AD tenant
+#   {hex8}      - 8-char hex string
+#   {hex16}     - 16-char hex string
+#
+# Depended on by: generation engine (proxy log URI paths)
+# Depends on: dns_registry.yaml (domain keys should exist in registry)
+#
+# Authoring reference: commands/eforge/references/config-dns-network.md
+
+default_http_policy: https_redirect_public
+
+domains:
+  # --- Windows Update / Delivery Optimization ---
+  download.windowsupdate.com:
+    domain_class: windows_update
+    user_agent: "Windows-Update-Agent/10.0.19045.4046 Client-Protocol/2.33"
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/msdownload/update/v3/static/trustedr/en/{guid}.cab"
+      - "/msdownload/update/software/secu/{guid}/{guid}.cab"
+      - "/msdownload/update/software/updt/{guid}/{guid}.cab"
+      - "/filestreamingservice/files/{guid}"
+      - "/msdownload/update/v11/microsoftupdate/redir/MU{hex8}.cab"
+    content_type: "application/octet-stream"
+    methods: ["GET"]
+
+  ctldl.windowsupdate.com:
+    domain_class: windows_trust_list
+    user_agent: "Microsoft-CryptoAPI/10.0"
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/msdownload/update/v3/static/trustedr/en/authrootstl.cab"
+      - "/msdownload/update/v3/static/trustedr/en/disallowedcertstl.cab"
+      - "/msdownload/update/v3/static/trustedr/en/pinrulesstl.cab"
+    content_type: "application/vnd.ms-cab-compressed"
+    methods: ["GET"]
+
+  dl.google.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/chrome/install/GoogleChromeStandaloneEnterprise64.msi"
+      - "/dl/chrome/install/googlechromestandaloneenterprise64.msi"
+      - "/edgedl/chrome/chrome-for-testing/{hex8}/win64/chrome-win64.zip"
+    content_type: "application/octet-stream"
+    methods: ["GET"]
+
+  update.googleapis.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/service/update2/json"
+      - "/service/update2/crx"
+      - "/service/update2"
+    content_types:
+      - "application/json"
+      - "application/octet-stream"
+      - "application/json"
+    methods: ["POST", "GET", "POST"]
+
+  packages.microsoft.com:
+    domain_class: software_update
+    os: linux
+    referrer_policy: none
+    paths:
+      - "/config/ubuntu/22.04/packages-microsoft-prod.deb"
+      - "/ubuntu/22.04/prod/dists/jammy/InRelease"
+      - "/ubuntu/22.04/prod/dists/jammy/main/binary-amd64/Packages.gz"
+      - "/repos/edge/pool/main/m/microsoft-edge-stable/microsoft-edge-stable_amd64.deb"
+    content_types:
+      - "application/vnd.debian.binary-package"
+      - "text/plain"
+      - "application/x-gzip"
+      - "application/vnd.debian.binary-package"
+    methods: ["GET"]
+
+  # --- Certificate / OCSP / CRL ---
+  crl.microsoft.com:
+    domain_class: crl
+    user_agent: "Microsoft-CryptoAPI/10.0"
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/pki/crl/products/MicRooCerAut2011_2011_03_22.crl"
+      - "/pki/crl/products/MicTimStaPCA_2010-07-01.crl"
+      - "/pki/mscorp/crl/Microsoft%20RSA%20TLS%20CA%2002.crl"
+      - "/pki/mscorp/crl/Microsoft%20Azure%20RSA%20TLS%20Issuing%20CA%2008.crl"
+      - "/pki/crl/products/MicCodSigPCA2011_2011-07-08.crl"
+    content_type: "application/pkix-crl"
+    methods: ["GET"]
+
+  # OCSP entries remain available as classification and source-native metadata.
+  # Generic HTTP synthesis excludes entries marked canonical_plan_required;
+  # only the OCSP action bundle supplies their standards-valid request path.
+  ocsp.digicert.com:
+    domain_class: ocsp
+    canonical_plan_required: true
+    user_agent: "Microsoft-CryptoAPI/10.0"
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/"
+    content_type: "application/ocsp-response"
+    methods: ["POST"]
+
+  crl3.digicert.com:
+    domain_class: crl
+    referrer_policy: none
+    paths:
+      - "/DigiCertGlobalRootG2.crl"
+      - "/DigiCertTLSRSASHA2562020CA1-4.crl"
+      - "/DigiCertGlobalRootCA.crl"
+    content_type: "application/pkix-crl"
+    methods: ["GET"]
+
+  crl4.digicert.com:
+    domain_class: crl
+    referrer_policy: none
+    paths:
+      - "/DigiCertGlobalRootG2.crl"
+      - "/DigiCertTLSRSASHA2562020CA1-4.crl"
+      - "/DigiCertGlobalRootCA.crl"
+    content_type: "application/pkix-crl"
+    methods: ["GET"]
+
+  ocsp.pki.goog:
+    domain_class: ocsp
+    canonical_plan_required: true
+    referrer_policy: none
+    paths:
+      - "/gts1c3"
+      - "/gts1o1core"
+      - "/gtsr1"
+    content_type: "application/ocsp-response"
+    methods: ["POST"]
+
+  crls.pki.goog:
+    domain_class: crl
+    referrer_policy: none
+    paths:
+      - "/gts1c3/{hex8}.crl"
+      - "/gts1o1core/{hex8}.crl"
+      - "/gtsr1/{hex8}.crl"
+    content_type: "application/pkix-crl"
+    methods: ["GET"]
+
+  ocsp.globalsign.com:
+    domain_class: ocsp
+    canonical_plan_required: true
+    referrer_policy: none
+    paths:
+      - "/gsorganizationvalsha2g2"
+      - "/rootr3"
+      - "/alphasslrootsha256g4"
+    content_type: "application/ocsp-response"
+    methods: ["POST"]
+
+  ocsp.sectigo.com:
+    domain_class: ocsp
+    canonical_plan_required: true
+    referrer_policy: none
+    paths:
+      - "/"
+      - "/SectigoRSADomainValidationSecureServerCA"
+      - "/SectigoRSAOrganizationValidationSecureServerCA"
+    content_type: "application/ocsp-response"
+    methods: ["POST"]
+
+  ocsp.int-x3.letsencrypt.org:
+    domain_class: ocsp
+    canonical_plan_required: true
+    referrer_policy: none
+    paths:
+      - "/"
+    content_type: "application/ocsp-response"
+    methods: ["POST"]
+
+  r3.o.lencr.org:
+    domain_class: ocsp
+    canonical_plan_required: true
+    referrer_policy: none
+    paths:
+      - "/"
+    content_type: "application/ocsp-response"
+    methods: ["POST"]
+
+  x1.c.lencr.org:
+    domain_class: crl
+    referrer_policy: none
+    paths:
+      - "/"
+      - "/x1.crl"
+    content_type: "application/pkix-crl"
+    methods: ["GET"]
+
+  # --- Microsoft Telemetry / Settings ---
+  settings-win.data.microsoft.com:
+    domain_class: telemetry
+    referrer_policy: none
+    paths:
+      - "/OneCollector/1.0/"
+      - "/settings/v2.0/global"
+      - "/settings/v2.0/OEM"
+    content_type: "application/json"
+    methods: ["POST", "POST", "GET"]
+
+  arc.msn.com:
+    domain_class: telemetry
+    referrer_policy: none
+    paths:
+      - "/v3/Delivery/Placement"
+      - "/v3/Delivery/Cache"
+      - "/v4/Delivery/Placement"
+    content_type: "application/json"
+    methods: ["GET"]
+
+  # --- Azure AD / Identity ---
+  login.microsoftonline.com:
+    paths:
+      - "/common/oauth2/v2.0/token"
+      - "/common/oauth2/v2.0/authorize"
+      - "/common/discovery/instance"
+      - "/{tenant_id}/oauth2/v2.0/token"
+      - "/common/oauth2/nativeclient"
+    content_type: "application/json"
+    methods: ["POST", "GET", "GET", "POST", "POST"]
+
+  login.live.com:
+    paths:
+      - "/ppsecure/post.srf"
+      - "/oauth20_token.srf"
+      - "/oauth20_authorize.srf"
+      - "/GetSessionState.srf"
+    content_type: "application/json"
+    methods: ["POST", "POST", "GET", "GET"]
+
+  graph.microsoft.com:
+    paths:
+      - "/v1.0/me"
+      - "/v1.0/me/drive/root/children"
+      - "/v1.0/me/messages"
+      - "/v1.0/organization"
+      - "/beta/me/profile"
+    content_type: "application/json"
+    methods: ["GET"]
+
+  # --- Microsoft Office / SaaS ---
+  www.office.com:
+    paths:
+      - "/"
+      - "/login"
+      - "/landing"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  outlook.office365.com:
+    paths:
+      - "/owa/"
+      - "/owa/service.svc?action=GetConversationItems"
+      - "/EWS/Exchange.asmx"
+      - "/autodiscover/autodiscover.json"
+      - "/api/v2.0/me/messages"
+    content_type: "application/json"
+    methods: ["GET", "POST", "POST", "GET", "GET"]
+
+  teams.microsoft.com:
+    paths:
+      - "/api/mt/part/emea-03/beta/users/fetchShortProfile"
+      - "/api/mt/part/emea-03/beta/teams/teamMembers"
+      - "/statics/scripts/teams_bundle.js"
+    content_type: "application/json"
+    methods: ["POST", "POST", "GET"]
+
+  portal.azure.com:
+    paths:
+      - "/"
+      - "/#blade/HubsExtension/BrowseAll"
+      - "/#blade/Microsoft_Azure_Monitoring/AzureMonitoringBrowseBlade"
+      - "/portal/{hex8}/Content/Dynamic/bundleMsPortalFxPortal.{hex16}.js"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  sharepoint.com:
+    paths:
+      - "/_api/web/lists"
+      - "/_layouts/15/Doc.aspx"
+      - "/sites/intranet/SitePages/Home.aspx"
+      - "/_api/v2.0/drives"
+    content_type: "application/json"
+    methods: ["GET"]
+
+  onenote.officeapps.live.com:
+    paths:
+      - "/o/onenoteframe.aspx?ui=en-us&rs=en-us"
+      - "/o/onenoteframe.aspx?edit=0&{hex16}"
+      - "/api/v1.0/me/notes/notebooks"
+      - "/api/v1.0/me/notes/sections"
+    content_type: "text/html"
+    methods: ["GET", "GET", "GET", "GET"]
+
+  onedrive.live.com:
+    paths:
+      - "/redir?resid={hex16}"
+      - "/edit.aspx?resid={hex16}"
+      - "/download?resid={hex16}"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Bing / search ---
+  www.bing.com:
+    paths:
+      - "/"
+      - "/search?q={search_term}"
+      - "/images/search?q={search_term}"
+      - "/th?id=OHR.{hex8}_EN-US{hex8}_1920x1080.jpg"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Google ---
+  www.google.com:
+    paths:
+      - "/"
+      - "/search?q={search_term}"
+      - "/complete/search?q={search_term}"
+      - "/gen_204?atyp=i"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  accounts.google.com:
+    http_policy: https_redirect
+    paths:
+      - "/ServiceLogin"
+      - "/o/oauth2/auth"
+      - "/signin/v2/challenge"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  calendar.google.com:
+    paths:
+      - "/render"
+      - "/r/month"
+      - "/r/week"
+      - "/r/eventedit"
+      - "/r/search?q={search_term}"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  drive.google.com:
+    paths:
+      - "/drive/my-drive"
+      - "/file/d/{hex16}/view"
+      - "/uc?export=download&id={hex16}"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  docs.google.com:
+    paths:
+      - "/document/d/{hex16}/edit"
+      - "/spreadsheets/d/{hex16}/edit"
+      - "/presentation/d/{hex16}/edit"
+      - "/forms/d/{hex16}/viewform"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Slack ---
+  slack.com:
+    paths:
+      - "/"
+      - "/get-started"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  api.slack.com:
+    paths:
+      - "/api/conversations.list"
+      - "/api/chat.postMessage"
+      - "/api/users.list"
+      - "/api/rtm.connect"
+    content_type: "application/json"
+    methods: ["POST"]
+
+  files.slack.com:
+    paths:
+      - "/files-tmb/{hex16}/download/image.png"
+      - "/files-pri/{hex16}/download/document.pdf"
+    content_type: "application/octet-stream"
+    methods: ["GET"]
+
+  # --- Zoom ---
+  zoom.us:
+    paths:
+      - "/"
+      - "/signin"
+      - "/j/{hex8}"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  us02web.zoom.us:
+    paths:
+      - "/wc/join/{hex8}"
+      - "/web/api?type=meeting"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  us06web.zoom.us:
+    paths:
+      - "/wc/join/{hex8}"
+      - "/web/api?type=meeting"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Salesforce ---
+  login.salesforce.com:
+    paths:
+      - "/services/oauth2/token"
+      - "/"
+      - "/id/{hex16}"
+    content_type: "application/json"
+    methods: ["POST", "GET", "GET"]
+
+  na139.salesforce.com:
+    paths:
+      - "/services/data/v58.0/sobjects/Account"
+      - "/services/data/v58.0/query?q=SELECT+Id+FROM+Account"
+      - "/lightning/page/home"
+    content_type: "application/json"
+    methods: ["GET"]
+
+  # --- GitHub / Git ---
+  github.com:
+    paths:
+      - "/"
+      - "/notifications"
+      - "/pulls"
+      - "/issues"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  api.github.com:
+    paths:
+      - "/repos/{brand}/{brand}/commits"
+      - "/user"
+      - "/rate_limit"
+      - "/repos/{brand}/{brand}/pulls"
+    content_type: "application/json"
+    methods: ["GET"]
+
+  gitlab.com:
+    paths:
+      - "/"
+      - "/explore/projects"
+      - "/users/sign_in"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Cloudflare ---
+  www.cloudflare.com:
+    paths:
+      - "/"
+      - "/products/cdn/"
+      - "/learning/what-is-cloudflare/"
+      - "/plans/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  dash.cloudflare.com:
+    paths:
+      - "/"
+      - "/login"
+      - "/{hex8}/domains"
+      - "/{hex8}/dns"
+      - "/{hex8}/analytics"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  blog.cloudflare.com:
+    paths:
+      - "/"
+      - "/tag/security/"
+      - "/tag/speed-and-reliability/"
+      - "/{slug}/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- AWS ---
+  aws.amazon.com:
+    paths:
+      - "/"
+      - "/ec2/"
+      - "/s3/"
+      - "/console/"
+      - "/solutions/case-studies/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  console.aws.amazon.com:
+    paths:
+      - "/console/home"
+      - "/ec2/home#Instances"
+      - "/s3/home"
+      - "/iam/home"
+      - "/cloudwatch/home#dashboards:"
+      - "/vpc/home#vpcs:"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- CDN / static ---
+  cdn.jsdelivr.net:
+    paths:
+      - "/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      - "/npm/jquery@3.7.1/dist/jquery.min.js"
+      - "/npm/font-awesome@4.7.0/css/font-awesome.min.css"
+    content_type: "application/javascript"
+    methods: ["GET"]
+
+  static.akamai.net:
+    paths:
+      - "/assets/js/combined.min.js"
+      - "/assets/css/main.css"
+      - "/fonts/woff2/roboto-v30-latin.woff2"
+    content_type: "application/javascript"
+    methods: ["GET"]
+
+  pages.github.io:
+    paths:
+      - "/"
+      - "/index.html"
+      - "/assets/css/style.css"
+      - "/assets/js/main.js"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Social ---
+  www.facebook.com:
+    http_policy: https_redirect
+    paths:
+      - "/"
+      - "/login"
+      - "/groups/feed/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  www.reddit.com:
+    paths:
+      - "/"
+      - "/r/popular/"
+      - "/r/technology/"
+      - "/r/netsec/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  www.linkedin.com:
+    paths:
+      - "/feed/"
+      - "/messaging/"
+      - "/mynetwork/"
+      - "/jobs/"
+      - "/notifications/"
+      - "/in/{hex8}/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  en.wikipedia.org:
+    paths:
+      - "/wiki/Main_Page"
+      - "/wiki/Special:Search?search={search_term}"
+      - "/w/index.php?title=Special:Search&search={search_term}"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  news.ycombinator.com:
+    paths:
+      - "/"
+      - "/newest"
+      - "/ask"
+      - "/show"
+      - "/jobs"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Linux background ---
+  changelogs.ubuntu.com:
+    domain_class: software_update
+    referrer_policy: none
+    paths:
+      - "/meta-release-lts"
+    content_type: "text/plain"
+    methods: ["GET"]
+
+  security.ubuntu.com:
+    domain_class: software_update
+    referrer_policy: none
+    paths:
+      - "/ubuntu/dists/jammy-security/InRelease"
+      - "/ubuntu/dists/jammy-security/main/binary-amd64/Packages.gz"
+    content_type: "application/x-gzip"
+    methods: ["GET"]
+
+  archive.ubuntu.com:
+    domain_class: software_update
+    referrer_policy: none
+    paths:
+      - "/ubuntu/dists/jammy/InRelease"
+      - "/ubuntu/dists/jammy-updates/InRelease"
+      - "/ubuntu/dists/jammy/main/binary-amd64/Packages.gz"
+    content_type: "application/x-gzip"
+    methods: ["GET"]
+
+  pypi.org:
+    paths:
+      - "/simple/"
+      - "/simple/requests/"
+      - "/simple/pip/"
+      - "/pypi/setuptools/json"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Cloud storage ---
+  api.pcloud.com:
+    paths:
+      - "/listfolder?folderid=0"
+      - "/uploadfile?folderid=0"
+      - "/getfilelink?fileid={hex8}"
+      - "/diff?diffid=0&limit=500"
+    content_type: "application/json"
+    methods: ["GET", "POST", "GET", "GET"]
+
+  # --- Workstation-normal SaaS / identity / collaboration ---
+  id.atlassian.com:
+    paths:
+      - "/login"
+      - "/gateway/api/session"
+      - "/oauth2/authorize"
+      - "/rest/notifications/latest"
+    content_type: "application/json"
+    methods: ["GET", "POST", "GET", "GET"]
+
+  company.atlassian.net:
+    paths:
+      - "/jira/your-work"
+      - "/browse/PROJ-{hex8}"
+      - "/rest/api/3/search?jql=assignee=currentUser()"
+      - "/wiki/spaces/ENG/pages/{hex8}/Runbook"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  api.atlassian.com:
+    paths:
+      - "/ex/jira/{tenant_id}/rest/api/3/myself"
+      - "/ex/jira/{tenant_id}/rest/api/3/search"
+      - "/gateway/api/emoji/{hex8}"
+    content_type: "application/json"
+    methods: ["GET", "POST", "GET"]
+
+  company.service-now.com:
+    paths:
+      - "/now/nav/ui/classic/params/target/home.do"
+      - "/api/now/table/incident?sysparm_limit=20"
+      - "/sp?id=ticket&table=incident&sys_id={hex16}"
+      - "/scripts/js_includes_doctype.jsx"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  login.service-now.com:
+    paths:
+      - "/login.do"
+      - "/oauth_token.do"
+      - "/api/now/ui/session"
+    content_type: "application/json"
+    methods: ["GET", "POST", "GET"]
+
+  wd5.myworkday.com:
+    paths:
+      - "/company/d/home.htmld"
+      - "/company/d/task/2998$1234.htmld"
+      - "/wday/authgwy/company/login.htmld"
+      - "/company/inst/1$15/rel-task/{hex8}.htmld"
+    content_type: "text/html"
+    methods: ["GET", "POST", "GET", "GET"]
+
+  impl.workday.com:
+    paths:
+      - "/impl/tenant/home.htmld"
+      - "/impl/tenant/report/{hex8}.htmld"
+      - "/ccx/service/customreport2/company/{hex8}"
+    content_type: "text/html"
+    methods: ["GET", "GET", "POST"]
+
+  company.okta.com:
+    paths:
+      - "/app/UserHome"
+      - "/api/v1/users/me"
+      - "/oauth2/v1/authorize"
+      - "/login/sessionCookieRedirect"
+    content_type: "application/json"
+    methods: ["GET"]
+
+  login.okta.com:
+    paths:
+      - "/oauth2/default/v1/authorize"
+      - "/oauth2/default/v1/token"
+      - "/api/v1/authn"
+    content_type: "application/json"
+    methods: ["GET", "POST", "POST"]
+
+  api-17.duosecurity.com:
+    paths:
+      - "/frame/web/v1/auth"
+      - "/frame/status"
+      - "/auth/v2/preauth"
+      - "/push/v2/status"
+    content_type: "application/json"
+    methods: ["GET", "GET", "POST", "GET"]
+
+  acrobat.adobe.com:
+    paths:
+      - "/link/home"
+      - "/api/files/recent"
+      - "/api/documentcloud/search"
+      - "/dc/assets/{hex8}/viewer.html"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  auth.services.adobe.com:
+    paths:
+      - "/ims/authorize/v2"
+      - "/ims/token/v3"
+      - "/ims/profile/v1"
+    content_type: "application/json"
+    methods: ["GET", "POST", "GET"]
+
+  cc-api-data.adobe.io:
+    paths:
+      - "/ingest/v1/events"
+      - "/cloud-content/v1/assets"
+      - "/libraries/v1/sync"
+    content_type: "application/json"
+    methods: ["POST", "GET", "GET"]
+
+  www.dropbox.com:
+    paths:
+      - "/home"
+      - "/h"
+      - "/preview/{hex16}"
+      - "/2/files/list_folder"
+      - "/2/sharing/list_shared_links"
+    content_type: "text/html"
+    methods: ["GET", "GET", "GET", "POST", "POST"]
+
+  api.dropboxapi.com:
+    paths:
+      - "/2/users/get_current_account"
+      - "/2/files/list_folder"
+      - "/2/files/get_metadata"
+      - "/2/sharing/list_folders"
+    content_type: "application/json"
+    methods: ["POST"]
+
+  content.dropboxapi.com:
+    paths:
+      - "/2/files/download"
+      - "/2/files/upload_session/start"
+      - "/2/files/upload_session/append_v2"
+    content_type: "application/octet-stream"
+    methods: ["POST"]
+
+  webex.com:
+    paths:
+      - "/"
+      - "/signin"
+      - "/downloads.html"
+      - "/solutions/enterprise"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  signin.webex.com:
+    paths:
+      - "/signin"
+      - "/wbxappapi/v1/session"
+      - "/oauth2/v1/authorize"
+      - "/oauth2/v1/token"
+    content_type: "application/json"
+    methods: ["GET", "GET", "GET", "POST"]
+
+  meetings.webex.com:
+    paths:
+      - "/meet/{hex8}"
+      - "/webappng/sites/meetings/dashboard"
+      - "/api/v1/meetings/{hex8}"
+      - "/wbxmjsasset/{hex8}/app.js"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  webexapis.com:
+    paths:
+      - "/v1/people/me"
+      - "/v1/meetings"
+      - "/v1/messages"
+      - "/v1/rooms"
+    content_type: "application/json"
+    methods: ["GET", "GET", "POST", "GET"]
+
+  customer.cloud.com:
+    paths:
+      - "/Citrix/StoreWeb/"
+      - "/Citrix/StoreWeb/resources/v2"
+      - "/logon/LogonPoint/tmindex.html"
+      - "/vpn/index.html"
+    content_type: "text/html"
+    methods: ["GET", "POST", "GET", "GET"]
+
+  accounts.cloud.com:
+    paths:
+      - "/core/login"
+      - "/oauth/authorize"
+      - "/oauth/token"
+      - "/core/api/user"
+    content_type: "application/json"
+    methods: ["GET", "GET", "POST", "GET"]
+
+  www.citrix.com:
+    paths:
+      - "/"
+      - "/downloads/workspace-app/windows/"
+      - "/products/citrix-workspace/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  app.powerbi.com:
+    paths:
+      - "/home"
+      - "/groups/me/reports/{hex8}/ReportSection"
+      - "/metadata/cluster"
+      - "/13.0.0.0/scripts/powerbiportal.dependencies.js"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  wabi-us-east2-api.analysis.windows.net:
+    paths:
+      - "/powerbi/metadata/models"
+      - "/public/reports/{hex8}/querydata"
+      - "/explore/querydata?synchronous=true"
+    content_type: "application/json"
+    methods: ["GET", "POST", "POST"]
+
+  online.tableau.com:
+    paths:
+      - "/#/site/company/home"
+      - "/#/site/company/workbooks"
+      - "/vizql/w/{hex8}/v/{hex8}/bootstrapSession/sessions/{hex16}"
+    content_type: "text/html"
+    methods: ["GET", "GET", "POST"]
+
+  prod-useast-a.online.tableau.com:
+    paths:
+      - "/vizql/w/{hex8}/v/{hex8}/bootstrapSession/sessions/{hex16}"
+      - "/vizql/w/{hex8}/v/{hex8}/sessions/{hex16}/commands/tabsrv/render-tooltip-server"
+      - "/auth/refresh"
+    content_type: "application/json"
+    methods: ["POST", "POST", "GET"]
+
+  public.tableau.com:
+    paths:
+      - "/"
+      - "/views/{hex8}/Dashboard"
+      - "/javascripts/api/tableau.embedding.3.latest.min.js"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  postman.com:
+    paths:
+      - "/"
+      - "/product/workspaces/"
+      - "/explore/collections"
+      - "/api-platform/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  identity.getpostman.com:
+    paths:
+      - "/login"
+      - "/oauth2/authorize"
+      - "/oauth2/token"
+      - "/api/user"
+    content_type: "application/json"
+    methods: ["GET", "GET", "POST", "GET"]
+
+  api.getpostman.com:
+    paths:
+      - "/me"
+      - "/workspaces"
+      - "/collections/{hex8}"
+      - "/monitors"
+    content_type: "application/json"
+    methods: ["GET"]
+
+  dbeaver.io:
+    paths:
+      - "/"
+      - "/download/"
+      - "/product/dbeaver-ultimate/"
+      - "/files/dbeaver-ce-latest-x86_64-setup.exe"
+    content_types:
+      - "text/html"
+      - "text/html"
+      - "text/html"
+      - "application/octet-stream"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  # --- Workstation software updates / management agents ---
+  clients6.google.com:
+    domain_class: telemetry
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/drive/v2internal/about"
+      - "/sync/drivefs/config"
+      - "/cr/report"
+    content_type: "application/json"
+    methods: ["GET", "POST", "POST"]
+
+  clients4.google.com:
+    domain_class: telemetry
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/chrome-sync/command"
+      - "/drive/v2internal/files"
+      - "/cr/report"
+    content_type: "application/json"
+    methods: ["POST", "GET", "POST"]
+
+  dl.duosecurity.com:
+    domain_class: software_update
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/duo-win-login/releases/{hex8}/DuoWindowsLogon64.msi"
+      - "/duo/device-health/{hex8}/DuoDeviceHealth-latest.msi"
+    content_type: "application/octet-stream"
+    methods: ["GET"]
+
+  armmf.adobe.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/arm-manifests/win/AcrobatDC/reader/current_version.xml"
+      - "/arm-manifests/win/AcrobatDC/updates/{hex8}.xml"
+    content_type: "text/plain"
+    methods: ["GET"]
+
+  swupmf.adobe.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/swupmf/win/AcrobatDC/{hex8}/manifest.xml"
+      - "/swupmf/win/CreativeCloud/{hex8}/manifest.xml"
+    content_type: "text/plain"
+    methods: ["GET"]
+
+  ccmdl.adobe.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/AdobeProducts/APRO/{hex8}/win64/AcroRdrDCUpd.msp"
+      - "/AdobeProducts/KCCC/{hex8}/win64/CreativeCloudSet-Up.exe"
+    content_type: "application/octet-stream"
+    methods: ["GET"]
+
+  desktop.dropbox.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/windows/DropboxUpdate/{hex8}/manifest.json"
+      - "/windows/DropboxUpdate/{hex8}/DropboxUpdate.exe"
+    content_types:
+      - "application/json"
+      - "application/octet-stream"
+    methods: ["GET"]
+
+  downloads.cloud.com:
+    domain_class: software_update
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/workspace/windows/CitrixWorkspaceApp.exe"
+      - "/workspace/windows/{hex8}/manifest.json"
+    content_types:
+      - "application/octet-stream"
+      - "application/json"
+    methods: ["GET"]
+
+  receiver.citrix.com:
+    domain_class: software_update
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/windows/CitrixWorkspaceApp.exe"
+      - "/windows/updates/{hex8}/receiver.json"
+    content_types:
+      - "application/octet-stream"
+      - "application/json"
+    methods: ["GET"]
+
+  secure-client-updates.cisco.com:
+    domain_class: software_update
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/secureclient/win/{hex8}/manifest.json"
+      - "/secureclient/win/{hex8}/cisco-secure-client-win.msi"
+    content_types:
+      - "application/json"
+      - "application/octet-stream"
+    methods: ["GET"]
+
+  updates.paloaltonetworks.com:
+    domain_class: software_update
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/globalprotect/manifest.xml"
+      - "/globalprotect/GlobalProtect64-{hex8}.msi"
+    content_types:
+      - "text/plain"
+      - "application/octet-stream"
+    methods: ["GET"]
+
+  config.zscaler.net:
+    domain_class: telemetry
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/zsapi/v1/config"
+      - "/zsapi/v1/pac"
+      - "/zsapi/v1/health"
+    content_type: "application/json"
+    methods: ["GET", "GET", "POST"]
+
+  gateway.zscaler.net:
+    domain_class: telemetry
+    os: windows
+    referrer_policy: none
+    paths:
+      - "/zscaler/clientconnector/keepalive"
+      - "/zscaler/tunnel/status"
+    content_type: "application/json"
+    methods: ["POST", "GET"]
+
+  dl.pstmn.io:
+    domain_class: software_update
+    referrer_policy: none
+    paths:
+      - "/download/latest/win64"
+      - "/update/win32/x64/{hex8}/RELEASES"
+    content_types:
+      - "application/octet-stream"
+      - "text/plain"
+    methods: ["GET"]
+
+  update.dbeaver.io:
+    domain_class: software_update
+    referrer_policy: none
+    paths:
+      - "/update/latest/win32/x86_64/plugins/content.xml"
+      - "/files/dbeaver-ce-latest-x86_64-setup.exe"
+    content_types:
+      - "text/plain"
+      - "application/octet-stream"
+    methods: ["GET"]
+
+  download.lenovo.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/pccbbs/thinkvantage_en/system_update_{hex8}.xml"
+      - "/pccbbs/mobiles/{hex8}.cab"
+    content_types:
+      - "text/plain"
+      - "application/octet-stream"
+    methods: ["GET"]
+
+  hpia.hpcloud.hp.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/ref/platformList.cab"
+      - "/ref/{hex8}/sp{hex8}.exe"
+    content_type: "application/octet-stream"
+    methods: ["GET"]
+
+  dellupdater.dell.com:
+    domain_class: software_update
+    os: windows
+    source_system_types: [workstation]
+    http_policy: https_redirect
+    referrer_policy: none
+    paths:
+      - "/Catalog/CatalogPC.cab"
+      - "/FOLDER{hex8}/M/{hex8}/Dell-Command-Update.exe"
+    content_type: "application/octet-stream"
+    methods: ["GET"]
+
+  # --- Other ---
+  stackoverflow.com:
+    paths:
+      - "/"
+      - "/questions"
+      - "/questions/tagged/python"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  registry.npmjs.org:
+    paths:
+      - "/express"
+      - "/react"
+      - "/lodash"
+      - "/-/v1/search?text=security"
+    content_type: "application/json"
+    methods: ["GET"]
+
+  www.healthcareitnews.com:
+    paths:
+      - "/"
+    content_type: "text/html"
+    methods: ["GET"]
+
+# Tag-based templates: used when a domain has no exact match.
+# Tags correspond to dns_registry.yaml tag values.
+tags:
+  background:
+    paths:
+      - "/v1/telemetry"
+      - "/api/v1/collect"
+      - "/report"
+      - "/"
+    content_type: "application/json"
+    methods: ["POST", "POST", "POST", "GET"]
+
+  saas:
+    paths:
+      - "/api/v2/data"
+      - "/api/v1/status"
+      - "/dashboard"
+      - "/home"
+      - "/app"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  web:
+    paths:
+      - "/"
+      - "/"
+      - "/"
+      - "/index.html"
+      - "/assets/main.css"
+      - "/assets/app.js"
+      - "/favicon.ico"
+      - "/robots.txt"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  cdn:
+    referrer_policy: none
+    paths:
+      - "/assets/{hex16}/main.js"
+      - "/assets/{hex16}/main.css"
+      - "/static/{hex16}/bundle.js"
+      - "/static/{hex16}/logo.png"
+      - "/fonts/{hex16}.woff2"
+      - "/favicon.ico"
+    content_types:
+      - "application/javascript"
+      - "text/css"
+      - "application/javascript"
+      - "image/png"
+      - "font/woff2"
+      - "image/x-icon"
+    methods: ["GET"]
+
+  git:
+    paths:
+      - "/"
+      - "/explore"
+      - "/info/refs?service=git-upload-pack"
+    content_type: "text/html"
+    methods: ["GET"]
+
+  storage:
+    paths:
+      - "/api/file/upload"
+      - "/api/file/download"
+      - "/api/listfolder"
+    content_type: "application/json"
+    methods: ["GET", "POST", "GET"]
+
+  email:
+    paths:
+      - "/autodiscover/autodiscover.xml"
+      - "/EWS/Exchange.asmx"
+      - "/owa/"
+      - "/mapi/emsmdb/"
+    content_type: "text/xml"
+    methods: ["POST", "POST", "GET", "POST"]
+
+  internal:
+    paths:
+      - "/"
+      - "/health"
+      - "/api/v1/status"
+    content_type: "application/json"
+    methods: ["GET"]
+
+# Generic fallback for domains not in the registry at all.
+generic:
+  paths:
+    - "/"
+    - "/"
+    - "/"
+    - "/index.html"
+    - "/login"
+    - "/api/v1/status"
+    - "/api/v2/data"
+    - "/dashboard"
+    - "/assets/main.css"
+    - "/assets/app.js"
+    - "/favicon.ico"
+  content_type: "text/html"
+  methods: ["GET"]
+
+# Search terms for {search_term} substitution in Bing/Google paths.
+search_terms:
+  - "healthcare+integration"
+  - "cloud+migration+best+practices"
+  - "network+monitoring+tools"
+  - "enterprise+security+solutions"
+  - "project+management+software"
+  - "compliance+requirements+2026"
+  - "devops+pipeline+automation"
+  - "remote+desktop+setup"
+  - "office+365+admin"
+  - "azure+active+directory"
+  - "vpn+configuration"
+  - "password+policy+requirements"
+  - "incident+response+plan"
+  - "data+backup+solutions"
+  - "employee+onboarding+checklist"

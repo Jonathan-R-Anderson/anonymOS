@@ -1,0 +1,457 @@
+# Spawn rules: parent → children that it can realistically create.
+# The generator reverse-indexes this to find valid parents for any child.
+#
+# Fields per parent:
+#   command_templates: list of command lines for auto-creating this parent
+#   lifetime: long (persists for session) | short (runs briefly)
+#   spawn_delay: [min_sec, max_sec] before spawning children (default: [0.5, 3.0])
+#   max_children: optional cap (omit for unlimited — the common case)
+#   children: list of exe names this parent can spawn
+#
+# Depended on by: generation engine (process tree generation)
+# Depends on: application_catalog.yaml (child exe names),
+#             system_processes.yaml (system process names)
+#
+# Authoring reference: commands/eforge/references/config-apps-processes.md
+
+windows:
+  explorer.exe:
+    command_templates:
+      - "C:\\Windows\\explorer.exe"
+    lifetime: long
+    children:
+      - chrome.exe
+      - firefox.exe
+      - msedge.exe
+      - iexplore.exe
+      - OUTLOOK.EXE
+      - WINWORD.EXE
+      - EXCEL.EXE
+      - powerpnt.exe
+      - Teams.exe
+      - OneDrive.exe
+      - Slack.exe
+      - Zoom.exe
+      - Webex.exe
+      - Dropbox.exe
+      - GoogleDriveFS.exe
+      - SelfService.exe
+      - vpnui.exe
+      - PanGPA.exe
+      - ZSATray.exe
+      - PBIDesktop.exe
+      - tableau.exe
+      - Postman.exe
+      - dbeaver.exe
+      - Acrobat.exe
+      - 7zFM.exe
+      - notepad++.exe
+      - Code.exe
+      - idea64.exe
+      - sublime_text.exe
+      - cmd.exe
+      - powershell.exe
+      - pwsh.exe
+      - WindowsTerminal.exe
+      - mmc.exe
+      - eventvwr.exe
+      - taskmgr.exe
+      - regedit.exe
+      - notepad.exe
+      - mstsc.exe
+      - ServerManager.exe
+      - perfmon.exe
+
+  # Applications that spawn child/utility subprocesses of the same exe name
+  chrome.exe:
+    command_templates:
+      - '"C:\Program Files\Google\Chrome\Application\chrome.exe"'
+    lifetime: long
+    children:
+      - chrome.exe
+
+  msedge.exe:
+    command_templates:
+      - '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"'
+    lifetime: long
+    children:
+      - msedge.exe
+
+  firefox.exe:
+    command_templates:
+      - '"C:\Program Files\Mozilla Firefox\firefox.exe"'
+    lifetime: long
+    children:
+      - firefox.exe
+
+  teams.exe:
+    command_templates:
+      - '"C:\Users\{username}\AppData\Local\Microsoft\Teams\current\Teams.exe"'
+    lifetime: long
+    children: []
+
+  onedrive.exe:
+    command_templates:
+      - '"C:\Users\{username}\AppData\Local\Microsoft\OneDrive\OneDrive.exe" /background'
+    lifetime: long
+    children: []
+
+  slack.exe:
+    command_templates:
+      - '"C:\Users\{username}\AppData\Local\slack\Slack.exe" --startup'
+    lifetime: long
+    children: []
+
+  zoom.exe:
+    command_templates:
+      - '"C:\Users\{username}\AppData\Roaming\Zoom\bin\Zoom.exe" --background'
+    lifetime: long
+    children:
+      - CptHost.exe
+
+  webex.exe:
+    command_templates:
+      - '"C:\Program Files\Cisco Spark\Webex.exe" --autostart'
+    lifetime: long
+    children:
+      - CiscoCollabHost.exe
+
+  dropbox.exe:
+    command_templates:
+      - '"C:\Program Files (x86)\Dropbox\Client\Dropbox.exe" /systemstartup'
+    lifetime: long
+    children: []
+
+  googledrivefs.exe:
+    command_templates:
+      - '"C:\Program Files\Google\Drive File Stream\97.0.1.0\GoogleDriveFS.exe" --startup'
+    lifetime: long
+    children: []
+
+  postman.exe:
+    command_templates:
+      - '"C:\Users\{username}\AppData\Local\Postman\Postman.exe" --process-start-args'
+    lifetime: long
+    children:
+      - Postman.exe
+
+  cmd.exe:
+    command_templates:
+      - "C:\\Windows\\System32\\cmd.exe"
+      - "C:\\Windows\\System32\\cmd.exe /k"
+    lifetime: long
+    children:
+      - dotnet.exe
+      - msbuild.exe
+      - git.exe
+      - npm.exe
+      - node.exe
+      - python.exe
+      - python3.exe
+      - pip.exe
+      - cargo.exe
+      - go.exe
+      - sqlcmd.exe
+      - wmic.exe
+      - ipconfig.exe
+      - nslookup.exe
+      - netstat.exe
+      - ping.exe
+      - tracert.exe
+      - systeminfo.exe
+      - tasklist.exe
+      - whoami.exe
+      - net.exe
+      - schtasks.exe
+      - sc.exe
+      - wevtutil.exe
+      - xcopy.exe
+      - robocopy.exe
+      - findstr.exe
+      - cmd.exe
+      - powershell.exe
+      - conhost.exe
+      - reg.exe
+      - docker.exe
+      - kubectl.exe
+      - psql.exe
+      - ssh.exe
+      - npm.cmd
+      - dsquery.exe
+      - dcdiag.exe
+      - repadmin.exe
+      - ntdsutil.exe
+      - dnscmd.exe
+      - gpupdate.exe
+      - gpresult.exe
+      - certutil.exe
+      - dbeaver.exe
+
+  powershell.exe:
+    command_templates:
+      - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    lifetime: long
+    children:
+      - dotnet.exe
+      - msbuild.exe
+      - git.exe
+      - npm.exe
+      - node.exe
+      - python.exe
+      - python3.exe
+      - pip.exe
+      - cargo.exe
+      - go.exe
+      - sqlcmd.exe
+      - ipconfig.exe
+      - nslookup.exe
+      - netstat.exe
+      - ping.exe
+      - whoami.exe
+      - net.exe
+      - schtasks.exe
+      - sc.exe
+      - wevtutil.exe
+      - cmd.exe
+      - powershell.exe
+      - conhost.exe
+      - reg.exe
+      - docker.exe
+      - kubectl.exe
+      - psql.exe
+      - ssh.exe
+      - npm.cmd
+      - dsquery.exe
+      - dcdiag.exe
+      - repadmin.exe
+      - ntdsutil.exe
+      - dnscmd.exe
+      - gpupdate.exe
+      - gpresult.exe
+      - certutil.exe
+      - dbeaver.exe
+
+  code.exe:
+    command_templates:
+      - '"C:\Program Files\Microsoft VS Code\Code.exe"'
+    lifetime: long
+    spawn_delay: [1.0, 5.0]
+    children:
+      - node.exe
+      - git.exe
+      - dotnet.exe
+      - python.exe
+      - npm.exe
+
+  idea64.exe:
+    command_templates:
+      - '"C:\Program Files\JetBrains\IntelliJ IDEA\bin\idea64.exe"'
+    lifetime: long
+    spawn_delay: [1.0, 5.0]
+    children:
+      - java.exe
+      - javac.exe
+      - git.exe
+      - gradle.exe
+
+  services.exe:
+    command_templates:
+      - "C:\\Windows\\System32\\services.exe"
+    lifetime: long
+    spawn_delay: [0.01, 0.5]
+    children:
+      - svchost.exe
+      - MsMpEng.exe
+      - SearchIndexer.exe
+      - spoolsv.exe
+      - lsaiso.exe
+      - msdtc.exe
+      - GoogleUpdate.exe
+      - GoogleUpdater.exe
+      - AdobeARM.exe
+      - AdobeARMservice.exe
+      - DropboxUpdate.exe
+      - ZoomUpdate.exe
+      - vpnagent.exe
+      - PanGPS.exe
+      - ZSAService.exe
+      - ZSATunnel.exe
+
+  svchost.exe:
+    command_templates:
+      - "C:\\Windows\\System32\\svchost.exe -k netsvcs -p"
+      - "C:\\Windows\\System32\\svchost.exe -k DcomLaunch -p"
+      - "C:\\Windows\\System32\\svchost.exe -k LocalServiceNetworkRestricted -p"
+      - "C:\\Windows\\System32\\svchost.exe -k LocalServiceNoNetwork -p"
+    lifetime: long
+    spawn_delay: [0.01, 0.5]
+    children:
+      - taskhostw.exe
+      - dllhost.exe
+      - WmiPrvSE.exe
+      - conhost.exe
+      - RuntimeBroker.exe
+      - sihost.exe
+      - backgroundTaskHost.exe
+
+linux:
+  sshd:
+    command_templates:
+      - "/usr/sbin/sshd -D"
+    lifetime: long
+    children:
+      - bash
+      - sh
+      - zsh
+      - sftp-server
+
+  apache2:
+    command_templates:
+      - "/usr/sbin/apache2 -DFOREGROUND"
+    lifetime: long
+    children:
+      - bash
+      - sh
+      - python3
+      - curl
+      - wget
+
+  httpd:
+    command_templates:
+      - "/usr/sbin/httpd -DFOREGROUND"
+    lifetime: long
+    children:
+      - bash
+      - sh
+      - python3
+      - curl
+      - wget
+
+  bash:
+    command_templates:
+      - "-bash"
+      - "/bin/bash"
+    lifetime: long
+    children:
+      - vim
+      - nano
+      - emacs
+      - code
+      - git
+      - make
+      - gcc
+      - npm
+      - cargo
+      - python3
+      - pip
+      - pip3
+      - docker
+      - kubectl
+      - curl
+      - wget
+      - ssh
+      - scp
+      - rsync
+      - mysql
+      - psql
+      - mysqldump
+      - gzip
+      - tar
+      - unzip
+      - ls
+      - cat
+      - grep
+      - find
+      - ps
+      - top
+      - htop
+      - df
+      - free
+      - systemctl
+      - journalctl
+      - tail
+      - head
+      - less
+      - nmap
+      - ip
+      - ss
+      - netstat
+      - id
+      - whoami
+      - uname
+      - hostname
+      - w
+      - uptime
+      - chmod
+      - chown
+      - ln
+      - mv
+      - cp
+      - rm
+      - mkdir
+      - sed
+      - awk
+      - sort
+      - wc
+      - bash
+      - sh
+      - firefox
+      - google-chrome
+      - thunderbird
+      - ldapsearch
+      - redis-cli
+
+  sh:
+    command_templates:
+      - "/bin/sh"
+    lifetime: short
+    max_children: 5
+    spawn_delay: [0.01, 0.1]
+    children:
+      - make
+      - gcc
+      - bash
+      - sh
+
+  cron:
+    command_templates:
+      - "/usr/sbin/cron -f"
+    lifetime: long
+    spawn_delay: [0.01, 0.1]
+    children:
+      - sh
+      - bash
+
+  systemd:
+    command_templates:
+      - "/usr/lib/systemd/systemd --system"
+    lifetime: long
+    spawn_delay: [0.01, 0.5]
+    children:
+      - sshd
+      - cron
+      - rsyslogd
+      - NetworkManager
+      - chronyd
+      - systemd-resolved
+      - systemd-timesyncd
+      - systemd-logind
+      - dockerd
+      - mysqld
+      - nginx
+      - apache2
+      - containerd
+
+  dockerd:
+    command_templates:
+      - "/usr/bin/dockerd"
+    lifetime: long
+    children:
+      - containerd
+
+  containerd:
+    command_templates:
+      - "/usr/bin/containerd"
+    lifetime: long
+    children:
+      - runc

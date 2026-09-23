@@ -1,0 +1,156 @@
+# auth_noise.yaml — Baseline authentication noise profiles.
+#
+# User customizations go in:
+#   .eforge/config/activity/auth_noise.yaml
+#
+# Overlay behavior: nested dictionaries merge with package defaults.
+
+scheduled_stale_credentials:
+  # Candidate disabled service accounts for stale scheduled-task failures.
+  account_base_names:
+    - svc_backup
+    - svc_monitor
+    - svc_report
+    - svc_deploy
+    - svc_scan
+    - svc_patch
+    - svc_build
+    - svc_sync
+    - svc_jobs
+    - svc_batch
+
+  host_count_min: 1
+  host_count_max: 2
+
+  # Real stale scheduled tasks tend to cluster around automation intervals,
+  # but retries, queueing, and maintenance windows keep them from landing on
+  # exact modulo-hour boundaries.
+  interval_ranges:
+    - min_minutes: 55
+      max_minutes: 95
+      weight: 30
+    - min_minutes: 105
+      max_minutes: 155
+      weight: 45
+    - min_minutes: 170
+      max_minutes: 260
+      weight: 25
+
+  first_occurrence_seconds_min: 0
+  first_occurrence_seconds_max: 2700
+  jitter_seconds_min: -420
+  jitter_seconds_max: 780
+  skip_probability: 0.16
+  backoff_probability: 0.10
+  backoff_seconds_min: 900
+  backoff_seconds_max: 3600
+
+service_account_delegation:
+  # Recurring automation belongs to a small stable owner set. It is not an
+  # independent account x host x hour Bernoulli trial.
+  owner_host_count_min: 1
+  owner_host_count_max: 2
+  interval_minutes_min: 150
+  interval_minutes_max: 330
+  first_occurrence_seconds_min: 300
+  first_occurrence_seconds_max: 7200
+  jitter_seconds_min: -240
+  jitter_seconds_max: 540
+  caller_profiles:
+    - name: backup_agents
+      account_terms: ["backup", "sync", "jobs", "batch"]
+      weight: 36
+      processes:
+        - image: "C:\\Program Files\\Veeam\\Backup and Replication\\Backup\\Veeam.Backup.Service.exe"
+          system_types: [server, domain_controller]
+          compatibility_group: backup_platform
+          compatibility_option: veeam
+          command_line: "\"C:\\Program Files\\Veeam\\Backup and Replication\\Backup\\Veeam.Backup.Service.exe\""
+          parent_key: "services"
+          weight: 5
+        - image: "C:\\Program Files\\Commvault\\ContentStore\\Base\\GxCVD.exe"
+          compatibility_group: backup_platform
+          compatibility_option: commvault
+          command_line: "\"C:\\Program Files\\Commvault\\ContentStore\\Base\\GxCVD.exe\" -service"
+          parent_key: "services"
+          weight: 3
+        - image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          compatibility_group: backup_platform
+          compatibility_option: native
+          command_line: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\Scripts\\backup-check.ps1"
+          parent_key: "taskeng"
+          weight: 1
+
+    - name: monitoring_agents
+      account_terms: ["monitor", "scan"]
+      weight: 30
+      processes:
+        - image: "C:\\Program Files\\Microsoft Monitoring Agent\\Agent\\MonitoringHost.exe"
+          command_line: "\"C:\\Program Files\\Microsoft Monitoring Agent\\Agent\\MonitoringHost.exe\" -Embedding"
+          parent_key: "services"
+          weight: 5
+        - image: "C:\\Program Files\\osquery\\osqueryd\\osqueryd.exe"
+          command_line: "\"C:\\Program Files\\osquery\\osqueryd\\osqueryd.exe\" --flagfile C:\\ProgramData\\osquery\\osquery.flags"
+          parent_key: "services"
+          weight: 3
+        - image: "C:\\Program Files\\Wazuh Agent\\wazuh-agent.exe"
+          command_line: "\"C:\\Program Files\\Wazuh Agent\\wazuh-agent.exe\""
+          parent_key: "services"
+          weight: 2
+
+    - name: deployment_agents
+      account_terms: ["deploy", "patch", "build"]
+      weight: 24
+      processes:
+        - image: "C:\\Windows\\CCM\\CcmExec.exe"
+          command_line: "C:\\Windows\\CCM\\CcmExec.exe"
+          parent_key: "services"
+          weight: 5
+        - image: "C:\\Program Files\\GitLab-Runner\\gitlab-runner.exe"
+          command_line: "\"C:\\Program Files\\GitLab-Runner\\gitlab-runner.exe\" run --working-directory C:\\GitLab-Runner"
+          parent_key: "services"
+          weight: 2
+        - image: "C:\\Program Files\\Microsoft\\EdgeUpdate\\MicrosoftEdgeUpdate.exe"
+          command_line: "\"C:\\Program Files\\Microsoft\\EdgeUpdate\\MicrosoftEdgeUpdate.exe\" /svc"
+          parent_key: "services"
+          weight: 1
+
+    - name: reporting_tasks
+      account_terms: ["report"]
+      weight: 18
+      processes:
+        - image: "C:\\Windows\\System32\\taskhostw.exe"
+          command_line: "taskhostw.exe /Run"
+          parent_key: "svchost_netsvcs"
+          weight: 4
+        - image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          command_line: "powershell.exe -NoProfile -File C:\\Scripts\\report-rollup.ps1"
+          parent_key: "taskeng"
+          weight: 2
+
+    - name: default_service_tasks
+      account_terms: ["svc"]
+      weight: 12
+      processes:
+        - image: "C:\\Windows\\System32\\taskhostw.exe"
+          command_line: "taskhostw.exe /Run"
+          parent_key: "svchost_netsvcs"
+          weight: 3
+        - image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          command_line: "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\Scripts\\service-health.ps1"
+          parent_key: "taskeng"
+          weight: 2
+        - image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          command_line: "powershell.exe -NoProfile -File C:\\Scripts\\endpoint-inventory.ps1 -Mode Delta"
+          parent_key: "taskeng"
+          system_types: [workstation]
+          weight: 2
+        - image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          command_line: "powershell.exe -NoProfile -File C:\\Scripts\\certificate-health.ps1"
+          parent_key: "taskeng"
+          system_types: [server, domain_controller]
+          weight: 2
+        - image: "C:\\Program Files\\Meridian\\OpsAgent\\ops-agent.exe"
+          command_line: '"C:\\Program Files\\Meridian\\OpsAgent\\ops-agent.exe" check --once'
+          parent_key: "services"
+          weight: 2

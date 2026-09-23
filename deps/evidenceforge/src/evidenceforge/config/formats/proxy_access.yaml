@@ -1,0 +1,146 @@
+# proxy_access format definition — HTTP/HTTPS forward proxy access log
+#
+# Category: host
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: proxy_access
+version: "1.0"
+description: "HTTP/HTTPS forward proxy access log (Apache/Nginx combined format)"
+category: host
+
+fields:
+  - name: timestamp
+    type: timestamp
+    required: true
+    description: "Request timestamp"
+
+  - name: client_ip
+    type: ip_address
+    required: true
+    description: "Original client IP address (internal user)"
+
+  - name: username
+    type: string
+    required: false
+    description: "Authenticated proxy username"
+
+  - name: method
+    type: string
+    required: true
+    description: "HTTP method (GET, POST, CONNECT, HEAD, PUT, DELETE)"
+
+  - name: url
+    type: string
+    required: true
+    description: "Full destination URL or host:port for CONNECT"
+
+  - name: protocol
+    type: string
+    required: false
+    description: "HTTP protocol version"
+
+  - name: status_code
+    type: integer
+    required: true
+    description: "HTTP response status code"
+    constraints:
+      min_value: 100
+      max_value: 599
+
+  - name: sc_bytes
+    type: integer
+    required: false
+    description: Server to client transaction bytes; CONNECT rows contain only setup response bytes
+    constraints:
+      min_value: 0
+  - name: cs_bytes
+    type: integer
+    required: false
+    description: Client to server transaction bytes; CONNECT rows contain only setup request bytes
+    constraints:
+      min_value: 0
+  - name: byte_scope
+    type: string
+    required: false
+    description: "Accounting scope; CONNECT setup rows use connect-control-message"
+
+  - name: tunnel_cs_bytes
+    type: integer
+    required: false
+    description: Canonical client-to-proxy tunnel bytes when transport accounting is available
+    constraints:
+      min_value: 0
+  - name: tunnel_sc_bytes
+    type: integer
+    required: false
+    description: Canonical proxy-to-client tunnel bytes when transport accounting is available
+    constraints:
+      min_value: 0
+  - name: tunnel_duration_ms
+    type: integer
+    required: false
+    description: Canonical client-to-proxy tunnel duration in milliseconds when available
+    constraints:
+      min_value: 0
+  - name: tunnel_id
+    type: string
+    required: false
+    description: "Proxy-native stable identity shared by a CONNECT summary and inspected children"
+
+  - name: client_src_port
+    type: integer
+    required: false
+    description: Client source port for exact proxy-tunnel transport correlation
+    constraints:
+      min_value: 0
+      max_value: 65535
+  - name: time_taken
+    type: integer
+    required: false
+    description: Request duration in milliseconds
+    constraints:
+      min_value: 0
+  - name: user_agent
+    type: string
+    required: false
+    description: "Client User-Agent string"
+
+  - name: host
+    type: string
+    required: true
+    description: "Destination hostname"
+
+  - name: content_type
+    type: string
+    required: false
+    description: "Response Content-Type"
+
+  - name: cache_result
+    type: string
+    required: false
+    description: "Cache result (HIT, MISS, REVALIDATED, NONE, DENIED)"
+
+  - name: proxy_action
+    type: string
+    required: false
+    description: "Proxy policy/action hint (forward, tunnel, tunnel-setup, ssl-inspect, deny)"
+
+  - name: ssl_bump_action
+    type: string
+    required: false
+    description: "TLS inspection action hint for HTTPS proxy rows (peek, bump, terminate)"
+
+  - name: referrer
+    type: string
+    required: false
+    description: "HTTP Referer header"
+
+output:
+  format: text
+  file_extension: ".log"
+  encoding: utf-8
+  template: |
+    {{ client_ip }} - {{ username if username else '-' }} [{{ timestamp.strftime('%d/%b/%Y:%H:%M:%S %z') }}] "{{ method }} {{ url }} {{ protocol if protocol else '-' }}" {{ status_code }} {{ sc_bytes if sc_bytes else '-' }} "{{ referrer if referrer else '-' }}" "{{ user_agent if user_agent else '-' }}"{% if proxy_metadata %} "{{ proxy_metadata }}"{% endif %}

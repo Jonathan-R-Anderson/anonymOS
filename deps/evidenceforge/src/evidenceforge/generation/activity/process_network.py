@@ -1,0 +1,98 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""Process-to-network service mapping loader.
+
+Loads process_network_map.yaml and provides forward (exe→service) and
+inverse (service→exe) indexes for process-network correlation and
+PID attribution.
+
+Follows the same cached-loader pattern as dns_registry.py, spawn_rules.py, etc.
+"""
+
+from typing import Any
+
+from evidenceforge.config import get_activity_directory
+from evidenceforge.config.overlay import extend_list, load_with_overlay
+
+_MAP_PATH = get_activity_directory() / "process_network_map.yaml"
+_CACHED_DATA: list[dict[str, Any]] | None = None
+_CACHED_EXE_TO_SERVICE: dict[str, dict[str, Any]] | None = None
+_CACHED_SERVICE_TO_EXES: dict[str, list[str]] | None = None
+
+
+def _merge_process_network_map(default: dict, overlay: dict) -> dict:
+    """Merge process network map overlay with package defaults."""
+    result = dict(default)
+    if "mappings" in overlay:
+        result["mappings"] = extend_list(default.get("mappings", []), overlay["mappings"])
+    return result
+
+
+def load_process_network_map() -> list[dict[str, Any]]:
+    """Load process-network mappings from YAML, merged with overlay if present. Cached after first call."""
+    global _CACHED_DATA
+    if _CACHED_DATA is not None:
+        return _CACHED_DATA
+    data = load_with_overlay(
+        _MAP_PATH,
+        "activity/process_network_map.yaml",
+        _merge_process_network_map,
+    )
+    _CACHED_DATA = data.get("mappings", [])
+    return _CACHED_DATA
+
+
+def _build_canonical_exe_index() -> dict[str, dict[str, Any]]:
+    """Build canonical per-exe mapping. Last wins for duplicate exes.
+
+    This is the single source of truth that both forward and inverse
+    indexes derive from. Ensures an overridden exe appears under exactly
+    one service, not both old and new.
+    """
+    raw = load_process_network_map()
+    result: dict[str, dict[str, Any]] = {}
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        info = {
+            "dst_port": entry.get("port", 0),
+            "service": entry.get("service", ""),
+            "external": entry.get("external", True),
+            "dns_tags": entry.get("dns_tags", []),
+        }
+        for exe in entry.get("exe", []):
+            result[exe] = info  # last wins
+    return result
+
+
+def get_exe_to_service() -> dict[str, dict[str, Any]]:
+    """Build exe→service index. Returns dict mapping exe name to {dst_port, service, external}.
+
+    Cached after first call. Derived from canonical per-exe index.
+    """
+    global _CACHED_EXE_TO_SERVICE
+    if _CACHED_EXE_TO_SERVICE is not None:
+        return _CACHED_EXE_TO_SERVICE
+    _CACHED_EXE_TO_SERVICE = _build_canonical_exe_index()
+    return _CACHED_EXE_TO_SERVICE
+
+
+def get_service_to_exes() -> dict[str, list[str]]:
+    """Build service→exe inverse index. Returns dict mapping service name to exe list.
+
+    Cached after first call. Derived from the same canonical per-exe index
+    as get_exe_to_service(), so forward and inverse always agree.
+    """
+    global _CACHED_SERVICE_TO_EXES
+    if _CACHED_SERVICE_TO_EXES is not None:
+        return _CACHED_SERVICE_TO_EXES
+    exe_index = _build_canonical_exe_index()
+    result: dict[str, list[str]] = {}
+    for exe, info in exe_index.items():
+        service = info["service"]
+        if service not in result:
+            result[service] = []
+        result[service].append(exe.lower())
+    _CACHED_SERVICE_TO_EXES = result
+    return result

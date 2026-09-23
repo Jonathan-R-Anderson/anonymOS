@@ -1,0 +1,161 @@
+# windows_auth_realism.yaml — Windows Security authentication realism knobs.
+#
+# User customizations go in:
+#   .eforge/config/activity/windows_auth_realism.yaml
+#
+# Overlay behavior: nested dictionaries merge with package defaults.
+
+workstation_lock:
+  # Same-session 4801 unlocks closer than this to the preceding 4800 lock are
+  # shifted forward. Real users rarely lock/unlock in only a few seconds.
+  min_unlock_gap_seconds: 127
+
+group_policy_refresh:
+  interval_minutes_min: 60
+  interval_minutes_max: 120
+  process_emission_probability: 0.18
+  command_profiles:
+    - {command_line: "gpupdate.exe", weight: 72}
+    - {command_line: "gpupdate.exe /target:computer", weight: 18}
+    - {command_line: "gpupdate.exe /force", weight: 8}
+    - {command_line: "gpupdate.exe /target:computer /force", weight: 2}
+
+# Canonical transport texture for Windows remote-authentication occurrences.
+# Duration profiles are lognormal (median + sigma) and clamped to explicit
+# lifecycle bounds. Sources not listed below use the outcome defaults.
+remote_auth_transport:
+  profiles:
+    default_success:
+      distribution: lognormal
+      median_seconds: 8.0
+      sigma: 1.05
+      minimum_seconds: 1.0
+      maximum_seconds: 90.0
+    machine_account_success:
+      distribution: lognormal
+      median_seconds: 4.0
+      sigma: 1.25
+      minimum_seconds: 0.5
+      maximum_seconds: 120.0
+    anonymous_success:
+      distribution: lognormal
+      median_seconds: 1.2
+      sigma: 0.85
+      minimum_seconds: 0.15
+      maximum_seconds: 12.0
+    failure:
+      distribution: lognormal
+      median_seconds: 0.15
+      sigma: 0.75
+      minimum_seconds: 0.02
+      maximum_seconds: 1.5
+  defaults:
+    success: default_success
+    failure: failure
+  sources:
+    activity_generator:
+      success: default_success
+      failure: failure
+    machine_account_logon:
+      success: machine_account_success
+      failure: failure
+    anonymous_logon:
+      success: anonymous_success
+      failure: failure
+
+# Anonymous SMB enumeration is resource-server noise, not a service-logon
+# multiplier. Keep it sparse and only schedule it on SMB-capable Windows hosts.
+anonymous_smb_baseline:
+  hourly_probability: 0.35
+  events_per_active_hour_min: 1
+  events_per_active_hour_max: 2
+
+failed_logon:
+  local_interactive:
+    logon_process_name: User32
+    authentication_package_name: Negotiate
+    process_name: "C:\\Windows\\System32\\winlogon.exe"
+  batch:
+    logon_process_name: Advapi
+    authentication_package_name: Negotiate
+    process_name: "C:\\Windows\\System32\\svchost.exe"
+  network:
+    validation_path_weights:
+      ntlm_only:
+        emit_4776: true
+        emit_4771: false
+        weight: 55
+      kerberos_only:
+        emit_4776: false
+        emit_4771: true
+        weight: 25
+      kerberos_then_ntlm:
+        emit_4776: true
+        emit_4771: true
+        weight: 20
+    logon_process_weights:
+      ntlm:
+        logon_process_name: NtLmSsp
+        authentication_package_name: NTLM
+        lm_package_name: NTLM V2
+        weight: 70
+      negotiate:
+        logon_process_name: NtLmSsp
+        authentication_package_name: Negotiate
+        lm_package_name: "-"
+        weight: 30
+    emit_network_connection_probability: 1.0
+    network_ports:
+      smb:
+        port: 445
+        weight: 85
+      rdp:
+        port: 3389
+        weight: 15
+
+special_privileges:
+  emission_probabilities:
+    service_account: 0.35
+    system_account: 0.65
+    machine_account: 0.45
+    domain_admin: 0.55
+    workstation_admin: 0.50
+    uac_elevated_user: 0.15
+    regular_user: 0.0
+  profiles:
+    service_account:
+      privileges:
+        - SeAssignPrimaryTokenPrivilege
+        - SeAuditPrivilege
+        - SeImpersonatePrivilege
+        - SeChangeNotifyPrivilege
+      weight: 1
+    domain_admin:
+      privileges:
+        - SeSecurityPrivilege
+        - SeBackupPrivilege
+        - SeRestorePrivilege
+        - SeTakeOwnershipPrivilege
+        - SeDebugPrivilege
+        - SeSystemEnvironmentPrivilege
+        - SeLoadDriverPrivilege
+        - SeImpersonatePrivilege
+        - SeDelegateSessionUserImpersonatePrivilege
+      weight: 1
+    workstation_admin:
+      privileges:
+        - SeBackupPrivilege
+        - SeRestorePrivilege
+        - SeDebugPrivilege
+        - SeChangeNotifyPrivilege
+        - SeIncreaseWorkingSetPrivilege
+        - SeTimeZonePrivilege
+      weight: 1
+    uac_elevated_user:
+      privileges:
+        - SeChangeNotifyPrivilege
+        - SeIncreaseWorkingSetPrivilege
+        - SeShutdownPrivilege
+        - SeUndockPrivilege
+        - SeTimeZonePrivilege
+      weight: 1

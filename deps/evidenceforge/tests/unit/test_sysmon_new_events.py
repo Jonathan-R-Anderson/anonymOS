@@ -1,0 +1,2006 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""Unit tests for new Sysmon events: 3, 7, 11, 12/13, 22."""
+
+import re
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
+
+import pytest
+
+from evidenceforge.events.base import OccurrenceBuilder
+from evidenceforge.events.content_identity import (
+    BinaryReleaseIdentity,
+    BinaryReleaseKey,
+    PeVersionInfo,
+)
+from evidenceforge.events.contexts import (
+    AuthContext,
+    DnsContext,
+    FileContext,
+    HostContext,
+    ImageLoadContext,
+    ProcessAccessContext,
+    ProcessContext,
+    RegistryContext,
+)
+from evidenceforge.events.identity import EventIdentityPlan, ProcessIdentity
+from evidenceforge.events.network import NetworkEndpointObservationPlan
+from evidenceforge.formats import load_format
+from evidenceforge.generation.activity.dll_load_profiles import get_module_pe_metadata
+from evidenceforge.generation.emitters import SysmonEventEmitter
+from tests.network_factories import network_plan
+
+
+def _win_host():
+    return HostContext(
+        hostname="WKS-01",
+        ip="10.0.1.10",
+        os="Windows 10",
+        os_category="windows",
+        system_type="workstation",
+        domain="corp.local",
+        fqdn="WKS-01.corp.local",
+        netbios_domain="CORP",
+    )
+
+
+def _linux_host():
+    return HostContext(
+        hostname="SRV-01",
+        ip="10.0.2.10",
+        os="Ubuntu 22.04",
+        os_category="linux",
+        system_type="server",
+        domain="corp.local",
+        fqdn="SRV-01.corp.local",
+    )
+
+
+def _responder_wfp_event(*, application_only: bool = False):
+    timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+    host = HostContext(
+        hostname="DC-01",
+        ip="10.0.2.20",
+        os="Windows Server 2022",
+        os_category="windows",
+        system_type="domain_controller",
+        domain="corp.local",
+        fqdn="DC-01.corp.local",
+        netbios_domain="CORP",
+    )
+    identity = ProcessIdentity(
+        hostname=host.hostname,
+        object_id="process:dc-01:684",
+        pid=684,
+        parent_pid=500,
+        image=r"C:\Windows\System32\lsass.exe",
+        command_line="lsass.exe",
+        principal="SYSTEM",
+        logon_id="0x3e7",
+        started_at=timestamp - timedelta(minutes=30),
+        lifecycle_group_id="process-lsass",
+    )
+    network = network_plan(
+        src_ip="10.0.1.10",
+        src_port=49152,
+        dst_ip=host.ip,
+        dst_port=88,
+        protocol="tcp",
+        conn_state="SF",
+        initiating_pid=4567,
+        responding_pid=identity.pid,
+        application_layer_only=application_only,
+    )
+    return OccurrenceBuilder(
+        timestamp=timestamp,
+        event_type="wfp_connection",
+        src_host=host,
+        process=ProcessContext(
+            pid=identity.pid,
+            parent_pid=identity.parent_pid,
+            image=identity.image,
+            command_line=identity.command_line,
+            username=identity.principal,
+            logon_id=identity.logon_id,
+            start_time=identity.started_at,
+        ),
+        identity_plan=EventIdentityPlan(actor=identity),
+        network=network,
+        network_endpoint=NetworkEndpointObservationPlan(
+            role="responder",
+            local_hostname=host.hostname,
+            local_ip=host.ip,
+            process=identity,
+            initiated=False,
+            observed_at=timestamp,
+            transaction_id=network.stable_id,
+        ),
+    )
+
+
+@pytest.fixture
+def format_def():
+    return load_format("windows_event_sysmon")
+
+
+@pytest.fixture
+def emitter(format_def, tmp_path):
+    return SysmonEventEmitter(format_def, tmp_path / "sysmon.xml", buffer_size=100)
+
+
+class TestCanHandle:
+    """Test can_handle for new event types."""
+
+    def test_connection_on_windows(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            network=network_plan(
+                src_ip="10.0.1.10", dst_ip="10.0.2.20", src_port=49152, dst_port=443, protocol="tcp"
+            ),
+        )
+        assert emitter.can_handle(event) is True
+
+    def test_connection_on_linux_rejected(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_linux_host(),
+            network=network_plan(
+                src_ip="10.0.2.10", dst_ip="10.0.1.10", src_port=49152, dst_port=22, protocol="tcp"
+            ),
+        )
+        assert emitter.can_handle(event) is False
+
+    def test_responder_wfp_on_windows(self, emitter):
+        assert emitter.can_handle(_responder_wfp_event()) is True
+
+    def test_responder_wfp_rejects_denied_or_application_only_traffic(self, emitter):
+        denied = _responder_wfp_event()
+        denied.network = replace(denied.network, outcome="denied")
+        assert emitter.can_handle(denied) is False
+        assert emitter.can_handle(_responder_wfp_event(application_only=True)) is False
+
+    def test_initiator_wfp_does_not_duplicate_connection_event3(self, emitter):
+        event = _responder_wfp_event()
+        event.network_endpoint = replace(
+            event.network_endpoint,
+            role="initiator",
+            initiated=True,
+        )
+        assert emitter.can_handle(event) is False
+
+    def test_file_create_on_windows(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="file_create",
+            src_host=_win_host(),
+            file=FileContext(path=r"C:\Windows\Temp\evil.exe", action="create"),
+        )
+        assert emitter.can_handle(event) is True
+
+    def test_image_load_on_windows(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Program Files\app.dll",
+                signed=False,
+                signature="-",
+                signature_status="Unavailable",
+            ),
+        )
+        assert emitter.can_handle(event) is True
+
+    def test_registry_modify_on_windows(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            registry=RegistryContext(
+                key=r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run\evil",
+                value="evil.exe",
+                action="modify",
+            ),
+        )
+        assert emitter.can_handle(event) is True
+
+
+class TestEvent3Filter:
+    """Test Event 3 (NetworkConnect) filtering."""
+
+    def test_lolbin_passes_filter(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Windows\System32\powershell.exe",
+                command_line="powershell",
+                username="user",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.10", dst_ip="10.0.2.20", src_port=49152, dst_port=443, protocol="tcp"
+            ),
+        )
+        assert emitter._passes_event3_filter(event) is True
+
+    def test_browser_user_app_sampling_can_be_disabled(self, emitter):
+        emitter._filters = {
+            "network_connect": {
+                "enabled": True,
+                "mode": "include",
+                "include_images": [],
+                "include_baseline_images": [],
+                "include_user_app_images": ["chrome.exe"],
+                "user_app_sample_rate": 0.0,
+                "include_dest_ports": [],
+                "exclude_dest_ips": [],
+            }
+        }
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=5678,
+                parent_pid=1,
+                image=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                command_line="chrome",
+                username="user",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="93.184.216.34",
+                src_port=49200,
+                dst_port=443,
+                protocol="tcp",
+            ),
+        )
+        assert emitter._passes_event3_filter(event) is False
+
+    def test_browser_user_app_sampling_can_pass(self, emitter):
+        emitter._filters = {
+            "network_connect": {
+                "enabled": True,
+                "mode": "include",
+                "include_images": [],
+                "include_baseline_images": [],
+                "include_user_app_images": ["chrome.exe"],
+                "user_app_sample_rate": 1.0,
+                "include_dest_ports": [],
+                "exclude_dest_ips": [],
+            }
+        }
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=5678,
+                parent_pid=1,
+                image=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                command_line="chrome",
+                username="user",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="93.184.216.34",
+                src_port=49200,
+                dst_port=443,
+                protocol="tcp",
+            ),
+        )
+        assert emitter._passes_event3_filter(event) is True
+
+    def test_suspicious_port_passes_filter(self, emitter):
+        """Any process connecting to a suspicious port should pass."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=5678,
+                parent_pid=1,
+                image=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                command_line="chrome",
+                username="user",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="192.168.1.100",
+                src_port=49200,
+                dst_port=4444,
+                protocol="tcp",
+            ),
+        )
+        assert emitter._passes_event3_filter(event) is True
+
+    def test_loopback_excluded(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Windows\System32\powershell.exe",
+                command_line="powershell",
+                username="user",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.10", dst_ip="127.0.0.1", src_port=49152, dst_port=80, protocol="tcp"
+            ),
+        )
+        assert emitter._passes_event3_filter(event) is False
+
+
+class TestEvent7Filter:
+    """Test Event 7 (ImageLoaded) filtering."""
+
+    def test_system32_dll_filtered(self, emitter):
+        """Microsoft-signed DLLs from System32 should be excluded."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1000,
+                parent_pid=1,
+                image=r"C:\Windows\explorer.exe",
+                command_line="",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Windows\System32\ntdll.dll",
+                signed=True,
+                signature="Microsoft Windows",
+                signature_status="Valid",
+            ),
+        )
+        assert emitter._passes_event7_filter(event) is False
+
+    def test_unsigned_thirdparty_dll_passes(self, emitter):
+        """Unsigned DLLs from non-system paths should pass."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1000,
+                parent_pid=1,
+                image=r"C:\Windows\explorer.exe",
+                command_line="",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Program Files\SomeApp\plugin.dll",
+                signed=False,
+                signature="-",
+                signature_status="Unavailable",
+            ),
+        )
+        assert emitter._passes_event7_filter(event) is True
+
+    def test_disabled_event7(self, emitter):
+        """Event 7 should be skipped when disabled in config."""
+        with patch.object(
+            emitter,
+            "_get_filters",
+            return_value={
+                "image_loaded": {"enabled": False},
+            },
+        ):
+            event = OccurrenceBuilder(
+                timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+                event_type="image_load",
+                src_host=_win_host(),
+                image_load=ImageLoadContext(
+                    image_loaded=r"C:\evil.dll",
+                    signed=False,
+                    signature="-",
+                    signature_status="Unavailable",
+                ),
+            )
+            assert emitter._passes_event7_filter(event) is False
+
+
+class TestEvent11Filter:
+    """Test Event 11 (FileCreate) filtering."""
+
+    def test_exe_in_temp_passes(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="file_create",
+            src_host=_win_host(),
+            file=FileContext(path=r"C:\Windows\Temp\payload.exe", action="create"),
+        )
+        assert emitter._passes_event11_filter(event) is True
+
+    def test_txt_file_filtered(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="file_create",
+            src_host=_win_host(),
+            file=FileContext(path=r"C:\Users\john\Documents\notes.txt", action="create"),
+        )
+        assert emitter._passes_event11_filter(event) is False
+
+    def test_startup_folder_passes(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="file_create",
+            src_host=_win_host(),
+            file=FileContext(
+                path=r"C:\Users\john\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\persist.lnk",
+                action="create",
+            ),
+        )
+        assert emitter._passes_event11_filter(event) is True
+
+
+class TestEventRegistryFilter:
+    """Test Events 12/13 (Registry) filtering."""
+
+    def test_run_key_modify_passes(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            registry=RegistryContext(
+                key=r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run\Backdoor",
+                value="evil.exe",
+                action="modify",
+            ),
+        )
+        assert emitter._passes_event12_13_filter(event) is True
+
+    def test_create_key_filtered_by_default(self, emitter):
+        """CreateKey actions are filtered by default (log_create_key: false)."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            registry=RegistryContext(
+                key=r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run",
+                action="create",
+            ),
+        )
+        assert emitter._passes_event12_13_filter(event) is False
+
+    def test_non_matching_key_filtered(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            registry=RegistryContext(
+                key=r"HKLM\Software\SomeApp\Settings\Color",
+                value="blue",
+                action="modify",
+            ),
+        )
+        assert emitter._passes_event12_13_filter(event) is False
+
+
+class TestEvent22Filter:
+    """Test Event 22 (DNSQuery) filtering."""
+
+    def test_dns_query_passes_by_default(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            dns=DnsContext(query="evil.com", rcode="NOERROR", answers=["1.2.3.4"]),
+        )
+        assert emitter._passes_event22_filter(event) is True
+
+    def test_disabled_event22(self, emitter):
+        with patch.object(
+            emitter,
+            "_get_filters",
+            return_value={
+                "dns_query": {"enabled": False},
+            },
+        ):
+            event = OccurrenceBuilder(
+                timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+                event_type="connection",
+                src_host=_win_host(),
+                dns=DnsContext(query="evil.com", rcode="NOERROR"),
+            )
+            assert emitter._passes_event22_filter(event) is False
+
+
+class TestRenderEvent3:
+    """Test Event 3 (NetworkConnect) rendering."""
+
+    def test_renders_valid_event3(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd",
+                username="admin",
+            ),
+            auth=AuthContext(username="admin"),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="10.0.2.20",
+                src_port=49152,
+                dst_port=4444,
+                protocol="tcp",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert "<EventID>3</EventID>" in content
+        assert "cmd.exe" in content
+        assert "10.0.2.20" in content
+        assert "4444" in content
+        assert "tcp" in content
+
+    def test_renders_responder_event3_with_local_process_and_inbound_direction(self, emitter):
+        event = _responder_wfp_event()
+
+        emitter.emit(event)
+
+        assert len(emitter._event_dicts) == 1
+        rendered = emitter._event_dicts[0]
+        assert rendered["EventID"] == 3
+        assert rendered["Initiated"] == "false"
+        assert rendered["ProcessId"] == 684
+        assert rendered["Image"].endswith("lsass.exe")
+        assert rendered["SourceIp"] == "10.0.1.10"
+        assert rendered["SourcePort"] == 49152
+        assert rendered["DestinationIp"] == "10.0.2.20"
+        assert rendered["DestinationPort"] == 88
+        assert rendered["DestinationHostname"] == "DC-01.corp.local"
+
+    def test_event3_uses_source_native_timestamp_offset(self, emitter):
+        event_time = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+        event = OccurrenceBuilder(
+            timestamp=event_time,
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd",
+                username="admin",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="10.0.2.20",
+                src_port=49152,
+                dst_port=4444,
+                protocol="tcp",
+                initiating_pid=4567,
+            ),
+        )
+
+        emitter.emit(event)
+
+        native_time = emitter._event_dicts[0]["_SysmonNativeTime"]
+        assert event_time + timedelta(milliseconds=35) <= native_time
+        assert native_time <= event_time + timedelta(milliseconds=750)
+        assert native_time.microsecond % 1_000 != 0
+        assert emitter._event_dicts[0]["TimeCreated"] > native_time
+        assert (
+            emitter._event_dicts[0]["UtcTime"] == native_time.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        )
+
+    def test_event3_normalizes_mail_hostname_to_port_family(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\svchost.exe",
+                command_line="svchost.exe",
+                username="NETWORK SERVICE",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="74.125.200.27",
+                src_port=49152,
+                dst_port=25,
+                protocol="tcp",
+                initiating_pid=4567,
+            ),
+        )
+        with patch(
+            "evidenceforge.generation.activity.network.REVERSE_DNS",
+            {"74.125.200.27": "pop.gmail.com"},
+        ):
+            emitter.emit(event)
+
+        assert emitter._event_dicts[0]["DestinationHostname"] == "smtp.gmail.com"
+        assert emitter._event_dicts[0]["DestinationPortName"] == "smtp"
+
+
+class TestRenderEvent7:
+    """Test Event 7 (ImageLoaded) rendering."""
+
+    def test_renders_valid_event7(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Windows\explorer.exe",
+                command_line="",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Program Files\App\plugin.dll",
+                signed=False,
+                signature="-",
+                signature_status="Unavailable",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert "<EventID>7</EventID>" in content
+        assert "plugin.dll" in content
+        assert "Unavailable" in content
+        assert '<Data Name="Signed">false</Data>' in content
+        assert '<Data Name="User">CORP\\user</Data>' in content
+
+    def test_event7_system_dll_renders_windows_metadata(self, emitter):
+        """System DLL image loads should not render application PE metadata."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                command_line="chrome.exe",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Windows\System32\user32.dll",
+                signed=True,
+                signature="Microsoft Windows",
+                signature_status="Valid",
+            ),
+        )
+        emitter._render_sysmon_image_loaded(event)
+
+        event_data = emitter._event_dicts[0]
+        assert event_data["ImageLoaded"] == r"C:\Windows\System32\user32.dll"
+        assert event_data["Product"] == "Microsoft Windows Operating System"
+        assert event_data["Company"] == "Microsoft Corporation"
+        assert event_data["Description"] == "user32.dll system library"
+        assert event_data["Product"] not in {"Google Chrome", "Microsoft Edge"}
+
+    def test_unsigned_event7_overrides_valid_signature_status(self, emitter):
+        """Unsigned image loads should not render a contradictory Valid signature status."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Windows\explorer.exe",
+                command_line="",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Program Files\App\unsigned.dll",
+                signed=False,
+                signature="-",
+                signature_status="Valid",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert '<Data Name="Signed">false</Data>' in content
+        assert '<Data Name="Signature">-</Data>' in content
+        assert '<Data Name="SignatureStatus">Unavailable</Data>' in content
+        assert '<Data Name="SignatureStatus">Valid</Data>' not in content
+
+    def test_signed_event7_populates_vendor_metadata_when_catalog_missing(self, emitter):
+        """Signed DLL loads should not render all PE metadata fields as '-'."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Windows\explorer.exe",
+                command_line="",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Program Files\Cisco\Secure Client\cscan.dll",
+                signed=True,
+                signature="Cisco Systems, Inc.",
+                signature_status="Valid",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert '<Data Name="Company">Cisco Systems, Inc.</Data>' in content
+        assert '<Data Name="FileVersion">-</Data>' not in content
+
+    def test_program_files_module_metadata_is_not_windows_os_fallback(self, emitter):
+        """Application DLLs should inherit package metadata instead of Windows OS fields."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Program Files\Mozilla Firefox\firefox.exe",
+                command_line="firefox.exe",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Program Files\Mozilla Firefox\mozglue.dll",
+                signed=True,
+                signature="Mozilla Corporation",
+                signature_status="Valid",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert '<Data Name="FileVersion">121.0</Data>' in content
+        assert '<Data Name="Product">Firefox</Data>' in content
+        assert '<Data Name="Company">Mozilla Corporation</Data>' in content
+        assert '<Data Name="Product">Microsoft Windows Operating System</Data>' not in content
+
+    def test_third_party_shell_extension_metadata_is_consistent(self, emitter):
+        """7-Zip shell extension loads should render stable third-party metadata."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Windows\explorer.exe",
+                command_line="explorer.exe",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Program Files\7-Zip\7-zip.dll",
+                signed=False,
+                signature="-",
+                signature_status="Unavailable",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert '<Data Name="FileVersion">23.01.0.0</Data>' in content
+        assert '<Data Name="Product">7-Zip</Data>' in content
+        assert '<Data Name="Company">Igor Pavlov</Data>' in content
+        assert '<Data Name="Signed">false</Data>' in content
+        assert '<Data Name="Product">Microsoft Windows Operating System</Data>' not in content
+
+    def test_image_load_hashes_follow_attached_release_not_install_path(self, emitter):
+        """Event 7 renders exact module content independently of user placement."""
+        release = BinaryReleaseIdentity(
+            key=BinaryReleaseKey(
+                product_id="slack",
+                version="4.38.125",
+                build="4.38.125",
+                architecture="x64",
+                platform="windows",
+                artifact_name="slack_elf.dll",
+            ),
+            pe_version_info=PeVersionInfo(
+                file_version="4.38.125",
+                description="Slack ELF module",
+                product="Slack",
+                company="Slack Technologies, LLC",
+                original_filename="slack_elf.dll",
+            ),
+        )
+        for ordinal, username in enumerate(("alice", "bob")):
+            event = OccurrenceBuilder(
+                timestamp=datetime(2024, 1, 15, 10, 30, ordinal, tzinfo=UTC),
+                event_type="image_load",
+                src_host=_win_host(),
+                process=ProcessContext(
+                    pid=1234 + ordinal,
+                    parent_pid=1,
+                    image=rf"C:\Users\{username}\AppData\Local\slack\slack.exe",
+                    command_line="slack.exe",
+                    username=username,
+                ),
+                image_load=ImageLoadContext(
+                    image_loaded=(rf"C:\Users\{username}\AppData\Local\slack\slack_elf.dll"),
+                    signed=True,
+                    signature="Slack Technologies, LLC",
+                    binary_identity=release,
+                ),
+            )
+            emitter._render_sysmon_image_loaded(event)
+
+        assert len(emitter._event_dicts) == 2
+        assert emitter._event_dicts[0]["Hashes"] == emitter._event_dicts[1]["Hashes"]
+        assert emitter._event_dicts[0]["Hashes"] == (
+            f"SHA1={release.digests.sha1},MD5={release.digests.md5},"
+            f"SHA256={release.digests.sha256},IMPHASH={release.digests.imphash}"
+        )
+        assert emitter._event_dicts[0]["FileVersion"] == "4.38.125"
+
+
+class TestRenderEvent11:
+    """Test Event 11 (FileCreate) rendering."""
+
+    def test_renders_valid_event11(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="file_create",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\powershell.exe",
+                command_line="powershell",
+                username="admin",
+            ),
+            file=FileContext(path=r"C:\Windows\Temp\payload.exe", action="create"),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert "<EventID>11</EventID>" in content
+        assert "payload.exe" in content
+        assert "powershell.exe" in content
+        assert '<Data Name="User">CORP\\admin</Data>' in content
+
+    def test_file_creation_utc_time_follows_visible_process_create(self, emitter):
+        """Event 11 CreationUtcTime should move with final TimeCreated ordering repairs."""
+        start_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=UTC)
+        process = ProcessContext(
+            pid=4567,
+            parent_pid=1,
+            image=r"C:\Windows\System32\powershell.exe",
+            command_line="powershell Compress-Archive",
+            username="admin",
+            start_time=start_time,
+        )
+        process_event = OccurrenceBuilder(
+            timestamp=start_time,
+            event_type="process_create",
+            src_host=_win_host(),
+            process=process,
+            auth=AuthContext(username="admin"),
+        )
+        file_event = OccurrenceBuilder(
+            timestamp=start_time,
+            event_type="file_create",
+            src_host=_win_host(),
+            process=process,
+            auth=AuthContext(username="admin"),
+            file=FileContext(path=r"C:\Users\admin\AppData\Local\Temp\cache.zip", action="create"),
+        )
+
+        emitter.emit(process_event)
+        emitter.emit(file_event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        event1 = content.split("<EventID>1</EventID>", 1)[1].split("</Event>", 1)[0]
+        event11 = content.split("<EventID>11</EventID>", 1)[1].split("</Event>", 1)[0]
+        event1_match = re.search(r'SystemTime="([^"]+)"', event1)
+        creation_match = re.search(r'<Data Name="CreationUtcTime">([^<]+)</Data>', event11)
+        assert event1_match is not None
+        assert creation_match is not None
+
+        event1_time = datetime.fromisoformat(event1_match.group(1).replace("Z", "+00:00"))
+        creation_time = datetime.strptime(
+            creation_match.group(1),
+            "%Y-%m-%d %H:%M:%S.%f",
+        ).replace(tzinfo=UTC)
+        assert creation_time >= event1_time
+
+
+class TestRenderEventRegistry:
+    """Test Events 12/13 (Registry) rendering."""
+
+    def test_modify_renders_event13(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\reg.exe",
+                command_line="reg add",
+                username="admin",
+            ),
+            registry=RegistryContext(
+                key=r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run\Backdoor",
+                value="evil.exe",
+                action="modify",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert "<EventID>13</EventID>" in content
+        assert "SetValue" in content
+        assert "evil.exe" in content
+        assert "CurrentVersion\\Run" in content
+
+    def test_binary_value_renders_source_native_opaque_details(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2027, 8, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\explorer.exe",
+                command_line="explorer.exe",
+                username="admin",
+            ),
+            registry=RegistryContext(
+                key=(
+                    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist"
+                    r"\{CEBFF5CD-ACE2-4F4F-9178-9926F41749EA}\Count\HRZR_EHACNGU"
+                ),
+                value="00 01 02 03",
+                value_type="binary",
+                action="modify",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert '<Data Name="Details">Binary Data</Data>' in content
+        assert "00 01 02 03" not in content
+
+    def test_delete_renders_event12(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\regedit.exe",
+                command_line="regedit",
+                username="admin",
+            ),
+            registry=RegistryContext(
+                key=r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run\OldEntry",
+                action="delete",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert "<EventID>12</EventID>" in content
+        assert "DeleteKey" in content
+
+    def test_value_delete_context_renders_event13(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            auth=AuthContext(username="admin", user_sid="S-1-5-21-111-222-333-1001"),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\regedit.exe",
+                command_line="regedit",
+                username="admin",
+            ),
+            registry=RegistryContext(
+                key=r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\HideFileExt",
+                value="DWORD (0x00000001)",
+                action="delete",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert "<EventID>13</EventID>" in content
+        assert "SetValue" in content
+        assert "HideFileExt" in content
+        assert "DWORD (0x00000001)" in content
+        assert "HKCU\\" not in content
+        assert r"HKU\S-1-5-21-111-222-333-1001\Software" in content
+
+
+class TestProcessCreateMetadata:
+    """Test host-specific Sysmon process metadata rendering."""
+
+    def test_windows_os_binary_versions_are_consistent_per_host(self, emitter):
+        host = _win_host()
+        first = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="process_create",
+            src_host=host,
+            auth=AuthContext(username="admin", logon_id="0x123"),
+            process=ProcessContext(
+                pid=4100,
+                parent_pid=500,
+                image=r"C:\Windows\System32\gpresult.exe",
+                command_line="gpresult /r",
+                username="admin",
+                logon_id="0x123",
+                start_time=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            ),
+        )
+        second = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 1, tzinfo=UTC),
+            event_type="process_create",
+            src_host=host,
+            auth=AuthContext(username="admin", logon_id="0x123"),
+            process=ProcessContext(
+                pid=4101,
+                parent_pid=500,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd.exe /c whoami",
+                username="admin",
+                logon_id="0x123",
+                start_time=datetime(2024, 1, 15, 10, 30, 1, tzinfo=UTC),
+            ),
+        )
+
+        emitter.emit(first)
+        emitter.emit(second)
+        emitter.close()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert content.count('<Data Name="FileVersion">10.0.19041.1</Data>') == 2
+        assert "10.0.20348.1" not in content
+
+    def test_common_windows_admin_binaries_have_process_metadata(self):
+        host = _win_host()
+
+        for image in (
+            r"C:\Windows\System32\runas.exe",
+            r"C:\Windows\System32\msra.exe",
+            r"C:\Windows\System32\curl.exe",
+        ):
+            fv, desc, prod, company, orig = SysmonEventEmitter._get_pe_metadata(image, host)
+            assert fv != "-"
+            assert desc != "-"
+            assert prod != "-"
+            assert company == "Microsoft Corporation"
+            assert orig.lower() == image.rsplit("\\", 1)[-1].lower()
+
+    def test_os_binary_hashes_follow_host_file_version(self):
+        """The same OS binary path on different Windows builds should not share hashes."""
+        workstation = _win_host()
+        server = HostContext(
+            hostname="SRV-01",
+            ip="10.0.1.20",
+            os="Windows Server 2022",
+            os_category="windows",
+            system_type="server",
+            domain="corp.local",
+            fqdn="SRV-01.corp.local",
+            netbios_domain="CORP",
+        )
+        image = r"C:\Windows\System32\cmd.exe"
+
+        workstation_hashes = SysmonEventEmitter._generate_hashes(image, workstation)
+        server_hashes = SysmonEventEmitter._generate_hashes(image, server)
+
+        assert workstation_hashes != server_hashes
+        assert SysmonEventEmitter._generate_hashes(image, workstation) == workstation_hashes
+
+    def test_hashes_follow_rendered_binary_identity(self):
+        """Identical rendered binary metadata should keep hashes stable across hosts."""
+        workstation = _win_host()
+        server = HostContext(
+            hostname="SRV-01",
+            ip="10.0.1.20",
+            os="Windows Server 2022",
+            os_category="windows",
+            system_type="server",
+            domain="corp.local",
+            fqdn="SRV-01.corp.local",
+            netbios_domain="CORP",
+        )
+        image = r"C:\Windows\System32\MpCmdRun.exe"
+
+        assert SysmonEventEmitter._get_pe_metadata(image, workstation)[0] == "4.18.2211.5"
+        assert SysmonEventEmitter._get_pe_metadata(image, server)[0] == "4.18.2211.5"
+        assert SysmonEventEmitter._generate_hashes(
+            image, workstation
+        ) == SysmonEventEmitter._generate_hashes(image, server)
+
+    def test_process_hashes_follow_attached_release_not_user_install_path(self, emitter):
+        """One installed release keeps one hash set across user-scoped placements."""
+        release = BinaryReleaseIdentity(
+            key=BinaryReleaseKey(
+                product_id="slack",
+                version="4.38.125",
+                build="4.38.125",
+                architecture="x64",
+                platform="windows",
+                artifact_name="slack.exe",
+            ),
+            pe_version_info=PeVersionInfo(
+                file_version="4.38.125",
+                description="Slack",
+                product="Slack",
+                company="Slack Technologies, LLC",
+                original_filename="slack.exe",
+            ),
+        )
+        paths = (
+            r"C:\Users\alice\AppData\Local\slack\slack.exe",
+            r"C:\Users\bob\AppData\Local\slack\slack.exe",
+        )
+        for ordinal, path in enumerate(paths):
+            event = OccurrenceBuilder(
+                timestamp=datetime(2024, 1, 15, 10, 30, ordinal, tzinfo=UTC),
+                event_type="process_create",
+                src_host=_win_host(),
+                process=ProcessContext(
+                    pid=4100 + ordinal,
+                    parent_pid=500,
+                    image=path,
+                    command_line=path,
+                    username=("alice", "bob")[ordinal],
+                    start_time=datetime(2024, 1, 15, 10, 30, ordinal, tzinfo=UTC),
+                    binary_identity=release,
+                ),
+            )
+            emitter._render_sysmon_process_create(event)
+
+        assert len(emitter._event_dicts) == 2
+        assert emitter._event_dicts[0]["Hashes"] == emitter._event_dicts[1]["Hashes"]
+        assert emitter._event_dicts[0]["Hashes"] == (
+            f"SHA1={release.digests.sha1},MD5={release.digests.md5},"
+            f"SHA256={release.digests.sha256},IMPHASH={release.digests.imphash}"
+        )
+        assert emitter._event_dicts[0]["FileVersion"] == "4.38.125"
+
+    def test_process_hashes_and_metadata_separate_os_build_releases(self, emitter):
+        """Build-distinct Windows binaries retain distinct canonical content truth."""
+        releases = tuple(
+            BinaryReleaseIdentity(
+                key=BinaryReleaseKey(
+                    product_id="microsoft-windows",
+                    version=build,
+                    build=build,
+                    architecture="x64",
+                    platform="windows",
+                    artifact_name="winlogon.exe",
+                ),
+                pe_version_info=PeVersionInfo(
+                    file_version=build,
+                    description="Windows Logon Application",
+                    product="Microsoft Windows Operating System",
+                    company="Microsoft Corporation",
+                    original_filename="winlogon.exe",
+                ),
+            )
+            for build in ("10.0.19041.1", "10.0.20348.1")
+        )
+        for ordinal, release in enumerate(releases):
+            event = OccurrenceBuilder(
+                timestamp=datetime(2024, 1, 15, 10, 31, ordinal, tzinfo=UTC),
+                event_type="process_create",
+                src_host=_win_host(),
+                process=ProcessContext(
+                    pid=4200 + ordinal,
+                    parent_pid=500,
+                    image=r"C:\Windows\System32\winlogon.exe",
+                    command_line="winlogon.exe",
+                    username="SYSTEM",
+                    start_time=datetime(2024, 1, 15, 10, 31, ordinal, tzinfo=UTC),
+                    binary_identity=release,
+                ),
+            )
+            emitter._render_sysmon_process_create(event)
+
+        assert len(emitter._event_dicts) == 2
+        assert emitter._event_dicts[0]["Hashes"] != emitter._event_dicts[1]["Hashes"]
+        assert [row["FileVersion"] for row in emitter._event_dicts] == [
+            "10.0.19041.1",
+            "10.0.20348.1",
+        ]
+
+    def test_tiworker_metadata_uses_servicing_stack_component_version(self):
+        """WinSxS TiWorker metadata should match the rendered component path."""
+        server = HostContext(
+            hostname="SRV-01",
+            ip="10.0.1.20",
+            os="Windows Server 2022",
+            os_category="windows",
+            system_type="server",
+            domain="corp.local",
+            fqdn="SRV-01.corp.local",
+            netbios_domain="CORP",
+        )
+        image = (
+            r"C:\Windows\WinSxS\amd64_microsoft-windows-servicingstack_31bf3856ad364e35_"
+            r"10.0.20348.2322_none_7c91d6e7c9f7f1f5\TiWorker.exe"
+        )
+
+        metadata = SysmonEventEmitter._get_pe_metadata(image, server)
+
+        assert metadata[0] == "10.0.20348.2322"
+        assert metadata[4] == "TiWorker.exe"
+
+    @pytest.mark.parametrize(
+        "image",
+        [
+            r"C:\Windows\System32\user32.dll",
+            r"C:\Windows\System32\gdi32.dll",
+            r"C:\Windows\System32\ws2_32.dll",
+            r"C:\Windows\System32\dwrite.dll",
+        ],
+    )
+    def test_windows_system_dlls_do_not_inherit_application_metadata(self, image: str):
+        """Catalog-listed System32 modules should keep Windows DLL identity."""
+        basename = image.rsplit("\\", 1)[-1]
+        module_metadata = get_module_pe_metadata(image)
+        direct_metadata = SysmonEventEmitter._get_pe_metadata(image, _win_host())
+        signed_fallback = SysmonEventEmitter._signed_module_metadata(image, "Microsoft Windows")
+
+        assert module_metadata == ("-", "-", "-", "-", "-")
+        assert direct_metadata == ("-", "-", "-", "-", "-")
+        assert signed_fallback == (
+            "10.0.19041.1",
+            f"{basename} system library",
+            "Microsoft Windows Operating System",
+            "Microsoft Corporation",
+            basename,
+        )
+
+    def test_image_load_hashes_follow_rendered_file_identity(self):
+        """Same DLL path with different rendered PE metadata must not share hashes."""
+        image = r"C:\Program Files\Mozilla Firefox\lgpllibs.dll"
+
+        mozilla_hashes = SysmonEventEmitter._generate_hashes(
+            image,
+            _win_host(),
+            rendered_identity=(
+                "1.0.0.0",
+                "lgpllibs.dll module",
+                "Mozilla Corporation",
+                "Mozilla Corporation",
+                "lgpllibs.dll",
+            ),
+        )
+        microsoft_hashes = SysmonEventEmitter._generate_hashes(
+            image,
+            _win_host(),
+            rendered_identity=(
+                "10.0.19041.1",
+                "lgpllibs.dll system library",
+                "Microsoft Windows Operating System",
+                "Microsoft Corporation",
+                "lgpllibs.dll",
+            ),
+        )
+
+        assert mozilla_hashes != microsoft_hashes
+
+    def test_image_load_hashes_ignore_signature_evaluation_state(self):
+        """The same loaded module path/version keeps hashes across signer status changes."""
+        image = r"C:\Program Files\Microsoft OneDrive\FileSyncShell64.dll"
+        identity = (
+            "24.020.0128.0003",
+            "Microsoft OneDrive Shell Extension",
+            "Microsoft OneDrive",
+            "Microsoft Corporation",
+            "FileSyncShell64.dll",
+        )
+
+        microsoft_windows_hashes = SysmonEventEmitter._generate_hashes(
+            image,
+            _win_host(),
+            rendered_identity=(*identity, "Microsoft Windows", "Valid"),
+        )
+        microsoft_corporation_hashes = SysmonEventEmitter._generate_hashes(
+            image,
+            _win_host(),
+            rendered_identity=(*identity, "Microsoft Corporation", "Valid"),
+        )
+        unavailable_hashes = SysmonEventEmitter._generate_hashes(
+            image,
+            _win_host(),
+            rendered_identity=(*identity, "-", "Unavailable"),
+        )
+
+        assert microsoft_windows_hashes == microsoft_corporation_hashes
+        assert microsoft_windows_hashes == unavailable_hashes
+
+    @pytest.mark.parametrize(
+        ("image", "expected_product"),
+        [
+            (
+                r"C:\Program Files\Windows Defender Advanced Threat Protection\SenseCncProxy.dll",
+                "Microsoft Defender for Endpoint",
+            ),
+            (
+                r"C:\Program Files\Windows Defender\MpOAV.dll",
+                "Microsoft Defender Antivirus",
+            ),
+            (
+                r"C:\Program Files\Microsoft OneDrive\24.020.0128.0003\FileSyncShell64.dll",
+                "Microsoft OneDrive",
+            ),
+        ],
+    )
+    def test_microsoft_program_files_modules_use_product_metadata(
+        self, image: str, expected_product: str
+    ):
+        """Program Files module loads should not fall back to Windows OS metadata."""
+        metadata = SysmonEventEmitter._get_pe_metadata(image, _win_host())
+
+        assert metadata[2] == expected_product
+        assert metadata[2] != "Microsoft Windows Operating System"
+        assert metadata[4] == image.rsplit("\\", 1)[-1]
+
+
+class TestRenderEvent22:
+    """Test Event 22 (DNSQuery) rendering."""
+
+    def test_renders_valid_event22(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            network=network_plan(
+                src_ip="10.0.1.10", dst_ip="10.0.0.1", src_port=49152, dst_port=53, protocol="udp"
+            ),
+            dns=DnsContext(query="evil-c2.com", rcode="NOERROR", answers=["1.2.3.4"]),
+        )
+        # Event 22 fires when DNS is present, even if Event 3 is filtered
+        emitter._render_sysmon_dns_query(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert "<EventID>22</EventID>" in content
+        assert "evil-c2.com" in content
+        assert "1.2.3.4;" in content
+        assert "svchost.exe" in content
+
+    def test_dns_query_uses_canonical_initiating_process(self, emitter):
+        """Event 22 should preserve the application that initiated the lookup."""
+        process_start = datetime(2024, 1, 15, 10, 29, 55, tzinfo=UTC)
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="10.0.0.1",
+                src_port=49152,
+                dst_port=53,
+                protocol="udp",
+            ),
+            dns=DnsContext(
+                query="evil-c2.com",
+                rcode="NOERROR",
+                answers=["1.2.3.4"],
+                query_process=ProcessContext(
+                    pid=4568,
+                    parent_pid=4000,
+                    image=r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                    command_line="powershell.exe Invoke-WebRequest https://evil-c2.com",
+                    username="alice",
+                    logon_id="0x1a2b3c",
+                    start_time=process_start,
+                ),
+            ),
+        )
+
+        emitter._render_sysmon_dns_query(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert '<Data Name="ProcessId">4568</Data>' in content
+        assert '<Data Name="Image">C:\\Windows\\System32\\WindowsPowerShell' in content
+        assert '<Data Name="User">CORP\\alice</Data>' in content
+        assert "LOCAL SERVICE" not in content
+
+    def test_dns_query_uses_source_latency_offset(self, emitter):
+        """Sysmon Event 22 should not render at the exact Zeek DNS packet timestamp."""
+        event_time = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+        event = OccurrenceBuilder(
+            timestamp=event_time,
+            event_type="connection",
+            src_host=_win_host(),
+            network=network_plan(
+                src_ip="10.0.1.10", dst_ip="10.0.0.1", src_port=49152, dst_port=53, protocol="udp"
+            ),
+            dns=DnsContext(
+                query="example.com", query_type="A", rcode="NOERROR", answers=["1.2.3.4"]
+            ),
+        )
+
+        emitter._render_sysmon_dns_query(event)
+
+        native_time = emitter._event_dicts[0]["_SysmonNativeTime"]
+        assert event_time + timedelta(milliseconds=25) <= native_time
+        assert native_time <= event_time + timedelta(milliseconds=420)
+        assert native_time.microsecond % 1_000 != 0
+        assert emitter._event_dicts[0]["TimeCreated"] > native_time
+
+    def test_nxdomain_query_status(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            network=network_plan(
+                src_ip="10.0.1.10", dst_ip="10.0.0.1", src_port=49152, dst_port=53, protocol="udp"
+            ),
+            dns=DnsContext(query="doesnotexist.com", rcode="NXDOMAIN", answers=[]),
+        )
+        emitter._render_sysmon_dns_query(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert '<Data Name="QueryStatus">9003</Data>' in content
+        assert '<Data Name="QueryResults">-</Data>' in content
+
+    def test_servfail_query_status(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            network=network_plan(
+                src_ip="10.0.1.10", dst_ip="10.0.0.1", src_port=49152, dst_port=53, protocol="udp"
+            ),
+            dns=DnsContext(query="flaky.com", rcode="SERVFAIL", answers=[]),
+        )
+        emitter._render_sysmon_dns_query(event)
+        emitter.flush()
+
+        output_path = list(emitter._host_writers.values())[0].output_path
+        content = output_path.read_text()
+        assert '<Data Name="QueryStatus">9002</Data>' in content
+
+
+class TestPidResolutionInFilter:
+    """Test that Event 3 filter resolves initiating_pid when ProcessContext is absent."""
+
+    def test_lolbin_connection_with_pid_only_passes_filter(self, emitter):
+        """powershell.exe connecting to port 443 with only initiating_pid should pass."""
+        from unittest.mock import MagicMock
+
+        # Mock StateManager with a running powershell.exe process
+        mock_sm = MagicMock()
+        mock_proc = MagicMock()
+        mock_proc.image = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        mock_sm.get_process.return_value = mock_proc
+        emitter._state_manager = mock_sm
+
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            # No ProcessContext — only initiating_pid on NetworkTransactionPlan
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="93.184.216.34",
+                src_port=49200,
+                dst_port=443,
+                protocol="tcp",
+                initiating_pid=4567,
+            ),
+        )
+        assert emitter._passes_event3_filter(event) is True
+
+    def test_browser_connection_with_pid_only_can_be_sampled(self, emitter):
+        """chrome.exe with only initiating_pid should be eligible for user-app sampling."""
+        from unittest.mock import MagicMock
+
+        emitter._filters = {
+            "network_connect": {
+                "enabled": True,
+                "mode": "include",
+                "include_images": [],
+                "include_baseline_images": [],
+                "include_user_app_images": ["chrome.exe"],
+                "user_app_sample_rate": 1.0,
+                "include_dest_ports": [],
+                "exclude_dest_ips": [],
+            }
+        }
+
+        mock_sm = MagicMock()
+        mock_proc = MagicMock()
+        mock_proc.image = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        mock_sm.get_process.return_value = mock_proc
+        emitter._state_manager = mock_sm
+
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="93.184.216.34",
+                src_port=49200,
+                dst_port=443,
+                protocol="tcp",
+                initiating_pid=5678,
+            ),
+        )
+        assert emitter._passes_event3_filter(event) is True
+
+
+class TestTemplateCompleteness:
+    """Verify that rendered XML has no empty required fields (catches template variable typos)."""
+
+    def _get_required_fields(self, content: str, event_id: int) -> list[str]:
+        """Extract Data Name fields that have empty values."""
+        import re
+
+        empty = re.findall(r'<Data Name="(\w+)"></Data>', content)
+        # Also check for fields with just whitespace
+        whitespace = re.findall(r'<Data Name="(\w+)">\s*</Data>', content)
+        return list(set(empty + whitespace))
+
+    def test_event3_no_empty_required_fields(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd",
+                username="admin",
+            ),
+            auth=AuthContext(username="admin"),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="10.0.2.20",
+                src_port=49152,
+                dst_port=4444,
+                protocol="tcp",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        empty = self._get_required_fields(content, 3)
+        # RuleName, SourcePortName, DestinationHostname, DestinationPortName are optional
+        optional = {"RuleName", "SourcePortName", "DestinationHostname", "DestinationPortName"}
+        required_empty = [f for f in empty if f not in optional]
+        assert required_empty == [], f"Empty required fields in Event 3: {required_empty}"
+
+    def test_event7_no_empty_required_fields(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="image_load",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=1,
+                image=r"C:\Windows\explorer.exe",
+                command_line="",
+                username="user",
+            ),
+            image_load=ImageLoadContext(
+                image_loaded=r"C:\Program Files\App\plugin.dll",
+                signed=False,
+                signature="-",
+                signature_status="Unavailable",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        empty = self._get_required_fields(content, 7)
+        optional = {"RuleName"}
+        required_empty = [f for f in empty if f not in optional]
+        assert required_empty == [], f"Empty required fields in Event 7: {required_empty}"
+
+    def test_event11_no_empty_required_fields(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="file_create",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\powershell.exe",
+                command_line="powershell",
+                username="admin",
+            ),
+            file=FileContext(path=r"C:\Windows\Temp\payload.exe", action="create"),
+        )
+        emitter.emit(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        empty = self._get_required_fields(content, 11)
+        optional = {"RuleName"}
+        required_empty = [f for f in empty if f not in optional]
+        assert required_empty == [], f"Empty required fields in Event 11: {required_empty}"
+
+    def test_event13_no_empty_required_fields(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="registry_modify",
+            src_host=_win_host(),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\reg.exe",
+                command_line="reg add",
+                username="admin",
+            ),
+            registry=RegistryContext(
+                key=r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run\Test",
+                value="test.exe",
+                action="modify",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        empty = self._get_required_fields(content, 13)
+        optional = {"RuleName"}
+        required_empty = [f for f in empty if f not in optional]
+        assert required_empty == [], f"Empty required fields in Event 13: {required_empty}"
+        assert '<Data Name="User">CORP\\admin</Data>' in content
+
+    def test_event22_no_empty_required_fields(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=_win_host(),
+            network=network_plan(
+                src_ip="10.0.1.10",
+                dst_ip="10.0.0.1",
+                src_port=49152,
+                dst_port=53,
+                protocol="udp",
+            ),
+            dns=DnsContext(query="example.com", rcode="NOERROR", answers=["93.184.216.34"]),
+        )
+        emitter._render_sysmon_dns_query(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        empty = self._get_required_fields(content, 22)
+        optional = {"RuleName"}
+        required_empty = [f for f in empty if f not in optional]
+        assert required_empty == [], f"Empty required fields in Event 22: {required_empty}"
+
+    def test_sysmon_events_default_rule_name_to_dash(self, emitter):
+        """Sysmon RuleName should be consistently populated when no rule matched."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            event_type="process_create",
+            src_host=_win_host(),
+            auth=AuthContext(username="admin"),
+            process=ProcessContext(
+                pid=4567,
+                parent_pid=1,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd",
+                username="admin",
+            ),
+        )
+        emitter.emit(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        assert '<Data Name="RuleName">-</Data>' in content
+        assert '<Data Name="RuleName"></Data>' not in content
+
+
+# ── Tests for expert review fixes ──────────────────────────────────────
+
+
+class TestUserFieldFormatting:
+    """Fix 1: NT AUTHORITY\\SYSTEM instead of DOMAIN\\SYSTEM."""
+
+    def test_system_user_gets_nt_authority(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="process_create",
+            src_host=_win_host(),
+            auth=AuthContext(username="SYSTEM", logon_id="0x3e7"),
+            process=ProcessContext(
+                pid=4000,
+                parent_pid=600,
+                image=r"C:\Windows\System32\svchost.exe",
+                command_line="svchost.exe -k netsvcs",
+                username="SYSTEM",
+            ),
+        )
+        emitter._render_sysmon_process_create(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        assert "NT AUTHORITY\\SYSTEM" in content
+        assert "CORP\\SYSTEM" not in content
+
+    def test_local_service_gets_nt_authority(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="process_create",
+            src_host=_win_host(),
+            auth=AuthContext(username="LOCAL SERVICE", logon_id="0x3e5"),
+            process=ProcessContext(
+                pid=4001,
+                parent_pid=600,
+                image=r"C:\Windows\System32\svchost.exe",
+                command_line="svchost.exe -k LocalService",
+                username="LOCAL SERVICE",
+            ),
+        )
+        emitter._render_sysmon_process_create(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        assert "NT AUTHORITY\\LOCAL SERVICE" in content
+        assert "CORP\\LOCAL SERVICE" not in content
+
+    def test_regular_user_gets_domain(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="process_create",
+            src_host=_win_host(),
+            auth=AuthContext(username="jsmith", logon_id="0x12345"),
+            process=ProcessContext(
+                pid=4002,
+                parent_pid=3000,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd.exe",
+                username="jsmith",
+            ),
+        )
+        emitter._render_sysmon_process_create(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        assert "CORP\\jsmith" in content
+
+    def test_event1_version5_includes_parent_user(self, emitter):
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="process_create",
+            src_host=_win_host(),
+            auth=AuthContext(username="admin", logon_id="0x46a3f"),
+            process=ProcessContext(
+                pid=4100,
+                parent_pid=4000,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd.exe /c whoami",
+                username="admin",
+                parent_image=r"C:\Windows\explorer.exe",
+                parent_command_line=r"C:\Windows\explorer.exe",
+            ),
+        )
+
+        emitter._render_sysmon_process_create(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+
+        assert "<EventID>1</EventID>" in content
+        assert "<Version>5</Version>" in content
+        assert '<Data Name="ParentUser">CORP\\admin</Data>' in content
+
+    def test_event1_prefers_canonical_parent_principal(self, emitter):
+        """A retained parent identity overrides the child's security context."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="process_create",
+            src_host=_win_host(),
+            auth=AuthContext(username="admin", logon_id="0x46a3f"),
+            process=ProcessContext(
+                pid=4101,
+                parent_pid=4001,
+                image=r"C:\Windows\System32\userinit.exe",
+                command_line="userinit.exe",
+                username="admin",
+                parent_image=r"C:\Windows\System32\winlogon.exe",
+                parent_command_line="winlogon.exe",
+                parent_username="SYSTEM",
+            ),
+        )
+
+        emitter._render_sysmon_process_create(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+
+        assert '<Data Name="ParentUser">NT AUTHORITY\\SYSTEM</Data>' in content
+
+    def test_process_access_target_user_gets_domain(self, emitter):
+        """Sysmon Event 10 target user should use source-native domain formatting."""
+        event = OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="process_access",
+            src_host=_win_host(),
+            auth=AuthContext(username="jsmith", logon_id="0x12345"),
+            process=ProcessContext(
+                pid=4002,
+                parent_pid=3000,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd.exe",
+                username="jsmith",
+                start_time=datetime(2024, 1, 15, 9, 59, tzinfo=UTC),
+            ),
+            process_access=ProcessAccessContext(
+                source_pid=4002,
+                source_image=r"C:\Windows\System32\cmd.exe",
+                source_thread_id=4200,
+                target_pid=500,
+                target_image=r"C:\Windows\System32\lsass.exe",
+                target_user="SYSTEM",
+                granted_access="0x1010",
+            ),
+        )
+        emitter._render_sysmon_process_access(event)
+        emitter.flush()
+        content = list(emitter._host_writers.values())[0].output_path.read_text()
+        assert '<Data Name="TargetUser">NT AUTHORITY\\SYSTEM</Data>' in content
+        assert '<Data Name="TargetUser">SYSTEM</Data>' not in content
+
+
+class TestCallTraceConsistency:
+    """Fix 3: CallTrace offsets consistent per host, different across hosts."""
+
+    def test_offsets_consistent_per_host(self, emitter):
+        """Same pattern picked twice should show same offsets (cache is stable)."""
+        # Force cache population
+        emitter._get_call_trace("HOST-A")
+        cached = emitter._call_trace_cache["HOST-A"]
+        # Pick one specific pattern and verify it's always the same string
+        pattern_0 = cached[0]
+        for _ in range(10):
+            assert cached[0] == pattern_0, "Cached patterns should not change"
+
+    def test_offsets_differ_across_hosts(self, emitter):
+        emitter._get_call_trace("HOST-A")
+        emitter._get_call_trace("HOST-B")
+        # Compare first pattern's first offset between hosts
+        off_a = emitter._call_trace_cache["HOST-A"][0].split("+")[1].split("|")[0]
+        off_b = emitter._call_trace_cache["HOST-B"][0].split("+")[1].split("|")[0]
+        assert off_a != off_b, "Different hosts should have different CallTrace offsets"
+
+    def test_multiple_call_patterns_available(self, emitter):
+        emitter._get_call_trace("HOST-C")
+        patterns = emitter._call_trace_cache["HOST-C"]
+        assert len(patterns) >= 8, f"Expected >=8 patterns from YAML, got {len(patterns)}"
+
+
+class TestProcessGuidBootTime:
+    """ProcessGuid shape should be stable, host-specific, and source-native."""
+
+    def test_guid_differs_with_different_boot_times_and_native_token_shape(self, emitter):
+        emitter._host_boot_times = {
+            "HOST-A": datetime(2024, 2, 1, 6, 0, tzinfo=UTC),
+            "HOST-B": datetime(2024, 3, 15, 12, 0, tzinfo=UTC),
+        }
+        creation = datetime(2024, 4, 1, 10, 0, tzinfo=UTC)
+        guid_a = emitter._generate_process_guid("HOST-A", 1234, creation)
+        guid_b = emitter._generate_process_guid("HOST-B", 1234, creation)
+        unix_ts = int(creation.timestamp())
+        assert guid_a != guid_b
+        assert guid_a.split("-")[1] == guid_b.split("-")[1]
+        assert guid_a.split("-")[1] == f"{unix_ts & 0xFFFF:04x}"
+        assert guid_a.split("-")[2] == f"{(unix_ts >> 16) & 0xFFFF:04x}"
+        assert guid_a.split("-")[1] != "000c"
+        token_word = guid_a.strip("{}").split("-")[3]
+        token_tail = guid_a.strip("{}").split("-")[4]
+        assert token_word[2:] in {"00", "02"}
+        assert token_tail.startswith(("0000", "0010"))
+
+    def test_guid_deterministic_with_boot_time(self, emitter):
+        emitter._host_boot_times = {
+            "HOST-A": datetime(2024, 2, 1, 6, 0, tzinfo=UTC),
+        }
+        creation = datetime(2024, 4, 1, 10, 0, tzinfo=UTC)
+        guid1 = emitter._generate_process_guid("HOST-A", 1234, creation)
+        guid2 = emitter._generate_process_guid("HOST-A", 1234, creation)
+        assert guid1 == guid2
+
+
+class TestEvent3PortProcessConstraints:
+    """Fix 7: Port-process constraints in Event 3 filter."""
+
+    def _make_conn_event(self, dst_port, image=None, initiating_pid=-1):
+        host = _win_host()
+        net = network_plan(
+            src_ip="10.0.1.10",
+            dst_ip="10.0.2.20",
+            src_port=49152,
+            dst_port=dst_port,
+            protocol="tcp",
+            initiating_pid=initiating_pid,
+        )
+        proc = (
+            ProcessContext(
+                pid=5000,
+                parent_pid=3000,
+                image=image,
+                command_line=f"{image} args",
+                username="jsmith",
+            )
+            if image
+            else None
+        )
+        return OccurrenceBuilder(
+            timestamp=datetime(2024, 1, 15, 10, 0, tzinfo=UTC),
+            event_type="connection",
+            src_host=host,
+            network=net,
+            process=proc,
+        )
+
+    def test_svchost_ssh_filtered(self, emitter):
+        event = self._make_conn_event(22, image=r"C:\Windows\System32\svchost.exe")
+        assert emitter._passes_event3_filter(event) is False
+
+    def test_ssh_exe_ssh_passes(self, emitter):
+        event = self._make_conn_event(22, image=r"C:\Windows\System32\OpenSSH\ssh.exe")
+        assert emitter._passes_event3_filter(event) is True
+
+    def test_powershell_ssh_passes(self, emitter):
+        event = self._make_conn_event(
+            22, image=r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        )
+        assert emitter._passes_event3_filter(event) is True
+
+    def test_unconstrained_port_any_process(self, emitter):
+        # Port 4444 has no constraints — any process should pass
+        event = self._make_conn_event(4444, image=r"C:\Windows\System32\svchost.exe")
+        assert emitter._passes_event3_filter(event) is True
+
+    def test_unknown_pid_resolves_to_dash(self, emitter):
+        pid, image = emitter._resolve_process_from_pid("WKS-01", 99999)
+        assert image == "-"
+        assert pid == 99999

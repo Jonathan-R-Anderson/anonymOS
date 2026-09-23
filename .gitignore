@@ -21,6 +21,11 @@ target/
 *.o
 *.a
 *.so
+# ...except the X input driver vendored for the decoy.  It is a redistributable 61 KB binary the
+# decoy cannot boot to a usable desktop without (see deps/decoy-os/initramfs/README-evdev.md), and
+# the blanket *.so rule above silently excluded it from the commit that added everything depending
+# on it -- leaving init-crypt copying a file that was not in the repo.
+!deps/decoy-os/initramfs/evdev_drv.so
 *.elf
 *.img
 *.iso

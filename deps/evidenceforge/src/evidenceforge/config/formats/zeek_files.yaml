@@ -1,0 +1,172 @@
+# zeek_files format definition — Zeek files.log format (JSON output) - File transfer metadata
+#
+# Category: network
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: zeek_files
+version: "1.0"
+description: "Zeek files.log format (JSON output) - File transfer metadata"
+category: network
+
+fields:
+  - name: ts
+    type: timestamp
+    required: true
+    description: "Timestamp of file transfer"
+
+  - name: fuid
+    type: string
+    required: true
+    description: "File unique ID (F-prefix)"
+    constraints:
+      pattern: "^F[A-Za-z0-9]{16,18}$"
+
+  - name: tx_hosts
+    type: list
+    required: true
+    description: Hosts that transmitted the file (JSON array of IP strings)
+    item_type: string
+  - name: rx_hosts
+    type: list
+    required: true
+    description: Hosts that received the file (JSON array of IP strings)
+    item_type: string
+  - name: conn_uids
+    type: list
+    required: true
+    description: Connection UIDs that carried the file (JSON array of C-prefix UID strings)
+    item_type: string
+  - name: source
+    type: string
+    required: true
+    description: "Protocol source (HTTP, SMB, SSL, SMTP)"
+
+  - name: depth
+    type: integer
+    required: true
+    description: "Directory depth"
+
+  - name: filename
+    type: string
+    required: false
+    description: "Filename or share path observed for protocols that expose it, such as SMB"
+
+  - name: analyzers
+    type: list
+    required: false
+    description: Analyzers that ran on this file (JSON array of strings)
+    item_type: string
+  - name: mime_type
+    type: string
+    required: false
+    description: "MIME type"
+
+  - name: duration
+    type: float
+    required: false
+    description: Transfer duration in seconds
+    constraints:
+      min_value: 0
+  - name: local_orig
+    type: boolean
+    required: false
+    description: "Originator is local?"
+
+  - name: is_orig
+    type: boolean
+    required: true
+    description: "Is file from originator?"
+
+  - name: seen_bytes
+    type: integer
+    required: true
+    description: Bytes observed
+    constraints:
+      min_value: 0
+  - name: total_bytes
+    type: integer
+    required: false
+    description: Total bytes expected
+    constraints:
+      min_value: 0
+  - name: missing_bytes
+    type: integer
+    required: true
+    description: Missing bytes
+    constraints:
+      min_value: 0
+  - name: overflow_bytes
+    type: integer
+    required: true
+    description: Overflow bytes
+    constraints:
+      min_value: 0
+  - name: timedout
+    type: boolean
+    required: true
+    description: "Did transfer timeout?"
+
+  - name: md5
+    type: string
+    required: false
+    description: "MD5 digest when the MD5 analyzer ran"
+
+  - name: sha1
+    type: string
+    required: false
+    description: "SHA1 digest when the SHA1 analyzer ran"
+
+  - name: sha256
+    type: string
+    required: false
+    description: "SHA256 digest when the SHA256 analyzer ran"
+
+output:
+  format: json
+  file_extension: ".json"
+  encoding: utf-8
+  template: |
+    {
+      "ts": {{ ts | tojson }},
+      "fuid": {{ fuid | tojson }},
+      "tx_hosts": {{ tx_hosts | tojson }},
+      "rx_hosts": {{ rx_hosts | tojson }},
+      "conn_uids": {{ conn_uids | tojson }},
+      "source": {{ source | tojson }},
+      "depth": {{ depth | tojson }}
+      {%- if filename is not none %},
+      "filename": {{ filename | tojson }}
+      {%- endif %}
+      {%- if analyzers is not none %},
+      "analyzers": {{ analyzers | tojson }}
+      {%- endif %}
+      {%- if mime_type is not none %},
+      "mime_type": {{ mime_type | tojson }}
+      {%- endif %}
+      {%- if duration is not none %},
+      "duration": {{ duration | tojson }}
+      {%- endif %}
+      {%- if local_orig is not none %},
+      "local_orig": {{ local_orig | tojson }}
+      {%- endif %},
+      "is_orig": {{ is_orig | tojson }},
+      "seen_bytes": {{ seen_bytes | tojson }}
+      {%- if total_bytes is not none %},
+      "total_bytes": {{ total_bytes | tojson }}
+      {%- endif %},
+      "missing_bytes": {{ missing_bytes | tojson }},
+      "overflow_bytes": {{ overflow_bytes | tojson }},
+      "timedout": {{ timedout | tojson }}
+      {%- if md5 is not none %},
+      "md5": {{ md5 | tojson }}
+      {%- endif %}
+      {%- if sha1 is not none %},
+      "sha1": {{ sha1 | tojson }}
+      {%- endif %}
+      {%- if sha256 is not none %},
+      "sha256": {{ sha256 | tojson }}
+      {%- endif %}
+    }

@@ -1,0 +1,621 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""Browsing session generator for realistic multi-request site visits.
+
+Generates a list of BrowsingRequest objects representing a complete browsing
+session: landing page, subresource cascade (CSS, JS, images, fonts, API calls),
+navigation to additional pages, and referrer chains throughout.
+
+This is a pure function with no engine dependencies — fully testable in isolation.
+"""
+
+from __future__ import annotations
+
+import random
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
+from evidenceforge.events.contexts import HttpMultipartEntityContext
+from evidenceforge.generation.activity.http_content import (
+    apply_transfer_size_variance,
+    is_stable_resource_path,
+    normalize_mime_type_for_path,
+    response_size_for_mime,
+    response_size_for_status,
+)
+from evidenceforge.generation.activity.proxy_uri import (
+    is_browser_like_proxy_domain,
+    plaintext_http_redirect_status,
+)
+from evidenceforge.generation.activity.site_maps import (
+    PageDef,
+    SiteMap,
+    SubresourceDef,
+    get_site_map,
+)
+from evidenceforge.generation.activity.timing_profiles import get_timing_window
+from evidenceforge.generation.baseline_timing import BaselineTimingPlanner
+from evidenceforge.generation.timing import TimingRuntime
+from evidenceforge.utils.rng import _stable_seed
+
+
+@dataclass
+class BrowsingRequest:
+    """A single HTTP request within a browsing session."""
+
+    time_offset_ms: int  # Offset from session start in milliseconds
+    hostname: str  # Target hostname (may differ from page host for CDN)
+    path: str  # URI path
+    method: str  # HTTP method (GET, POST)
+    content_type: str  # Expected response MIME type
+    referrer: str  # Full referrer URL (https://host/path or "")
+    trans_depth: int  # HTTP transaction depth within connection
+    is_page_load: bool  # True for the page itself, False for subresources
+    response_body_len: int  # Estimated response size in bytes
+    request_body_len: int  # Estimated request size in bytes
+    status_code: int = 200  # HTTP response status
+    request_content_type: str = ""  # Explicit application-profile request MIME
+    request_wire_filename: str = ""  # Filename exposed by request encoding, if any
+    request_multipart: HttpMultipartEntityContext | None = None
+    response_multipart: HttpMultipartEntityContext | None = None
+    time_offset_remainder_us: int = 0  # Sub-millisecond runtime timing texture
+
+
+_INTENSITY_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
+    "light": {
+        "pages": (1, 1),
+        "subresources_per_page": (3, 6),
+        "navigations": (0, 0),
+    },
+    "normal": {
+        "pages": (1, 2),
+        "subresources_per_page": (5, 10),
+        "navigations": (0, 1),
+    },
+    "heavy": {
+        "pages": (2, 4),
+        "subresources_per_page": (8, 15),
+        "navigations": (1, 3),
+    },
+}
+_AUTH_LANDING_HOST_PREFIXES = (
+    "accounts.",
+    "api-",
+    "auth.",
+    "identity.",
+    "login.",
+    "sso.",
+)
+_AUTH_LANDING_PATH_MARKERS = (
+    "/authorize",
+    "/common/",
+    "/login",
+    "/oauth",
+    "/ppsecure",
+    "/saml",
+    "/signin",
+    "/token",
+)
+
+
+def _response_size(
+    rng: random.Random,
+    hostname: str,
+    path: str,
+    content_type: str,
+    *,
+    transfer_variant_key: str | None = None,
+) -> int:
+    """Generate a realistic response size for a given content type."""
+    if is_stable_resource_path(path):
+        return apply_transfer_size_variance(
+            response_size_for_status(200, hostname, path),
+            status_code=200,
+            host=hostname,
+            uri=path,
+            content_type=content_type,
+            variant_key=transfer_variant_key,
+        )
+    return response_size_for_mime(rng, content_type)
+
+
+def _request_size(rng: random.Random, method: str) -> int:
+    """Generate a realistic request size based on HTTP method."""
+    if method == "POST":
+        return rng.randint(100, 10_000)
+    return 0
+
+
+def _sample_status_code(
+    rng: random.Random,
+    *,
+    hostname: str,
+    path: str,
+    is_page_load: bool,
+    method: str,
+    content_type: str,
+) -> int:
+    """Sample realistic browser HTTP outcomes for page and asset requests."""
+    method = method.upper()
+    if method == "GET" and is_stable_resource_path(path):
+        if content_type.startswith(("image/", "video/", "font/")) and rng.random() < 0.06:
+            return 206
+        if rng.random() < 0.16:
+            return 304
+        return 200
+    if is_page_load and method == "GET":
+        return 200
+
+    route_rng = random.Random(
+        _stable_seed(
+            "web_route_status:"
+            f"{hostname}:{path}:{method}:{content_type}:{'page' if is_page_load else 'asset'}"
+        )
+    )
+    if method == "POST":
+        statuses = [200, 204, 302, 400, 401, 403, 500, 503]
+        weights = [78, 5, 5, 3, 2, 3, 2, 2]
+    elif not is_page_load:
+        statuses = [200, 204, 301, 302, 304, 403, 404, 500, 503]
+        weights = [82, 2, 2, 3, 5, 2, 2, 1, 1]
+    else:
+        statuses = [200, 301, 302, 401, 403, 500, 503]
+        weights = [88, 3, 4, 1, 2, 1, 1]
+    return route_rng.choices(statuses, weights=weights, k=1)[0]
+
+
+def _response_size_for_status_code(
+    rng: random.Random,
+    hostname: str,
+    path: str,
+    content_type: str,
+    status_code: int,
+    *,
+    transfer_variant_key: str | None = None,
+) -> int:
+    """Generate a response body size consistent with the HTTP status."""
+    if status_code in {204, 304}:
+        return 0
+    if status_code in {301, 302}:
+        return rng.randint(120, 480)
+    if status_code == 206:
+        full_size = _response_size(rng, hostname, path, content_type)
+        return max(128, int(full_size * rng.uniform(0.15, 0.65)))
+    if status_code >= 400:
+        return response_size_for_status(status_code, hostname, path)
+    return _response_size(
+        rng,
+        hostname,
+        path,
+        content_type,
+        transfer_variant_key=transfer_variant_key,
+    )
+
+
+def _sample_profile_timing_us(
+    timing: BaselineTimingPlanner,
+    stable_id: str,
+    key: str,
+    *,
+    default_min_ms: int,
+    default_max_ms: int,
+    default_class: str,
+    hostname: str,
+    ordinal: int,
+    sample_key: str,
+) -> int:
+    """Sample one configured browser relationship through the timing runtime."""
+
+    window = get_timing_window(
+        key,
+        default_min_ms=default_min_ms,
+        default_max_ms=default_max_ms,
+        default_position="after",
+        default_class=default_class,
+    )
+    if window.max_ms <= window.min_ms:
+        return window.min_ms * 1_000
+    minimum_seconds = window.min_ms / 1_000
+    maximum_seconds = window.max_ms / 1_000
+    seconds = timing.right_skew_seconds(
+        relationship_key=key,
+        stable_id=stable_id,
+        minimum=minimum_seconds,
+        median=minimum_seconds + ((maximum_seconds - minimum_seconds) * 0.31),
+        maximum=maximum_seconds,
+        sigma=0.67 if default_class == "burst_fanout" else 0.76,
+        host=hostname,
+        lifecycle_id=stable_id,
+        ordinal=ordinal,
+        sample_key=sample_key,
+    )
+    return round(seconds * 1_000_000)
+
+
+def _subresource_delay_us(
+    timing: BaselineTimingPlanner,
+    stable_id: str,
+    content_type: str,
+    *,
+    hostname: str,
+    ordinal: int,
+) -> int:
+    """Return render-pipeline timing for a page subresource."""
+    if content_type in ("text/css", "application/javascript"):
+        return _sample_profile_timing_us(
+            timing,
+            stable_id,
+            "web.asset_stylesheet_script_after_page",
+            default_min_ms=50,
+            default_max_ms=200,
+            default_class="burst_fanout",
+            hostname=hostname,
+            ordinal=ordinal,
+            sample_key="stylesheet-script",
+        )
+    if content_type.startswith("font/"):
+        return _sample_profile_timing_us(
+            timing,
+            stable_id,
+            "web.asset_font_after_page",
+            default_min_ms=300,
+            default_max_ms=600,
+            default_class="burst_fanout",
+            hostname=hostname,
+            ordinal=ordinal,
+            sample_key="font",
+        )
+    if content_type.startswith("image/"):
+        return _sample_profile_timing_us(
+            timing,
+            stable_id,
+            "web.asset_image_after_page",
+            default_min_ms=200,
+            default_max_ms=800,
+            default_class="burst_fanout",
+            hostname=hostname,
+            ordinal=ordinal,
+            sample_key="image",
+        )
+    if content_type == "application/json":
+        return _sample_profile_timing_us(
+            timing,
+            stable_id,
+            "web.asset_api_after_page",
+            default_min_ms=500,
+            default_max_ms=2_000,
+            default_class="burst_fanout",
+            hostname=hostname,
+            ordinal=ordinal,
+            sample_key="api",
+        )
+    return _sample_profile_timing_us(
+        timing,
+        stable_id,
+        "web.asset_other_after_page",
+        default_min_ms=100,
+        default_max_ms=500,
+        default_class="burst_fanout",
+        hostname=hostname,
+        ordinal=ordinal,
+        sample_key="other",
+    )
+
+
+def _make_referrer(hostname: str, path: str, port: int = 443) -> str:
+    """Build a full referrer URL from hostname and path."""
+    scheme = "https" if port == 443 else "http"
+    return f"{scheme}://{hostname}{path}"
+
+
+def _source_native_browser_referrer(referrer: str, *, port: int) -> str:
+    """Apply browser default referrer policy for plaintext downgrades."""
+    if port == 80 and referrer.startswith("https://"):
+        return ""
+    return referrer
+
+
+def _allows_search_landing_referrer(hostname: str, path: str, content_type: str) -> bool:
+    """Return whether a top-level navigation plausibly came from public search."""
+    normalized_host = hostname.strip().lower().rstrip(".")
+    normalized_path = path.split("?", 1)[0].split("#", 1)[0].lower()
+    normalized_type = content_type.split(";", 1)[0].strip().lower()
+
+    if normalized_type != "text/html":
+        return False
+    if normalized_host.startswith(_AUTH_LANDING_HOST_PREFIXES):
+        return False
+    return not any(marker in normalized_path for marker in _AUTH_LANDING_PATH_MARKERS)
+
+
+def _pick_subresources(
+    rng: random.Random,
+    page: PageDef,
+    site_map: SiteMap,
+    count: int,
+) -> list[SubresourceDef]:
+    """Select subresources for a page load.
+
+    If the page has enough defined subresources, sample from them.
+    If it has fewer than requested, use all of them.
+    Always includes favicon.ico if not already present.
+    """
+    available = list(page.subresources)
+
+    # Ensure favicon is present
+    has_favicon = any("/favicon.ico" in s.path for s in available)
+    if not has_favicon:
+        available.append(SubresourceDef(path="/favicon.ico", content_type="image/x-icon"))
+
+    if len(available) <= count:
+        return available
+
+    # Always include favicon, then sample the rest
+    favicon = [s for s in available if "/favicon.ico" in s.path]
+    others = [s for s in available if "/favicon.ico" not in s.path]
+    sampled = rng.sample(others, min(count - len(favicon), len(others)))
+    return favicon + sampled
+
+
+def generate_browsing_session(
+    rng: random.Random,
+    hostname: str,
+    domain_tags: list[str],
+    source_os: str = "windows",
+    browsing_intensity: str = "normal",
+    port: int = 443,
+    require_browser_like_domain: bool = True,
+    transfer_variant_key: str | None = None,
+    request_time: datetime | None = None,
+    timing_runtime: TimingRuntime | None = None,
+    timing_stable_id: str = "",
+) -> list[BrowsingRequest]:
+    """Generate a complete browsing session as a list of HTTP requests.
+
+    Produces a landing page, its subresource cascade, then navigates to
+    additional pages with their own subresources. Maintains referrer chains
+    throughout.
+
+    Args:
+        rng: Random instance for deterministic generation.
+        hostname: Target domain (e.g., "outlook.office365.com").
+        domain_tags: Tags from dns_registry for tag-based fallback.
+        source_os: Source host OS ("windows" or "linux").
+        browsing_intensity: "light", "normal", or "heavy".
+        port: Destination port (443 for HTTPS, 80 for HTTP).
+        require_browser_like_domain: When true, suppress sessions for
+            certificate/update/telemetry domains. Set false for inbound
+            web-server logs where the public host may not exist in dns_registry.
+        transfer_variant_key: Optional client/session key used to vary
+            source-visible bytes for cacheable resources while keeping origin
+            content stable.
+        request_time: Optional modeled session start time for time-relative API
+            path templates.
+        timing_runtime: Optional engine-owned runtime for browser timing draws.
+        timing_stable_id: Stable semantic session identity for runtime timing.
+
+    Returns:
+        List of BrowsingRequest objects sorted by time_offset_ms.
+    """
+    if require_browser_like_domain and not is_browser_like_proxy_domain(
+        hostname,
+        domain_tags=domain_tags,
+    ):
+        return []
+
+    initial_state = rng.getstate()[1]
+    timing_scope = timing_stable_id or (
+        f"browser:{hostname}:{source_os}:{browsing_intensity}:{port}:"
+        f"{request_time.isoformat() if request_time is not None else ''}:"
+        f"{_stable_seed(':'.join(str(value) for value in initial_state[:8]))}"
+    )
+    timing = (
+        BaselineTimingPlanner(timing_runtime)
+        if timing_runtime is not None
+        else BaselineTimingPlanner.compatibility(request_time or datetime(1970, 1, 1, tzinfo=UTC))
+    )
+    site_map = get_site_map(hostname, domain_tags, rng, request_time=request_time)
+    params = _INTENSITY_PARAMS.get(browsing_intensity, _INTENSITY_PARAMS["normal"])
+
+    if not site_map.pages:
+        return []
+
+    requests: list[BrowsingRequest] = []
+    current_us = 0
+
+    landing_roll = rng.random()
+    previous_page_url = ""  # Direct navigation / bookmark unless the landing page allows search.
+
+    # Determine number of pages to visit
+    n_pages_lo, n_pages_hi = params["pages"]
+    nav_lo, nav_hi = params["navigations"]
+    total_pages = rng.randint(n_pages_lo, n_pages_hi) + rng.randint(nav_lo, nav_hi)
+    total_pages = min(total_pages, len(site_map.pages) + 2)  # Don't exceed available
+    total_pages = max(1, total_pages)
+
+    # Track visited pages to avoid exact repeats (but allow revisits via nav)
+    visited_indices: list[int] = []
+
+    # Landing page selection: 70% start at root/index, 30% land on a
+    # deeper page (bookmark, shared link, search result deep link).
+    if rng.random() < 0.70 or len(site_map.pages) == 1:
+        current_page_idx = 0
+    else:
+        current_page_idx = rng.randint(0, len(site_map.pages) - 1)
+    landing_page = site_map.pages[current_page_idx]
+    if landing_roll >= 0.80 and _allows_search_landing_referrer(
+        hostname,
+        landing_page.path,
+        landing_page.content_type,
+    ):
+        # Arrived via search engine link click.
+        search_engines = [
+            "https://www.google.com/search?q=",
+            "https://www.bing.com/search?q=",
+        ]
+        previous_page_url = rng.choice(search_engines) + hostname.replace(".", "+")
+
+    for page_num in range(total_pages):
+        if page_num == 0:
+            pass  # Use the landing page index selected above
+        else:
+            # Navigation: pick from current page's nav_targets or other pages
+            current_page = site_map.pages[current_page_idx]
+            next_idx = _pick_next_page(rng, site_map, current_page, visited_indices)
+            current_page_idx = next_idx
+
+            current_us += _sample_profile_timing_us(
+                timing,
+                timing_scope,
+                "web.session_navigation",
+                default_min_ms=3_000,
+                default_max_ms=30_000,
+                default_class="human_workflow",
+                hostname=hostname,
+                ordinal=page_num,
+                sample_key="navigation",
+            )
+
+        page = site_map.pages[current_page_idx]
+        page_content_type = normalize_mime_type_for_path(page.path, page.content_type)
+        page_status = _sample_status_code(
+            rng,
+            hostname=hostname,
+            path=page.path,
+            is_page_load=True,
+            method="GET",
+            content_type=page_content_type,
+        )
+        redirect_status = plaintext_http_redirect_status(hostname, port=port, path=page.path)
+        if redirect_status is not None:
+            page_status = redirect_status
+        visited_indices.append(current_page_idx)
+        page_url = _make_referrer(hostname, page.path, port)
+
+        # Emit the page load request
+        requests.append(
+            BrowsingRequest(
+                time_offset_ms=current_us // 1_000,
+                time_offset_remainder_us=current_us % 1_000,
+                hostname=hostname,
+                path=page.path,
+                method="GET",
+                content_type=page_content_type,
+                referrer=_source_native_browser_referrer(previous_page_url, port=port),
+                trans_depth=1,
+                is_page_load=True,
+                response_body_len=_response_size_for_status_code(
+                    rng,
+                    hostname,
+                    page.path,
+                    page_content_type,
+                    page_status,
+                    transfer_variant_key=transfer_variant_key,
+                ),
+                request_body_len=_request_size(rng, "GET"),
+                status_code=page_status,
+            )
+        )
+
+        if redirect_status is not None:
+            break
+
+        # Emit subresource requests
+        sub_lo, sub_hi = params["subresources_per_page"]
+        n_subs = rng.randint(sub_lo, sub_hi)
+        subresources = _pick_subresources(rng, page, site_map, n_subs)
+
+        for sub_idx, sub in enumerate(subresources):
+            sub_hostname = sub.host or hostname
+            sub_content_type = normalize_mime_type_for_path(sub.path, sub.content_type)
+            sub_status = _sample_status_code(
+                rng,
+                hostname=sub_hostname,
+                path=sub.path,
+                is_page_load=False,
+                method=sub.method,
+                content_type=sub_content_type,
+            )
+
+            delay_us = _subresource_delay_us(
+                timing,
+                timing_scope,
+                sub_content_type,
+                hostname=sub_hostname,
+                ordinal=(page_num * 1_000) + sub_idx,
+            )
+
+            requests.append(
+                BrowsingRequest(
+                    time_offset_ms=(current_us + delay_us) // 1_000,
+                    time_offset_remainder_us=(current_us + delay_us) % 1_000,
+                    hostname=sub_hostname,
+                    path=sub.path,
+                    method=sub.method,
+                    content_type=sub_content_type,
+                    referrer=_source_native_browser_referrer(page_url, port=port),
+                    trans_depth=sub_idx + 2,  # Page is depth 1, subs start at 2
+                    is_page_load=False,
+                    response_body_len=_response_size_for_status_code(
+                        rng,
+                        sub_hostname,
+                        sub.path,
+                        sub_content_type,
+                        sub_status,
+                        transfer_variant_key=transfer_variant_key,
+                    ),
+                    request_body_len=_request_size(rng, sub.method),
+                    status_code=sub_status,
+                )
+            )
+
+        # Advance time past subresource loading
+        current_us += round(
+            timing.right_skew_seconds(
+                relationship_key="web.page.subresource_settle",
+                stable_id=timing_scope,
+                minimum=0.8,
+                median=1.12,
+                maximum=2.0,
+                sigma=0.58,
+                host=hostname,
+                lifecycle_id=timing_scope,
+                ordinal=page_num,
+                sample_key="page-settle",
+            )
+            * 1_000_000
+        )
+        previous_page_url = page_url
+
+    # Sort by time offset for chronological emission
+    requests.sort(key=lambda r: (r.time_offset_ms, r.time_offset_remainder_us))
+    return requests
+
+
+def _pick_next_page(
+    rng: random.Random,
+    site_map: SiteMap,
+    current_page: PageDef,
+    visited_indices: list[int],
+) -> int:
+    """Pick the next page to navigate to.
+
+    70% chance: follow a nav_target from the current page
+    30% chance: jump to a different page in the site map
+    """
+    if current_page.nav_targets and rng.random() < 0.70:
+        # Follow a navigation target — find matching page in site map
+        target_path = rng.choice(current_page.nav_targets)
+        for idx, page in enumerate(site_map.pages):
+            if page.path == target_path:
+                return idx
+        # Nav target doesn't match any page exactly (may have template vars);
+        # fall through to random page selection
+
+    # Jump to a different page (avoid repeating the most recent)
+    candidates = list(range(len(site_map.pages)))
+    if visited_indices and len(candidates) > 1:
+        last = visited_indices[-1]
+        candidates = [i for i in candidates if i != last]
+    return rng.choice(candidates) if candidates else 0

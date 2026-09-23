@@ -1,0 +1,71 @@
+# Endpoint baseline noise policy for Windows scheduled/background process and
+# ambient registry telemetry.
+#
+# User customizations go in:
+#   .eforge/config/activity/endpoint_noise.yaml
+#
+# Overlay behavior: nested dicts merge and lists extend.
+
+windows_scheduled_processes:
+  count_min: 2
+  count_max: 5
+  trigger_window_start_seconds: 90
+  trigger_window_end_seconds: 3510
+  slot_spacing_seconds: 300
+  host_phase_window_seconds: 900
+  jitter_seconds_min: -42
+  jitter_seconds_max: 73
+  skip_probability: 0.08
+
+registry_noise:
+  static_inventory_values:
+    suppress_in_ambient_noise: true
+    key_substrings:
+      - "\\CurrentVersion\\Uninstall\\"
+      - "\\CurrentVersion\\Installer\\UserData\\"
+      - "\\CurrentVersion\\App Paths\\"
+    value_names:
+      - DisplayName
+      - DisplayVersion
+      - Publisher
+      - Path
+  dhcp_interface_values:
+    value_names:
+      - DhcpIPAddress
+      - DhcpNameServer
+    require_dhcp_state: true
+    emit_on_lease_events: true
+    suppress_system_types:
+      - server
+      - domain_controller
+    suppress_roles:
+      - domain_controller
+      - dns_server
+      - file_server
+      - web_server
+      - forward_proxy
+      - app_server
+      - database
+
+ecar_flow_identity:
+  user_process_probability: 0.88
+  service_process_probability: 0.98
+  root_process_probability: 0.96
+  inbound_listener_probability: 0.92
+
+ecar_file_churn:
+  enabled: true
+  windows:
+    count_min: 3
+    count_max: 8
+    action_weights:
+      read: 58
+      modify: 30
+      create: 12
+  linux:
+    count_min: 2
+    count_max: 6
+    action_weights:
+      read: 62
+      modify: 28
+      create: 10

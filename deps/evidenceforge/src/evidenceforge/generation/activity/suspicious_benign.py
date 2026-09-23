@@ -1,0 +1,681 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Suspicious-but-benign ambient noise generator.
+
+Generates occasional events that look suspicious in isolation but have
+legitimate explanations. These make the dataset feel more realistic by
+ensuring analysts encounter false leads alongside real attack activity.
+
+Configurable via baseline_activity.suspicious_noise:
+  low=~1/hr, medium=~2/hr, high=~3/hr, ludicrous=~5/hr
+"""
+
+import logging
+import random
+from datetime import datetime, timedelta
+from typing import Protocol
+
+from evidenceforge.generation.activity.host_activity_profiles import (
+    generate_encoded_powershell_command,
+)
+from evidenceforge.generation.timing import (
+    MixtureDistribution,
+    TimingRuntime,
+    TimingSampler,
+    TimingScope,
+    TriangularDistribution,
+    WeightedDistribution,
+)
+from evidenceforge.models.scenario import Persona, System, User
+
+from .suspicious_benign_config import pick_suspicious_dns_host, pick_unusual_connection
+
+logger = logging.getLogger(__name__)
+
+
+class _SuspiciousBenignTimingRuntime(Protocol):
+    """Timing owner surface used by suspicious-benign placement planning."""
+
+    sampler: TimingSampler
+
+
+_HOURLY_PLACEMENT_MAX_SECONDS: dict[str, int] = {
+    "after_hours_admin": 3599,
+    "suspicious_cli": 3599,
+    "failed_logon_burst": 3500,
+    "service_account_anomaly": 3599,
+    "suspicious_dns": 3599,
+    "unusual_outbound": 3599,
+    "scheduled_scan_overlap": 3599,
+    "temp_dir_execution": 3599,
+    "unusual_powershell": 3599,
+}
+
+
+def _inclusive_integer_distribution(minimum: int, maximum: int) -> MixtureDistribution:
+    """Return a continuous mixture that rounds to an inclusive uniform integer support."""
+
+    lower = float(minimum) - 0.5
+    upper = float(maximum) + 0.5
+    return MixtureDistribution(
+        components=(
+            WeightedDistribution(
+                1.0,
+                TriangularDistribution(minimum=lower, mode=lower, maximum=upper),
+            ),
+            WeightedDistribution(
+                1.0,
+                TriangularDistribution(minimum=lower, mode=upper, maximum=upper),
+            ),
+        )
+    )
+
+
+def _sample_hourly_placement_seconds(
+    *,
+    pattern: str,
+    hostname: str,
+    current_hour: datetime,
+    timing_runtime: _SuspiciousBenignTimingRuntime | None,
+    timing_ordinal: int,
+) -> int:
+    """Return one owner-audited, order-independent offset inside the current hour."""
+
+    maximum = _HOURLY_PLACEMENT_MAX_SECONDS[pattern]
+    runtime = timing_runtime or TimingRuntime.compatibility_default()
+    sampled = runtime.sampler.sample_value(
+        _inclusive_integer_distribution(0, maximum),
+        relationship_key=f"suspicious_benign.{pattern}.hourly_placement",
+        scope=TimingScope(
+            stable_id=pattern,
+            host=hostname,
+            source="suspicious_benign",
+            lifecycle_id=current_hour.isoformat(),
+            ordinal=timing_ordinal,
+        ),
+        sample_key="offset_seconds",
+    )
+    return int(sampled + 0.5)
+
+
+def _domain_to_dn(domain: str) -> str:
+    """Render a DNS domain as an LDAP distinguished-name suffix."""
+    labels = [label for label in domain.strip().lower().split(".") if label]
+    if not labels:
+        labels = ["corp", "local"]
+    return ",".join(f"DC={label}" for label in labels)
+
+
+# Intensity mapping: level -> (mean events per hour)
+SUSPICIOUS_NOISE_INTENSITY = {
+    "low": 2.0,
+    "medium": 4.0,
+    "high": 6.0,
+    "ludicrous": 10.0,
+}
+
+# PowerShell commands that look suspicious but are benign admin/dev tasks
+_BENIGN_POWERSHELL = [
+    r"powershell.exe -Command Get-Service | Where-Object {$_.Status -eq 'Stopped'}",
+    r"powershell.exe -Command Get-EventLog -LogName System -Newest 50",
+    r"powershell.exe -Command Test-Connection -ComputerName dc01 -Count 2",
+    r"powershell.exe -Command Get-Process | Sort-Object CPU -Descending | Select-Object -First 10",
+    r"powershell.exe -Command Get-WmiObject Win32_LogicalDisk | Select-Object DeviceID, FreeSpace",
+    r"powershell.exe -Command Invoke-WebRequest -Uri https://packages.nuget.org/api/v2 -UseBasicParsing",
+    r"powershell.exe -Command Get-ADUser -Filter * -SearchBase 'OU=IT,DC=corp,DC=local'",
+    r"powershell.exe -Command Get-ChildItem C:\Logs -Recurse -Filter *.log | Measure-Object",
+]
+
+# cmd.exe commands that look like recon but are routine admin tasks
+_BENIGN_CMD = [
+    "cmd.exe /c net user /domain",
+    'cmd.exe /c net group "Domain Admins" /domain',
+    "cmd.exe /c netstat -an | findstr LISTENING",
+    "cmd.exe /c tasklist /svc",
+    "cmd.exe /c systeminfo",
+    "cmd.exe /c dir \\\\fileserv\\shared$ /s /b",
+    "cmd.exe /c wmic process list brief",
+    "cmd.exe /c ipconfig /all",
+]
+
+# Linux commands that look suspicious but are normal sysadmin tasks
+_BENIGN_LINUX_CMD = [
+    "find / -perm -4000 -type f 2>/dev/null",
+    "cat /etc/shadow",
+    "ss -tulnp",
+    "curl -s http://169.254.169.254/latest/meta-data/",
+    "awk -F: '$3 == 0 {print $1}' /etc/passwd",
+    "last -n 50",
+    "journalctl -u sshd --since '1 hour ago'",
+    "lsof -i :22",
+]
+
+
+def get_suspicious_event_count(noise_level: str, rng: random.Random) -> int:
+    """Get the number of suspicious events to generate for this hour.
+
+    Uses a Poisson-like distribution around the mean for the noise level.
+    """
+    mean = SUSPICIOUS_NOISE_INTENSITY.get(noise_level, 3.0)
+    # Poisson-distributed count (approximated via random choices)
+    count = 0
+    for _ in range(int(mean * 2)):
+        if rng.random() < 0.5:
+            count += 1
+    return count
+
+
+def pick_suspicious_pattern(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    personas: list[Persona] | None,
+    current_hour: datetime,
+) -> dict | None:
+    """Pick a suspicious-but-benign event pattern for this hour.
+
+    Returns a dict with pattern info or None if no suitable pattern found.
+    Weights patterns by environment composition.
+    """
+    if not users or not systems:
+        return None
+
+    # Build available pattern types weighted by environment
+    patterns = []
+
+    # After-hours admin activity (weight higher if sysadmin personas exist)
+    has_sysadmins = _has_persona_type(users, personas, "sysadmin")
+    patterns.append(("after_hours_admin", 3 if has_sysadmins else 1))
+
+    # PowerShell/cmd on non-admin workstations (weight higher if developers exist)
+    has_developers = _has_persona_type(users, personas, "developer")
+    patterns.append(("suspicious_cli", 3 if has_developers else 1))
+
+    # Failed logon burst (always relevant)
+    patterns.append(("failed_logon_burst", 2))
+
+    # Service account anomaly (weight higher if service_accounts exist)
+    patterns.append(("service_account_anomaly", 2))
+
+    # Network-level red herrings
+    patterns.append(("suspicious_dns", 2))
+    patterns.append(("unusual_outbound", 2))
+    patterns.append(("scheduled_scan_overlap", 1))
+
+    # Process-based anomalies
+    patterns.append(("temp_dir_execution", 2))
+    patterns.append(("unusual_powershell", 2 if has_sysadmins else 1))
+
+    pattern_names = [p[0] for p in patterns]
+    pattern_weights = [p[1] for p in patterns]
+
+    chosen = rng.choices(pattern_names, weights=pattern_weights, k=1)[0]
+
+    return {
+        "type": chosen,
+        "users": users,
+        "systems": systems,
+        "current_hour": current_hour,
+    }
+
+
+def _has_persona_type(users: list[User], personas: list[Persona] | None, persona_name: str) -> bool:
+    """Check if any user has the specified persona type."""
+    return any(u.persona == persona_name for u in users)
+
+
+def generate_after_hours_admin(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate an after-hours admin login event.
+
+    Returns dict with user, system, time, and activity info for the caller
+    to execute via ActivityGenerator.
+    """
+    # Pick sysadmin or any admin-like user
+    admin_users = [u for u in users if u.persona in ("sysadmin", "help_desk", "security_analyst")]
+    if not admin_users:
+        admin_users = users[:3]  # Fallback: pick from first few users
+
+    user = rng.choice(admin_users)
+    servers = [s for s in systems if s.type in ("server", "domain_controller")]
+    system = rng.choice(servers) if servers else rng.choice(systems)
+
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="after_hours_admin",
+            hostname=system.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    event_time = current_hour + offset
+
+    return {
+        "pattern": "after_hours_admin",
+        "user": user,
+        "system": system,
+        "time": event_time,
+        "logon_type": 10 if rng.random() < 0.4 else 3,  # RDP or network
+    }
+
+
+def generate_suspicious_cli(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    ad_domain: str = "corp.local",
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate a suspicious CLI command from a non-attacker user."""
+    user = rng.choice(users)
+    system_candidates = [s for s in systems if s.assigned_user == user.username]
+    system = rng.choice(system_candidates) if system_candidates else rng.choice(systems)
+
+    os_cat = _get_os_category(system)
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="suspicious_cli",
+            hostname=system.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    event_time = current_hour + offset
+
+    if os_cat == "windows":
+        if rng.random() < 0.6:
+            cmd = rng.choice(_BENIGN_POWERSHELL)
+            cmd = cmd.replace("DC=corp,DC=local", _domain_to_dn(ad_domain))
+            process = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        else:
+            cmd = rng.choice(_BENIGN_CMD)
+            process = r"C:\Windows\System32\cmd.exe"
+    else:
+        cmd = rng.choice(_BENIGN_LINUX_CMD)
+        process = cmd.split()[0]
+        # Resolve to full path for common tools
+        if "/" not in process:
+            process = f"/usr/bin/{process}"
+
+    return {
+        "pattern": "suspicious_cli",
+        "user": user,
+        "system": system,
+        "time": event_time,
+        "process_name": process,
+        "command_line": cmd,
+    }
+
+
+def generate_failed_logon_burst(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate a burst of failed logons followed by success (fat-fingered password)."""
+    user = rng.choice(users)
+    system_candidates = [s for s in systems if s.assigned_user == user.username]
+    system = rng.choice(system_candidates) if system_candidates else rng.choice(systems)
+
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="failed_logon_burst",
+            hostname=system.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    start_time = current_hour + offset
+    num_failures = rng.randint(3, 6)
+
+    return {
+        "pattern": "failed_logon_burst",
+        "user": user,
+        "system": system,
+        "time": start_time,
+        "num_failures": num_failures,
+    }
+
+
+def generate_service_account_anomaly(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate a service account logging in from an unusual host."""
+    # Find service-like users
+    svc_users = [u for u in users if u.username.lower().startswith(("svc", "sa_", "_"))]
+    if not svc_users:
+        # Use any user as fallback
+        svc_users = users[:2]
+
+    user = rng.choice(svc_users)
+
+    # Pick a system that's NOT the user's primary (unusual host)
+    other_systems = [s for s in systems if s.hostname != (user.primary_system or "")]
+    system = rng.choice(other_systems) if other_systems else rng.choice(systems)
+
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="service_account_anomaly",
+            hostname=system.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    event_time = current_hour + offset
+
+    return {
+        "pattern": "service_account_anomaly",
+        "user": user,
+        "system": system,
+        "time": event_time,
+        "logon_type": 3,
+    }
+
+
+def generate_suspicious_dns(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate suspicious-looking but benign DNS query.
+
+    Produces queries to high-entropy CDN subdomains, DNS-over-HTTPS
+    providers, or rare TLDs that might trigger DGA detection rules
+    but are actually legitimate.
+    """
+    system = rng.choice(systems)
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="suspicious_dns",
+            hostname=system.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    event_time = current_hour + offset
+    hostname = pick_suspicious_dns_host(rng)
+
+    return {
+        "pattern": "suspicious_dns",
+        "system": system,
+        "time": event_time,
+        "hostname": hostname,
+    }
+
+
+def generate_unusual_outbound(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate unusual but legitimate outbound connection.
+
+    Connections to unfamiliar cloud regions, dev tool endpoints, or
+    large outbound transfers that are actually backup/sync operations.
+    """
+    # Prefer workstations as source (dev testing, cloud sync)
+    workstations = [s for s in systems if s.type == "workstation"]
+    system = rng.choice(workstations) if workstations else rng.choice(systems)
+
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="unusual_outbound",
+            hostname=system.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    event_time = current_hour + offset
+    conn_info = pick_unusual_connection(rng)
+
+    return {
+        "pattern": "unusual_outbound",
+        "system": system,
+        "time": event_time,
+        "dst_ip": conn_info["dst_ip"],
+        "dst_port": conn_info["dst_port"],
+        "service": conn_info["service"],
+        "hostname": conn_info.get("hostname"),
+        "large_transfer": "backup" in conn_info["desc"].lower()
+        or "sync" in conn_info["desc"].lower(),
+    }
+
+
+def generate_scheduled_scan_overlap(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate vulnerability scan traffic that overlaps with attack window.
+
+    Multi-port connection burst from a server that looks like network
+    scanning but is actually a scheduled Nessus/Qualys scan.
+    """
+    servers = [s for s in systems if s.type in ("server", "domain_controller")]
+    if not servers or len(systems) < 3:
+        return None
+
+    scanner = rng.choice(servers)
+    targets = rng.sample(
+        [s for s in systems if s != scanner],
+        min(rng.randint(3, 6), len(systems) - 1),
+    )
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="scheduled_scan_overlap",
+            hostname=scanner.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    event_time = current_hour + offset
+
+    return {
+        "pattern": "scheduled_scan_overlap",
+        "scanner": scanner,
+        "targets": targets,
+        "time": event_time,
+    }
+
+
+def generate_temp_dir_execution(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate a process execution from a temp directory (benign installer/update)."""
+    user = rng.choice(users)
+    system_candidates = [s for s in systems if s.assigned_user == user.username]
+    system = rng.choice(system_candidates) if system_candidates else rng.choice(systems)
+
+    os_cat = _get_os_category(system)
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="temp_dir_execution",
+            hostname=system.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    event_time = current_hour + offset
+
+    if os_cat == "windows":
+        temp_exes = [
+            (r"C:\Users\{user}\AppData\Local\Temp\vs_installer.exe", "vs_installer.exe /quiet"),
+            (r"C:\Users\{user}\AppData\Local\Temp\ChromeSetup.exe", "ChromeSetup.exe --silent"),
+            (r"C:\Users\{user}\AppData\Local\Temp\msi_update.exe", "msi_update.exe /norestart"),
+            (
+                r"C:\Users\{user}\AppData\Local\Temp\dotnet-sdk-installer.exe",
+                "dotnet-sdk-installer.exe /install /quiet",
+            ),
+            (r"C:\Windows\Temp\KB5034441_update.exe", "KB5034441_update.exe /quiet"),
+        ]
+        exe_path, cmd = rng.choice(temp_exes)
+        exe_path = exe_path.replace("{user}", user.username)
+    else:
+        temp_exes = [
+            ("/usr/bin/python3", "python3 /tmp/pip-install-cache/setup.py install"),
+            ("/tmp/go-build-cache/main", "/tmp/go-build-cache/main --test"),
+            ("/bin/bash", "bash /tmp/npm-postinstall.sh"),
+        ]
+        exe_path, cmd = rng.choice(temp_exes)
+
+    return {
+        "pattern": "temp_dir_execution",
+        "user": user,
+        "system": system,
+        "time": event_time,
+        "process_name": exe_path,
+        "command_line": cmd,
+    }
+
+
+def _generate_encoded_command(
+    rng: random.Random,
+    *,
+    hostname: str = "",
+    username: str = "",
+) -> str:
+    """Generate a unique base64-encoded benign PowerShell command.
+
+    Uses data-driven host-biased templates and encodes as UTF-16LE base64,
+    matching real Windows PowerShell -EncodedCommand format.
+    """
+    return generate_encoded_powershell_command(
+        rng=rng,
+        hostname=hostname or "unknown",
+        username=username or "unknown",
+    )
+
+
+def generate_unusual_powershell(
+    rng: random.Random,
+    users: list[User],
+    systems: list[System],
+    current_hour: datetime,
+    ad_domain: str = "corp.local",
+    timing_runtime: _SuspiciousBenignTimingRuntime | None = None,
+    timing_ordinal: int = 0,
+) -> dict | None:
+    """Generate PowerShell with suspicious-looking flags (benign admin scripts)."""
+    # Only Windows systems
+    windows_systems = [s for s in systems if "windows" in s.os.lower()]
+    if not windows_systems:
+        return None
+
+    user = rng.choice(users)
+    system_candidates = [s for s in windows_systems if s.assigned_user == user.username]
+    system = rng.choice(system_candidates) if system_candidates else rng.choice(windows_systems)
+
+    offset = timedelta(
+        seconds=_sample_hourly_placement_seconds(
+            pattern="unusual_powershell",
+            hostname=system.hostname,
+            current_hour=current_hour,
+            timing_runtime=timing_runtime,
+            timing_ordinal=timing_ordinal,
+        )
+    )
+    event_time = current_hour + offset
+
+    _LOG_DIRS = ["Logs", "AppLogs", "EventExport", "Temp\\Logs", "Audit"]
+    _BACKUP_NAMES = ["logs-backup", "archive", "audit-export", "monthly-logs", "cleanup"]
+    _SCRIPT_NAMES = [
+        "deploy-monitoring.ps1",
+        "health-check.ps1",
+        "patch-audit.ps1",
+        "compliance-scan.ps1",
+        "cert-renewal.ps1",
+    ]
+    _REPORT_NAMES = ["audit", "security-review", "compliance", "weekly-report", "incident"]
+    _API_PATHS = ["/health", "/status", "/api/v1/check", "/metrics", "/readiness"]
+
+    log_dir = rng.choice(_LOG_DIRS)
+    backup = rng.choice(_BACKUP_NAMES)
+    script = rng.choice(_SCRIPT_NAMES)
+    report = rng.choice(_REPORT_NAMES)
+    api_path = rng.choice(_API_PATHS)
+    internal_api = f"internal-api.{ad_domain.strip().lower() or 'corp.local'}"
+
+    suspicious_ps = [
+        rf'powershell.exe -WindowStyle Hidden -Command "Get-WinEvent -LogName Security -MaxEvents {rng.choice([50, 100, 200, 500])} | Export-Csv C:\Reports\{report}.csv"',
+        "powershell.exe -EncodedCommand "
+        f"{_generate_encoded_command(rng, hostname=system.hostname, username=user.username)}",
+        rf"powershell.exe -Exec Bypass -File C:\Scripts\{script}",
+        rf'powershell.exe -NonInteractive -Command "Invoke-RestMethod -Uri https://{internal_api}{api_path}"',
+        rf'powershell.exe -WindowStyle Hidden -Command "Compress-Archive -Path C:\{log_dir}\*.log -DestinationPath C:\Backups\{backup}.zip"',
+    ]
+
+    cmd = rng.choice(suspicious_ps)
+    return {
+        "pattern": "unusual_powershell",
+        "user": user,
+        "system": system,
+        "time": event_time,
+        "process_name": r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        "command_line": cmd,
+    }
+
+
+def _get_os_category(system: System) -> str:
+    """Determine OS category from system OS string."""
+    os_lower = system.os.lower()
+    if "windows" in os_lower:
+        return "windows"
+    return "linux"

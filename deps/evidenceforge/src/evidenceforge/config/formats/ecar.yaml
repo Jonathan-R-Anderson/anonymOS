@@ -1,0 +1,643 @@
+# ecar format definition — eCAR (extended Cyber Analytics Repository) - EDR/XDR host telemetry
+#
+# Category: host
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: ecar
+version: "1.1"
+description: "eCAR (extended Cyber Analytics Repository) - EDR/XDR host telemetry"
+category: host
+
+fields:
+  # Core metadata
+  - name: timestamp_ms
+    type: integer
+    required: true
+    description: "Timestamp in milliseconds since epoch"
+
+  - name: id
+    type: string
+    required: true
+    description: "UUID for this event record"
+
+  - name: hostname
+    type: string
+    required: true
+    description: "Target system hostname"
+
+  # Event definition (object/action model)
+  - name: object
+    type: string
+    required: true
+    description: "Entity type (PROCESS, FILE, FLOW, REGISTRY, etc.)"
+    constraints:
+      allowed_values: [PROCESS, FILE, FLOW, REGISTRY, MODULE, THREAD, USER_SESSION, SOCKET, DRIVER, SERVICE]
+
+  - name: action
+    type: string
+    required: true
+    description: "Operation performed (CREATE, OPEN, MODIFY, DELETE, etc.)"
+    constraints:
+      allowed_values: [CREATE, TERMINATE, OPEN, CLOSE, MODIFY, DELETE, WRITE, READ, RENAME, CONNECT, ACCEPT, SEND, RECEIVE, LOAD, UNLOAD, START, STOP, LOGIN, LOGOUT, REMOTE_CREATE]
+
+  - name: objectID
+    type: string
+    required: true
+    description: "UUID of the affected entity"
+
+  # Actor information
+  - name: actorID
+    type: string
+    required: false
+    description: "UUID of entity performing the action"
+
+  - name: pid
+    type: integer
+    required: false
+    description: "Process ID (-1 if unavailable)"
+
+  - name: tid
+    type: integer
+    required: false
+    description: "Thread ID (-1 if unavailable)"
+
+  - name: ppid
+    type: integer
+    required: false
+    description: "Parent process ID (-1 if unavailable)"
+
+  - name: principal
+    type: string
+    required: false
+    description: "User account executing the action"
+
+  # Properties (flexible key-value pairs)
+  - name: command_line
+    type: string
+    required: false
+    description: "Command line for PROCESS events"
+
+  - name: image_path
+    type: string
+    required: false
+    description: "Executable path for PROCESS events"
+
+  - name: parent_image_path
+    type: string
+    required: false
+    description: "Parent executable path for PROCESS/CREATE events"
+
+  - name: file_path
+    type: string
+    required: false
+    description: "File path for FILE events"
+
+  - name: source_file_path
+    type: string
+    required: false
+    description: "Prior path for FILE rename events"
+
+  - name: file_object_id
+    type: string
+    required: false
+    description: "Canonical durable file identity when available"
+
+  - name: content_version
+    type: integer
+    required: false
+    description: Canonical file content version when available
+    constraints:
+      min_value: 0
+  - name: src_ip
+    type: ip_address
+    required: false
+    description: "Source IP for FLOW/SOCKET events"
+
+  - name: src_port
+    type: string
+    required: false
+    description: "Source port for FLOW/SOCKET events (string in properties)"
+
+  - name: dst_ip
+    type: ip_address
+    required: false
+    description: "Destination IP for FLOW/SOCKET events"
+
+  - name: dst_port
+    type: string
+    required: false
+    description: "Destination port for FLOW/SOCKET events (string in properties)"
+
+  - name: protocol
+    type: string
+    required: false
+    description: "Protocol for network events"
+
+  - name: icmp_type
+    type: string
+    required: false
+    description: "ICMP message type for ICMP FLOW events"
+
+  - name: icmp_code
+    type: string
+    required: false
+    description: "ICMP message code for ICMP FLOW events"
+
+  - name: direction
+    type: string
+    required: false
+    description: "Connection direction for FLOW events (INBOUND or OUTBOUND)"
+    constraints:
+      allowed_values: [INBOUND, OUTBOUND]
+
+  - name: md5
+    type: string
+    required: false
+    description: "MD5 hash for FILE events"
+
+  - name: sha256
+    type: string
+    required: false
+    description: "SHA256 hash for FILE events"
+
+  - name: registry_key
+    type: string
+    required: false
+    description: "Registry key path for REGISTRY events"
+
+  - name: registry_value
+    type: string
+    required: false
+    description: "Registry value name for REGISTRY events"
+
+  - name: failure_reason
+    type: string
+    required: false
+    description: "Reason for failure on USER_SESSION/LOGIN events (e.g., bad_password)"
+
+  - name: outcome
+    type: string
+    required: false
+    description: "Logon outcome for USER_SESSION/LOGIN events (success or failure)"
+    constraints:
+      allowed_values: [success, failure]
+
+  - name: logon_id
+    type: string
+    required: false
+    description: "Source-native session/logon identifier for USER_SESSION events"
+
+  - name: logon_type
+    type: string
+    required: false
+    description: "Windows-style logon type for USER_SESSION events, string in properties"
+
+  - name: outbound_principal
+    type: string
+    required: false
+    description: "Alternate outbound identity for Windows NewCredentials sessions"
+
+  - name: outbound_domain
+    type: string
+    required: false
+    description: "Domain of the alternate outbound NewCredentials identity"
+
+  - name: cloned_from_logon_id
+    type: string
+    required: false
+    description: "Local caller LUID cloned by a Windows NewCredentials session"
+
+  - name: session_id
+    type: string
+    required: false
+    description: "OS/source session identifier for USER_SESSION events, string in properties"
+
+  - name: logon_guid
+    type: string
+    required: false
+    description: "Windows LogonGuid for USER_SESSION events when available"
+
+  - name: session_type
+    type: string
+    required: false
+    description: "OS-native session type for non-Windows USER_SESSION events"
+
+  - name: session_lifecycle
+    type: string
+    required: false
+    description: "Session lifecycle qualifier for attempts that do not create a durable session"
+    constraints:
+      allowed_values: [attempt_failed]
+
+  - name: status_code
+    type: string
+    required: false
+    description: "Windows status hex (e.g., 0xC000006D) on USER_SESSION/LOGIN failures"
+
+  - name: sub_status
+    type: string
+    required: false
+    description: "Windows sub-status hex (e.g., 0xC0000064) on USER_SESSION/LOGIN failures"
+
+  # Cross-process event properties (THREAD/REMOTE_CREATE, PROCESS/OPEN)
+  - name: src_pid
+    type: string
+    required: false
+    description: "Source process ID (string in properties per eCAR spec)"
+
+  - name: src_tid
+    type: string
+    required: false
+    description: "Source thread ID"
+
+  - name: target_pid
+    type: string
+    required: false
+    description: "Target process ID (THREAD/REMOTE_CREATE, PROCESS/OPEN)"
+
+  - name: tgt_tid
+    type: string
+    required: false
+    description: "Target thread ID (new thread for REMOTE_CREATE)"
+
+  - name: target_process_uuid
+    type: string
+    required: false
+    description: "Target process objectID UUID for cross-reference"
+
+  - name: source_process_uuid
+    type: string
+    required: false
+    description: "Canonical UUID of the process performing a cross-process action"
+
+  - name: source_pid
+    type: string
+    required: false
+    description: "Canonical source process PID (string in properties)"
+
+  - name: source_tid
+    type: string
+    required: false
+    description: "Canonical source thread TID when an owning thread is explicitly modeled"
+
+  - name: source_image_path
+    type: string
+    required: false
+    description: "Canonical source process image for cross-process actions"
+
+  - name: source_principal
+    type: string
+    required: false
+    description: "Canonical source process principal for cross-process actions"
+
+  - name: target_tid
+    type: string
+    required: false
+    description: "Canonical target thread TID when an owning thread is explicitly modeled"
+
+  - name: target_principal
+    type: string
+    required: false
+    description: "Canonical target process principal for cross-process actions"
+
+  - name: target_image_path
+    type: string
+    required: false
+    description: "Target executable path for PROCESS/OPEN events"
+
+  - name: start_address
+    type: string
+    required: false
+    description: "Thread start address (hex) for THREAD events"
+
+  - name: stack_base
+    type: string
+    required: false
+    description: "Kernel stack base address for THREAD events"
+
+  - name: stack_limit
+    type: string
+    required: false
+    description: "Kernel stack limit address for THREAD events"
+
+  - name: user_stack_base
+    type: string
+    required: false
+    description: "User-mode stack base address for THREAD events"
+
+  - name: user_stack_limit
+    type: string
+    required: false
+    description: "User-mode stack limit address for THREAD events"
+
+  - name: granted_access
+    type: string
+    required: false
+    description: "Access mask for PROCESS/OPEN events (e.g., 0x1410)"
+
+  - name: call_trace
+    type: string
+    required: false
+    description: "Source-owned call trace for PROCESS/OPEN events"
+
+  # SERVICE/CREATE properties
+  - name: service_name
+    type: string
+    required: false
+    description: "Service name for SERVICE/CREATE events"
+
+  - name: service_account
+    type: string
+    required: false
+    description: "Account running the service for SERVICE/CREATE events"
+
+output:
+  format: json
+  file_extension: ".json"
+  encoding: utf-8
+  # Template not used — EcarEmitter builds JSON directly in Python.
+  # Kept as an empty placeholder for format loader compatibility.
+  template: "{}"
+
+# Typed record contracts; evaluated after scalar validation.
+validators:
+- id: ecar.legacy-1
+  message: PROCESS records have pid
+  severity: error
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: PROCESS
+  checks:
+  - op: presence
+    field: pid
+    present: true
+- id: ecar.legacy-2
+  message: PROCESS/CREATE records have canonical primary tid
+  severity: warning
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: PROCESS
+  - op: compare
+    field: action
+    relation: eq
+    value: CREATE
+  checks:
+  - op: presence
+    field: tid
+    present: true
+- id: ecar.legacy-3
+  message: PROCESS/TERMINATE records have canonical primary tid
+  severity: warning
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: PROCESS
+  - op: compare
+    field: action
+    relation: eq
+    value: TERMINATE
+  checks:
+  - op: presence
+    field: tid
+    present: true
+- id: ecar.legacy-4
+  message: All records have objectID
+  severity: error
+  when: []
+  checks:
+  - op: presence
+    field: objectID
+    present: true
+- id: ecar.legacy-5
+  message: PROCESS/CREATE has image_path
+  severity: error
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: PROCESS
+  - op: compare
+    field: action
+    relation: eq
+    value: CREATE
+  checks:
+  - op: presence
+    field: image_path
+    present: true
+- id: ecar.legacy-6
+  message: PROCESS/CREATE has ppid
+  severity: warning
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: PROCESS
+  - op: compare
+    field: action
+    relation: eq
+    value: CREATE
+  checks:
+  - op: presence
+    field: ppid
+    present: true
+- id: ecar.legacy-7
+  message: PROCESS/CREATE has command_line
+  severity: warning
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: PROCESS
+  - op: compare
+    field: action
+    relation: eq
+    value: CREATE
+  checks:
+  - op: presence
+    field: command_line
+    present: true
+- id: ecar.legacy-8
+  message: THREAD/REMOTE_CREATE has target info
+  severity: warning
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: THREAD
+  - op: compare
+    field: action
+    relation: eq
+    value: REMOTE_CREATE
+  checks:
+  - op: presence
+    field: target_pid
+    present: true
+  - op: presence
+    field: image_path
+    present: true
+- id: ecar.legacy-9
+  message: PROCESS/OPEN has source image
+  severity: warning
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: PROCESS
+  - op: compare
+    field: action
+    relation: eq
+    value: OPEN
+  checks:
+  - op: presence
+    field: image_path
+    present: true
+- id: ecar.legacy-10
+  message: FLOW events have network fields
+  severity: error
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: FLOW
+  checks:
+  - op: presence
+    field: src_ip
+    present: true
+  - op: presence
+    field: dst_ip
+    present: true
+- id: ecar.legacy-11
+  message: SERVICE/CREATE has service name
+  severity: error
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: SERVICE
+  - op: compare
+    field: action
+    relation: eq
+    value: CREATE
+  checks:
+  - op: presence
+    field: service_name
+    present: true
+- id: ecar.legacy-12
+  message: USER_SESSION LOGIN has principal
+  severity: warning
+  when:
+  - op: compare
+    field: object
+    relation: eq
+    value: USER_SESSION
+  - op: compare
+    field: action
+    relation: eq
+    value: LOGIN
+  checks:
+  - op: presence
+    field: principal
+    present: true
+- id: ecar.object-action
+  message: Unsupported object/action combination
+  severity: error
+  when: []
+  checks:
+  - op: combination
+    field: object
+    other_field: action
+    pairs:
+    - - PROCESS
+      - CREATE
+    - - PROCESS
+      - TERMINATE
+    - - PROCESS
+      - OPEN
+    - - FILE
+      - CREATE
+    - - FILE
+      - OPEN
+    - - FILE
+      - CLOSE
+    - - FILE
+      - MODIFY
+    - - FILE
+      - DELETE
+    - - FILE
+      - WRITE
+    - - FILE
+      - READ
+    - - FILE
+      - RENAME
+    - - FLOW
+      - OPEN
+    - - FLOW
+      - CLOSE
+    - - FLOW
+      - CONNECT
+    - - FLOW
+      - ACCEPT
+    - - FLOW
+      - SEND
+    - - FLOW
+      - RECEIVE
+    - - REGISTRY
+      - CREATE
+    - - REGISTRY
+      - MODIFY
+    - - REGISTRY
+      - DELETE
+    - - REGISTRY
+      - READ
+    - - REGISTRY
+      - WRITE
+    - - MODULE
+      - LOAD
+    - - MODULE
+      - UNLOAD
+    - - THREAD
+      - CREATE
+    - - THREAD
+      - REMOTE_CREATE
+    - - THREAD
+      - TERMINATE
+    - - USER_SESSION
+      - LOGIN
+    - - USER_SESSION
+      - LOGOUT
+    - - SOCKET
+      - CREATE
+    - - SOCKET
+      - OPEN
+    - - SOCKET
+      - CLOSE
+    - - SOCKET
+      - CONNECT
+    - - SOCKET
+      - ACCEPT
+    - - SOCKET
+      - SEND
+    - - SOCKET
+      - RECEIVE
+    - - DRIVER
+      - LOAD
+    - - DRIVER
+      - UNLOAD
+    - - SERVICE
+      - CREATE
+    - - SERVICE
+      - START
+    - - SERVICE
+      - STOP
+    - - SERVICE
+      - MODIFY
+    - - SERVICE
+      - DELETE

@@ -1,0 +1,1888 @@
+# Unified application catalog for process generation.
+# Consolidates image paths, PE metadata, command-line templates,
+# and persona-based filtering into a single data source.
+#
+# Fields:
+#   id: Unique stable identifier
+#   display_name: Human-readable name
+#   platforms: Per-OS config (windows and/or linux)
+#     image_path: Fully qualified executable path (no bare filenames)
+#     pe_metadata: Windows PE header fields (windows only)
+#     command_templates: List of realistic command lines with {placeholder} support
+#   categories: List of category tags matching PERSONA_PROCESS_WEIGHTS keys
+#     (user_app, code, build, query, browser, office)
+#   personas: Which persona names may spawn this app (others never see it)
+#
+# Depended on by: spawn_rules.yaml (exe basenames), process_network_map.yaml (exe basenames)
+# Depends on: persona files (personas: list must use valid persona names)
+#
+# Authoring reference: commands/eforge/references/config-apps-processes.md
+
+schema_version: 2
+default_deployment:
+  kind: legacy_static
+
+applications:
+  # ===== Windows User Apps (process_user_apps) =====
+  - id: chrome
+    display_name: "Google Chrome"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "120.0.6099.225"
+          description: "Google Chrome"
+          product: "Google Chrome"
+          company: "Google LLC"
+          original_filename: "chrome.exe"
+        command_templates:
+          - '"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument {internal_url}'
+          - '"C:\Program Files\Google\Chrome\Application\chrome.exe" --no-startup-window /prefetch:8'
+        children:
+          - '"C:\Program Files\Google\Chrome\Application\chrome.exe" --type=renderer --enable-features=NetworkService'
+          - '"C:\Program Files\Google\Chrome\Application\chrome.exe" --type=gpu-process'
+          - '"C:\Program Files\Google\Chrome\Application\chrome.exe" --type=utility --utility-sub-type=network.mojom.NetworkService'
+        loaded_modules:
+          - path: 'C:\Program Files\Google\Chrome\Application\chrome_elf.dll'
+            release_policy: owner_release
+            signature: "Google LLC"
+            pe_metadata:
+              file_version: "120.0.6099.225"
+              description: "Google Chrome ELF"
+              product: "Google Chrome"
+              company: "Google LLC"
+              original_filename: "chrome_elf.dll"
+          - path: 'C:\Program Files\Google\Chrome\Application\libEGL.dll'
+            release_policy: owner_release
+            signature: "Google LLC"
+            pe_metadata:
+              file_version: "120.0.6099.225"
+              description: "ANGLE libEGL"
+              product: "Google Chrome"
+              company: "Google LLC"
+              original_filename: "libEGL.dll"
+          - path: 'C:\Program Files\Google\Chrome\Application\libGLESv2.dll'
+            release_policy: owner_release
+            signature: "Google LLC"
+            pe_metadata:
+              file_version: "120.0.6099.225"
+              description: "ANGLE libGLESv2"
+              product: "Google Chrome"
+              company: "Google LLC"
+              original_filename: "libGLESv2.dll"
+          - path: 'C:\Windows\System32\user32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\gdi32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\dwrite.dll'
+            release_policy: host_build
+      linux:
+        image_path: "/usr/bin/google-chrome"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "google-chrome --new-tab {internal_url}"
+    categories: [user_app, browser]
+    personas: [developer, analyst, sysadmin, security_analyst, hr, accountant, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: firefox
+    display_name: "Mozilla Firefox"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Mozilla Firefox\firefox.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "121.0"
+          description: "Firefox"
+          product: "Firefox"
+          company: "Mozilla Corporation"
+          original_filename: "firefox.exe"
+        command_templates:
+          - '"C:\Program Files\Mozilla Firefox\firefox.exe" -new-window {internal_url}'
+          - '"C:\Program Files\Mozilla Firefox\firefox.exe" -osint -url {internal_url}'
+        children:
+          - '"C:\Program Files\Mozilla Firefox\firefox.exe" -contentproc -childID 3 -isForBrowser'
+          - '"C:\Program Files\Mozilla Firefox\firefox.exe" -contentproc -childID 5 -isForBrowser'
+        loaded_modules:
+          - path: 'C:\Program Files\Mozilla Firefox\mozglue.dll'
+            release_policy: owner_release
+            signature: "Mozilla Corporation"
+            pe_metadata:
+              file_version: "121.0"
+              description: "Mozilla Glue Library"
+              product: "Firefox"
+              company: "Mozilla Corporation"
+              original_filename: "mozglue.dll"
+          - path: 'C:\Program Files\Mozilla Firefox\nss3.dll'
+            release_policy: owner_release
+            signature: "Mozilla Corporation"
+            pe_metadata:
+              file_version: "121.0"
+              description: "Network Security Services"
+              product: "Firefox"
+              company: "Mozilla Corporation"
+              original_filename: "nss3.dll"
+          - path: 'C:\Program Files\Mozilla Firefox\lgpllibs.dll'
+            release_policy: owner_release
+            signature: "Mozilla Corporation"
+            pe_metadata:
+              file_version: "121.0"
+              description: "Mozilla LGPL Libraries"
+              product: "Firefox"
+              company: "Mozilla Corporation"
+              original_filename: "lgpllibs.dll"
+          - path: 'C:\Windows\System32\user32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\gdi32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+      linux:
+        image_path: "/usr/bin/firefox"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "firefox --new-tab {internal_url}"
+          - "firefox -P default"
+    categories: [user_app, browser]
+    personas: [developer, analyst, sysadmin, security_analyst, hr, accountant, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: outlook
+    display_name: "Microsoft Outlook"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "16.0.17628.20006"
+          description: "Microsoft Outlook"
+          product: "Microsoft Office"
+          company: "Microsoft Corporation"
+          original_filename: "OUTLOOK.EXE"
+        command_templates:
+          - '"C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE"'
+          - 'OUTLOOK.EXE /recycle'
+        loaded_modules:
+          - path: 'C:\Program Files\Microsoft Office\root\Office16\OLMAPI32.DLL'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+          - path: 'C:\Program Files\Microsoft Office\root\Office16\mso.dll'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+          - path: 'C:\Windows\System32\user32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ole32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+    categories: [user_app, office]
+    personas: [developer, analyst, sysadmin, security_analyst, executive, hr, accountant, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: word
+    display_name: "Microsoft Word"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "16.0.17628.20006"
+          description: "Microsoft Word"
+          product: "Microsoft Office"
+          company: "Microsoft Corporation"
+          original_filename: "WINWORD.EXE"
+        command_templates:
+          - 'WINWORD.EXE /n "{doc_path}"'
+          - '"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE" /t "Normal.dotm"'
+        loaded_modules:
+          - path: 'C:\Program Files\Microsoft Office\root\Office16\mso.dll'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+          - path: 'C:\Program Files\Microsoft Office\root\Office16\wwlib.dll'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+          - path: 'C:\Windows\System32\user32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ole32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\gdi32.dll'
+            release_policy: host_build
+    categories: [user_app, office]
+    personas: [executive, analyst, hr, accountant, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: excel
+    display_name: "Microsoft Excel"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "16.0.17628.20006"
+          description: "Microsoft Excel"
+          product: "Microsoft Office"
+          company: "Microsoft Corporation"
+          original_filename: "EXCEL.EXE"
+        command_templates:
+          - 'EXCEL.EXE "{spreadsheet_path}"'
+          - '"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE" /e'
+        loaded_modules:
+          - path: 'C:\Program Files\Microsoft Office\root\Office16\mso.dll'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+          - path: 'C:\Windows\System32\user32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ole32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\gdi32.dll'
+            release_policy: host_build
+    categories: [user_app, office]
+    personas: [analyst, executive, hr, accountant, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: edge
+    display_name: "Microsoft Edge"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "120.0.2210.144"
+          description: "Microsoft Edge"
+          product: "Microsoft Edge"
+          company: "Microsoft Corporation"
+          original_filename: "msedge.exe"
+        command_templates:
+          - '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --single-argument {internal_url}'
+        children:
+          - '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --type=renderer'
+          - '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --type=gpu-process'
+        loaded_modules:
+          - path: 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge_elf.dll'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+          - path: 'C:\Windows\System32\user32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\gdi32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\dwrite.dll'
+            release_policy: host_build
+    categories: [user_app, browser]
+    personas: [executive, sysadmin, analyst, hr, accountant, help_desk, default]
+    system_types: [workstation]
+
+  - id: teams
+    display_name: "Microsoft Teams"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Users\{username}\AppData\Local\Microsoft\Teams\current\Teams.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: user
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "24124.2315.3009.6699"
+          description: "Microsoft Teams"
+          product: "Microsoft Teams"
+          company: "Microsoft Corporation"
+          original_filename: "Teams.exe"
+        command_templates:
+          - '"C:\Users\{username}\AppData\Local\Microsoft\Teams\current\Teams.exe" --processStart Teams.exe'
+        children:
+          - '"C:\Users\{username}\AppData\Local\Microsoft\Teams\current\Teams.exe" --type=renderer'
+          - '"C:\Users\{username}\AppData\Local\Microsoft\Teams\current\Teams.exe" --type=utility'
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, security_analyst, executive, hr, accountant, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: onedrive
+    display_name: "Microsoft OneDrive"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Users\{username}\AppData\Local\Microsoft\OneDrive\OneDrive.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: user
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "24.070.0407.0003"
+          description: "Microsoft OneDrive"
+          product: "Microsoft OneDrive"
+          company: "Microsoft Corporation"
+          original_filename: "OneDrive.exe"
+        command_templates:
+          - '"C:\Users\{username}\AppData\Local\Microsoft\OneDrive\OneDrive.exe" /background'
+        children:
+          - '"C:\Users\{username}\AppData\Local\Microsoft\OneDrive\OneDrive.exe" /background'
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, executive, hr, accountant, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: acrobat
+    display_name: "Adobe Acrobat"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "24.002.20759"
+          description: "Adobe Acrobat"
+          product: "Adobe Acrobat"
+          company: "Adobe Systems Incorporated"
+          original_filename: "Acrobat.exe"
+        command_templates:
+          - '"C:\Program Files\Adobe\Acrobat DC\Acrobat\Acrobat.exe"'
+    categories: [user_app, office]
+    personas: [executive, analyst, hr, accountant, help_desk, default]
+    system_types: [workstation]
+
+  - id: 7zip
+    display_name: "7-Zip"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\7-Zip\7zFM.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "23.01"
+          description: "7-Zip File Manager"
+          product: "7-Zip"
+          company: "Igor Pavlov"
+          original_filename: "7zFM.exe"
+        command_templates:
+          - '"C:\Program Files\7-Zip\7zFM.exe"'
+    categories: [user_app]
+    personas: [developer, sysadmin, default]
+    system_types: [workstation]
+
+  # ===== Windows Code Editors (process_code) =====
+  - id: vscode
+    display_name: "Visual Studio Code"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Microsoft VS Code\Code.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "1.89.1"
+          description: "Visual Studio Code"
+          product: "Visual Studio Code"
+          company: "Microsoft Corporation"
+          original_filename: "Code.exe"
+        command_templates:
+          - 'Code.exe --folder-uri {project_path}'
+          - '"C:\Program Files\Microsoft VS Code\Code.exe" --unity-launch'
+      linux:
+        image_path: "/usr/bin/code"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "code --no-sandbox {linux_project}"
+    categories: [code]
+    personas: [developer, sysadmin, analyst, default]
+
+  - id: notepadpp
+    display_name: "Notepad++"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files (x86)\Notepad++\notepad++.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "8.6.4"
+          description: "Notepad++ : a free (GNU) source code editor"
+          product: "Notepad++"
+          company: "Don HO don.h@free.fr"
+          original_filename: "notepad++.exe"
+        command_templates:
+          - 'notepad++ {source_file}'
+          - '"C:\Program Files (x86)\Notepad++\notepad++.exe" -multiInst {source_file}'
+    categories: [code]
+    personas: [developer, sysadmin, analyst, default]
+
+  - id: intellij
+    display_name: "IntelliJ IDEA"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\JetBrains\IntelliJ IDEA\bin\idea64.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "2024.1.1"
+          description: "IntelliJ IDEA"
+          product: "IntelliJ IDEA"
+          company: "JetBrains s.r.o."
+          original_filename: "idea64.exe"
+        command_templates:
+          - 'idea64.exe {project_path}'
+    categories: [code]
+    personas: [developer]
+
+  - id: sublimetext
+    display_name: "Sublime Text"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Sublime Text\sublime_text.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "4169"
+          description: "Sublime Text"
+          product: "Sublime Text"
+          company: "Sublime HQ Pty Ltd"
+          original_filename: "sublime_text.exe"
+        command_templates:
+          - 'sublime_text.exe {source_file}'
+    categories: [code]
+    personas: [developer, sysadmin]
+
+  # ===== Windows Build Tools (process_build) =====
+  - id: msbuild
+    display_name: "MSBuild"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "4.8.9232.0"
+          description: "MSBuild.exe"
+          product: "Microsoft .NET Framework"
+          company: "Microsoft Corporation"
+          original_filename: "MSBuild.exe"
+        command_templates:
+          - 'MSBuild.exe {solution_name} /t:Build /p:Configuration={build_config}'
+    categories: [build]
+    personas: [developer]
+
+  - id: dotnet
+    display_name: ".NET CLI"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\dotnet\dotnet.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "8.0.4.24212"
+          description: ".NET Host"
+          product: "Microsoft .NET"
+          company: "Microsoft Corporation"
+          original_filename: "dotnet.exe"
+        command_templates:
+          - 'dotnet.exe build -c {build_config}'
+          - 'dotnet.exe test --logger "console;verbosity=normal"'
+    categories: [build]
+    personas: [developer]
+
+  - id: nodejs
+    display_name: "Node.js"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\nodejs\node.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "20.12.2"
+          description: "Node.js JavaScript Runtime"
+          product: "Node.js"
+          company: "Node.js"
+          original_filename: "node.exe"
+        command_templates:
+          - 'node.exe scripts/build.js'
+          - 'node.exe --max-old-space-size=4096 node_modules/.bin/webpack'
+    categories: [build]
+    personas: [developer]
+
+  # ===== Linux-Only User Apps =====
+  - id: thunderbird
+    display_name: "Mozilla Thunderbird"
+    platforms:
+      linux:
+        image_path: "/usr/bin/thunderbird"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "thunderbird"
+    categories: [user_app, office]
+    personas: [executive, hr, accountant, default]
+    system_types: [workstation]
+
+  - id: git
+    display_name: "Git"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Git\cmd\git.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "2.45.1"
+          description: "Git for Windows"
+          product: "Git"
+          company: "The Git Development Community"
+          original_filename: "git.exe"
+        command_templates:
+          - 'git.exe pull origin {git_branch}'
+          - 'git.exe status'
+          - 'git.exe log --oneline -10'
+      linux:
+        image_path: "/usr/bin/git"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "git pull origin {git_branch}"
+          - "git status"
+          - "git log --oneline -10"
+    categories: [user_app, build]
+    personas: [developer, sysadmin]
+    system_types: [workstation, server]
+
+  - id: docker
+    display_name: "Docker"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "26.1.1"
+          description: "Docker Client"
+          product: "Docker Desktop"
+          company: "Docker Inc."
+          original_filename: "docker.exe"
+        command_templates:
+          - 'docker.exe ps'
+          - 'docker.exe images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"'
+      linux:
+        image_path: "/usr/bin/docker"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "docker ps"
+          - "docker images"
+          - "docker logs --tail=50 {docker_container}"
+    categories: [user_app, build]
+    personas: [developer, sysadmin]
+    system_types: [workstation, server]
+
+  - id: kubectl
+    display_name: "Kubernetes CLI"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\kubectl\kubectl.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "1.30.0"
+          description: "Kubernetes Command Line Tool"
+          product: "Kubernetes"
+          company: "The Kubernetes Authors"
+          original_filename: "kubectl.exe"
+        command_templates:
+          - 'kubectl.exe get pods -n {k8s_namespace}'
+          - 'kubectl.exe logs {k8s_pod} --tail=100'
+          - 'kubectl.exe describe node {k8s_node}'
+      linux:
+        image_path: "/usr/bin/kubectl"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "kubectl get pods -n {k8s_namespace}"
+          - "kubectl logs {k8s_pod} --tail=100"
+          - "kubectl get node {k8s_node} -o wide"
+    categories: [user_app]
+    personas: [developer, sysadmin]
+    system_types: [workstation]
+
+  - id: ssh
+    display_name: "OpenSSH Client"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\OpenSSH\ssh.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "8.6.0.1"
+          description: "OpenSSH SSH client"
+          product: "OpenSSH for Windows"
+          company: "Microsoft Corporation"
+          original_filename: "ssh.exe"
+        command_templates:
+          - 'ssh.exe {username}@{ssh_target}'
+      linux:
+        image_path: "/usr/bin/ssh"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "ssh {username}@{ssh_target}"
+          - "ssh -i ~/.ssh/id_rsa {username}@{ssh_target}"
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, default]
+    system_types: [workstation, server]
+
+  - id: curl
+    display_name: "curl"
+    platforms:
+      linux:
+        image_path: "/usr/bin/curl"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "curl -s {external_api_url}"
+          - "curl -sS -o /dev/null -w '%{http_code}' {internal_url}"
+          - "curl -X GET {internal_url} -H 'Accept: application/json'"
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, default]
+    system_types: [workstation, server]
+
+  - id: pytest
+    display_name: "pytest"
+    platforms:
+      linux:
+        image_path: "/usr/bin/python3"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: linux-host
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "python3 -m pytest tests/"
+          - "python3 -m pytest tests/ -v --tb=short"
+          - "python3 -m pytest tests/unit/ -x"
+    categories: [build]
+    personas: [developer]
+
+  # ===== Linux Code Editors =====
+  - id: vim
+    display_name: "Vim"
+    platforms:
+      linux:
+        image_path: "/usr/bin/vim"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "vim {linux_project}/{linux_source_file}"
+    categories: [code]
+    personas: [developer, sysadmin, default]
+
+  - id: nano
+    display_name: "GNU nano"
+    platforms:
+      linux:
+        image_path: "/usr/bin/nano"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "nano {linux_project}/{linux_source_file}"
+    categories: [code]
+    personas: [developer, sysadmin, analyst, default]
+
+  - id: emacs
+    display_name: "GNU Emacs"
+    platforms:
+      linux:
+        image_path: "/usr/bin/emacs"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "emacs -nw {linux_project}/{linux_source_file}"
+    categories: [code]
+    personas: [developer]
+
+  # ===== Linux Build Tools =====
+  - id: make
+    display_name: "GNU Make"
+    platforms:
+      linux:
+        image_path: "/usr/bin/make"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "make -j4 -C {linux_project}"
+          - "make clean && make all"
+    categories: [build]
+    personas: [developer, sysadmin]
+
+  - id: gcc
+    display_name: "GCC"
+    platforms:
+      linux:
+        image_path: "/usr/bin/gcc"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "gcc -o output {c_source_file}"
+          - "gcc -Wall -O2 -o output {c_source_file}"
+    categories: [build]
+    personas: [developer]
+
+  - id: npm
+    display_name: "npm"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\nodejs\npm.cmd'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "10.5.0"
+          description: "npm"
+          product: "npm"
+          company: "npm, Inc."
+          original_filename: "npm.cmd"
+        command_templates:
+          - 'cmd.exe /c npm run {npm_script}'
+      linux:
+        image_path: "/usr/bin/npm"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "npm run {npm_script}"
+          - "npm install"
+    categories: [build]
+    personas: [developer]
+
+  - id: cargo
+    display_name: "Rust Cargo"
+    platforms:
+      windows:
+        image_path: 'C:\Users\{username}\.cargo\bin\cargo.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: user
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "1.78.0"
+          description: "Rust Package Manager"
+          product: "Cargo"
+          company: "The Rust Project Developers"
+          original_filename: "cargo.exe"
+        command_templates:
+          - 'cargo.exe build --release'
+          - 'cargo.exe test'
+          - 'cargo.exe clippy'
+      linux:
+        image_path: "/usr/bin/cargo"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "cargo build --release"
+          - "cargo test"
+          - "cargo clippy"
+    categories: [build]
+    personas: [developer]
+
+  - id: pip
+    display_name: "pip"
+    platforms:
+      linux:
+        image_path: "/usr/bin/python3"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: linux-host
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "python3 -m pip install -e {linux_project}"
+          - "python3 -m pip install -r requirements.txt"
+    categories: [build]
+    personas: [developer]
+
+  # ===== Windows Query Tools =====
+  - id: sqlcmd
+    display_name: "SQL Server Command Line"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\sqlcmd.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "15.0.4153.1"
+          description: "Microsoft SQL Server Command Line Tool"
+          product: "Microsoft SQL Server"
+          company: "Microsoft Corporation"
+          original_filename: "sqlcmd.exe"
+        command_templates:
+          - 'sqlcmd.exe -S {db_server} -Q "{sql_query}"'
+          - 'sqlcmd.exe -S {db_server} -d {db_name} -Q "{sql_query}"'
+    categories: [query]
+    personas: [analyst, developer, sysadmin, data_analyst, accountant, default]
+
+  - id: wmic
+    display_name: "WMI Command-line"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\wbem\WMIC.exe'
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: microsoft-windows
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "10.0.19041.1"
+          description: "WMI Commandline Utility"
+          product: "Microsoft Windows Operating System"
+          company: "Microsoft Corporation"
+          original_filename: "wmic.exe"
+        command_templates:
+          - 'WMIC.exe {wmic_query}'
+    categories: [query]
+    personas: [sysadmin, analyst, default]
+
+  - id: powershell_query
+    display_name: "PowerShell (Query)"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: microsoft-windows
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "10.0.19041.1"
+          description: "Windows PowerShell"
+          product: "Microsoft Windows Operating System"
+          company: "Microsoft Corporation"
+          original_filename: "PowerShell.EXE"
+        command_templates:
+          - 'powershell.exe -Command "{ps_command}"'
+          - 'powershell.exe -ExecutionPolicy Bypass -File {ps_script}'
+    categories: [query]
+    personas: [analyst, developer, sysadmin, default]
+
+  # ===== Linux Query Tools =====
+  - id: mysql
+    display_name: "MySQL Client"
+    platforms:
+      linux:
+        image_path: "/usr/bin/mysql"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "mysql --defaults-extra-file=~/.my.cnf {mysql_db}"
+    categories: [query]
+    personas: [developer, analyst, sysadmin]
+
+  - id: psql
+    display_name: "PostgreSQL Client"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\PostgreSQL\16\bin\psql.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "16.2"
+          description: "PostgreSQL interactive terminal"
+          product: "PostgreSQL"
+          company: "PostgreSQL Global Development Group"
+          original_filename: "psql.exe"
+        command_templates:
+          - 'psql.exe -U postgres -d {psql_db}'
+      linux:
+        image_path: "/usr/bin/psql"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "psql -U postgres -d {psql_db}"
+    categories: [query]
+    personas: [developer, analyst, sysadmin, data_analyst]
+
+  - id: redis_cli
+    display_name: "Redis CLI"
+    platforms:
+      linux:
+        image_path: "/usr/bin/redis-cli"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - "{redis_cmd}"
+        command_parameter_pools:
+          redis_cmd:
+            - "redis-cli INFO memory"
+            - "redis-cli DBSIZE"
+            - "redis-cli GET session:active_count"
+            - 'redis-cli KEYS "cache:*" | head -20'
+            - "redis-cli MONITOR"
+    categories: [query]
+    personas: [developer, sysadmin]
+
+  # ===== Workstation-Normal Expansion Apps =====
+  - id: slack
+    display_name: "Slack"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Users\{username}\AppData\Local\slack\Slack.exe'
+        deployment:
+          kind: managed
+          product_id: slack
+          version: "4.38.125"
+          build: "4.38.125"
+          architectures: [x64, arm64]
+          scope: user
+          variant: stable
+          fleet_prevalence: 1.0
+        pe_metadata:
+          file_version: "4.38.125"
+          description: "Slack"
+          product: "Slack"
+          company: "Slack Technologies, LLC"
+          original_filename: "Slack.exe"
+        command_templates:
+          - '"C:\Users\{username}\AppData\Local\slack\Slack.exe" --process-start-args'
+          - '"C:\Users\{username}\AppData\Local\slack\Slack.exe" --startup'
+        children:
+          - '"C:\Users\{username}\AppData\Local\slack\Slack.exe" --type=renderer'
+          - '"C:\Users\{username}\AppData\Local\slack\Slack.exe" --type=utility --utility-sub-type=network.mojom.NetworkService'
+        loaded_modules:
+          - path: 'C:\Users\{username}\AppData\Local\slack\app-4.38.125\slack_elf.dll'
+            release_policy: owner_release
+            signature: "Slack Technologies, LLC"
+            pe_metadata:
+              file_version: "4.38.125"
+              description: "Slack ELF"
+              product: "Slack"
+              company: "Slack Technologies, LLC"
+              original_filename: "slack_elf.dll"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\winhttp.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, security_analyst, executive, hr, accountant, sales, marketing, project_manager, help_desk, default]
+    system_types: [workstation]
+
+  - id: zoom
+    display_name: "Zoom Meetings"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Users\{username}\AppData\Roaming\Zoom\bin\Zoom.exe'
+        available_from: 2024-02-26
+        deployment:
+          kind: managed
+          product_id: zoom
+          version: "5.17.6.24660"
+          build: "5.17.6.24660"
+          architectures: [x64, arm64]
+          scope: user
+          variant: stable
+          fleet_prevalence: 1.0
+        pe_metadata:
+          file_version: "5.17.6.24660"
+          description: "Zoom Meetings"
+          product: "Zoom Meetings"
+          company: "Zoom Video Communications, Inc."
+          original_filename: "Zoom.exe"
+        command_templates:
+          - '"C:\Users\{username}\AppData\Roaming\Zoom\bin\Zoom.exe" --url=zoommtg://zoom.us/join?action=join&confno={small_int}'
+          - '"C:\Users\{username}\AppData\Roaming\Zoom\bin\Zoom.exe" --background'
+        children:
+          - '"C:\Users\{username}\AppData\Roaming\Zoom\bin\Zoom.exe" --type=renderer'
+          - '"C:\Users\{username}\AppData\Roaming\Zoom\bin\CptHost.exe" --host-process'
+        loaded_modules:
+          - path: 'C:\Users\{username}\AppData\Roaming\Zoom\bin\zVideoApp.dll'
+            release_policy: owner_release
+            signature: "Zoom Video Communications, Inc."
+            pe_metadata:
+              file_version: "5.17.6.24660"
+              description: "Zoom Video App"
+              product: "Zoom Meetings"
+              company: "Zoom Video Communications, Inc."
+              original_filename: "zVideoApp.dll"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\winmm.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, security_analyst, executive, hr, accountant, sales, marketing, legal_counsel, project_manager, intern, receptionist, help_desk, default]
+    system_types: [workstation]
+
+  - id: webex
+    display_name: "Cisco Webex"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Cisco Spark\Webex.exe'
+        available_from: 2024-03-12
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "44.3.0.28993"
+          description: "Cisco Webex"
+          product: "Cisco Webex"
+          company: "Cisco Systems, Inc."
+          original_filename: "Webex.exe"
+        command_templates:
+          - '"C:\Program Files\Cisco Spark\Webex.exe" --url={url}'
+          - '"C:\Program Files\Cisco Spark\Webex.exe" --autostart'
+        children:
+          - '"C:\Program Files\Cisco Spark\CiscoCollabHost.exe" --type=renderer'
+          - '"C:\Program Files\Cisco Spark\CiscoCollabHost.exe" --type=gpu-process'
+        loaded_modules:
+          - path: 'C:\Program Files\Cisco Spark\WebexHost.dll'
+            release_policy: owner_release
+            signature: "Cisco Systems, Inc."
+            pe_metadata:
+              file_version: "44.3.0.28993"
+              description: "Cisco Webex Host"
+              product: "Cisco Webex"
+              company: "Cisco Systems, Inc."
+              original_filename: "WebexHost.dll"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\winhttp.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, security_analyst, executive, hr, accountant, sales, marketing, legal_counsel, project_manager, receptionist, help_desk, default]
+    system_types: [workstation]
+
+  - id: dropbox
+    display_name: "Dropbox"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Program Files (x86)\Dropbox\Client\Dropbox.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "199.4.6287"
+          description: "Dropbox"
+          product: "Dropbox"
+          company: "Dropbox, Inc."
+          original_filename: "Dropbox.exe"
+        command_templates:
+          - '"C:\Program Files (x86)\Dropbox\Client\Dropbox.exe" /systemstartup'
+          - '"C:\Program Files (x86)\Dropbox\Client\Dropbox.exe" /home'
+        children:
+          - '"C:\Program Files (x86)\Dropbox\Client\Dropbox.exe" /firstrunupdate'
+        loaded_modules:
+          - path: 'C:\Program Files (x86)\Dropbox\Client\Qt6Core.dll'
+            release_policy: owner_release
+            signature: "Dropbox, Inc."
+            pe_metadata:
+              file_version: "6.5.3.0"
+              description: "Qt6 Core"
+              product: "Dropbox"
+              company: "Dropbox, Inc."
+              original_filename: "Qt6Core.dll"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\winhttp.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [developer, analyst, executive, hr, accountant, sales, marketing, legal_counsel, project_manager, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: google_drive_desktop
+    display_name: "Google Drive for Desktop"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Google\Drive File Stream\97.0.1.0\GoogleDriveFS.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "97.0.1.0"
+          description: "Google Drive"
+          product: "Google Drive"
+          company: "Google LLC"
+          original_filename: "GoogleDriveFS.exe"
+        command_templates:
+          - '"C:\Program Files\Google\Drive File Stream\97.0.1.0\GoogleDriveFS.exe" --startup'
+          - '"C:\Program Files\Google\Drive File Stream\97.0.1.0\GoogleDriveFS.exe" --user-data-dir="C:\Users\{username}\AppData\Local\Google\DriveFS"'
+        loaded_modules:
+          - path: 'C:\Program Files\Google\Drive File Stream\97.0.1.0\crashpad_handler.exe'
+            release_policy: owner_release
+            signature: "Google LLC"
+            pe_metadata:
+              file_version: "97.0.1.0"
+              description: "Crashpad Handler"
+              product: "Google Drive"
+              company: "Google LLC"
+              original_filename: "crashpad_handler.exe"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\winhttp.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [developer, analyst, executive, hr, accountant, sales, marketing, legal_counsel, project_manager, intern, help_desk, default]
+    system_types: [workstation]
+
+  - id: citrix_workspace
+    display_name: "Citrix Workspace"
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Program Files (x86)\Citrix\ICA Client\SelfServicePlugin\SelfService.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "24.3.0.65"
+          description: "Citrix Workspace"
+          product: "Citrix Workspace"
+          company: "Cloud Software Group, Inc."
+          original_filename: "SelfService.exe"
+        command_templates:
+          - '"C:\Program Files (x86)\Citrix\ICA Client\SelfServicePlugin\SelfService.exe" -showAppPicker'
+          - '"C:\Program Files (x86)\Citrix\ICA Client\SelfServicePlugin\SelfService.exe" -poll'
+        loaded_modules:
+          - path: 'C:\Program Files (x86)\Citrix\ICA Client\wfapi.dll'
+            release_policy: owner_release
+            signature: "Cloud Software Group, Inc."
+            pe_metadata:
+              file_version: "24.3.0.65"
+              description: "Citrix ICA Client API"
+              product: "Citrix Workspace"
+              company: "Cloud Software Group, Inc."
+              original_filename: "wfapi.dll"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [sysadmin, help_desk, accountant, analyst, legal_counsel, default]
+    system_types: [workstation]
+
+  - id: cisco_secure_client
+    display_name: "Cisco Secure Client"
+    compatibility_group: remote_access_stack
+    compatibility_option: cisco_secure_client
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpnui.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "5.1.4.74"
+          description: "Cisco Secure Client User Interface"
+          product: "Cisco Secure Client"
+          company: "Cisco Systems, Inc."
+          original_filename: "vpnui.exe"
+        command_templates:
+          - '"C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpnui.exe" -minimized'
+          - '"C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpnui.exe"'
+        loaded_modules:
+          - path: 'C:\Program Files (x86)\Cisco\Cisco AnyConnect Secure Mobility Client\vpnapi.dll'
+            release_policy: owner_release
+            signature: "Cisco Systems, Inc."
+            pe_metadata:
+              file_version: "5.1.4.74"
+              description: "Cisco Secure Client API"
+              product: "Cisco Secure Client"
+              company: "Cisco Systems, Inc."
+              original_filename: "vpnapi.dll"
+          - path: 'C:\Windows\System32\rasapi32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, security_analyst, executive, hr, accountant, sales, marketing, legal_counsel, project_manager, help_desk, default]
+    system_types: [workstation]
+
+  - id: globalprotect
+    display_name: "GlobalProtect"
+    compatibility_group: remote_access_stack
+    compatibility_option: globalprotect
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Palo Alto Networks\GlobalProtect\PanGPA.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "6.2.3.123"
+          description: "GlobalProtect Agent"
+          product: "GlobalProtect"
+          company: "Palo Alto Networks, Inc."
+          original_filename: "PanGPA.exe"
+        command_templates:
+          - '"C:\Program Files\Palo Alto Networks\GlobalProtect\PanGPA.exe"'
+          - '"C:\Program Files\Palo Alto Networks\GlobalProtect\PanGPA.exe" -silent'
+        loaded_modules:
+          - path: 'C:\Program Files\Palo Alto Networks\GlobalProtect\PanGpHip.dll'
+            release_policy: owner_release
+            signature: "Palo Alto Networks, Inc."
+            pe_metadata:
+              file_version: "6.2.3.123"
+              description: "GlobalProtect HIP"
+              product: "GlobalProtect"
+              company: "Palo Alto Networks, Inc."
+              original_filename: "PanGpHip.dll"
+          - path: 'C:\Windows\System32\rasapi32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, security_analyst, executive, hr, accountant, sales, marketing, legal_counsel, project_manager, help_desk, default]
+    system_types: [workstation]
+
+  - id: zscaler_client_connector
+    display_name: "Zscaler Client Connector"
+    compatibility_group: remote_access_stack
+    compatibility_option: zscaler
+    singleton_per_session: true
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Zscaler\ZSATray\ZSATray.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "4.3.0.190"
+          description: "Zscaler Client Connector"
+          product: "Zscaler Client Connector"
+          company: "Zscaler, Inc."
+          original_filename: "ZSATray.exe"
+        command_templates:
+          - '"C:\Program Files\Zscaler\ZSATray\ZSATray.exe"'
+          - '"C:\Program Files\Zscaler\ZSATray\ZSATray.exe" /minimized'
+        loaded_modules:
+          - path: 'C:\Program Files\Zscaler\ZSATray\ZSACommon.dll'
+            release_policy: owner_release
+            signature: "Zscaler, Inc."
+            pe_metadata:
+              file_version: "4.3.0.190"
+              description: "Zscaler Common Library"
+              product: "Zscaler Client Connector"
+              company: "Zscaler, Inc."
+              original_filename: "ZSACommon.dll"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\winhttp.dll'
+            release_policy: host_build
+    categories: [user_app]
+    personas: [developer, analyst, sysadmin, security_analyst, executive, hr, accountant, sales, marketing, legal_counsel, project_manager, help_desk, default]
+    system_types: [workstation]
+
+  - id: powerbi_desktop
+    display_name: "Microsoft Power BI Desktop"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Microsoft Power BI Desktop\bin\PBIDesktop.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "2.128.952.0"
+          description: "Microsoft Power BI Desktop"
+          product: "Microsoft Power BI Desktop"
+          company: "Microsoft Corporation"
+          original_filename: "PBIDesktop.exe"
+        command_templates:
+          - '"C:\Program Files\Microsoft Power BI Desktop\bin\PBIDesktop.exe" "{spreadsheet_path}"'
+          - '"C:\Program Files\Microsoft Power BI Desktop\bin\PBIDesktop.exe" /safemode'
+        loaded_modules:
+          - path: 'C:\Program Files\Microsoft Power BI Desktop\bin\Microsoft.Mashup.Container.NetFX45.dll'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+          - path: 'C:\Windows\System32\msodbcsql17.dll'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+    categories: [user_app, query]
+    personas: [data_analyst, analyst, accountant, executive]
+    system_types: [workstation]
+
+  - id: tableau_desktop
+    display_name: "Tableau Desktop"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\Tableau\Tableau 2024.1\bin\tableau.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "24.1.1321.0514"
+          description: "Tableau"
+          product: "Tableau Desktop"
+          company: "Tableau Software, LLC"
+          original_filename: "tableau.exe"
+        command_templates:
+          - '"C:\Program Files\Tableau\Tableau 2024.1\bin\tableau.exe" -DConnectPluginsPath="C:\Program Files\Tableau\Drivers"'
+          - '"C:\Program Files\Tableau\Tableau 2024.1\bin\tableau.exe" "{spreadsheet_path}"'
+        loaded_modules:
+          - path: 'C:\Program Files\Tableau\Tableau 2024.1\bin\TableauCommon.dll'
+            release_policy: owner_release
+            signature: "Tableau Software, LLC"
+            pe_metadata:
+              file_version: "24.1.1321.0514"
+              description: "Tableau Common"
+              product: "Tableau Desktop"
+              company: "Tableau Software, LLC"
+              original_filename: "TableauCommon.dll"
+          - path: 'C:\Windows\System32\msodbcsql17.dll'
+            release_policy: unspecified
+            signature: "Microsoft Corporation"
+    categories: [user_app, query]
+    personas: [data_analyst, analyst, accountant, executive]
+    system_types: [workstation]
+
+  - id: postman
+    display_name: "Postman"
+    platforms:
+      windows:
+        image_path: 'C:\Users\{username}\AppData\Local\Postman\Postman.exe'
+        available_from: 2024-03-01
+        deployment:
+          kind: managed
+          product_id: postman
+          version: "10.24.3"
+          build: "10.24.3"
+          architectures: [x64, arm64]
+          scope: user
+          variant: stable
+          fleet_prevalence: 1.0
+        pe_metadata:
+          file_version: "10.24.3"
+          description: "Postman"
+          product: "Postman"
+          company: "Postman, Inc."
+          original_filename: "Postman.exe"
+        command_templates:
+          - '"C:\Users\{username}\AppData\Local\Postman\Postman.exe" --process-start-args'
+          - '"C:\Users\{username}\AppData\Local\Postman\Postman.exe" --url={external_api_url}'
+        children:
+          - '"C:\Users\{username}\AppData\Local\Postman\Postman.exe" --type=renderer'
+          - '"C:\Users\{username}\AppData\Local\Postman\Postman.exe" --type=utility --utility-sub-type=network.mojom.NetworkService'
+        loaded_modules:
+          - path: 'C:\Users\{username}\AppData\Local\Postman\app-10.24.3\Postman.dll'
+            release_policy: owner_release
+            signature: "Postman, Inc."
+            pe_metadata:
+              file_version: "10.24.3"
+              description: "Postman"
+              product: "Postman"
+              company: "Postman, Inc."
+              original_filename: "Postman.dll"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+          - path: 'C:\Windows\System32\winhttp.dll'
+            release_policy: host_build
+    categories: [user_app, code]
+    personas: [developer, sysadmin, security_analyst]
+    system_types: [workstation]
+
+  - id: dbeaver
+    display_name: "DBeaver"
+    platforms:
+      windows:
+        image_path: 'C:\Program Files\DBeaver\dbeaver.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "24.0.5"
+          description: "DBeaver"
+          product: "DBeaver"
+          company: "DBeaver Corp"
+          original_filename: "dbeaver.exe"
+        command_templates:
+          - '"C:\Program Files\DBeaver\dbeaver.exe" -data "C:\Users\{username}\AppData\Roaming\DBeaverData\workspace6"'
+          - '"C:\Program Files\DBeaver\dbeaver.exe" -nosplash'
+        loaded_modules:
+          - path: 'C:\Program Files\DBeaver\plugins\org.jkiss.dbeaver.model.jdbc.dll'
+            release_policy: owner_release
+            signature: "DBeaver Corp"
+            pe_metadata:
+              file_version: "24.0.5"
+              description: "DBeaver JDBC Model"
+              product: "DBeaver"
+              company: "DBeaver Corp"
+              original_filename: "org.jkiss.dbeaver.model.jdbc.dll"
+          - path: 'C:\Windows\System32\ws2_32.dll'
+            release_policy: host_build
+    categories: [user_app, query]
+    personas: [developer, data_analyst, analyst, sysadmin]
+    system_types: [workstation]
+
+  # --- Process-network mapping support entries ---
+  # These apps are referenced by process_network_map.yaml for service→exe resolution.
+
+  - id: windows-explorer
+    display_name: "Windows Explorer"
+    platforms:
+      windows:
+        image_path: "C:\\Windows\\explorer.exe"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: microsoft-windows
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "10.0.19041.1"
+          description: "Windows Explorer"
+          product: "Microsoft Windows Operating System"
+          company: "Microsoft Corporation"
+          original_filename: "explorer.exe"
+        command_templates:
+          - "C:\\Windows\\explorer.exe"
+    categories: [user_app]
+    personas: [analyst, data_analyst, accountant, executive, hr, sales, marketing,
+               legal_counsel, project_manager, intern, receptionist, sysadmin, help_desk, default]
+    system_types: [workstation, server, domain_controller]
+
+  - id: mstsc
+    display_name: "Remote Desktop Connection"
+    platforms:
+      windows:
+        image_path: "C:\\Windows\\System32\\mstsc.exe"
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "10.0.19041.1"
+          description: "Remote Desktop Connection"
+          product: "Microsoft Windows Operating System"
+          company: "Microsoft Corporation"
+          original_filename: "mstsc.exe"
+        command_templates:
+          - "mstsc.exe /v:{ssh_target}"
+          - "mstsc.exe /v:{ssh_target} /admin"
+    categories: [user_app]
+    personas: [sysadmin, help_desk]
+
+  - id: dsquery
+    display_name: "Directory Service Query"
+    selection_weight: 2
+    platforms:
+      windows:
+        image_path: "C:\\Windows\\System32\\dsquery.exe"
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata:
+          file_version: "10.0.19041.1"
+          description: "Microsoft Directory Service query tool"
+          product: "Microsoft Windows Operating System"
+          company: "Microsoft Corporation"
+          original_filename: "dsquery.exe"
+        command_templates:
+          - 'dsquery.exe user -name "{ad_user_pattern}" -limit {ad_limit}'
+          - 'dsquery.exe user -samid {username}'
+          - 'dsquery.exe computer -name "{ad_computer_pattern}" -limit {ad_limit}'
+          - 'dsquery.exe computer -stalepwd {ad_stalepwd_days} -limit {ad_limit}'
+          - 'dsquery.exe group -name "{ad_group_pattern}"'
+          - 'dsquery.exe group -samid "*admin*" -limit {ad_limit}'
+    categories: [query]
+    personas: [sysadmin, help_desk]
+    system_types: [domain_controller]
+
+  - id: ldapsearch
+    display_name: "LDAP Search"
+    platforms:
+      linux:
+        image_path: "/usr/bin/ldapsearch"
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          scope: machine
+          architectures: [x86, x64, arm64]
+        command_templates:
+          - 'ldapsearch -x -H ldap://{ssh_target} -b "{ldap_base_dn}" "(objectClass=user)"'
+          - 'ldapsearch -x -H ldap://{ssh_target} -b "{ldap_base_dn}" "(objectClass=computer)"'
+    categories: [query]
+    personas: [sysadmin, help_desk]
+
+  # ===== DC Admin Tools =====
+  # These are only spawned on domain controllers (and optionally servers).
+  # The system_types field restricts where these apps appear in baseline activity.
+  # When system_types is absent, the app is available on all system types.
+
+  - id: dcdiag
+    display_name: "Domain Controller Diagnostics"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\dcdiag.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "DC Diagnosis Utility", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "dcdiag.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'dcdiag.exe /v'
+          - 'dcdiag.exe /test:dns'
+          - 'dcdiag.exe /test:replications'
+          - 'dcdiag.exe /test:services'
+    categories: [query]
+    personas: [sysadmin, help_desk]
+    system_types: [domain_controller]
+
+  - id: repadmin
+    display_name: "AD Replication Admin"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\repadmin.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "NT5DS Replication Diagnostics", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "repadmin.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'repadmin.exe /showrepl'
+          - 'repadmin.exe /replsummary'
+          - 'repadmin.exe /showconn'
+    categories: [query]
+    personas: [sysadmin]
+    system_types: [domain_controller]
+
+  - id: ntdsutil
+    display_name: "NTDS Utility"
+    selection_weight: 1
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\ntdsutil.exe'
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: microsoft-windows
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "NT Directory Service Utility", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "ntdsutil.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'ntdsutil.exe "metadata cleanup" connections quit quit'
+    categories: [query]
+    personas: [sysadmin]
+    system_types: [domain_controller]
+
+  - id: dnscmd
+    display_name: "DNS Server Command"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\dnscmd.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "DNS Server Command Line Utility", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "dnscmd.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'dnscmd.exe /info'
+          - 'dnscmd.exe /enumzones'
+          - 'dnscmd.exe /statistics'
+    categories: [query]
+    personas: [sysadmin]
+    system_types: [domain_controller, server]
+
+  - id: gpupdate
+    display_name: "Group Policy Update"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\gpupdate.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "Microsoft Group Policy Update Utility", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "GPUpdate.exe", file_version: "10.0.19041.1"}
+        command_templates:
+          - 'gpupdate.exe /force'
+          - 'gpupdate.exe /target:computer'
+    categories: [query]
+    personas: [sysadmin, help_desk]
+
+  - id: gpresult
+    display_name: "Group Policy Result"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\gpresult.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "Microsoft Group Policy Result Tool", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "gpresult.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'gpresult.exe /r'
+          - 'gpresult.exe /scope computer /v'
+    categories: [query]
+    personas: [sysadmin, help_desk]
+
+  - id: certutil
+    display_name: "Certificate Utility"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\certutil.exe'
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: microsoft-windows
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "CertUtil.exe", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "CertUtil.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'certutil.exe -verify'
+          - 'certutil.exe -catemplates'
+          - 'certutil.exe -store My'
+    categories: [query]
+    personas: [sysadmin]
+    system_types: [domain_controller, server]
+
+  - id: server_manager
+    display_name: "Server Manager"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\ServerManager.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "Server Manager", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "ServerManager.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'ServerManager.exe'
+    categories: [user_app]
+    personas: [sysadmin, help_desk]
+    system_types: [server, domain_controller]
+
+  - id: eventvwr
+    display_name: "Event Viewer"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\eventvwr.exe'
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: microsoft-windows
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "Event Viewer Snapin Launcher", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "eventvwr.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'eventvwr.exe'
+    categories: [user_app]
+    personas: [sysadmin, help_desk, security_analyst]
+    system_types: [server, domain_controller, workstation]
+
+  - id: mmc
+    display_name: "Microsoft Management Console"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\mmc.exe'
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: microsoft-windows
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "Microsoft Management Console", product: "Microsoft Windows Operating System", company: "Microsoft Corporation", original_filename: "mmc.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'mmc.exe'
+          - 'mmc.exe "%SystemRoot%\System32\dsa.msc"'
+    categories: [user_app]
+    personas: [sysadmin, help_desk, security_analyst]
+    system_types: [server, domain_controller, workstation]
+
+  - id: perfmon
+    display_name: "Performance Monitor"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\perfmon.exe'
+        deployment:
+          kind: catalog
+          release_policy: pe_metadata
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "Resource and Performance Monitor", product: "Microsoft Windows", company: "Microsoft Corporation", original_filename: "perfmon.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'perfmon.exe'
+          - 'perfmon.exe /res'
+    categories: [user_app]
+    personas: [sysadmin]
+    system_types: [server, domain_controller, workstation]
+
+  - id: wevtutil
+    display_name: "Windows Events Command Line Utility"
+    platforms:
+      windows:
+        image_path: 'C:\Windows\System32\wevtutil.exe'
+        deployment:
+          kind: catalog
+          release_policy: host_build
+          product_id: microsoft-windows
+          scope: machine
+          architectures: [x86, x64, arm64]
+        pe_metadata: {description: "Eventing Command Line Utility", product: "Microsoft Windows Operating System", company: "Microsoft Corporation", original_filename: "wevtutil.exe", file_version: "10.0.20348.1"}
+        command_templates:
+          - 'wevtutil.exe qe Security /c:20 /f:text'
+          - 'wevtutil.exe el'
+          - 'wevtutil.exe gl Security'
+    categories: [query]
+    personas: [sysadmin, help_desk, security_analyst]
+    system_types: [server, domain_controller, workstation]

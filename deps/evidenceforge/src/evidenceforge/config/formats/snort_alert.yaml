@@ -1,0 +1,108 @@
+# snort_alert format definition — Snort/Suricata fast alert format
+#
+# Category: network
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: snort_alert
+version: "1.0"
+description: "Snort/Suricata fast alert format"
+category: network
+
+fields:
+  - name: timestamp
+    type: timestamp
+    required: true
+    description: "Alert timestamp"
+
+  - name: sid
+    type: integer
+    required: true
+    description: "Signature ID"
+
+  - name: gid
+    type: integer
+    required: false
+    description: "Generator ID"
+
+  - name: rev
+    type: integer
+    required: false
+    description: "Signature revision"
+
+  - name: classification
+    type: string
+    required: true
+    description: "Alert classification"
+
+  - name: priority
+    type: integer
+    required: true
+    description: "Alert priority (1-4)"
+    constraints:
+      min_value: 1
+      max_value: 4
+
+  - name: protocol
+    type: string
+    required: true
+    description: "Protocol (TCP/UDP/ICMP)"
+    constraints:
+      allowed_values: [TCP, UDP, ICMP]
+
+  - name: src_ip
+    type: ip_address
+    required: true
+    description: "Source IP"
+
+  - name: src_port
+    type: port
+    required: false
+    description: "Source port"
+
+  - name: dst_ip
+    type: ip_address
+    required: true
+    description: "Destination IP"
+
+  - name: dst_port
+    type: port
+    required: false
+    description: "Destination port"
+
+  - name: message
+    type: string
+    required: true
+    description: "Alert message"
+
+output:
+  format: text
+  file_extension: ".alert"
+  encoding: utf-8
+  template: |
+    {{ timestamp.strftime('%m/%d-%H:%M:%S.%f') }} [**] [{{ gid | default(1) }}:{{ sid }}:{{ rev | default(1) }}] {{ message }} [**] [Classification: {{ classification }}] [Priority: {{ priority }}] {{ '{' }}{{ protocol }}{{ '}' }} {% if ':' in src_ip %}[{{ src_ip }}]{% else %}{{ src_ip }}{% endif %}{% if src_port %}:{{ src_port }}{% endif %} -> {% if ':' in dst_ip %}[{{ dst_ip }}]{% else %}{{ dst_ip }}{% endif %}{% if dst_port %}:{{ dst_port }}{% endif %}
+
+# Typed record contracts; evaluated after scalar validation.
+validators:
+- id: snort_alert.legacy-1
+  message: Alert has valid priority
+  severity: error
+  when: []
+  checks:
+  - op: bounds
+    field: priority
+    minimum: 1
+    maximum: 4
+- id: snort_alert.legacy-2
+  message: Alert has source and destination
+  severity: error
+  when: []
+  checks:
+  - op: presence
+    field: src_ip
+    present: true
+  - op: presence
+    field: dst_ip
+    present: true

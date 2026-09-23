@@ -1,0 +1,699 @@
+# windows_event_sysmon format definition — Windows Sysmon Event Log format (XML output)
+#
+# Category: host
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: windows_event_sysmon
+version: "1.0"
+description: "Windows Sysmon Event Log format (XML output)"
+category: host
+
+# Base fields common to all Sysmon Event Log entries
+fields:
+  - name: EventID
+    type: integer
+    required: true
+    description: "Sysmon Event ID"
+    constraints:
+      allowed_values: [1, 3, 5, 7, 8, 10, 11, 12, 13, 22]
+
+  - name: TimeCreated
+    type: timestamp
+    required: true
+    description: "Event creation timestamp"
+
+  - name: Computer
+    type: string
+    required: true
+    description: "Computer name where event was generated"
+
+  - name: Channel
+    type: string
+    required: true
+    description: "Event log channel"
+    default: "Microsoft-Windows-Sysmon/Operational"
+
+  - name: Level
+    type: integer
+    required: true
+    description: "Event level (4=Information)"
+    default: 4
+
+  - name: EventRecordID
+    type: integer
+    required: true
+    description: "Sequential event record ID"
+
+  - name: ExecutionProcessID
+    type: integer
+    required: true
+    description: "Process ID of Sysmon service"
+
+  - name: ExecutionThreadID
+    type: integer
+    required: true
+    description: "Thread ID of Sysmon service"
+
+# Sysmon event variants
+variants:
+  # Sysmon EventID 1: Process Create
+  - name: sysmon_process_create
+    event_id: "1"
+    description: "Sysmon process creation with hashes and metadata"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: UtcTime
+        type: string
+        required: true
+      - name: ProcessGuid
+        type: string
+        required: true
+      - name: ProcessId
+        type: integer
+        required: true
+      - name: Image
+        type: string
+        required: true
+      - name: FileVersion
+        type: string
+        required: false
+      - name: Description
+        type: string
+        required: false
+      - name: Product
+        type: string
+        required: false
+      - name: Company
+        type: string
+        required: false
+      - name: OriginalFileName
+        type: string
+        required: false
+      - name: CommandLine
+        type: string
+        required: true
+      - name: CurrentDirectory
+        type: string
+        required: false
+      - name: User
+        type: string
+        required: true
+      - name: LogonGuid
+        type: string
+        required: false
+      - name: LogonId
+        type: string
+        required: false
+      - name: TerminalSessionId
+        type: integer
+        required: false
+      - name: IntegrityLevel
+        type: string
+        required: false
+      - name: Hashes
+        type: string
+        required: false
+      - name: ParentProcessGuid
+        type: string
+        required: false
+      - name: ParentProcessId
+        type: integer
+        required: false
+      - name: ParentImage
+        type: string
+        required: false
+      - name: ParentCommandLine
+        type: string
+        required: false
+      - name: ParentUser
+        type: string
+        required: false
+
+  # Sysmon EventID 5: Process Terminated
+  - name: sysmon_process_terminate
+    event_id: "5"
+    description: "Process terminated"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: UtcTime
+        type: string
+        required: true
+      - name: ProcessGuid
+        type: string
+        required: true
+      - name: ProcessId
+        type: integer
+        required: true
+      - name: Image
+        type: string
+        required: true
+      - name: User
+        type: string
+        required: true
+
+  # Sysmon EventID 8: CreateRemoteThread
+  - name: sysmon_create_remote_thread
+    event_id: "8"
+    description: "Remote thread creation (process injection indicator)"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: UtcTime
+        type: string
+        required: true
+      - name: SourceProcessGuid
+        type: string
+        required: true
+      - name: SourceProcessId
+        type: integer
+        required: true
+      - name: SourceImage
+        type: string
+        required: true
+      - name: TargetProcessGuid
+        type: string
+        required: true
+      - name: TargetProcessId
+        type: integer
+        required: true
+      - name: TargetImage
+        type: string
+        required: true
+      - name: NewThreadId
+        type: integer
+        required: true
+      - name: StartAddress
+        type: string
+        required: true
+      - name: StartModule
+        type: string
+        required: false
+      - name: StartFunction
+        type: string
+        required: false
+      - name: SourceUser
+        type: string
+        required: true
+      - name: TargetUser
+        type: string
+        required: true
+
+  # Sysmon EventID 10: ProcessAccess
+  - name: sysmon_process_access
+    event_id: "10"
+    description: "Process accessed another process (credential dumping detection)"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: UtcTime
+        type: string
+        required: true
+      - name: SourceProcessGUID
+        type: string
+        required: true
+      - name: SourceProcessId
+        type: integer
+        required: true
+      - name: SourceThreadId
+        type: integer
+        required: true
+      - name: SourceImage
+        type: string
+        required: true
+      - name: TargetProcessGUID
+        type: string
+        required: true
+      - name: TargetProcessId
+        type: integer
+        required: true
+      - name: TargetImage
+        type: string
+        required: true
+      - name: GrantedAccess
+        type: string
+        required: true
+      - name: CallTrace
+        type: string
+        required: false
+      - name: SourceUser
+        type: string
+        required: true
+      - name: TargetUser
+        type: string
+        required: true
+
+  # Sysmon EventID 3: Network Connection
+  - name: sysmon_network_connect
+    event_id: "3"
+    description: "TCP/UDP connection detected"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: UtcTime
+        type: string
+        required: true
+      - name: ProcessGuid
+        type: string
+        required: true
+      - name: ProcessId
+        type: integer
+        required: true
+      - name: Image
+        type: string
+        required: true
+      - name: User
+        type: string
+        required: true
+      - name: Protocol
+        type: string
+        required: true
+      - name: Initiated
+        type: string
+        required: true
+      - name: SourceIsIpv6
+        type: string
+        required: true
+      - name: SourceIp
+        type: ip_address
+        required: true
+      - name: SourceHostname
+        type: string
+        required: false
+      - name: SourcePort
+        type: integer
+        required: true
+        constraints:
+          min_value: 0
+          max_value: 65535
+      - name: SourcePortName
+        type: string
+        required: false
+      - name: DestinationIsIpv6
+        type: string
+        required: true
+      - name: DestinationIp
+        type: ip_address
+        required: true
+      - name: DestinationHostname
+        type: string
+        required: false
+      - name: DestinationPort
+        type: integer
+        required: true
+        constraints:
+          min_value: 0
+          max_value: 65535
+      - name: DestinationPortName
+        type: string
+        required: false
+
+  # Sysmon EventID 7: Image Loaded (DLL)
+  - name: sysmon_image_loaded
+    event_id: "7"
+    description: "Module (DLL) loaded into process"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: UtcTime
+        type: string
+        required: true
+      - name: ProcessGuid
+        type: string
+        required: true
+      - name: ProcessId
+        type: integer
+        required: true
+      - name: Image
+        type: string
+        required: true
+      - name: ImageLoaded
+        type: string
+        required: true
+      - name: FileVersion
+        type: string
+        required: false
+      - name: Description
+        type: string
+        required: false
+      - name: Product
+        type: string
+        required: false
+      - name: Company
+        type: string
+        required: false
+      - name: OriginalFileName
+        type: string
+        required: false
+      - name: Hashes
+        type: string
+        required: false
+      - name: Signed
+        type: string
+        required: true
+      - name: Signature
+        type: string
+        required: false
+      - name: SignatureStatus
+        type: string
+        required: true
+      - name: User
+        type: string
+        required: true
+
+  # Sysmon EventID 11: File Created
+  - name: sysmon_file_create
+    event_id: "11"
+    description: "File creation or overwrite detected"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: UtcTime
+        type: string
+        required: true
+      - name: ProcessGuid
+        type: string
+        required: true
+      - name: ProcessId
+        type: integer
+        required: true
+      - name: Image
+        type: string
+        required: true
+      - name: TargetFilename
+        type: string
+        required: true
+      - name: CreationUtcTime
+        type: string
+        required: true
+      - name: User
+        type: string
+        required: true
+
+  # Sysmon EventID 12: Registry Object Created or Deleted
+  - name: sysmon_registry_create_delete
+    event_id: "12"
+    description: "Registry key/value created or deleted"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: EventType
+        type: string
+        required: true
+      - name: UtcTime
+        type: string
+        required: true
+      - name: ProcessGuid
+        type: string
+        required: true
+      - name: ProcessId
+        type: integer
+        required: true
+      - name: Image
+        type: string
+        required: true
+      - name: TargetObject
+        type: string
+        required: true
+      - name: User
+        type: string
+        required: true
+
+  # Sysmon EventID 13: Registry Value Set
+  - name: sysmon_registry_set_value
+    event_id: "13"
+    description: "Registry value modified"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: EventType
+        type: string
+        required: true
+      - name: UtcTime
+        type: string
+        required: true
+      - name: ProcessGuid
+        type: string
+        required: true
+      - name: ProcessId
+        type: integer
+        required: true
+      - name: Image
+        type: string
+        required: true
+      - name: TargetObject
+        type: string
+        required: true
+      - name: Details
+        type: string
+        required: true
+      - name: User
+        type: string
+        required: true
+
+  # Sysmon EventID 22: DNS Query
+  - name: sysmon_dns_query
+    event_id: "22"
+    description: "DNS query performed by a process"
+    fields:
+      - name: RuleName
+        type: string
+        required: false
+      - name: UtcTime
+        type: string
+        required: true
+      - name: ProcessGuid
+        type: string
+        required: true
+      - name: ProcessId
+        type: integer
+        required: true
+      - name: QueryName
+        type: string
+        required: true
+      - name: QueryStatus
+        type: string
+        required: true
+      - name: QueryResults
+        type: string
+        required: false
+      - name: Image
+        type: string
+        required: true
+      - name: User
+        type: string
+        required: false
+
+# Output template in Sysmon Event Log XML format
+output:
+  format: xml
+  file_extension: ".xml"
+  encoding: "utf-8"
+  header_template: |
+    <?xml version="1.0" encoding="utf-8"?>
+    <Events>
+  footer_template: "</Events>"
+  template: |
+    <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+      <System>
+        <Provider Name="Microsoft-Windows-Sysmon" Guid="{5770385f-c22a-43e0-bf4c-06f5698ffbd9}"/>
+        <EventID>{{ EventID }}</EventID>
+        <Version>{{ {1: 5, 3: 5, 5: 3, 7: 3, 8: 2, 10: 3, 11: 2, 12: 2, 13: 2, 22: 5}.get(EventID, 2) }}</Version>
+        <Level>4</Level>
+        <Task>{{ EventID }}</Task>
+        <Opcode>0</Opcode>
+        <Keywords>0x8000000000000000</Keywords>
+        <TimeCreated SystemTime="{{ TimeCreated }}"/>
+        <EventRecordID>{{ EventRecordID }}</EventRecordID>
+        <Correlation/>
+        <Execution ProcessID="{{ ExecutionProcessID }}" ThreadID="{{ ExecutionThreadID }}"/>
+        <Channel>Microsoft-Windows-Sysmon/Operational</Channel>
+        <Computer>{{ Computer }}</Computer>
+        <Security UserID="S-1-5-18"/>
+      </System>
+      <EventData>
+        {% if EventID == 1 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="ProcessGuid">{{ ProcessGuid }}</Data>
+        <Data Name="ProcessId">{{ ProcessId }}</Data>
+        <Data Name="Image">{{ Image }}</Data>
+        <Data Name="FileVersion">{{ FileVersion | default('-') }}</Data>
+        <Data Name="Description">{{ Description | default('-') }}</Data>
+        <Data Name="Product">{{ Product | default('-') }}</Data>
+        <Data Name="Company">{{ Company | default('-') }}</Data>
+        <Data Name="OriginalFileName">{{ OriginalFileName | default('-') }}</Data>
+        <Data Name="CommandLine">{{ CommandLine }}</Data>
+        <Data Name="CurrentDirectory">{{ CurrentDirectory | default('C:\\Windows\\system32\\') }}</Data>
+        <Data Name="User">{{ User }}</Data>
+        <Data Name="LogonGuid">{{ LogonGuid | default('{00000000-0000-0000-0000-000000000000}') }}</Data>
+        <Data Name="LogonId">{{ LogonId | default('0x3e7') }}</Data>
+        <Data Name="TerminalSessionId">{{ TerminalSessionId | default(0) }}</Data>
+        <Data Name="IntegrityLevel">{{ IntegrityLevel | default('Medium') }}</Data>
+        <Data Name="Hashes">{{ Hashes | default('') }}</Data>
+        <Data Name="ParentProcessGuid">{{ ParentProcessGuid | default('{00000000-0000-0000-0000-000000000000}') }}</Data>
+        <Data Name="ParentProcessId">{{ ParentProcessId | default(0) }}</Data>
+        <Data Name="ParentImage">{{ ParentImage | default('-') }}</Data>
+        <Data Name="ParentCommandLine">{{ ParentCommandLine | default('-') }}</Data>
+        <Data Name="ParentUser">{{ ParentUser | default('-') }}</Data>
+        {% elif EventID == 5 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="ProcessGuid">{{ ProcessGuid }}</Data>
+        <Data Name="ProcessId">{{ ProcessId }}</Data>
+        <Data Name="Image">{{ Image }}</Data>
+        <Data Name="User">{{ User }}</Data>
+        {% elif EventID == 8 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="SourceProcessGuid">{{ SourceProcessGuid }}</Data>
+        <Data Name="SourceProcessId">{{ SourceProcessId }}</Data>
+        <Data Name="SourceImage">{{ SourceImage }}</Data>
+        <Data Name="TargetProcessGuid">{{ TargetProcessGuid }}</Data>
+        <Data Name="TargetProcessId">{{ TargetProcessId }}</Data>
+        <Data Name="TargetImage">{{ TargetImage }}</Data>
+        <Data Name="NewThreadId">{{ NewThreadId }}</Data>
+        <Data Name="StartAddress">{{ StartAddress }}</Data>
+        <Data Name="StartModule">{{ StartModule | default('') }}</Data>
+        <Data Name="StartFunction">{{ StartFunction | default('') }}</Data>
+        <Data Name="SourceUser">{{ SourceUser }}</Data>
+        <Data Name="TargetUser">{{ TargetUser }}</Data>
+        {% elif EventID == 10 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="SourceProcessGUID">{{ SourceProcessGUID }}</Data>
+        <Data Name="SourceProcessId">{{ SourceProcessId }}</Data>
+        <Data Name="SourceThreadId">{{ SourceThreadId }}</Data>
+        <Data Name="SourceImage">{{ SourceImage }}</Data>
+        <Data Name="TargetProcessGUID">{{ TargetProcessGUID }}</Data>
+        <Data Name="TargetProcessId">{{ TargetProcessId }}</Data>
+        <Data Name="TargetImage">{{ TargetImage }}</Data>
+        <Data Name="GrantedAccess">{{ GrantedAccess }}</Data>
+        <Data Name="CallTrace">{{ CallTrace | default('') }}</Data>
+        <Data Name="SourceUser">{{ SourceUser }}</Data>
+        <Data Name="TargetUser">{{ TargetUser }}</Data>
+        {% elif EventID == 3 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="ProcessGuid">{{ ProcessGuid }}</Data>
+        <Data Name="ProcessId">{{ ProcessId }}</Data>
+        <Data Name="Image">{{ Image }}</Data>
+        <Data Name="User">{{ User }}</Data>
+        <Data Name="Protocol">{{ Protocol }}</Data>
+        <Data Name="Initiated">{{ Initiated }}</Data>
+        <Data Name="SourceIsIpv6">{{ SourceIsIpv6 | default('false') }}</Data>
+        <Data Name="SourceIp">{{ SourceIp }}</Data>
+        <Data Name="SourceHostname">{{ SourceHostname | default('-') }}</Data>
+        <Data Name="SourcePort">{{ SourcePort }}</Data>
+        <Data Name="SourcePortName">{{ SourcePortName | default('-') }}</Data>
+        <Data Name="DestinationIsIpv6">{{ DestinationIsIpv6 | default('false') }}</Data>
+        <Data Name="DestinationIp">{{ DestinationIp }}</Data>
+        <Data Name="DestinationHostname">{{ DestinationHostname | default('-') }}</Data>
+        <Data Name="DestinationPort">{{ DestinationPort }}</Data>
+        <Data Name="DestinationPortName">{{ DestinationPortName | default('-') }}</Data>
+        {% elif EventID == 7 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="ProcessGuid">{{ ProcessGuid }}</Data>
+        <Data Name="ProcessId">{{ ProcessId }}</Data>
+        <Data Name="Image">{{ Image }}</Data>
+        <Data Name="ImageLoaded">{{ ImageLoaded }}</Data>
+        <Data Name="FileVersion">{{ FileVersion | default('-') }}</Data>
+        <Data Name="Description">{{ Description | default('-') }}</Data>
+        <Data Name="Product">{{ Product | default('-') }}</Data>
+        <Data Name="Company">{{ Company | default('-') }}</Data>
+        <Data Name="OriginalFileName">{{ OriginalFileName | default('-') }}</Data>
+        <Data Name="Hashes">{{ Hashes | default('') }}</Data>
+        <Data Name="Signed">{{ Signed }}</Data>
+        <Data Name="Signature">{{ Signature | default('-') }}</Data>
+        <Data Name="SignatureStatus">{{ SignatureStatus }}</Data>
+        <Data Name="User">{{ User }}</Data>
+        {% elif EventID == 11 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="ProcessGuid">{{ ProcessGuid }}</Data>
+        <Data Name="ProcessId">{{ ProcessId }}</Data>
+        <Data Name="Image">{{ Image }}</Data>
+        <Data Name="TargetFilename">{{ TargetFilename }}</Data>
+        <Data Name="CreationUtcTime">{{ CreationUtcTime }}</Data>
+        <Data Name="User">{{ User }}</Data>
+        {% elif EventID == 12 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="EventType">{{ EventType }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="ProcessGuid">{{ ProcessGuid }}</Data>
+        <Data Name="ProcessId">{{ ProcessId }}</Data>
+        <Data Name="Image">{{ Image }}</Data>
+        <Data Name="TargetObject">{{ TargetObject }}</Data>
+        <Data Name="User">{{ User }}</Data>
+        {% elif EventID == 13 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="EventType">SetValue</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="ProcessGuid">{{ ProcessGuid }}</Data>
+        <Data Name="ProcessId">{{ ProcessId }}</Data>
+        <Data Name="Image">{{ Image }}</Data>
+        <Data Name="TargetObject">{{ TargetObject }}</Data>
+        <Data Name="Details">{{ Details | default('-') }}</Data>
+        <Data Name="User">{{ User }}</Data>
+        {% elif EventID == 22 %}
+        <Data Name="RuleName">{{ RuleName | default('-') }}</Data>
+        <Data Name="UtcTime">{{ UtcTime }}</Data>
+        <Data Name="ProcessGuid">{{ ProcessGuid }}</Data>
+        <Data Name="ProcessId">{{ ProcessId }}</Data>
+        <Data Name="QueryName">{{ QueryName }}</Data>
+        <Data Name="QueryStatus">{{ QueryStatus }}</Data>
+        <Data Name="QueryResults">{{ QueryResults | default('-') }}</Data>
+        <Data Name="Image">{{ Image }}</Data>
+        <Data Name="User">{{ User | default('NT AUTHORITY\\SYSTEM') }}</Data>
+        {% endif %}
+      </EventData>
+    </Event>
+
+# Typed record contracts; evaluated after scalar validation.
+validators:
+- id: sysmon.source-family
+  message: IP address must agree with IPv6 flag
+  severity: error
+  when:
+  - op: compare
+    field: EventID
+    relation: eq
+    value: 3
+  - op: presence
+    field: SourceIp
+  - op: presence
+    field: SourceIsIpv6
+  checks:
+  - op: address_family
+    field: SourceIp
+    other_field: SourceIsIpv6
+- id: sysmon.destination-family
+  message: IP address must agree with IPv6 flag
+  severity: error
+  when:
+  - op: compare
+    field: EventID
+    relation: eq
+    value: 3
+  - op: presence
+    field: DestinationIp
+  - op: presence
+    field: DestinationIsIpv6
+  checks:
+  - op: address_family
+    field: DestinationIp
+    other_field: DestinationIsIpv6

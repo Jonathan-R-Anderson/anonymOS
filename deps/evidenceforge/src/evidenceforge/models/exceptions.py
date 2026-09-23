@@ -1,0 +1,197 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Custom exceptions for EvidenceForge.
+
+This module defines the exception hierarchy used throughout the application
+for clear, structured error handling.
+"""
+
+from datetime import datetime
+
+
+class EvidenceForgeError(Exception):
+    """Base exception for all EvidenceForge errors."""
+
+
+class ValidationError(EvidenceForgeError):
+    """Base validation error.
+
+    Raised when input data fails validation checks, either schema-based
+    or semantic validation.
+    """
+
+
+class SchemaValidationError(ValidationError):
+    """Pydantic schema validation failed.
+
+    Raised when input fails Pydantic model validation (type errors,
+    missing required fields, pattern mismatches, etc.).
+    """
+
+
+class SemanticValidationError(ValidationError):
+    """LLM-based semantic validation failed.
+
+    Raised when input passes schema validation but fails semantic
+    consistency checks (e.g., user references non-existent system,
+    timeline doesn't make sense, etc.).
+
+    Note: This is implemented in Phase 2+. Phase 1 only has schema validation.
+    """
+
+
+class ConfigurationError(EvidenceForgeError):
+    """Configuration file loading or parsing failed.
+
+    Raised when config.yaml or .env files cannot be loaded, parsed,
+    or contain invalid values.
+    """
+
+
+class PathSafetyError(EvidenceForgeError):
+    """An untrusted filesystem reference violated the declared path boundary."""
+
+
+class ScenarioIncludeError(ConfigurationError):
+    """Scenario include expansion failed.
+
+    Raised when a scenario YAML file references invalid include syntax,
+    missing include files, circular includes, or conflicting included fields.
+    """
+
+
+class PackError(ConfigurationError):
+    """A scenario pack could not be discovered, validated, or composed."""
+
+
+class FormatDefinitionError(ConfigurationError):
+    """Format definition loading or validation failed.
+
+    Raised when a format definition YAML file cannot be loaded,
+    parsed, or is invalid according to the FormatDefinition schema.
+    """
+
+
+class GenerationError(EvidenceForgeError):
+    """Error during log generation.
+
+    Base class for errors that occur during the log generation process.
+    """
+
+
+class EventContractError(GenerationError):
+    """A canonical occurrence violated its registered dispatch contract."""
+
+
+class WorkloadLimitError(GenerationError):
+    """Projected generation or evaluation work exceeds the supported envelope."""
+
+
+class EvaluationLimitError(EvidenceForgeError):
+    """An evaluation corpus or record exceeds the supported capacity envelope."""
+
+
+class StateError(GenerationError):
+    """Invalid state during generation.
+
+    Raised when the generation engine encounters an impossible or
+    inconsistent state (e.g., process without parent, session without logon).
+    """
+
+
+class TransportPortExhaustionError(StateError):
+    """No source port can satisfy one canonical transport interval."""
+
+    def __init__(
+        self,
+        *,
+        endpoint_key: tuple[str, str, int, str],
+        opened_at: datetime,
+        closed_at: datetime,
+        port_range: tuple[int, int],
+        active_count: int,
+        automatic: bool,
+        requested_source_port: int | None = None,
+    ) -> None:
+        self.endpoint_key = endpoint_key
+        self.opened_at = opened_at
+        self.closed_at = closed_at
+        self.port_range = port_range
+        self.active_count = active_count
+        self.automatic = automatic
+        self.requested_source_port = requested_source_port
+        mode = "automatic" if automatic else "exact"
+        requested = (
+            ""
+            if requested_source_port is None
+            else f", requested_source_port={requested_source_port}"
+        )
+        super().__init__(
+            "Canonical transport source-port exhaustion: "
+            f"endpoint={endpoint_key!r}, interval=[{opened_at}, {closed_at}), "
+            f"range={port_range[0]}-{port_range[1]}, active={active_count}, "
+            f"mode={mode}{requested}"
+        )
+
+
+class SmbActivityWindowError(StateError):
+    """One exact SMB activity plan extends beyond the runtime window."""
+
+    def __init__(
+        self,
+        *,
+        action_id: str,
+        share: str,
+        file_ids: tuple[str, ...],
+        operation: str,
+        size_bytes: int,
+        opened_at: datetime,
+        closed_at: datetime,
+        window_end: datetime,
+    ) -> None:
+        self.action_id = action_id
+        self.share = share
+        self.file_ids = file_ids
+        self.operation = operation
+        self.size_bytes = size_bytes
+        self.opened_at = opened_at
+        self.closed_at = closed_at
+        self.window_end = window_end
+        super().__init__(
+            "SMB activity closes after the runtime window: "
+            f"action={action_id!r}, share={share!r}, files={file_ids!r}, "
+            f"operation={operation!r}, size_bytes={size_bytes}, "
+            f"interval=[{opened_at}, {closed_at}), window_end={window_end}"
+        )
+
+
+class InsufficientDiskSpaceError(GenerationError):
+    """Insufficient disk space for output.
+
+    Raised when the output directory lacks the required disk space
+    for the estimated log dataset size.
+    """
+
+
+class EvaluationError(EvidenceForgeError):
+    """An evaluation component failed; no completed quality report is available."""

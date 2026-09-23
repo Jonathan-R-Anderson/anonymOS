@@ -1,0 +1,1012 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+# SPDX-License-Identifier: MIT
+
+"""Canonical machine-readable ground truth document for generated datasets."""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+from evidenceforge.models.scenario import Scenario
+from evidenceforge.utils.paths import safe_write_text
+from evidenceforge.utils.time import resolve_time_window
+
+logger = logging.getLogger(__name__)
+
+GROUND_TRUTH_JSON_FILENAME = "GROUND_TRUTH.json"
+GROUND_TRUTH_SCHEMA_VERSION = 3
+MAX_GROUND_TRUTH_BYTES = 8_388_608
+
+GroundTruthSection = Literal["storyline", "red_herring"]
+
+
+class GroundTruthAttributesBase(BaseModel):
+    """Known ground-truth attribute fields across tracked event kinds."""
+
+    action: str | None = None
+    artifact_id: str | None = None
+    artifact_path: str | None = None
+    attempt_count: int | None = None
+    base_domain: str | None = None
+    bytes_exfiltrated: int | None = None
+    command_line: str | None = None
+    count: int | None = None
+    domain_sample: list[str] | None = None
+    dst_ip: str | None = None
+    dst_port: int | None = None
+    encoding: str | None = None
+    expected_sources: list[str] | None = None
+    family: str | None = None
+    group_name: str | None = None
+    interval: str | int | float | None = None
+    ids_alerts: list[dict[str, object]] | None = None
+    logon_id: str | None = None
+    logon_type: int | None = None
+    mail_action: str | None = None
+    mac_address: str | None = None
+    mailbox: str | None = None
+    member_name: str | None = None
+    message_id: str | None = None
+    message_ids: list[str] | None = None
+    network_target: str | None = None
+    network_target_ip: str | None = None
+    network_target_port: int | None = None
+    network_url: str | None = None
+    nxdomain_count: int | None = None
+    output_file: str | None = None
+    outcome: str | None = None
+    pattern: str | None = None
+    pid: int | None = None
+    ports: list[int] | None = None
+    preset: str | None = None
+    process_name: str | None = None
+    protocol: str | None = None
+    qtype: str | None = None
+    query: str | None = None
+    rcode: str | None = None
+    recipients: list[str] | None = None
+    rendered_value: str | None = None
+    rendered_sha256: str | None = None
+    request_count: int | None = None
+    scheme: str | None = None
+    server: str | None = None
+    service_file_name: str | None = None
+    service_name: str | None = None
+    sender: str | None = None
+    smtp_uids: list[str] | None = None
+    source_ip: str | None = None
+    staged_archive: str | None = None
+    success_account: str | None = None
+    success_at_attempt: int | None = None
+    subject: str | None = None
+    surface: str | None = None
+    target_accounts: list[str] | None = None
+    target_count: int | None = None
+    target_format: str | None = None
+    target_process: str | None = None
+    target_server: str | None = None
+    target_system: str | None = None
+    target_username: str | None = None
+    task_content: str | None = None
+    task_name: str | None = None
+    termination: str | None = None
+    tld: str | None = None
+    total_connections: int | None = None
+    total_queries: int | None = None
+    uid: str | None = None
+    value: str | None = None
+    value_sha256: str | None = None
+    verdict: str | None = None
+    route: list[dict[str, str]] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProcessAttributes(GroundTruthAttributesBase):
+    """Process event attributes."""
+
+
+class LogonAttributes(GroundTruthAttributesBase):
+    """Logon event attributes."""
+
+
+class FailedLogonAttributes(GroundTruthAttributesBase):
+    """Failed logon event attributes."""
+
+
+class LogoffAttributes(GroundTruthAttributesBase):
+    """Logoff event attributes."""
+
+
+class HttpUploadAttributes(BaseModel):
+    """Resolved local and wire metadata for an authored HTTP upload."""
+
+    request_body_len: int = Field(ge=0)
+    mime_type: str
+    local_source_path: str
+    local_source_filename: str
+    wire_filename: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class HttpMultipartPartAttributes(BaseModel):
+    """Ordered decoded and wire metadata for one multipart leaf."""
+
+    path: list[int]
+    name: str
+    decoded_size: int = Field(ge=0)
+    encoded_size: int = Field(ge=0)
+    local_source_path: str | None = None
+    local_source_filename: str | None = None
+    wire_filename: str | None = None
+    declared_mime_type: str | None = None
+    detected_mime_type: str | None = None
+    transfer_encoding: str
+    endpoint_read_owner_pid: int | None = None
+    fuids: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class HttpMultipartEntityAttributes(BaseModel):
+    """One serialized multipart direction and its ordered leaf projections."""
+
+    body_len: int = Field(ge=0)
+    media_type: str
+    boundary: str
+    parts: list[HttpMultipartPartAttributes]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class HttpMultipartAttributes(BaseModel):
+    """Serialized request and response multipart entities for one HTTP transaction."""
+
+    request: HttpMultipartEntityAttributes | None = None
+    response: HttpMultipartEntityAttributes | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConnectionAttributes(GroundTruthAttributesBase):
+    """Connection event attributes."""
+
+    http_upload: HttpUploadAttributes | None = None
+    http_multipart: HttpMultipartAttributes | None = None
+
+
+class SshSessionAttributes(GroundTruthAttributesBase):
+    """SSH session event attributes."""
+
+
+class SmbActivityAttributes(GroundTruthAttributesBase):
+    """Resolved canonical SMB activity and batch summary."""
+
+    session_id: str
+    tree_ids: list[str] = Field(default_factory=list)
+    transport_uids: list[str] = Field(default_factory=list)
+    operations: list[dict[str, object]] = Field(default_factory=list)
+    batch_summary: dict[str, object]
+
+
+class RdpSessionAttributes(GroundTruthAttributesBase):
+    """RDP session event attributes."""
+
+
+class AccountCreatedAttributes(GroundTruthAttributesBase):
+    """Account-created event attributes."""
+
+
+class AccountDeletedAttributes(GroundTruthAttributesBase):
+    """Account-deleted event attributes."""
+
+
+class GroupMemberAddedAttributes(GroundTruthAttributesBase):
+    """Group-member-added event attributes."""
+
+
+class ServiceInstalledAttributes(GroundTruthAttributesBase):
+    """Service-installed event attributes."""
+
+
+class ScheduledTaskCreatedAttributes(GroundTruthAttributesBase):
+    """Scheduled-task-created event attributes."""
+
+
+class LogClearedAttributes(GroundTruthAttributesBase):
+    """Log-cleared event attributes."""
+
+
+class CreateRemoteThreadAttributes(GroundTruthAttributesBase):
+    """Create-remote-thread event attributes."""
+
+
+class ProcessAccessAttributes(GroundTruthAttributesBase):
+    """Process-access event attributes."""
+
+
+class DhcpLeaseAttributes(GroundTruthAttributesBase):
+    """DHCP lease event attributes."""
+
+
+class PortScanAttributes(GroundTruthAttributesBase):
+    """Port-scan event attributes."""
+
+
+class BeaconAttributes(GroundTruthAttributesBase):
+    """Beacon event attributes."""
+
+
+class DnsQueryAttributes(GroundTruthAttributesBase):
+    """DNS query event attributes."""
+
+
+class WebScanAttributes(GroundTruthAttributesBase):
+    """Web-scan event attributes."""
+
+
+class CredentialSprayAttributes(GroundTruthAttributesBase):
+    """Credential-spray event attributes."""
+
+
+class DgaQueriesAttributes(GroundTruthAttributesBase):
+    """DGA-queries event attributes."""
+
+
+class DnsTunnelAttributes(GroundTruthAttributesBase):
+    """DNS-tunnel event attributes."""
+
+
+class ExplicitCredentialsAttributes(GroundTruthAttributesBase):
+    """Explicit-credentials event attributes."""
+
+
+class WorkstationLockAttributes(GroundTruthAttributesBase):
+    """Workstation-lock event attributes."""
+
+
+class WorkstationUnlockAttributes(GroundTruthAttributesBase):
+    """Workstation-unlock event attributes."""
+
+
+class SpillageAttributes(GroundTruthAttributesBase):
+    """Spillage event attributes."""
+
+    surface: str
+    expected_sources: list[str] = Field(default_factory=list)
+
+
+class IdsAlertAttributes(BaseModel):
+    """The on-wire Snort/Suricata signature an adversarial payload should trip.
+
+    Correlation evidence (distinct from ``expected_sources``): the Snort/IDS alert
+    line references this SID, not the payload text, so it documents the detection a
+    network sensor should fire when the payload rides a cleartext http request.
+    """
+
+    sid: int
+    rev: int = 1
+    message: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AdversarialPayloadAttributes(GroundTruthAttributesBase):
+    """Adversarial-payload event attributes (the counterpart to spillage)."""
+
+    surface: str
+    expected_sources: list[str] = Field(default_factory=list)
+    # The operator-registered live-callback (OOB) host the payload points at, when a
+    # generation run opted into live callbacks (`eforge generate --oob-host`). None for
+    # the default inert-canary runs.
+    callback_host: str | None = None
+    # The family's weakness class and the pass criterion a hardened pipeline must meet
+    # (CWE/CVE class + what to verify) — propagated so an analyst can SCORE the payload
+    # from ground truth alone. None for a literal `value:` payload (no family).
+    weakness_class: str | None = None
+    expected_defender_signal: str | None = None
+    # The on-wire IDS signature a network sensor should fire on for this payload, when
+    # it rides a cleartext http request and the family maps to a signature. None for
+    # https (opaque), syslog/process surfaces, or families with no network signature.
+    ids_alert: IdsAlertAttributes | None = None
+
+
+class RawAttributes(GroundTruthAttributesBase):
+    """Raw event attributes."""
+
+    target_format: str
+
+
+class GroundTruthEventBase(BaseModel):
+    """Shared event envelope for canonical ground-truth records."""
+
+    record_id: str
+    kind: str
+    intent_id: str | None = None
+    storyline_id: str | None = None
+    time: datetime
+    actor: str
+    system: str
+    activity: str
+    ground_truth_section: GroundTruthSection
+    emitted: bool
+    skipped_reason: str | None = None
+    explanation: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_emission_fields(self) -> GroundTruthEventBase:
+        """Require skipped_reason for non-emitted events and forbid it otherwise."""
+        if self.emitted and self.skipped_reason is not None:
+            raise ValueError("skipped_reason is only valid when emitted=false")
+        if not self.emitted and not self.skipped_reason:
+            raise ValueError("skipped_reason is required when emitted=false")
+        if self.explanation is not None and self.ground_truth_section != "red_herring":
+            raise ValueError("explanation is only valid for red_herring events")
+        return self
+
+
+class ProcessGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["process"]
+    attributes: ProcessAttributes = Field(default_factory=ProcessAttributes)
+
+
+class LogonGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["logon"]
+    attributes: LogonAttributes = Field(default_factory=LogonAttributes)
+
+
+class FailedLogonGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["failed_logon"]
+    attributes: FailedLogonAttributes = Field(default_factory=FailedLogonAttributes)
+
+
+class LogoffGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["logoff"]
+    attributes: LogoffAttributes = Field(default_factory=LogoffAttributes)
+
+
+class ConnectionGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["connection"]
+    attributes: ConnectionAttributes = Field(default_factory=ConnectionAttributes)
+
+
+class SshSessionGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["ssh_session"]
+    attributes: SshSessionAttributes = Field(default_factory=SshSessionAttributes)
+
+
+class SmbActivityGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["smb_activity"]
+    attributes: SmbActivityAttributes
+
+
+class RdpSessionGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["rdp_session"]
+    attributes: RdpSessionAttributes = Field(default_factory=RdpSessionAttributes)
+
+
+class AccountCreatedGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["account_created"]
+    attributes: AccountCreatedAttributes = Field(default_factory=AccountCreatedAttributes)
+
+
+class AccountDeletedGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["account_deleted"]
+    attributes: AccountDeletedAttributes = Field(default_factory=AccountDeletedAttributes)
+
+
+class GroupMemberAddedGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["group_member_added"]
+    attributes: GroupMemberAddedAttributes = Field(default_factory=GroupMemberAddedAttributes)
+
+
+class ServiceInstalledGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["service_installed"]
+    attributes: ServiceInstalledAttributes = Field(default_factory=ServiceInstalledAttributes)
+
+
+class ScheduledTaskCreatedGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["scheduled_task_created"]
+    attributes: ScheduledTaskCreatedAttributes = Field(
+        default_factory=ScheduledTaskCreatedAttributes
+    )
+
+
+class LogClearedGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["log_cleared"]
+    attributes: LogClearedAttributes = Field(default_factory=LogClearedAttributes)
+
+
+class CreateRemoteThreadGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["create_remote_thread"]
+    attributes: CreateRemoteThreadAttributes = Field(default_factory=CreateRemoteThreadAttributes)
+
+
+class ProcessAccessGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["process_access"]
+    attributes: ProcessAccessAttributes = Field(default_factory=ProcessAccessAttributes)
+
+
+class DhcpLeaseGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["dhcp_lease"]
+    attributes: DhcpLeaseAttributes = Field(default_factory=DhcpLeaseAttributes)
+
+
+class PortScanGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["port_scan"]
+    attributes: PortScanAttributes = Field(default_factory=PortScanAttributes)
+
+
+class BeaconGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["beacon"]
+    attributes: BeaconAttributes = Field(default_factory=BeaconAttributes)
+
+
+class DnsQueryGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["dns_query"]
+    attributes: DnsQueryAttributes = Field(default_factory=DnsQueryAttributes)
+
+
+class EmailMessageAttributes(GroundTruthAttributesBase):
+    """Email message event attributes."""
+
+
+class EmailMessageGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["email_message"]
+    attributes: EmailMessageAttributes = Field(default_factory=EmailMessageAttributes)
+
+
+class EmailReadAttributes(GroundTruthAttributesBase):
+    """Email read/access event attributes."""
+
+
+class EmailReadGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["email_read"]
+    attributes: EmailReadAttributes = Field(default_factory=EmailReadAttributes)
+
+
+class WebScanGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["web_scan"]
+    attributes: WebScanAttributes = Field(default_factory=WebScanAttributes)
+
+
+class CredentialSprayGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["credential_spray"]
+    attributes: CredentialSprayAttributes = Field(default_factory=CredentialSprayAttributes)
+
+
+class DgaQueriesGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["dga_queries"]
+    attributes: DgaQueriesAttributes = Field(default_factory=DgaQueriesAttributes)
+
+
+class DnsTunnelGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["dns_tunnel"]
+    attributes: DnsTunnelAttributes = Field(default_factory=DnsTunnelAttributes)
+
+
+class ExplicitCredentialsGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["explicit_credentials"]
+    attributes: ExplicitCredentialsAttributes = Field(default_factory=ExplicitCredentialsAttributes)
+
+
+class WorkstationLockGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["workstation_lock"]
+    attributes: WorkstationLockAttributes = Field(default_factory=WorkstationLockAttributes)
+
+
+class WorkstationUnlockGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["workstation_unlock"]
+    attributes: WorkstationUnlockAttributes = Field(default_factory=WorkstationUnlockAttributes)
+
+
+class SpillageGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["spillage"]
+    attributes: SpillageAttributes
+
+    @model_validator(mode="after")
+    def validate_spillage_payload(self) -> SpillageGroundTruthEvent:
+        """Keep spillage emitted/skipped semantics explicit and consistent."""
+        attrs = self.attributes
+        value_fields = (
+            attrs.value,
+            attrs.value_sha256,
+            attrs.rendered_value,
+        )
+        if self.emitted:
+            if not all(value_fields) or attrs.expected_sources is None:
+                raise ValueError(
+                    "emitted spillage events require value/value_sha256/rendered_value and expected_sources"
+                )
+        else:
+            if any(value_fields):
+                raise ValueError("skipped spillage events must not carry emitted value fields")
+        return self
+
+
+class AdversarialPayloadGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["adversarial_payload"]
+    attributes: AdversarialPayloadAttributes
+
+    @model_validator(mode="after")
+    def validate_adversarial_payload(self) -> AdversarialPayloadGroundTruthEvent:
+        """Keep adversarial-payload emitted/skipped semantics explicit and consistent."""
+        attrs = self.attributes
+        value_fields = (attrs.value, attrs.value_sha256, attrs.rendered_value)
+        if self.emitted:
+            if not all(value_fields) or attrs.expected_sources is None:
+                raise ValueError(
+                    "emitted adversarial_payload events require "
+                    "value/value_sha256/rendered_value and expected_sources"
+                )
+        else:
+            if any(value_fields):
+                raise ValueError(
+                    "skipped adversarial_payload events must not carry emitted value fields"
+                )
+        return self
+
+
+class RawGroundTruthEvent(GroundTruthEventBase):
+    kind: Literal["raw"]
+    attributes: RawAttributes
+
+
+GroundTruthEvent = Annotated[
+    ProcessGroundTruthEvent
+    | LogonGroundTruthEvent
+    | FailedLogonGroundTruthEvent
+    | LogoffGroundTruthEvent
+    | ConnectionGroundTruthEvent
+    | SshSessionGroundTruthEvent
+    | SmbActivityGroundTruthEvent
+    | RdpSessionGroundTruthEvent
+    | AccountCreatedGroundTruthEvent
+    | AccountDeletedGroundTruthEvent
+    | GroupMemberAddedGroundTruthEvent
+    | ServiceInstalledGroundTruthEvent
+    | ScheduledTaskCreatedGroundTruthEvent
+    | LogClearedGroundTruthEvent
+    | CreateRemoteThreadGroundTruthEvent
+    | ProcessAccessGroundTruthEvent
+    | DhcpLeaseGroundTruthEvent
+    | PortScanGroundTruthEvent
+    | BeaconGroundTruthEvent
+    | DnsQueryGroundTruthEvent
+    | EmailMessageGroundTruthEvent
+    | EmailReadGroundTruthEvent
+    | WebScanGroundTruthEvent
+    | CredentialSprayGroundTruthEvent
+    | DgaQueriesGroundTruthEvent
+    | DnsTunnelGroundTruthEvent
+    | ExplicitCredentialsGroundTruthEvent
+    | WorkstationLockGroundTruthEvent
+    | WorkstationUnlockGroundTruthEvent
+    | SpillageGroundTruthEvent
+    | AdversarialPayloadGroundTruthEvent
+    | RawGroundTruthEvent,
+    Field(discriminator="kind"),
+]
+
+
+class GroundTruthStep(BaseModel):
+    """Ordered storyline/red-herring step metadata for Markdown reconstruction."""
+
+    storyline_id: str
+    index: int = Field(ge=0)
+    actor: str
+    system: str
+    activity: str
+    ground_truth_section: GroundTruthSection
+    event_types: list[str] = Field(default_factory=list)
+    explanation: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class GroundTruthIntentEvidence(BaseModel):
+    """Authored intent reconciled with planning, occurrence, and observation evidence."""
+
+    intent_id: str
+    ground_truth_section: GroundTruthSection
+    storyline_id: str
+    event_type: str
+    semantic_instance_key: str
+    authored_time: str
+    actor: str
+    system: str
+    activity: str
+    planned: bool
+    action_ids: list[str] = Field(default_factory=list)
+    occurrence_ids: list[str] = Field(default_factory=list)
+    action_reference_count: int | None = Field(default=None, ge=0)
+    occurrence_reference_count: int | None = Field(default=None, ge=0)
+    action_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    occurrence_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    duplicate_occurrence_count: int = Field(default=0, ge=0)
+    occurrence_window_counts: dict[Literal["24h", "7d", "30d"], int] = Field(default_factory=dict)
+    source_status: dict[str, dict[str, int]] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("source_status")
+    @classmethod
+    def validate_source_status(cls, value: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+        """Reject unknown or negative intent-scoped observation counters."""
+
+        allowed = {"visible", "delayed", "dropped", "filtered", "out_of_window"}
+        for source, statuses in value.items():
+            for status, count in statuses.items():
+                if status not in allowed:
+                    raise ValueError(
+                        f"source_status[{source!r}] contains unknown status {status!r}"
+                    )
+                if count < 0:
+                    raise ValueError(f"source_status[{source!r}][{status!r}] must be non-negative")
+        return value
+
+    @model_validator(mode="after")
+    def validate_bounded_identity_aggregates(self) -> GroundTruthIntentEvidence:
+        """Keep samples subordinate to authoritative count/digest aggregates."""
+
+        if len(self.action_ids) > 8 or len(self.occurrence_ids) > 8:
+            raise ValueError("intent identity samples cannot exceed eight IDs")
+        if self.action_reference_count is not None:
+            if self.action_reference_count < len(self.action_ids):
+                raise ValueError("action_reference_count cannot be smaller than its ID sample")
+            if self.action_digest is None:
+                raise ValueError("action_digest is required with action_reference_count")
+        if self.occurrence_reference_count is not None:
+            if self.occurrence_reference_count < len(self.occurrence_ids):
+                raise ValueError("occurrence_reference_count cannot be smaller than its ID sample")
+            if self.occurrence_digest is None:
+                raise ValueError("occurrence_digest is required with occurrence_reference_count")
+            if self.duplicate_occurrence_count > self.occurrence_reference_count:
+                raise ValueError("duplicate occurrence count exceeds occurrence references")
+            window_counts = [
+                self.occurrence_window_counts.get(window, 0) for window in ("24h", "7d", "30d")
+            ]
+            if window_counts != sorted(window_counts):
+                raise ValueError("intent occurrence window counts must be monotonic")
+            if window_counts[-1] > self.occurrence_reference_count:
+                raise ValueError("30d occurrence count exceeds lifetime occurrence references")
+        if any(count < 0 for count in self.occurrence_window_counts.values()):
+            raise ValueError("intent occurrence window counts must be non-negative")
+        return self
+
+
+class GroundTruthIntentReconciliation(BaseModel):
+    """Dataset-level reconciliation of the independent authored intent ledger."""
+
+    complete: bool
+    expected_count: int = Field(ge=0)
+    planned_count: int = Field(ge=0)
+    occurred_count: int = Field(ge=0)
+    observed_count: int = Field(ge=0)
+    duplicate_occurrence_count: int = Field(default=0, ge=0)
+    missing_intent_ids: list[str] = Field(default_factory=list)
+    unexpected_intent_ids: list[str] = Field(default_factory=list)
+    intents: list[GroundTruthIntentEvidence] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> GroundTruthIntentReconciliation:
+        """Keep summary counts and completeness consistent with the intent rows."""
+
+        if self.expected_count != len(self.intents):
+            raise ValueError("expected_count must equal the number of reconciled intent rows")
+        intent_ids = [intent.intent_id for intent in self.intents]
+        if len(intent_ids) != len(set(intent_ids)):
+            raise ValueError("reconciled intent IDs must be unique")
+        if self.planned_count != sum(intent.planned for intent in self.intents):
+            raise ValueError("planned_count does not match reconciled intent rows")
+        if self.occurred_count != sum(
+            (
+                intent.occurrence_reference_count > 0
+                if intent.occurrence_reference_count is not None
+                else bool(intent.occurrence_ids)
+            )
+            for intent in self.intents
+        ):
+            raise ValueError("occurred_count does not match reconciled intent rows")
+        if self.duplicate_occurrence_count != sum(
+            intent.duplicate_occurrence_count for intent in self.intents
+        ):
+            raise ValueError("duplicate_occurrence_count does not match reconciled intent rows")
+        observed_count = sum(
+            any(
+                statuses.get("visible", 0) > 0 or statuses.get("delayed", 0) > 0
+                for statuses in intent.source_status.values()
+            )
+            for intent in self.intents
+        )
+        if self.observed_count != observed_count:
+            raise ValueError("observed_count does not match reconciled intent rows")
+        expected_complete = (
+            self.planned_count == self.expected_count
+            and not self.missing_intent_ids
+            and not self.unexpected_intent_ids
+            and self.duplicate_occurrence_count == 0
+        )
+        if self.complete != expected_complete:
+            raise ValueError("complete does not match missing/unexpected intent IDs")
+        return self
+
+
+class GroundTruthExecutionEffectReconciliation(BaseModel):
+    """Bounded run-level effect-plan reconciliation and deterministic digest."""
+
+    complete: bool
+    plan_count: int = Field(ge=0)
+    no_effect_plan_count: int = Field(ge=0)
+    planned_node_count: int = Field(ge=0)
+    required_node_count: int = Field(ge=0)
+    optional_node_count: int = Field(ge=0)
+    externally_owned_node_count: int = Field(ge=0)
+    planned_effect_occurrence_count: int = Field(ge=0)
+    owned_effect_plan_count: int = Field(default=0, ge=0)
+    owned_effect_expected_occurrence_count: int = Field(default=0, ge=0)
+    owned_effect_published_occurrence_count: int = Field(default=0, ge=0)
+    realized_node_count: int = Field(ge=0)
+    realized_effect_occurrence_count: int = Field(ge=0)
+    linked_node_count: int = Field(ge=0)
+    suppressed_node_count: int = Field(ge=0)
+    failed_node_count: int = Field(ge=0)
+    missing_node_count: int = Field(ge=0)
+    missing_required_node_count: int = Field(ge=0)
+    unexpected_node_count: int = Field(ge=0)
+    unplanned_failure_count: int = Field(ge=0)
+    invalid_outcome_node_count: int = Field(ge=0)
+    policy_invalid_outcome_count: int = Field(ge=0)
+    cardinality_mismatch_count: int = Field(ge=0)
+    duplicate_outcome_count: int = Field(ge=0)
+    incomplete_reconciliation_count: int = Field(ge=0)
+    reconciled_effect_occurrence_count: int = Field(ge=0)
+    published_effect_occurrence_count: int = Field(ge=0)
+    exempt_effect_occurrence_count: int = Field(ge=0)
+    unprovenanced_effect_occurrence_count: int = Field(ge=0)
+    effect_publication_mismatch_count: int = Field(ge=0)
+    reconciliation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    effect_occurrence_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_effect_totals(self) -> GroundTruthExecutionEffectReconciliation:
+        """Reject count drift and summaries that claim false completeness."""
+
+        if self.no_effect_plan_count > self.plan_count:
+            raise ValueError("no_effect_plan_count cannot exceed plan_count")
+        if self.plan_count == 0 and self.planned_node_count:
+            raise ValueError("planned effects require at least one execution-effect plan")
+        if (
+            self.plan_count + self.owned_effect_plan_count == 0
+            and self.published_effect_occurrence_count
+        ):
+            raise ValueError("published effects require an execution or owned-effect plan")
+        if self.owned_effect_plan_count == 0 and self.owned_effect_expected_occurrence_count:
+            raise ValueError("owned effect occurrences require an owned-effect plan")
+        if (
+            self.owned_effect_plan_count
+            and self.owned_effect_expected_occurrence_count < self.owned_effect_plan_count
+        ):
+            raise ValueError("every owned-effect plan must expect at least one occurrence")
+        if self.owned_effect_expected_occurrence_count > self.reconciled_effect_occurrence_count:
+            raise ValueError("owned expected effects cannot exceed all reconciled effects")
+        if self.owned_effect_published_occurrence_count > self.published_effect_occurrence_count:
+            raise ValueError("owned published effects cannot exceed all published effects")
+        if (
+            self.required_node_count + self.optional_node_count + self.externally_owned_node_count
+            != self.planned_node_count
+        ):
+            raise ValueError("effect requirement totals do not match planned_node_count")
+        if (
+            self.realized_node_count
+            + self.linked_node_count
+            + self.suppressed_node_count
+            + self.failed_node_count
+            + self.missing_node_count
+            != self.planned_node_count
+        ):
+            raise ValueError("effect outcome totals do not match planned_node_count")
+        if self.missing_required_node_count > self.missing_node_count:
+            raise ValueError("missing required effects cannot exceed all missing effects")
+        if (
+            self.policy_invalid_outcome_count + self.cardinality_mismatch_count
+            != self.invalid_outcome_node_count
+        ):
+            raise ValueError("invalid effect outcome categories do not match their total")
+        publication_counts_match = (
+            self.published_effect_occurrence_count == self.reconciled_effect_occurrence_count
+        )
+        if not publication_counts_match and self.effect_publication_mismatch_count == 0:
+            raise ValueError(
+                "effect publication mismatch truth contradicts published/realized counts"
+            )
+        expected_complete = not any(
+            (
+                self.failed_node_count,
+                self.missing_node_count,
+                self.missing_required_node_count,
+                self.unexpected_node_count,
+                self.unplanned_failure_count,
+                self.invalid_outcome_node_count,
+                self.policy_invalid_outcome_count,
+                self.cardinality_mismatch_count,
+                self.duplicate_outcome_count,
+                self.incomplete_reconciliation_count,
+                self.exempt_effect_occurrence_count,
+                self.unprovenanced_effect_occurrence_count,
+                self.effect_publication_mismatch_count,
+            )
+        )
+        if self.complete != expected_complete:
+            raise ValueError("effect reconciliation completeness contradicts defect totals")
+        return self
+
+
+class IdsEvaluationSignature(BaseModel):
+    """Bounded expected-output summary for one signature on one IDS sensor."""
+
+    gid: int = Field(ge=0)
+    sid: int = Field(gt=0)
+    candidate: int = Field(ge=0)
+    emitted: int = Field(ge=0)
+    policy_filtered: int = Field(ge=0)
+    emitted_visible: int = Field(ge=0)
+    emitted_delayed: int = Field(ge=0)
+    origins: dict[Literal["authored_attachment", "built_in", "raw"], int] = Field(
+        default_factory=dict
+    )
+    emitted_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_totals(self) -> IdsEvaluationSignature:
+        """Keep candidate, emission, filtering, and origin totals internally consistent."""
+
+        if self.candidate != self.emitted + self.policy_filtered:
+            raise ValueError("IDS candidate must equal emitted plus policy_filtered")
+        if self.emitted != self.emitted_visible + self.emitted_delayed:
+            raise ValueError("IDS emitted must equal emitted_visible plus emitted_delayed")
+        if sum(self.origins.values()) != self.emitted:
+            raise ValueError("IDS origin totals must equal emitted")
+        return self
+
+
+class IdsEvaluationSummary(BaseModel):
+    """Sensor-local IDS integrity contract stored in canonical ground truth."""
+
+    observation: dict[str, int] = Field(default_factory=dict)
+    sensors: dict[str, dict[str, IdsEvaluationSignature]] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_sensor_keys(self) -> IdsEvaluationSummary:
+        """Require stable ``gid:sid`` keys and non-negative observation counts."""
+
+        for status, count in self.observation.items():
+            if status not in {"visible", "delayed", "dropped", "filtered", "out_of_window"}:
+                raise ValueError(f"unknown IDS observation status {status!r}")
+            if count < 0:
+                raise ValueError(f"IDS observation count for {status!r} must be non-negative")
+        for signatures in self.sensors.values():
+            for key, summary in signatures.items():
+                if key != f"{summary.gid}:{summary.sid}":
+                    raise ValueError(f"IDS signature key {key!r} does not match its gid/sid")
+        return self
+
+
+class GroundTruthDocument(BaseModel):
+    """Canonical machine-readable ground-truth document."""
+
+    schema_version: Literal[3] = GROUND_TRUTH_SCHEMA_VERSION
+    scenario_name: str
+    scenario_description: str
+    generated_at: datetime
+    observation_profile: str
+    collection_window: dict[str, str | None]
+    source_evidence_status: dict[str, dict[str, dict[str, int]]] = Field(default_factory=dict)
+    ids_evaluation: IdsEvaluationSummary | None = None
+    storyline_steps: list[GroundTruthStep] = Field(default_factory=list)
+    red_herring_steps: list[GroundTruthStep] = Field(default_factory=list)
+    intent_reconciliation: GroundTruthIntentReconciliation | None = None
+    effect_reconciliation: GroundTruthExecutionEffectReconciliation | None = None
+    events: list[GroundTruthEvent] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def write_ground_truth_document(output_path: Path, document: GroundTruthDocument) -> None:
+    """Write the canonical ground-truth document."""
+    safe_write_text(
+        output_path,
+        document.model_dump_json(indent=2, exclude_none=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def find_ground_truth_document(output_dir: Path) -> Path | None:
+    """Find a trusted ground-truth JSON document for an eval output directory."""
+    output_root = output_dir.resolve()
+    allowed_parents = {output_root, output_root.parent}
+    candidates = [
+        output_dir / GROUND_TRUTH_JSON_FILENAME,
+        output_dir.parent / GROUND_TRUTH_JSON_FILENAME,
+    ]
+    for candidate in candidates:
+        if candidate.is_symlink():
+            logger.warning("Ignoring symlinked ground-truth document %s", candidate)
+            continue
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            continue
+        if resolved.parent not in allowed_parents:
+            logger.warning("Ignoring out-of-root ground-truth document %s", candidate)
+            continue
+        if not resolved.is_file():
+            continue
+        if resolved.stat().st_size > MAX_GROUND_TRUTH_BYTES:
+            logger.warning("Ignoring oversized ground-truth document %s", candidate)
+            continue
+        return resolved
+    return None
+
+
+def load_ground_truth_document(
+    output_dir: Path,
+    scenario: Scenario | None = None,
+) -> GroundTruthDocument | None:
+    """Load a canonical ground-truth document for eval, returning None if invalid."""
+    path = find_ground_truth_document(output_dir)
+    if path is None:
+        return None
+    try:
+        document = GroundTruthDocument.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValidationError, ValueError) as exc:
+        logger.warning("Ignoring invalid ground-truth document %s: %s", path, exc)
+        return None
+    if scenario is not None and not ground_truth_document_matches_scenario(document, scenario):
+        logger.warning("Ignoring ground-truth document %s because it does not match scenario", path)
+        return None
+    return document
+
+
+def ground_truth_document_matches_scenario(
+    document: GroundTruthDocument,
+    scenario: Scenario,
+) -> bool:
+    """Return whether a ground-truth document is bound to the supplied scenario."""
+    return (
+        document.scenario_name == scenario.name
+        and document.scenario_description == scenario.description
+        and document.observation_profile == scenario.observation_profile
+        and document.collection_window == _collection_window(scenario)
+    )
+
+
+def _collection_window(scenario: Scenario) -> dict[str, str | None]:
+    """Return the scenario collection window in canonical serialized form."""
+    start, end = resolve_time_window(scenario.time_window)
+    start = start.replace(tzinfo=UTC) if start.tzinfo is None else start.astimezone(UTC)
+    end = (
+        end.replace(tzinfo=UTC)
+        if end and end.tzinfo is None
+        else (end.astimezone(UTC) if end else None)
+    )
+    return {
+        "start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "end": end.strftime("%Y-%m-%dT%H:%M:%SZ") if end else None,
+    }

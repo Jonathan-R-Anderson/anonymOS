@@ -1,0 +1,350 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Tests for the canonical event model types (OccurrenceBuilder, contexts, RawProjectionRequest)."""
+
+from dataclasses import FrozenInstanceError
+from datetime import UTC, datetime
+
+import pytest
+
+from evidenceforge.events import (
+    AuthContext,
+    DnsContext,
+    FileContext,
+    HostContext,
+    IdsAlertPlan,
+    OccurrenceBuilder,
+    ProcessContext,
+    RawProjectionRequest,
+    RegistryContext,
+)
+from tests.network_factories import network_plan
+
+
+class TestOccurrenceBuilder:
+    """Tests for OccurrenceBuilder dataclass."""
+
+    def test_minimal_event(self):
+        """OccurrenceBuilder requires only timestamp and event_type."""
+        ts = datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC)
+        event = OccurrenceBuilder(timestamp=ts, event_type="logon")
+        assert event.timestamp == ts
+        assert event.event_type == "logon"
+
+    def test_contexts_default_to_none(self):
+        """All optional context fields default to None."""
+        event = OccurrenceBuilder(
+            timestamp=datetime.now(UTC),
+            event_type="logon",
+        )
+        assert event.src_host is None
+        assert event.dst_host is None
+        assert event.auth is None
+        assert event.process is None
+        assert event.network is None
+        assert event.dns is None
+        assert event.file is None
+        assert event.registry is None
+        assert event.ids_alerts == ()
+
+    def test_with_all_contexts(self):
+        """OccurrenceBuilder can hold all context types simultaneously."""
+        ts = datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="logon",
+            dst_host=HostContext(
+                hostname="WS-01",
+                ip="10.0.1.50",
+                os="Windows 10",
+                os_category="windows",
+                system_type="workstation",
+            ),
+            auth=AuthContext(username="alice"),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=4,
+                image="cmd.exe",
+                command_line="cmd.exe /c dir",
+                username="alice",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.50",
+                src_port=54321,
+                dst_ip="10.0.1.100",
+                dst_port=443,
+                protocol="tcp",
+            ),
+            dns=DnsContext(query="example.com"),
+            file=FileContext(path="C:\\temp\\test.txt", action="create"),
+            registry=RegistryContext(key="HKLM\\Software\\Test"),
+            ids_alerts=(IdsAlertPlan(sid=1000001, message="Test alert", classification="misc"),),
+        )
+        assert event.dst_host.hostname == "WS-01"
+        assert event.auth.username == "alice"
+        assert event.process.pid == 1234
+        assert event.network.dst_port == 443
+        assert event.dns.query == "example.com"
+        assert event.file.path == "C:\\temp\\test.txt"
+        assert event.registry.key == "HKLM\\Software\\Test"
+        assert event.ids_alerts[0].sid == 1000001
+
+    def test_src_dst_host_fields(self):
+        """OccurrenceBuilder supports dual src_host/dst_host fields."""
+        host_a = HostContext(
+            hostname="SRC",
+            ip="10.0.0.1",
+            os="Windows",
+            os_category="windows",
+            system_type="workstation",
+        )
+        host_b = HostContext(
+            hostname="DST",
+            ip="10.0.0.2",
+            os="Linux",
+            os_category="linux",
+            system_type="server",
+        )
+        event = OccurrenceBuilder(
+            timestamp=datetime.now(UTC),
+            event_type="connection",
+            src_host=host_a,
+            dst_host=host_b,
+        )
+        assert event.src_host is host_a
+        assert event.dst_host is host_b
+
+
+class TestHostContext:
+    """Tests for HostContext dataclass."""
+
+    def test_required_fields(self):
+        ctx = HostContext(
+            hostname="WS-01",
+            ip="10.0.1.50",
+            os="Windows 10",
+            os_category="windows",
+            system_type="workstation",
+        )
+        assert ctx.hostname == "WS-01"
+        assert ctx.os_category == "windows"
+
+    def test_domain_defaults_to_empty(self):
+        ctx = HostContext(
+            hostname="WS-01",
+            ip="10.0.1.50",
+            os="Windows 10",
+            os_category="windows",
+            system_type="workstation",
+        )
+        assert ctx.domain == ""
+        assert ctx.fqdn == ""
+        assert ctx.netbios_domain == ""
+
+    def test_fqdn_and_netbios_precomputed(self):
+        ctx = HostContext(
+            hostname="WS-01",
+            ip="10.0.1.50",
+            os="Windows 10",
+            os_category="windows",
+            system_type="workstation",
+            domain="corp.local",
+            fqdn="WS-01.corp.local",
+            netbios_domain="CORP",
+        )
+        assert ctx.fqdn == "WS-01.corp.local"
+        assert ctx.netbios_domain == "CORP"
+
+    def test_slots_prevents_dynamic_attributes(self):
+        ctx = HostContext(
+            hostname="WS-01",
+            ip="10.0.1.50",
+            os="Windows 10",
+            os_category="windows",
+            system_type="workstation",
+        )
+        with pytest.raises(AttributeError):
+            ctx.bogus = "fail"
+
+
+class TestAuthContext:
+    """Tests for AuthContext dataclass."""
+
+    def test_defaults(self):
+        ctx = AuthContext(username="alice")
+        assert ctx.logon_type == 2
+        assert ctx.auth_package == "Negotiate"
+        assert ctx.result == "success"
+        assert ctx.failure_reason == ""
+        assert ctx.source_ip == ""
+        assert ctx.source_port == 0
+        assert ctx.elevated is False
+        assert ctx.logon_id == ""
+        assert ctx.user_sid == ""
+        assert ctx.logon_process == ""
+        assert ctx.lm_package == ""
+        assert ctx.logon_guid == ""
+        assert ctx.subject_sid == ""
+        assert ctx.subject_username == ""
+        assert ctx.subject_domain == ""
+        assert ctx.subject_logon_id == ""
+        assert ctx.process_pid == 0
+
+
+class TestProcessContext:
+    """Tests for ProcessContext dataclass."""
+
+    def test_defaults(self):
+        ctx = ProcessContext(
+            pid=1234,
+            parent_pid=4,
+            image="cmd.exe",
+            command_line="cmd.exe /c dir",
+            username="alice",
+        )
+        assert ctx.integrity_level == "Medium"
+        assert ctx.logon_id == ""
+        assert ctx.parent_image == ""
+        assert ctx.token_elevation == ""
+        assert ctx.mandatory_label == ""
+
+
+class TestNetworkTransactionPlan:
+    """Tests for NetworkTransactionPlan dataclass."""
+
+    def test_defaults(self):
+        ctx = network_plan(
+            src_ip="10.0.1.50",
+            src_port=54321,
+            dst_ip="10.0.1.100",
+            dst_port=443,
+            protocol="tcp",
+        )
+        assert ctx.service == ""
+        assert ctx.zeek_uid == ""
+        assert ctx.conn_id == ""
+        assert ctx.duration is None
+        assert ctx.orig_bytes == 0
+        assert ctx.resp_bytes == 0
+        assert ctx.orig_pkts == 0
+        assert ctx.resp_pkts == 0
+        assert ctx.conn_state == ""
+        assert ctx.history == ""
+        assert ctx.local_orig is True
+        assert ctx.local_resp is False
+
+
+class TestRawProjectionRequest:
+    """Tests for RawProjectionRequest escape hatch."""
+
+    def test_construction(self):
+        ts = datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC)
+        entry = RawProjectionRequest(
+            timestamp=ts,
+            target_format="syslog",
+            data={"message": "test", "hostname": "srv-01"},
+        )
+        assert entry.timestamp == ts
+        assert entry.target_format == "syslog"
+        assert entry.data["message"] == "test"
+
+    def test_slots_prevents_dynamic_attributes(self):
+        entry = RawProjectionRequest(
+            timestamp=datetime.now(UTC),
+            target_format="syslog",
+            data={},
+        )
+        with pytest.raises((AttributeError, TypeError)):
+            entry.bogus = "fail"
+        with pytest.raises(FrozenInstanceError):
+            entry.target_format = "zeek_conn"
+
+
+class TestKerberosContext:
+    """Tests for KerberosContext dataclass."""
+
+    def test_defaults(self):
+        from evidenceforge.events.contexts import KerberosContext
+
+        ctx = KerberosContext(target_username="alice", target_domain="CORP")
+        assert ctx.target_sid == ""
+        assert ctx.service_name == ""
+        assert ctx.service_account_name == ""
+        assert ctx.ticket_status == "0x0"
+        assert ctx.pre_auth_type == 0
+        assert ctx.source_port == 0
+
+    def test_tgt_fields(self):
+        from evidenceforge.events.contexts import KerberosContext
+
+        ctx = KerberosContext(
+            target_username="alice",
+            target_domain="CORP",
+            target_sid="S-1-5-21-123-456-789-1001",
+            service_name="krbtgt",
+            service_account_name="krbtgt",
+            service_sid="S-1-5-21-123-456-789-502",
+            ticket_options="0x40810010",
+            encryption_type="0x12",
+            pre_auth_type=15,
+            source_ip="::ffff:10.0.1.50",
+        )
+        assert ctx.service_name == "krbtgt"
+        assert ctx.service_account_name == "krbtgt"
+        assert ctx.pre_auth_type == 15
+
+
+class TestShellContext:
+    """Tests for ShellContext dataclass."""
+
+    def test_defaults(self):
+        from evidenceforge.events.contexts import ShellContext
+
+        ctx = ShellContext(command="ls -la")
+        assert ctx.command == "ls -la"
+
+
+class TestOccurrenceBuilderContexts:
+    """Tests for OccurrenceBuilder with kerberos and shell contexts."""
+
+    def test_kerberos_slot(self):
+        from evidenceforge.events.contexts import KerberosContext
+
+        evt = OccurrenceBuilder(
+            timestamp=datetime.now(UTC),
+            event_type="kerberos_tgt",
+            kerberos=KerberosContext(target_username="alice", target_domain="CORP"),
+        )
+        assert evt.kerberos is not None
+        assert evt.shell is None
+
+    def test_shell_slot(self):
+        from evidenceforge.events.contexts import ShellContext
+
+        evt = OccurrenceBuilder(
+            timestamp=datetime.now(UTC),
+            event_type="bash_command",
+            shell=ShellContext(command="ls"),
+        )
+        assert evt.shell is not None
+        assert evt.kerberos is None

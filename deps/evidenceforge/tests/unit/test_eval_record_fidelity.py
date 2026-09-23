@@ -1,0 +1,409 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Tests for Parseability and distribution scoring (merged from record_fidelity)."""
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from evidenceforge.evaluation._shared import _jensen_shannon_divergence
+from evidenceforge.evaluation.parsers import ParsedRecord
+from evidenceforge.evaluation.pillars.parseability import (
+    ParseabilityScorer,
+    _normalize_for_validation,
+)
+from evidenceforge.evaluation.pillars.plausibility import (
+    PlausibilityScorer,
+    _score_http_file_consistency,
+)
+
+# Alias for tests that use the old RecordFidelityScorer name
+RecordFidelityScorer = ParseabilityScorer
+
+GOOD_FIXTURES = Path(__file__).parent.parent / "fixtures" / "eval" / "good"
+
+
+def test_http_upload_file_consistency_checks_direction_size_mime_and_uid() -> None:
+    """Evaluator accepts a fully correlated originator-side HTTP file row."""
+
+    http = _make_record(
+        "zeek_http",
+        {
+            "uid": "CUpload",
+            "request_body_len": 44_040_192,
+            "orig_fuids": ["FUpload"],
+            "orig_mime_types": ["application/vnd.rar"],
+        },
+    )
+    file_record = _make_record(
+        "zeek_files",
+        {
+            "fuid": "FUpload",
+            "conn_uids": ["CUpload"],
+            "is_orig": True,
+            "total_bytes": 44_040_192,
+            "mime_type": "application/vnd.rar",
+        },
+    )
+
+    matched, agreeing, failures = _score_http_file_consistency(
+        {"zeek_http": [http], "zeek_files": [file_record]}
+    )
+
+    assert matched == agreeing == 5
+    assert failures == []
+
+
+def test_http_multipart_consistency_accepts_sparse_vectors_and_envelope_overhead() -> None:
+    """Multipart filenames/MIME are present-value vectors, not FUID-aligned arrays."""
+
+    http = _make_record(
+        "zeek_http",
+        {
+            "uid": "CMultipart",
+            "request_body_len": 440,
+            "orig_fuids": ["F1", "F2", "F3", "F4"],
+            "orig_filenames": ["file"],
+            "orig_mime_types": ["text/plain"],
+        },
+    )
+    files = [
+        _make_record(
+            "zeek_files",
+            {
+                "fuid": f"F{index}",
+                "conn_uids": ["CMultipart"],
+                "is_orig": True,
+                "seen_bytes": size,
+                **({"filename": "file"} if index == 3 else {}),
+                **({"mime_type": "text/plain"} if index == 4 else {}),
+            },
+        )
+        for index, size in enumerate((38, 1, 6, 22), start=1)
+    ]
+
+    matched, agreeing, failures = _score_http_file_consistency(
+        {"zeek_http": [http], "zeek_files": files}
+    )
+
+    assert matched == agreeing
+    assert failures == []
+
+
+def _make_record(format_name: str, fields: dict, errors: list[str] | None = None) -> ParsedRecord:
+    return ParsedRecord(
+        source_format=format_name,
+        raw="test",
+        fields=fields,
+        parse_errors=errors or [],
+    )
+
+
+class TestTierA:
+    def test_good_fixtures_score_high(self):
+        """Well-formed fixtures should score well on Tier A."""
+        from evidenceforge.evaluation.parsers.zeek import ZeekConnParser
+
+        parser = ZeekConnParser()
+        records = list(parser.parse_file(GOOD_FIXTURES / "zeek_conn.json"))
+        assert len(records) > 0
+
+        scorer = RecordFidelityScorer()
+        tier_a = scorer._score_spec_conformance({"zeek_conn": records})
+        # Well-formed Zeek records should all pass
+        assert tier_a.score == 100.0
+
+    def test_snort_native_timestamps_pass_spec_validation(self):
+        """Snort fast-alert timestamps are source-native, not ISO strings."""
+        from evidenceforge.evaluation.parsers.snort import SnortAlertParser
+
+        parser = SnortAlertParser()
+        records = list(parser.parse_file(GOOD_FIXTURES / "snort_alert.alert"))
+
+        scorer = RecordFidelityScorer()
+        tier_a = scorer._score_spec_conformance({"snort_alert": records})
+        assert tier_a.score == 100.0
+
+    def test_records_with_parse_errors_score_low(self):
+        """Records that failed to parse should reduce Tier A score."""
+        records = [
+            _make_record("zeek_conn", {}, errors=["JSON parse error"]),
+            _make_record("zeek_conn", {}, errors=["JSON parse error"]),
+        ]
+        scorer = RecordFidelityScorer()
+        tier_a = scorer._score_spec_conformance({"zeek_conn": records})
+        assert tier_a.score == 0.0
+
+    def test_mixed_good_and_bad(self):
+        """Mix of parseable and unparseable records."""
+        from evidenceforge.evaluation.parsers.zeek import ZeekConnParser
+
+        parser = ZeekConnParser()
+        good_records = list(parser.parse_file(GOOD_FIXTURES / "zeek_conn.json"))
+        bad_records = [
+            _make_record("zeek_conn", {}, errors=["JSON parse error"]),
+        ]
+        all_records = good_records + bad_records
+
+        scorer = RecordFidelityScorer()
+        tier_a = scorer._score_spec_conformance({"zeek_conn": all_records})
+        # 3 good out of 4 total = 75%
+        assert tier_a.score == 75.0
+
+    def test_windows_dash_ports_normalize_for_integer_validation(self):
+        """Raw Windows XML can use '-' for unavailable ports without failing eval."""
+        normalized = _normalize_for_validation(
+            "windows_event_security",
+            {
+                "EventID": 4648,
+                "NetworkAddress": "-",
+                "NetworkPort": "-",
+                "IpAddress": "-",
+                "IpPort": "-",
+            },
+            None,
+        )
+
+        assert normalized["NetworkPort"] == 0
+        assert normalized["IpPort"] == 0
+
+
+class TestTierB:
+    def test_valid_zeek_records_pass_rules(self):
+        """Valid Zeek SF records with all required fields should pass co-occurrence rules."""
+        from evidenceforge.evaluation.parsers.zeek import ZeekConnParser
+
+        parser = ZeekConnParser()
+        records = list(parser.parse_file(GOOD_FIXTURES / "zeek_conn.json"))
+
+        scorer = RecordFidelityScorer()
+        tier_b = scorer._score_format_constraints({"zeek_conn": records})
+        assert tier_b.score >= 80.0
+
+    def test_missing_field_fails_rule(self):
+        """A record missing a required co-occurrence field should fail."""
+        records = [
+            _make_record(
+                "zeek_conn",
+                {
+                    "proto": "tcp",
+                    "conn_state": "SF",
+                    # Missing duration, orig_bytes, resp_bytes
+                },
+            ),
+        ]
+        scorer = RecordFidelityScorer()
+        tier_b = scorer._score_format_constraints({"zeek_conn": records})
+        # Should fail the SF rules requiring duration and byte counts
+        assert tier_b.score < 100.0
+
+
+class TestTierC:
+    def test_failed_connect_error_bodies_do_not_fail_co_occurrence(self):
+        """Failed CONNECT responses may include proxy error bodies."""
+        records = [
+            _make_record(
+                "zeek_http",
+                {
+                    "method": "CONNECT",
+                    "status_code": 502,
+                    "response_body_len": 1200,
+                },
+            ),
+            _make_record(
+                "zeek_http",
+                {
+                    "method": "CONNECT",
+                    "status_code": 200,
+                    "response_body_len": 0,
+                },
+            ),
+        ]
+
+        tier_c = RecordFidelityScorer()._score_format_constraints({"zeek_http": records})
+
+        assert tier_c.score == 100.0
+
+    def test_successful_connect_with_body_fails_co_occurrence(self):
+        """Successful CONNECT tunnels should not carry HTTP response bodies."""
+        records = [
+            _make_record(
+                "zeek_http",
+                {
+                    "method": "CONNECT",
+                    "status_code": 200,
+                    "response_body_len": 1200,
+                },
+            ),
+        ]
+
+        tier_c = RecordFidelityScorer()._score_format_constraints({"zeek_http": records})
+
+        assert tier_c.score < 100.0
+
+    def test_matching_distribution_scores_high(self):
+        """Records matching reference distribution should score well."""
+        # Create records matching the zeek proto distribution (80% tcp, 18% udp, 2% icmp)
+        records = (
+            [_make_record("zeek_conn", {"proto": "tcp"})] * 80
+            + [_make_record("zeek_conn", {"proto": "udp"})] * 18
+            + [_make_record("zeek_conn", {"proto": "icmp"})] * 2
+        )
+        scorer = PlausibilityScorer()
+        tier_c = scorer._score_distribution_fit({"zeek_conn": records})
+        assert tier_c.score >= 90.0
+
+    def test_skewed_distribution_scores_lower(self):
+        """Records with heavily skewed distribution should score lower."""
+        # All records are tcp — no diversity
+        records = [_make_record("zeek_conn", {"proto": "tcp"})] * 100
+        scorer = PlausibilityScorer()
+        tier_c = scorer._score_distribution_fit({"zeek_conn": records})
+        # Should still be positive but lower than the matching distribution
+        assert tier_c.score < 90.0
+
+
+class TestOverallDimension:
+    def test_score_returns_dimension_score(self):
+        """Full dimension scoring returns a DimensionScore with all sub-scores."""
+        from evidenceforge.evaluation.parsers.zeek import ZeekConnParser
+
+        parser = ZeekConnParser()
+        records = {"zeek_conn": list(parser.parse_file(GOOD_FIXTURES / "zeek_conn.json"))}
+
+        scorer = RecordFidelityScorer()
+        scenario = MagicMock()
+        result = scorer.score(records, scenario)
+
+        assert result.number == 1
+        assert result.name == "Parseability"
+        assert result.weight == 0.30
+        assert result.score is not None
+        assert len(result.sub_scores) == 2
+
+    def test_empty_records_do_not_score_perfect(self):
+        """An empty dataset cannot prove source-schema conformance."""
+        scorer = RecordFidelityScorer()
+        scenario = MagicMock()
+        result = scorer.score({}, scenario)
+        assert result.score == 0.0
+
+
+class TestWindowsVariantMapCoverage:
+    """Every Windows event variant map entry must resolve to a real format YAML variant."""
+
+    def test_all_security_mapped_variants_exist(self):
+        from evidenceforge.evaluation.pillars.parseability import WINDOWS_VARIANT_MAP
+        from evidenceforge.formats import load_format
+
+        fmt = load_format("windows_event_security")
+        variant_names = {v.name for v in (fmt.variants or [])}
+        for event_id, variant_name in WINDOWS_VARIANT_MAP.items():
+            assert variant_name in variant_names, (
+                f"WINDOWS_VARIANT_MAP[{event_id}] = {variant_name!r} "
+                "but no such variant exists in windows_event_security.yaml"
+            )
+
+    def test_all_sysmon_mapped_variants_exist(self):
+        from evidenceforge.evaluation.pillars.parseability import SYSMON_VARIANT_MAP
+        from evidenceforge.formats import load_format
+
+        fmt = load_format("windows_event_sysmon")
+        variant_names = {v.name for v in (fmt.variants or [])}
+        for event_id, variant_name in SYSMON_VARIANT_MAP.items():
+            assert variant_name in variant_names, (
+                f"SYSMON_VARIANT_MAP[{event_id}] = {variant_name!r} "
+                "but no such variant exists in windows_event_sysmon.yaml"
+            )
+
+    def test_lock_unlock_variants_mapped(self):
+        """EventIDs 4800/4801 must be in the variant map so validation sees variant fields."""
+        from evidenceforge.evaluation.pillars.parseability import WINDOWS_VARIANT_MAP
+
+        assert WINDOWS_VARIANT_MAP[4800] == "workstation_locked"
+        assert WINDOWS_VARIANT_MAP[4801] == "workstation_unlocked"
+
+    def test_event_4648_provider_field_snapshot(self):
+        """Event 4648 uses provider-native XML names and manifest field order."""
+
+        from evidenceforge.formats import load_format
+
+        fmt = load_format("windows_event_security")
+        variant = next(item for item in fmt.variants if item.event_id == "4648")
+
+        assert [field.name for field in variant.fields] == [
+            "SubjectUserSid",
+            "SubjectUserName",
+            "SubjectDomainName",
+            "SubjectLogonId",
+            "LogonGuid",
+            "TargetUserName",
+            "TargetDomainName",
+            "TargetLogonGuid",
+            "TargetServerName",
+            "TargetInfo",
+            "ProcessId",
+            "ProcessName",
+            "IpAddress",
+            "IpPort",
+        ]
+        assert "NetworkAddress" not in fmt.output.template
+        assert "NetworkPort" not in fmt.output.template
+
+    def test_sysmon_event_data_variant_resolves(self):
+        """Sysmon EventID 3 must validate against its event-specific fields."""
+        from evidenceforge.evaluation.parsers import ParsedRecord
+        from evidenceforge.evaluation.pillars.parseability import _get_variant
+
+        record = ParsedRecord(
+            source_format="windows_event_sysmon",
+            raw="",
+            fields={
+                "EventID": 3,
+                "EventRecordID": 1,
+                "TimeCreated": "2024-01-01T00:00:00Z",
+                "Computer": "WS-01",
+                "ProcessGuid": "{11111111-1111-1111-1111-111111111111}",
+                "ProcessId": 1234,
+                "Image": r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                "DestinationIp": "203.0.113.10",
+                "DestinationPort": 443,
+            },
+        )
+
+        assert _get_variant("windows_event_sysmon", record) == "sysmon_network_connect"
+
+
+class TestJensenShannonDivergence:
+    def test_identical_distributions(self):
+        p = {"a": 0.5, "b": 0.5}
+        q = {"a": 0.5, "b": 0.5}
+        assert _jensen_shannon_divergence(p, q) == pytest.approx(0.0, abs=1e-10)
+
+    def test_completely_different_distributions(self):
+        p = {"a": 1.0}
+        q = {"b": 1.0}
+        jsd = _jensen_shannon_divergence(p, q)
+        # JSD should be ln(2) ≈ 0.693
+        assert jsd == pytest.approx(0.693, abs=0.01)

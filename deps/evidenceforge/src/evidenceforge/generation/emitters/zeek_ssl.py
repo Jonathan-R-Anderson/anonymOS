@@ -1,0 +1,102 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Zeek ssl.log emitter."""
+
+from typing import Any
+
+from evidenceforge.events.base import CanonicalOccurrence
+from evidenceforge.generation.emitters.zeek_base import (
+    SensorMultiplexEmitter,
+    direct_zeek_source_time,
+    zeek_format_observed,
+)
+from evidenceforge.generation.network_observation import network_source_timing_key
+
+
+class ZeekSslEmitter(SensorMultiplexEmitter):
+    """Emitter for Zeek ssl.log format (NDJSON).
+
+    Generates SSL/TLS handshake logs. Requires both NetworkTransactionPlan and SslContext.
+    Shares conn.log UID via event.network.zeek_uid.
+    """
+
+    _log_filename = "ssl.json"
+    _flat_filename = "zeek_ssl.json"
+    _supported_types: set[str] = {"connection"}
+
+    def can_handle(self, event: CanonicalOccurrence) -> bool:
+        return (
+            event.event_type in self._supported_types
+            and event.network is not None
+            and event.network.conn_state == "SF"
+            and event.protocol.ssl is not None
+        )
+
+    def emit(self, event: CanonicalOccurrence) -> None:
+        net = event.network
+        ssl = event.protocol.ssl
+        timing_key = network_source_timing_key("zeek_ssl")
+        event_ts = (
+            net.started_at
+            if event.network_observations_planned
+            else direct_zeek_source_time(event, timing_key)
+        )
+        cert_chain_fuids = ssl.cert_chain_fuids or None
+        if cert_chain_fuids and (
+            not zeek_format_observed(event, "zeek_files")
+            or not zeek_format_observed(event, "zeek_x509")
+        ):
+            cert_chain_fuids = None
+        event_data: dict[str, Any] = {
+            "ts": event_ts,
+            "uid": net.zeek_uid,
+            "id.orig_h": net.src_ip,
+            "id.orig_p": net.src_port,
+            "id.resp_h": net.dst_ip,
+            "id.resp_p": net.dst_port,
+            "version": ssl.version or None,
+            "cipher": ssl.cipher or None,
+            "server_name": ssl.server_name or None,
+            "resumed": ssl.resumed,
+            "established": ssl.established,
+            "ssl_history": ssl.ssl_history or None,
+            "cert_chain_fuids": cert_chain_fuids,
+            "_source_timing_key": timing_key,
+            **self._sensor_metadata(event, self.format_def.name),
+        }
+        self.emit_event(event_data)
+
+    def _render_event(self, event_data: dict[str, Any]) -> str:
+        optional_fields = [
+            "version",
+            "cipher",
+            "server_name",
+            "resumed",
+            "established",
+            "ssl_history",
+            "cert_chain_fuids",
+        ]
+        for f in optional_fields:
+            if f not in event_data:
+                event_data[f] = None
+        return self._render_zeek_json(event_data)

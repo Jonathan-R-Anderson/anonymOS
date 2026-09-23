@@ -18,6 +18,17 @@ URL           := https://dl-cdn.alpinelinux.org/alpine/$(ALPINE_BRANCH)/releases
 APKMAIN       := https://dl-cdn.alpinelinux.org/alpine/$(ALPINE_BRANCH)/main
 APKCOMM       := https://dl-cdn.alpinelinux.org/alpine/$(ALPINE_BRANCH)/community
 
+# ── the decoy's kernel: built from kernel.org source, NOT Alpine's apk linux-lts ────────────
+# We compile Linux ourselves so the decoy's boot path (dm-crypt aes-xts + squashfs/overlay root,
+# every storage/input/GPU driver init-crypt needs) is built =y and self-contained — no reliance
+# on Alpine's module packaging or the initramfs module-closure guesswork. See kernel/decoy-kernel.config.
+KERNEL_VER    ?= 6.12.111
+KERNEL_TAR    := linux-$(KERNEL_VER).tar.xz
+KERNEL_URL    := https://cdn.kernel.org/pub/linux/kernel/v6.x/$(KERNEL_TAR)
+KERNEL_SHA256 := 9e59dc67624188fa12a6601f9598499cd6662a9066be572b59f935e3d7849810
+KSRC          := $(BLD)/linux-$(KERNEL_VER)
+KJOBS         ?= $(shell nproc 2>/dev/null || echo 4)
+
 # §H1 believability — a REAL toolchain installed with apk (so `apk info`, `which`, the shell
 # history and the /var/log daemons are all CONSISTENT: a workstation that claims git/ssh/vim
 # but has none installed is a decoy tell). apk.static installs into the rootfs from the host
@@ -54,13 +65,16 @@ UKI_STUB    := /usr/lib/systemd/boot/efi/linuxx64.efi.stub
 # lands. With tty0 last, the userspace banner goes to VGA and the serial boot-check sees nothing.
 UKI_CMDLINE ?= console=tty0 console=ttyS0,115200 rdinit=/init loglevel=4
 
-.PHONY: rootfs image verify consistency h4 uki boot-check desktop-rootfs desktop-image desktop-boot-check clean
+.PHONY: rootfs image verify consistency h4 uki boot-check kernel kernel-mods desktop-rootfs desktop-image desktop-boot-check clean
 
 # §H1 desktop cover story — a graphical XFCE daily-driver decoy. The CLI believability set stays;
 # these add a real Xorg + XFCE + Firefox stack (so booting the decoy lands in Alex's desktop).
 DROOT       := $(BLD)/desktop-rootfs
 DESKTOP_MB  ?= 3072
-DESKTOP_PKGS ?= alpine-base linux-lts xorg-server xf86-input-libinput xf86-video-modesetting \
+# NB: no linux-lts — the decoy runs the from-scratch kernel built above (KERNEL_VER), whose
+# modules the $(DROOT)/.kernel-mods target installs into this rootfs. Shipping the apk 6.6 kernel
+# alongside a 6.12 uname would be a decoy tell (apk info vs uname mismatch).
+DESKTOP_PKGS ?= alpine-base xorg-server xf86-input-libinput xf86-video-modesetting \
                 mesa-dri-gallium mesa-egl mesa-gbm xfce4 xfce4-terminal thunar \
                 xfce4-screenshooter xfconf xfce4-settings dbus dbus-x11 elogind \
                 polkit-elogind firefox-esr font-dejavu ttf-dejavu adwaita-icon-theme \
@@ -126,6 +140,53 @@ $(BLD)/decoy-uki.efi: $(DL)/vmlinuz-lts $(BLD)/initramfs.gz | $(BLD)
 	@echo "[decoy-os] built decoy-uki.efi ($$(du -h $@ | cut -f1)) — a self-contained bootable Alpine PE"
 uki: $(BLD)/decoy-uki.efi
 
+# ── §E5d/§H1 — the decoy's from-scratch Linux $(KERNEL_VER) kernel ──────────────────────────
+# Fetched from kernel.org, sha256-verified, configured from x86_64_defconfig + kernel/decoy-kernel.config
+# (the whole boot path built =y), then compiled. The result is vmlinuz-decoy — the bzImage the
+# desktop/crypt UKIs embed as --linux=. Needs the usual kernel build deps (flex bison libelf-dev,
+# already in the project Dockerfile); no pahole/keys (BTF and module signing are disabled).
+$(DL)/$(KERNEL_TAR): | $(DL)
+	curl -fL -o $@.part $(KERNEL_URL)
+	echo "$(KERNEL_SHA256)  $@.part" | sha256sum -c -
+	mv $@.part $@
+
+$(BLD)/vmlinuz-decoy: $(DL)/$(KERNEL_TAR) kernel/decoy-kernel.config | $(BLD)
+	rm -rf $(KSRC)
+	tar -xf $(DL)/$(KERNEL_TAR) -C $(BLD)
+	$(MAKE) -C $(KSRC) ARCH=x86_64 defconfig
+	cat $(SELF)/kernel/decoy-kernel.config >> $(KSRC)/.config
+	$(MAKE) -C $(KSRC) ARCH=x86_64 olddefconfig
+	@# fail loudly if an unmet dependency silently dropped a driver the decoy MUST have to boot
+	@for s in EXT4_FS SQUASHFS SQUASHFS_ZSTD OVERLAY_FS MD BLK_DEV_DM DM_CRYPT \
+	         CRYPTO_XTS CRYPTO_AES CRYPTO_AES_NI_INTEL BLK_DEV_INITRD DEVTMPFS \
+	         VIRTIO_PCI VIRTIO_BLK SCSI_VIRTIO VIRTIO_NET ATA SATA_AHCI ATA_PIIX \
+	         SCSI BLK_DEV_SD BLK_DEV_SR BLK_DEV_NVME \
+	         USB USB_XHCI_HCD USB_EHCI_HCD USB_STORAGE USB_UAS \
+	         INPUT_EVDEV SERIO_I8042 KEYBOARD_ATKBD MOUSE_PS2 HID_GENERIC USB_HID \
+	         DRM DRM_VIRTIO_GPU DRM_BOCHS DRM_FBDEV_EMULATION FRAMEBUFFER_CONSOLE \
+	         EFI EFI_STUB; do \
+	   grep -q "^CONFIG_$$s=y" $(KSRC)/.config || { echo "[decoy-os] FATAL: kernel config lost CONFIG_$$s (unmet dep?) — the decoy would not boot"; exit 1; }; \
+	 done
+	$(MAKE) -C $(KSRC) ARCH=x86_64 -j$(KJOBS) bzImage modules
+	cp $(KSRC)/arch/x86/boot/bzImage $@
+	@echo "[decoy-os] built from-scratch kernel $(KERNEL_VER) -> $@ ($$(du -h $@|cut -f1))"
+kernel: $(BLD)/vmlinuz-decoy
+
+# Install OUR kernel's modules + boot files into the desktop rootfs (there is no apk linux-lts to
+# provide them). With the boot path built =y this is a small tree, but /lib/modules/$(KVER) +
+# modules.dep must exist (the initramfs module-closure reads it), and a real 6.12 workstation
+# carries /boot/vmlinuz-*, config-*, System.map-* — so the decoy does too (§H1 believability).
+$(DROOT)/.kernel-mods: $(BLD)/vmlinuz-decoy $(DROOT)/.stamp
+	$(SUDO) rm -rf $(DROOT)/lib/modules
+	$(SUDO) $(MAKE) -C $(KSRC) ARCH=x86_64 INSTALL_MOD_PATH=$(DROOT) modules_install
+	$(SUDO) mkdir -p $(DROOT)/boot
+	$(SUDO) cp $(BLD)/vmlinuz-decoy $(DROOT)/boot/vmlinuz-$(KERNEL_VER)
+	$(SUDO) cp $(KSRC)/.config      $(DROOT)/boot/config-$(KERNEL_VER)
+	$(SUDO) cp $(KSRC)/System.map   $(DROOT)/boot/System.map-$(KERNEL_VER)
+	$(SUDO) touch $@
+	@echo "[decoy-os] installed kernel $(KERNEL_VER) modules + /boot files into the desktop rootfs"
+kernel-mods: $(DROOT)/.kernel-mods
+
 # boot the UKI directly in OVMF (no encryption) and assert it reaches Alpine userspace — proves
 # the UKI itself is bootable, independent of the §E5 decrypt path (which decrypt-boot-check covers).
 boot-check: uki
@@ -160,12 +221,12 @@ desktop-rootfs: $(DROOT)/.stamp
 # pack the desktop rootfs into an ext4 image sized to the visible disk (§H3), + a module-carrying
 # initramfs that reaches the ext4 root on virtio-blk.
 KVER = $(shell $(SUDO) sh -c 'ls $(DROOT)/lib/modules 2>/dev/null | head -1')
-desktop-image: desktop-rootfs
+desktop-image: desktop-rootfs $(DROOT)/.kernel-mods $(BLD)/vmlinuz-decoy
 	$(SUDO) rm -f $(BLD)/decoy-desktop.ext4
 	$(SUDO) sh -c 'dd if=/dev/zero of=$(BLD)/decoy-desktop.ext4 bs=1M count=$(DESKTOP_MB) status=none && \
 	  mkfs.ext4 -q -L decoyroot -d $(DROOT) $(BLD)/decoy-desktop.ext4'
-	$(SUDO) cp $(DROOT)/boot/vmlinuz-lts $(BLD)/vmlinuz-decoy
-	$(SUDO) chown $(UGID) $(BLD)/decoy-desktop.ext4 $(BLD)/vmlinuz-decoy
+	@# vmlinuz-decoy IS the from-scratch kernel (built by its own rule); nothing to copy from the rootfs
+	$(SUDO) chown $(UGID) $(BLD)/decoy-desktop.ext4
 	@# module-carrying initramfs (Alpine .ko.gz -> gunzip -> /mod; init-disk multi-pass insmods)
 	@$(SUDO) rm -rf $(BLD)/dir && mkdir -p $(BLD)/dir/bin $(BLD)/dir/mod $(BLD)/dir/proc $(BLD)/dir/sys $(BLD)/dir/dev $(BLD)/dir/sysroot
 	@cp $(BLD)/busybox.static $(BLD)/dir/bin/busybox
@@ -231,7 +292,7 @@ CRYPT_MODS = virtio virtio_ring virtio_pci_modern_dev virtio_pci_legacy_dev virt
   evdev psmouse hid hid-generic usbhid i2c-hid hid-multitouch \
   libaes aes_generic aesni-intel crypto_simd cryptd xts ecb gf128mul \
   squashfs overlay loop
-$(BLD)/initramfs-crypt.gz: $(BLD)/busybox.static $(BLD)/dmsetup.static initramfs/init-crypt desktop-rootfs | $(BLD)
+$(BLD)/initramfs-crypt.gz: $(BLD)/busybox.static $(BLD)/dmsetup.static initramfs/init-crypt $(DROOT)/.kernel-mods | $(BLD)
 	@$(SUDO) rm -rf $(BLD)/crdir && mkdir -p $(BLD)/crdir/bin $(BLD)/crdir/mod $(BLD)/crdir/proc $(BLD)/crdir/sys $(BLD)/crdir/dev $(BLD)/crdir/sysroot
 	@cp $(BLD)/busybox.static $(BLD)/crdir/bin/busybox
 	@cp $(BLD)/dmsetup.static $(BLD)/crdir/bin/dmsetup
@@ -255,7 +316,7 @@ $(BLD)/initramfs-crypt.gz: $(BLD)/busybox.static $(BLD)/dmsetup.static initramfs
 
 # The production decoy desktop UKI: vmlinuz + crypt initramfs. No key in the embedded cmdline —
 # the pre-boot loader appends decoykey=/decoyrl=/decoyiv=/decoysz= via EFI LoadOptions.
-$(BLD)/decoy-crypt-uki.efi: $(BLD)/initramfs-crypt.gz | $(BLD)
+$(BLD)/decoy-crypt-uki.efi: $(BLD)/vmlinuz-decoy $(BLD)/initramfs-crypt.gz | $(BLD)
 	@test -f $(UKI_STUB) || { echo "[decoy-os] missing $(UKI_STUB) — apt install systemd-boot-efi systemd-ukify"; exit 1; }
 	ukify build --linux=$(BLD)/vmlinuz-decoy --initrd=$(BLD)/initramfs-crypt.gz \
 	    --cmdline="console=tty0 console=ttyS0,115200 rw rdinit=/init loglevel=4" --stub=$(UKI_STUB) --output=$@
@@ -269,7 +330,7 @@ crypt-uki: $(BLD)/decoy-crypt-uki.efi
 # Compress the full desktop rootfs into a squashfs so the installer's in-RAM boot module is ~1 GB
 # instead of the 2.4 GB raw ext4 (limine cannot practically load a 3 GB module — OOM/stall). The
 # Linux kernel decompresses squashfs at mount time (init-crypt), so the decoy keeps every file.
-$(BLD)/decoy-desktop.squashfs: desktop-rootfs | $(BLD)
+$(BLD)/decoy-desktop.squashfs: desktop-rootfs $(DROOT)/.kernel-mods | $(BLD)
 	@command -v mksquashfs >/dev/null || { echo "[decoy-os] need squashfs-tools (apt install squashfs-tools)"; exit 1; }
 	$(SUDO) rm -f $@
 	$(SUDO) mksquashfs $(DROOT) $@ -comp zstd -noappend -no-progress -quiet
@@ -283,7 +344,7 @@ decoy-boot: $(BLD)/decoy-boot.img
 
 # Prove it headless: encrypt decoy-desktop.ext4 with dm-crypt (definitionally aes-xts-plain64),
 # direct-kernel-boot the crypt initramfs with the key on the cmdline, assert XFCE rendered.
-crypt-boot-check: $(BLD)/initramfs-crypt.gz $(BLD)/decoy-desktop.squashfs
+crypt-boot-check: $(BLD)/vmlinuz-decoy $(BLD)/initramfs-crypt.gz $(BLD)/decoy-desktop.squashfs
 	@echo "--- §H1 Level 2: decoy XFCE from an ENCRYPTED squashfs root (dm-crypt+overlay, QMP screendump) ---"
 	@$(SELF)/crypt-boot-check.sh $(BLD)
 

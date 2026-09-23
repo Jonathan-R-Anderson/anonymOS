@@ -1,0 +1,2 @@
+# Record rules now live in config/formats/*.yaml as typed validators.
+{}

@@ -1,0 +1,115 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# uv
+.uv/
+
+# Testing
+.artifacts/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Linting / type checking
+.ruff_cache/
+.mypy_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+.env
+output/
+*.log
+checkpoints/
+!src/evidenceforge/generation/checkpoints/
+!src/evidenceforge/generation/checkpoints/*.py
+
+# Claude Code sessions
+.claude/
+
+# Generated ChatGPT/Codex skill installs (canonical sources: commands/eforge/)
+.agents/
+
+# EvidenceForge project-local config overlay
+.eforge/
+!.eforge/
+.eforge/*
+!.eforge/packs/
+.eforge/packs/*
+!.eforge/packs/organization/
+.eforge/packs/organization/*
+!.eforge/packs/organization/meridian-healthcare-solutions/
+.eforge/packs/organization/meridian-healthcare-solutions/*
+!.eforge/packs/organization/meridian-healthcare-solutions/1.0.0/
+!.eforge/packs/organization/meridian-healthcare-solutions/1.0.0/**
+
+# Ignore any scenarios we might produce
+scenarios/*
+!scenarios/COVERAGE-TEST-PROMPT.md
+!scenarios/LARGE-SCALE-COVERAGE-TEST-PROMPT.md
+!scenarios/branch-office-example/
+scenarios/branch-office-example/*
+!scenarios/branch-office-example/scenario.yaml
+!scenarios/spillage-full-matrix-test/
+scenarios/spillage-full-matrix-test/*
+!scenarios/spillage-full-matrix-test/scenario.yaml
+!scenarios/spillage-full-matrix-test/ENVIRONMENT.md
+!scenarios/spillage-full-matrix-test/README.md
+!scenarios/llm-injection-demo/
+scenarios/llm-injection-demo/*
+!scenarios/llm-injection-demo/scenario.yaml
+!scenarios/llm-injection-demo/scenario-clean.yaml
+!scenarios/llm-injection-demo/README.md
+!scenarios/iteration-test/
+scenarios/iteration-test/*
+!scenarios/iteration-test/scenario.yaml
+!scenarios/iteration-test/email_corpus.yaml
+!scenarios/iteration-test/ENVIRONMENT.md
+!scenarios/iteration-test-1_0/
+scenarios/iteration-test-1_0/*
+!scenarios/iteration-test-1_0/scenario.yaml
+!scenarios/iteration-test-1_0/email_corpus.yaml
+!scenarios/iteration-test-1_0/ENVIRONMENT.md
+
+
+# Scan / analysis tool output
+.codesight/
+
+# Auto-generated dependency pins (pyproject.toml is source of truth)
+requirements.txt
+
+# Sample data (reference only, not tracked)
+sample_data/

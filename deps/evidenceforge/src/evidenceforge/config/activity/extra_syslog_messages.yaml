@@ -1,0 +1,555 @@
+# Extra syslog program messages for baseline diversity.
+#
+# Each entry has:
+#   app: syslog app_name
+#   messages: list of message templates ({} placeholders filled at generation time)
+#   distro: optional - "ubuntu" to restrict to Debian/Ubuntu (excluded on RHEL-like)
+#   roles: optional - list of required host roles (any match = include)
+#   exclude_roles: optional - list of host roles to suppress
+#   system_types: optional - workstation/server/domain_controller scope
+#   transient: optional - true if the process forks per invocation (random PID)
+#
+# If distro/roles/system_types are omitted, the entry appears on all Linux hosts.
+#
+# Depended on by: generation engine (syslog baseline diversity)
+# Depends on: nothing — standalone (distro/role filters are soft matches)
+#
+# Authoring reference: commands/eforge/references/config-host-activity.md
+
+programs:
+  - app: NetworkManager
+    system_types: [workstation]
+    weight: 3
+    messages:
+      - "<info>  [{}] dhcp4 ({interface}): state changed renew -> bound"
+      - "<info>  [{}] device ({interface}): state change: disconnected -> prepare"
+      - "<info>  [{}] device ({interface}): state change: ip-config -> activated"
+      - "<info>  [{}] manager: NetworkManager state is now CONNECTED_GLOBAL"
+
+  - app: dbus-daemon
+    weight: 1
+    max_per_host_window: 8
+    messages:
+      - "[system] Activating via systemd: service name='org.freedesktop.hostname1' unit='dbus-org.freedesktop.hostname1.service' requested by ':1.{}'"
+      - "[system] Successfully activated service 'org.freedesktop.resolve1' for ':1.{}'"
+      - "[system] Activating via systemd: service name='org.freedesktop.timedate1' unit='dbus-org.freedesktop.timedate1.service' requested by ':1.{}'"
+      - "[system] Successfully activated service 'org.freedesktop.locale1' for ':1.{}'"
+      - "[system] Activating via systemd: service name='org.freedesktop.login1' unit='dbus-org.freedesktop.login1.service' requested by ':1.{}'"
+
+  - app: rsyslogd
+    weight: 1
+    max_per_host_window: 10
+    params:
+      queue_name:
+        - fwdRule1
+        - action-remote
+        - main
+        - local-spool
+      relay_target:
+        - logrelay01
+        - siem-forwarder
+        - 10.10.2.30
+      worker_count:
+        - "1"
+        - "2"
+        - "3"
+      checkpoint:
+        - "10000"
+      pending:
+        - "12"
+    messages:
+      - "omfwd: target {relay_target} using disk-assisted queue {queue_name}, checkpoint {checkpoint}"
+      - "main Q: queue {queue_name} has {pending} messages pending, worker threads {worker_count}"
+
+  - app: sudo
+    transient: true
+    weight: 1
+    max_per_host_window: 18
+    params:
+      sudo_user:
+        - admin
+        - deploy
+        - ops
+        - ubuntu
+        - svc_app
+        - backup
+      tty:
+        - pts/0
+        - pts/1
+        - pts/2
+        - pts/3
+        - pts/5
+      cwd:
+        - /home/admin
+        - /home/deploy
+        - /home/ops
+        - /srv/app
+        - /etc
+        - /var/log
+        - /tmp
+      service:
+        - ssh
+        - cron
+        - app-agent
+        - auditd
+        - nginx
+        - apache2
+        - mysql
+        - php-fpm
+        - postgresql
+        - rsyslog
+        - systemd-resolved
+      journal_lines:
+        - "40"
+        - "50"
+        - "80"
+        - "120"
+      journal_window:
+        - 15 min ago
+        - 30 min ago
+        - 45 min ago
+        - 1 hour ago
+      tail_lines:
+        - "40"
+        - "60"
+        - "80"
+        - "120"
+      log_path:
+        - /var/log/auth.log
+        - /var/log/syslog
+        - /var/log/kern.log
+        - /var/log/dpkg.log
+      grep_term:
+        - error
+        - failed
+        - oom
+        - timeout
+        - denied
+      cleanup_path:
+        - /var/tmp
+        - /tmp
+        - /srv/tmp
+      mtime_days:
+        - "1"
+        - "2"
+        - "7"
+      mount_path:
+        - /var
+        - /var/log
+        - /srv
+        - /tmp
+      du_path:
+        - /var/log
+        - /var/cache/apt
+        - /srv/app
+        - /tmp
+      sudo_command:
+        - /bin/systemctl status {service}
+        - /bin/systemctl status {service} --no-pager
+        - /bin/systemctl is-active {service}
+        - /bin/systemctl restart {service}
+        - /usr/bin/journalctl -u {service} -n {journal_lines}
+        - /usr/bin/journalctl -u {service} --since "{journal_window}"
+        - /usr/bin/systemctl list-timers --all --no-pager
+        - /usr/bin/systemctl list-units --state=failed --no-pager
+        - /usr/bin/systemd-analyze blame
+        - /usr/bin/apt list --upgradable
+        - /usr/bin/apt-cache policy openssl
+        - /usr/bin/apt-get -s upgrade
+        - /usr/bin/needrestart -b
+        - /usr/bin/tail -n {tail_lines} {log_path}
+        - /usr/bin/grep -i {grep_term} {log_path}
+        - /usr/bin/find /etc/systemd/system -maxdepth 2 -type l
+        - /usr/bin/find {cleanup_path} -maxdepth 1 -mtime +{mtime_days} -type f
+        - /usr/bin/ss -ltnp
+        - /usr/sbin/ss -s
+        - /usr/bin/lsof -i -P -n
+        - /usr/sbin/iptables -L -n -v
+        - /usr/bin/lsblk
+        - /usr/bin/df -h {mount_path}
+        - /usr/bin/free -m
+        - /usr/bin/vmstat 1 5
+        - /usr/bin/iostat -xz 1 3
+        - /usr/bin/du -sh {du_path}
+        - /usr/bin/find /var/log -type f -mtime -1
+        - /usr/sbin/service {service} status
+    messages:
+      - "{sudo_user} : TTY={tty} ; PWD={cwd} ; USER=root ; COMMAND={sudo_command}"
+
+  - app: anacron
+    distro: ubuntu
+    system_types: [server, workstation]
+    weight: 1
+    params:
+      job_name:
+        - cron.daily
+        - logrotate
+      delay_minutes:
+        - "2"
+        - "5"
+        - "11"
+        - "17"
+      run_count:
+        - "1"
+        - "2"
+    messages:
+      - "Anacron 2.3 started on {anacron_date}"
+      - "Will run job `{job_name}' in {delay_minutes} min."
+      - "Job `{job_name}' started"
+      - "Job `{job_name}' terminated"
+      - "Normal exit ({run_count} job run)"
+
+  - app: sudo
+    transient: true
+    roles: [web_server, forward_proxy]
+    weight: 1
+    max_per_host_window: 1
+    params:
+      web_user:
+        - www-data
+        - nginx
+        - apache
+      denied_command:
+        - /usr/bin/tail -n 50 /var/log/nginx/error.log
+        - /usr/bin/tail -n 80 /var/log/apache2/error.log
+        - /usr/bin/find /root -maxdepth 1
+        - /usr/bin/find /var/www -maxdepth 2 -name .env
+        - /usr/bin/find /srv -maxdepth 2 -type f -name backup*.tar.gz
+        - /usr/bin/id
+        - /bin/ls /root
+        - /usr/bin/grep -R DB_PASSWORD /var/www
+        - /usr/bin/grep -R password /var/www
+        - /usr/bin/journalctl -u nginx -n 20
+        - /usr/bin/journalctl -u apache2 -n 20
+        - /usr/bin/stat /etc/passwd
+        - /usr/bin/ls -la /etc/ssl/private
+      denied_tty:
+        - unknown
+        - pts/0
+        - pts/2
+    messages:
+      - "{web_user} : command not allowed ; TTY={denied_tty} ; USER=root ; COMMAND={denied_command}"
+
+  - app: dhclient
+    messages:
+      - "DHCPREQUEST for {ip} on {interface} to {server} port 67"
+      - "DHCPACK of {ip} from {server}"
+      - "bound to {ip} -- renewal in {renewal} seconds."
+
+  - app: polkitd
+    system_types: [workstation]
+    weight: 2
+    max_per_host_window: 6
+    params:
+      action_id:
+        - org.freedesktop.systemd1.manage-units
+        - org.freedesktop.login1.reboot
+        - org.freedesktop.packagekit.system-update
+        - org.freedesktop.NetworkManager.settings.modify.system
+        - org.freedesktop.timedate1.set-timezone
+      auth_user:
+        - root
+        - admin
+        - deploy
+      bus_id:
+        - "42"
+        - "118"
+        - "203"
+        - "417"
+      monotonic_start:
+        - "0"
+        - "1000"
+        - "2000"
+      process_path:
+        - /usr/bin/systemctl
+        - /usr/lib/packagekit/packagekitd
+        - /usr/bin/pkcon
+        - /usr/bin/nmcli
+        - /usr/bin/timedatectl
+      agent_process_path:
+        - /usr/libexec/polkit-gnome-authentication-agent-1
+        - /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1
+        - /usr/libexec/kf5/polkit-kde-authentication-agent-1
+      subject_user:
+        - root
+        - deploy
+        - admin
+    messages:
+      - "Registered Authentication Agent for unix-session:{0} (system bus name :1.{bus_id} [{agent_process_path}], object path /org/freedesktop/PolicyKit1/AuthenticationAgent, locale en_US.UTF-8)"
+      - "Unregistered Authentication Agent for unix-session:{0} (system bus name :1.{bus_id}, object path /org/freedesktop/PolicyKit1/AuthenticationAgent)"
+      - "Operator of unix-process:{0}:{monotonic_start} successfully authenticated as unix-user:{auth_user} to gain TEMPORARY authorization for action {action_id} for system-bus-name::1.{bus_id} [{process_path}] (owned by unix-user:{subject_user})"
+      - "Subject unix-process:{0}:{monotonic_start} is authorized for action {action_id}"
+
+  - app: polkitd
+    system_types: [server]
+    weight: 1
+    max_per_host_window: 3
+    params:
+      action_id:
+        - org.freedesktop.systemd1.manage-units
+        - org.freedesktop.packagekit.system-update
+      auth_user:
+        - root
+        - deploy
+        - admin
+      subject_user:
+        - root
+        - deploy
+        - admin
+      bus_id:
+        - "42"
+        - "118"
+        - "203"
+        - "417"
+      monotonic_start:
+        - "0"
+        - "1000"
+        - "2000"
+      process_path:
+        - /usr/bin/systemctl
+        - /usr/lib/packagekit/packagekitd
+        - /usr/bin/pkcon
+    messages:
+      - "Operator of unix-process:{0}:{monotonic_start} successfully authenticated as unix-user:{auth_user} to gain TEMPORARY authorization for action {action_id} for system-bus-name::1.{bus_id} [{process_path}] (owned by unix-user:{subject_user})"
+      - "Subject unix-process:{0}:{monotonic_start} is authorized for action {action_id}"
+
+  - app: multipathd
+    system_types: [server]
+    roles: [database]
+    weight: 1
+    params:
+      device:
+        - sda
+        - sdb
+        - dm-0
+      active_paths:
+        - "1"
+        - "2"
+    messages:
+      - "{device}: add missing path"
+      - "{device}: remaining active paths: {active_paths}"
+
+  - app: accounts-daemon
+    system_types: [workstation]
+    weight: 1
+    params:
+      desktop_user:
+        - admin
+        - ubuntu
+        - deploy
+    messages:
+      - "user '{desktop_user}' has logged in"
+
+  - app: packagekitd
+    system_types: [workstation]
+    distro: ubuntu
+    weight: 1
+    messages:
+      - "search-names transaction /{}"
+      - "resolve transaction /{}"
+      - "get-updates transaction /{}"
+
+  - app: fwupd
+    system_types: [workstation]
+    weight: 1
+    params:
+      device:
+        - "UEFI dbx"
+        - "System Firmware"
+        - "Thunderbolt Controller"
+        - "USB-C Dock"
+      metadata_age:
+        - "2"
+        - "6"
+        - "14"
+    messages:
+      - "metadata is {metadata_age} days old, scheduling refresh"
+      - "{device}: firmware version unchanged after LVFS metadata check"
+      - "{device}: no updates available"
+
+  - app: tracker-miner-fs-3
+    system_types: [workstation]
+    distro: ubuntu
+    weight: 1
+    params:
+      indexed_path:
+        - /home/admin/Documents
+        - /home/admin/Downloads
+        - /home/deploy/Documents
+        - /home/ubuntu/Documents
+      file_count:
+        - "12"
+        - "27"
+        - "43"
+        - "68"
+    messages:
+      - "Indexed {file_count} file(s) under {indexed_path}"
+      - "Miner finished crawling {indexed_path}"
+      - "Resetting tracker extract task after idle timeout {}"
+
+  - app: gnome-shell
+    system_types: [workstation]
+    distro: ubuntu
+    weight: 1
+    params:
+      extension_name:
+        - appindicatorsupport@rgcjonas.gmail.com
+        - ubuntu-dock@ubuntu.com
+        - desktop-icons@csoriano
+      monitor_id:
+        - "0"
+        - "1"
+      old_keysym:
+        - Super_L
+        - XF86AudioMute
+        - Print
+      new_keysym:
+        - Super_L
+        - XF86AudioRaiseVolume
+        - Print
+    messages:
+      - "Extension {extension_name} already enabled"
+      - "Window manager warning: Overwriting existing binding of keysym {old_keysym} with keysym {new_keysym}"
+      - "Monitor {monitor_id} configuration unchanged after hotplug event"
+
+  - app: cups-browsed
+    system_types: [workstation]
+    weight: 1
+    params:
+      printer_name:
+        - CORP-PRINT-01
+        - FRONTDESK-MFP
+        - FINANCE-MFP
+      queue_name:
+        - ipp_everywhere
+        - driverless
+    messages:
+      - "Created local queue {printer_name} ({queue_name})"
+      - "Printer {printer_name} was not found by DNS-SD, keeping stale queue for now"
+      - "Browse remote printer {printer_name} at {}"
+
+  - app: avahi-daemon
+    system_types: [workstation]
+    weight: 1
+    params:
+      service_name:
+        - "_ipp._tcp"
+        - "_ipps._tcp"
+        - "_workstation._tcp"
+      interface:
+        - ens160
+        - wlan0
+    messages:
+      - "Registering new address record for {interface}."
+      - "Service \"{service_name}\" successfully established."
+      - "Withdrawing address record for {interface}."
+
+  - app: unattended-upgr
+    distro: ubuntu
+    system_types: [server]
+    weight: 1
+    max_per_host_window: 8
+    params:
+      origin_set:
+        - "o=Ubuntu,a=jammy-security"
+        - "o=Ubuntu,a=jammy-updates"
+        - "o=Ubuntu,a=jammy; o=Ubuntu,a=jammy-security"
+      package_name:
+        - openssl
+        - ca-certificates
+        - base-files
+        - libc6
+        - python3-apt
+        - tzdata
+      phased_percentage:
+        - "10"
+        - "20"
+        - "30"
+        - "40"
+        - "50"
+        - "60"
+        - "70"
+        - "80"
+        - "90"
+    messages:
+      - "Allowed origins are: {origin_set}"
+      - "Checking for unattended upgrades from {origin_set}"
+      - "No packages found that can be upgraded unattended (run {})"
+      - "Package {package_name} kept back for phased update percentage {phased_percentage}"
+      - "dpkg --status-fd: processing triggers for man-db ({package_name})"
+
+  - app: systemd-resolved
+    distro: ubuntu
+    weight: 1
+    max_per_host_window: 4
+    params:
+      feature_set:
+        - UDP
+        - TCP
+        - UDP+EDNS0
+      degraded_feature_set:
+        - UDP
+        - TCP
+      scope:
+        - global
+        - eth0
+        - ens160
+        - br0
+      cache_bucket:
+        - positive
+        - negative
+        - stale
+      packet_size:
+        - "512"
+        - "1232"
+        - "1472"
+    messages:
+      - "Using degraded feature set {degraded_feature_set} instead of UDP+EDNS0 for DNS server {dns_server}."
+      - "Grace period over, resuming full feature set (UDP+EDNS0) for DNS server {dns_server}."
+
+  - app: thermald
+    system_types: [workstation]
+    weight: 1
+    params:
+      cooling_device:
+        - "0"
+        - "1"
+      zone:
+        - x86_pkg_temp
+        - acpitz
+    messages:
+      - "Unsupported cpu model, use default config"
+      - "cooling device {cooling_device} intel_powerclamp type: 0x02"
+      - "thermal zone {zone}: trip point updated"
+
+  - app: irqbalance
+    weight: 1
+    parameter_profiles:
+      - {irq: "16", device: ahci, cpu: "0"}
+      - {irq: "24", device: ens160, cpu: "1"}
+      - {irq: "32", device: nvme0q1, cpu: "2"}
+      - {irq: "45", device: virtio0-input, cpu: "0"}
+      - {irq: "64", device: mlx5_comp0, cpu: "3"}
+      - {irq: "86", device: mlx5_comp1, cpu: "2"}
+      - {irq: "122", device: nvme0q2, cpu: "1"}
+      - {irq: "137", device: ens192, cpu: "3"}
+      - {irq: "154", device: virtio1-input, cpu: "2"}
+      - {irq: "181", device: mlx5_comp2, cpu: "0"}
+    params:
+      numa_node:
+        - "0"
+        - "1"
+      affinity_mask:
+        - "00000001"
+        - "00000002"
+        - "00000004"
+        - "00000008"
+      moved:
+        - "0"
+        - "1"
+        - "2"
+    messages:
+      - "IRQ {irq} affinity hint keeps vector on CPU {cpu} ({device})"
+      - "IRQ {irq} classified for CPU {cpu} balancing on {device}"
+      - "Skipping IRQ {irq}: banned by affinity mask {affinity_mask} ({device})"
+      - "NUMA node {numa_node}: balancing pass complete, {moved} IRQs moved"

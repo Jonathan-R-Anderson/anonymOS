@@ -1,0 +1,299 @@
+# zeek_dns format definition — Zeek dns.log format (JSON output) - DNS query/response logging
+#
+# Category: network
+# Standalone: yes (no cross-file dependencies)
+# Note: Field names may be referenced by evaluation rules in config/evaluation/
+#
+# Full schema: see commands/eforge/references/config-formats.md
+
+name: zeek_dns
+version: "1.0"
+description: "Zeek dns.log format (JSON output) - DNS query/response logging"
+category: network
+
+fields:
+  - name: ts
+    type: timestamp
+    required: true
+    description: "Timestamp of DNS query"
+
+  - name: uid
+    type: string
+    required: true
+    description: "Unique connection identifier (shared with conn.log UDP record)"
+    constraints:
+      pattern: "^[A-Za-z0-9]{17,19}$"
+
+  - name: id.orig_h
+    type: ip_address
+    required: true
+    description: "Originator (querying) IP address"
+
+  - name: id.orig_p
+    type: port
+    required: true
+    description: "Originator port"
+
+  - name: id.resp_h
+    type: ip_address
+    required: true
+    description: "Responder (DNS server) IP address"
+
+  - name: id.resp_p
+    type: port
+    required: true
+    description: "Responder port (usually 53)"
+
+  - name: proto
+    type: string
+    required: true
+    description: "Transport protocol"
+    constraints:
+      allowed_values: ["udp", "tcp"]
+
+  - name: trans_id
+    type: integer
+    required: false
+    description: "DNS transaction ID"
+    constraints:
+      min_value: 0
+      max_value: 65535
+
+  - name: rtt
+    type: float
+    required: false
+    description: Round-trip time for the query (seconds)
+    constraints:
+      min_value: 0
+  - name: query
+    type: string
+    required: false
+    description: "Domain name queried"
+
+  - name: qclass
+    type: integer
+    required: false
+    description: "Query class (1 = C_INTERNET)"
+
+  - name: qclass_name
+    type: string
+    required: false
+    description: "Query class name"
+
+  - name: qtype
+    type: integer
+    required: false
+    description: "Query type (1=A, 28=AAAA, 5=CNAME)"
+
+  - name: qtype_name
+    type: string
+    required: false
+    description: "Query type name"
+
+  - name: rcode
+    type: integer
+    required: false
+    description: "Response code (0=NOERROR, 3=NXDOMAIN)"
+
+  - name: rcode_name
+    type: string
+    required: false
+    description: "Response code name"
+
+  - name: AA
+    type: boolean
+    required: false
+    description: "Authoritative Answer flag"
+
+  - name: TC
+    type: boolean
+    required: false
+    description: "Truncation flag"
+
+  - name: RD
+    type: boolean
+    required: false
+    description: "Recursion Desired flag"
+
+  - name: RA
+    type: boolean
+    required: false
+    description: "Recursion Available flag"
+
+  - name: Z
+    type: integer
+    required: false
+    description: "DNS header reserved bits (Z field), typically 0"
+
+  - name: answers
+    type: list
+    required: false
+    description: Answer records (JSON array of strings)
+    item_type: string
+  - name: TTLs
+    type: list
+    required: false
+    description: Answer TTLs (JSON array of floats)
+    item_type: float
+  - name: rejected
+    type: boolean
+    required: false
+    description: "Whether the query was rejected"
+
+  - name: opcode
+    type: integer
+    required: true
+    description: "DNS opcode (0=query)"
+
+  - name: opcode_name
+    type: string
+    required: true
+    description: "DNS opcode name"
+
+output:
+  format: json
+  file_extension: ".json"
+  encoding: utf-8
+  template: |
+    {
+      "ts": {{ ts | tojson }},
+      "uid": {{ uid | tojson }},
+      "id.orig_h": {{ data['id.orig_h'] | tojson }},
+      "id.orig_p": {{ data['id.orig_p'] | tojson }},
+      "id.resp_h": {{ data['id.resp_h'] | tojson }},
+      "id.resp_p": {{ data['id.resp_p'] | tojson }},
+      "proto": {{ proto | tojson }},
+      "trans_id": {{ trans_id | tojson }}
+      {%- if rtt is not none %},
+      "rtt": {{ rtt | tojson }}
+      {%- endif %},
+      "query": {{ query | tojson }},
+      "qclass": {{ qclass | tojson }},
+      "qclass_name": {{ qclass_name | tojson }},
+      "qtype": {{ qtype | tojson }},
+      "qtype_name": {{ qtype_name | tojson }},
+      "rcode": {{ rcode | tojson }},
+      "rcode_name": {{ rcode_name | tojson }},
+      "AA": {{ AA | tojson }},
+      "TC": {{ TC | tojson }},
+      "RD": {{ RD | tojson }},
+      "RA": {{ RA | tojson }},
+      "Z": {{ Z | tojson }}
+      {%- if answers is not none %},
+      "answers": {{ answers | tojson }}
+      {%- endif %}
+      {%- if TTLs is not none %},
+      "TTLs": {{ TTLs | tojson }}
+      {%- endif %},
+      "rejected": {{ rejected | tojson }},
+      "opcode": {{ opcode | tojson }},
+      "opcode_name": {{ opcode_name | tojson }}
+    }
+
+# Typed record contracts; evaluated after scalar validation.
+validators:
+- id: zeek_dns.legacy-1
+  message: DNS query has non-empty query field
+  severity: warning
+  when: []
+  checks:
+  - op: length
+    field: query
+    minimum: 1
+- id: zeek_dns.legacy-2
+  message: DNS response has rcode
+  severity: warning
+  when: []
+  checks:
+  - op: presence
+    field: rcode_name
+    present: true
+- id: dns.qtype-name
+  message: qtype and its name must agree
+  severity: error
+  when:
+  - op: presence
+    field: qtype
+  - op: presence
+    field: qtype_name
+  - op: membership
+    field: qtype
+    values:
+    - 1
+    - 28
+    - 5
+    - 15
+    - 2
+    - 12
+    - 6
+    - 33
+    - 16
+    - 32
+  checks:
+  - op: combination
+    field: qtype
+    other_field: qtype_name
+    pairs:
+    - - 1
+      - A
+    - - 28
+      - AAAA
+    - - 5
+      - CNAME
+    - - 15
+      - MX
+    - - 2
+      - NS
+    - - 12
+      - PTR
+    - - 6
+      - SOA
+    - - 33
+      - SRV
+    - - 16
+      - TXT
+    - - 32
+      - NIMLOC
+- id: dns.rcode-name
+  message: rcode and its name must agree
+  severity: error
+  when:
+  - op: presence
+    field: rcode
+  - op: presence
+    field: rcode_name
+  - op: membership
+    field: rcode
+    values:
+    - 0
+    - 3
+    - 2
+    - 5
+    - 4
+  checks:
+  - op: combination
+    field: rcode
+    other_field: rcode_name
+    pairs:
+    - - 0
+      - NOERROR
+    - - 3
+      - NXDOMAIN
+    - - 2
+      - SERVFAIL
+    - - 5
+      - REFUSED
+    - - 4
+      - NOTIMP
+- id: dns.answer-ttls
+  message: Answers and TTLs must correspond
+  severity: error
+  when:
+  - op: presence
+    field: answers
+  - op: presence
+    field: TTLs
+  checks:
+  - op: same_length
+    field: answers
+    other_field: TTLs

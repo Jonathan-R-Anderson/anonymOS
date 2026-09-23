@@ -1,0 +1,506 @@
+# EDR object diversity pools for probabilistic file/registry/DLL events.
+#
+# Used by the generation engine to emit realistic ambient file creation,
+# registry modification, and module load events alongside process activity.
+# These events provide background noise that makes EDR telemetry realistic.
+#
+# Override via .eforge/config/activity/edr_pools.yaml — any top-level
+# key you include fully replaces the corresponding default section.
+#
+# Template variables: {user} = process owner username, {rand} = 5-digit random,
+# {hex} = 8-character hexadecimal token, {process_prefetch_name} = owning
+# process basename uppercased for Windows Prefetch artifacts. Registry-only binary
+# placeholders include {userassist_binary}, {accent_palette_binary}, {pidl_binary}, and
+# {recent_docs_binary}.
+
+# Additional application/service principals that must never receive generic interactive-user
+# file churn. Core operating-system accounts remain protected in code for compatibility.
+linux_service_users:
+  - "dovecot"
+  - "meridian-app"
+  - "postfix"
+
+group_policy_extension_guids:
+  - "35378EAC-683F-11D2-A89A-00C04FBBCFA2"
+  - "42B5FAAE-6536-11D2-AE5A-0000F87571E3"
+  - "827D319E-6EAC-11D2-A4EA-00C04F79F83A"
+  - "C631DF4C-088F-4156-B058-4375F0853CD8"
+  - "A2E30F80-D7DE-11D2-BBDE-00C04F86AE3B"
+  - "E437BC1C-AA7D-11D2-A382-00C04F991E27"
+
+# Process-aware file side effects for ambient eCAR/Sysmon FILE telemetry.
+# Only processes matching one of these profiles emit probabilistic file events;
+# read-only recon tools intentionally have no profile, so they cannot create
+# impossible side effects such as dsquery.exe writing installers or browsers
+# deleting Security.evtx.
+file_side_effect_profiles:
+  - name: windows_error_reporting
+    executables: ["werfault.exe", "wermgr.exe"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportQueue\\{rand}\\Report.wer"
+
+  - name: windows_defender_history
+    executables: ["msmpeng.exe", "mpcmdrun.exe"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\ProgramData\\Microsoft\\Windows Defender\\Scans\\History\\Service\\DetectionHistory\\{rand}"
+
+  - name: windows_explorer_state
+    executables: ["explorer.exe"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\Users\\{user}\\AppData\\Roaming\\Microsoft\\Windows\\Recent\\report-{rand}.docx.lnk"
+      - "C:\\Users\\{user}\\AppData\\Roaming\\Microsoft\\Windows\\Recent\\spreadsheet-{rand}.xlsx.lnk"
+
+  - name: windows_office_cache
+    executables: ["winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\Users\\{user}\\AppData\\Local\\Microsoft\\Office\\16.0\\OfficeFileCache\\{rand}.dat"
+
+  - name: chrome_cache
+    executables: ["chrome.exe", "chrome"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\Users\\{user}\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Cache\\Cache_Data\\f_{hex}"
+    paths_linux:
+      - "/home/{user}/.cache/google-chrome/Default/Cache/Cache_Data/f_{hex}"
+
+  - name: edge_cache
+    executables: ["msedge.exe"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\Users\\{user}\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Cache\\Cache_Data\\f_{hex}"
+
+  - name: firefox_cache
+    executables: ["firefox.exe", "firefox"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\Users\\{user}\\AppData\\Local\\Mozilla\\Firefox\\Profiles\\default-release\\cache2\\entries\\{hex}"
+    paths_linux:
+      - "/home/{user}/.cache/mozilla/firefox/default-release/cache2/entries/{hex}"
+
+  - name: shell_temp
+    executables: ["cmd.exe", "powershell.exe", "pwsh.exe", "bash", "sh"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\Users\\{user}\\AppData\\Local\\Temp\\tmp{rand}.tmp"
+      - "C:\\Users\\{user}\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt"
+    paths_linux:
+      - "/home/{user}/.cache/{hex}.tmp"
+      - "/home/{user}/.bash_history"
+
+  - name: package_manager_debian
+    executables: ["apt", "apt-get", "dpkg"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/log/apt/history.log"
+      - "/var/lib/dpkg/status"
+
+  - name: package_manager_rpm
+    executables: ["dnf", "yum", "rpm"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/lib/dnf/history.sqlite"
+
+  - name: linux_systemd_timesync_state
+    executables: ["systemd-timesyncd"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/lib/systemd/timesync/clock"
+      - "/run/systemd/timesync/synchronized"
+
+  - name: linux_chrony_state
+    executables: ["chronyd"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/lib/chrony/drift"
+      - "/run/chrony/chronyd.pid"
+
+  - name: linux_resolved_state
+    executables: ["systemd-resolved"]
+    actions: ["modify"]
+    paths_linux:
+      - "/run/systemd/resolve/resolv.conf"
+      - "/run/systemd/resolve/stub-resolv.conf"
+
+  - name: linux_journal_state
+    executables: ["systemd-journald"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/log/journal/{hex}/system.journal"
+      - "/run/log/journal/{hex}/system.journal"
+
+  - name: linux_syslog_state
+    executables: ["rsyslogd", "syslog-ng"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/log/syslog"
+      - "/var/log/auth.log"
+      - "/var/spool/rsyslog/imjournal.state"
+
+  - name: linux_dbus_state
+    executables: ["dbus-daemon"]
+    actions: ["read"]
+    paths_linux:
+      - "/var/lib/dbus/machine-id"
+      - "/run/dbus/system_bus_socket"
+
+  - name: linux_networkmanager_state
+    executables: ["NetworkManager"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/lib/NetworkManager/NetworkManager.state"
+      - "/run/NetworkManager/no-stub-resolv.conf"
+
+  - name: linux_snapd_state
+    executables: ["snapd"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/lib/snapd/state.json"
+      - "/var/cache/snapd/names"
+
+  - name: linux_sshd_listener_state
+    executables: ["sshd"]
+    actions: ["read"]
+    paths_linux:
+      - "/etc/ssh/sshd_config"
+
+  - name: linux_proxy_service_state
+    executables: ["squid"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/log/squid/access.log"
+      - "/var/spool/squid/swap.state"
+
+  - name: linux_apache_service_state
+    executables: ["apache2", "httpd"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/log/apache2/access.log"
+
+  - name: linux_nginx_service_state
+    executables: ["nginx"]
+    actions: ["modify"]
+    paths_linux:
+      - "/var/log/nginx/access.log"
+      - "/var/cache/nginx/client_temp/{rand}"
+
+  - name: installer_update
+    executables: ["msiexec.exe", "tiworker.exe", "usoclient.exe"]
+    executable_contains: ["install", "setup", "update", "patch"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\Windows\\Temp\\MSI{rand}.tmp"
+      - "C:\\Windows\\SoftwareDistribution\\Download\\{rand}\\update.cab"
+    paths_linux:
+      - "/var/tmp/pkg-{rand}.tmp"
+
+  - name: windows_prefetch_execution
+    executables:
+      - "cmd.exe"
+      - "powershell.exe"
+      - "pwsh.exe"
+      - "rundll32.exe"
+      - "schtasks.exe"
+      - "svchost.exe"
+      - "taskhostw.exe"
+      - "tiworker.exe"
+      - "usoclient.exe"
+      - "wmiprvse.exe"
+      - "wscript.exe"
+      - "cscript.exe"
+    actions: ["modify"]
+    probability: 0.35
+    paths_windows:
+      - "C:\\Windows\\Prefetch\\{process_prefetch_name}-{hex}.pf"
+
+  - name: archive_and_runtime_artifacts
+    executables: ["mysqldump", "gzip", "tar", "zip", "python", "python3", "node", "java"]
+    actions: ["create", "modify"]
+    paths_windows:
+      - "C:\\Users\\{user}\\AppData\\Local\\Temp\\tmp{rand}.tmp"
+    paths_linux:
+      - "/tmp/.tmp-{rand}"
+
+# Source-native ownership constraints for otherwise generic ambient pools.
+# A matching artifact is eligible only for the listed executable families.
+file_ownership_rules:
+  - path_contains: ["\\Windows\\WER\\ReportQueue\\"]
+    executables: ["werfault.exe", "wermgr.exe"]
+  - path_contains: ["\\Windows Defender\\Scans\\History\\Service\\DetectionHistory\\"]
+    executables: ["msmpeng.exe", "mpcmdrun.exe"]
+  - path_contains: ["\\Windows\\SoftwareDistribution\\"]
+    executables: ["tiworker.exe", "usoclient.exe", "wuauclt.exe", "msiexec.exe"]
+  - path_contains: ["\\Microsoft\\Office\\16.0\\OfficeFileCache\\"]
+    executables: ["winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe"]
+  - path_contains: ["\\Microsoft\\Windows\\Recent\\"]
+    executables: ["explorer.exe", "winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe"]
+
+registry_ownership_rules:
+  - key_contains: ["\\Microsoft\\Office\\16.0\\Word\\"]
+    executables: ["winword.exe"]
+  - key_contains: ["\\Microsoft\\Office\\16.0\\Excel\\"]
+    executables: ["excel.exe"]
+  - key_contains: ["\\Microsoft\\Office\\16.0\\PowerPoint\\"]
+    executables: ["powerpnt.exe"]
+  - key_contains: ["\\Component Based Servicing\\"]
+    executables: ["trustedinstaller.exe", "tiworker.exe", "dism.exe", "poqexec.exe"]
+  - key_contains: ["\\Windows Defender\\Exclusions\\"]
+    executables: ["powershell.exe", "pwsh.exe", "reg.exe"]
+  - key_contains: ["\\Windows Defender\\"]
+    executables: ["msmpeng.exe", "mpcmdrun.exe", "securityhealthservice.exe"]
+  - key_contains: ["\\Microsoft\\Office\\"]
+    executables: ["winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe"]
+  - key_contains: ["\\Internet Settings\\"]
+    executables: ["explorer.exe"]
+  - key_contains: ["\\CurrentVersion\\Run\\SecurityHealthSystray"]
+    executables: ["msiexec.exe", "securityhealthsystray.exe"]
+  - key_contains: ["\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU\\"]
+    executables: ["svchost.exe", "usoclient.exe"]
+  - key_contains: ["\\Policies\\System\\EnableLUA"]
+    executables: ["svchost.exe"]
+  - key_contains: ["\\FirewallPolicy\\"]
+    executables: ["svchost.exe"]
+  - key_contains: ["\\W32Time\\Config\\"]
+    executables: ["svchost.exe"]
+  - key_contains: ["\\Memory Management\\ClearPageFileAtShutdown"]
+    executables: ["svchost.exe"]
+  - key_contains: ["\\Explorer\\", "\\Windows\\Shell\\"]
+    executables: ["explorer.exe"]
+  - key_contains: ["\\CurrentVersion\\Search", "\\Themes\\Personalize"]
+    executables: ["explorer.exe", "searchhost.exe"]
+  - key_contains: ["\\ContentDeliveryManager"]
+    executables: ["runtimebroker.exe"]
+  - key_contains: ["\\InputPersonalization\\"]
+    executables: ["textinputhost.exe", "inputpersonalization.exe"]
+  - key_contains: ["\\Schedule\\TaskCache\\"]
+    executables: ["svchost.exe", "taskhostw.exe", "usoclient.exe"]
+  - key_contains: ["\\Installer\\", "\\CurrentVersion\\Uninstall\\", "\\CurrentVersion\\App Paths\\"]
+    executables: ["msiexec.exe"]
+
+installed_software_products:
+  - product_id: microsoft-update-health-tools
+    name: "Microsoft Update Health Tools"
+    publisher: "Microsoft Corporation"
+    version: "5.72.0.0"
+    build: "5.72.0.0"
+    architectures: [neutral]
+    scope: machine
+  - product_id: microsoft-edge-update
+    name: "Microsoft Edge Update"
+    publisher: "Microsoft Corporation"
+    version: "1.3.187.37"
+    build: "1.3.187.37"
+    architectures: [neutral]
+    scope: machine
+  - product_id: microsoft-onedrive
+    name: "Microsoft OneDrive"
+    publisher: "Microsoft Corporation"
+    version: "24.045.0303.0002"
+    build: "24.045.0303.0002"
+    architectures: [neutral]
+    scope: machine
+  - product_id: google-chrome
+    name: "Google Chrome"
+    publisher: "Google LLC"
+    version: "123.0.6312.86"
+    build: "123.0.6312.86"
+    architectures: [neutral]
+    scope: machine
+  - product_id: mozilla-firefox
+    name: "Mozilla Firefox"
+    publisher: "Mozilla Corporation"
+    version: "121.0.1"
+    build: "121.0.1"
+    architectures: [neutral]
+    scope: machine
+  - product_id: 7-zip-23-01-x64
+    name: "7-Zip 23.01 (x64)"
+    publisher: "Igor Pavlov"
+    version: "23.01"
+    build: "23.01"
+    architectures: [x64]
+    scope: machine
+  - product_id: adobe-acrobat-reader
+    name: "Adobe Acrobat Reader"
+    publisher: "Adobe Inc."
+    version: "24.001.20604"
+    build: "24.001.20604"
+    architectures: [neutral]
+    scope: machine
+  - product_id: cisco-secure-client
+    name: "Cisco Secure Client"
+    publisher: "Cisco Systems, Inc."
+    version: "5.1.8.42"
+    build: "5.1.8.42"
+    architectures: [neutral]
+    scope: machine
+
+file_paths_windows:
+  # User documents
+  - "C:\\Users\\{user}\\Documents\\report.docx"
+  - "C:\\Users\\{user}\\Documents\\spreadsheet.xlsx"
+  - "C:\\Users\\{user}\\Documents\\presentation.pptx"
+  - "C:\\Users\\{user}\\Documents\\Q4-review.pdf"
+  - "C:\\Users\\{user}\\Documents\\meeting-notes.txt"
+  # Downloads and desktop
+  - "C:\\Users\\{user}\\Downloads\\file.pdf"
+  - "C:\\Users\\{user}\\Downloads\\installer-{rand}.exe"
+  - "C:\\Users\\{user}\\Desktop\\notes-{rand}.txt"
+  - "C:\\Users\\{user}\\Desktop\\shortcut-{rand}.lnk"
+  # Temp files
+  - "C:\\Users\\{user}\\AppData\\Local\\Temp\\tmp{rand}.tmp"
+  - "C:\\Users\\{user}\\AppData\\Local\\Temp\\~DF{rand}.tmp"
+  - "C:\\Users\\{user}\\AppData\\Local\\Temp\\~$document-{rand}.docx"
+  # Application data
+  - "C:\\Users\\{user}\\AppData\\Local\\Microsoft\\Office\\16.0\\OfficeFileCache\\{rand}.dat"
+  - "C:\\Users\\{user}\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Cache\\data_{rand}"
+  - "C:\\Users\\{user}\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Cache\\{rand}"
+  - "C:\\Users\\{user}\\AppData\\Roaming\\Microsoft\\Windows\\Recent\\report-{rand}.docx.lnk"
+  - "C:\\Users\\{user}\\AppData\\Roaming\\Microsoft\\Windows\\Recent\\spreadsheet-{rand}.xlsx.lnk"
+  # System paths
+  - "C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportQueue\\{rand}\\Report.wer"
+  - "C:\\ProgramData\\Microsoft\\Windows Defender\\Scans\\History\\Service\\DetectionHistory\\{rand}"
+  - "C:\\Windows\\SoftwareDistribution\\Download\\{rand}\\update.cab"
+
+file_paths_linux:
+  # User files
+  - "/home/{user}/documents/report.odt"
+  - "/home/{user}/documents/notes.md"
+  - "/home/{user}/downloads/file.pdf"
+  - "/home/{user}/downloads/archive-{rand}.tar.gz"
+  - "/home/{user}/.bashrc"
+  - "/home/{user}/.ssh/known_hosts"
+  # Temp files
+  - "/tmp/tmp{rand}"
+  - "/tmp/.cache-{rand}.tmp"
+  - "/var/tmp/{rand}.lock"
+  # Application caches
+  - "/home/{user}/.cache/mozilla/firefox/cache2/entries/{rand}"
+  - "/home/{user}/.cache/pip/http/{rand}"
+  - "/home/{user}/.local/share/recently-used.xbel"
+  # Logs and system
+  - "/var/log/syslog"
+  - "/var/log/auth.log"
+  - "/var/log/journal/{hex}/system.journal"
+# Registry keys for EDR events. Format: [key, value_name, details].
+# TargetObject in Sysmon = key\value_name. Details = data written.
+runmru_commands:
+  - "cmd.exe /k dir"
+  - "cmd.exe /k whoami"
+  - "cmd.exe /c ipconfig"
+  - "cmd.exe /c net use"
+  - "cmd.exe /c hostname"
+  - "powershell.exe -NoExit Get-ChildItem"
+  - "powershell.exe -NoProfile Get-Process"
+  - "notepad.exe"
+  - "calc.exe"
+  - "control.exe printers"
+  - "mstsc.exe /v:DC-01"
+  - "explorer.exe C:\\Users\\{user}\\Documents"
+  - "explorer.exe \\\\FILE-SRV-01\\Shared"
+  - "cmd.exe /k cd C:\\Users\\{user}\\Downloads"
+
+# Filenames used by RecentDocs and ComDlg32 MRU artifacts. Extension-specific
+# subkeys select only matching entries; overlays may extend the lived-in corpus.
+registry_mru_filenames:
+  - "report.docx"
+  - "meeting-notes.docx"
+  - "budget.xlsx"
+  - "forecast.xlsx"
+  - "briefing.pdf"
+  - "invoice.pdf"
+  - "notes.txt"
+  - "readme.txt"
+
+registry_keys_hkcu:
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU", "{runmru_name}", "{runmru_command}"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "HideFileExt", "DWORD (0x00000001)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "Hidden", "DWORD (0x00000002)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "ShowSuperHidden", "DWORD (0x00000000)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", "ProxyEnable", "DWORD (0x00000000)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings", "MigrateProxy", "DWORD (0x00000001)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "AppsUseLightTheme", "DWORD (0x00000001)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\UserAssist\\{CEBFF5CD-ACE2-4F4F-9178-9926F41749EA}\\Count", "{userassist_value}", "{userassist_binary}"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ComDlg32\\OpenSavePidlMRU\\*", "0", "{pidl_binary}"]
+  - ["HKCU\\Software\\Microsoft\\Office\\16.0\\Common\\General", "ShownFirstRunOptin", "DWORD (0x00000001)"]
+  - ["HKCU\\Software\\Microsoft\\Office\\16.0\\Word\\Reading Locations\\Document 1", "Datetime", "2024-03-18T13:00:00"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager", "SubscribedContent-338389Enabled", "DWORD (0x00000001)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search", "SearchboxTaskbarMode", "DWORD (0x00000002)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent", "AccentPalette", "{accent_palette_binary}"]
+  - ["HKCU\\Software\\Microsoft\\InputPersonalization\\TrainedDataStore", "HarvestContacts", "DWORD (0x00000001)"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ComDlg32\\LastVisitedPidlMRU", "{mru}", "{pidl_binary}"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ComDlg32\\OpenSavePidlMRU\\docx", "{mru}", "{pidl_binary}"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ComDlg32\\OpenSavePidlMRU\\pdf", "{mru}", "{pidl_binary}"]
+  - ["HKCU\\Software\\Microsoft\\Office\\16.0\\Word\\Reading Locations\\Document {doc}", "Datetime", "2024-03-18T13:{minute}:00"]
+  - ["HKCU\\Software\\Microsoft\\Office\\16.0\\Excel\\File MRU", "Item {mru}", "[F00000000][T01D9]C:\\Users\\{user}\\Documents\\budget-{doc}.xlsx"]
+  - ["HKCU\\Software\\Microsoft\\Office\\16.0\\PowerPoint\\File MRU", "Item {mru}", "[F00000000][T01D9]C:\\Users\\{user}\\Documents\\briefing-{doc}.pptx"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RecentDocs\\.docx", "{mru}", "{recent_docs_binary}"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RecentDocs\\.pdf", "{mru}", "{recent_docs_binary}"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\Shell\\BagMRU\\{mru}", "NodeSlot", "DWORD (0x0000{mru})"]
+  - ["HKCU\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\Bags\\{doc}\\Shell", "FolderType", "Generic"]
+  - ["HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\TypedPaths", "url{mru}", "C:\\Users\\{user}\\Documents"]
+
+registry_keys_hklm:
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", "SecurityHealthSystray", "C:\\Windows\\System32\\SecurityHealthSystray.exe"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\StandardProfile", "EnableFirewall", "DWORD (0x00000001)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon", "Shell", "explorer.exe"]
+  - ["HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU", "NoAutoUpdate", "DWORD (0x00000000)"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management", "ClearPageFileAtShutdown", "DWORD (0x00000000)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", "EnableLUA", "DWORD (0x00000001)"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters", "DhcpNameServer", "{dns_server_ip}"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Services\\W32Time\\Config", "MaxPollInterval", "DWORD (0x0000000f)"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters", "EnableSecuritySignature", "DWORD (0x00000001)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\PackagesPending", "TrustedInstaller", "DWORD (0x00000001)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WINEVT\\Channels\\Microsoft-Windows-Sysmon/Operational", "Enabled", "DWORD (0x00000001)"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application", "MaxSize", "DWORD (0x01400000)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Real-Time Protection", "DisableRealtimeMonitoring", "DWORD (0x00000000)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders", "Common Startup", "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\WBEM\\CIMOM", "Logging", "DWORD (0x00000002)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\Packages\\{package}~31bf3856ad364e35~amd64~~{os_build}.{small}", "CurrentState", "DWORD (0x00000070)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\S-1-5-18\\Products\\{hex}\\InstallProperties", "DisplayVersion", "{version}"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{{{installed_product_guid}}}", "DisplayName", "{installed_product_name}"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{{{installed_product_guid}}}", "Publisher", "{installed_product_publisher}"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{{{installed_product_guid}}}", "DisplayVersion", "{installed_product_version}"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe", "Path", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\msedge.exe", "Path", "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Acrobat.exe", "Path", "C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\Acrobat.exe"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\{{{guid}}}", "DhcpIPAddress", "{host_ip}"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters", "DynamicSiteName", "Default-First-Site-Name"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Group Policy\\State\\Machine\\Extension-List\\{{{group_policy_extension_guid}}}", "EndTimeHi", "DWORD (0x00000000)"]
+  - ["HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache\\Tree\\Microsoft\\Windows\\UpdateOrchestrator\\Schedule Scan", "Id", "{{{guid}}}"]
+  - ["HKLM\\SYSTEM\\CurrentControlSet\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{mru}", "DriverDesc", "Intel(R) Ethernet Connection"]
+
+dll_pool:
+  - "C:\\Windows\\System32\\ntdll.dll"
+  - "C:\\Windows\\System32\\kernel32.dll"
+  - "C:\\Windows\\System32\\user32.dll"
+  - "C:\\Windows\\System32\\advapi32.dll"
+  - "C:\\Windows\\System32\\msvcrt.dll"
+  - "C:\\Windows\\System32\\rpcrt4.dll"
+  - "C:\\Windows\\System32\\ole32.dll"
+  - "C:\\Windows\\System32\\combase.dll"
+  - "C:\\Windows\\System32\\sechost.dll"
+  - "C:\\Windows\\System32\\gdi32.dll"
+  - "C:\\Program Files\\Google\\Chrome\\Application\\{version}\\chrome_elf.dll"
+  - "C:\\Program Files\\Google\\Chrome\\Application\\{version}\\libegl.dll"
+  - "C:\\Program Files\\Mozilla Firefox\\xul.dll"
+  - "C:\\Program Files\\Mozilla Firefox\\nss3.dll"
+  - "C:\\Program Files\\Microsoft OneDrive\\{version}\\FileSyncShell64.dll"
+  - "C:\\Program Files\\Microsoft Office\\root\\Office16\\AppVIsvSubsystems64.dll"
+  - "C:\\Program Files\\Microsoft Office\\root\\Office16\\GrooveUtil.DLL"
+  - "C:\\Program Files\\7-Zip\\7-zip.dll"
+  - "C:\\Program Files\\Adobe\\Acrobat DC\\Acrobat\\plug_ins\\Accessibility.api"
+  - "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\AppVShNotify.dll"
+  - "C:\\Program Files\\Windows Defender Advanced Threat Protection\\SenseCncProxy.dll"
+  - "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\{version}\\MpClient.dll"
+  - "C:\\Program Files\\VMware\\VMware Tools\\vmStatsProvider.dll"
+  - "C:\\Program Files\\Dell\\SupportAssistAgent\\bin\\pcdrsysinfosoftware.p5x"
+  - "C:\\Program Files\\Cisco\\Cisco AnyConnect Secure Mobility Client\\vpnapi.dll"
+  - "C:\\Program Files\\Git\\mingw64\\bin\\libcrypto-3-x64.dll"
+  - "C:\\Program Files\\Git\\mingw64\\bin\\libssl-3-x64.dll"
+  - "C:\\Program Files\\VideoLAN\\VLC\\libvlccore.dll"
+  - "C:\\Program Files\\Notepad++\\plugins\\mimeTools\\mimeTools.dll"
+  - "C:\\Program Files\\Microsoft VS Code\\resources\\app\\node_modules.asar.unpacked\\keytar\\build\\Release\\keytar.node"

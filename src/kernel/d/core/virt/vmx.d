@@ -92,13 +92,17 @@ private void x64Wrmsr(uint msr, ulong v) {
     }
 }
 
-private ulong x64ReadCR4() {
+// Named vmx*, NOT x64*: D `private` is access control only — it does not give
+// internal linkage, so LDC still emits a global symbol.  An x64ReadCR4 here
+// collides with the .global one in arch/x86_64/asm.S once --whole-archive
+// pulls both objects into kernel.elf.
+private ulong vmxReadCR4() {
     ulong v;
     asm @nogc nothrow { mov RAX, CR4; mov v, RAX; }
     return v;
 }
 
-private void x64WriteCR4(ulong v) {
+private void vmxWriteCR4(ulong v) {
     asm @nogc nothrow { mov RAX, v; mov CR4, RAX; }
 }
 
@@ -136,9 +140,9 @@ public void vmxBootInit() {
     }
 
     // CR4.VMXE
-    ulong cr4 = x64ReadCR4();
+    ulong cr4 = vmxReadCR4();
     if ((cr4 & CR4_VMXE) == 0)
-        x64WriteCR4(cr4 | CR4_VMXE);
+        vmxWriteCR4(cr4 | CR4_VMXE);
 
     // VMXON region: 4K page, revision ID in the low 31 bits.
     ulong basic = x64Rdmsr(IA32_VMX_BASIC);

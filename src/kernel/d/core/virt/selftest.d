@@ -34,7 +34,10 @@ import memory.mm : alloc_phys_page, free_phys_page;
 
 extern (C) @nogc nothrow:
 
-private uint g_virtTestFails = 0;
+// __gshared, NOT plain: a D module-level mutable without it is THREAD-LOCAL
+// (.tdata/.tbss), and the freestanding kernel has no FS base for boot tasks —
+// the first access faults with a not-present read at CR2=0.
+private __gshared uint g_virtTestFails = 0;
 private void vtCheck(bool ok, const(char)* name) {
     if (!ok) {
         ++g_virtTestFails;

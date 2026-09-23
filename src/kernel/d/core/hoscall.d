@@ -166,7 +166,7 @@ private long hosFstat(ulong h, ulong statbuf)           @nogc nothrow { return l
 private long hosSubscribe(ulong events) @nogc nothrow {
     const int tid = cast(int)g_current_task_id;
     if (tid >= 0 && tid < MAX_TASKS) g_taskSubscriptions[tid] |= cast(uint)events;
-    static uint sn;
+    static __gshared uint sn; // __gshared: plain static locals are TLS here, and boot tasks have no FS base
     if ((sn++ & 0x3F) == 0) {
         klog("[obj-subscribe tid="); klog_hex(cast(ulong)tid);
         klog(" events="); klog_hex(events); klog("]\n");

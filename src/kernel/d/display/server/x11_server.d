@@ -1199,9 +1199,11 @@ __gshared X11ServerState g_x11Server;
 /// This is called every frame when using i3 as the window manager
 @nogc nothrow void renderAllX11Windows()
 {
-    static bool logged = false;
-    static size_t lastWindowCount = 0;
-    static size_t lastMappedCount = 0;
+    // __gshared: plain D statics are thread-local (.tdata/.tbss) and kernel
+    // tasks have no FS base — first access would fault on a null TLS read.
+    static __gshared bool logged = false;
+    static __gshared size_t lastWindowCount = 0;
+    static __gshared size_t lastMappedCount = 0;
     
     size_t mappedCount = 0;
     for (size_t i = 0; i < g_x11WindowCount; ++i)

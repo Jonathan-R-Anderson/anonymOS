@@ -21,13 +21,16 @@ module core.virt.selftest;
 import core.virt.vm;
 import core.virt.kvm;
 import core.virt.kvmabi;
-import core.virt.ept;
-import core.virt.vmx : vmxIsReady;
-import core.virt.svm : svmAvailable, svmHwPresent;
-import core.virt.vmexit : vmxDispatchExit, VmExitInfo, VmExitAction,
+import core.virt.slat;
+import core.virt.npt;
+import core.virt.vmcb;
+import core.virt.vmx : vmxDecodeExit,
     EXIT_REASON_HLT, EXIT_REASON_TRIPLE_FAULT, EXIT_REASON_IO_INSTRUCTION,
-    EXIT_REASON_EPT_VIOLATION, EXIT_REASON_VMCALL,
-    vmxValidateSRegs, vmxValidateRegs, vmxValidateMsrs;
+    EXIT_REASON_EPT_VIOLATION, EXIT_REASON_VMCALL;
+import core.virt.svm : svmHwPresent;
+import core.virt.backend : virtBackendAvailable, virtBackendKind, VirtBackendKind;
+import core.virt.vmexit : virtDispatchExit, VirtExitInfo, VirtExitKind,
+    VmExitAction, virtValidateSRegs, virtValidateRegs, virtValidateMsrs;
 import core.exports : phys_to_virt;
 import core.io : klog;
 import memory.mm : alloc_phys_page, free_phys_page;
@@ -55,8 +58,8 @@ public void virtSelfTest() {
     // Logs exactly which virtualization path this hardware takes. On AMD
     // this records the fail-closed SVM detection (task 3.5): the CPUID
     // hardware bit plus the backend-not-ready refusal — never a fake VMXON.
-    if (vmxIsReady())
-        klog("[virt] backend: Intel VMX ready\n");
+    if (virtBackendAvailable())
+        klog("[virt] backend: hardware backend ready\n");
     else if (svmHwPresent())
         klog("[virt] backend: AMD SVM detected, backend not validated - fail-closed (ENODEV on entry)\n");
     else
@@ -136,9 +139,9 @@ public void virtSelfTest() {
     vtCheck(kvmVcpuIoctl(tid, vcObj, vcGen, KVM_GET_REGS, 0) == -14,
             "vcpu-getregs-efault");
     // KVM_RUN: without virtualization hardware this must fail soft with
-    // -ENODEV (vCPU stays Runnable).  Once vmxIsReady()/svmAvailable() is true
+    // -ENODEV (vCPU stays Runnable).  Once virtBackendAvailable() is true
     // the backend owns this path and the expectation no longer applies.
-    if (!vmxIsReady() && !svmAvailable()) {
+    if (!virtBackendAvailable()) {
         vtCheck(kvmVcpuIoctl(tid, vcObj, vcGen, KVM_RUN, 0) == -19,
                 "vcpu-run-enodev");
         vtCheck(vcpuCheckObj(vcObj, vcGen) !is null, "vcpu-alive-after-enodev");
@@ -174,29 +177,116 @@ public void virtSelfTest() {
         }
     }
 
-    // --- 5. EPT --------------------------------------------------------------
+    // --- 5. SLAT (vendor-neutral second-level translation) ------------------
+    // The VM's SLAT kind follows the detected backend (EPT on Intel, NPT on
+    // AMD).  The selftest drives the generic SLAT API so the same checks
+    // validate either table format; exact per-format encodings are checked
+    // below with scratch tables.
     {
         Vm* vm = vmCheck(vmObj, vmGen);
-        vtCheck(vm !is null, "ept-vm-live");
+        vtCheck(vm !is null, "slat-vm-live");
         if (vm !is null) {
+            vtCheck((virtBackendKind() == VirtBackendKind.Svm) ==
+                    (vm.slat.kind == SlatKind.Npt), "slat-kind-matches-hw");
             // Validation failures allocate nothing.
-            vtCheck(!eptMap(&vm.ept, 0x1001, 0x2000, 7), "ept-misaligned-gpa");
-            vtCheck(!eptMap(&vm.ept, 0x1000, 0x2001, 7), "ept-misaligned-hpa");
-            vtCheck(!eptMap(&vm.ept, 0x1000, 0x2000, 0), "ept-zero-prot");
-            vtCheck(!eptMap(&vm.ept, 0x1000, 0x2000, 8), "ept-bad-prot");
+            vtCheck(!slatMap(&vm.slat, 0x1001, 0x2000, 7),
+                    "slat-misaligned-gpa");
+            vtCheck(!slatMap(&vm.slat, 0x1000, 0x2001, 7),
+                    "slat-misaligned-hpa");
+            vtCheck(!slatMap(&vm.slat, 0x1000, 0x2000, 0), "slat-zero-prot");
+            vtCheck(!slatMap(&vm.slat, 0x1000, 0x2000, 8), "slat-bad-prot");
+            vtCheck(slatRootPhys(&vm.slat) == 0, "slat-root-empty-pre-map");
             // Real map/lookup/unmap round-trip on a scratch page.
             ulong sp = alloc_phys_page();
-            vtCheck(sp != 0, "ept-scratch-page");
+            vtCheck(sp != 0, "slat-scratch-page");
             if (sp != 0) {
-                vtCheck(eptMap(&vm.ept, 0x5000, sp, 7), "ept-map");
-                vtCheck(!eptMap(&vm.ept, 0x5000, sp, 7), "ept-double-map");
-                vtCheck(eptLookup(&vm.ept, 0x5000) == (sp & ~0xFFFUL),
-                        "ept-lookup");
-                vtCheck(eptUnmap(&vm.ept, 0x5000) == (sp & ~0xFFFUL),
-                        "ept-unmap");
-                vtCheck(eptLookup(&vm.ept, 0x5000) == 0, "ept-gone");
+                vtCheck(slatMap(&vm.slat, 0x5000, sp, 7), "slat-map");
+                vtCheck(slatRootPhys(&vm.slat) != 0, "slat-root-live");
+                vtCheck(slatTableCount(&vm.slat) >= 4, "slat-tables");
+                vtCheck(!slatMap(&vm.slat, 0x5000, sp, 7), "slat-double-map");
+                vtCheck(slatLookup(&vm.slat, 0x5000) == (sp & ~0xFFFUL),
+                        "slat-lookup");
+                vtCheck(slatUnmap(&vm.slat, 0x5000) == (sp & ~0xFFFUL),
+                        "slat-unmap");
+                vtCheck(slatLookup(&vm.slat, 0x5000) == 0, "slat-gone");
                 free_phys_page(sp);
             }
+        }
+    }
+
+    // --- 5b. NPT exact encodings (scratch table; HW-independent) -------------
+    // AMD NPT leaf entries: P[0] + RW[1] + US[2] + NX[63](=!exec).  The
+    // walker is pure software here; real NPT hardware behavior stays [HW].
+    {
+        Npt n;
+        nptInit(&n);
+        // phys_to_virt returns ulong (real kernel) vs void* (host stub);
+        // normalize through a wrapper so both builds typecheck.
+        static extern(C) void* nptMapWrap(ulong p)
+        { return cast(void*)phys_to_virt(p); }
+        nptWireKernel(&n, &alloc_phys_page, &free_phys_page, &nptMapWrap);
+        ulong sp = alloc_phys_page();
+        vtCheck(sp != 0, "npt-scratch-page");
+        if (sp != 0) {
+            vtCheck(nptMap(&n, 0x9000, sp, SLAT_R | SLAT_W), "npt-map-rw");
+            ulong raw = nptLookupRaw(&n, 0x9000);
+            vtCheck((raw & (NPT_PTE_P | NPT_PTE_RW | NPT_PTE_US)) ==
+                    (NPT_PTE_P | NPT_PTE_RW | NPT_PTE_US), "npt-enc-rw");
+            vtCheck((raw & NPT_PTE_NX) != 0, "npt-enc-nx-noexec");
+            vtCheck(nptUnmap(&n, 0x9000) == (sp & ~0xFFFUL), "npt-unmap");
+            vtCheck(nptMap(&n, 0x9000, sp, SLAT_R | SLAT_X), "npt-map-x");
+            raw = nptLookupRaw(&n, 0x9000);
+            vtCheck((raw & NPT_PTE_RW) == 0, "npt-enc-ro");
+            vtCheck((raw & NPT_PTE_NX) == 0, "npt-enc-exec");
+            vtCheck(nptLookup(&n, 0x9000) == (sp & ~0xFFFUL), "npt-lookup");
+            vtCheck(nptUnmap(&n, 0x9000) == (sp & ~0xFFFUL), "npt-unmap2");
+            vtCheck(nptLookup(&n, 0x9000) == 0, "npt-gone");
+            free_phys_page(sp);
+        }
+        nptFree(&n);
+        vtCheck(n.tables == 0 && n.pml4Phys == 0, "npt-free-clean");
+    }
+
+    // --- 5c. VMCB layout helpers (exact AMD offsets; HW-independent) --------
+    // The struct static asserts already pin every offset at compile time;
+    // these runtime checks exercise the intercept/segment helpers against
+    // the researched values.
+    {
+        ulong page = alloc_phys_page();
+        vtCheck(page != 0, "vmcb-page");
+        if (page != 0) {
+            Vmcb* v = cast(Vmcb*)phys_to_virt(page);
+            ulong* q = cast(ulong*)v;
+            foreach (i; 0 .. Vmcb.sizeof / 8) q[i] = 0;
+            vmcbSetIntercept(&v.control, SVM_INT_HLT);      // bit 120
+            vmcbSetIntercept(&v.control, SVM_INT_IOIO);     // bit 123
+            vmcbSetIntercept(&v.control, SVM_INT_VMMCALL);  // bit 129
+            vtCheck(v.control.intercepts[3] == ((1u << 24) | (1u << 27)),
+                    "vmcb-intercept-word3");
+            vtCheck(v.control.intercepts[4] == (1u << 1),
+                    "vmcb-intercept-word4");
+            // Raw-offset cross-check: EXITCODE @ 0x070, nCR3 @ 0x0B0.
+            v.control.exitcode = 0x78;
+            vtCheck(*(cast(ulong*)(cast(ubyte*)v + 0x070)) == 0x78,
+                    "vmcb-exitcode-off");
+            v.control.ncr3 = 0x12345000;
+            vtCheck(*(cast(ulong*)(cast(ubyte*)v + 0x0B0)) == 0x12345000,
+                    "vmcb-ncr3-off");
+            // Segment attrib: 64-bit code (type 0xB, S, P, L).
+            ushort a = vmcbSegAttrib(0xB, 1, 0, 1, 0, 1, 0, 1, 0);
+            vtCheck(a == 0xA09B, "vmcb-seg-attrib");
+            vtCheck(vmcbSegAttrib(0, 0, 0, 0, 0, 0, 0, 0, 1) == 0,
+                    "vmcb-seg-unusable");
+            vmcbWriteSeg(&v.save.cs, 0x10, a, 0xFFFF_FFFF, 0);
+            vtCheck(v.save.cs.selector == 0x10 && v.save.cs.attrib == 0xA09B &&
+                    v.save.cs.base == 0, "vmcb-seg-write");
+            // Save-area raw offsets: RIP @ 0x578, RSP @ 0x5D8, RAX @ 0x5F8.
+            v.save.rip = 0x1000; v.save.rsp = 0x8000; v.save.rax = 0x42;
+            ubyte* b = cast(ubyte*)v;
+            vtCheck(*(cast(ulong*)(b + 0x578)) == 0x1000, "vmcb-rip-off");
+            vtCheck(*(cast(ulong*)(b + 0x5D8)) == 0x8000, "vmcb-rsp-off");
+            vtCheck(*(cast(ulong*)(b + 0x5F8)) == 0x42, "vmcb-rax-off");
+            free_phys_page(page);
         }
     }
 
@@ -268,9 +358,10 @@ public void virtSelfTest() {
     }
 
     // --- 8. synthetic exit dispatch (3.4/5.6/6.1; HW-independent) --------------
-    // Drives vmxDispatchExit with synthetic exits against real VM/vCPU
-    // objects.  Real guest entry stays [HW]; the dispatch *logic* is fully
-    // verified here and runs at every boot.
+    // Drives the vendor decoders (vmxDecodeExit / svmDecodeExit) plus the
+    // common virtDispatchExit with synthetic exits against real VM/vCPU
+    // objects.  Real guest entry stays [HW]; the decode + dispatch *logic*
+    // is fully verified here and runs at every boot.
     {
         long h = kvmCreateVm(tid);
         vtCheck(h >= 0, "xd-vm");
@@ -295,24 +386,24 @@ public void virtSelfTest() {
                 }
                 vtCheck(ok, "xd-vcpus");
                 if (ok) {
-                    VmExitInfo xi;
-                    xi.gpa = 0; xi.data = 0; xi.count = 0;
+                    VirtExitInfo xi;
 
                     // HLT -> KVM_EXIT_HLT, vCPU Exited, VcpuStopped
-                    xi.reason = EXIT_REASON_HLT; xi.qual = 0;
+                    vmxDecodeExit(EXIT_REASON_HLT, 0, 0, 0, 0, &xi);
+                    vtCheck(xi.kind == VirtExitKind.Hlt, "xd-hlt-kind");
                     Vcpu* vc0 = vcpuCheckObj(vco[0], vcg[0]);
-                    vtCheck(vmxDispatchExit(xi, run, vm, vc0)
+                    vtCheck(virtDispatchExit(xi, run, vm, vc0)
                             == VmExitAction.VcpuStopped, "xd-hlt-action");
                     vtCheck(run.exitReason == KVM_EXIT_HLT, "xd-hlt-reason");
                     vtCheck(vc0.state == VcpuState.Exited, "xd-hlt-state");
 
                     // I/O OUT: outb 0xAB -> port 0x10
                     foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
-                    xi.reason = EXIT_REASON_IO_INSTRUCTION;
-                    xi.qual = (0x10UL << 16); // size=1, OUT, port 0x10
-                    xi.data = 0xAB;
+                    vmxDecodeExit(EXIT_REASON_IO_INSTRUCTION,
+                                  0x10UL << 16, 0, 0xAB, 0, &xi); // size=1, OUT
+                    vtCheck(xi.kind == VirtExitKind.Io, "xd-io-kind");
                     Vcpu* vc1 = vcpuCheckObj(vco[1], vcg[1]);
-                    vtCheck(vmxDispatchExit(xi, run, vm, vc1)
+                    vtCheck(virtDispatchExit(xi, run, vm, vc1)
                             == VmExitAction.ToUserspace, "xd-io-action");
                     vtCheck(run.exitReason == KVM_EXIT_IO, "xd-io-reason");
                     vtCheck(run.u.io.direction == KVM_EXIT_IO_OUT, "xd-io-dir");
@@ -326,8 +417,9 @@ public void virtSelfTest() {
 
                     // I/O IN: in ax, 0x3F8 (size=2)
                     foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
-                    xi.qual = 1 | (1UL << 3) | (0x3F8UL << 16);
-                    vtCheck(vmxDispatchExit(xi, run, vm, vc1)
+                    vmxDecodeExit(EXIT_REASON_IO_INSTRUCTION,
+                                  1 | (1UL << 3) | (0x3F8UL << 16), 0, 0, 0, &xi);
+                    vtCheck(virtDispatchExit(xi, run, vm, vc1)
                             == VmExitAction.ToUserspace, "xd-ioin-action");
                     vtCheck(run.u.io.direction == KVM_EXIT_IO_IN,
                             "xd-ioin-dir");
@@ -336,9 +428,10 @@ public void virtSelfTest() {
 
                     // EPT violation (write) -> KVM_EXIT_MMIO
                     foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
-                    xi.reason = EXIT_REASON_EPT_VIOLATION;
-                    xi.qual = (1UL << 1); xi.gpa = 0xFEC0_0000UL;
-                    vtCheck(vmxDispatchExit(xi, run, vm, vc1)
+                    vmxDecodeExit(EXIT_REASON_EPT_VIOLATION,
+                                  1UL << 1, 0xFEC0_0000UL, 0, 0, &xi);
+                    vtCheck(xi.kind == VirtExitKind.SlatFault, "xd-ept-kind");
+                    vtCheck(virtDispatchExit(xi, run, vm, vc1)
                             == VmExitAction.ToUserspace, "xd-ept-action");
                     vtCheck(run.exitReason == KVM_EXIT_MMIO, "xd-ept-reason");
                     vtCheck(run.u.mmio.physAddr == 0xFEC0_0000UL,
@@ -347,35 +440,35 @@ public void virtSelfTest() {
                             "xd-ept-flags");
 
                     // VMCALL -> hypercall
-                    xi.reason = EXIT_REASON_VMCALL; xi.qual = 0; xi.gpa = 0;
-                    xi.data = 0x1234;
-                    vtCheck(vmxDispatchExit(xi, run, vm, vc1)
+                    vmxDecodeExit(EXIT_REASON_VMCALL, 0, 0, 0x1234, 0, &xi);
+                    vtCheck(virtDispatchExit(xi, run, vm, vc1)
                             == VmExitAction.ToUserspace, "xd-hc-action");
                     vtCheck(run.exitReason == KVM_EXIT_HYPERCALL,
                             "xd-hc-reason");
                     vtCheck(run.u.hypercall.nr == 0x1234, "xd-hc-nr");
 
                     // Triple fault -> SHUTDOWN, vCPU Exited
-                    xi.reason = EXIT_REASON_TRIPLE_FAULT; xi.data = 0;
+                    vmxDecodeExit(EXIT_REASON_TRIPLE_FAULT, 0, 0, 0, 0, &xi);
                     Vcpu* vc2 = vcpuCheckObj(vco[2], vcg[2]);
-                    vtCheck(vmxDispatchExit(xi, run, vm, vc2)
+                    vtCheck(virtDispatchExit(xi, run, vm, vc2)
                             == VmExitAction.VcpuStopped, "xd-tf-action");
                     vtCheck(run.exitReason == KVM_EXIT_SHUTDOWN,
                             "xd-tf-reason");
                     vtCheck(vc2.state == VcpuState.Exited, "xd-tf-state");
 
-                    // Unknown reason -> KVM_EXIT_UNKNOWN, contained
-                    xi.reason = 0xFF;
+                    // Unknown reason -> KVM_EXIT_UNKNOWN, to userspace
+                    vmxDecodeExit(0xFF, 0, 0, 0, 0, &xi);
                     Vcpu* vc3 = vcpuCheckObj(vco[3], vcg[3]);
-                    vtCheck(vmxDispatchExit(xi, run, vm, vc3)
+                    vtCheck(virtDispatchExit(xi, run, vm, vc3)
                             == VmExitAction.ToUserspace, "xd-unk-action");
                     vtCheck(run.exitReason == KVM_EXIT_UNKNOWN,
                             "xd-unk-reason");
                     vtCheck(run.u.hwReason == 0xFF, "xd-unk-hwreason");
 
-                    // Bad I/O size (5 bytes) -> contained, VM Dying
-                    xi.reason = EXIT_REASON_IO_INSTRUCTION; xi.qual = 4;
-                    vtCheck(vmxDispatchExit(xi, run, vm, vc3)
+                    // Reserved I/O size encoding -> contained, VM Dying
+                    vmxDecodeExit(EXIT_REASON_IO_INSTRUCTION, 2, 0, 0, 0, &xi);
+                    vtCheck(xi.ioSize == 0, "xd-badio-size");
+                    vtCheck(virtDispatchExit(xi, run, vm, vc3)
                             == VmExitAction.VmContained, "xd-badio-contained");
                     vtCheck(vm.state == VmState.Dying, "xd-badio-vmdying");
                     vtCheck(run.exitReason == KVM_EXIT_INTERNAL_ERROR,
@@ -385,31 +478,31 @@ public void virtSelfTest() {
                     KvmSRegs sr;
                     foreach (i; 0 .. KvmSRegs.sizeof)
                         (cast(ubyte*)&sr)[i] = 0;
-                    vtCheck(vmxValidateSRegs(&sr) == 0, "xd-sregs-zero-ok");
+                    vtCheck(virtValidateSRegs(&sr) == 0, "xd-sregs-zero-ok");
                     sr.cr4 = 1UL << 13; // VMXE in guest: never
-                    vtCheck(vmxValidateSRegs(&sr) == -22, "xd-sregs-vmxe");
+                    vtCheck(virtValidateSRegs(&sr) == -22, "xd-sregs-vmxe");
                     sr.cr4 = 0; sr.efer = 1UL << 10; // LMA without LME
-                    vtCheck(vmxValidateSRegs(&sr) == -22, "xd-sregs-lma");
+                    vtCheck(virtValidateSRegs(&sr) == -22, "xd-sregs-lma");
                     sr.efer = 0; sr.cr8 = 16;
-                    vtCheck(vmxValidateSRegs(&sr) == -22, "xd-sregs-cr8");
+                    vtCheck(virtValidateSRegs(&sr) == -22, "xd-sregs-cr8");
 
                     KvmRegs rg;
                     foreach (i; 0 .. KvmRegs.sizeof)
                         (cast(ubyte*)&rg)[i] = 0;
                     rg.rip = 0x0000_8000_0000_0000UL; // non-canonical (bit47=1, bits63:48=0)
-                    vtCheck(vmxValidateRegs(&rg) == -22, "xd-regs-rip");
+                    vtCheck(virtValidateRegs(&rg) == -22, "xd-regs-rip");
                     rg.rip = 0x1000;
-                    vtCheck(vmxValidateRegs(&rg) == 0, "xd-regs-ok");
+                    vtCheck(virtValidateRegs(&rg) == 0, "xd-regs-ok");
 
                     KvmMsrEntry[2] me;
                     me[0].index = 0x480; me[0].reserved = 0; me[0].data = 0;
                     me[1].index = 0xC000_0080; me[1].reserved = 0;
                     me[1].data = 0xD01;
-                    vtCheck(vmxValidateMsrs(me.ptr, 2) == -22, "xd-msr-vmx");
+                    vtCheck(virtValidateMsrs(me.ptr, 2) == -22, "xd-msr-vmx");
                     me[0].index = 0x10; // TSC: fine
-                    vtCheck(vmxValidateMsrs(me.ptr, 2) == 0, "xd-msr-ok");
+                    vtCheck(virtValidateMsrs(me.ptr, 2) == 0, "xd-msr-ok");
                     me[1].data = 0xFFFF; // bad EFER
-                    vtCheck(vmxValidateMsrs(me.ptr, 2) == -22, "xd-msr-efer");
+                    vtCheck(virtValidateMsrs(me.ptr, 2) == -22, "xd-msr-efer");
 
                     foreach (i; 0 .. 4) kvmVcpuFdClosed(vco[i], vcg[i]);
                 }

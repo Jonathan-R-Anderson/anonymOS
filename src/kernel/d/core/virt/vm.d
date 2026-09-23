@@ -13,7 +13,7 @@
 //     fails if the slot was freed and reused (generation mismatch) or reused
 //     for another type (type mismatch).  Generations never reuse 0.
 //   - Lifecycle: Empty -> Active -> Dying -> Empty.  Teardown is idempotent
-//     and reclaims: EPT tables, pinned guest pages, the untyped-memory
+//     and reclaims: SLAT tables, pinned guest pages, the untyped-memory
 //     charge, vCPU records, and finally the object-table slot.
 //   - Ceilings are hard and fail-closed: bounded VMs, vCPUs/VM, memslots,
 //     and guest pages per VM / system-wide.
@@ -21,18 +21,18 @@
 //     each userspace page through the REAL page-fault path
 //     (core.addrspace.handlePageFault), translates VA->phys, and PINS each
 //     page (physPageRefInc) so the VMM cannot free/reuse the backing while
-//     the EPT points at it.  The untyped budget of the creating task is
+//     the SLAT points at it.  The untyped budget of the creating task is
 //     charged per page and released on teardown — guest RAM is never ambient.
-//   - The EPT is the source of truth for pinned pages: unpin walks the EPT
+//   - The SLAT is the source of truth for pinned pages: unpin walks the SLAT
 //     (GPA->HPA), never re-translates the userspace VA (which the VMM could
-//     have remapped concurrently).  See core.virt.ept.
-//   - EPT is built eagerly at region registration (fail fast) and updated on
+//     have remapped concurrently).  See core.virt.slat.
+//   - The SLAT is built eagerly at region registration (fail fast) and updated on
 //     removal.
 //
 // Machine profiles (task 7.4): `VmProfile` (Lightweight | Compatibility) is
 // a *userspace policy bundle over one substrate*, not a security class
 // (StratoVirt precedent).  Both profiles allocate the same native objects,
-// run the same EPT builder, the same guest-state validators, and the same
+// run the same SLAT builder, the same guest-state validators, and the same
 // VM-exit dispatcher — there is exactly one kernel execution path.  What
 // the profile changes is the *defaults/policy bundle* a VMM sees:
 //   - Compatibility (the default): the Linux-VMM bundle.  Split-irqchip is
@@ -69,7 +69,7 @@ import core.exports : g_current_task_id, phys_to_virt;
 import core.task : g_tasks, MAX_TASKS;
 import core.untyped : untypedRetype, untypedRelease;
 import memory.mm : alloc_phys_page, free_phys_page, physPageRefInc, physPageRefDec;
-import core.virt.ept;
+import core.virt.slat;
 import core.virt.kvmabi : KVM_MEM_READONLY, KvmIrqRoutingEntry;
 
 // Routing entries are 48 bytes; 85 fit per 4 KiB page.
@@ -84,6 +84,10 @@ enum uint  VIRT_MAX_VCPUS_PER_VM = 64;
 enum uint  VIRT_MAX_MEMSLOTS     = 32;    // also reported via KVM_CAP_NR_MEMSLOTS
 enum ulong VIRT_MAX_PAGES_PER_VM = 262144;  // 1 GiB per VM
 enum ulong VIRT_MAX_PAGES_TOTAL  = 1048576; // 4 GiB system-wide for guests
+// Per-CPU backend state arrays are indexed by the kernel's per-CPU index
+// (0 = BSP).  Mirrors core.kmain.MAX_CPUS (SMP roadmap: runtime-discovered,
+// never larger than this ceiling).
+enum uint  VIRT_MAX_CPUS        = 256;
 
 // ---------------------------------------------------------------------------
 // Lifecycle states
@@ -113,13 +117,14 @@ enum VmProfile : ubyte {
 
 // Named diagnostics (8.1): the kernel-side half of the AppVM contract.
 // Reported via ANONVM_GET_VM_STATE (see core.virt.kvmabi).  diagInfo
-// carries the faulting GPA for EptViolation and is 0 otherwise.
+// carries the faulting GPA for SlatViolation and is 0 otherwise.
 enum VirtDiag : uint {
     None            = 0, // no fault recorded for the current attempt
     NoHardware      = 1, // KVM_RUN -> -ENODEV: no VMX/SVM hardware present
     Contained       = 2, // VM entered Dying via vmContained (why is in klog)
     BudgetExhausted = 3, // -ENOMEM: untyped pin budget exhausted
-    EptViolation    = 4, // last EPT violation (informational, not terminal)
+    SlatViolation   = 4, // last SLAT fault: EPT violation / nested page fault
+                            // (informational, not terminal)
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +152,11 @@ struct Vcpu {
     ulong cachePhys;    // host-phys of the KVM state-cache page (0 = not set yet)
     ulong cpuidPhys;    // host-phys of the cached CPUID2 page (0 = not set yet)
     ulong xsavePhys;    // host-phys of the cached XSAVE page (0 = not set yet)
+    ulong hwCtrlPhys;   // backend control page host-phys (VMCB on SVM, VMCS
+                        // on VMX); 0 = not allocated.  Per-vCPU because guest
+                        // CPU state (RIP/RSP/...) is per-vCPU.  Allocated
+                        // lazily by the backend on first entry; freed on
+                        // vCPU/VM teardown.
     bool  lapicSet;     // KVM_SET_LAPIC seen (split-irqchip bookkeeping)
     ulong[18] regs;     // KvmRegs order: rax..rflags (cached SET_REGS)
     bool  regsSet;
@@ -173,7 +183,15 @@ struct Vm {
     VmMemSlot[VIRT_MAX_MEMSLOTS] slots;
     Vcpu[VIRT_MAX_VCPUS_PER_VM] vcpus;
     uint  vcpuCount;
-    Ept   ept;          // EPT state (pml4Phys 0 = not built)
+    Slat  slat;         // SLAT state (EPT on Intel, NPT on AMD;
+                            // rootPhys 0 = not built)
+    // SVM permission bitmaps (AMD backend only; 0 = not allocated).  Each is
+    // a single CONTIGUOUS allocation: the VMCB holds one base PA for the
+    // 12 KiB IOPM and one for the 8 KiB MSRPM — separate 4 KiB pages would
+    // not be physically contiguous.  All-ones init = intercept-everything
+    // (default-deny); shared read-only across vCPUs after init.
+    ulong svmIopmPhys;   // base of SVM_IOPM_PAGES contiguous pages
+    ulong svmMsrpmPhys;  // base of SVM_MSRPM_PAGES contiguous pages
     ulong tssAddr;      // KVM_SET_TSS_ADDR value (recorded)
     ulong identityMapAddr; // KVM_SET_IDENTITY_MAP_ADDR value
     bool  splitIrqchip; // KVM_ENABLE_CAP(SPLIT_IRQCHIP) seen
@@ -188,7 +206,7 @@ struct Vm {
     // 7.4/8.1 fields, appended (never inserted) per the same convention:
     VmProfile profile;  // policy bundle: Lightweight | Compatibility
     VirtDiag diag;      // named diagnostic: last fault/failure, sticky
-    ulong diagInfo;     // EptViolation -> faulting GPA; 0 otherwise
+    ulong diagInfo;     // SlatViolation -> faulting GPA; 0 otherwise
 }
 
 __gshared Vm[VIRT_MAX_VMS] g_vmPool;
@@ -199,8 +217,8 @@ __gshared ulong g_virtPagesTotal = 0; // system-wide guest pages pinned
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-// phys -> writable kernel virtual for EPT table access (HHDM mapping).
-private void* eptMapPhys(ulong phys) { return cast(void*)phys_to_virt(phys); }
+// phys -> writable kernel virtual for SLAT table access (HHDM mapping).
+private void* slatMapPhys(ulong phys) { return cast(void*)phys_to_virt(phys); }
 
 private uint nextVmGen() {
     if (++g_vmGen == 0) g_vmGen = 1; // skip 0 on wrap
@@ -269,10 +287,45 @@ public uint vmAlloc() {
     auto h = objGet(id);
     h.version_ = vm.gen; // mirror generation for stale-handle checks
     vm.objId = id;
-    eptInit(&vm.ept);
-    // Wire the real kernel callbacks: without this, eptMap() fail-closes and
+    // SLAT kind follows the detected hardware backend (Intel -> EPT,
+    // AMD -> NPT).  Function-local import: core.virt.backend imports this
+    // module for virtEnter, so the import must not be module-scoped.
+    { import core.virt.backend : virtBackendKind, VirtBackendKind;
+      slatInit(&vm.slat, virtBackendKind() == VirtBackendKind.Svm
+                            ? SlatKind.Npt : SlatKind.Ept); }
+    // Wire the real kernel callbacks: without this, slatMap() fail-closes and
     // no guest memory can ever be mapped.
-    eptWireKernel(&vm.ept, &alloc_phys_page, &free_phys_page, &eptMapPhys);
+    slatWireKernel(&vm.slat, &alloc_phys_page, &free_phys_page, &slatMapPhys);
+    // SVM: allocate the per-VM permission bitmaps now (fail at VM creation,
+    // not at first entry).  CONTIGUOUS: the VMCB takes one base PA for the
+    // 12 KiB IOPM and one for the 8 KiB MSRPM.  All-ones init =
+    // intercept-everything (default-deny).  Shared read-only across vCPUs.
+    { import core.virt.backend : virtBackendKind, VirtBackendKind;
+      import core.virt.vmcb : SVM_IOPM_PAGES, SVM_MSRPM_PAGES;
+      import memory.mm : alloc_phys_pages, free_phys_pages;
+      if (virtBackendKind() == VirtBackendKind.Svm) {
+          vm.svmIopmPhys = alloc_phys_pages(SVM_IOPM_PAGES);
+          if (vm.svmIopmPhys != 0) {
+              ubyte* p = cast(ubyte*)phys_to_virt(vm.svmIopmPhys);
+              foreach (i; 0 .. SVM_IOPM_PAGES * 4096) p[i] = 0xFF;
+              vm.svmMsrpmPhys = alloc_phys_pages(SVM_MSRPM_PAGES);
+              if (vm.svmMsrpmPhys != 0) {
+                  p = cast(ubyte*)phys_to_virt(vm.svmMsrpmPhys);
+                  foreach (i; 0 .. SVM_MSRPM_PAGES * 4096) p[i] = 0xFF;
+              }
+          }
+          if (vm.svmIopmPhys == 0 || vm.svmMsrpmPhys == 0) {
+              if (vm.svmIopmPhys != 0)
+                  free_phys_pages(vm.svmIopmPhys, SVM_IOPM_PAGES);
+              if (vm.svmMsrpmPhys != 0)
+                  free_phys_pages(vm.svmMsrpmPhys, SVM_MSRPM_PAGES);
+              vm.svmIopmPhys = 0; vm.svmMsrpmPhys = 0;
+              // Unwind the VM alloc: object slot was already taken.
+              objRelease(id);
+              vm.state = VmState.Empty;
+              return 0;
+          }
+      } }
     return id;
 }
 
@@ -339,6 +392,19 @@ public Vcpu* vcpuCheckObj(uint objId, uint gen) {
     if (vc.state == VcpuState.Empty || vc.state == VcpuState.Dead) return null;
     return vc;
 }
+// Close-path vCPU lookup: like vcpuCheckObj but accepts Dead vCPUs.  A
+// contained vCPU must still be releasable (its VM pin dropped, its slot
+// freed); the strict check would leak both.
+public Vcpu* vcpuCheckObjClose(uint objId, uint gen) {
+    if (gen == 0) return null;
+    auto h = objGet(objId);
+    if (h is null || h.type != ObjType.Vcpu) return null;
+    if (h.version_ != gen) return null; // slot reused: stale handle
+    Vcpu* vc = cast(Vcpu*)h.impl;
+    if (vc is null || vc.objId != objId || vc.gen != gen) return null;
+    if (vc.state == VcpuState.Empty) return null;
+    return vc;
+}
 
 // Create a vCPU on a live VM at the requested KVM vCPU id.  Returns the vCPU
 // index (= the id), or -1 if the id is out of range, taken, or the ceiling
@@ -384,13 +450,13 @@ public int vmCreateVcpu(Vm* vm, uint vcpuId) {
 // Guest memory registration
 // ---------------------------------------------------------------------------
 
-// Unpin/unmap every page the EPT maps for [guestPhys, guestPhys+pages*4K).
-// The EPT is the source of truth — no userspace VA re-translation.
+// Unpin/unmap every page the SLAT maps for [guestPhys, guestPhys+pages*4K).
+// The SLAT is the source of truth — no userspace VA re-translation.
 private void vmUnpinRange(Vm* vm, ulong guestPhys, ulong pages) {
     for (ulong i = 0; i < pages; ++i) {
         ulong gpa = guestPhys + (i << 12);
-        ulong hpa = eptLookup(&vm.ept, gpa);
-        eptUnmap(&vm.ept, gpa);
+        ulong hpa = slatLookup(&vm.slat, gpa);
+        slatUnmap(&vm.slat, gpa);
         if (hpa != 0) physPageRefDec(hpa);
     }
 }
@@ -398,7 +464,7 @@ private void vmUnpinRange(Vm* vm, ulong guestPhys, ulong pages) {
 // Validate + register a guest-physical -> userspace memory slot.
 // Pre-faults each userspace page through the real fault path, translates
 // VA->phys, pins each page, charges the creator's untyped budget, and maps
-// the range into the VM's EPT.  Returns 0 or a negative errno.
+// the range into the VM's SLAT.  Returns 0 or a negative errno.
 public long vmSetMemoryRegion(Vm* vm, uint slotId, uint flags,
                               ulong guestPhys, ulong memSize, ulong userAddr) {
     if (vm is null || vm.state != VmState.Active) return -9;  // EBADF
@@ -437,7 +503,7 @@ public long vmSetMemoryRegion(Vm* vm, uint slotId, uint flags,
     // partial pin on budget exhaustion).  This charges the PIN, not page
     // ownership: the pages belong to the VMM's address space (already
     // accounted there); what the VM consumes is the right to hold them
-    // pinned and EPT-mapped.  Hard ceilings (VIRT_MAX_PAGES_PER_VM/TOTAL)
+    // pinned and SLAT-mapped.  Hard ceilings (VIRT_MAX_PAGES_PER_VM/TOTAL)
     // bound the total independently of the budget.
     if (vm.untypedObjId != 0 && !untypedRetype(vm.untypedObjId, pages)) {
         klog("[virt] memRegion: untyped budget exhausted\n");
@@ -455,8 +521,8 @@ public long vmSetMemoryRegion(Vm* vm, uint slotId, uint flags,
         }
     }
 
-    // Pre-fault + translate + pin + EPT-map, page by page.  Any failure
-    // unwinds via the EPT (source of truth for what got pinned).
+    // Pre-fault + translate + pin + SLAT-map, page by page.  Any failure
+    // unwinds via the SLAT (source of truth for what got pinned).
     {
         int tid = vm.creatorTid;
         bool writable = (flags & KVM_MEM_READONLY) == 0;
@@ -471,8 +537,8 @@ public long vmSetMemoryRegion(Vm* vm, uint slotId, uint flags,
             }
             ulong pa = userVirtToPhys(tid, va) & ~0xFFFUL;
             if (pa == 0) break;
-            physPageRefInc(pa); // pin: the EPT will point here
-            if (!eptMap(&vm.ept, guestPhys + (done << 12), pa, prot)) {
+            physPageRefInc(pa); // pin: the SLAT will point here
+            if (!slatMap(&vm.slat, guestPhys + (done << 12), pa, prot)) {
                 physPageRefDec(pa);
                 break;
             }
@@ -527,13 +593,16 @@ public long vmRemoveMemoryRegion(Vm* vm, uint slotId) {
 // Teardown — idempotent, reclaims everything.
 // ---------------------------------------------------------------------------
 public void vmTeardown(Vm* vm) {
-    if (vm is null || vm.state != VmState.Active) return;
+    if (vm is null || vm.state == VmState.Empty) return;
+    // Active or Dying both tear down; anything else is a logic error —
+    // fail closed rather than freeing a VM in an unknown state.
     // Take the mem lock; if already held the VM is mid-teardown elsewhere —
     // fail closed (the holder will complete it).
     if (!vmLockMem(vm)) return;
     vm.state = VmState.Dying;
 
-    // 1. vCPUs: release kvm_run/state pages and object mirrors.
+    // 1. vCPUs: release kvm_run/state pages, backend control pages, and
+    // object mirrors.
     foreach (ref vc; vm.vcpus) {
         if (vc.state == VcpuState.Empty || vc.state == VcpuState.Dead) continue;
         vc.state = VcpuState.Dead;
@@ -541,11 +610,12 @@ public void vmTeardown(Vm* vm) {
         if (vc.cachePhys != 0) { free_phys_page(vc.cachePhys); vc.cachePhys = 0; }
         if (vc.cpuidPhys != 0) { free_phys_page(vc.cpuidPhys); vc.cpuidPhys = 0; }
         if (vc.xsavePhys != 0) { free_phys_page(vc.xsavePhys); vc.xsavePhys = 0; }
+        if (vc.hwCtrlPhys != 0) { free_phys_page(vc.hwCtrlPhys); vc.hwCtrlPhys = 0; }
         if (vc.objId != 0) { objRelease(vc.objId); vc.objId = 0; }
     }
     vm.vcpuCount = 0;
 
-    // 2. Memory slots: EPT is the source of truth for pinned pages.
+    // 2. Memory slots: SLAT is the source of truth for pinned pages.
     foreach (ref s; vm.slots) {
         if (!s.used) continue;
         vmUnpinRange(vm, s.guestPhys, s.pages);
@@ -555,8 +625,19 @@ public void vmTeardown(Vm* vm) {
     }
     vm.pagesCharged = 0;
 
-    // 3. EPT tables.
-    eptFree(&vm.ept);
+    // 3. SLAT tables.
+    slatFree(&vm.slat);
+    // 4. SVM permission bitmaps (no-op when zero / non-SVM backend).
+    { import core.virt.vmcb : SVM_IOPM_PAGES, SVM_MSRPM_PAGES;
+      import memory.mm : free_phys_pages;
+      if (vm.svmIopmPhys != 0) {
+          free_phys_pages(vm.svmIopmPhys, SVM_IOPM_PAGES);
+          vm.svmIopmPhys = 0;
+      }
+      if (vm.svmMsrpmPhys != 0) {
+          free_phys_pages(vm.svmMsrpmPhys, SVM_MSRPM_PAGES);
+          vm.svmMsrpmPhys = 0;
+      } }
 
     // 4. Persisted GSI routing table pages.
 
@@ -580,8 +661,11 @@ public void vcpuRelease(Vcpu* vc) {
     if (vc.cachePhys != 0) { free_phys_page(vc.cachePhys); vc.cachePhys = 0; }
     if (vc.cpuidPhys != 0) { free_phys_page(vc.cpuidPhys); vc.cpuidPhys = 0; }
     if (vc.xsavePhys != 0) { free_phys_page(vc.xsavePhys); vc.xsavePhys = 0; }
+    if (vc.hwCtrlPhys != 0) { free_phys_page(vc.hwCtrlPhys); vc.hwCtrlPhys = 0; }
     if (vc.objId != 0) { objRelease(vc.objId); vc.objId = 0; }
-    Vm* vm = vmCheck(vmObj, vmGen);
+    // Close-path lookup must accept Dying VMs: a contained VM still needs
+    // its refs dropped and its slot freed (vmCheckQuery, not vmCheck).
+    Vm* vm = vmCheckQuery(vmObj, vmGen);
     // The slot is immediately reusable (state back to Empty): closing a vCPU
     // fd destroys the vCPU, and the KVM id may be created again.
     *vc = Vcpu.init;
@@ -606,8 +690,9 @@ public void kvmVmFdDuped(uint objId, uint gen) {
 }
 
 // A VM-fd view closed: release the VM when the last view goes away.
+// Uses vmCheckQuery (accepts Dying): a contained VM must still be freed.
 public void kvmVmFdClosed(uint objId, uint gen) {
-    Vm* vm = vmCheck(objId, gen);
+    Vm* vm = vmCheckQuery(objId, gen);
     if (vm !is null && vm.fdRefs > 0 && --vm.fdRefs == 0) {
         // VMM policy audit (core.virt.vmm_policy): VM teardown is logged.
         // vm.d cannot import vmm_policy (it imports vm.d — a cycle), so the
@@ -624,8 +709,10 @@ public void kvmVcpuFdDuped(uint objId, uint gen) {
 }
 
 // A vCPU-fd view closed: release the vCPU (and its VM pin) at zero.
+// Uses vcpuCheckObjClose (accepts Dead): a contained vCPU must still be
+// released, or its VM pin leaks the VM slot.
 public void kvmVcpuFdClosed(uint objId, uint gen) {
-    Vcpu* vc = vcpuCheckObj(objId, gen);
+    Vcpu* vc = vcpuCheckObjClose(objId, gen);
     if (vc !is null && vc.fdRefs > 0 && --vc.fdRefs == 0)
         vcpuRelease(vc);
 }

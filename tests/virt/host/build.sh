@@ -20,8 +20,9 @@ mkdir -p "$OUT"
 COMMON="-betterC -O1 -d-version=HostTest -I$SRC"
 STUBS="stubs/stub_*.d"
 VIRT="$SRC/core/virt/vm.d $SRC/core/virt/vmx.d $SRC/core/virt/svm.d \
-      $SRC/core/virt/ept.d $SRC/core/virt/kvmabi.d $SRC/core/virt/vmexit.d \
-      $SRC/core/virt/kvm.d $SRC/core/virt/selftest.d"
+      $SRC/core/virt/ept.d $SRC/core/virt/npt.d $SRC/core/virt/slat.d \
+      $SRC/core/virt/kvmabi.d $SRC/core/virt/vmexit.d $SRC/core/virt/vmcb.d \
+      $SRC/core/virt/backend.d $SRC/core/virt/kvm.d $SRC/core/virt/selftest.d"
 # NOTE: the real core/virt/vmm_policy.d is deliberately NOT in the list above:
 # it imports core.domain/identity/namespace (no host meaning).  The harness
 # compiles stubs/stub_vmm_policy.d instead (see stubs/ and README.md).

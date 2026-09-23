@@ -6,11 +6,12 @@
 //     (plus the known interrupt ioctls: honest -ENOTTY)
 //   * memslot chaos: slot/flags/gpa/size/userAddr — rc in the valid errno
 //     set, VM never corrupted
-//   * EPT map/unmap/lookup chaos against a scratch EPT: validity matches
-//     the documented contract, round-trips are exact
+//   * EPT/NPT/SLAT map/unmap/lookup chaos against scratch tables: validity
+//     matches the documented contract, round-trips are exact
 //   * vCPU id chaos: valid ids succeed, the rest fail with a valid errno
-//   * synthetic vmxDispatchExit fuzz: random reason/qual/gpa/data — action
-//     is always a valid VmExitAction, unknown reasons leave the VM Active
+//   * synthetic exit fuzz: random VMX reasons/SVM codes through the vendor
+//     decoders into virtDispatchExit — action is always a valid
+//     VmExitAction, unknown exits leave the VM Active
 //
 // Constraints: -betterC, @nogc nothrow.  Prints "[virt] fuzz PASS".
 module run_fuzz;
@@ -19,11 +20,18 @@ import core.virt.kvm : kvmSystemIoctl, kvmVmIoctl, kvmVcpuIoctl,
     kvmCreateVm, kvmCreateVcpu;
 import core.virt.vm : Vm, Vcpu, VmState, VcpuState,
     vmCheck, vcpuCheckObj, kvmUnpackHandle, kvmVmFdClosed, kvmVcpuFdClosed;
-import core.virt.vmexit : vmxDispatchExit, VmExitInfo, VmExitAction,
-    EXIT_REASON_HLT, EXIT_REASON_TRIPLE_FAULT, EXIT_REASON_IO_INSTRUCTION,
-    EXIT_REASON_EPT_VIOLATION, EXIT_REASON_VMCALL;
+import core.virt.vmexit : virtDispatchExit, VirtExitInfo, VirtExitKind,
+    VmExitAction;
+import core.virt.vmx : vmxDecodeExit;
+import core.virt.svm : svmDecodeExit;
 import core.virt.ept : Ept, eptInit, eptWireKernel,
     eptMap, eptUnmap, eptLookup, eptFree;
+import core.virt.npt : Npt, nptInit, nptWireKernel,
+    nptMap, nptUnmap, nptLookup, nptFree, nptLookupRaw,
+    NPT_PTE_P, NPT_PTE_RW, NPT_PTE_US, NPT_PTE_NX;
+import core.virt.slat : Slat, SlatKind, slatInit, slatWireKernel,
+    slatMap, slatUnmap, slatLookup, slatFree, slatRootPhys,
+    SLAT_R, SLAT_W, SLAT_X;
 import core.virt.kvmabi : KvmRun, KvmUserspaceMemoryRegion,
     KVM_CHECK_EXTENSION, KVM_CREATE_IRQCHIP, KVM_SET_GSI_ROUTING,
     KVM_IRQFD, KVM_IOEVENTFD, KVM_SET_USER_MEMORY_REGION, KVM_MEM_READONLY,
@@ -223,6 +231,89 @@ private void fzEpt() {
     fzCheck(e.tables == 0 && e.pml4Phys == 0, "ept-free-clean");
 }
 
+// --- section D2: NPT chaos (mirrors the EPT chaos; AMD encodings) ---------
+private void fzNpt() {
+    Npt n;
+    nptInit(&n);
+    nptWireKernel(&n, &fzAlloc, &fzFree, &fzMap);
+
+    static immutable ulong[4] addrTab = [0, 0x5000, 0x5001, 1UL << 48];
+    foreach (i; 0 .. 500) {
+        ulong gpa = fzPick(addrTab.ptr, addrTab.length);
+        ulong hpa = fzPick(addrTab.ptr, addrTab.length);
+        if ((fzNext() & 3) == 0) gpa = (fzNext() & 0xFFFF_FFFFUL) & ~0xFFFUL;
+        if ((fzNext() & 3) == 0) hpa = (fzNext() & 0xFFFF_FFFFUL) & ~0xFFFUL;
+        uint prot = cast(uint)(fzNext() & 15);
+
+        nptUnmap(&n, gpa & ~0xFFFUL); // start clean (misaligned unmap is a no-op)
+        bool valid = ((gpa & 0xFFF) == 0) && ((hpa & 0xFFF) == 0) &&
+                     ((prot & ~7u) == 0) && ((prot & 7u) != 0) &&
+                     ((gpa >> 48) == 0) && ((hpa >> 48) == 0);
+        bool got = nptMap(&n, gpa, hpa, prot);
+        fzCheck(got == valid, "npt-map-validity");
+        if (got) {
+            fzCheck(nptLookup(&n, gpa) == (hpa & ~0xFFFUL), "npt-lookup");
+            // Exact NPT encodings: P|US always; RW iff writable; NX iff !exec.
+            ulong raw = nptLookupRaw(&n, gpa);
+            fzCheck((raw & NPT_PTE_P) != 0 && (raw & NPT_PTE_US) != 0,
+                    "npt-enc-p-us");
+            fzCheck(((raw & NPT_PTE_RW) != 0) == ((prot & SLAT_W) != 0),
+                    "npt-enc-rw");
+            fzCheck(((raw & NPT_PTE_NX) != 0) == ((prot & SLAT_X) == 0),
+                    "npt-enc-nx");
+            fzCheck(!nptMap(&n, gpa, hpa, prot), "npt-double-map");
+            ulong uh = nptUnmap(&n, gpa);
+            fzCheck(uh == (hpa & ~0xFFFUL), "npt-unmap");
+            fzCheck(nptLookup(&n, gpa) == 0, "npt-gone");
+        }
+    }
+    nptFree(&n);
+    fzCheck(n.tables == 0 && n.pml4Phys == 0, "npt-free-clean");
+}
+
+// --- section D3: SLAT chaos (vendor-neutral layer over EPT and NPT) --------
+private void fzSlat() {
+    foreach (k; 0 .. 2) {
+        Slat sl;
+        slatInit(&sl, k == 0 ? SlatKind.Ept : SlatKind.Npt);
+        slatWireKernel(&sl, &fzAlloc, &fzFree, &fzMap);
+        fzCheck(slatRootPhys(&sl) == 0, "slat-root-empty");
+
+        static immutable ulong[4] addrTab = [0, 0x5000, 0x5001, 1UL << 48];
+        foreach (i; 0 .. 250) {
+            ulong gpa = fzPick(addrTab.ptr, addrTab.length);
+            ulong hpa = fzPick(addrTab.ptr, addrTab.length);
+            if ((fzNext() & 3) == 0) gpa = (fzNext() & 0xFFFF_FFFFUL) & ~0xFFFUL;
+            if ((fzNext() & 3) == 0) hpa = (fzNext() & 0xFFFF_FFFFUL) & ~0xFFFUL;
+            uint prot = cast(uint)(fzNext() & 15);
+
+            slatUnmap(&sl, gpa & ~0xFFFUL);
+            bool valid = ((gpa & 0xFFF) == 0) && ((hpa & 0xFFF) == 0) &&
+                         ((prot & ~7u) == 0) && ((prot & 7u) != 0) &&
+                         ((gpa >> 48) == 0) && ((hpa >> 48) == 0);
+            bool got = slatMap(&sl, gpa, hpa, prot);
+            fzCheck(got == valid, "slat-map-validity");
+            if (got) {
+                fzCheck(slatLookup(&sl, gpa) == (hpa & ~0xFFFUL),
+                        "slat-lookup");
+                fzCheck(slatRootPhys(&sl) != 0, "slat-root-live");
+                ulong uh = slatUnmap(&sl, gpa);
+                fzCheck(uh == (hpa & ~0xFFFUL), "slat-unmap");
+            }
+        }
+        // SlatKind.None fail-closes every operation.
+        Slat none;
+        slatInit(&none, SlatKind.None);
+        fzCheck(!slatMap(&none, 0x5000, 0x6000, SLAT_R), "slat-none-map");
+        fzCheck(slatLookup(&none, 0x5000) == 0, "slat-none-lookup");
+        fzCheck(slatUnmap(&none, 0x5000) == 0, "slat-none-unmap");
+        fzCheck(slatRootPhys(&none) == 0, "slat-none-root");
+
+        slatFree(&sl);
+        fzCheck(slatRootPhys(&sl) == 0, "slat-free-clean");
+    }
+}
+
 // --- section E: vCPU id chaos --------------------------------------------------------------------
 private void fzVcpuIds() {
     uint vo, vg, co, cg;
@@ -246,14 +337,14 @@ private void fzVcpuIds() {
     kvmVmFdClosed(vo, vg);
 }
 
-// --- section F: dispatch fuzz ------------------------------------------------------------------------
+// --- section F: decode + dispatch fuzz ------------------------------------------------------------
+// Random VMX reasons / SVM exit codes through the vendor decoders into the
+// common dispatcher.  Invariants are checked on the decoded VirtExitKind,
+// never on vendor numbers: unknown exits reach userspace cleanly, HLT/
+// shutdown stop the vCPU, containment always marks the VM Dying.
 private void fzDispatch() {
-    static immutable uint[6] knownReasons = [
-        0, // EXCEPTION_NMI -> UNKNOWN (default arm)
-        EXIT_REASON_TRIPLE_FAULT, EXIT_REASON_HLT, EXIT_REASON_VMCALL,
-        EXIT_REASON_IO_INSTRUCTION, EXIT_REASON_EPT_VIOLATION,
-    ];
-    static immutable ulong[4] reasonTab = [0, 12, 0xFF, 0xFFFF_FFFFUL];
+    static immutable ulong[4] vmxReasonTab = [0, 12, 0xFF, 0xFFFF_FFFFUL];
+    static immutable ulong[5] svmCodeTab = [0x72, 0x78, 0x7B, 0x81, 0x400];
 
     foreach (iter; 0 .. 1500) {
         uint vo, vg, co, cg;
@@ -268,18 +359,27 @@ private void fzDispatch() {
         KvmRun* run = cast(KvmRun*)phys_to_virt(rp);
         fzZeroRun(run);
 
-        VmExitInfo xi;
-        xi.reason = cast(uint)fzPick(reasonTab.ptr, reasonTab.length);
-        if ((fzNext() & 3) == 0) xi.reason = cast(uint)(fzNext() % 64);
-        xi.qual = fzNext();
-        xi.gpa = fzNext();
-        xi.data = fzNext();
-        xi.count = cast(uint)(fzNext() & 0xFF);
+        VirtExitInfo xi;
+        ulong qual = fzNext();
+        ulong gpa = fzNext();
+        ulong data = fzNext();
+        uint count = cast(uint)(fzNext() & 0xFF);
+        if ((iter & 1) == 0) {
+            // Intel: random basic exit reason through the VMX decoder.
+            uint reason = cast(uint)fzPick(vmxReasonTab.ptr, vmxReasonTab.length);
+            if ((fzNext() & 3) == 0) reason = cast(uint)(fzNext() % 64);
+            vmxDecodeExit(reason, qual, gpa, data, count, &xi);
+        } else {
+            // AMD: random exit code through the SVM decoder.
+            ulong code = fzPick(svmCodeTab.ptr, svmCodeTab.length);
+            if ((fzNext() & 3) == 0) code = fzNext() % 0x410;
+            svmDecodeExit(code, qual, gpa, data, &xi);
+        }
 
         // Null-run probe once: contained, never a crash.  The probe marks
         // the VM Dying / vCPU Dead by design, so this iteration ends here.
         if (iter == 0) {
-            fzCheck(vmxDispatchExit(xi, null, vm, vc) == VmExitAction.VmContained,
+            fzCheck(virtDispatchExit(xi, null, vm, vc) == VmExitAction.VmContained,
                     "dispatch-null-run");
             free_phys_page(rp);
             kvmVcpuFdClosed(co, cg);
@@ -287,24 +387,22 @@ private void fzDispatch() {
             continue;
         }
 
-        VmExitAction act = vmxDispatchExit(xi, run, vm, vc);
+        VmExitAction act = virtDispatchExit(xi, run, vm, vc);
         fzCheck(act <= VmExitAction.VmContained, "dispatch-action-range");
 
-        bool known = false;
-        foreach (kr; knownReasons)
-            if (xi.reason == kr) { known = true; break; }
-        if (!known) {
-            // Unknown reasons must reach userspace cleanly: the VM is
+        if (xi.kind == VirtExitKind.Unknown) {
+            // Unknown exits must reach userspace cleanly: the VM is
             // never corrupted by something the dispatcher doesn't know.
             fzCheck(act == VmExitAction.ToUserspace, "dispatch-unk-action");
             fzCheck(run.exitReason == KVM_EXIT_UNKNOWN, "dispatch-unk-reason");
+            fzCheck(run.u.hwReason == xi.hardwareReason, "dispatch-unk-hwreason");
             fzCheck(vm.state == VmState.Active, "dispatch-unk-vm-active");
             fzCheck(vc.state != VcpuState.Dead, "dispatch-unk-vc-alive");
         }
-        if (xi.reason == EXIT_REASON_HLT)
+        if (xi.kind == VirtExitKind.Hlt)
             fzCheck(act == VmExitAction.VcpuStopped &&
                     run.exitReason == KVM_EXIT_HLT, "dispatch-hlt");
-        if (xi.reason == EXIT_REASON_TRIPLE_FAULT)
+        if (xi.kind == VirtExitKind.Shutdown)
             fzCheck(act == VmExitAction.VcpuStopped &&
                     run.exitReason == KVM_EXIT_SHUTDOWN, "dispatch-tf");
         if (act != VmExitAction.VmContained)
@@ -323,6 +421,8 @@ extern (C) int main() {
     fzUnknownIoctls();
     fzMemslots();
     fzEpt();
+    fzNpt();
+    fzSlat();
     fzVcpuIds();
     fzDispatch();
 

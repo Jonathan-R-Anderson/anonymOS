@@ -13,6 +13,7 @@ import core.task : allocTask, g_tasks;                                  // SMP S
 import core.syscalls.posix : linux_sys_getpid;                          // SMP S4.4c AP dispatches a real syscall
 import core.globals;
 import core.io;
+import core.virt.backend : virtBootInit, virtCpuInit; // VIRT: BSP/AP backend init
 import ldc.attributes;
 import ldc.llvmasm;
 
@@ -300,6 +301,9 @@ extern(C) void apEntry(limine_smp_info* info) {
 // task once — a ring0→ring3→ring0 round trip through the AP's OWN entry path — then stays alive.
 extern(C) void apKernelLoopBody(uint idx) {
     g_apKernelLoopEntered[idx] = 1;
+    // VIRT: enable the virtualization backend on this AP (fail-soft).
+    // Must run on the AP itself (programs this CPU's EFER/HSAVE/VMXON).
+    virtCpuInit(idx);
     auto pc = &g_percpu[idx];
     if (g_apTaskPml4 == 0 || g_apTid <= 0) { for (;;) ++pc.heartbeat; }
     x64WriteCR3(g_apTaskPml4);                        // the AP test task's disjoint address space (once)
@@ -593,6 +597,10 @@ void initializeKernelCore() {
     }
 
     smpBringup();   // SMP_ROADMAP S0/S1: discover the live core count + park every AP online
+
+    // VIRT: enable the active virtualization backend on the BSP (fail-soft;
+    // logs backend= + available=).  APs enable themselves in apKernelLoopBody.
+    virtBootInit();
 }
 
 void _start() {

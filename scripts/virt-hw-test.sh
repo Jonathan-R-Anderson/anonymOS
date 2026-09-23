@@ -3,22 +3,25 @@
 #
 # What it proves, on real virtualization hardware:
 #   1. The host CPU exposes VMX (Intel) or SVM (AMD) and nested KVM is on.
-#   2a. On Intel: the kernel attempts VMXON at boot (kernel_main -> vmxBootInit)
-#       and it succeeds under nested KVM  ->  "[vmx] VMXON ok".
-#   2b. On AMD: the kernel's vendor-gated detection prints its honest
-#       "[vmx] no VMX" line, the fail-closed SVM backend is detected
-#       ("[virt] backend: AMD SVM detected, backend not validated"), and
-#       KVM_RUN refuses with ENODEV. No VMXON is possible on SVM and none
-#       is claimed — the assertions are per-vendor (task 3.5).
+#   2a. On Intel: the anonymOS kernel boots with VMX exposed to the guest
+#       and executes VMXON successfully  ->  "[vmx] VMXON ok".
+#   2b. On AMD: the kernel enables the real SVM backend at boot ->
+#       "[virt] backend=svm available=yes" and "[svm] SVM enabled
+#       (EFER.SVME, ...)".  VMRUN is implemented (core.virt.svm) but guest
+#       entry itself is NOT exercised here — that is OpenSpec task 6.2
+#       ("KVM smoke [HW]") and stays open.
 #   3. The virt boot selftest passes against the REAL backend (VM/vCPU
 #      lifecycle, slot validation, ceilings, userspace guards, KVM ABI
 #      capability probes)  ->  "[virt] selftest PASS".
 #
+# The final verdict names which path was verified. (An earlier revision
+# asserted "[vmx] VMXON ok" unconditionally and its summary overclaimed on
+# AMD hardware — fixed 2026-09-23; a later revision asserted the AMD
+# fail-closed path — updated 2026-09-23 for the real SVM backend.)
+#
 # What it does NOT prove (needs a test program inside the guest):
 #   - actual guest entry via KVM_RUN and a known exit (KVM_EXIT_HLT/IO).
 #     That is OpenSpec task 6.2 ("KVM smoke [HW]") and stays open.
-#   - On AMD hardware, real guest execution is impossible by design: the
-#     SVM backend is fail-closed. Guest entry needs Intel VMX hardware.
 #
 # Usage:
 #   scripts/virt-hw-test.sh
@@ -157,28 +160,26 @@ check() { # check <kind: require|forbid> <fixed string>
   fi
 }
 
+case "$VIRT" in
+  vmx)
+    check require "[vmx] VMXON ok"
+    check forbid  "[vmx] VMXON failed"
+    check forbid  "[vmx] no VMX "
+    HW_VERDICT="VMXON ok (Intel)"
+    ;;
+  svm)
+    # AMD: the real SVM backend must enable at boot — EFER.SVME set, HSAVE
+    # and host-save areas programmed, backend available.  A VMXON line here
+    # would be a lie; guest entry itself is task 6.2 and not exercised.
+    check require "[virt] backend=svm available=yes"
+    check require "[svm] SVM enabled (EFER.SVME"
+    check forbid  "[vmx] VMXON ok"
+    check forbid  "MSR_VM_CR SVMDIS set"
+    HW_VERDICT="SVM backend enabled (AMD); guest entry not exercised"
+    ;;
+esac
 check require "[virt] selftest PASS"
 check forbid  "[virt] selftest FAIL"
-if [ "$VIRT" = vmx ]; then
-  # Intel: the kernel attempts VMXON at boot (kernel_main -> vmxBootInit) and it
-  # must succeed under nested KVM; the honest "no VMX" line would mean the
-  # CPUID detection broke.
-  check require "[vmx] VMXON ok"
-  check forbid  "[vmx] VMXON failed"
-  check forbid  "[vmx] no VMX "
-  HW_VERDICT="VMXON ok (Intel)"
-else
-  # AMD: the SVM backend is fail-closed (svm.d SVM_BACKEND_READY=false — the
-  # VMRUN tier is not built yet), and the Intel-only VMX attempt prints its
-  # honest "[vmx] no VMX" line, which is EXPECTED here, not a failure.  The
-  # fail-closed proof is the ENODEV refusal on KVM_RUN (task 3.5); the
-  # positive signal is the backend-agnostic selftest verdict above.
-  check require "[virt] backend: AMD SVM detected, backend not validated"
-  check require "kvmVcpuRun: no virtualization hardware (ENODEV)"
-  check forbid  "[vmx] VMXON ok"
-  check forbid  "[vmx] VMXON failed"
-  HW_VERDICT="AMD fail-closed path (no VMXON possible on SVM)"
-fi
 
 if [ "$rc" -eq 0 ]; then
   pass "ALL ASSERTIONS HELD — $HW_VERDICT, virt selftest PASS on real hardware"

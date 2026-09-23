@@ -26,10 +26,9 @@ import core.virt.kvmabi;
 import core.virt.vm;
 import core.virt.vmm_policy : vmmMayCreateVm, vmmAuditCreate, vmmAuditDeny,
                               VMM_DENY_VM_CEILING, VMM_DENY_POOL_EXHAUSTED;
-import core.virt.vmx : vmxIsReady, vmxEnter, VMX_NOHW;
-import core.virt.vmexit : vmxDispatchExit, VmExitInfo, VmExitAction,
-    vmxValidateSRegs, vmxValidateRegs, vmxValidateMsrs;
-import core.virt.svm : svmAvailable, svmEnter;
+import core.virt.backend : virtEnter, virtBackendAvailable;
+import core.virt.vmexit : virtDispatchExit, VirtExitInfo, VmExitAction,
+    virtValidateSRegs, virtValidateRegs, virtValidateMsrs;
 import core.task : g_tasks, findRegion, MAX_TASKS;
 import core.objmgr : objGet;
 import core.addrspace : userPageMapped, userPageWritable, handlePageFault;
@@ -629,16 +628,30 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
     }
 
     vc.state = VcpuState.Running;
-    uint exitReason = 0;
-    int rc;
-    if (vmxIsReady())
-        rc = vmxEnter(vm.objId, vm.gen, vc.index, &exitReason);
-    else if (svmAvailable())
-        rc = svmEnter(vm.gen);
-    else
-        rc = VMX_NOHW; // -ENODEV: no virtualization hardware
+    // Fail-soft availability BEFORE guest-state validation: without a ready
+    // backend there is nothing to enter, and the VMM gets -ENODEV exactly
+    // like Linux without /dev/kvm — regardless of the cached guest state.
+    // (virtEnter re-validates; this is the fail-soft short-circuit.)
+    if (!virtBackendAvailable()) {
+        vc.state = VcpuState.Runnable;
+        return E_NODEV;
+    }
+    // Build the guest state the backend programs into the VMCS/VMCB from
+    // the vCPU's cached SET_REGS/SET_SREGS/SET_MSRS values.
+    KvmRegs regs;
+    foreach (i; 0 .. 18) (&regs.rax)[i] = vc.regs[i];
+    auto cache = kvmCacheFor(vc, false);
+    const(KvmSRegs)* sregs = (cache !is null && vc.sregsSet) ? &cache.sregs : null;
+    const(KvmMsrEntry)* msrs = (cache !is null && cache.msrCount > 0) ? &cache.msrs[0] : null;
+    uint nmsrs = (cache !is null) ? cache.msrCount : 0;
 
-    if (rc == VMX_NOHW) {
+    // Single entry point: validates guest state, picks the backend by
+    // hardware kind, enters once.  rc==0 -> xi holds the decoded,
+    // vendor-neutral exit; rc<0 -> entry failed, xi undefined.
+    VirtExitInfo xi;
+    int rc = virtEnter(vm, vc, &regs, sregs, msrs, nmsrs, &xi);
+
+    if (rc == E_NODEV) {
         // Fail-soft: back out to Runnable, no exit reason written (we never
         // entered).  The VMM sees -ENODEV, exactly like Linux without /dev/kvm.
         // 8.1/8.2: name the cause both ways — the sticky named diagnostic
@@ -648,17 +661,17 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
         vc.state = VcpuState.Runnable;
         return E_NODEV;
     }
-    // Real exit path: the backend filled exitReason (+ qualification/GPA in
-    // the [HW] phase); the HW-pure dispatcher populates struct kvm_run.
-    VmExitInfo xi;
-    xi.reason = exitReason;
-    xi.qual   = 0;
-    xi.gpa    = 0;
-    xi.data   = 0;
-    xi.count  = 0;
-    // [HW]: vmxEnter extracts qual/gpa/data/count from the VMCS and guest
-    // registers before returning.  Until then only synthetic exits flow here.
-    VmExitAction act = vmxDispatchExit(xi, run, vm, vc);
+    if (rc != 0) {
+        // -EINVAL: pre-entry validation failed (bad guest state) or the VM
+        // has no registered memory.  SET-time validation should have caught
+        // the former; the backend gate is authoritative either way.
+        klog("[virt] kvmVcpuRun: entry rejected (EINVAL)\n");
+        vc.state = VcpuState.Runnable;
+        return E_INVAL;
+    }
+    // Real exit path: the backend decoded the hardware exit into xi; the
+    // HW-pure dispatcher populates struct kvm_run.
+    VmExitAction act = virtDispatchExit(xi, run, vm, vc);
     if (act == VmExitAction.VmContained)
         return E_IO; // contained failure; VM is Dying, never re-entered
     return 0;
@@ -682,7 +695,7 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             if (!kvmUserOk(tid, arg, KvmRegs.sizeof, false)) return E_FAULT;
             KvmRegs r;
             kvmUserCopyIn(&r, arg, KvmRegs.sizeof);
-            if (vmxValidateRegs(&r) != 0) return E_INVAL; // non-canonical RIP etc.
+            if (virtValidateRegs(&r) != 0) return E_INVAL; // non-canonical RIP etc.
             foreach (i; 0 .. 18) vc.regs[i] = (&r.rax)[i];
             vc.regsSet = true;
             if (vc.state == VcpuState.Created) vc.state = VcpuState.Runnable;
@@ -703,7 +716,7 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             kvmUserCopyIn(&tmp, arg, KvmSRegs.sizeof);
             // Validate BEFORE committing: hostile control state (VMX/SMX in
             // guest CR4, non-canonical EFER, bad CR0/CR3/CR8) is rejected.
-            if (vmxValidateSRegs(&tmp) != 0) return E_INVAL;
+            if (virtValidateSRegs(&tmp) != 0) return E_INVAL;
             auto c = kvmCacheFor(vc, true);
             if (c is null) return E_NOMEM;
             c.sregs = tmp;
@@ -791,7 +804,7 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             // microcode and bad EFER are never valid guest state.
             KvmMsrEntry[KVM_CACHE_MAX_MSRS] tmp;
             if (n > 0) kvmUserCopyIn(tmp.ptr, arg + 8, cast(size_t)(n * 16));
-            if (vmxValidateMsrs(n ? tmp.ptr : null, n) != 0) return E_INVAL;
+            if (virtValidateMsrs(n ? tmp.ptr : null, n) != 0) return E_INVAL;
             auto fx = kvmCacheFor(vc, true);
             if (fx is null) return E_NOMEM;
             fx.msrCount = n;

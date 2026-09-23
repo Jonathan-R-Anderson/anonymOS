@@ -15937,10 +15937,12 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
     // which is why "is Hyprland laying out 6 windows or 1, and at what geometry" could not
     // be answered from a boot log.  Change-triggered logging costs a few lines per session
     // and answers it directly.  Bounded so a thrashing layout cannot flood the UART either.
-    static uint g_hosWinLogN     = 0;
-    static uint g_hosWinPrevN    = 0xffffffffu;
-    static int  g_hosWinPrevW    = -1;
-    static int  g_hosWinPrevH    = -1;
+    // __gshared: plain D statics are thread-local (.tdata/.tbss) and kernel
+    // tasks have no FS base — first access would fault on a null TLS read.
+    static __gshared uint g_hosWinLogN     = 0;
+    static __gshared uint g_hosWinPrevN    = 0xffffffffu;
+    static __gshared int  g_hosWinPrevW    = -1;
+    static __gshared int  g_hosWinPrevH    = -1;
     const int hosW0 = count > 0 ? g_hosWins[0].w : -1;
     const int hosH0 = count > 0 ? g_hosWins[0].h : -1;
     if (g_hosWinLogN < 40 &&

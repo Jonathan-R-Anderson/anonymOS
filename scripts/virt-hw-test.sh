@@ -125,11 +125,23 @@ check() { # check <kind: require|forbid> <fixed string>
   fi
 }
 
-check require "[vmx] VMXON ok"
 check require "[virt] selftest PASS"
 check forbid  "[virt] selftest FAIL"
-check forbid  "[vmx] VMXON failed"
-check forbid  "[vmx] no VMX "
+if [ "$VIRT" = vmx ]; then
+  # Intel: the kernel attempts VMXON at boot (kernel_main -> vmxBootInit) and it
+  # must succeed under nested KVM; the honest "no VMX" line would mean the
+  # CPUID detection broke.
+  check require "[vmx] VMXON ok"
+  check forbid  "[vmx] VMXON failed"
+  check forbid  "[vmx] no VMX "
+else
+  # AMD: the SVM backend is fail-closed (svm.d SVM_BACKEND_READY=false — the
+  # VMRUN tier is not built yet), and the Intel-only VMX attempt prints its
+  # honest "[vmx] no VMX" line, which is EXPECTED here, not a failure.  The
+  # positive signal is the backend-agnostic selftest verdict above.
+  check forbid  "[vmx] VMXON ok"
+  check forbid  "[vmx] VMXON failed"
+fi
 
 if [ "$rc" -eq 0 ]; then
   pass "ALL ASSERTIONS HELD — VMXON ok, virt selftest PASS on real hardware"

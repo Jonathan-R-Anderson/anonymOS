@@ -110,8 +110,25 @@ private void vmxWriteCR4(ulong v) {
 // Detection + boot init (REAL, runs anywhere)
 // ---------------------------------------------------------------------------
 
-// True iff CPUID.1:ECX[5] (VMX) is set.
+// True iff the vendor string is "GenuineIntel".  VMX must be vendor-gated:
+// some configurations (e.g. QEMU -cpu qemu64,+svm on an AMD host) set the
+// CPUID.1:ECX[5] bit even though the CPU has no VMX and none of the VMX MSRs —
+// rdmsr(IA32_FEATURE_CONTROL) there raises #GP and would kill the boot.
+private bool x64VendorIsIntel() {
+    uint b, d, c;
+    asm @nogc nothrow {
+        mov EAX, 0;
+        cpuid;
+        mov b, EBX;
+        mov d, EDX;
+        mov c, ECX;
+    }
+    return b == 0x756e6547u && d == 0x49656e69u && c == 0x6c65746eu; // "GenuineIntel"
+}
+
+// True iff the CPU vendor is Intel AND CPUID.1:ECX[5] (VMX) is set.
 public bool vmxDetect() {
+    if (!x64VendorIsIntel()) return false;
     uint a, b, c, d;
     x64Cpuid(1, 0, &a, &b, &c, &d);
     return (c & (1u << 5)) != 0;
@@ -122,7 +139,10 @@ public bool vmxDetect() {
 public void vmxBootInit() {
     g_vmxSupported = vmxDetect();
     if (!g_vmxSupported) {
-        klog("[vmx] no VMX (CPUID.1:ECX[5] clear) — hardware virtualization unavailable\n");
+        if (!x64VendorIsIntel())
+            klog("[vmx] vendor is not GenuineIntel — VMX unavailable (AMD path: core.virt.svm)\n");
+        else
+            klog("[vmx] no VMX (CPUID.1:ECX[5] clear) — hardware virtualization unavailable\n");
         return;
     }
 

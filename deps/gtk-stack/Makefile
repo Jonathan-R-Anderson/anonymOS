@@ -62,10 +62,16 @@ GL_HEADER_DIRS := EGL GL GLES GLES2 GLES3 KHR
 MAKEINFO := true
 export MAKEINFO
 
+# PKG_CONFIG_SYSROOT_DIR must stay EMPTY: every .pc in the sysroot already
+# carries an absolute prefix into $(SYSROOT), and several of them
+# (wayland-protocols, wayland-client/server, hwdata, hyprland-protocols,
+# xcb-proto) expand ${pc_sysrootdir} inside their variables — with a sysroot
+# set, pkgconf doubles those paths into $(SYSROOT)$(SYSROOT)/... and gtk3's
+# configure dies.  Same reasoning as the weston Makefile's PKG_CONFIG_ENV.
 PKG_CONFIG_ENV := \
     PKG_CONFIG_LIBDIR="$(SYSROOT)/lib/pkgconfig:$(SYSROOT)/share/pkgconfig" \
     PKG_CONFIG_PATH="" \
-    PKG_CONFIG_SYSROOT_DIR="$(SYSROOT)"
+    PKG_CONFIG_SYSROOT_DIR=""
 
 # Autoconf configure shorthand
 CONFIGURE_COMMON := \
@@ -197,7 +203,12 @@ $(STAMPS)/meson-cross.ini: $(STAMPS)/sysroot-relocated $(MUSL_CC) $(MUSL_CXX) $(
 	    "$(SYSROOT)" "$(MUSL_INSTALL)"                                 >> $@
 	@printf '\n[properties]\n'                                         >> $@
 	@printf "need_exe_wrapper = true\n"                                 >> $@
-	@printf "sys_root = '%s'\n" "$(SYSROOT)"                           >> $@
+	@# NO sys_root here: meson exports it as PKG_CONFIG_SYSROOT_DIR, and the
+	@# sysroot's .pc files (wayland-protocols, wayland-client/server, hwdata,
+	@# hyprland-protocols, xcb-proto) expand $${pc_sysrootdir} inside their
+	@# variables -- so a sysroot here doubles every such path into
+	@# $(SYSROOT)$(SYSROOT)/... and gtk3's configure dies.  All .pc prefixes
+	@# are already absolute into $(SYSROOT), so no sysroot is needed.
 	@printf '\n[host_machine]\n'                                       >> $@
 	@printf "system = 'linux'\n"                                        >> $@
 	@printf "cpu_family = 'x86_64'\n"                                   >> $@

@@ -29,7 +29,14 @@ $(XZ_TARBALL):
 
 $(XZ_SRC)/configure: $(XZ_TARBALL)
 	@echo "[xz] extracting..."
-	@rm -rf $(XZ_SRC); tar -xzf $(XZ_TARBALL); touch $@
+	@rm -rf $(XZ_SRC); tar -xzf $(XZ_TARBALL)
+	@# Normalize autotools timestamps (checked-out sources share one mtime, which
+	@# makes make believe aclocal.m4/configure need regeneration — and hosts
+	@# without automake die on aclocal-1.16).  Order matters: each touch lands
+	@# slightly newer than the last, so no regen rule fires.
+	@touch $(XZ_SRC)/configure.ac $(XZ_SRC)/aclocal.m4 $(XZ_SRC)/configure \
+	       $(XZ_SRC)/config.h.in $(XZ_SRC)/Makefile.am $(XZ_SRC)/Makefile.in
+	@touch $@
 
 $(LIBLZMA): $(XZ_SRC)/configure
 	@echo "[xz] configuring + building liblzma (musl static)..."

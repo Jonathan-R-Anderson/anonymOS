@@ -19,8 +19,11 @@ SQ_SRC     := squashfs-tools-$(SQ_VERSION)
 SELF       := $(abspath .)
 
 UNSQUASHFS := $(SELF)/unsquashfs
+# Optional: the decoy-os build needs mksquashfs (to pack its desktop rootfs) and
+# host distros don't all ship it — build it from the same tree on demand.
+MKSQUASHFS  := $(SELF)/mksquashfs
 
-.PHONY: all clean distclean
+.PHONY: all clean distclean mksquashfs
 all: $(UNSQUASHFS)
 
 $(SQ_TARBALL):
@@ -34,7 +37,7 @@ $(SQ_SRC)/squashfs-tools/Makefile: $(SQ_TARBALL)
 	@rm -rf $(SQ_SRC); tar -xzf $(SQ_TARBALL); touch $@
 
 # Build with all three codecs; point CFLAGS at our static codec sysroots and link static.
-$(UNSQUASHFS): $(SQ_SRC)/squashfs-tools/Makefile
+$(UNSQUASHFS): $(SQ_SRC)/squashfs-tools/Makefile | xz-codecs zstd-codecs
 	@echo "[squashfs] building unsquashfs (musl static, gzip+xz+zstd)..."
 	@$(MAKE) -C $(SQ_SRC)/squashfs-tools unsquashfs \
 	  CC="$(MUSL_CC)" \
@@ -45,7 +48,29 @@ $(UNSQUASHFS): $(SQ_SRC)/squashfs-tools/Makefile
 	@cp $(SQ_SRC)/squashfs-tools/unsquashfs $(UNSQUASHFS)
 	@echo "[squashfs] built $(UNSQUASHFS)"; file $(UNSQUASHFS)
 
+$(MKSQUASHFS): $(SQ_SRC)/squashfs-tools/Makefile | xz-codecs zstd-codecs
+	@echo "[squashfs] building mksquashfs (musl static, gzip+xz+zstd)..."
+	@$(MAKE) -C $(SQ_SRC)/squashfs-tools mksquashfs \
+	  CC="$(MUSL_CC)" \
+	  GZIP_SUPPORT=1 XZ_SUPPORT=1 ZSTD_SUPPORT=1 \
+	  LZO_SUPPORT=0 LZ4_SUPPORT=0 XATTR_SUPPORT=0 \
+	  EXTRA_CFLAGS="-D_GNU_SOURCE -I$(XZ_SYSROOT)/include -I$(ZSTD_SYSROOT)/include -I$(ZLIB_SYSROOT)/include" \
+	  EXTRA_LDFLAGS="-static -L$(XZ_SYSROOT)/lib -L$(ZSTD_SYSROOT)/lib -L$(ZLIB_SYSROOT)/lib"
+	@cp $(SQ_SRC)/squashfs-tools/mksquashfs $(MKSQUASHFS)
+	@echo "[squashfs] built $(MKSQUASHFS)"; file $(MKSQUASHFS)
+
+# The codec archives are gitignored (.a) while the sysroot metadata is committed —
+# on a fresh checkout only the committed unsquashfs binary hides their absence.
+# Build them from their own deps before linking mksquashfs.
+.PHONY: xz-codecs zstd-codecs
+xz-codecs:
+	+$(MAKE) -C $(abspath ../xz) all
+zstd-codecs:
+	+$(MAKE) -C $(abspath ../zstd) all
+
+mksquashfs: $(MKSQUASHFS)
+
 clean:
-	rm -f $(UNSQUASHFS); $(MAKE) -C $(SQ_SRC)/squashfs-tools clean 2>/dev/null || true
+	rm -f $(UNSQUASHFS) $(MKSQUASHFS); $(MAKE) -C $(SQ_SRC)/squashfs-tools clean 2>/dev/null || true
 distclean:
 	rm -f $(SQ_TARBALL) $(UNSQUASHFS); rm -rf $(SQ_SRC)

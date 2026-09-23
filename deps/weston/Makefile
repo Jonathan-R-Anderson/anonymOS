@@ -70,10 +70,14 @@ $(STAMP_DIR)/weston-built: $(STAMP_DIR)/libdrm-built $(STAMP_DIR)/libevdev-built
                            $(STAMP_DIR)/libdisplay-info-built $(STAMP_DIR)/libseat-built \
                            $(CROSS_FILE)
 
-# Prerequisite: gtk-stack must be built (sysroot + cross-file exist).
+# Prerequisite: the meson cross-file that gtk-stack generates.  The file is
+# gitignored, and deps/Makefile orders libdrm BEFORE gtk-stack — so the old
+# "gtk-stack not built — run: make deps-desktop" hard error dead-locked on
+# itself on any checkout that didn't already have the file.  Regenerate it
+# through gtk-stack's canonical rule instead.
 $(CROSS_FILE):
-	@echo "[weston] gtk-stack not built — run: make deps-desktop"
-	@exit 1
+	@echo "[weston] meson cross-file missing — regenerating via gtk-stack"
+	+$(MAKE) -C $(abspath $(SELF)/../gtk-stack) $(CROSS_FILE)
 
 $(MUSL_CC):
 	@echo "[weston] musl not built — run: make deps-core"

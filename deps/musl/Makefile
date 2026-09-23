@@ -18,6 +18,11 @@ MUSL_CC       := $(MUSL_INSTALL)/bin/musl-clang
 MUSL_CXX      := $(MUSL_INSTALL)/bin/musl-clang++
 MUSL_UAPI_STAMP := $(MUSL_INSTALL)/include/.linux-uapi-synced
 
+# Kernel UAPI asm headers live under the multiarch triple on Debian/Ubuntu but
+# directly under /usr/include on Arch/Fedora (linux-api-headers).  Prefer the
+# multiarch copy when both exist.
+UAPI_ASM_DIR := $(firstword $(wildcard /usr/include/x86_64-linux-gnu/asm /usr/include/asm))
+
 .PHONY: all clean distclean
 
 all: $(MUSL_UAPI_STAMP)
@@ -197,7 +202,8 @@ $(MUSL_UAPI_STAMP): $(MUSL_CC) $(MUSL_CXX)
 	rm -rf $(MUSL_INSTALL)/include/linux $(MUSL_INSTALL)/include/asm $(MUSL_INSTALL)/include/asm-generic
 	cp -a /usr/include/linux $(MUSL_INSTALL)/include/linux
 	cp -a /usr/include/asm-generic $(MUSL_INSTALL)/include/asm-generic
-	cp -a /usr/include/x86_64-linux-gnu/asm $(MUSL_INSTALL)/include/asm
+	@test -n "$(UAPI_ASM_DIR)" || { echo "[musl] no kernel UAPI asm headers found (looked for /usr/include/x86_64-linux-gnu/asm and /usr/include/asm)"; exit 1; }
+	cp -a $(UAPI_ASM_DIR) $(MUSL_INSTALL)/include/asm
 	touch $@
 
 clean:

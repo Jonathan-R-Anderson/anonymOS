@@ -7,7 +7,12 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean iso zsh scp-client progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets build-zksync-wallet boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi arbiter-efi hos-install.iso wallpaper
+# The first target in this file is `zsh` (Z0, line ~15); without this a bare
+# `make` builds ONLY zsh and stops, silently, even though the README documents
+# `make` as the everything-build.  Pin the default to `all`.
+.DEFAULT_GOAL := all
+
+.PHONY: all clean iso zsh scp-client progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets build-zksync-wallet boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi arbiter-efi hos-install.iso wallpaper mtools-host
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -1484,7 +1489,16 @@ iso: hos-install.iso
 arbiter-efi:
 	+$(MAKE) -C boot/arbiter
 
-hos-install.iso: stage-iso-tree veracrypt-efi arbiter-efi
+# vendored host mtools (mcopy/mmd/mformat) and xorriso — scripts/mk-install-iso.sh
+# assembles FAT ESP images and the hybrid ISO with them; not every distro ships
+# these packages.
+mtools-host:
+	+$(MAKE) -C deps/mtools
+
+xorriso-host:
+	+$(MAKE) -C deps/xorriso
+
+hos-install.iso: stage-iso-tree veracrypt-efi arbiter-efi mtools-host xorriso-host
 	scripts/mk-install-iso.sh
 
 # =========================================================

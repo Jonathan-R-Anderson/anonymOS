@@ -34,9 +34,24 @@ apBpHandler:
     iretq
 
 # Safe catch-all for every other AP vector: halt this AP (never triple-fault the VM).
+# Record WHERE before parking.  Every vector shares this stub, so there is no vector number to
+# record; what is on the stack is either [RIP, CS] (no error code) or [errcode, RIP].  Save both
+# words plus CR2 and let the reader tell them apart -- a RIP is a kernel address, an error code is
+# a small integer.  Without this a faulting AP simply went quiet, and the only symptom was whatever
+# it had been holding staying held forever.  Clobbers only rax/rcx, both saved and restored, so the
+# recorded RIP is still the faulting one.
 .global apDefaultHandler
 apDefaultHandler:
     cli
+    movq %rax, %gs:112                # scratch-save rax in the per-CPU tail padding
+    movq (%rsp), %rax
+    movq %rax, %gs:80                 # word0: RIP, or the error code
+    movq 8(%rsp), %rax
+    movq %rax, %gs:88                 # word1: CS,  or the RIP
+    movq %cr2, %rax
+    movq %rax, %gs:96                 # faulting address (#PF only; stale otherwise)
+    movq $1, %gs:104                  # this CPU has parked here
+    movq %gs:112, %rax
 1:  hlt
     jmp 1b
 

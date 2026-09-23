@@ -131,6 +131,16 @@ public ulong apActivatedIpiCount() @nogc nothrow {
     return (g_apActivatedIdx < MAX_CPUS) ? g_percpu[g_apActivatedIdx].ipiCount : 0;
 }
 
+// Did the activated AP park in apDefaultHandler, and if so where?  word0/word1 are the two words
+// the iret frame started with (see asm.S); cr2 is only meaningful for a page fault.
+public bool apActivatedHalted(ref ulong word0, ref ulong word1, ref ulong cr2) @nogc nothrow {
+    if (g_apActivatedIdx >= MAX_CPUS) return false;
+    auto pc = &g_percpu[g_apActivatedIdx];
+    if (pc.halted == 0) return false;
+    word0 = pc.haltWord0; word1 = pc.haltWord1; cr2 = pc.haltCr2;
+    return true;
+}
+
 // S4.4b: a dedicated 64 KiB kernel C stack for the single activated AP (the 8 KiB IST is entry-only;
 // the coroutine runs C code here).  One stack suffices while only one AP runs tasks; S4.4d → [MAX_CPUS].
 align(16) __gshared ubyte[0x10000] g_apKernelStack;
@@ -169,9 +179,23 @@ align(64) struct PerCpu {  // cache-line sized so per-CPU writes don't false-sha
     ulong   syscallSeen;    // 56: S4.3 — the AP's syscall stub sets this via %gs:56 (see asm.S)
     ulong   apicTicks;      // 64: S5 — the AP's local-APIC timer handler bumps this via %gs:64 (see asm.S)
     ulong   ipiCount;       // 72: S7 — the AP's IPI handler bumps this via %gs:72 (see asm.S)
-    ubyte[48] _pad2;        // pad PerCpu to 128 bytes (two cache lines)
+    // An AP that takes an unexpected vector halts in apDefaultHandler (asm.S) so it can never
+    // triple-fault the machine -- but it used to halt recording NOTHING, so a dead core was
+    // indistinguishable from a busy one.  It cost a day to find that the AP was dying inside the
+    // installer's CSPRNG rekey.  The handler now leaves a breadcrumb here first.
+    ulong   haltWord0;      // 80: first word at the iret frame (RIP, or the error code)
+    ulong   haltWord1;      // 88: second word (CS, or RIP when an error code was pushed)
+    ulong   haltCr2;        // 96: faulting address, meaningful for #PF
+    ulong   halted;         // 104: non-zero once this CPU has parked in apDefaultHandler
+    ulong   haltScratch;    // 112: apDefaultHandler parks rax here so it clobbers no register
+    ubyte[8] _pad2;         // pad PerCpu to 128 bytes (two cache lines)
 }
 static assert(PerCpu.sizeof == 128);
+static assert(PerCpu.haltWord0.offsetof == 80);    // apDefaultHandler in asm.S hardcodes %gs:80
+static assert(PerCpu.haltWord1.offsetof == 88);    // ... %gs:88
+static assert(PerCpu.haltCr2.offsetof == 96);      // ... %gs:96
+static assert(PerCpu.halted.offsetof == 104);      // ... %gs:104
+static assert(PerCpu.haltScratch.offsetof == 112); // ... %gs:112
 static assert(PerCpu.bpHandled.offsetof == 48);    // apBpHandler    in asm.S hardcodes %gs:48
 static assert(PerCpu.syscallSeen.offsetof == 56);  // apSyscallStub  in asm.S hardcodes %gs:56
 static assert(PerCpu.apicTicks.offsetof == 64);    // apTimerHandler in asm.S hardcodes %gs:64
@@ -342,7 +366,14 @@ extern(C) void apKernelLoopBody(uint idx) {
         for (uint d = 0; d < 20000; ++d) __asm("pause", "");       // throttle so BKL contention can't stall the desktop
         ++pc.heartbeat;
     }
-    for (;;) ++pc.heartbeat;
+    // The getpid stub above is only the S4 proof; anything unexpected there breaks out of the loop.
+    // Keep servicing the installer from here regardless -- this core is otherwise doing nothing, and
+    // an encrypted install wants every chunk of crypto it can get off the boot core.
+    for (;;) {
+        import drivers.veracrypt_impl : installApJobActive, installApWorkerStep;
+        if (installApJobActive()) installApWorkerStep();
+        ++pc.heartbeat;
+    }
 }
 
 // apKernelState lives in ap_context.S; expose its address without importing the symbol type.

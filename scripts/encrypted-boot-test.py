@@ -128,9 +128,24 @@ try:
                        "store in the free tail" not in lg))
         checks.append(("no OBJECT TABLE EXHAUSTED", "[objmgr] OBJECT TABLE EXHAUSTED" not in lg))
     elif want == "DECOY":
-        checks.append(("Alpine decoy kernel booted", wait_for("Linux version", timeout)))
-        ok_init = wait_for("DECOY-INIT-OK", timeout) or wait_for("login:", 30) or wait_for("Welcome to Alpine", 30)
-        checks.append(("decoy reached userspace", ok_init))
+        # Assert what THIS decoy actually prints.  The previous markers were inherited from an
+        # older decoy and none of them appear here: the UKI boots via the EFI stub so no bare
+        # "Linux version" line reaches ttyS0 (OpenRC announces the kernel instead), there is no
+        # DECOY-INIT-OK in the Alpine userland, and nothing prints "login:" or "Welcome to Alpine"
+        # because the decoy starts a display manager rather than a serial getty.  So the suite
+        # reported the decoy broken while it was booting to a working XFCE desktop -- a test that
+        # cries wolf is worse than no test, because it hides the next real regression.
+        checks.append(("decoy unlocked and switched root ([decoy-crypt] DECOY-CRYPT-OK)",
+                       wait_for("DECOY-CRYPT-OK", timeout)))
+        checks.append(("decoy found its root disk (not [decoy-crypt] NO-DISK)",
+                       wait_for("root found on /dev/", 60)))
+        ok_init = (wait_for("OpenRC", timeout) or wait_for("DECOY-INIT-OK", 30)
+                   or wait_for("login:", 30) or wait_for("Welcome to Alpine", 30))
+        checks.append(("decoy init took over (Alpine OpenRC)", ok_init))
+        # Reaching a login manager is the point of the decoy: it has to look like a real desktop.
+        checks.append(("decoy reached its desktop session",
+                       wait_for("Starting System login manager", 120)
+                       or wait_for("Starting networkmanager", 30)))
         lg = readlog()
         checks.append(("EpinAnonymOS did NOT boot on the decoy password",
                        "[dkernel] EpinAnonymOS D kernel starting" not in lg))

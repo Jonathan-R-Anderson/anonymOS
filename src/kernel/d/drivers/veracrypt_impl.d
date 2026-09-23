@@ -662,6 +662,15 @@ __gshared char[INST_SECRET_MAX] g_instDiskPassword;   // §D: FDE disk password 
 __gshared uint g_instDiskPasswordLen;
 __gshared bool g_instHiddenMode;
 __gshared bool g_instFdeMode;                 // §E6: Full-disk install in flight (3-partition layout, no decoy)
+// Whether the outer partition gets the full random pass.  This is the single biggest cost of an
+// encrypted install -- on a 500 GB disk it IS the install -- and it buys exactly one thing:
+// DENIABILITY.  A hidden volume lives inside the outer partition's free space, so that space must
+// be indistinguishable from random or the hidden volume's boundary is visible; a Hidden-OS install
+// therefore always fills.  A Full-disk install has no hidden volume to conceal: filling only makes
+// the disk LOOK like it might have one.  That is a real property, so it stays available -- but it
+// is now the user's choice rather than hours everyone pays by default (install.json
+// "outerFill": "deniable" | "fast").
+__gshared bool g_instFillOuter = true;
 __gshared ubyte g_instPhase;
 __gshared ulong g_instProgressDone;
 __gshared char[INST_SECRET_MAX] g_instHiddenPassword;
@@ -861,6 +870,7 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
 
     g_instConfigHidden = false;
     g_instConfigFde = false;
+    g_instFillOuter = true;
     instClearTransientPasswords();
     g_instConfigLen = 0;
     instCfgAppend("{\n");
@@ -910,6 +920,12 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
     instGetOrDefault(raw, len, "encryption", "none".ptr, encryption[], encryptionLen);
     g_instConfigHidden = instSliceEq(encryption.ptr, encryptionLen, "Hidden OS") ||
                          instSliceEq(encryption.ptr, encryptionLen, "hidden");
+    {   // "outerFill": "fast" trades the hidden-volume disguise for hours of writing.  Hidden OS
+        // ignores it: there the fill is the mechanism, not a cosmetic.
+        char[32] fill; uint fillLen;
+        instJsonGetString(raw, len, "outerFill", fill[], fillLen);
+        g_instFillOuter = !(instSliceEq(fill.ptr, fillLen, "fast"));
+    }
     g_instConfigFde = instSliceEq(encryption.ptr, encryptionLen, "Full disk") ||
                       instSliceEq(encryption.ptr, encryptionLen, "fulldisk") ||
                       instSliceEq(encryption.ptr, encryptionLen, "full");
@@ -1310,6 +1326,11 @@ __gshared bool   g_instJobDescriptor = false;         // unit 0 is a synthesized
 __gshared ChaChaCtx g_instRng;
 __gshared ubyte  g_instApWorkerSeen = 0;              // the AP has visited installApWorkerStep
 __gshared ubyte  g_instApPreparing = 0;
+// Where the AP last was inside its worker, so a stall dump can say which step it died on rather
+// than only that it stopped.  1 locked, 2 slot claimed, 3 ratcheting the RNG, 4 generating,
+// 5 encrypting, 6 finished the chunk, 7 released.
+__gshared ubyte  g_instApStage = 0;
+__gshared ulong  g_instApSteps = 0;                   // times the AP entered the worker at all
 __gshared uint   g_instPrepLock = 0;                  // xchg lock: exactly one preparer at a time
 __gshared ulong  g_instWaitSinceMs = 0;               // BSP: how long it has waited on the AP for a READY slot
 __gshared ulong  g_instApChunks = 0;                  // chunks prepared on the AP (for the DONE line)
@@ -1356,17 +1377,24 @@ private void instPublishJob(ubyte kind, ulong units, const(ubyte)* src, ulong im
 
 // Prepare the next chunk into `slot`.  Pure computation on the job's own state: no lock, any CPU.
 @nogc nothrow
-private bool installPrepareSlot(uint slot) {
+private bool installPrepareSlot(uint slot, bool onAp) {
     enum uint SEC = 512;
     const ulong next = g_instPrepNext;
     if (next >= g_instJobEndUnit) return false;
+    // The CSPRNG's periodic rekey does not run on the AP.  Measured: the AP faults inside
+    // chacha_ratchet on the first rekey (64 chunks in, exactly CHACHA_REKEY_BYTES) and halts
+    // there holding the staging lock, which stalls the install until the watchdog breaks it.
+    // The BSP rekeys eagerly in installStep, so declining here costs the AP one pass, not 64 MiB.
+    if (onAp && g_instJobKind == 1 && chacha_needs_reseed(g_instRng)) return false;
     const ulong left = g_instJobEndUnit - next;
     const uint n = cast(uint)(left < INST_STAGE_SECTORS ? left : INST_STAGE_SECTORS);
     ubyte* buf = g_instStageBuf[slot].ptr;
     if (g_instJobKind == 1) {
-        if (chacha_needs_reseed(g_instRng)) chacha_ratchet(g_instRng);
+        if (chacha_needs_reseed(g_instRng)) chacha_ratchet(g_instRng);   // BSP only (see above)
+        volatileStore(&g_instApStage, cast(ubyte)4);
         chacha_fill(g_instRng, buf, cast(ulong)n * SEC);
     } else {
+        volatileStore(&g_instApStage, cast(ubyte)5);
         foreach (sIdx; 0 .. n) {
             ubyte* out_ = buf + cast(size_t)sIdx * SEC;
             const ulong unit = next + sIdx;
@@ -1395,22 +1423,36 @@ private bool installPrepareSlot(uint slot) {
 public bool installApJobActive() @nogc nothrow { return volatileLoad(&g_instJobGen) != 0; }
 public void installApWorkerStep() @nogc nothrow {
     volatileStore(&g_instApWorkerSeen, cast(ubyte)1);
+    ++g_instApSteps;
     const uint gen = volatileLoad(&g_instJobGen);
     if (gen == 0) return;
+    // The AP prepares the RANDOM FILL only (kind 1).  It faults and halts inside the XTS path,
+    // the same way it used to inside chacha_ratchet: both are -O2-vectorised routines with stack
+    // buffers, while the ChaCha fill -- which the AP runs by the gigabyte without trouble -- is
+    // not.  That points at the AP's stack alignment after apSwitchToUserspace rather than at
+    // anything in the crypto, and chasing it belongs with the SMP code, not here.
+    //
+    // Splitting the work this way costs almost nothing: the fill is the phase that grows with the
+    // disk (hours on a big one), the payload is a fixed ~512 MiB the boot core does in seconds.
+    if (g_instJobKind != 1) return;
     if (!instPrepTryLock()) return;                       // the BSP fallback is mid-prepare
+    volatileStore(&g_instApStage, cast(ubyte)1);
     volatileStore(&g_instApPreparing, cast(ubyte)1);
     instFence();
     if (volatileLoad(&g_instJobGen) != gen) { volatileStore(&g_instApPreparing, cast(ubyte)0); instPrepUnlock(); return; }
     foreach (i; 0 .. INST_STAGE_SLOTS) {
         if (volatileLoad(&g_instSlotState[i]) != SLOT_FREE) continue;
         volatileStore(&g_instSlotState[i], SLOT_FILLING);
-        if (installPrepareSlot(i)) ++g_instApChunks;
+        volatileStore(&g_instApStage, cast(ubyte)2);
+        if (installPrepareSlot(i, true)) ++g_instApChunks;
         else volatileStore(&g_instSlotState[i], SLOT_FREE);   // nothing left in this job
+        volatileStore(&g_instApStage, cast(ubyte)6);
         break;
     }
     instFence();
     volatileStore(&g_instApPreparing, cast(ubyte)0);
     instPrepUnlock();
+    volatileStore(&g_instApStage, cast(ubyte)7);
 }
 
 // The BSP consumer: write READY slots in unit order; when no AP is preparing, prepare here.
@@ -1433,6 +1475,7 @@ private bool installStreamCurrentPhase(uint maxSectors, ref uint did) {
             const ulong nowMs = pitMs();
             if (g_instWaitSinceMs == 0) g_instWaitSinceMs = nowMs;
             const bool apAlive = (volatileLoad(&g_instApWorkerSeen) != 0) && !sync &&
+                                 g_instJobKind == 1 &&      // the AP only prepares the random fill
                                  (nowMs - g_instWaitSinceMs) < 2000;
             if (apAlive) return true;                     // the AP is filling; come back next pass
             // Fallback (single CPU, or synchronous run): prepare one chunk here, then write it.
@@ -1443,7 +1486,7 @@ private bool installStreamCurrentPhase(uint maxSectors, ref uint did) {
             if (!instPrepTryLock()) return true;          // an AP just appeared and owns the prepare
             if (g_instPrepNext != want) g_instPrepNext = want;   // the BSP resumes exactly at the write point
             volatileStore(&g_instSlotState[free_], SLOT_FILLING);
-            const bool okPrep = installPrepareSlot(cast(uint)free_);
+            const bool okPrep = installPrepareSlot(cast(uint)free_, false);
             instPrepUnlock();
             if (!okPrep) { volatileStore(&g_instSlotState[free_], SLOT_FREE); return false; }
             ++g_instBspChunks;
@@ -1566,23 +1609,72 @@ private ulong installHiddenVolumeBytes() {
     return hiddenBytes;
 }
 
+// Per-phase throughput, reported when the phase ends.  An encrypted install is hours of writing on
+// a real disk, so "which phase, how many MB/s" is the only way to know whether the cost is the
+// CSPRNG, the cipher or the disk -- and it is the number the GUI's estimate is built on.
+__gshared ulong g_instPhaseStartMs = 0;
+__gshared ulong g_instPhaseStartDone = 0;
+@nogc nothrow
+private void installReportPhaseRate() {
+    // tscMs, not pitMs: this loop suppresses interrupts in long stretches and the PIT loses those
+    // ticks, which inflated every rate printed here by roughly the duty cycle (a 512 MiB AES-XTS
+    // phase claimed 1700 MiB/s on a CPU with no AES-NI).  The TSC does not stop.
+    import core.ticks : tscMs;
+    if (g_instPhaseStartMs == 0) return;
+    const ulong ms = tscMs() - g_instPhaseStartMs;
+    if (g_instProgressDone <= g_instPhaseStartDone) return;   // reset or rewound: nothing to report
+    const ulong sectors = g_instProgressDone - g_instPhaseStartDone;
+    if (ms == 0) return;
+    const ulong kbps = (sectors / 2) * 1000 / ms;          // sectors/2 = KiB
+    klog("[install] phase 0x"); klog_hex(g_instPhase);
+    klog(" done: "); klog_dec(sectors / 2048); klog(" MiB in "); klog_dec(ms / 1000);
+    klog(" s = "); klog_dec(kbps / 1024); klog(" MiB/s\n");
+}
+
 @nogc nothrow
 private void installEnterHiddenPhase(ubyte phase) {
+    import core.ticks : tscMs;
+    installReportPhaseRate();
+    g_instPhaseStartMs = tscMs();
+    g_instPhaseStartDone = g_instProgressDone;
     g_instPhase = phase;
     g_instOff = 0;
     switch (phase) {
     case INST_PHASE_SYS_RANDOM:
-        g_instLba = g_instSysFirst;
-        g_instRemaining = g_instSysSectors;
-        klog(g_instFdeMode ? "[install] Full disk: randomizing the system partition\n"
-                           : "[install] Hidden OS: randomizing encrypted decoy system partition\n");
-        instPublishJob(1, g_instRemaining, null, 0, false, null, null);
+        // Only the TAIL needs randomising: the front of this partition is about to be overwritten
+        // with the encrypted payload (header + descriptor + image), and ciphertext is already
+        // indistinguishable from random -- writing random there first and the image over it is
+        // paying for the same sectors twice.  On a Full-disk install that is 512 MiB of pure waste
+        // per install; with a decoy it is ~1 GiB.
+        {
+            const ulong payload = 1 + (g_instFdeMode ? (g_instHiddenImageSectors + 1)
+                                                     : g_instDecoyImageSectors);
+            const ulong skip = payload < g_instSysSectors ? payload : g_instSysSectors;
+            g_instLba = g_instSysFirst + skip;
+            g_instRemaining = g_instSysSectors - skip;
+            g_instProgressDone += skip;          // accounted, just not written twice
+            klog(g_instFdeMode ? "[install] Full disk: randomizing the system partition tail\n"
+                               : "[install] Hidden OS: randomizing the decoy system partition tail\n");
+            instPublishJob(1, g_instRemaining, null, 0, false, null, null);
+        }
         break;
     case INST_PHASE_OUTER_RANDOM:
         g_instLba = g_instOuterFirst;
         g_instRemaining = g_instOuterSectors;
-        klog(g_instFdeMode ? "[install] Full disk: randomizing the outer partition\n"
-                           : "[install] Hidden OS: randomizing full outer volume partition\n");
+        if (!g_instFillOuter) {
+            // Fast mode: randomise only the head (the headers and the region a reader touches
+            // first), leave the rest untouched.  The system is still fully encrypted; what is
+            // given up is the pretence that a hidden volume MIGHT be in there.
+            const ulong head = 1UL << 15;                    // 16 MiB
+            if (g_instRemaining > head) {
+                g_instProgressDone += g_instRemaining - head;
+                g_instRemaining = head;
+            }
+            klog("[install] Full disk (fast): randomizing the head of the outer partition only\n");
+        } else {
+            klog(g_instFdeMode ? "[install] Full disk: randomizing the whole outer partition (deniable)\n"
+                               : "[install] Hidden OS: randomizing full outer volume partition\n");
+        }
         instPublishJob(1, g_instRemaining, null, 0, false, null, null);
         break;
     case INST_PHASE_DECOY_IMAGE:
@@ -1894,11 +1986,95 @@ public bool installBegin(int idx, ulong dsec) {
 // Advance the in-flight install by up to `maxSectors` (0xFFFFFFFF = run to completion).
 __gshared ulong g_instLastBeat = 0;   // heartbeat: last progress value klogged
 
+// The install must never depend on the second core being alive.  installStreamCurrentPhase waits
+// for a READY slot while the AP looks alive, and the AP claims g_instPrepLock / g_instApPreparing
+// around each prepare -- so an AP that dies (or is simply never scheduled again) mid-prepare leaves
+// a lock nobody will release and the whole install stops with no explanation.  Observed: an install
+// stopped dead after the first 64 MiB on a 2-CPU guest and sat there until the VM was killed.
+//
+// So: watch g_instProgressDone.  After STALL_REPORT_MS with no sector written, print the ring state
+// (this is the only view into the cross-CPU protocol from a serial log).  After STALL_BREAK_MS,
+// declare the AP dead, break its lock and fall back to preparing on the BSP -- slower, but it
+// finishes.  Both clocks are the TSC, because the PIT loses ticks during exactly this work.
+private enum ulong STALL_REPORT_MS = 5_000;
+private enum ulong STALL_BREAK_MS  = 12_000;
+__gshared ulong g_instStallDone = 0;
+__gshared ulong g_instStallSinceMs = 0;
+__gshared ulong g_instStallReportedMs = 0;
+__gshared ulong g_instApBroken = 0;
+@nogc nothrow
+private void installStallWatchdog() {
+    import core.ticks : tscMs;
+    const ulong nowMs = tscMs();
+    if (g_instProgressDone != g_instStallDone) {          // progress: reset the clock
+        g_instStallDone = g_instProgressDone;
+        g_instStallSinceMs = nowMs;
+        g_instStallReportedMs = 0;
+        return;
+    }
+    if (g_instStallSinceMs == 0) { g_instStallSinceMs = nowMs; return; }
+    const ulong stalledMs = nowMs - g_instStallSinceMs;
+    if (stalledMs < STALL_REPORT_MS) return;
+    if (nowMs - g_instStallReportedMs >= STALL_REPORT_MS) {
+        g_instStallReportedMs = nowMs;
+        klog("[install] STALL "); klog_dec(stalledMs / 1000);
+        klog("s phase=0x"); klog_hex(g_instPhase);
+        klog(" want="); klog_dec(g_instOff / 512);
+        klog(" prepNext="); klog_dec(g_instPrepNext);
+        klog(" end="); klog_dec(g_instJobEndUnit);
+        klog(" gen="); klog_dec(cast(ulong)volatileLoad(&g_instJobGen));
+        klog(" apSeen="); klog_dec(cast(ulong)volatileLoad(&g_instApWorkerSeen));
+        klog(" apPrep="); klog_dec(cast(ulong)volatileLoad(&g_instApPreparing));
+        klog(" lock="); klog_dec(cast(ulong)volatileLoad(&g_instPrepLock));
+        klog(" apStage="); klog_dec(cast(ulong)volatileLoad(&g_instApStage));
+        {   // If the second core parked in the catch-all fault handler, say where.
+            import core.kmain : apActivatedHalted;
+            ulong w0, w1, cr2;
+            if (apActivatedHalted(w0, w1, cr2)) {
+                klog(" AP-HALTED w0=0x"); klog_hex(w0);
+                klog(" w1=0x"); klog_hex(w1);
+                klog(" cr2=0x"); klog_hex(cr2);
+            }
+        }
+        klog(" apSteps="); klog_dec(g_instApSteps);
+        klog(" apChunks="); klog_dec(g_instApChunks);
+        klog(" slots=");
+        foreach (i; 0 .. INST_STAGE_SLOTS) {
+            klog_dec(cast(ulong)volatileLoad(&g_instSlotState[i])); klog(":");
+            klog_dec(g_instSlotFirstUnit[i]); klog(" ");
+        }
+        klog("\n");
+    }
+    if (stalledMs >= STALL_BREAK_MS && g_instApBroken == 0) {
+        g_instApBroken = 1;
+        // The AP is not coming back.  Stop believing it, drop whatever it was holding, and put any
+        // slot it left half-filled back in the pool -- the BSP re-prepares those units itself.
+        volatileStore(&g_instApWorkerSeen, cast(ubyte)0);
+        volatileStore(&g_instApPreparing, cast(ubyte)0);
+        foreach (i; 0 .. INST_STAGE_SLOTS)
+            if (volatileLoad(&g_instSlotState[i]) == SLOT_FILLING)
+                volatileStore(&g_instSlotState[i], SLOT_FREE);
+        instFence();
+        volatileStore(&g_instPrepLock, 0u);
+        g_instWaitSinceMs = 0;
+        klog("[install] STALL: second core declared dead; preparing on the boot core instead");
+        klog(" (the install continues, more slowly)\n");
+    }
+}
+
 @nogc nothrow
 public void installStep(uint maxSectors) {
     import core.install_cap : gatedDiskWrite, revokeInstallWriteCap;
     enum uint SEC = 512;
     if (!g_instActive) return;
+    installStallWatchdog();
+    // Rekey the fill CSPRNG here, on the boot core, before the AP can find it due.  This runs far
+    // more often than once per CHACHA_REKEY_BYTES, so the AP's decline path above is effectively
+    // never taken -- and the rekey never happens on the core that cannot survive it.
+    if (g_instJobKind == 1 && chacha_needs_reseed(g_instRng) && instPrepTryLock()) {
+        if (chacha_needs_reseed(g_instRng)) chacha_ratchet(g_instRng);
+        instPrepUnlock();
+    }
     // Heartbeat every 32 MiB so a stall in the klog pinpoints the phase + LBA.
     if (g_instProgressDone - g_instLastBeat >= 65536) {
         g_instLastBeat = g_instProgressDone;
@@ -1916,7 +2092,11 @@ public void installStep(uint maxSectors) {
             g_instPhase == INST_PHASE_BOOTESP) {
             const(ubyte)* src = (g_instPhase == INST_PHASE_BOOTESP) ? g_instBootSrc : g_instSrc;
             while (g_instRemaining > 0 && did < maxSectors) {
-                uint chunk = cast(uint)(g_instRemaining > 128 ? 128 : g_instRemaining);
+                // 1 MiB per command, not the historical 64 KiB: this is a straight copy out of the
+                // boot module with no crypto in the way, so the only cost per command is the AHCI
+                // round trip -- and at 64 KiB a 512 MiB ESP paid that round trip 8192 times.
+                // diskWrite splits to the DMA bounce buffer itself (drivers/block/disk.d).
+                uint chunk = cast(uint)(g_instRemaining > INST_STAGE_SECTORS ? INST_STAGE_SECTORS : g_instRemaining);
                 if (chunk > maxSectors - did) chunk = maxSectors - did;
                 if (chunk == 0) break;
                 if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, chunk, src + g_instOff)) {
@@ -2056,6 +2236,7 @@ public void installStep(uint maxSectors) {
             klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
             klog(wasFde ? " (Full disk: preboot ESP + encrypted EpinAnonymOS boot volume + random outer volume were written)\n"
                         : " (Hidden OS selected: preboot ESP + encrypted decoy Linux + encrypted hidden OS + headers were written)\n");
+            installReportPhaseRate();
             klog("[install] crypto chunks prepared on the second core: "); klog_dec(g_instApChunks);
             klog(", on the BSP: "); klog_dec(g_instBspChunks); klog("\n");
             g_instApChunks = 0; g_instBspChunks = 0;

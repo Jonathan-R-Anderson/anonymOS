@@ -64,6 +64,9 @@ import drivers.veracrypt_impl : bootHasInstallPayload,
 __gshared ulong g_instDriveLastMs = 0;   // (legacy) rate-limit the loop's install driver to 1 batch/ms
 __gshared ulong g_instBudgetWinMs = 0, g_instBudgetSpentMs = 0;   // §E6: 100 ms budget window for the driver
 __gshared ulong g_instLastInputMs = 0, g_instSeenMouse = 0, g_instSeenKbd = 0;
+// TSC calibration anchors for the install budget (see core.ticks.tscCalibrate): the PIT loses
+// ticks during the installer's interrupt-off batches, so the budget is metered off the TSC.
+__gshared ulong g_tscCalTsc0 = 0, g_tscCalPit0 = 0;
 import core.install_cap : installCapProof;             // INSTALLER §E4c: one-shot block-write cap
 import core.acceptance : acceptanceRun;   // IMMUTABLE_ROOTLESS Phase 0.4 section-F gates
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
@@ -5217,17 +5220,40 @@ private void kernelLoop() {
         // desktop is idle.  pitMs granularity is coarse, so each call is charged at least 1 ms.
         {
             import core.syscalls.posix : g_inMouseEnq, g_inKbdEnq;
-            const ulong nowMs = pitMs();
+            import core.ticks : tscMs, tscCalibrate, tscCalibrated;
+            // Keep re-sampling the TSC against the PIT.  tscCalibrate only accepts a window that
+            // BEATS the best ratio so far (lost PIT ticks can only inflate it), so this converges
+            // on the true rate instead of latching whatever the first window happened to see.
+            // After the first accepted window the budget below is metered on a clock that does not
+            // stop during the very work it is charging for.
+            {
+                if (g_tscCalTsc0 == 0) { g_tscCalTsc0 = rdtsc(); g_tscCalPit0 = pitMs(); }
+                else if (tscCalibrate(g_tscCalTsc0, g_tscCalPit0)) {
+                    import core.ticks : tscHz;
+                    klog("[time] TSC: "); klog_dec(tscHz() / 1000000);
+                    klog(" MHz (install budget metered on the TSC, not the PIT)\n");
+                    g_tscCalTsc0 = 0;                    // start the next window
+                } else if (pitMs() - g_tscCalPit0 > 4000) {
+                    g_tscCalTsc0 = 0;                    // window went stale: take a fresh one
+                }
+            }
+            const ulong nowMs = tscMs();
             if (g_inMouseEnq != g_instSeenMouse || g_inKbdEnq != g_instSeenKbd) {
                 g_instSeenMouse = g_inMouseEnq; g_instSeenKbd = g_inKbdEnq; g_instLastInputMs = nowMs;
             }
             if (nowMs - g_instBudgetWinMs >= 100) { g_instBudgetWinMs = nowMs; g_instBudgetSpentMs = 0; }
-            const bool inputRecent = (nowMs - g_instLastInputMs) < 400;
-            const ulong share = inputRecent ? 15 : 60;
+            // 15 ms of every 100 while a person is moving the mouse or typing -- the cursor comes
+            // first.  When nothing has touched the input devices for a while, the desktop has
+            // nothing to render either, so the install gets nearly the whole window: on a big disk
+            // this is the difference between an afternoon and an hour.  The compositor still runs
+            // (it is the remainder, and it is parked on poll anyway), and any keystroke or mouse
+            // movement drops the installer back to 15 % within one 100 ms window.
+            const ulong idleMs = nowMs - g_instLastInputMs;
+            const ulong share = idleMs < 400 ? 15 : (idleMs < 4000 ? 60 : 90);
             if (g_instBudgetSpentMs < share) {
-                const ulong t0 = pitMs();
-                installStep(2048);                     // <= one 1 MiB staging slot per admitted pass
-                ulong dt = pitMs() - t0; if (dt == 0) dt = 1;
+                const ulong t0 = tscMs();
+                installStep(4096);                     // up to two 1 MiB staging slots per admitted pass
+                ulong dt = tscMs() - t0; if (dt == 0) dt = 1;
                 g_instBudgetSpentMs += dt;
             }
         }

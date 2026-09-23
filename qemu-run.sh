@@ -130,6 +130,13 @@ DISK_SIZE="${DISK_SIZE:-4G}"
 if [ "${VIRTIO_BLK:-0}" = "1" ]; then
   DISKDEV=( -device virtio-blk-pci,drive=hosdisk )
   echo "[qemu-run] data disk on VIRTIO-BLK (VIRTIO_BLK=1)"
+elif [ "${NVME_BLK:-0}" = "1" ]; then
+  # NVME_BLK=1 puts the INSTALL TARGET on NVMe, which is what most machines built in the last
+  # several years actually have.  (The LKL_NVME knob further down is a different thing: a small
+  # scratch NVMe device for the Linux-compat layer to drive, not a disk EpinAnonymOS installs to.)
+  # Without this there was no way to exercise the kernel's own NVMe write path at all.
+  DISKDEV=( -device nvme,drive=hosdisk,serial=hos-nvme-0 )
+  echo "[qemu-run] data disk on NVMe (NVME_BLK=1)"
 else
   DISKDEV=( -device ahci,id=ahci0 -device ide-hd,drive=hosdisk,bus=ahci0.0 )
 fi

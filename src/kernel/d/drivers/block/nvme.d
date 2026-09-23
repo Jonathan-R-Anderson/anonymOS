@@ -109,6 +109,13 @@ struct NVMeController
     ulong namespaceBlocks;
     uint blockSize;
 
+    // PRP list for transfers larger than two pages (see nvmeBuildPrps).  One 4 KiB page holds 512
+    // entries, which covers a 2 MiB transfer -- past that a real list would have to chain, so
+    // maxTransferBytes is capped below that and no chaining is needed.
+    ubyte* prpList;
+    size_t prpListPhys;
+    uint maxTransferBytes;      // min(controller MDTS, what one PRP list page can describe)
+
     bool present;
     bool ready;
 }
@@ -415,6 +422,25 @@ private bool identifyController()
 
     printLine("'");
 
+    // MDTS (byte 77) is the Maximum Data Transfer Size as a power-of-two multiple of the memory
+    // page size (CAP.MPSMIN); 0 means "no limit".  Exceeding it is a command error, so the
+    // per-command size below is the smallest of: what the controller allows, what one PRP list
+    // page can describe, and the 1 MiB bounce buffer the block layer actually hands us.
+    {
+        const ubyte mdts = buf[77];
+        const uint pageSz = g_nvme.pageSize != 0 ? g_nvme.pageSize : 4096;
+        uint limit = PRP_LIST_MAX_BYTES;
+        if (mdts != 0 && mdts < 20)
+        {
+            const ulong ctrlMax = cast(ulong)pageSz << mdts;
+            if (ctrlMax < limit) limit = cast(uint)ctrlMax;
+        }
+        g_nvme.maxTransferBytes = limit;
+        print("[nvme] max transfer per command: ");
+        printUnsigned(cast(size_t)(limit / 1024));
+        printLine(" KiB");
+    }
+
     return true;
 }
 
@@ -502,6 +528,83 @@ private bool setupIOQueues()
     return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// PRP (Physical Region Page) list.
+//
+// NVMe describes a transfer with two fields: prp1 is the first page, and prp2 is either the
+// SECOND page (transfers of at most two pages) or the physical address of a list of the remaining
+// pages.  Until now this driver only ever set prp1, which capped every command at one 4 KiB page
+// -- so writing a gigabyte took 262144 separate commands and their completions.  The installer
+// hands down a physically contiguous 1 MiB bounce buffer, which is 256 pages: prp1 plus a
+// 255-entry list, comfortably inside one 4 KiB list page (512 entries).
+//
+// PRP rules this relies on: the buffer is page-aligned (dma_alloc is called with alignment 4096),
+// so no PRP has a non-zero offset, and every entry after the first must be page-aligned.
+private enum uint PRP_PAGE = 4096;
+private enum uint PRP_LIST_MAX_BYTES = 2 * 1024 * 1024;   // one list page, no chaining
+
+// Fill in cmd.prp1/prp2 for `bytes` starting at `physAddr`.  Returns false if the transfer needs
+// more than this driver's single list page can describe.
+private bool nvmeBuildPrps(ref NVMeCmd cmd, size_t physAddr, ulong bytes)
+{
+    // Two things this list is only correct under, both checked rather than assumed, because the
+    // failure mode is not a failed command -- it is the controller DMAing into whatever physical
+    // memory the wrong address happens to name, during a disk install, with no error reported.
+    //
+    //  1. PRP granularity is CC.MPS, programmed to 0 (= 4 KiB) in nvmeControllerResetAndEnable.
+    //     That is a different register from the CAP.MPSMIN this driver stores in pageSize, and
+    //     nothing but this check couples the two; if CC.MPS is ever raised, every entry below is
+    //     off by a factor.
+    //  2. Every PRP after the first must be page-aligned, and the first is assumed to have no
+    //     offset.  dma_alloc is called with alignment 4096 so that holds -- today.
+    if (g_nvme.pageSize != PRP_PAGE)
+    {
+        printLine("[nvme] controller page size is not 4 KiB; refusing to build a PRP list");
+        return false;
+    }
+    if ((physAddr & (PRP_PAGE - 1)) != 0)
+    {
+        printLine("[nvme] transfer buffer is not page-aligned; refusing to build a PRP list");
+        return false;
+    }
+    cmd.prp1 = physAddr;
+    if (bytes <= PRP_PAGE)
+    {
+        cmd.prp2 = 0;
+        return true;
+    }
+    if (bytes <= 2 * PRP_PAGE)
+    {
+        cmd.prp2 = physAddr + PRP_PAGE;
+        return true;
+    }
+    if (g_nvme.prpList is null)
+        return false;
+    // Pages after the first go in the list, in order.
+    const ulong rest = bytes - PRP_PAGE;
+    const ulong entries = (rest + PRP_PAGE - 1) / PRP_PAGE;
+    if (entries > PRP_PAGE / 8)
+        return false;                                  // would need a chained list
+    auto list = cast(ulong*)g_nvme.prpList;
+    foreach (i; 0 .. cast(size_t)entries)
+        list[i] = cast(ulong)physAddr + PRP_PAGE + cast(ulong)i * PRP_PAGE;
+    cmd.prp2 = g_nvme.prpListPhys;
+    return true;
+}
+
+// How many blocks one command may carry.  Callers chunk to this.
+public uint nvmeMaxBlocksPerCommand()
+{
+    if (!g_nvme.ready || g_nvme.blockSize == 0)
+        return 8;
+    uint bytes = g_nvme.maxTransferBytes != 0 ? g_nvme.maxTransferBytes : PRP_PAGE;
+    uint blocks = bytes / g_nvme.blockSize;
+    if (blocks == 0) blocks = 1;
+    if (blocks > 0xFFFF) blocks = 0xFFFF;              // cdw12 NLB is 16-bit (zero-based)
+    return blocks;
+}
+
 public bool nvmeReadBlocks(ulong lba, ushort count, size_t physAddr)
 {
     if (!g_nvme.ready)
@@ -515,13 +618,12 @@ public bool nvmeReadBlocks(ulong lba, ushort count, size_t physAddr)
 
     cmd.cdw0 = NVME_IO_READ;
     cmd.nsid = g_nvme.namespaceId;
-    cmd.prp1 = physAddr;
 
     ulong bytes = cast(ulong)count * g_nvme.blockSize;
 
-    if (bytes > 4096)
+    if (!nvmeBuildPrps(cmd, physAddr, bytes))
     {
-        printLine("[nvme] read too large for simple PRP path");
+        printLine("[nvme] read too large to describe with one PRP list page");
         return false;
     }
 
@@ -545,13 +647,12 @@ public bool nvmeWriteBlocks(ulong lba, ushort count, size_t physAddr)
 
     cmd.cdw0 = NVME_IO_WRITE;
     cmd.nsid = g_nvme.namespaceId;
-    cmd.prp1 = physAddr;
 
     ulong bytes = cast(ulong)count * g_nvme.blockSize;
 
-    if (bytes > 4096)
+    if (!nvmeBuildPrps(cmd, physAddr, bytes))
     {
-        printLine("[nvme] write too large for simple PRP path");
+        printLine("[nvme] write too large to describe with one PRP list page");
         return false;
     }
 
@@ -701,6 +802,15 @@ public void initNVMe()
                         printLine("[nvme] controller enable failed");
                         return;
                     }
+
+                    // One page for the PRP list, allocated before Identify so a controller that
+                    // reports a large MDTS can actually be used.  Without it every command is
+                    // limited to the two pages prp1/prp2 can name directly.
+                    g_nvme.prpList = cast(ubyte*)dma_alloc(4096, 4096, &g_nvme.prpListPhys);
+                    if (g_nvme.prpList is null)
+                        printLine("[nvme] no PRP list page: commands limited to 8 KiB");
+                    else
+                        memset(g_nvme.prpList, 0, 4096);
 
                     if (!identifyController())
                         return;

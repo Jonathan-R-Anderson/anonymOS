@@ -2,19 +2,49 @@ module drivers.block.disk;
 
 import drivers.block.ahci : initAHCI, ahciDataPort, readSector, writeSector,
                             HBA_PORT, g_ahciDevices, getPort;
-import drivers.block.nvme : initNVMe, nvmeReady, nvmeReadBlocks, nvmeWriteBlocks,
+import drivers.block.nvme : initNVMe, nvmeReady, nvmeReadBlocks, nvmeWriteBlocks, nvmeMaxBlocksPerCommand,
                             nvmeCapacityBytes, nvmeBlockSize, nvmeFlush;
 import drivers.block.virtio_blk : virtioBlkProbe, virtioBlkCapacity, virtioBlkRead, virtioBlkWrite;  // ROADMAP 5.0
 import memory.dma : dma_alloc;
 import core.stdc.string : memcpy, memset;
-import core.io : klog, klog_hex;
+import core.io : klog, klog_hex, klog_dec;
 
 @nogc nothrow:
 
 enum uint SECTOR = 512;
-enum uint BOUNCE_SECTORS = 128;
-enum uint BOUNCE_BYTES = BOUNCE_SECTORS * SECTOR;
-enum uint NVME_MAX_SECTORS = 8;
+// One AHCI command per 64 KiB was the install's real cost: a 2 GiB encrypted install is 32768
+// commands, each with its own bounce memcpy and a synchronous completion poll, and it measured
+// ~17 MB/s while the CSPRNG feeding it runs at ~700 MB/s.  1 MiB per command cuts the command
+// count (and the polling round-trips) by 16x.  ATA READ/WRITE DMA EXT takes up to 65535 sectors
+// and the PRDT entry up to 4 MiB, so 2048 sectors is well inside both; the allocation falls back
+// to the old size if the DMA allocator cannot give a contiguous megabyte.
+enum uint BOUNCE_SECTORS_MAX = 2048;         // 1 MiB
+enum uint BOUNCE_SECTORS_MIN = 128;          // 64 KiB (the historical size)
+__gshared uint BOUNCE_SECTORS = BOUNCE_SECTORS_MIN;
+__gshared uint BOUNCE_BYTES = BOUNCE_SECTORS_MIN * SECTOR;
+
+// Allocate the largest contiguous bounce buffer we can, largest first.
+private void* bounceAlloc(size_t* physOut) {
+    foreach (sectors; [BOUNCE_SECTORS_MAX, 1024u, 512u, 256u, BOUNCE_SECTORS_MIN]) {
+        void* v = dma_alloc(sectors * SECTOR, 4096, physOut);
+        if (v !is null) {
+            BOUNCE_SECTORS = sectors;
+            BOUNCE_BYTES   = sectors * SECTOR;
+            klog("[disk] DMA bounce buffer: "); klog_dec(BOUNCE_BYTES / 1024); klog(" KiB per transfer\n");
+            return v;
+        }
+    }
+    return null;
+}
+// Per-command NVMe transfer size.  This was a hard 8 sectors (4 KiB) because the driver only
+// filled prp1; nvme.d now builds a PRP list, so ask it what the controller will actually take and
+// clamp to the bounce buffer.  On a 1 MiB buffer that is 256x fewer commands for the same bytes.
+private uint nvmeChunkSectors() {
+    uint blocks = nvmeMaxBlocksPerCommand();
+    if (blocks > BOUNCE_SECTORS) blocks = BOUNCE_SECTORS;
+    if (blocks == 0) blocks = 1;
+    return blocks;
+}
 
 enum DiskBackend
 {
@@ -63,7 +93,7 @@ public void diskInit()
     {
         g_backend = DiskBackend.ahci;
 
-        g_bounceVirt = dma_alloc(BOUNCE_BYTES, 4096, &g_bouncePhys);
+        g_bounceVirt = bounceAlloc(&g_bouncePhys);
         if (g_bounceVirt is null)
         {
             klog("[disk] bounce buffer alloc failed\n");
@@ -105,7 +135,7 @@ public void diskInit()
 
         // NVMe DMA needs PHYSICAL addresses; callers hand us kernel-virtual
         // buffers, so all I/O bounces through this DMA-safe buffer.
-        g_bounceVirt = dma_alloc(BOUNCE_BYTES, 4096, &g_bouncePhys);
+        g_bounceVirt = bounceAlloc(&g_bouncePhys);
         if (g_bounceVirt is null)
         {
             klog("[disk] bounce buffer alloc failed\n");
@@ -209,7 +239,8 @@ private bool diskReadNvme(ulong lba, uint count, void* dst)
 
     while (count > 0)
     {
-        ushort chunk = cast(ushort)(count > NVME_MAX_SECTORS ? NVME_MAX_SECTORS : count);
+        const uint maxc = nvmeChunkSectors();
+        ushort chunk = cast(ushort)(count > maxc ? maxc : count);
 
         if (!nvmeReadBlocks(lba, chunk, g_bouncePhys))
             return false;
@@ -233,7 +264,8 @@ private bool diskWriteNvme(ulong lba, uint count, const(void)* src)
 
     while (count > 0)
     {
-        ushort chunk = cast(ushort)(count > NVME_MAX_SECTORS ? NVME_MAX_SECTORS : count);
+        const uint maxc = nvmeChunkSectors();
+        ushort chunk = cast(ushort)(count > maxc ? maxc : count);
 
         memcpy(g_bounceVirt, in_, chunk * SECTOR);
 

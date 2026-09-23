@@ -342,6 +342,9 @@ struct fbuf {
     int busy;
 };
 
+/* ETA moving-window length, in one-second samples. */
+#define RATE_WINDOW 16
+
 struct app {
     struct wl_display *display;
     struct wl_registry *registry;
@@ -389,6 +392,10 @@ struct app {
     int progress;
     int focused_field;
     int encryption_mode;
+    /* Full disk only: random-fill the WHOLE disk so it is indistinguishable from a Hidden-OS
+     * install (hours on a large disk), or only what the layout needs (minutes).  Hidden OS always
+     * fills -- there the fill IS what hides the hidden volume. */
+    int fill_whole_disk;
     int install_config_written;
     double pointer_x;
     double pointer_y;
@@ -441,6 +448,15 @@ struct app {
     unsigned long lba;
     struct timespec install_start;   /* CLOCK_MONOTONIC stamp from start_install() */
     struct timespec install_end;     /* frozen at completion / failure ("took m:ss") */
+    /* Moving window for the ETA.  A since-start average is wrong here because the phases have
+     * wildly different costs (a 512 MiB AES-XTS image write, then a random fill that on a fast
+     * erase credits gigabytes at once) -- it drags the slowest phase through the whole install
+     * and reports hours when minutes are left.  Sample (second, sectors) once a second and quote
+     * the rate over the last RATE_WINDOW samples instead. */
+    long rate_t[RATE_WINDOW];        /* elapsed seconds at each sample */
+    unsigned long rate_d[RATE_WINDOW]; /* done_sectors at each sample */
+    int rate_n;                      /* samples taken (saturates; index is rate_n % RATE_WINDOW) */
+    long rate_last_t;                /* elapsed second of the newest sample, -1 == none yet */
     int have_clock;                  /* clock_gettime succeeded at start */
     long last_stats_second;          /* elapsed second last painted (repaint gate) */
     int reboot_denied;               /* reboot(RB_AUTOBOOT) returned: show the fallback */
@@ -685,7 +701,9 @@ static void chosen_disk_text(struct app *app, char *buf, size_t cap, const char 
 static const char *layout_name(struct app *app)
 {
     if (app->encryption_mode == ENC_HIDDEN) return "Hidden OS layout";
-    if (app->encryption_mode == ENC_FULL) return "encrypted layout";
+    if (app->encryption_mode == ENC_FULL)
+        return app->fill_whole_disk ? "encrypted layout, whole disk erased"
+                                    : "encrypted layout, fast erase";
     return "plain A/B layout";
 }
 
@@ -752,8 +770,8 @@ static const char *screen_body(struct app *app)
             return "A decoy Linux, an encrypted outer volume, and the real EpinAnonymOS hidden inside "
                    "it. Three passwords; every sector of the disk is erased first.";
         if (app->encryption_mode == ENC_FULL)
-            return "The whole EpinAnonymOS system volume is encrypted with one password, asked at the "
-                   "pre-boot prompt before anything starts. Every sector of the disk is erased first.";
+            return "One password, asked at the pre-boot prompt before anything starts. The erase "
+                   "mode below is the difference between a few minutes and several hours.";
         return "The system is written unencrypted: a small boot manager plus two identical 512 MB "
                "system slots. Anyone holding the disk can read it, including the password hashes in "
                "install.json. Choose Full disk or Hidden OS to encrypt it.";
@@ -819,15 +837,17 @@ static void screen_hints(struct app *app, const char **l1, const char **l2)
     *l2 = "";
     switch (app->screen) {
     case SCREEN_WELCOME: *l1 = "Enter: begin"; break;
-    case SCREEN_KEYBOARD: *l1 = "Up/Down: choose  type to test"; *l2 = "Enter: continue"; break;
+    case SCREEN_KEYBOARD: *l1 = "Up/Down: choose  type to test"; *l2 = "Enter: continue  Esc: back"; break;
     case SCREEN_DRIVERS:
-    case SCREEN_IDENTITIES: *l1 = "Up/Down: move  Space: tick"; *l2 = "Enter: continue"; break;
+    case SCREEN_IDENTITIES: *l1 = "Up/Down: move  Space: tick"; *l2 = "Enter: continue  Esc: back"; break;
     case SCREEN_ACCOUNT:
-    case SCREEN_DECOY: *l1 = "Tab: next field"; *l2 = "Enter: continue"; break;
-    case SCREEN_ENCRYPTION: *l1 = "Left/Right: mode  Tab: field"; *l2 = "Enter: continue"; break;
+    case SCREEN_DECOY: *l1 = "Tab: next field"; *l2 = "Enter: continue  Esc: back"; break;
+    /* The erase-mode row says what it does on the row itself, so the hint stays short enough
+     * not to be clipped by the sidebar (it was, at "Tab: field..."). */
+    case SCREEN_ENCRYPTION: *l1 = "Left/Right: mode  Tab: field"; *l2 = "Enter: continue  Esc: back"; break;
     case SCREEN_REVIEW: *l1 = "Enter: Install Now"; *l2 = "Back: change a choice"; break;
     case SCREEN_PROGRESS: break;
-    default: *l1 = "Up/Down: choose"; *l2 = "Enter: continue"; break;
+    default: *l1 = "Up/Down: choose"; *l2 = "Enter: continue  Esc: back"; break;
     }
 }
 
@@ -1125,6 +1145,24 @@ static void field_rect(struct app *app, int field,
     *h = FIELD_H;
 }
 
+/* The erase-mode row on the Encryption page (Full disk only).  It sits in the field pane, one
+ * row below the password pair, and is a real clickable control rather than a keyboard-only
+ * shortcut: this choice is the difference between a ten-minute install and an all-day one, and
+ * a person should not have to discover a hotkey to find it.  Hidden OS does not get the row --
+ * there the whole-disk pass IS the concealment, so there is nothing to choose. */
+static int erase_row_visible(struct app *app)
+{
+    return app->screen == SCREEN_ENCRYPTION && app->encryption_mode == ENC_FULL;
+}
+static void erase_row_rect(struct app *app, double *x, double *y, double *w, double *h)
+{
+    /* Row 1 of the field pane (the password pair shares row 0). */
+    *x = CONTENT_X;
+    *w = content_w(app);
+    *y = field_y0(app) + (1 + field_ordinal_base(app)) * FIELD_STEP - app->content_scroll;
+    *h = FIELD_H;
+}
+
 /* ── scrollable form content pane ───────────────────────────────────────────── */
 static int content_view_top(struct app *app)
 {
@@ -1216,12 +1254,19 @@ static void cycle_focus(struct app *app)
     }
     for (int i = 0; i < n; i++) {
         if (fields[i] == app->focused_field) {
+            /* On the Encryption page the erase-mode row is the last stop in the Tab cycle, marked
+             * by focused_field == -1.  It needs a place in the cycle because the obvious binding
+             * is not available: Space belongs to the passphrase field this page is built around,
+             * and a passphrase with spaces in it is good practice, not an edge case.  Without this
+             * the row was clickable and nothing else -- unreachable on a machine whose pointer has
+             * not come up, which is a live installer's normal failure mode. */
+            if (i == n - 1 && erase_row_visible(app)) { app->focused_field = -1; return; }
             app->focused_field = fields[(i + 1) % n];
             ensure_field_visible(app);
             return;
         }
     }
-    app->focused_field = fields[0];
+    app->focused_field = fields[0];          /* also the wrap from the erase row back to field 0 */
     ensure_field_visible(app);
 }
 
@@ -1373,6 +1418,16 @@ static void form_validate(struct app *app, struct vmsg *m)
                      "from memory when the install ends. No recovery if lost.");
             return;
         }
+        /* The erase mode is the difference between minutes and hours on a large disk, so the page
+         * says so in its own words rather than leaving it to the Summary. */
+        if (app->fill_whole_disk)
+            vmsg_set(m, COL_AMBER, 0, "Erase: the WHOLE disk is overwritten with random data, so it "
+                     "looks exactly like a Hidden-OS install -- and that is the slow part, roughly "
+                     "an hour per 100 GB. Press Space for the fast erase.");
+        else
+            vmsg_set(m, COL_DETAIL, 0, "Erase: only the encrypted system area is written -- minutes, "
+                     "not hours. Just as encrypted; what you give up is the disguise that a hidden "
+                     "OS might also be there. Press Space to erase the whole disk instead.");
         if (f == FIELD_HIDDEN_CONFIRM) {
             vmsg_set(m, COL_DETAIL, 0, "Type the same password again.");
             return;
@@ -2144,6 +2199,48 @@ static void draw_list_row(struct app *app, cairo_t *cr, int visible_pos,
         draw_text_right(app, reason, (int)(x + w) - 14, (int)y + 14, 11, 0xff5b6470u);
 }
 
+/* The erase-mode control.  Same look as the checkbox rows on the Identities page, so it reads as
+ * something you can click without needing a legend. */
+static void draw_erase_row(struct app *app, cairo_t *cr)
+{
+    double x, y, w, h;
+    erase_row_rect(app, &x, &y, &w, &h);
+    if (y + h < content_view_top(app) || y > content_view_bottom(app))
+        return;                                  /* scrolled out of the pane */
+    const int on = app->fill_whole_disk;
+    rounded_rect(cr, x, y, w, h, 7);
+    cairo_set_source_rgb(cr, 0.085, 0.125, 0.165);
+    cairo_fill(cr);
+    if (app->focused_field < 0) {            /* the Tab cycle is parked here: show it */
+        rounded_rect(cr, x + 0.5, y + 0.5, w - 1, h - 1, 7);
+        cairo_set_source_rgb(cr, 0.10, 0.66, 0.58);
+        cairo_set_line_width(cr, 1.5);
+        cairo_stroke(cr);
+    }
+    double bx = x + 14, by = y + h / 2 - 9, bs = 18;
+    rounded_rect(cr, bx, by, bs, bs, 4);
+    if (on)
+        cairo_set_source_rgb(cr, 0.05, 0.62, 0.55);
+    else
+        cairo_set_source_rgb(cr, 0.16, 0.21, 0.27);
+    cairo_fill(cr);
+    if (on) {
+        cairo_set_source_rgb(cr, 1, 1, 1);
+        cairo_set_line_width(cr, 2.0);
+        cairo_move_to(cr, bx + 4, by + 9);
+        cairo_line_to(cr, bx + 8, by + 13);
+        cairo_line_to(cr, bx + 14, by + 5);
+        cairo_stroke(cr);
+    }
+    const int tx = (int)x + 44;
+    const int tw = (int)(x + w) - 14 - tx;
+    draw_text_clip(app, "Erase the whole disk first", tx, (int)y + 7, tw, 13, 0xffffffffu);
+    draw_text_clip(app,
+                   on ? "On: looks identical to a Hidden-OS install. Roughly an hour per 100 GB."
+                      : "Off: writes only the encrypted system area. Minutes, and just as encrypted.",
+                   tx, (int)y + 24, tw, 11, on ? 0xffd7a55cu : 0xff9aa6b4u);
+}
+
 static void clamp_scroll(struct app *app, int count)
 {
     int vis = list_visible_rows(app);
@@ -2726,15 +2823,51 @@ static void fmt_elapsed(long secs, char *buf, size_t cap)
         snprintf(buf, cap, "%ld:%02ld", secs / 60, secs % 60);
 }
 
-/* "estimating time..." for the first 15 s, then a coarse remaining-time phrase. */
+/* Record one (elapsed second, done_sectors) sample for the ETA window.  Called from the progress
+ * poll; cheap enough to call on every poll because it only stores when the second changes. */
+static void rate_sample(struct app *app)
+{
+    long el = elapsed_seconds(app);
+    if (el == app->rate_last_t)
+        return;
+    app->rate_last_t = el;
+    app->rate_t[app->rate_n % RATE_WINDOW] = el;
+    app->rate_d[app->rate_n % RATE_WINDOW] = app->done_sectors;
+    app->rate_n++;
+}
+
+/* Sectors per second over the last RATE_WINDOW samples, or 0 if there is not enough history.
+ * Uses the oldest sample still in the ring as the baseline, so the window is self-trimming. */
+static double rate_windowed(struct app *app)
+{
+    if (app->rate_n < 2)
+        return 0.0;
+    int newest = (app->rate_n - 1) % RATE_WINDOW;
+    int count  = app->rate_n < RATE_WINDOW ? app->rate_n : RATE_WINDOW;
+    int oldest = (app->rate_n - count) % RATE_WINDOW;
+    long dt = app->rate_t[newest] - app->rate_t[oldest];
+    if (dt < 3)                                  /* too short to quote honestly */
+        return 0.0;
+    if (app->rate_d[newest] <= app->rate_d[oldest])
+        return 0.0;                              /* no progress in the window: say "estimating" */
+    return (double)(app->rate_d[newest] - app->rate_d[oldest]) / (double)dt;
+}
+
+/* "estimating time..." until the window has enough history, then a coarse remaining-time phrase.
+ * The rate is the windowed one so the number tracks the phase actually running -- the phases here
+ * differ by more than an order of magnitude, and a since-start average reports the wrong one. */
 static void fmt_eta(struct app *app, char *buf, size_t cap)
 {
     long el = elapsed_seconds(app);
-    if (el < 15 || app->done_sectors == 0 || app->total_sectors <= app->done_sectors) {
+    if (el < 5 || app->done_sectors == 0 || app->total_sectors <= app->done_sectors) {
         snprintf(buf, cap, "estimating time...");
         return;
     }
-    double rate = (double)app->done_sectors / (double)el;      /* sectors per second */
+    double rate = rate_windowed(app);
+    if (rate <= 0.0) {
+        if (el < 15) { snprintf(buf, cap, "estimating time..."); return; }
+        rate = (double)app->done_sectors / (double)el;         /* fall back to since-start */
+    }
     long left = (long)((double)(app->total_sectors - app->done_sectors) / rate);
     if (left < 60)
         snprintf(buf, cap, "under a minute left");
@@ -3293,8 +3426,11 @@ static void draw_demo(struct app *app)
     if (back_enabled)
         draw_button(app, cr, BTN_BACK, "Back", 1);
 
-    if (app->screen == SCREEN_ENCRYPTION)
+    if (app->screen == SCREEN_ENCRYPTION) {
         draw_segments(app, cr);
+        if (erase_row_visible(app))
+            draw_erase_row(app, cr);
+    }
 
     if (screen_is_list(app->screen))
         draw_choice_list(app, cr);
@@ -3626,6 +3762,7 @@ static void poll_install_progress(struct app *app)
     app->progress = next;
     app->install_phase = phase;
     app->done_sectors = done;
+    rate_sample(app);            /* feed the ETA window (no-op unless the second changed) */
 }
 
 static void write_all_len(int fd, const char *s, size_t len)
@@ -3773,7 +3910,11 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap, int r
      * deps/ looks for the keys), so the slider that fed them was removed from the
      * Decoy page.  The schema string stays "epin.install.v1": any v1 consumer must
      * treat those three keys as optional.  decoyHostname is now the last key. */
-    append_json_string(buf, cap, &pos, "decoyHostname", app->field_text[FIELD_DECOY_HOSTNAME], 0);
+    append_json_string(buf, cap, &pos, "decoyHostname", app->field_text[FIELD_DECOY_HOSTNAME], 1);
+    /* "deniable" = random-fill the whole disk (Hidden OS always does); "fast" = fill only what the
+     * layout needs.  The kernel reads this as outerFill (veracrypt_impl.d). */
+    append_json_string(buf, cap, &pos, "outerFill",
+                       (app->encryption_mode == ENC_HIDDEN || app->fill_whole_disk) ? "deniable" : "fast", 0);
     append_cstr(buf, cap, &pos, "}\n");
     if (pos >= cap)
         pos = cap - 1;
@@ -3843,6 +3984,8 @@ static void start_install(struct app *app)
     app->done_sectors = 0;
     app->total_sectors = 0;
     app->lba = 0;
+    app->rate_n = 0;
+    app->rate_last_t = -1;       /* no ETA samples yet for this install */
     app->last_stats_second = 0;
     app->reboot_denied = 0;
     memset(&app->last_poll, 0, sizeof app->last_poll);   /* first poll is due at once */
@@ -4216,6 +4359,20 @@ static void progress_primary(struct app *app)
 
 static void entry_append_key(struct app *app, uint32_t code)
 {
+    /* Esc goes back a page, the keyboard counterpart of the Back button.  Without it the wizard
+     * was only forward-navigable from the keyboard -- Back existed solely as a pointer hit-test --
+     * so anyone without a working mouse could walk into a page and not walk out.
+     *
+     * It applies even while a text field has the caret.  Guarding it on "no field focused" (the
+     * first attempt) disabled it on precisely the pages that HAVE fields, which are the ones worth
+     * backing out of, while the footer went on advertising "Esc: back".  Unlike Space, Esc is not
+     * a character anyone can be trying to type, so there is nothing to collide with.  The one
+     * exception is the progress page: an install is running and there is no page to go back to. */
+    if (code == 1 && app->screen != SCREEN_PROGRESS) {
+        go_back(app);
+        return;
+    }
+
     /* List/disk/toggle screens: arrow keys move, Space ticks, Enter advances.  The
      * Keyboard page is a list too, but its keys also go to the test box, so it
      * handles Up/Down/Enter here and then falls through to the text path. */
@@ -4249,6 +4406,18 @@ static void entry_append_key(struct app *app, uint32_t code)
         }
         if (code == 106 || code == 108) {   /* Right / Down */
             enc_set_mode(app, app->encryption_mode + 1);
+            return;
+        }
+        /* Space flips the erase mode on Full disk.  Not offered for Hidden OS: there the whole-disk
+         * random pass is the mechanism that conceals the hidden volume, not a choice.
+         *
+         * Only when no text field has focus.  Space is a legal password character -- and the
+         * passphrase this page asks for is exactly where someone would use one -- so this must not
+         * swallow it while the caret is in a field.  (It also must not be a letter key for the same
+         * reason; an earlier version bound 'D' and ate it out of the password.) */
+        if (code == 57 && app->encryption_mode == ENC_FULL && app->focused_field < 0) {
+            app->fill_whole_disk = !app->fill_whole_disk;
+            request_redraw(app, "erase mode");
             return;
         }
     }
@@ -4499,6 +4668,18 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
         if (row >= 0) {
             app->list_cursor = row;      /* the card follows the clicked row */
             toggle_cursor_row(app);
+            return;
+        }
+    }
+
+    /* The erase-mode row, before the text fields: it lives in the same pane and must be clickable. */
+    if (erase_row_visible(app)) {
+        double x, y, w, h;
+        erase_row_rect(app, &x, &y, &w, &h);
+        if (y + h >= content_view_top(app) && y <= content_view_bottom(app) &&
+            in_rect(app, x, y, w, h)) {
+            app->fill_whole_disk = !app->fill_whole_disk;
+            request_redraw(app, "erase mode");
             return;
         }
     }

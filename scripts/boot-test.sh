@@ -8,7 +8,7 @@
 # Usage:
 #   scripts/boot-test.sh                        # tests/desktop-smoke.txt
 #   scripts/boot-test.sh tests/my-suite.txt
-#   TIMEOUT=240 MEM=2048 scripts/boot-test.sh
+#   TIMEOUT=240 MEM=6144 scripts/boot-test.sh   # defaults: 180 s, 4096 MB
 #   NO_VERIFY=1 scripts/boot-test.sh            # skip the pre-flight ISO marker check
 #
 # Suite file syntax (one directive per line, '#' comments, blank lines ignored):
@@ -102,7 +102,14 @@ RUNLOG="${TMPDIR:-/tmp}/boot-test-qemu.$$.log"
 # error above through several rounds of "why is there no serial.log?".
 # setsid + kill(-pgid): qemu-run.sh exec's nothing, it launches qemu as its last command, so
 # killing the script alone would orphan QEMU and the next run would fight it for the disk.
-setsid env HEADLESS=1 MEM="${MEM:-2048}" ${NET:+NET="$NET"} ./qemu-run.sh >"$RUNLOG" 2>&1 &
+# MEM default 4096, not 2048.  Limine reads the boot modules into high memory before the kernel
+# runs, and those modules are now most of a gigabyte (esp.img alone is ~513 MiB, esp-image another
+# ~512 MiB, plus the ~6.5 MiB software catalogue).  At 2048 the bootloader dies with
+#   PANIC: High memory allocator: Out of memory  ... <ext_mem_alloc_type_aligned_mode>
+# BEFORE the kernel prints a single line -- so every 'require' assertion fails at once and the
+# suite reads like a total regression when nothing has regressed at all.  Raise this in step with
+# the module set; MEM= still overrides for a deliberate low-memory test.
+setsid env HEADLESS=1 MEM="${MEM:-4096}" ${NET:+NET="$NET"} ./qemu-run.sh >"$RUNLOG" 2>&1 &
 RUNNER=$!
 cleanup() {
     kill -- -"$RUNNER" 2>/dev/null || kill "$RUNNER" 2>/dev/null || true

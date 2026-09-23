@@ -37,7 +37,7 @@ DEFAULT_MARKERS=(
     'cmpduty'                 # kernel: the compositor duty-cycle probe   (kernel_main.d)
     'fps_x100'                # kernel: calibration-free frame rate       (posix.d)
     'rounding      = 0'       # config: the softpipe decoration override  (custom/general.lua)
-    'damage_tracking = 1'     # config: whole-monitor damage              (custom/general.lua)
+    'damage_tracking = 2'     # config: real damage tracking             (custom/general.lua, adef0bff61)
 )
 
 if [ "$#" -gt 0 ]; then

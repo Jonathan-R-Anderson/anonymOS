@@ -62,7 +62,9 @@ echo "[qemu-run] using $("$QEMU_BIN" --version | head -1)"
 # Set HEADLESS=1 alongside GPU=1 to run it windowless (egl-headless + QMP) for automated/remote testing.
 # GPU unset = the interactive gtk software (Pixman) desktop.
 if [ "${GPU:-0}" = "1" ]; then
-  MEM="${MEM:-1024}"
+  # 4096 floor: the staged ISO carries a ~0.95 GB decoy-linux.ext4 Limine boot
+  # module on top of the kernel — 1024 MB OOMs the guest during module load.
+  MEM="${MEM:-4096}"
   if [ "${HEADLESS:-0}" = "1" ]; then
     GFX=(-vga std -device virtio-gpu-gl-pci,blob=true,hostmem=256M
          -display egl-headless,rendernode=/dev/dri/renderD128
@@ -75,7 +77,9 @@ if [ "${GPU:-0}" = "1" ]; then
     echo "[qemu-run] GPU=1: interactive virgl desktop (gtk window, gl=on)"
   fi
 else
-  MEM="${MEM:-512}"
+  # 4096 floor: the staged ISO carries a ~0.95 GB decoy-linux.ext4 Limine boot
+  # module on top of the kernel — 512 MB OOMs the guest during module load.
+  MEM="${MEM:-4096}"
   # HEADLESS=1 on the software path too: no window, serial only.  Needed to boot this
   # from a non-interactive shell (CI, an agent, or over ssh) and just read serial.log.
   if [ "${HEADLESS:-0}" = "1" ]; then

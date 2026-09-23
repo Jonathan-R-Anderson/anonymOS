@@ -214,12 +214,21 @@ $(BLD)/dmsetup.static: | $(BLD)
 # printed NO-DISK and dropped to a shell: the decoy "tried to boot and wouldn't", while the hidden
 # OS (whose kernel has its own drivers) came up fine.  nvme/nvme-core fix that; the USB and
 # virtio-scsi entries cover install sticks and the other common hypervisor configuration.
+# INPUT drivers are in this list deliberately.  The decoy booted to a full XFCE desktop with a
+# cursor that could not move and a system that took no keystrokes: i8042/atkbd/serio are built into
+# this kernel, so the PS/2 keyboard worked, but psmouse (the PS/2 mouse) and usbhid/hid-generic
+# (every USB keyboard and mouse) are MODULES, and the rootfs only lists bochs/virtio_gpu/evdev in
+# /etc/modules.  Nothing ever loaded them -- busybox mdev does not autoload by modalias the way
+# udev does -- so on real hardware, where keyboard and mouse are both USB, the decoy came up
+# completely dead.  Loading them here means console input does not depend on a rootfs service that
+# can (and does) fail: `modloop failed to start` is printed twice on every boot.
 CRYPT_MODS = virtio virtio_ring virtio_pci_modern_dev virtio_pci_legacy_dev virtio_pci virtio_blk \
   virtio_scsi ata_piix ahci libahci libata scsi_mod sd_mod sr_mod cdrom \
   nvme-core nvme nvme-common t10-pi \
   usb-common usbcore xhci-pci-renesas xhci-pci xhci-hcd ehci-pci ehci-hcd uas usb-storage \
   crc16 crc32c_generic crc32c-intel crc64 crc64-rocksoft libcrc32c mbcache jbd2 ext4 \
   rng-core tpm asn1_encoder trusted encrypted-keys dm-mod dm-crypt \
+  evdev psmouse hid hid-generic usbhid i2c-hid hid-multitouch \
   libaes aes_generic aesni-intel crypto_simd cryptd xts ecb gf128mul \
   squashfs overlay loop
 $(BLD)/initramfs-crypt.gz: $(BLD)/busybox.static $(BLD)/dmsetup.static initramfs/init-crypt desktop-rootfs | $(BLD)
@@ -227,6 +236,8 @@ $(BLD)/initramfs-crypt.gz: $(BLD)/busybox.static $(BLD)/dmsetup.static initramfs
 	@cp $(BLD)/busybox.static $(BLD)/crdir/bin/busybox
 	@cp $(BLD)/dmsetup.static $(BLD)/crdir/bin/dmsetup
 	@cp $(SELF)/initramfs/init-crypt $(BLD)/crdir/init && chmod +x $(BLD)/crdir/init
+	@# X input driver for a rootfs with no udevd -- see initramfs/README-evdev.md.
+	@cp $(SELF)/initramfs/evdev_drv.so $(BLD)/crdir/evdev_drv.so
 	@# Modules are a MIX of .ko.gz (drivers) and .ko (crypto) in this rootfs — handle both.
 	@# Take the DEPENDENCY CLOSURE from the kernel's own modules.dep, not the names above:
 	@# busybox insmod resolves nothing, so a module whose dependency is absent silently never

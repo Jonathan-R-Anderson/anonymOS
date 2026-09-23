@@ -112,5 +112,79 @@ if ! $B mount -t overlay overlay -o lowerdir=/squash,upperdir=/ovl/up,workdir=/o
   $B echo "[decoy-crypt] OVERLAY-FAIL"; exec $B sh
 fi
 
+# ---------------------------------------------------------------------------
+# Static Xorg input configuration.
+#
+# The decoy came up with a perfect XFCE desktop and a cursor that could not move.  The kernel side
+# is fine -- psmouse/usbhid/evdev all load, /dev/input/event* exist with root:input 0660, and alex
+# is in the input group.  The break is in X: xf86-input-libinput finds devices through libudev
+# (udev_enumerate + libinput_udev_assign_seat "seat0"), and this rootfs ships libudev.so but NO
+# udevd -- device management is busybox mdev, which creates the nodes and maintains no udev
+# database.  With no database there are no ID_INPUT tags and no seat, so libinput enumerates zero
+# devices and X attaches no keyboard and no pointer.  X still starts (video needs no udev) and
+# draws its core-pointer cursor in the middle of the screen, where it stays forever.
+#
+# The proper fix is eudev in the rootfs (`setup-devd udev`), which needs the image rebuilt as root.
+# Failing that, this is the standard udev-less approach: turn off autoconfiguration and name the
+# devices explicitly, which makes xf86-input-libinput use its PATH backend instead of the udev one.
+#
+# Generated from inside the booted system, NOT here: at initramfs time only the built-in AT
+# keyboard has registered -- psmouse still has protocol probing to do and USB has not enumerated --
+# so doing it here configured exactly one device and left the mouse out, which is the whole bug.
+# An inittab ::wait: entry runs after `openrc default` and before the tty1 login that starts X,
+# which is the first moment every device is present.
+$B mkdir -p /sysroot/etc
+# xf86-input-evdev, vendored in the initramfs (see initramfs/README-evdev.md).  libinput cannot be
+# used on this rootfs at all: both of its backends require a udev database and there is no udevd,
+# so even an explicit Option "Device" fails with 'udev device never initialized'.  evdev opens
+# /dev/input/eventN directly.  Its three shared libs are already in the rootfs.
+$B mkdir -p /sysroot/usr/lib/xorg/modules/input
+if [ -f /evdev_drv.so ]; then
+  $B cp /evdev_drv.so /sysroot/usr/lib/xorg/modules/input/evdev_drv.so
+  $B chmod 755 /sysroot/usr/lib/xorg/modules/input/evdev_drv.so
+  $B echo "[decoy-crypt] X input: installed evdev_drv.so into the overlay"
+else
+  $B echo "[decoy-crypt] WARN: evdev_drv.so missing from the initramfs; X will have no input"
+fi
+$B cat > /sysroot/gen-xinput.sh <<'GENX'
+#!/bin/sh
+# Build a static Xorg input config from the devices the kernel actually has (no udevd here).
+sleep 3
+OUT=/etc/X11/xorg.conf.d/99-static-input.conf
+mkdir -p /etc/X11/xorg.conf.d
+{
+  echo 'Section "ServerFlags"'
+  echo '    Option "AutoAddDevices" "off"'
+  echo 'EndSection'
+  echo ''
+} > "$OUT"
+awk '
+/^H: Handlers=/ {
+  ev = ""
+  line = $0
+  sub(/^H: Handlers=/, "", line)      # strip first: otherwise the leading handler stays glued to
+                                      # the prefix ("Handlers=event1") and never matches, which
+                                      # silently dropped every mouse (mice list eventN first).
+  n = split(line, a, /[ \t]+/)
+  for (i = 1; i <= n; i++) if (a[i] ~ /^event[0-9]+$/) ev = a[i]
+  if (ev != "" && (line ~ /kbd/ || line ~ /mouse/)) {
+    printf "Section \"InputDevice\"\n"
+    printf "    Identifier \"static-%s\"\n", ev
+    printf "    Driver \"evdev\"\n"
+    printf "    Option \"Device\" \"/dev/input/%s\"\n", ev
+    printf "    Option \"AutoServerLayout\" \"true\"\n"
+    printf "EndSection\n\n"
+  }
+}' /proc/bus/input/devices >> "$OUT"
+echo "[decoy] X input: $(grep -c '^Section \"InputDevice\"' "$OUT") device(s) configured statically" > /dev/console
+GENX
+$B chmod +x /sysroot/gen-xinput.sh
+# Insert the input-config generator as a ::wait: entry, which busybox init runs after
+# `openrc default` and before the tty1 login that starts X -- the first point at which every input
+# device has registered, and still ahead of anything reading the X configuration.
+$B sed 's|^tty1::respawn|::wait:/bin/sh /gen-xinput.sh\ntty1::respawn|' \
+      /squash/etc/inittab > /sysroot/etc/inittab
+$B echo "[decoy-crypt] X input: static config will be generated at boot (no udevd in this rootfs)"
+
 $B echo "[decoy-crypt] DECOY-CRYPT-OK switch_root -> the believable Alpine+XFCE (squashfs+overlay)"
 exec $B switch_root /sysroot /sbin/init

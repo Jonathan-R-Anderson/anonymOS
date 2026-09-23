@@ -3,8 +3,13 @@
 #
 # What it proves, on real virtualization hardware:
 #   1. The host CPU exposes VMX (Intel) or SVM (AMD) and nested KVM is on.
-#   2. The anonymOS kernel boots with the virtualization feature exposed to
-#      the guest and executes VMXON successfully  ->  "[vmx] VMXON ok".
+#   2a. On Intel: the kernel attempts VMXON at boot (kernel_main -> vmxBootInit)
+#       and it succeeds under nested KVM  ->  "[vmx] VMXON ok".
+#   2b. On AMD: the kernel's vendor-gated detection prints its honest
+#       "[vmx] no VMX" line, the fail-closed SVM backend is detected
+#       ("[virt] backend: AMD SVM detected, backend not validated"), and
+#       KVM_RUN refuses with ENODEV. No VMXON is possible on SVM and none
+#       is claimed — the assertions are per-vendor (task 3.5).
 #   3. The virt boot selftest passes against the REAL backend (VM/vCPU
 #      lifecycle, slot validation, ceilings, userspace guards, KVM ABI
 #      capability probes)  ->  "[virt] selftest PASS".
@@ -12,21 +17,32 @@
 # What it does NOT prove (needs a test program inside the guest):
 #   - actual guest entry via KVM_RUN and a known exit (KVM_EXIT_HLT/IO).
 #     That is OpenSpec task 6.2 ("KVM smoke [HW]") and stays open.
+#   - On AMD hardware, real guest execution is impossible by design: the
+#     SVM backend is fail-closed. Guest entry needs Intel VMX hardware.
 #
 # Usage:
 #   scripts/virt-hw-test.sh
-#   TIMEOUT=600 MEM=4096 scripts/virt-hw-test.sh
+#   TIMEOUT=600 MEM=8192 scripts/virt-hw-test.sh
+#   ALLOW_STALE_ISO=1 scripts/virt-hw-test.sh  # boot an ISO that is not a
+#                                              # clean build of HEAD (for
+#                                              # iteration only — the verdict
+#                                              # is then NOT a spec
+#                                              # verification)
+#
+# The script refuses to boot an ISO built from a dirty tree or from a
+# commit other than HEAD: a [HW] verdict is only meaningful against the
+# exact committed code under test.
 #
 # Exit 0 = hardware present and all assertions held.
 #      1 = an assertion failed (see the log path printed at the end).
-#      2 = setup problem (no HW virt, no /dev/kvm, nested off, no ISO, ...).
+#      2 = setup problem (no HW virt, no /dev/kvm, nested off, no/bad ISO, ...).
 set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 TIMEOUT="${TIMEOUT:-300}"
-MEM="${MEM:-2048}"
+MEM="${MEM:-4096}"
 SERIAL="${TMPDIR:-/tmp}/virt-hw-serial.$$.log"
 CLEAN="${TMPDIR:-/tmp}/virt-hw-clean.$$.log"
 QEMU_BIN="${QEMU_BIN:-$HOME/.local/qemu-virgl/bin/qemu-system-x86_64}"
@@ -60,6 +76,22 @@ command -v "$QEMU_BIN" >/dev/null 2>&1 || fail "no qemu-system-x86_64 found"
 [ -f "$ROOT/hos-install.iso" ] || fail "hos-install.iso missing — build first (see README build instructions)"
 if [ -x "$ROOT/scripts/iso-verify.sh" ] && [ "${NO_VERIFY:-0}" != "1" ]; then
   "$ROOT/scripts/iso-verify.sh" || fail "refusing to boot a stale ISO (NO_VERIFY=1 to override)"
+fi
+
+# A [HW] verdict is only meaningful against the exact committed code under
+# test. Refuse an ISO built from a dirty tree or from a non-HEAD commit —
+# otherwise the serial log describes an unknown binary.
+if [ "${ALLOW_STALE_ISO:-0}" != "1" ]; then
+  iso_commit="$(grep -ao 'HOSBUILD commit=[0-9a-f]*' "$ROOT/hos-install.iso" 2>/dev/null | head -1)"
+  iso_commit="${iso_commit#HOSBUILD commit=}"
+  head_commit="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+  [ -n "$iso_commit" ] || fail "ISO has no HOSBUILD provenance marker — rebuild with: make iso"
+  [ "$iso_commit" = "$head_commit" ] \
+    || fail "ISO was built from ${iso_commit:0:12} but HEAD is ${head_commit:0:12} — rebuild with: make iso"
+  if grep -aq 'HOSBUILD dirty=yes' "$ROOT/hos-install.iso" 2>/dev/null; then
+    fail "ISO was built from a DIRTY tree — commit or stash your changes, then rebuild with: make iso"
+  fi
+  pass "ISO provenance ok: clean build of HEAD (${head_commit:0:12})"
 fi
 
 # ── boot headless with the virt feature exposed ──────────────────────────
@@ -134,17 +166,22 @@ if [ "$VIRT" = vmx ]; then
   check require "[vmx] VMXON ok"
   check forbid  "[vmx] VMXON failed"
   check forbid  "[vmx] no VMX "
+  HW_VERDICT="VMXON ok (Intel)"
 else
   # AMD: the SVM backend is fail-closed (svm.d SVM_BACKEND_READY=false — the
   # VMRUN tier is not built yet), and the Intel-only VMX attempt prints its
   # honest "[vmx] no VMX" line, which is EXPECTED here, not a failure.  The
+  # fail-closed proof is the ENODEV refusal on KVM_RUN (task 3.5); the
   # positive signal is the backend-agnostic selftest verdict above.
+  check require "[virt] backend: AMD SVM detected, backend not validated"
+  check require "kvmVcpuRun: no virtualization hardware (ENODEV)"
   check forbid  "[vmx] VMXON ok"
   check forbid  "[vmx] VMXON failed"
+  HW_VERDICT="AMD fail-closed path (no VMXON possible on SVM)"
 fi
 
 if [ "$rc" -eq 0 ]; then
-  pass "ALL ASSERTIONS HELD — VMXON ok, virt selftest PASS on real hardware"
+  pass "ALL ASSERTIONS HELD — $HW_VERDICT, virt selftest PASS on real hardware"
   pass "full serial log: $SERIAL"
 else
   echo "virt-hw-test: ASSERTIONS FAILED — full serial log: $SERIAL" >&2

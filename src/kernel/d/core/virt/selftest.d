@@ -23,7 +23,7 @@ import core.virt.kvm;
 import core.virt.kvmabi;
 import core.virt.ept;
 import core.virt.vmx : vmxIsReady;
-import core.virt.svm : svmAvailable;
+import core.virt.svm : svmAvailable, svmHwPresent;
 import core.virt.vmexit : vmxDispatchExit, VmExitInfo, VmExitAction,
     EXIT_REASON_HLT, EXIT_REASON_TRIPLE_FAULT, EXIT_REASON_IO_INSTRUCTION,
     EXIT_REASON_EPT_VIOLATION, EXIT_REASON_VMCALL,
@@ -50,6 +50,17 @@ private void vtCheck(bool ok, const(char)* name) {
 public void virtSelfTest() {
     g_virtTestFails = 0;
     int tid = 0; // boot task
+
+    // --- 0. backend detection (honest hardware report) -----------------------
+    // Logs exactly which virtualization path this hardware takes. On AMD
+    // this records the fail-closed SVM detection (task 3.5): the CPUID
+    // hardware bit plus the backend-not-ready refusal — never a fake VMXON.
+    if (vmxIsReady())
+        klog("[virt] backend: Intel VMX ready\n");
+    else if (svmHwPresent())
+        klog("[virt] backend: AMD SVM detected, backend not validated - fail-closed (ENODEV on entry)\n");
+    else
+        klog("[virt] backend: no VMX/SVM hardware\n");
 
     // --- 1. probe table ------------------------------------------------------
     vtCheck(kvmSystemIoctl(tid, KVM_GET_API_VERSION, 0) == 12, "api-version");

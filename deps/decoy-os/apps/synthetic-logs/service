@@ -1,0 +1,226 @@
+#!/sbin/openrc-run
+# /etc/init.d/synthetic-logs  —  runs log-synth and evidenceforge at boot on the
+# Alpine cover system.  THIS is the file to edit to make the generators do more
+# specific things: edit the launcher /usr/local/bin/synthetic-logs-run (it runs both
+# generators, seeded), or override the variables in /etc/synthetic-logs.conf (sourced at start).
+#
+# Wired in by the image build's stage-apps.sh (installs this as the synthetic-logs service,
+# enables it in the `default` runlevel, and stages the two programs under /opt).
+#
+# Design notes:
+#   * The generators run in the BACKGROUND so a slow/large generation never blocks
+#     boot or the login prompt.
+#   * Each generator is guarded: if its runtime or program is missing, it logs a
+#     line and is skipped — a missing tool must never wedge the boot.
+#
+# ── where to look when you want to know if this worked ──────────────────────────
+#   /var/log/synthetic-logs.log        this service's run log (previous run: .1)
+#   /var/log/synthetic-logs-stage.log  what the IMAGE BUILD staged (from the host)
+#   /etc/synthetic-logs.stage          build-time summary, echoed here at boot
+#   /var/lib/synthetic-logs/last-run.status   one-line-per-generator result
+#   rc-service synthetic-logs check    prints all of the above at a glance
+#   grep synthetic-logs /var/log/messages     the syslog copy of the console lines
+# At boot the console shows a one-line staging summary plus each generator's
+# result, so a broken build is visible without logging in and hunting. "The console"
+# means every active one: the screen (tty0 — the VirtualBox/QEMU VM window) AND the
+# serial port (ttyS0 — what the cover UKI cmdline makes primary), so capturing the
+# VM's UART to a file on the host gives you the same lines without logging in.
+
+# ── editable defaults (override any of these in /etc/synthetic-logs.conf) ────────
+# load_conf sources the conf FIRST and only then fills in what it left unset, so a
+# conf that changes OUTPUT_DIR also moves the paths derived from it.
+load_conf() {
+	[ -f /etc/synthetic-logs.conf ] && . /etc/synthetic-logs.conf
+
+	: "${LOGSYNTH_DIR:=/opt/log-synth}"                       # staged log-synth tree
+	: "${LOGSYNTH_JAR:=$LOGSYNTH_DIR/log-synth-0.1-SNAPSHOT-jar-with-dependencies.jar}"
+	: "${LOGSYNTH_SCHEMA:=$LOGSYNTH_DIR/schema.json}"         # schema for com.mapr.synth.Synth
+	: "${LOGSYNTH_COUNT:=1000}"                               # records to synthesize
+
+	: "${EFORGE_DIR:=/opt/evidenceforge}"                     # staged evidenceforge tree
+	: "${EFORGE_SCENARIO:=$EFORGE_DIR/scenarios/branch-office-example/scenario.yaml}"
+
+	: "${OUTPUT_DIR:=/var/lib/synthetic-logs}"                # where generated logs land
+	: "${SYNTH_LOG:=/var/log/synthetic-logs.log}"             # this service's own run log
+	: "${STAGE_MANIFEST:=/etc/synthetic-logs.stage}"          # written by the apps/*/install.sh
+	: "${STAGE_LOG:=/var/log/synthetic-logs-stage.log}"       # build-time staging log
+	: "${STATUS_FILE:=$OUTPUT_DIR/last-run.status}"           # machine-readable last result
+	: "${RUNDIR:=/run/synthetic-logs}"                        # where the launcher records PIDs
+	: "${SEED_FILE:=/etc/synthetic-logs.seed}"                # boot seed (written by the initramfs)
+	: "${LAUNCHER:=/usr/local/bin/synthetic-logs-run}"        # the seed-taking runner
+	: "${RUN_LOGSYNTH:=yes}"                                  # set to "no" to disable one
+	: "${RUN_EVIDENCEFORGE:=yes}"
+	return 0
+}
+
+pidfile="/run/synthetic-logs.pid"
+extra_commands="check"
+
+depend() {
+	need localmount
+	after bootmisc modules
+	use net logger
+}
+
+# ── logging ──────────────────────────────────────────────────────────────────────
+# Everything the background worker prints is timestamped into $SYNTH_LOG. Lines that
+# matter at boot are ALSO pushed to the console (einfo/ewarn) and to syslog, so a
+# failure is visible on the boot screen and in `dmesg`/`logread` without logging in.
+slog() {  # slog <LEVEL> <message...>  — log only
+	printf '%s %-5s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$1" "$2"
+}
+# console_targets — where a boot-visible line has to be written to actually be SEEN.
+# The worker's stdout is the log file, so the console copy needs an explicit device.
+# /dev/console is whatever the LAST console= on the kernel cmdline selected, and the
+# the cover UKI ends with console=ttyS0,115200 — i.e. the SERIAL PORT, which on a VM is
+# only visible if the host captures the UART (VirtualBox: --uartmode1 file <path>).
+# So when tty0 is also an active console but isn't the primary one, mirror there too:
+# that is the VM's own screen / the physical monitor. Falls back to stdout (-> the log)
+# when nothing is writable, e.g. running this by hand as a normal user.
+console_targets() {
+	_t=""
+	[ -w /dev/console ] && _t="/dev/console"
+	if [ -r /sys/class/tty/console/active ] && [ -w /dev/tty0 ]; then
+		_active="$(cat /sys/class/tty/console/active 2>/dev/null)"
+		case " $_active " in
+			*" tty0 "*) [ "${_active##* }" = tty0 ] || _t="$_t /dev/tty0" ;;
+		esac
+	fi
+	[ -n "$_t" ] || _t=/dev/stdout
+	echo "$_t"
+}
+console() {  # console <LEVEL> <message...>  — log + every boot console + syslog
+	slog "$1" "$2"
+	: "${CONSOLE_TARGETS:=$(console_targets)}"
+	for _c in $CONSOLE_TARGETS; do
+		case "$1" in
+			WARN|ERROR) ewarn "synthetic-logs: $2" > "$_c" 2>&1 ;;
+			*)          einfo "synthetic-logs: $2" > "$_c" 2>&1 ;;
+		esac
+	done
+	# syslog too: `syslog` is in this system's boot runlevel, so this lands in
+	# /var/log/messages — grep synthetic-logs /var/log/messages
+	if command -v logger >/dev/null 2>&1; then
+		logger -t synthetic-logs -p daemon.info "$1 $2" 2>/dev/null
+	fi
+	return 0
+}
+status_set() {  # status_set <key> <value>  — machine-readable last-run status
+	[ -n "$STATUS_FILE" ] || return 0
+	mkdir -p "$(dirname "$STATUS_FILE")" 2>/dev/null || return 0
+	sed -i "/^$1=/d" "$STATUS_FILE" 2>/dev/null
+	echo "$1=$2" >> "$STATUS_FILE" 2>/dev/null
+	return 0
+}
+
+# ── build-time staging report: did the image get everything it needs? ────────────
+# /etc/synthetic-logs.stage is written by the generator apps' install.sh. Echo it
+# at boot so "the generators did nothing" is immediately traceable to "the build
+# never staged the jar", without digging.
+report_staging() {
+	if [ ! -f "$STAGE_MANIFEST" ]; then
+		console WARN "no $STAGE_MANIFEST — this image was not staged by apps/*/install.sh"
+		status_set STAGING unknown
+		return 0
+	fi
+	# shellcheck disable=SC1090
+	. "$STAGE_MANIFEST" 2>/dev/null
+	slog INFO "--- build-time staging (${STAGE_MANIFEST}) ---"
+	grep -v '^#' "$STAGE_MANIFEST" 2>/dev/null | sed 's/^/    /'
+	slog INFO "--- end staging summary (full log: $STAGE_LOG) ---"
+	status_set STAGING "${STAGE_RESULT:-unknown}"
+	case "${STAGE_RESULT:-unknown}" in
+		ok)  console INFO "staged ${STAGE_TIME:-?} — result=ok (jar=${STAGE_LOGSYNTH_JAR:-?} eforge=${STAGE_EFORGE_PIP:-?})" ;;
+		*)   console WARN "staged ${STAGE_TIME:-?} — result=${STAGE_RESULT:-unknown}, ${STAGE_WARNINGS:-?} warning(s): jar=${STAGE_LOGSYNTH_JAR:-?} scenario=${STAGE_EFORGE_SCENARIO:-?} eforge-pip=${STAGE_EFORGE_PIP:-?} (see $STAGE_LOG)" ;;
+	esac
+}
+
+# ── seed → generators, via the launcher (/usr/local/bin/synthetic-logs-run) ──────
+# The generators are run by the seed-taking launcher, not inline here, so the same
+# script runs them at boot and by hand. resolve_seed() finds the boot seed: the honey
+# seed of the typed password (SEED_FILE, written by the initramfs from the pre-boot
+# loader) if present, else a stable per-install fallback derived from the machine-id so
+# generation is still deterministic across reboots when no seed was handed forward.
+resolve_seed() {
+	if [ -s "$SEED_FILE" ]; then
+		head -n1 "$SEED_FILE" | tr -cd '0-9'
+		return 0
+	fi
+	# fallback: 60-bit integer from the machine-id (stable per install, < 2^64 for --seed)
+	_mid=$(cat /etc/machine-id 2>/dev/null || hostname 2>/dev/null || echo boot)
+	_hex=$(printf %s "$_mid" | sha256sum 2>/dev/null | cut -c1-15)
+	[ -n "$_hex" ] && printf '%d\n' $(( 0x$_hex )) || echo 0
+}
+
+# ── the background worker: run both generators (seeded), via the launcher ─────────
+run_generators() {
+	slog INFO "=== run started: host=$(hostname 2>/dev/null) kernel=$(uname -r) uptime=$(cut -d' ' -f1 /proc/uptime 2>/dev/null)s ==="
+	status_set RUN_STARTED "$(date '+%Y-%m-%dT%H:%M:%S%z')"
+	report_staging
+	_seed=$(resolve_seed)
+	if [ -s "$SEED_FILE" ]; then status_set SEED_SOURCE "boot"; else status_set SEED_SOURCE "fallback:machine-id"; fi
+	status_set SEED "$_seed"
+	slog INFO "seed=$_seed (source: $( [ -s "$SEED_FILE" ] && echo boot || echo machine-id ))"
+	if [ -x "$LAUNCHER" ]; then
+		RUNDIR="$RUNDIR" OUTPUT_DIR="$OUTPUT_DIR" SYNTH_LOG="$SYNTH_LOG" 			LOGSYNTH_COUNT="$LOGSYNTH_COUNT" "$LAUNCHER" "$_seed"
+		_rc=$?
+		# surface the PIDs the launcher recorded, for `check` and for other programs
+		[ -f "$RUNDIR/pids" ] && while read -r _n _p; do status_set "PID_$_n" "$_p"; done < "$RUNDIR/pids"
+		status_set RUN_RC "$_rc"
+	else
+		console ERROR "launcher $LAUNCHER missing or not executable"
+		status_set RUN_RC "no-launcher"
+	fi
+	slog INFO "=== run finished $(date) ==="
+	status_set RUN_FINISHED "$(date '+%Y-%m-%dT%H:%M:%S%z')"
+	console INFO "run finished — details: $SYNTH_LOG | status: $STATUS_FILE | pids: $RUNDIR/pids"
+}
+
+start() {
+	ebegin "Starting synthetic log generation (log-synth + evidenceforge)"
+	load_conf
+	mkdir -p "$OUTPUT_DIR"
+	# keep the previous boot's log; if /var/log isn't writable, fall back to /tmp
+	if ! ( mkdir -p "$(dirname "$SYNTH_LOG")" && : >> "$SYNTH_LOG" ) 2>/dev/null; then
+		SYNTH_LOG=/tmp/synthetic-logs.log
+		ewarn "synthetic-logs: /var/log not writable, logging to $SYNTH_LOG"
+	fi
+	[ -s "$SYNTH_LOG" ] && mv -f "$SYNTH_LOG" "$SYNTH_LOG.1" 2>/dev/null
+	: > "$SYNTH_LOG"
+	: > "$STATUS_FILE" 2>/dev/null || STATUS_FILE=/tmp/synthetic-logs.status
+	# background so a large generation never blocks boot / the login prompt
+	( run_generators ) >>"$SYNTH_LOG" 2>&1 &
+	echo $! > "$pidfile" 2>/dev/null || ewarn "synthetic-logs: could not write $pidfile"
+	einfo "synthetic-logs: generating in the background; watch with: tail -f $SYNTH_LOG"
+	eend 0
+}
+
+stop() {
+	ebegin "Stopping synthetic log generation"
+	if [ -f "$pidfile" ]; then
+		kill "$(cat "$pidfile")" 2>/dev/null
+		rm -f "$pidfile"
+	fi
+	eend 0
+}
+
+# ── `rc-service synthetic-logs check` — is it working? one command, one answer ───
+check() {
+	load_conf
+	einfo "build-time staging ($STAGE_MANIFEST):"
+	if [ -f "$STAGE_MANIFEST" ]; then
+		grep -v '^#' "$STAGE_MANIFEST" | sed 's/^/    /'
+	else
+		ewarn "    missing — image not staged by apps/*/install.sh"
+	fi
+	einfo "last run ($STATUS_FILE):"
+	[ -f "$STATUS_FILE" ] && sed 's/^/    /' "$STATUS_FILE" || ewarn "    no run recorded yet"
+	einfo "generated output ($OUTPUT_DIR):"
+	ls -lh "$OUTPUT_DIR" 2>/dev/null | sed 's/^/    /' || ewarn "    $OUTPUT_DIR missing"
+	if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+		einfo "still generating (pid $(cat "$pidfile"))"
+	fi
+	einfo "logs: $SYNTH_LOG (run) | $STAGE_LOG (build)"
+	einfo "last 15 log lines:"
+	tail -n 15 "$SYNTH_LOG" 2>/dev/null | sed 's/^/    /' || ewarn "    no $SYNTH_LOG"
+}

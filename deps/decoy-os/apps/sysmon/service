@@ -1,0 +1,27 @@
+#!/sbin/openrc-run
+# /etc/init.d/sysmon — start the sysmon sampler at boot.
+#
+# Installed and enabled in the `default` runlevel by deps/decoy-os/stage-apps.sh
+# (because this file is named `service` inside apps/sysmon/).
+#
+# Once booted:  rc-service sysmon start|stop|status
+#               rc-update show default          # confirm it is enabled
+#               tail -f /var/log/sysmon.log
+
+name="sysmon"
+description="Periodic disk, memory and load sampler"
+
+command="/usr/local/bin/sysmon"
+command_background=true                    # sysmon loops forever — never block the boot
+pidfile="/run/sysmon.pid"
+output_log="/var/log/sysmon-service.log"   # anything the command writes to stdout/stderr
+error_log="/var/log/sysmon-service.log"
+
+depend() {
+	need localmount                        # /var/log has to be writable first
+	after bootmisc
+}
+
+start_pre() {
+	checkpath -f -m 0644 -o root:root /var/log/sysmon.log
+}

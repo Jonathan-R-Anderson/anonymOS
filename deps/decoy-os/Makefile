@@ -36,6 +36,24 @@ KJOBS         ?= $(shell nproc 2>/dev/null || echo 4)
 DECOY_PKGS ?= openssh git vim htop tmux curl wget chrony bash sudo less tree rsync nano \
               tcpdump bind-tools mtr iproute2 file jq man-db docs
 
+# Runtimes for the boot-time synthetic-log generators, now staged as apps/ by
+# stage-apps.sh: openjdk -> apps/log-synth (Java), python3+pip -> apps/evidenceforge
+# (Python); the shared OpenRC service is apps/synthetic-logs. Added to BOTH rootfs
+# variants' apk add below.
+SYNTH_PKGS ?= openjdk17-jre-headless python3 py3-pip
+
+# Your own programs. Everything under apps/ is installed into BOTH rootfs variants by
+# stage-apps.sh: apps/<name>/bin -> /usr/local/bin, files/ -> /, service -> an OpenRC
+# init script enabled at boot, install.sh -> run for anything else. See apps/README.md.
+# We track each app's CONTROL surface (install.sh, service, bin/, files/) as build
+# prerequisites, not the whole vendored source tree — apps/evidenceforge alone is 1400+
+# files, and listing them all would be slow, would rebuild on any upstream churn, and
+# would break Make if a re-vendor ever introduced a filename with a space. Re-vendoring
+# a source tree, when it must force a rebuild, is picked up by touching that app's
+# install.sh (or `make clean`). Docs are excluded so editing a README costs nothing.
+APP_FILES := $(shell find $(SELF)/apps -maxdepth 2 \( -name install.sh -o -name service \) 2>/dev/null; \
+                     find $(SELF)/apps/*/bin $(SELF)/apps/*/files -type f ! -name '*.md' 2>/dev/null)
+
 # a real install reseeds with the user's decoy password
 DECOY_PW ?= decoy-password
 # The decoy OS's own settings — supplied by the installer (§E6 hidden-OS step) in the SAME
@@ -101,15 +119,16 @@ $(BLD)/apk.static: | $(BLD)
 $(BLD)/fakelogd: $(DECOY)/decoy.c $(DECOY)/decoy_render.c $(DECOY)/h2/fakelogd.c | $(BLD)
 	$(CC) -O2 -I$(DECOY) $^ -o $@
 
-$(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd customize.sh | $(BLD)
+$(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.sh $(APP_FILES) customize.sh | $(BLD)
 	$(SUDO) rm -rf $(ROOTFS)
 	mkdir -p $(ROOTFS)
 	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(ROOTFS)
 	$(SUDO) $(BLD)/apk.static --root $(ROOTFS) --repository $(APKMAIN) --repository $(APKCOMM) \
-	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS)
+	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(SYNTH_PKGS)
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
 	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(ROOTFS) $(BLD)/fakelogd "$(DECOY_PW)"
+	$(SUDO) $(SELF)/stage-apps.sh $(ROOTFS)
 	$(SUDO) tar -czf $@ -C $(ROOTFS) .
 	$(SUDO) chown $(UGID) $@
 	@echo "[decoy-os] built $@ ($$(du -h $@ | cut -f1)), $$(wc -l < $(ROOTFS)/etc/apk/world) pkgs in world, seeded with the §H2 fake history"
@@ -203,17 +222,18 @@ boot-check: uki
 	  tr -d '\0' < serial-uki.log | grep -aq 'DECOY-INIT-OK' && echo "  [PASS] decoy UKI boots real Alpine Linux to userspace" || { echo "  [FAIL] UKI did not reach userspace"; exit 1; }
 
 # ── §H1 desktop variant: believable rootfs + XFCE, autologin, rendering caches ──────────────
-$(DROOT)/.stamp: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd customize.sh customize-desktop.sh | $(BLD)
+$(DROOT)/.stamp: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.sh $(APP_FILES) customize.sh customize-desktop.sh | $(BLD)
 	$(SUDO) rm -rf $(DROOT)
 	mkdir -p $(DROOT)
 	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(DROOT)
 	$(SUDO) $(BLD)/apk.static --root $(DROOT) --repository $(APKMAIN) --repository $(APKCOMM) \
-	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(DESKTOP_PKGS)
+	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(DESKTOP_PKGS) $(SYNTH_PKGS)
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
 	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(DROOT) $(BLD)/fakelogd "$(DECOY_PW)"
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    $(SELF)/customize-desktop.sh $(DROOT)
+	$(SUDO) $(SELF)/stage-apps.sh $(DROOT)
 	$(SUDO) touch $(DROOT)/.stamp
 	@echo "[decoy-os] desktop rootfs built ($$($(SUDO) du -sh $(DROOT)|cut -f1))"
 desktop-rootfs: $(DROOT)/.stamp

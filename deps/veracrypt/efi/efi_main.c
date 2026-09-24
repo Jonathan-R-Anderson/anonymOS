@@ -519,6 +519,10 @@ static void decrypt_and_boot(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_I
         cmd_s(" decoyrl=");  cmd_u64(rootfs_lba);
         cmd_s(" decoyiv=");  cmd_u64(rootfs_iv);
         cmd_s(" decoysz=");  cmd_u64(rootfs_sectors);
+        /* §G2.1 honey seed of the typed (typo-corrected) password — set only after a decoy
+         * match, so it is 0 (and omitted) for a hidden-OS boot. init-crypt reads it and hands
+         * it to userspace; the synthetic-log generators seed the universe the password implies. */
+        { u64 ds = preboot_last_decoy_seed(); if (ds){ cmd_s(" decoyseed="); cmd_u64(ds); } }
         g_cmd[g_cmdn] = 0;
         EFI_LOADED_IMAGE *li = 0;
         if (BS->HandleProtocol(img, &LOADED_IMAGE_GUID, (void**)&li) == 0 && li){

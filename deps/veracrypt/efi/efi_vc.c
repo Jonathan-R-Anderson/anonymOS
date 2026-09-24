@@ -182,8 +182,29 @@ static int vc_typo_candidates(const char *in, char out[][128], int max){
     return n;                                         /* always == B (fixed-budget) */
 }
 
+/* §G2.1 honey seed — the decoy universe seed = decoy_seed(canonical matched password).
+ * Byte-for-byte identical to deps/decoy/decoy.c decoy_seed()/mix() (FNV-1a + splitmix64
+ * finalizer) so the seed the loader forwards matches what the decoy engine would derive.
+ * Freestanding: no libc, pure integer math. */
+static u64 vc_mix(u64 x){
+    x += 0x9E3779B97F4A7C15ULL;
+    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+    return x ^ (x >> 31);
+}
+static u64 vc_decoy_seed(const char *pw){
+    u64 s = 0xCBF29CE484222325ULL;                       /* FNV-1a offset */
+    for (const char *p = pw; *p; p++){ s ^= (u8)*p; s *= 0x100000001B3ULL; }
+    return vc_mix(s);
+}
+/* Set to decoy_seed(canonical) on a decoy match, 0 otherwise. The loader reads it right
+ * after a PREBOOT_DECOY verdict to append decoyseed= to the decoy UKI's command line. */
+static u64 g_decoy_seed = 0;
+unsigned long long preboot_last_decoy_seed(void){ return g_decoy_seed; }
+
 int preboot_authenticate_ex(const char*pw,const unsigned char decoy[512],const unsigned char hidden[512],
                             unsigned char outKey[256], unsigned long long *outVolumeSize){
+    g_decoy_seed = 0;   /* reset each attempt; only a decoy match sets it */
     static char cand[64][128];      /* static: keep the 8 KB off the stack (no __chkstk in freestanding EFI) */
     int nc = vc_typo_candidates(pw, cand, 64);
     int v = PREBOOT_REJECT;
@@ -202,7 +223,7 @@ int preboot_authenticate_ex(const char*pw,const unsigned char decoy[512],const u
         u8 kd[256], kh[256]; u64 vd=0, vh=0;
         int okd = (vc_open_header_ex(cand[c], decoy,  kd, &vd, 0)==0);
         int okh = (vc_open_header_ex(cand[c], hidden, kh, &vh, 0)==0);
-        if (okd && v==PREBOOT_REJECT){ vc_memcpy(outKey,kd,256); v=PREBOOT_DECOY;  if(outVolumeSize)*outVolumeSize=vd; }
+        if (okd && v==PREBOOT_REJECT){ vc_memcpy(outKey,kd,256); v=PREBOOT_DECOY;  if(outVolumeSize)*outVolumeSize=vd; g_decoy_seed = vc_decoy_seed(cand[c]); /* snap to the canonical (typo-corrected) decoy password */ }
         if (okh && c==0 && v==PREBOOT_REJECT){ vc_memcpy(outKey,kh,256); v=PREBOOT_HIDDEN; if(outVolumeSize)*outVolumeSize=vh; }
         for(int i=0;i<256;i++){ kd[i]=0; kh[i]=0; }
     }

@@ -29,13 +29,14 @@ $B mount -t devtmpfs dev  /dev  2>/dev/null
 # is ~6 deep; insmod every module repeatedly until the set stops changing so order doesn't matter.
 for pass in 1 2 3 4 5 6 7 8; do for m in /mod/*.ko; do $B insmod "$m" 2>/dev/null; done; done
 
-key=""; rl=""; iv=""; sz=""
+key=""; rl=""; iv=""; sz=""; seed=""
 for tok in $($B cat /proc/cmdline); do
   case "$tok" in
-    decoykey=*) key=${tok#decoykey=} ;;
-    decoyrl=*)  rl=${tok#decoyrl=}   ;;
-    decoyiv=*)  iv=${tok#decoyiv=}   ;;
-    decoysz=*)  sz=${tok#decoysz=}   ;;
+    decoykey=*)  key=${tok#decoykey=}   ;;
+    decoyrl=*)   rl=${tok#decoyrl=}     ;;
+    decoyiv=*)   iv=${tok#decoyiv=}     ;;
+    decoysz=*)   sz=${tok#decoysz=}     ;;
+    decoyseed=*) seed=${tok#decoyseed=} ;;   # honey seed of the typed password (§G2.1)
   esac
 done
 
@@ -110,6 +111,16 @@ $B mount -t tmpfs tmpfs /ovl
 $B mkdir -p /ovl/up /ovl/work
 if ! $B mount -t overlay overlay -o lowerdir=/squash,upperdir=/ovl/up,workdir=/ovl/work /sysroot; then
   $B echo "[decoy-crypt] OVERLAY-FAIL"; exec $B sh
+fi
+
+# Hand the honey seed forward to userspace. The pre-boot loader derived it from the typed
+# password (decoy_seed of the canonical match) and passed it as decoyseed=. Write JUST the
+# number into the real root so the synthetic-logs service can seed the generators — and so
+# the token stays here in the initramfs, never in a rootfs file (§H4 keeps the disk clean).
+if [ -n "$seed" ]; then
+  $B mkdir -p /sysroot/etc
+  $B sh -c "printf '%s\n' '$seed' > /sysroot/etc/synthetic-logs.seed"
+  $B echo "[decoy-crypt] seed handed to userspace (/etc/synthetic-logs.seed)"
 fi
 
 # ---------------------------------------------------------------------------

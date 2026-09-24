@@ -24,6 +24,10 @@ int preboot_authenticate(const char *password, const unsigned char decoy[512],
 int preboot_authenticate_ex(const char *password, const unsigned char decoy[512],
                             const unsigned char hidden[512], unsigned char outMasterKey[256],
                             unsigned long long *outVolumeSize);
+/* §G2.1 — after a PREBOOT_DECOY verdict, the honey seed decoy_seed(canonical matched
+ * password); 0 otherwise. The loader forwards it to the decoy on the kernel command line
+ * (decoyseed=) so the synthetic-log generators seed the same universe the password implies. */
+unsigned long long preboot_last_decoy_seed(void);
 
 /* §E5d — XTS-decrypt one 512-byte data unit in place, for the pre-boot loader to decrypt the
  * matched OS's on-disk encrypted bootloader payload after unlock. `k1`/`k2` are the data/tweak

@@ -1,0 +1,120 @@
+#!/bin/busybox sh
+# boot/gatekeeper/init — PID 1 of the anonymOS boot GATEKEEPER (a minimal-Linux UKI the §E5
+# pre-boot loader StartImages FIRST, before it decrypts either OS).
+#
+# PURPOSE: enforce the IP whitelist/blacklist that lives ENCRYPTED in the EncryptedAttestationVault
+# (contracts/) BEFORE the real OS is ever decrypted. Flow:
+#     password → Argon2id → {id, key} → (net + Tor up) → eth_call get(id) over Tor
+#       → decrypt record → learn our public IP over Tor → decide:
+#           IP in blacklist          → boot DECOY  (and, if armed, this is where a wipe could fire)
+#           IP not in whitelist      → boot DECOY
+#           whitelist empty          → boot DECOY  (fail-closed: nothing allowed = nothing revealed)
+#           IP in whitelist          → boot the REAL OS
+#       any failure (no net, Tor down, RPC error, decrypt fail, no record) → boot DECOY.
+#
+# The gatekeeper holds NO real-OS key of its own: it only decides, then hands control to the real
+# or decoy boot path. That is what gives the "never decrypt the real OS from a wrong network"
+# property the UEFI loader alone can't (no Tor in firmware).
+#
+# ┌─ !!! UNTESTED DRAFT — boot-critical. A mistake here bricks boot or reveals the hidden OS. ─┐
+# │ It must be built into a UKI and iterated against a REAL boot; that loop is yours, not mine. │
+# └─────────────────────────────────────────────────────────────────────────────────────────────┘
+#
+# INTEGRATION (finalize against the §E5 loader — these are the contract points I could not verify):
+#   * How the loader hands us the typed password (or a seed) + the geometry/keys for BOTH the real
+#     and decoy regions. Assumed cmdline params below (gk*=…), mirroring init-crypt's decoy*=… .
+#   * How we transfer control: kexec the real/decoy kernel+initramfs with the right cmdline, OR
+#     signal the loader which to StartImage. Drafted as kexec; adjust to your loader's model.
+#   * The unseal helper /bin/attest-unseal (compiled counterpart of scripts/attest-seal.py:
+#     Argon2id 64MiB/t=3 → SHA256 subkeys → AES-256-GCM). Must be baked into this initramfs.
+B=/bin/busybox
+$B mount -t proc proc /proc 2>/dev/null
+$B mount -t sysfs sys /sys 2>/dev/null
+$B mount -t devtmpfs dev /dev 2>/dev/null
+
+log(){ $B echo "[gatekeeper] $*"; }
+# Every abnormal exit lands here: fail CLOSED to the decoy. `boot_decoy` never returns.
+fail(){ log "FAIL-CLOSED: $* → decoy"; boot_decoy; }
+
+# ── load modules (net + crypto + kexec), order-independent like init-crypt ──────────────────
+for pass in 1 2 3 4 5 6 7 8; do for m in /mod/*.ko; do $B insmod "$m" 2>/dev/null; done; done
+
+# ── cmdline handoff from the §E5 loader (INTEGRATION: confirm names/þsemantics) ──────────────
+pw=""; vault=""; rpc=""; ipsvc=""
+for tok in $($B cat /proc/cmdline); do
+  case "$tok" in
+    gkpass=*)  pw=${tok#gkpass=}     ;;   # the typed password (or a seed we KDF from)
+    gkvault=*) vault=${tok#gkvault=} ;;   # EncryptedAttestationVault address (0x…)
+    gkrpc=*)   rpc=${tok#gkrpc=}     ;;   # L2 RPC URL (reached only via Tor below)
+    gkipsvc=*) ipsvc=${tok#gkipsvc=} ;;   # public-IP echo endpoint (also via Tor)
+  esac
+done
+[ -n "$pw" ] && [ -n "$vault" ] && [ -n "$rpc" ] || fail "missing gatekeeper cmdline params"
+
+# The per-install SALT lives locally on the ESP (so we can derive id/key before any network).
+# INTEGRATION: mount the ESP and read it; path is a placeholder.
+SALT_FILE=/esp/anonymos/attest.salt
+salt=$($B cat "$SALT_FILE" 2>/dev/null)
+[ -n "$salt" ] || fail "no attestation salt on ESP ($SALT_FILE)"
+
+# ── network up (DHCP) ───────────────────────────────────────────────────────────────────────
+$B ip link set lo up 2>/dev/null
+IF=$(for d in /sys/class/net/*; do n=$($B basename "$d"); [ "$n" = lo ] || { $B echo "$n"; break; }; done)
+[ -n "$IF" ] || fail "no network interface"
+$B ip link set "$IF" up 2>/dev/null
+$B udhcpc -i "$IF" -n -q -t 5 -T 3 2>/dev/null || fail "DHCP failed"
+
+# ── Tor up; wait for the SOCKS port ─────────────────────────────────────────────────────────
+# INTEGRATION: ship a tor binary + a minimal torrc (SocksPort 9050) in this initramfs.
+tor -f /etc/tor/torrc >/tmp/tor.log 2>&1 &
+ok=""
+for i in $($B seq 1 60); do
+  $B nc -z 127.0.0.1 9050 2>/dev/null && { ok=1; break; }
+  $B sleep 1
+done
+[ -n "$ok" ] || fail "Tor did not come up"
+TORSOCKS="--socks5-hostname 127.0.0.1:9050"
+
+# ── derive id + key, fetch the record over Tor, decrypt ─────────────────────────────────────
+# /bin/attest-unseal: given password+salt on stdin/args, prints the record id (hex) and, when fed
+# the fetched ciphertext, prints the decrypted JSON. (Compiled counterpart of attest-seal.py.)
+id=$(printf '%s' "$pw" | /bin/attest-unseal --derive-id --salt "$salt") || fail "KDF failed"
+[ -n "$id" ] || fail "empty id"
+
+# eth_call get(bytes32 id): selector for get(bytes32) = 0x8eaa6ac0 (keccak256("get(bytes32)")[:4]).
+# INTEGRATION: verify the selector against the compiled ABI (contracts/…abi.json).
+data="0x8eaa6ac0${id}"
+req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"$vault\",\"data\":\"$data\"},\"latest\"]}"
+resp=$($B wget $TORSOCKS -q -O - --header='Content-Type: application/json' --post-data="$req" "$rpc" 2>/dev/null) \
+  || fail "vault RPC failed (Tor/RPC unreachable → decoy is correct)"
+# The eth_call result is ABI-encoded `bytes`; attest-unseal strips the ABI wrapper + AES-GCM-decrypts.
+record_json=$(printf '%s' "$resp" | /bin/attest-unseal --decode-ethcall --password "$pw" --salt "$salt") \
+  || fail "record decrypt failed (wrong password/salt, or no record)"
+
+# ── learn our public IP over Tor and decide ─────────────────────────────────────────────────
+myip=$($B wget $TORSOCKS -q -O - "${ipsvc:-https://check.torproject.org/api/ip}" 2>/dev/null | \
+       $B grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | $B head -n1)
+[ -n "$myip" ] || fail "could not determine public IP"
+log "public IP via Tor: $myip"
+
+# attest-unseal --match classifies the IP against the decrypted whitelist/blacklist and prints one
+# of: BLACKLIST | ALLOW | DENY  (DENY = not in a non-empty whitelist, or whitelist empty).
+verdict=$(printf '%s' "$record_json" | /bin/attest-unseal --match "$myip") || fail "match failed"
+case "$verdict" in
+  ALLOW)     log "IP whitelisted → booting the real OS"; boot_real ;;
+  BLACKLIST) log "IP blacklisted → decoy"; boot_decoy ;;
+  *)         log "IP not whitelisted ($verdict) → decoy"; boot_decoy ;;
+esac
+fail "unreachable"
+
+# ── control transfer (INTEGRATION: match your loader's real/decoy boot mechanism) ────────────
+boot_real(){
+  # Hand back to the §E5 real-OS path. Drafted as kexec of the real UKI; the real key/geometry are
+  # derived/held by the loader path, NOT here. Replace with your loader's signal if not kexec.
+  log "TODO: transfer to the REAL OS boot path (kexec real UKI / signal loader)"
+  exec $B sh   # placeholder: DO NOT ship — must transfer control, not drop to a shell
+}
+boot_decoy(){
+  log "TODO: transfer to the DECOY boot path (kexec decoy UKI / signal loader)"
+  exec $B sh   # placeholder: DO NOT ship
+}

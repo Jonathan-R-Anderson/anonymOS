@@ -213,7 +213,7 @@ private bool biExtractRpcHost() {
     g_biRpcHostLen = 0;
     g_biRpcUseTls = true;
     g_biRpcPort = 443;
-    const(char)* fallback = "sepolia.era.zksync.dev\0".ptr;
+    const(char)* fallback = "sepolia.base.org\0".ptr;   // migrated zkSync Era -> Base L2 (see Makefile)
     if (g_biRpcUrlLen == 0) {
         while (fallback[g_biRpcHostLen] != 0 && g_biRpcHostLen + 1 < BI_HOST_MAX) {
             g_biRpcHost[g_biRpcHostLen] = fallback[g_biRpcHostLen];

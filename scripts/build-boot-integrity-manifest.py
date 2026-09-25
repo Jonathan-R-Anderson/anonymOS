@@ -121,9 +121,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("stage_dir")
     parser.add_argument("output")
-    parser.add_argument("--network", default=os.environ.get("ZKSYNC_NETWORK", "zksync-sepolia"))
-    parser.add_argument("--chain-id", type=int, default=int(os.environ.get("ZKSYNC_CHAIN_ID", "300")))
-    parser.add_argument("--rpc-url", default=os.environ.get("ZKSYNC_RPC_URL", "https://sepolia.era.zksync.dev"))
+    # Migrated zkSync Era -> Base L2 (env var names kept to avoid a repo-wide rename; see Makefile).
+    parser.add_argument("--network", default=os.environ.get("ZKSYNC_NETWORK", "base-sepolia"))
+    parser.add_argument("--chain-id", type=int, default=int(os.environ.get("ZKSYNC_CHAIN_ID", "84532")))
+    parser.add_argument("--rpc-url", default=os.environ.get("ZKSYNC_RPC_URL", "https://sepolia.base.org"))
     parser.add_argument("--contract-address", default=os.environ.get("BOOT_INTEGRITY_CONTRACT_ADDRESS", ""))
     parser.add_argument("--deployment-tx", default=os.environ.get("BOOT_INTEGRITY_DEPLOY_TX", ""))
     args = parser.parse_args()

@@ -143,7 +143,9 @@ impl EnhancedSandbox {
         use libc::{RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NOFILE, RLIMIT_NPROC};
         use libc::{rlimit, setrlimit};
 
-        let limits: Vec<(libc::__rlimit_resource_t, libc::rlim_t, &str)> = vec![
+        // NB: the rlimit "resource" type differs by libc (glibc: __rlimit_resource_t; musl: c_int),
+        // so infer it from the RLIMIT_* constants rather than naming the glibc-only type.
+        let limits: Vec<(_, libc::rlim_t, &str)> = vec![
             (RLIMIT_AS, config.memory_limit_mb * 1024 * 1024, "RLIMIT_AS"),
             (RLIMIT_CPU, config.cpu_time_limit_secs, "RLIMIT_CPU"),
             (RLIMIT_NPROC, u64::from(config.max_processes), "RLIMIT_NPROC"),

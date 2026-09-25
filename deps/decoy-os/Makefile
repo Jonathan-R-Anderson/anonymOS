@@ -50,14 +50,13 @@ SYNTH_PKGS ?= openjdk17-jre-headless python3 py3-pip py3-fusepy fuse
 # against the target Alpine version. growpart (cloud-utils) is optional (sfdisk fallback).
 RECLAIM_PKGS ?= sfdisk lsblk util-linux-misc e2fsprogs-extra cryptsetup gptfdisk
 
-# Runtime deps for the vendored snoop-detectors (apps/argus, spectre, orin, prx-sd), consumed
-# by snoop-monitor. DISABLED by default: they are heavy and a deniability tell, and argus/prx-sd
-# also need cross-build porting (see those apps' READMEs). Their install.sh scripts clone upstream
-# at build time (git is a HOST build dep, not a rootfs package). Enable only what you actually ship:
-#   spectre/orin (Python): py3-pip (already in SYNTH_PKGS) + their deps (py3-yara, etc.)
-#   argus (eBPF runtime): libbpf   |   prx-sd: static musl build, no rootfs pkg
-# DETECTOR_PKGS ?= libbpf py3-yara
-# and add $(DETECTOR_PKGS) to the two `apk ... add` lines below.
+# Runtime deps for the vendored snoop-detectors (apps/argus, spectre, orin, prx-sd), consumed by
+# snoop-monitor. argus is a dynamic musl binary needing libbpf/libelf/zlib/zstd at runtime (it is
+# cross-built by apps/argus/build-musl.sh; the decoy kernel provides BTF via CONFIG_DEBUG_INFO_BTF).
+# prx-sd is a mostly-static musl binary (apps/prx-sd/build-musl.sh; static openssl) — no rootfs pkg.
+# spectre pip-installs its deps into the rootfs (needs py3-pip, already in SYNTH_PKGS); orin is
+# Python-stdlib. Added to BOTH rootfs variants' apk add below.
+DETECTOR_PKGS ?= libbpf libelf zlib zstd-libs libgcc
 
 # Your own programs. Everything under apps/ is installed into BOTH rootfs variants by
 # stage-apps.sh: apps/<name>/bin -> /usr/local/bin, files/ -> /, service -> an OpenRC
@@ -141,7 +140,7 @@ $(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd 
 	mkdir -p $(ROOTFS)
 	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(ROOTFS)
 	$(SUDO) $(BLD)/apk.static --root $(ROOTFS) --repository $(APKMAIN) --repository $(APKCOMM) \
-	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS)
+	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS) $(DETECTOR_PKGS)
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
 	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(ROOTFS) $(BLD)/fakelogd "$(DECOY_PW)"
@@ -179,8 +178,9 @@ uki: $(BLD)/decoy-uki.efi
 # ── §E5d/§H1 — the decoy's from-scratch Linux $(KERNEL_VER) kernel ──────────────────────────
 # Fetched from kernel.org, sha256-verified, configured from x86_64_defconfig + kernel/decoy-kernel.config
 # (the whole boot path built =y), then compiled. The result is vmlinuz-decoy — the bzImage the
-# desktop/crypt UKIs embed as --linux=. Needs the usual kernel build deps (flex bison libelf-dev,
-# already in the project Dockerfile); no pahole/keys (BTF and module signing are disabled).
+# desktop/crypt UKIs embed as --linux=. Needs the usual kernel build deps (flex bison libelf-dev)
+# PLUS pahole (dwarves) — apps/argus's eBPF CO-RE needs kernel BTF, so decoy-kernel.config now sets
+# CONFIG_DEBUG_INFO_BTF=y; without pahole olddefconfig silently drops BTF and the assert below fails.
 $(DL)/$(KERNEL_TAR): | $(DL)
 	curl -fL -o $@.part $(KERNEL_URL)
 	echo "$(KERNEL_SHA256)  $@.part" | sha256sum -c -
@@ -200,7 +200,7 @@ $(BLD)/vmlinuz-decoy: $(DL)/$(KERNEL_TAR) kernel/decoy-kernel.config | $(BLD)
 	         USB USB_XHCI_HCD USB_EHCI_HCD USB_STORAGE USB_UAS \
 	         INPUT_EVDEV SERIO_I8042 KEYBOARD_ATKBD MOUSE_PS2 HID_GENERIC USB_HID \
 	         DRM DRM_VIRTIO_GPU DRM_BOCHS DRM_FBDEV_EMULATION FRAMEBUFFER_CONSOLE \
-	         EFI EFI_STUB; do \
+	         EFI EFI_STUB DEBUG_INFO_BTF; do \
 	   grep -q "^CONFIG_$$s=y" $(KSRC)/.config || { echo "[decoy-os] FATAL: kernel config lost CONFIG_$$s (unmet dep?) — the decoy would not boot"; exit 1; }; \
 	 done
 	$(MAKE) -C $(KSRC) ARCH=x86_64 -j$(KJOBS) bzImage modules
@@ -244,7 +244,7 @@ $(DROOT)/.stamp: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.
 	mkdir -p $(DROOT)
 	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(DROOT)
 	$(SUDO) $(BLD)/apk.static --root $(DROOT) --repository $(APKMAIN) --repository $(APKCOMM) \
-	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(DESKTOP_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS)
+	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(DESKTOP_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS) $(DETECTOR_PKGS)
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
 	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(DROOT) $(BLD)/fakelogd "$(DECOY_PW)"

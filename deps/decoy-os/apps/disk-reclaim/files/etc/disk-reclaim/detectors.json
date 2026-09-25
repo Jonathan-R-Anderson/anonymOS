@@ -1,48 +1,48 @@
 [
   {
-    "note": "Read by snoop-monitor. Each entry tails a tool's output log for `pattern`; a match counts as a signal, and the monitor stays the ONLY thing that fires disk-reclaim. Paths match what the synthetic-logs launcher makes each tool write (start_detector redirects a tool's stdout to <logdir>/service.log; spectre uses its own --log-file). Nothing fires until you (a) build the tool via apps/<name>/install.sh, (b) confirm it actually writes the alerts these patterns match — VERIFY the field names against the tool's real output — and (c) set enabled:true. A pattern that is too broad here wipes your real OS on a false positive.",
+    "note": "Read by snoop-monitor. Each entry tails a tool's output log for `pattern`; a match counts as a signal, and the monitor is the single thing that fires disk-reclaim. Firing is still gated by /etc/disk-reclaim/arm.key (machine must be armed) — nothing wipes until you provision that key. Patterns for argus + spectre were derived from their vendored source; orin + prx-sd are best-effort (see their notes) and should be watched in /var/log/snoop-monitor.log before you arm.",
     "name": "_readme", "enabled": false, "logs": [], "pattern": "(?!)"
   },
 
   {
     "name": "argus",
-    "enabled": false,
-    "note": "eBPF tracer (C). Launcher runs `argus --json` -> service.log (newline JSON). These event types mean someone is analyzing the running system. VERIFY argus's JSON event-type strings match this pattern.",
+    "enabled": true,
+    "note": "eBPF tracer (C). `argus --json` -> service.log (newline JSON). VERIFIED from src/rules.c + argus-server.c: the JSON \"type\" field uses these exact uppercase tokens for snoop-relevant events; benign EXEC/OPEN/DNS do not match. PRIVESC is intentionally excluded (fires on legit `please`/su).",
     "logs": ["/var/log/argus/service.log"],
-    "pattern": "ptrace|kernel_module|namespace_escape|mem_exec|anon_exec|module_load",
+    "pattern": "\"(PTRACE|MEMEXEC|KMOD_LOAD|NS_ESCAPE(_EXEC)?)\"",
     "threshold": 1,
     "window": 300,
     "immediate": true
   },
 
   {
-    "name": "orin",
-    "enabled": false,
-    "note": "Offline forensics/integrity (Python). Launcher runs `orin stream --verbose` -> service.log. Tamper + rootkit indicators. CORROBORATING: package updates cause benign drift, so require a 2nd signal. VERIFY orin's stream output wording.",
-    "logs": ["/var/log/orin/service.log"],
-    "pattern": "rootkit|kernel[_ ]module|integrity violation|tamper|ebpf anomaly|reverse shell",
-    "threshold": 1,
-    "window": 600,
-    "immediate": false
-  },
-
-  {
     "name": "spectre",
-    "enabled": false,
-    "note": "Behavioral HIDS (Python). Launcher runs `spectre run --log-file /var/log/spectre/alerts.log`. CORROBORATING: priv-esc / lineage rules false-positive on ordinary admin, so require a 2nd signal + threshold 2.",
+    "enabled": true,
+    "note": "Behavioral HIDS (Python). Writes /var/log/spectre/alerts.log. VERIFIED from spectre/alerts + main.py: high-severity (threat score over threshold) lines are '[ALERT] ...'; noisy per-event lines use '[WARNING]' and are ignored. CORROBORATING + threshold 2 to stay conservative.",
     "logs": ["/var/log/spectre/alerts.log"],
-    "pattern": "credential access|memory injection|ptrace|debugger|process hollow",
+    "pattern": "\\[ALERT\\]",
     "threshold": 2,
     "window": 600,
     "immediate": false
   },
 
   {
+    "name": "orin",
+    "enabled": true,
+    "note": "Forensics/integrity (Python). NB: `orin stream` only feeds raw telemetry to SQLite — the rootkit/tamper DETECTIONS come from `orin analyze`, so the launcher runs a collect->analyze loop into service.log. Pattern matches orin's finding labels. BEST-EFFORT: orin's analyze prints severity and label on separate lines, so watch /var/log/snoop-monitor.log and tune before arming. CORROBORATING.",
+    "logs": ["/var/log/orin/service.log"],
+    "pattern": "rootkit|integrity violation|reverse shell|anti-forensic|unauthorized module|kernel module anomal|masquerade",
+    "threshold": 1,
+    "window": 900,
+    "immediate": false
+  },
+
+  {
     "name": "prx-sd",
-    "enabled": false,
-    "note": "Antivirus (Rust). OFF-TARGET for snoop detection (finds malware, not forensic examiners) and noisy — left disabled AND off in the launcher (RUN_PRXSD=no). If enabled, keep CORROBORATING and match only rootkit indicators.",
+    "enabled": true,
+    "note": "Antivirus (Rust). OFF-TARGET (finds malware, not examiners) + noisiest. `sd monitor` -> service.log (tracing). Threat levels are clean/suspicious/malicious; pattern matches a malicious verdict or rootkit indicator. BEST-EFFORT: verdict-line format not documented — verify in /var/log/snoop-monitor.log, or leave this one disabled. CORROBORATING + threshold 2.",
     "logs": ["/var/log/prx-sd/service.log"],
-    "pattern": "rootkit|kernel rootkit indicator",
+    "pattern": "rootkit|\\bmalicious\\b",
     "threshold": 2,
     "window": 600,
     "immediate": false

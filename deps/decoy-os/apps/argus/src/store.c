@@ -1,3 +1,4 @@
+#include <sys/select.h>
 #include "store.h"
 
 #ifdef HAVE_SQLITE3

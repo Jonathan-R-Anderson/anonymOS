@@ -49,8 +49,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #     dies on "cannot find .../libclang_rt.builtins-x86_64.a"
 #   * meson/ninja/cmake/autotools/gperf/flex/bison — the dependency tarballs
 #   * libelf-dev — deps/decoy-os builds the decoy's Linux 6.12 kernel from source;
-#     objtool (CONFIG_UNWINDER_ORC) needs libelf. BTF/pahole is disabled in the
-#     kernel config, so dwarves is not required.
+#     objtool (CONFIG_UNWINDER_ORC) needs libelf.
+#   * dwarves (pahole) — the decoy kernel now sets CONFIG_DEBUG_INFO_BTF=y (apps/argus's
+#     eBPF CO-RE needs kernel BTF at load time); pahole generates that BTF at build.
 #   * libwayland-bin, libglib2.0-*-bin — HOST codegen (wayland-scanner,
 #     glib-compile-resources, gdbus-codegen) used by cross-built gtk/weston/mutter
 #   * libegl-dev/libgl-dev/libgles-dev — deps/gtk-stack's gl-headers step stages the
@@ -75,6 +76,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         dmz-cursor-theme \
         dosfstools \
+        dwarves \
         e2fsprogs \
         fakeroot \
         file \

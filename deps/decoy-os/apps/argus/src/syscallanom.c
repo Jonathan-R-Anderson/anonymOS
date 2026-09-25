@@ -1,3 +1,4 @@
+#include <sys/time.h>
 /*
  * syscallanom.c — Syscall frequency anomaly detection.
  *

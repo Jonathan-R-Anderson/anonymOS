@@ -70,6 +70,25 @@ DETECTOR_PKGS ?= libbpf libelf zlib zstd-libs libgcc
 APP_FILES := $(shell find $(SELF)/apps -maxdepth 2 \( -name install.sh -o -name service \) 2>/dev/null; \
                      find $(SELF)/apps/*/bin $(SELF)/apps/*/files -type f ! -name '*.md' 2>/dev/null)
 
+# ── snoop-detector binaries (apps/argus, apps/prx-sd) ────────────────────────────────────────
+# argus (C/eBPF) and prx-sd (Rust) can't be built by the decoy's own Alpine-3.19 toolchain
+# (rust too old; no eBPF toolchain in the rootfs), so each app's build-musl.sh cross-builds it to
+# a musl binary in an Alpine container, dropping it in the app's dist/. These are wired as rootfs
+# prerequisites so a single `make all` builds them automatically, then stage-apps.sh copies them
+# in. NEEDS docker on the build host (and, for argus, host BTF at /sys/kernel/btf). To skip one:
+#   make ... DETECTOR_BINS='$(SELF)/apps/argus/dist/argus'    (argus only, no prx-sd)
+# or DETECTOR_BINS= to skip both. (argus also needs the kernel's CONFIG_DEBUG_INFO_BTF=y, set.)
+ARGUS_BIN     := $(SELF)/apps/argus/dist/argus
+PRXSD_BIN     := $(SELF)/apps/prx-sd/dist/sd
+DETECTOR_BINS ?= $(ARGUS_BIN) $(PRXSD_BIN)
+
+$(ARGUS_BIN): $(SELF)/apps/argus/build-musl.sh $(wildcard $(SELF)/apps/argus/src/*.c) \
+              $(wildcard $(SELF)/apps/argus/src/*.h) $(wildcard $(SELF)/apps/argus/src/bpf/*) $(SELF)/apps/argus/Makefile
+	$(SELF)/apps/argus/build-musl.sh
+
+$(PRXSD_BIN): $(SELF)/apps/prx-sd/build-musl.sh $(SELF)/apps/prx-sd/Cargo.lock
+	$(SELF)/apps/prx-sd/build-musl.sh
+
 # a real install reseeds with the user's decoy password
 DECOY_PW ?= decoy-password
 # The decoy OS's own settings — supplied by the installer (§E6 hidden-OS step) in the SAME
@@ -135,7 +154,7 @@ $(BLD)/apk.static: | $(BLD)
 $(BLD)/fakelogd: $(DECOY)/decoy.c $(DECOY)/decoy_render.c $(DECOY)/h2/fakelogd.c | $(BLD)
 	$(CC) -O2 -I$(DECOY) $^ -o $@
 
-$(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.sh $(APP_FILES) customize.sh | $(BLD)
+$(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.sh $(APP_FILES) $(DETECTOR_BINS) customize.sh | $(BLD)
 	$(SUDO) rm -rf $(ROOTFS)
 	mkdir -p $(ROOTFS)
 	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(ROOTFS)
@@ -239,7 +258,7 @@ boot-check: uki
 	  tr -d '\0' < serial-uki.log | grep -aq 'DECOY-INIT-OK' && echo "  [PASS] decoy UKI boots real Alpine Linux to userspace" || { echo "  [FAIL] UKI did not reach userspace"; exit 1; }
 
 # ── §H1 desktop variant: believable rootfs + XFCE, autologin, rendering caches ──────────────
-$(DROOT)/.stamp: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.sh $(APP_FILES) customize.sh customize-desktop.sh | $(BLD)
+$(DROOT)/.stamp: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.sh $(APP_FILES) $(DETECTOR_BINS) customize.sh customize-desktop.sh | $(BLD)
 	$(SUDO) rm -rf $(DROOT)
 	mkdir -p $(DROOT)
 	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(DROOT)

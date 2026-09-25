@@ -1,137 +1,39 @@
-#!/usr/bin/env bash
-
-# Copyright (C) 2026 Musa Jaradat
+#!/bin/sh
+# apps/orin/install.sh — STAGE Orin (offline forensics/integrity, Python) from the vendored
+# source in THIS directory into a decoy rootfs. Run by stage-apps.sh as: install.sh <ROOTFS>.
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# The upstream HOST installer (apt/pipx, installs onto the BUILD MACHINE, ignores <ROOTFS>) is
+# preserved as install.upstream.sh and is deliberately NOT used here.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# !! stage-apps.sh only runs install.sh if EXECUTABLE:  chmod +x apps/*/install.sh
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-# install.sh - Automated installer for Orin Forensics Engine
-
+# Orin is Python-stdlib, so we stage the source + a PYTHONPATH launcher (no pip needed) and
+# replicate the parts upstream deploys (rules -> /var/lib/orin/rules, config -> /etc/orin).
+# Launched at boot by synthetic-logs-run:  orin stream --verbose  (needs libbpf; else switch the
+# launcher to a collect/analyze loop). Feeds snoop-monitor via /etc/disk-reclaim/detectors.json.
 set -e
+R="$1"; [ -n "$R" ] || { echo "usage: $0 <ROOTFS>" >&2; exit 1; }
+APP="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+DEST="$R/opt/orin"
+log() { echo "[orin] $*"; }
+[ -f "$DEST/.installed" ] && { log "already staged in this rootfs"; exit 0; }
 
-echo "=== Orin Forensics Engine Installer ==="
+mkdir -p "$DEST" "$R/var/log/orin" "$R/etc/orin" "$R/var/lib/orin/rules" "$R/usr/local/bin"
 
-# 1. Check if pipx is available
-if ! command -v pipx &> /dev/null; then
-    echo "[*] pipx is not installed. Attempting to install it..."
-    if command -v apt-get &> /dev/null; then
-        echo "[*] Running: sudo apt-get update && sudo apt-get install -y pipx"
-        sudo apt-get update
-        sudo apt-get install -y pipx
-    else
-        echo "[-] Error: pipx is missing and 'apt-get' was not found."
-        echo "[-] Please install pipx manually using your package manager, then re-run this script."
-        exit 1
-    fi
+[ -d "$APP/src" ] && cp -r "$APP/src" "$DEST/" || log "WARN no src/ in vendored orin (VERIFY layout)"
+[ -d "$APP/rules" ] && cp -r "$APP/rules/." "$R/var/lib/orin/rules/" 2>/dev/null || true
+if [ ! -f "$R/etc/orin/orin_config.json" ]; then
+	if   [ -f "$APP/orin_config.json.example" ]; then cp "$APP/orin_config.json.example" "$R/etc/orin/orin_config.json"
+	elif [ -f "$APP/orin_config.json" ];         then cp "$APP/orin_config.json"         "$R/etc/orin/orin_config.json"; fi
+	[ -f "$R/etc/orin/orin_config.json" ] && chmod 600 "$R/etc/orin/orin_config.json"
 fi
 
-# 2. Install Orin
-if [ -f "./orin" ]; then
-    echo "[*] Pre-compiled standalone 'orin' binary detected. Installing binary..."
-    if [ "$EUID" -eq 0 ]; then
-        echo "[*] Running as root. Installing binary to /usr/local/bin/orin..."
-        cp ./orin /usr/local/bin/orin
-        chmod +x /usr/local/bin/orin
-        
-        # Install rules to /var/lib/orin/rules
-        if [ -d "./rules" ]; then
-            echo "[*] Copying default rules to /var/lib/orin/rules..."
-            mkdir -p /var/lib/orin/rules
-            cp -r ./rules/* /var/lib/orin/rules/
-            echo "[+] Default rules installed successfully."
-        fi
-        
-        # Create system-wide config directory and deploy default config template if not present
-        if [ ! -f /etc/orin/orin_config.json ]; then
-            echo "[*] Copying default configuration to /etc/orin/orin_config.json..."
-            mkdir -p /etc/orin
-            if [ -f orin_config.json.example ]; then
-                cp orin_config.json.example /etc/orin/orin_config.json
-            fi
-            chmod 600 /etc/orin/orin_config.json
-            echo "[+] Default configuration installed securely."
-        else
-            echo "[*] Existing configuration found at /etc/orin/orin_config.json, skipping overwrite."
-        fi
-    else
-        # If not root, install to user's local bin
-        echo "[*] Running as user. Installing binary to $HOME/.local/bin/orin..."
-        mkdir -p "$HOME/.local/bin"
-        cp ./orin "$HOME/.local/bin/orin"
-        chmod +x "$HOME/.local/bin/orin"
-        echo "[*] Ensuring local path is in PATH..."
-        if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-            echo "[!] Warning: $HOME/.local/bin is not in your PATH. Please add it to your shell profile."
-        fi
-        
-        # Copy rules to ~/.local/share/orin/rules
-        if [ -d "./rules" ]; then
-            echo "[*] Copying default rules to $HOME/.local/share/orin/rules..."
-            mkdir -p "$HOME/.local/share/orin/rules"
-            cp -r ./rules/* "$HOME/.local/share/orin/rules/"
-            echo "[+] Default rules installed locally."
-        fi
-        
-        # Create user config directory and deploy default config template if not present
-        if [ ! -f "$HOME/.config/orin/orin_config.json" ]; then
-            echo "[*] Copying default configuration to $HOME/.config/orin/orin_config.json..."
-            mkdir -p "$HOME/.config/orin"
-            if [ -f orin_config.json.example ]; then
-                cp orin_config.json.example "$HOME/.config/orin/orin_config.json"
-            fi
-            chmod 600 "$HOME/.config/orin/orin_config.json"
-            echo "[+] Default configuration installed locally."
-        else
-            echo "[*] Existing configuration found at $HOME/.config/orin/orin_config.json, skipping overwrite."
-        fi
-    fi
-else
-    # Fallback to source installation
-    echo "[*] Pre-compiled binary not found. Falling back to Python source installation..."
-    if [ "$EUID" -eq 0 ]; then
-        echo "[*] Running as root. Installing Orin Forensics Engine globally into the system Python environment..."
-        python3 -m pip install . --break-system-packages
+# launcher: run from source, no pip. VERIFY the module path (README: PYTHONPATH=src python -m orin.main).
+cat > "$R/usr/local/bin/orin" <<'EOF'
+#!/bin/sh
+exec env PYTHONPATH=/opt/orin/src python3 -m orin.main "$@"
+EOF
+chmod 755 "$R/usr/local/bin/orin"
 
-        # Create system-wide config directory and deploy default config template if not present
-        if [ ! -f /etc/orin/orin_config.json ]; then
-            echo "[*] Copying default configuration to /etc/orin/orin_config.json..."
-            mkdir -p /etc/orin
-            if [ -f orin_config.json.example ]; then
-                cp orin_config.json.example /etc/orin/orin_config.json
-            elif [ -f orin_config.json ]; then
-                cp orin_config.json /etc/orin/orin_config.json
-            fi
-            chmod 600 /etc/orin/orin_config.json
-            echo "[+] Default configuration installed securely."
-        else
-            echo "[*] Existing configuration found at /etc/orin/orin_config.json, skipping overwrite."
-        fi
-    else
-        # Ensure pipx binary paths are configured in shell profiles
-        echo "[*] Ensuring pipx paths are configured..."
-        pipx ensurepath
-
-        echo "[*] Installing Orin Forensics Engine locally via pipx..."
-        if pipx list | grep -q "orin"; then
-            echo "[*] Orin is already installed. Re-installing/upgrading..."
-            pipx install --force .
-        else
-            pipx install .
-        fi
-    fi
-fi
-
-echo "========================================"
-echo "[+] Installation complete!"
-echo "[+] You can now run the 'orin' command in your terminal."
-echo "[+] Note: If this is the first time installing pipx, please restart your terminal session to load the updated PATH."
-echo "========================================"
+touch "$DEST/.installed"
+log "done -> /opt/orin (+ launcher, rules, config). Enable its detectors.json entry after verifying."

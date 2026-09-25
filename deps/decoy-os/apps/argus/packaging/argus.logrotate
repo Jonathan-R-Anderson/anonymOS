@@ -1,0 +1,13 @@
+/var/log/argus/events.jsonl {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 nobody adm
+    postrotate
+        # Signal argus to reopen its log file (systemd will restart on failure)
+        systemctl try-reload-or-restart argus.service > /dev/null 2>&1 || true
+    endscript
+}

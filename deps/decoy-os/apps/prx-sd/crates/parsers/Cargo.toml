@@ -1,0 +1,21 @@
+[package]
+name = "prx-sd-parsers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+goblin = { workspace = true }
+zip = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
+md-5 = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["md-5"]  # imported as `md5` (crate rename), used in pe.rs for imphash
+
+[lints]
+workspace = true

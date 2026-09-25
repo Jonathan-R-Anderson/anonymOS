@@ -1,0 +1,25 @@
+title: SSH Lateral Movement
+id: spectre-lateral-001
+description: Detects SSH connections from unusual sources or with suspicious patterns
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: network_connection
+    product: linux
+detection:
+    selection_ssh:
+        DestinationPort: 22
+    selection_outbound:
+        DestinationIp: '*'
+    condition: selection_ssh and selection_outbound
+level: medium
+tags:
+    - attack.t1021.004
+    - attack.lateral_movement
+references:
+    - https://attack.mitre.org/techniques/T1021/004/
+falsepositives:
+    - Legitimate SSH administration
+    - Automated deployments
+license: MIT

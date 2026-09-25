@@ -1,0 +1,24 @@
+# PRX-SD SHA-256 Hash Blocklist
+# Format: sha256_hash malware_name
+# Lines starting with # are comments
+#
+# EICAR test file
+275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f EICAR.Test.File
+44d88612fea8a8f36de82e1278abb02f Test.EICAR.Standard
+
+# Known malware samples (examples - add real hashes from threat feeds)
+# WannaCry
+ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa Ransom.WannaCry
+24d004a104d4d54034dbcffc2a4b19a11f39008a575aa614ea04703480b1022c Ransom.WannaCry.B
+
+# NotPetya
+027cc450ef5f8c5f653329641ec1fed91f694e0d229928963b30f6b0d7d3a745 Ransom.NotPetya
+
+# Emotet
+c2f54d33f16ea50d97aa0f6bcabc443914627e42a0ab5b98cf0fd6c2e8ca0dd9 Trojan.Emotet
+
+# TrickBot
+0b6d7d73b33f6354e90cfe8e5e26c18be7c47b8f4d27f3a50bbc7cc6e0dfe3db Trojan.TrickBot
+
+# Cobalt Strike beacon (example hash)
+dda33c39a0574eef6caa6aa9c0b0e77a4c5b3b8069cbf3a660be4f47e0d1bb69 HackTool.CobaltStrike.Beacon

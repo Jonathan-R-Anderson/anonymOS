@@ -1,0 +1,50 @@
+{
+    "name": "argus (eBPF dev)",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+
+    // eBPF requires a privileged container so BPF syscalls and tracefs
+    // are accessible.  --pid=host gives us the host PID namespace so
+    // tracepoints fire for real host processes.
+    "runArgs": [
+        "--privileged",
+        "--pid=host"
+    ],
+
+    // Bind /sys from the host (Docker Desktop's Linux VM) into the
+    // container so bpftool can read /sys/kernel/btf/vmlinux and
+    // tracefs is reachable at /sys/kernel/tracing.
+    "mounts": [
+        "source=/sys,target=/sys,type=bind,consistency=cached"
+    ],
+
+    // eBPF programs and bpftool need root.
+    "remoteUser": "root",
+
+    // Pre-generate vmlinux.h from the running kernel the first time the
+    // container is created.  The file is .gitignored so it stays local.
+    "postCreateCommand": "mkdir -p src/bpf && bpftool btf dump file /sys/kernel/btf/vmlinux format c > src/bpf/vmlinux.h && echo 'vmlinux.h generated'",
+
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                // C / C++ IntelliSense
+                "ms-vscode.cpptools",
+                // Makefile task support
+                "ms-vscode.makefile-tools",
+                // clang-format on save
+                "xaver.clang-format"
+            ],
+            "settings": {
+                "C_Cpp.default.compilerPath": "/usr/bin/clang",
+                "C_Cpp.default.includePath": [
+                    "${workspaceFolder}/src",
+                    "${workspaceFolder}/src/bpf",
+                    "/usr/include",
+                    "/usr/include/x86_64-linux-gnu"
+                ]
+            }
+        }
+    }
+}

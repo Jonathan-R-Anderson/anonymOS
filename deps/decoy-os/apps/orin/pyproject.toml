@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orin"
+version = "1.2.0"
+authors = [
+    { name = "Musa Jaradat" }
+]
+description = "Orin – Production-Grade Offline Forensic Investigation & Integrity Engine"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["forensics", "incident-response", "security", "integrity", "rootkit", "offline"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Information Technology",
+    "License :: Other/Proprietary License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security"
+]
+dependencies = [
+    "psutil>=5.9.0",
+    "cryptography>=41.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "bcrypt",
+    "yara-python>=1.0.0",
+    "scapy>=2.5.0"
+]
+hub = [
+    "bcrypt"
+]
+
+[project.scripts]
+orin = "orin.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["orin*"]
+
+[tool.setuptools.package-data]
+"orin.core" = ["*.html"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=orin --cov-report=term-missing --cov-fail-under=85"
+pythonpath = ["src"]
+testpaths = [
+    "tests"
+]
+
+[tool.coverage.run]
+omit = [
+    "src/orin/collectors/remote_agent.py",
+    "src/orin/core/server.py",
+    "src/orin/main.py"
+]

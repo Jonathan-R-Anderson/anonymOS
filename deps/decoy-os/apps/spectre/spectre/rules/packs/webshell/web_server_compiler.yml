@@ -1,0 +1,41 @@
+title: Web Server Spawning Compiler or Interpreter
+id: spectre-webshell-002
+description: Detects web server processes spawning compilers or scripting interpreters, common in exploit delivery
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    selection_webserver:
+        ParentImage|endswith:
+            - '/nginx'
+            - '/apache2'
+            - '/httpd'
+            - '/lighttpd'
+            - '/node'
+            - '/tomcat'
+    selection_compiler:
+        Image|endswith:
+            - '/gcc'
+            - '/g++'
+            - '/make'
+            - '/python3'
+            - '/perl'
+            - '/ruby'
+            - '/php'
+    condition: selection_webserver and selection_compiler
+level: high
+tags:
+    - attack.t1059
+    - attack.t1027.004
+    - attack.execution
+    - attack.defense_evasion
+references:
+    - https://attack.mitre.org/techniques/T1059/
+    - https://attack.mitre.org/techniques/T1027/004/
+falsepositives:
+    - Legitimate build processes
+    - Application deployment scripts
+license: MIT

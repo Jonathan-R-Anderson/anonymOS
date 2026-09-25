@@ -1,0 +1,93 @@
+     1	# Orin Forensic Engine AppArmor Profile
+     2	# Generated automatically by Orin Self-Defense Module
+     3	# Place this file in /etc/apparmor.d/usr.bin.orin
+     4	
+     5	#include <tunables/global>
+     6	
+     7	usr.bin.orin {
+     8	  # Include basic abstractions
+     9	  #include <abstractions/base>
+    10	  #include <abstractions/nameservice>
+    11	  #include <abstractions/systemd>
+    12	  #include <abstractions/python3>
+    13	  #include <abstractions/ssl_certs>
+    14	  
+    15	  # Capabilities required by Orin
+    16	  capability net_raw,
+    17	  capability sys_admin,
+    18	  capability dac_read_search,
+    19	  capability ipc_lock,
+    20	  
+    21	  # Deny dangerous capabilities
+    22	  deny capability mac_admin,
+    23	  deny capability mac_override,
+    24	  deny capability sys_module,
+    25	  deny capability sys_rawio,
+    26	  deny capability sys_boot,
+    27	  deny capability syslog,
+    28	  
+    29	  # Allow reading proc filesystem (essential for forensics)
+    30	  /proc/** r,
+    31	  /proc/[0-9]*/cmdline r,
+    32	  /proc/[0-9]*/environ r,
+    33	  /proc/[0-9]*/exe lr,
+    34	  /proc/[0-9]*/fd/** r,
+    35	  /proc/[0-9]*/maps r,
+    36	  /proc/[0-9]*/mem r,
+    37	  /proc/[0-9]*/mountinfo r,
+    38	  /proc/[0-9]*/ns/** r,
+    39	  /proc/[0-9]*/status r,
+    40	  /proc/[0-9]*/syscall r,
+    41	  /proc/modules r,
+    42	  /proc/kallsyms r,
+    43	  /proc/version r,
+    44	  /proc/sys/kernel/** r,
+    45	  
+    46	  # Allow reading system files
+    47	  /etc/** r,
+    48	  /etc/shadow r,
+    49	  /etc/passwd r,
+    50	  /etc/group r,
+    51	  /etc/sudoers r,
+    52	  /etc/cron** r,
+    53	  /etc/systemd/** r,
+    54	  /etc/ssh/** r,
+    55	  
+    56	  # Allow Orin binary and libraries
+    57	  /usr/bin/orin ix,
+    58	  /usr/lib/python3/** mr,
+    59	  /opt/orin/** mr,
+    60	  
+    61	  # Allow writing to Orin data directories only
+    62	  /var/lib/orin/** rw,
+    63	  /var/log/orin/** rw,
+    64	  /var/run/orin/** rw,
+    65	  
+    66	  # Allow network access for reporting
+    67	  network inet tcp,
+    68	  network inet udp,
+    69	  network inet raw,
+    70	  
+    71	  # Deny write access to critical system paths
+    72	  deny /bin/** w,
+    73	  deny /sbin/** w,
+    74	  deny /lib/** w,
+    75	  deny /lib64/** w,
+    76	  deny /usr/** w,
+    77	  deny /etc/** w,
+    78	  deny /root/** w,
+    79	  deny /home/**/** w,
+    80	  
+    81	  # Deny ptrace (prevent debugging)
+    82	  deny ptrace (trace) peer=unconfined,
+    83	  deny ptrace (traceme) peer=unconfined,
+    84	  
+    85	  # Deny module loading
+    86	  deny /sbin/insmod ix,
+    87	  deny /sbin/modprobe ix,
+    88	  deny /sbin/rmmod ix,
+    89	  
+    90	  # Audit denied actions
+    91	  audit deny /** w,
+    92	}
+    93	

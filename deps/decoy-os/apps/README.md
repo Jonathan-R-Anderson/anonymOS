@@ -23,9 +23,24 @@ Real apps in this tree:
 - **`log-synth/`**, **`evidenceforge/`** — the synthetic-log generators. Each has an
   `install.sh` that stages its payload under `/opt` (idempotent: a `.installed` stamp
   makes a second run a no-op).
-- **`synthetic-logs/`** — a `service`-only app: the shared OpenRC script that runs both
-  generators at boot, plus `files/etc/synthetic-logs.conf`.
+- **`qafs/`** — a Python FUSE filesystem (single `qafs.py`). Its `install.sh` stages the
+  script under `/opt/qafs` (idempotent `.installed` stamp) and drops a `/usr/local/bin/qafs`
+  launcher. It is *mounted* at boot by the `synthetic-logs` service (below), which then
+  writes the host's real disk size to the mount's `/.control`.
+- **`synthetic-logs/`** — a `service`-only app: the shared OpenRC script that runs the two
+  log generators and mounts qafs at boot, plus `files/etc/synthetic-logs.conf`.
 - **`blackpill/`** — an `install.sh` that builds and installs a kernel module.
+- **`disk-reclaim/`** — a `bin/` duress tool + the `snoop-monitor` daemon. On a snoop-detection
+  trigger it wipes every non-Linux/non-boot (hidden-OS) partition and grows the decoy's
+  dm-crypt+ext4 to fill the disk, so the decoy becomes the only OS. Dry-run/disarmed by default;
+  `snoop-monitor` (launched by synthetic-logs-run) is the single audited thing that fires it. See
+  its README.
+- **`argus/`, `spectre/`, `orin/`, `prx-sd/`** — vendored third-party detectors (eBPF tracer / HIDS
+  / forensics / AV). Each has an `install.sh` that clones+builds upstream and is launched by
+  `synthetic-logs-run` like the generators; their alerts feed `snoop-monitor` via
+  `/etc/disk-reclaim/detectors.json`. **All disabled by default**, need `chmod +x` on their
+  install.sh, and argus/prx-sd need real cross-build porting. Their presence is a deniability tell —
+  read apps/disk-reclaim/README before shipping.
 
 ## Adding one
 

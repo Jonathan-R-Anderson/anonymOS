@@ -1,0 +1,182 @@
+[
+  {
+    "file": "eicar_standard.txt",
+    "sha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+    "size": 68,
+    "desc": "Standard EICAR test string"
+  },
+  {
+    "file": "eicar_with_padding.txt",
+    "sha256": "bc580d814dde41f3a547e5f2e92d88d3aac594d44d16d3cc99a4db2883e61bc6",
+    "size": 2116,
+    "desc": "EICAR embedded in padding"
+  },
+  {
+    "file": "eicar_double.txt",
+    "sha256": "571caba19b7a840abebf8aa56990f499c4342b69f2d84f7e069fb1708d514732",
+    "size": 137,
+    "desc": "Double EICAR string"
+  },
+  {
+    "file": "pe_clean.exe",
+    "sha256": "56605d7fdc505de09795c8bb1590874b723e9c289e16f0eb3bf10c9d52e6cbbe",
+    "size": 8192,
+    "desc": "PE with normal characteristics"
+  },
+  {
+    "file": "pe_zero_timestamp.exe",
+    "sha256": "d47e436008e2b9652bae0c64d32b11760a4c7b8ba29b89d04cbc74c208dabac4",
+    "size": 8192,
+    "desc": "PE with zero timestamp (suspicious)"
+  },
+  {
+    "file": "pe_writable_code.exe",
+    "sha256": "e6f329120553494cbc10c97eb98ed943ee6bc94a75c0c76020675840de01376e",
+    "size": 8192,
+    "desc": "PE with W+X .text section (packed/self-modifying)"
+  },
+  {
+    "file": "pe_injection_apis.exe",
+    "sha256": "56605d7fdc505de09795c8bb1590874b723e9c289e16f0eb3bf10c9d52e6cbbe",
+    "size": 8192,
+    "desc": "PE with process injection APIs (VirtualAllocEx etc)"
+  },
+  {
+    "file": "pe_packed_entropy.exe",
+    "sha256": "1f3feb66e4fb388b8250ae804e23c1b97cdbd9ada7ccbe7cf3be22fba68d0996",
+    "size": 8192,
+    "desc": "PE with high-entropy .text (packed)"
+  },
+  {
+    "file": "pe_dll_suspicious.dll",
+    "sha256": "18430c0bfda251091414835b3f23add6f6af0481a9606bf14a04420d4af55b73",
+    "size": 8192,
+    "desc": "DLL with injection APIs"
+  },
+  {
+    "file": "elf_clean.bin",
+    "sha256": "bca0589fd0ed7cca0522d95a26c3f203e4f548c8cc783eb93b06491eecd31907",
+    "size": 4096,
+    "desc": "Clean ELF binary"
+  },
+  {
+    "file": "elf_ptrace.bin",
+    "sha256": "d0830b6f55d78a0ee7e8cb16d073d8b532a8f021f121338743c09c6163b99d8b",
+    "size": 4098,
+    "desc": "ELF with ptrace (anti-debug)"
+  },
+  {
+    "file": "elf_preload.bin",
+    "sha256": "82bc7a16098e7a2edca873a02360243f8a81317e08c92d6af6c2feece1845fff",
+    "size": 4099,
+    "desc": "ELF with LD_PRELOAD hijack"
+  },
+  {
+    "file": "elf_crypto_miner.bin",
+    "sha256": "0df2fcf65213aaa8dd930124dd12fa7d8fa2bfc62fa6547d0698182ec2fc0987",
+    "size": 4099,
+    "desc": "ELF with mining patterns"
+  },
+  {
+    "file": "elf_reverse_shell.bin",
+    "sha256": "a2a89cae3ec850fa553b6a4d47795e97f3aa119ec909763a8f968ced25e50668",
+    "size": 4101,
+    "desc": "ELF with reverse shell patterns"
+  },
+  {
+    "file": "elf_rootkit.bin",
+    "sha256": "bd547f989a3161e1a3939337bc21f0a25e6a8a369eca326abcecf9e99ea283e5",
+    "size": 4100,
+    "desc": "ELF with rootkit indicators"
+  },
+  {
+    "file": "pdf_clean.pdf",
+    "sha256": "021ad3fd15d286df96d61ec331ef0ed19625e819f6406a403495d501b4eb7f9e",
+    "size": 152,
+    "desc": "Clean PDF"
+  },
+  {
+    "file": "pdf_javascript.pdf",
+    "sha256": "834f0d5376069c10f408ca1441e4b76a5e640f4f130797c4c50fe8f645921ddb",
+    "size": 216,
+    "desc": "PDF with JavaScript"
+  },
+  {
+    "file": "pdf_openaction_js.pdf",
+    "sha256": "3cd6b67d7eeebc26287a00030124a5a179b08ffca6054caaa4a3961e69173cfb",
+    "size": 252,
+    "desc": "PDF with auto-exec JavaScript"
+  },
+  {
+    "file": "pdf_launch.pdf",
+    "sha256": "706bfdbe1edee5a7eeafdf2588b226c15ddaf5a9e089e8445bc7422c4eb21403",
+    "size": 202,
+    "desc": "PDF with Launch action (cmd.exe)"
+  },
+  {
+    "file": "pdf_heap_spray.pdf",
+    "sha256": "b4062b0d43d38e8e597af4a942bd99efeb8d2b937f9344f3ceae8865667da005",
+    "size": 30200,
+    "desc": "PDF with heap spray pattern"
+  },
+  {
+    "file": "doc_clean.doc",
+    "sha256": "a899fb4496afa7230c378d5be03cf3461990994993110fd2dad3257111081275",
+    "size": 512,
+    "desc": "Clean OLE2 document"
+  },
+  {
+    "file": "doc_autoopen.doc",
+    "sha256": "98e6a52b51e6b5b88999dcf26552b214958740beb5431457ac52177e6d447bec",
+    "size": 597,
+    "desc": "Document with AutoOpen macro"
+  },
+  {
+    "file": "doc_powershell.doc",
+    "sha256": "bbb721dab6929a29d2c653dd05a7ef703a0d2c769fb15a179ea50ee2e709d3f7",
+    "size": 573,
+    "desc": "Document with PowerShell dropper"
+  },
+  {
+    "file": "doc_dde.doc",
+    "sha256": "da41a0d9d196bf27c7a12a6dca356a61fb79c9270854c54d1b47511b7f8470fe",
+    "size": 532,
+    "desc": "Document with DDE attack"
+  },
+  {
+    "file": "doc_network.doc",
+    "sha256": "4b0718eafdfc208fa802cc73436e2c8eba27bdf1ac3f0a30c9e5ee0b515124a8",
+    "size": 555,
+    "desc": "Document with network macro"
+  },
+  {
+    "file": "evasive_vm_detect.exe",
+    "sha256": "830ee2e279b3bde1fde33215d2e4a9b107a636c4a22a898eecf0a5b8e22c4498",
+    "size": 4096,
+    "desc": "PE with VM detection strings"
+  },
+  {
+    "file": "evasive_debug.exe",
+    "sha256": "ed14516abb5d8ef263d538f3c48a3c2ae26f755c893f2e1ddbcb3a4a74732472",
+    "size": 4096,
+    "desc": "PE with anti-debug techniques"
+  },
+  {
+    "file": "evasive_env_check.exe",
+    "sha256": "9ce75cfa85acc46272bf0d8c18259bad36de89e795380b1be9f9f9e000144814",
+    "size": 4096,
+    "desc": "PE with environment fingerprinting"
+  },
+  {
+    "file": "evasive_timing.exe",
+    "sha256": "9b99c505b3a90335009f7b84f1439da0b085513d6f68ac1c620c9d17ff7d4c87",
+    "size": 4096,
+    "desc": "PE with timing evasion"
+  },
+  {
+    "file": "url_bearer.bin",
+    "sha256": "45ccee8dcdcfc12b911c2fddbf1a61ed85a7e4c9de5e0516aa8b217a3c17942c",
+    "size": 127,
+    "desc": "Binary with suspicious URLs (IP, shortener, suspicious TLD)"
+  }
+]

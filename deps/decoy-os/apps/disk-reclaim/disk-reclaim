@@ -1,0 +1,450 @@
+#!/usr/bin/env python3
+"""disk-reclaim — reduce the running machine to the decoy OS only.
+
+On trigger, this deletes every partition on the decoy's disk that is NOT Linux and NOT
+boot-related (i.e. the foreign / hidden-OS partitions), securely destroys their contents,
+then grows the decoy's own storage to fill the reclaimed space:
+
+    GPT partition  ->  cryptsetup resize (plain dm-crypt)  ->  resize2fs (ext4)
+
+Afterwards the partition table shows only the ESP/boot + one decoy Linux partition
+spanning the disk: the decoy has become the only OS. This is a duress / anti-forensic
+mechanism for a deniable-encryption system (the hidden OS is anonymOS).
+
+REAL GEOMETRY ONLY
+------------------
+Every size and offset here comes from the BLOCK / PARTITION layer — `sfdisk -J`,
+`blockdev`, `/sys/class/block/*/size`. We deliberately NEVER read `df` / `statvfs`,
+because this decoy runs qafs (apps/qafs), a FUSE filesystem that spoofs `statfs` on its
+mount. Trusting a filesystem-reported size here would let that spoof mislead the reclaim
+into using a fake capacity. The partition layer is authoritative and qafs cannot touch it.
+
+SAFETY
+------
+Dry-run is the default: it only reads, and prints exactly what it would keep, wipe and
+grow. Nothing is destroyed without `--commit` (interactive) or `--fire` (armed, for the
+heuristic trigger). A partition is KEPT if its GPT type is Linux/boot, if it is the
+running root's own partition, or if anything on it is currently mounted or in use.
+
+Requires: util-linux (sfdisk, blockdev, wipefs, blkdiscard, partx, lsblk),
+e2fsprogs (resize2fs), cryptsetup, and cloud-utils' growpart (optional; falls back to
+sfdisk). Run as root.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+# ── GPT partition-type GUIDs we treat as "Linux or booting" and therefore KEEP ──────
+# Everything NOT in this set (and not otherwise in use) is foreign -> reclaimed.
+KEEP_TYPE_GUIDS = {
+    # booting
+    "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",  # EFI System Partition (ESP)
+    "21686148-6449-6E6F-744E-656564454649",  # BIOS boot partition
+    "BC13C2FF-59E6-4262-A352-B275FD6F7172",  # Linux /boot (XBOOTLDR)
+    # Linux
+    "0FC63DAF-8483-4772-8E79-3D69D8477DE4",  # Linux filesystem data
+    "4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709",  # Linux root (x86-64)
+    "B921B045-1DF0-41C3-AF44-4C6F280D3FAE",  # Linux root (arm64)
+    "44479540-F297-41B2-9AF7-D131D5F0458A",  # Linux root (x86)
+    "0657FD6D-A4AB-43C4-84E5-0933C84B4F4F",  # Linux swap
+    "E6D6D379-F507-44C2-A23C-238F2A3DF928",  # Linux LVM
+    "A19D880F-05FC-4D3B-A006-743F0F84911E",  # Linux RAID
+    "CA7D7CCB-63ED-4C53-861C-1742536059CC",  # Linux LUKS
+    "7FFEC5C9-2D00-49B7-8941-3EA10A5586B7",  # Linux plain dm-crypt (legacy)
+    "8DA63339-0007-60C0-C436-083AC8230908",  # Linux reserved
+    "933AC7E1-2EB4-4F13-B844-0E14E2AEF915",  # Linux /home
+    "3B8F8425-20E0-4F3B-907F-1A25A76F98E8",  # Linux /srv
+}
+
+ARM_KEY_PATH = "/etc/disk-reclaim/arm.key"   # provisioned by the operator; gates --fire
+LOG_PATH = "/var/log/disk-reclaim.log"
+
+DRY_RUN = True          # flipped off only by --commit / --fire
+_started = time.time()
+
+
+# ── logging ─────────────────────────────────────────────────────────────────────────
+def log(msg, level="INFO"):
+    line = "%7.2fs %-5s %s" % (time.time() - _started, level, msg)
+    print(line, file=sys.stderr, flush=True)
+    try:
+        with open(LOG_PATH, "a") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass  # /var/log may be mid-resize / read-only; console log is enough
+
+
+def die(msg, code=2):
+    log(msg, "ABORT")
+    sys.exit(code)
+
+
+# ── shelling out ──────────────────────────────────────────────────────────────────
+def out(cmd):
+    """Run a READ-only command, return stdout. Always executed, even in dry-run."""
+    try:
+        return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        die("required tool not found: %s (install util-linux / e2fsprogs / cryptsetup)" % cmd[0])
+    except subprocess.CalledProcessError as e:
+        die("command failed: %s\n%s" % (" ".join(cmd), (e.stderr or "").strip()))
+
+
+def have(tool):
+    return shutil.which(tool) is not None
+
+
+def destroy(cmd, desc, allow_fail=False):
+    """Run a DESTRUCTIVE command — skipped (only logged) in dry-run."""
+    if DRY_RUN:
+        log("[dry-run] would %s: %s" % (desc, " ".join(cmd)))
+        return True
+    log("%s: %s" % (desc, " ".join(cmd)))
+    rc = subprocess.run(cmd).returncode
+    if rc != 0 and not allow_fail:
+        die("step failed (rc=%d): %s" % (rc, " ".join(cmd)))
+    return rc == 0
+
+
+# ── block-layer geometry (authoritative; never df/statvfs) ──────────────────────────
+def dev_bytes(path):
+    return int(out(["blockdev", "--getsize64", path]).strip())
+
+
+def disk_sectors(path):
+    return int(out(["blockdev", "--getsz", path]).strip())      # in 512B units
+
+
+def sector_size(path):
+    return int(out(["blockdev", "--getss", path]).strip())
+
+
+def human(n):
+    n = float(n)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB", "PiB"):
+        if n < 1024 or unit == "PiB":
+            return ("%.0f %s" if unit == "B" else "%.2f %s") % (n, unit)
+        n /= 1024
+
+
+def partnum(node):
+    m = re.search(r"(\d+)$", node)
+    return int(m.group(1)) if m else None
+
+
+# ── discover the running root's storage chain via lsblk (block layer) ────────────────
+def lsblk_tree():
+    data = out(["lsblk", "-b", "-J", "-o",
+                "NAME,KNAME,PATH,TYPE,FSTYPE,MOUNTPOINT,PARTTYPE,PARTUUID,PKNAME,SIZE"])
+    return json.loads(data)["blockdevices"]
+
+
+def subtree_mounted(node):
+    if node.get("mountpoint"):
+        return True
+    return any(subtree_mounted(c) for c in node.get("children") or [])
+
+
+def find_root_chain(tree):
+    """Return (disk_node, part_node, crypt_name_or_None, fs_dev) for the '/' mount."""
+    def walk(nodes, parents):
+        for n in nodes:
+            yield n, parents
+            yield from walk(n.get("children") or [], parents + [n])
+
+    for n, parents in walk(tree, []):
+        if n.get("mountpoint") == "/":
+            disk = next((p for p in parents if p["type"] == "disk"), None)
+            part = next((p for p in parents if p["type"] == "part"), None)
+            if n["type"] == "crypt":
+                return disk, part, n["name"], n["path"]
+            if n["type"] == "part":                       # plain ext4 on a partition
+                return disk, n, None, n["path"]
+            # some other mapping (lvm, etc.) — carry what we have
+            crypt = next((p for p in parents if p["type"] == "crypt"), None)
+            return disk, part, (crypt["name"] if crypt else None), n["path"]
+    return None, None, None, None
+
+
+def mounted_knames(tree):
+    """kname -> True for any partition with a mounted/in-use descendant (or itself)."""
+    m = {}
+
+    def rec(nodes):
+        for n in nodes:
+            if n["type"] == "part":
+                m[n["kname"]] = subtree_mounted(n)
+            rec(n.get("children") or [])
+    rec(tree)
+    return m
+
+
+# ── the plan ────────────────────────────────────────────────────────────────────────
+class Plan:
+    def __init__(self):
+        self.disk = None            # /dev/sda
+        self.disk_bytes = 0
+        self.ssize = 512
+        self.total_sectors = 0
+        self.crypt_name = None      # decoyroot (plain dm-crypt map) or None
+        self.fs_dev = None          # /dev/mapper/decoyroot or /dev/sda2
+        self.root_part = None       # sfdisk dict for the decoy root partition
+        self.keep = []              # list of (sfdisk_part, reason)
+        self.reclaim = []           # list of sfdisk_part
+        self.absorbable = 0         # trailing contiguous sectors root can grow into
+        self.stranded = []          # reclaim parts wiped but NOT absorbable (non-contiguous)
+
+
+def build_plan(disk_override=None, allow_mbr=False, extra_keep=()):
+    tree = lsblk_tree()
+    disk_node, part_node, crypt_name, fs_dev = find_root_chain(tree)
+    if disk_override:
+        disk_node = next((n for n in tree if n["path"] == disk_override), None)
+        if not disk_node:
+            die("--disk %s is not a whole-disk block device" % disk_override)
+    if not disk_node:
+        die("could not resolve the disk backing '/' from the block layer")
+    if not part_node and not disk_override:
+        die("could not resolve the root's partition; refusing to guess")
+
+    p = Plan()
+    p.disk = disk_node["path"]
+    p.crypt_name = crypt_name
+    p.fs_dev = fs_dev
+    p.disk_bytes = dev_bytes(p.disk)
+    p.ssize = sector_size(p.disk)
+    p.total_sectors = disk_sectors(p.disk) * 512 // p.ssize
+
+    table = json.loads(out(["sfdisk", "-J", p.disk])).get("partitiontable", {})
+    if table.get("label") != "gpt" and not allow_mbr:
+        die("disk %s is not GPT (label=%s); refusing without --allow-mbr" %
+            (p.disk, table.get("label")))
+    parts = table.get("partitions", [])
+    if not parts:
+        die("no partitions found on %s" % p.disk)
+
+    root_kname = part_node["kname"] if part_node else None
+    mounted = mounted_knames(tree)
+
+    for part in parts:
+        node = part["node"]
+        kname = os.path.basename(node)
+        guid = (part.get("type") or "").upper()
+        is_root = (kname == root_kname)
+        is_mounted = mounted.get(kname, False)
+        if is_root:
+            p.root_part = part
+            p.keep.append((part, "decoy root partition"))
+        elif is_mounted:
+            p.keep.append((part, "in use (mounted)"))
+        elif guid in KEEP_TYPE_GUIDS:
+            p.keep.append((part, "Linux/boot type"))
+        elif kname in extra_keep or (part.get("name") or "") in extra_keep:
+            p.keep.append((part, "kept by --keep"))
+        else:
+            p.reclaim.append(part)
+
+    if not p.root_part and not disk_override:
+        die("the root partition is not on %s; refusing" % p.disk)
+
+    # what can root actually grow into: contiguous free space after it, up to the next
+    # KEPT partition (reclaim partitions in between become free) or the disk's usable end.
+    if p.root_part:
+        root_end = p.root_part["start"] + p.root_part["size"]
+        keep_starts_after = [k[0]["start"] for k in p.keep
+                             if k[0]["start"] >= root_end]
+        gpt_backup_reserve = 34   # secondary GPT header/table at the tail
+        wall = min(keep_starts_after) if keep_starts_after else (p.total_sectors - gpt_backup_reserve)
+        p.absorbable = max(0, wall - root_end)
+        # reclaim partitions that start at/after the wall are wiped but cannot be absorbed
+        p.stranded = [r for r in p.reclaim if r["start"] >= wall]
+    return p
+
+
+def print_plan(p, args):
+    print("\n=== disk-reclaim plan (geometry from the block layer, not df) ===")
+    print("disk:        %s  (%s, %d-byte sectors, %d sectors total)" %
+          (p.disk, human(p.disk_bytes), p.ssize, p.total_sectors))
+    print("decoy root:  %s%s" %
+          (p.fs_dev, "  [plain dm-crypt: %s]" % p.crypt_name if p.crypt_name else ""))
+    print("wipe mode:   %s   trigger: %s" %
+          (args.wipe, "FIRE (armed)" if args.fire else ("COMMIT" if args.commit else "dry-run")))
+    print("\n  %-14s %-10s %-38s %s" % ("PARTITION", "SIZE", "GPT TYPE", "DECISION"))
+    rows = [(k[0], "KEEP — " + k[1]) for k in p.keep] + [(r, "RECLAIM (wipe + delete)") for r in p.reclaim]
+    rows.sort(key=lambda r: r[0]["start"])
+    for part, decision in rows:
+        size = part["size"] * p.ssize
+        print("  %-14s %-10s %-38s %s" %
+              (part["node"], human(size), (part.get("type") or "?"), decision))
+
+    reclaim_bytes = sum(r["size"] for r in p.reclaim) * p.ssize
+    absorb_bytes = p.absorbable * p.ssize
+    print("\nreclaim:     %d partition(s), %s to be destroyed" % (len(p.reclaim), human(reclaim_bytes)))
+    if p.root_part:
+        new_root = (p.root_part["size"] + p.absorbable) * p.ssize
+        print("grow:        %s  %s -> %s  (+%s absorbed)" %
+              (p.root_part["node"], human(p.root_part["size"] * p.ssize),
+               human(new_root), human(absorb_bytes)))
+        if p.crypt_name:
+            print("             then: cryptsetup resize %s  ->  resize2fs %s" % (p.crypt_name, p.fs_dev))
+        else:
+            print("             then: resize2fs %s" % p.fs_dev)
+    if p.stranded:
+        sb = sum(s["size"] for s in p.stranded) * p.ssize
+        print("note:        %s in %d partition(s) will be WIPED but not absorbed "
+              "(not contiguous with root); left as unallocated space" %
+              (human(sb), len(p.stranded)))
+    print()
+
+
+# ── execution ────────────────────────────────────────────────────────────────────────
+def wipe_partition(part, ssize, mode, passes, use_random):
+    node = part["node"]
+    size = part["size"] * ssize
+    if mode == "none":
+        log("skip wipe (mode=none): %s" % node)
+        return
+    # 1. Kill crypto headers first (first + last 16 MiB): even if interrupted, the dm-crypt
+    #    / VeraCrypt key material is gone and the volume is undecryptable.
+    hdr = min(16 * 1024 * 1024, size)
+    hb = hdr // (1024 * 1024)
+    destroy(["dd", "if=/dev/urandom", "of=" + node, "bs=1M", "count=%d" % hb, "conv=fsync"],
+            "wipe header %s" % node)
+    if size > hdr:
+        seek = (size - hdr) // (1024 * 1024)
+        destroy(["dd", "if=/dev/urandom", "of=" + node, "bs=1M", "count=%d" % hb,
+                 "seek=%d" % seek, "conv=fsync"], "wipe footer %s" % node)
+    # 2. Drop filesystem/partition signatures so nothing probes back to a known type.
+    destroy(["wipefs", "-a", node], "erase signatures %s" % node, allow_fail=True)
+    if mode == "header":
+        return
+    # 3. SSD-appropriate discard (fast; frees flash cells), best-effort.
+    if have("blkdiscard"):
+        destroy(["blkdiscard", "-f", node], "blkdiscard %s" % node, allow_fail=True)
+    # 4. Full overwrite — every byte (mode == shred).
+    src = "/dev/urandom" if use_random else "/dev/zero"
+    for i in range(passes):
+        destroy(["dd", "if=" + src, "of=" + node, "bs=8M", "conv=fsync", "status=progress"],
+                "full-shred %s pass %d/%d" % (node, i + 1, passes))
+
+
+def execute(p, args):
+    # Re-verify nothing we're about to destroy became mounted since planning.
+    live = mounted_knames(lsblk_tree())
+    for r in p.reclaim:
+        if live.get(os.path.basename(r["node"])):
+            die("refusing: reclaim target %s is now mounted" % r["node"])
+
+    log("=== disk-reclaim EXECUTE on %s: wiping %d partition(s), mode=%s ===" %
+        (p.disk, len(p.reclaim), args.wipe))
+
+    # 1. Destroy each foreign partition's contents (devices still exist).
+    for r in p.reclaim:
+        wipe_partition(r, p.ssize, args.wipe, args.passes, args.random)
+
+    # 2. Delete the foreign partition entries.
+    nums = sorted((partnum(r["node"]) for r in p.reclaim), reverse=True)
+    if have("sgdisk"):
+        for n in nums:
+            destroy(["sgdisk", "-d", str(n), p.disk], "delete partition %d" % n)
+    else:
+        for n in nums:
+            destroy(["sfdisk", "--delete", p.disk, str(n)], "delete partition %d" % n)
+    destroy(["partx", "-u", p.disk], "re-read partition table", allow_fail=True)
+    if have("udevadm"):
+        destroy(["udevadm", "settle"], "settle udev", allow_fail=True)
+
+    # 3. Grow the decoy: partition -> crypt -> filesystem.
+    if p.root_part and p.absorbable > 0:
+        rnum = partnum(p.root_part["node"])
+        if have("growpart"):
+            destroy(["growpart", p.disk, str(rnum)], "grow root partition %d" % rnum)
+        else:
+            # fall back: rewrite the partition's size to the largest trailing free extent
+            destroy(["sh", "-c",
+                     "echo ',+' | sfdisk --no-reread -N %d %s" % (rnum, p.disk)],
+                    "grow root partition %d (sfdisk)" % rnum)
+            destroy(["partx", "-u", p.disk], "re-read partition table", allow_fail=True)
+        if p.crypt_name:
+            destroy(["cryptsetup", "resize", p.crypt_name], "grow dm-crypt mapping")
+        destroy(["resize2fs", p.fs_dev], "grow ext4 filesystem")
+    else:
+        log("no contiguous space after root to absorb; foreign data wiped, "
+            "table now shows decoy + boot only", "WARN")
+
+    log("=== disk-reclaim complete in %.1fs ===" % (time.time() - _started))
+
+
+# ── arming for the non-interactive heuristic trigger ────────────────────────────────
+def check_arm(args):
+    if not os.path.exists(ARM_KEY_PATH):
+        die("--fire refused: not armed (missing %s). Provision the arming key first." % ARM_KEY_PATH)
+    try:
+        with open(ARM_KEY_PATH) as f:
+            expected = f.read().strip()
+    except OSError as e:
+        die("--fire refused: cannot read %s (%s)" % (ARM_KEY_PATH, e))
+    supplied = args.key if args.key is not None else os.environ.get("DISK_RECLAIM_KEY", "")
+    if not expected or supplied != expected:
+        die("--fire refused: arming key mismatch")
+
+
+def main():
+    global DRY_RUN
+    ap = argparse.ArgumentParser(
+        description="Reclaim non-Linux/non-boot partitions into the decoy OS (deniability duress tool).")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--commit", action="store_true",
+                      help="execute after an interactive confirmation")
+    mode.add_argument("--fire", action="store_true",
+                      help="execute non-interactively (for the snoop-detection trigger); requires arming")
+    ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt with --commit")
+    ap.add_argument("--key", help="arming key for --fire (else $DISK_RECLAIM_KEY)")
+    ap.add_argument("--wipe", choices=("shred", "header", "none"), default="shred",
+                    help="shred: overwrite every byte (default); header: only crypto headers; none")
+    ap.add_argument("--passes", type=int, default=1, help="full-shred overwrite passes (default 1)")
+    ap.add_argument("--random", action="store_true",
+                    help="overwrite with random instead of zeros (slower)")
+    ap.add_argument("--disk", help="target this whole disk instead of the one backing /")
+    ap.add_argument("--allow-mbr", action="store_true", help="permit an MBR (non-GPT) disk")
+    ap.add_argument("--keep", action="append", default=[],
+                    help="also keep this partition kname or GPT name (repeatable)")
+    args = ap.parse_args()
+
+    if (args.commit or args.fire) and os.geteuid() != 0:
+        die("must run as root to make changes")
+
+    if args.fire:
+        check_arm(args)
+
+    p = build_plan(disk_override=args.disk, allow_mbr=args.allow_mbr, extra_keep=set(args.keep))
+    print_plan(p, args)
+
+    if not p.reclaim:
+        log("nothing to reclaim: no foreign (non-Linux/non-boot) partitions found")
+        return
+
+    if not (args.commit or args.fire):
+        log("dry-run only — no changes made. Re-run with --commit (interactive) or --fire (armed).")
+        return
+
+    if args.commit and not args.yes:
+        try:
+            ans = input('This DESTROYS the partitions marked RECLAIM. Type "RECLAIM" to proceed: ')
+        except EOFError:
+            ans = ""
+        if ans.strip() != "RECLAIM":
+            die("aborted by operator", code=1)
+
+    DRY_RUN = False
+    execute(p, args)
+
+
+if __name__ == "__main__":
+    main()

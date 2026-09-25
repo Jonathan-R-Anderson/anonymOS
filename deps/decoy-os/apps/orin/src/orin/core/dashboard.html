@@ -1,0 +1,3170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orin Forensic Investigation Console</title>
+
+    <style>
+        :root {
+            --bg-primary: #0A0D1A;
+            --bg-secondary: #0E1225;
+            --bg-card: #121832;
+            --bg-card-border: #1B2347;
+            --border-color: rgba(255, 255, 255, 0.08);
+
+            --text-primary: #F8FAFC;
+            --text-secondary: #8E9BAE;
+            --text-muted: #5F6E85;
+
+            --primary: #38BDF8;
+            --primary-hover: #0EA5E9;
+            --primary-bg: rgba(56, 189, 248, 0.1);
+
+            --success: #10B981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --warning: #F59E0B;
+            --warning-glow: rgba(245, 158, 11, 0.2);
+            --critical: #EF4444;
+            --critical-glow: rgba(239, 68, 68, 0.3);
+            --low: #3B82F6;
+
+            --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            padding: 1.5rem 2rem;
+            line-height: 1.5;
+        }
+
+        /* Top Bar Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 1.75rem;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.01em;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .host-badges {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-left: 1.5rem;
+        }
+
+        .host-badge {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            padding: 0.3rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .host-badge-green {
+            border-color: rgba(16, 185, 129, 0.3);
+            color: var(--success);
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .host-badge-blue {
+            border-color: rgba(56, 189, 248, 0.3);
+            color: var(--primary);
+            background: rgba(56, 189, 248, 0.05);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        /* Tabs inside Header */
+        .nav-tabs {
+            display: flex;
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 0.25rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.85rem;
+            transition: var(--transition);
+        }
+
+        .tab-btn:hover {
+            color: white;
+        }
+
+        .tab-btn.active {
+            background-color: rgba(255, 255, 255, 0.07);
+            color: white;
+        }
+
+        /* Action buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background-color: var(--primary);
+            color: #0A0D1A;
+            border: none;
+            padding: 0.6rem 1.25rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: var(--transition);
+        }
+
+        .btn:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-small {
+            padding: 0.35rem 0.75rem;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+
+        /* Split Main Layout */
+        .main-layout {
+            display: flex;
+            gap: 1.75rem;
+            align-items: flex-start;
+        }
+
+        .left-col {
+            width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .right-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            min-width: 0;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+        }
+
+        .card-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 1.25rem;
+            text-align: center;
+        }
+
+        /* Risk Gauge Card details */
+        .gauge-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .gauge-container {
+            position: relative;
+            width: 140px;
+            height: 140px;
+            margin-bottom: 0.75rem;
+        }
+
+        .gauge-svg {
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
+        }
+
+        .gauge-track {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.04);
+            stroke-width: 8;
+        }
+
+        .gauge-fill {
+            fill: none;
+            stroke: var(--success);
+            stroke-width: 8;
+            stroke-dasharray: 377;
+            stroke-dashoffset: 377;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1s ease-in-out, stroke 0.5s ease;
+        }
+
+        .gauge-center-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .gauge-score-val {
+            font-size: 2.2rem;
+            font-weight: 800;
+            line-height: 1;
+            color: white;
+        }
+
+        .gauge-score-lbl {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.1rem;
+        }
+
+        .status-pill {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            padding: 0.25rem 1rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* 2x2 Grid stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            border-top: 1px solid var(--border-color);
+            padding-top: 1.25rem;
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.015);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: white;
+            line-height: 1.2;
+        }
+
+        .stat-label {
+            font-size: 0.65rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.2rem;
+            font-weight: 600;
+        }
+
+        /* Baseline inputs */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.4rem;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .form-control {
+            flex: 1;
+            background-color: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            color: white;
+            font-size: 0.85rem;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        /* Switch toggles */
+        .switch-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .switch-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .2s;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 2px;
+            bottom: 2px;
+            background-color: var(--text-secondary);
+            transition: .2s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+        input:checked + .slider:before {
+            transform: translateX(18px);
+            background-color: #0A0D1A;
+        }
+
+        /* Feed Header / Filters */
+        .feed-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .feed-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .feed-filters {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        /* Severity Pills */
+        .severity-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .severity-critical { background: rgba(239, 68, 68, 0.15); color: var(--critical); }
+        .severity-high { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+        .severity-medium { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+        .severity-low { background: rgba(56, 189, 248, 0.12); color: var(--primary); }
+
+        /* Severity Pills */
+        .sev-pills {
+            display: flex;
+            background: rgba(0, 0, 0, 0.15);
+            padding: 0.2rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .sev-pill {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            transition: var(--transition);
+        }
+
+        .sev-pill.active {
+            background: rgba(255, 255, 255, 0.08);
+            color: white;
+        }
+
+        /* Tables & Content Pane */
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.88rem;
+        }
+
+        th, td {
+            padding: 0.8rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: rgba(0, 0, 0, 0.25);
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background-color: rgba(255, 255, 255, 0.01);
+        }
+
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            background-color: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 0.15rem 0.35rem;
+            border-radius: 4px;
+            color: #E2E8F0;
+            font-size: 0.8rem;
+        }
+
+        .badge {
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .status-dot.pulsing {
+            animation: pulse-green 2s infinite;
+        }
+
+        .status-dot.pulsing-critical {
+            animation: pulse-red 2s infinite;
+        }
+
+        @keyframes pulse-green {
+            0% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        @keyframes pulse-red {
+            0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+
+        .badge-critical { background: rgba(239, 68, 68, 0.15); color: var(--critical); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-high { background: rgba(249, 115, 22, 0.15); color: #F97316; border: 1px solid rgba(249, 115, 22, 0.3); }
+        .badge-medium { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge-low { background: rgba(59, 130, 246, 0.15); color: #3B82F6; border: 1px solid rgba(59, 130, 246, 0.3); }
+        .badge-success { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--critical); border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-secondary { background: rgba(142, 155, 174, 0.15); color: var(--text-secondary); border: 1px solid rgba(142, 155, 174, 0.3); }
+
+        /* Systems Secured State */
+        .secured-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4.5rem 0;
+            text-align: center;
+            border: 1px dashed var(--border-color);
+            border-radius: 8px;
+            background-color: rgba(255,255,255,0.005);
+        }
+
+        .secured-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-top: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .secured-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Detail Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 7, 15, 0.8);
+            backdrop-filter: blur(6px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: var(--transition);
+        }
+
+        .modal.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transform: scale(0.95);
+            transition: var(--transition);
+        }
+
+        .modal.open .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+        }
+
+        .modal-close:hover {
+            color: white;
+        }
+
+        /* Tab Content switching */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* AI Triage Briefing styling */
+        .ai-briefing-md h1, .ai-briefing-md h2, .ai-briefing-md h3 {
+            margin-top: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+        .ai-briefing-md h1 {
+            font-size: 1.45rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.25rem;
+        }
+        .ai-briefing-md h2 {
+            font-size: 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.2rem;
+        }
+        .ai-briefing-md h3 {
+            font-size: 1.05rem;
+            color: var(--primary);
+        }
+        .ai-briefing-md p {
+            margin-bottom: 0.75rem;
+            line-height: 1.6;
+        }
+        .ai-briefing-md ul {
+            margin-bottom: 0.75rem;
+            padding-left: 1.25rem;
+        }
+        .ai-briefing-md li {
+            margin-bottom: 0.25rem;
+        }
+        .ai-briefing-md code {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-color);
+            padding: 0.1rem 0.3rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        /* Timeline comparative styling */
+        .diff-options {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+            align-items: flex-end;
+        }
+
+        .timeline-section {
+            margin-bottom: 1.25rem;
+            border-left: 2px solid var(--border-color);
+            padding-left: 0.85rem;
+        }
+
+        .timeline-section-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 0.6rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .timeline-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .timeline-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.4rem;
+            background: rgba(255, 255, 255, 0.015);
+            padding: 0.4rem 0.6rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            font-size: 0.85rem;
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            z-index: 9999;
+        }
+
+        .toast {
+            background: rgba(14, 18, 37, 0.95);
+            border: 1px solid var(--border-color);
+            color: white;
+            padding: 0.85rem 1.25rem;
+            border-radius: 8px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            min-width: 280px;
+            transform: translateY(20px);
+            opacity: 0;
+            animation: slideIn 0.25s forwards cubic-bezier(0.175, 0.885, 0.32, 1.2);
+        }
+
+        @keyframes slideIn {
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .toast-success { border-left: 4px solid var(--success); }
+        .toast-error { border-left: 4px solid var(--critical); }
+        .toast-info { border-left: 4px solid var(--primary); }
+
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .icon {
+            display: inline-block;
+            flex-shrink: 0;
+            vertical-align: middle;
+        }
+
+        /* Telemetry Explorer Layout */
+        .telemetry-layout {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 1rem;
+        }
+        .telemetry-sidebar {
+            width: 220px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            flex-shrink: 0;
+        }
+        .telemetry-menu-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: none;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            padding: 0.6rem 0.85rem;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+        .telemetry-menu-btn:hover {
+            background: rgba(255, 255, 255, 0.03);
+            color: white;
+            border-color: var(--border-color);
+        }
+        .telemetry-menu-btn.active {
+            background: var(--primary-bg);
+            color: var(--primary);
+            border-color: rgba(56, 189, 248, 0.2);
+            font-weight: 600;
+        }
+        .telemetry-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .telemetry-tab-content {
+            display: none;
+        }
+        .telemetry-tab-content.active {
+            display: block;
+        }
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            margin-left: 0.5rem;
+            border-left: 1px solid rgba(255, 255, 255, 0.08);
+            padding-left: 0.75rem;
+        }
+        .filter-pill {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.25rem 0.65rem;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+        .filter-pill:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        .filter-pill.active {
+            background: var(--primary-bg);
+            border-color: rgba(56, 189, 248, 0.4);
+            color: var(--primary);
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header bar -->
+    <header>
+        <div class="logo-section">
+            <!-- Blue shield logo -->
+            <span data-icon="shield-alert" data-size="28" style="color: var(--primary); filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.4));"></span>
+            <span class="logo-text">Orin</span>
+            <div class="host-badges" id="ctx-badges">
+                <span class="host-badge host-badge-green" id="badge-host">Host: --</span>
+                <span class="host-badge" id="badge-os">OS: --</span>
+                <span class="host-badge host-badge-blue" id="badge-vault">Vault: --</span>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <div class="nav-tabs">
+                <button id="tab-posture" class="tab-btn active" onclick="switchTab('pane-posture')">Posture</button>
+                <button id="tab-telemetry" class="tab-btn" onclick="switchTab('pane-telemetry')">Telemetry Explorer</button>
+                <button id="tab-diff" class="tab-btn" onclick="switchTab('pane-diff')">Timeline delta</button>
+                <button id="tab-config" class="tab-btn" onclick="switchTab('pane-config')">Settings</button>
+                <button id="tab-ai" class="tab-btn" onclick="switchTab('pane-ai')">AI Triage</button>
+            </div>
+
+            <button class="btn" onclick="triggerOnDemandCollect()">
+                <span data-icon="refresh-cw" data-size="14" style="color: inherit;"></span> Capture Telemetry
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="main-layout">
+
+        <!-- Left Column -->
+        <div class="left-col">
+
+            <!-- Risk Assessment Card -->
+            <div class="card">
+                <div class="card-title">Current Risk Assessment</div>
+
+                <div class="gauge-section">
+                    <div class="gauge-container">
+                        <svg class="gauge-svg">
+                            <circle class="gauge-track" cx="70" cy="70" r="60" />
+                            <circle id="gauge-risk-fill" class="gauge-fill" cx="70" cy="70" r="60" />
+                        </svg>
+                        <div class="gauge-center-text">
+                            <span id="gauge-risk-val" class="gauge-score-val">0</span>
+                            <span class="gauge-score-lbl">Score</span>
+                        </div>
+                    </div>
+
+                    <span id="status-pill" class="status-pill">Healthy</span>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div id="stat-snapshots" class="stat-value">0</div>
+                        <div class="stat-label">Snapshots</div>
+                    </div>
+                    <div class="stat-box">
+                        <div id="stat-alerts" class="stat-value">0</div>
+                        <div class="stat-label">Active Alerts</div>
+                    </div>
+                    <div class="stat-box">
+                        <div id="stat-modules" class="stat-value">0</div>
+                        <div class="stat-label">Modules</div>
+                    </div>
+                    <div class="stat-box">
+                        <div id="stat-users" class="stat-value">0</div>
+                        <div class="stat-label">Users</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Snapshots Ledger Card -->
+            <div class="card">
+                <div class="card-title" style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">Recent Snapshots</div>
+                <div id="recent-snapshots-list" style="display: flex; flex-direction: column; gap: 0.75rem; max-height: 250px; overflow-y: auto;">
+                    <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem;">Loading snapshots...</div>
+                </div>
+            </div>
+
+            <!-- Baseline Administration Card -->
+            <div class="card">
+                <div class="card-title" style="margin-bottom: 1rem;">Baseline Administration</div>
+
+                <div style="margin-bottom: 1.25rem;">
+                    <button class="btn btn-secondary" style="width: 100%; justify-content: center;" onclick="triggerBaselineRefresh()">
+                        <span data-icon="refresh-cw" data-size="14"></span> Refresh Baseline Ledger
+                    </button>
+                </div>
+
+                <!-- Add user baseline form -->
+                <div class="form-group">
+                    <label>Add User Allowlist</label>
+                    <div class="input-row">
+                        <input type="text" id="allow-user-input" class="form-control" placeholder="username">
+                        <button class="btn btn-small" onclick="addToAllowlist('user', 'allow-user-input')">Add</button>
+                    </div>
+                </div>
+
+                <!-- Add kernel LKM baseline form -->
+                <div class="form-group" style="margin-bottom: 0.25rem;">
+                    <label>Add Kernel LKM Allowlist</label>
+                    <div class="input-row">
+                        <input type="text" id="allow-mod-input" class="form-control" placeholder="module_name">
+                        <button class="btn btn-small" onclick="addToAllowlist('module', 'allow-mod-input')">Add</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cron Automation Schedule Card -->
+            <div class="card">
+                <div class="card-title" style="margin-bottom: 1rem;">Cron Automation</div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; padding: 0.6rem 0.85rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px;">
+                    <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Status</span>
+                    <span id="schedule-status" style="font-size: 0.8rem; color: var(--text-muted);">Checking...</span>
+                </div>
+
+                <div class="form-group">
+                    <label>Collection Interval (minutes)</label>
+                    <div class="input-row">
+                        <input type="number" id="schedule-interval" class="form-control" value="10" min="1" max="1440" placeholder="10">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                    <button class="btn" style="flex: 1; justify-content: center; font-size: 0.8rem; padding: 0.5rem;" onclick="installScheduleFromUI()">
+                        <span data-icon="clock" data-size="12"></span> Install
+                    </button>
+                    <button class="btn btn-secondary" style="flex: 1; justify-content: center; font-size: 0.8rem; padding: 0.5rem;" onclick="removeSchedule()">
+                        <span data-icon="x-circle" data-size="12"></span> Remove
+                    </button>
+                </div>
+            </div>
+
+            <!-- Fleet Dashboard Overview Card -->
+            <div class="card">
+                <div class="card-title">Fleet Dashboard Overview</div>
+                <div id="fleet-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem;">Querying fleet...</div>
+                </div>
+            </div>
+
+            <!-- Remote SSH Scan Configuration Card -->
+            <div class="card">
+                <div class="card-title">Remote SSH Scan Configuration</div>
+
+                <div class="form-group">
+                    <label>Target Host IP/DNS</label>
+                    <input type="text" id="scan-host" class="form-control" placeholder="e.g. 192.168.1.50">
+                </div>
+
+                <div class="form-group">
+                    <label>SSH Username</label>
+                    <input type="text" id="scan-user" class="form-control" placeholder="e.g. root">
+                </div>
+
+                <div class="form-group">
+                    <label>SSH Port</label>
+                    <input type="number" id="scan-port" class="form-control" value="22" placeholder="22">
+                </div>
+
+                <div class="form-group">
+                    <label>Private Key Path (optional)</label>
+                    <input type="text" id="scan-key" class="form-control" placeholder="e.g. /root/.ssh/id_rsa">
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; margin-top: 1.25rem;">
+                    <button class="btn btn-secondary" style="flex: 1; justify-content: center; font-size: 0.8rem; padding: 0.5rem;" onclick="triggerRemoteScan(true)">
+                        <span data-icon="plus-circle" data-size="12"></span> Init Baseline
+                    </button>
+                    <button class="btn" style="flex: 1; justify-content: center; font-size: 0.8rem; padding: 0.5rem;" onclick="triggerRemoteScan(false)">
+                        <span data-icon="scan" data-size="12"></span> Scan Host
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column -->
+        <div class="right-col">
+
+            <!-- 1. Posture Pane -->
+            <div id="pane-posture" class="tab-content active">
+                <div class="card" style="padding: 1.5rem;">
+                    <div class="feed-header">
+                        <div class="feed-title">
+                            <span data-icon="alert-triangle" data-size="18" style="color: var(--warning);"></span> Forensic Alert Feed
+                        </div>
+
+                        <div class="feed-filters">
+                            <!-- Host filter dropdown -->
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Host:</span>
+                                <select id="filter-host" class="form-control" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; min-width: 120px; background-color: rgba(0,0,0,0.3); height: 28px;" onchange="loadAlertsLedger()">
+                                    <option value="">All Hosts</option>
+                                </select>
+                            </div>
+
+                            <div class="sev-pills">
+                                <button class="sev-pill active" data-severity="all" onclick="setSeverityFilter('all', event)">All</button>
+                                <button class="sev-pill" data-severity="critical" onclick="setSeverityFilter('critical', event)">Critical</button>
+                                <button class="sev-pill" data-severity="high" onclick="setSeverityFilter('high', event)">High</button>
+                                <button class="sev-pill" data-severity="medium" onclick="setSeverityFilter('medium', event)">Med</button>
+                                <button class="sev-pill" data-severity="low" onclick="setSeverityFilter('low', event)">Low</button>
+                            </div>
+
+                            <div class="switch-group">
+                                <label class="switch">
+                                    <input type="checkbox" id="chk-resolved" onchange="loadAlertsLedger()">
+                                    <span class="slider"></span>
+                                </label>
+                                <span class="switch-label">Show Resolved</span>
+                            </div>
+
+                            <div class="switch-group">
+                                <label class="switch">
+                                    <input type="checkbox" id="chk-suppressed" onchange="loadAlertsLedger()">
+                                    <span class="slider"></span>
+                                </label>
+                                <span class="switch-label">Show Suppressed</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="alert-feed-content">
+                        <!-- Loaded Dynamically -->
+                        <div class="secured-state">
+                            <span data-icon="loader" class="spinner" data-size="28" style="color: var(--text-muted);"></span>
+                            <div class="secured-title">Querying Ledger</div>
+                            <div class="secured-desc">Querying security events ledger repository...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Telemetry Explorer Pane -->
+            <div id="pane-telemetry" class="tab-content">
+                <div class="card">
+                    <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                        <span style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span data-icon="database" style="color: var(--primary);" data-size="18"></span> System Telemetry Explorer
+                        </span>
+                        <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; font-weight: normal; color: var(--text-secondary);">
+                            <span>Snapshot Run:</span>
+                            <select id="telemetry-snapshot-select" class="form-control" style="width: auto; min-width: 250px; background-color: rgba(0,0,0,0.3);" onchange="loadTelemetry(this.value)">
+                                <option value="">Select a snapshot...</option>
+                            </select>
+                        </div>
+                    </h3>
+
+                    <div class="telemetry-layout">
+                        <div class="telemetry-sidebar">
+                            <button class="telemetry-menu-btn active" data-tab="telemetry-processes" onclick="switchTelemetryTab('telemetry-processes')">Processes</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-network" onclick="switchTelemetryTab('telemetry-network')">Network Connections</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-files" onclick="switchTelemetryTab('telemetry-files')">File Changes</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-users" onclick="switchTelemetryTab('telemetry-users')">User Sessions</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-kernel" onclick="switchTelemetryTab('telemetry-kernel')">Kernel Modules</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-services" onclick="switchTelemetryTab('telemetry-services')">Services</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-packages" onclick="switchTelemetryTab('telemetry-packages')">Packages</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-ssh-keys" onclick="switchTelemetryTab('telemetry-ssh-keys')">SSH Keys</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-deleted-bins" onclick="switchTelemetryTab('telemetry-deleted-bins')">Deleted Binaries</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-suid" onclick="switchTelemetryTab('telemetry-suid')">SUID Binaries</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-ebpf" onclick="switchTelemetryTab('telemetry-ebpf')">eBPF Programs</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-promisc" onclick="switchTelemetryTab('telemetry-promisc')">Promiscuous NICs</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-crontabs" onclick="switchTelemetryTab('telemetry-crontabs')">Crontabs</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-ldpreload" onclick="switchTelemetryTab('telemetry-ldpreload')">LD Preload</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-specialfds" onclick="switchTelemetryTab('telemetry-specialfds')">Special FDs</button>
+                            <button class="telemetry-menu-btn" data-tab="telemetry-authlogs" onclick="switchTelemetryTab('telemetry-authlogs')">Auth Logs</button>
+                        </div>
+                        <div class="telemetry-content">
+                            <div id="telemetry-processes" class="telemetry-tab-content active">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-processes" class="form-control" placeholder="Search processes by PID, name, cmdline..." oninput="filterTable('processes-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>PID</th>
+                                                <th>Name</th>
+                                                <th>Command Line</th>
+                                                <th>PPID</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="processes-tbody">
+                                            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Select a snapshot to view process data.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="telemetry-network" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-network" class="form-control" placeholder="Search sockets and connections by port, protocol, process, IP, state..." oninput="filterTable('network-listening-tbody', this.value); filterTable('network-active-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <h4 style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.4rem;">
+                                    <span data-icon="radio" data-size="14"></span> Listening Sockets (Local Exposure)
+                                </h4>
+                                <div class="table-container" style="margin-bottom: 1.5rem;">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 15%;">Port</th>
+                                                <th style="width: 15%;">Protocol</th>
+                                                <th style="width: 50%;">Process Name</th>
+                                                <th style="width: 20%;">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="network-listening-tbody">
+                                            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Select a snapshot to view listening ports.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <h4 style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.4rem;">
+                                    <span data-icon="arrow-up-right" data-size="14"></span> Active Connections (Foreign Traffic)
+                                </h4>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 25%;">Local Address</th>
+                                                <th style="width: 25%;">Foreign Address</th>
+                                                <th style="width: 15%;">State</th>
+                                                <th style="width: 20%;">Process Name</th>
+                                                <th style="width: 15%;">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="network-active-tbody">
+                                            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Select a snapshot to view active connections.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="telemetry-files" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-files" class="form-control" placeholder="Search file integrity changes by path, action, size, hash..." oninput="filterTable('files-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Path</th>
+                                                <th>Action</th>
+                                                <th>Timestamp</th>
+                                                <th>Size</th>
+                                                <th>Checksum</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="files-tbody">
+                                            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Select a snapshot to view file change data.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="telemetry-users" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-users" class="form-control" placeholder="Search user sessions by user, source IP, terminal..." oninput="filterTable('users-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>User</th>
+                                                <th>Logout Time</th>
+                                                <th>Login Time</th>
+                                                <th>Source IP</th>
+                                                <th>Terminal</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="users-tbody">
+                                            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Select a snapshot to view user session data.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="telemetry-kernel" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-kernel" class="form-control" placeholder="Search kernel modules by name, version..." oninput="filterTable('kernel-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Size</th>
+                                                <th>Used By</th>
+                                                <th>Version</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="kernel-tbody">
+                                            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Select a snapshot to view kernel module data.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="telemetry-services" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.75rem; width: 100%; align-items: center;">
+                                    <input type="text" id="search-services" class="form-control" placeholder="Search services by name, status, user, description..." oninput="applyServicesFilters()" style="flex-grow: 1; min-width: 200px; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                    
+                                    <div class="filter-group">
+                                        <span style="font-size: 0.75rem; color: var(--text-muted); margin-right: 0.25rem;">Status:</span>
+                                        <button class="filter-pill active" onclick="setServiceFilter('status', 'all', this)">All</button>
+                                        <button class="filter-pill" onclick="setServiceFilter('status', 'running', this)">Running</button>
+                                        <button class="filter-pill" onclick="setServiceFilter('status', 'exited', this)">Exited</button>
+                                        <button class="filter-pill" onclick="setServiceFilter('status', 'dead', this)">Dead</button>
+                                    </div>
+                                    
+                                    <div class="filter-group">
+                                        <span style="font-size: 0.75rem; color: var(--text-muted); margin-right: 0.25rem;">Enablement:</span>
+                                        <button class="filter-pill active" onclick="setServiceFilter('enablement', 'all', this)">All</button>
+                                        <button class="filter-pill" onclick="setServiceFilter('enablement', 'enabled', this)">Enabled</button>
+                                        <button class="filter-pill" onclick="setServiceFilter('enablement', 'disabled', this)">Disabled</button>
+                                        <button class="filter-pill" onclick="setServiceFilter('enablement', 'static', this)">Static</button>
+                                    </div>
+                                </div>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Status</th>
+                                                <th>Enabled</th>
+                                                <th>User</th>
+                                                <th>Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="services-tbody">
+                                            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Select a snapshot to view service data.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="telemetry-packages" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-packages" class="form-control" placeholder="Search package validation records by name, file path, status..." oninput="filterTable('packages-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Package</th>
+                                                <th>File Path</th>
+                                                <th>Expected MD5</th>
+                                                <th>Actual MD5</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="packages-tbody">
+                                            <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Select a snapshot to view package data.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <!-- SSH Keys -->
+                            <div id="telemetry-ssh-keys" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-ssh-keys" class="form-control" placeholder="Search SSH keys by user, key type, fingerprint, comment..." oninput="filterTable('ssh-keys-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container"><table><thead><tr><th>User</th><th>Key Type</th><th>Fingerprint</th><th>Comment</th></tr></thead><tbody id="ssh-keys-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Select a snapshot to view SSH key data.</td></tr></tbody></table></div>
+                            </div>
+                            <!-- Deleted Binaries -->
+                            <div id="telemetry-deleted-bins" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-deleted-bins" class="form-control" placeholder="Search deleted binaries by PID, executable name, hash..." oninput="filterTable('deleted-bins-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container"><table><thead><tr><th>PID</th><th>Executable</th><th>SHA-256</th><th>Vault Path</th></tr></thead><tbody id="deleted-bins-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Select a snapshot to view deleted binary data.</td></tr></tbody></table></div>
+                            </div>
+                            <!-- SUID Binaries -->
+                            <div id="telemetry-suid" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-suid" class="form-control" placeholder="Search SUID files by path, owner, permissions, hash..." oninput="filterTable('suid-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container"><table><thead><tr><th>Path</th><th>Owner</th><th>Group</th><th>Permissions</th><th>SHA-256</th></tr></thead><tbody id="suid-tbody"><tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Select a snapshot to view SUID binary data.</td></tr></tbody></table></div>
+                            </div>
+                            <!-- eBPF Programs -->
+                            <div id="telemetry-ebpf" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-ebpf" class="form-control" placeholder="Search eBPF programs by ID, name, type, tag..." oninput="filterTable('ebpf-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container"><table><thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Tag</th><th>GPL</th></tr></thead><tbody id="ebpf-tbody"><tr><td colspan="5" style="text-align:center;color:var(--text-muted);">Select a snapshot to view eBPF program data.</td></tr></tbody></table></div>
+                            </div>
+                            <!-- Promiscuous Interfaces -->
+                            <div id="telemetry-promisc" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-promisc" class="form-control" placeholder="Search promiscuous interfaces by interface, flags..." oninput="filterTable('promisc-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container"><table><thead><tr><th>Interface</th><th>Flags</th><th>Promiscuous</th></tr></thead><tbody id="promisc-tbody"><tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Select a snapshot to view promiscuous interface data.</td></tr></tbody></table></div>
+                            </div>
+                            <!-- Crontabs -->
+                            <div id="telemetry-crontabs" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-crontabs" class="form-control" placeholder="Search crontabs by source, user, schedule, command..." oninput="filterTable('crontabs-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container"><table><thead><tr><th>Source</th><th>User</th><th>Schedule</th><th>Command</th></tr></thead><tbody id="crontabs-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Select a snapshot to view crontab data.</td></tr></tbody></table></div>
+                            </div>
+                            <!-- LD Preload -->
+                            <div id="telemetry-ldpreload" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-ldpreload" class="form-control" placeholder="Search LD preload entries by path..." oninput="filterTable('ldpreload-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container"><table><thead><tr><th>LD Preload Entry</th></tr></thead><tbody id="ldpreload-tbody"><tr><td style="text-align:center;color:var(--text-muted);">Select a snapshot to view LD preload data.</td></tr></tbody></table></div>
+                            </div>
+                            <!-- Special FDs -->
+                            <div id="telemetry-specialfds" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-specialfds" class="form-control" placeholder="Search special FDs by PID, FD #, type, path..." oninput="filterTable('specialfds-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container"><table><thead><tr><th>PID</th><th>FD #</th><th>Type</th><th>Resolved Path</th></tr></thead><tbody id="specialfds-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Select a snapshot to view special FD data.</td></tr></tbody></table></div>
+                            </div>
+                            <!-- Auth Logs -->
+                            <div id="telemetry-authlogs" class="telemetry-tab-content">
+                                <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; width: 100%;">
+                                    <input type="text" id="search-authlogs" class="form-control" placeholder="Search authentication logs by timestamp, service, message content..." oninput="filterTable('authlogs-tbody', this.value)" style="flex-grow: 1; padding: 0.4rem 0.75rem; font-size: 0.85rem; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; color: var(--text-primary);">
+                                </div>
+                                <div class="table-container">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 20%;">Timestamp</th>
+                                                <th style="width: 15%;">Service</th>
+                                                <th style="width: 65%;">Message</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="authlogs-tbody">
+                                            <tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Select a snapshot to view auth log data.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Timeline Delta Pane -->
+            <div id="pane-diff" class="tab-content">
+                <div class="card">
+                    <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                        <span data-icon="git-compare" style="color: var(--primary);" data-size="18"></span> Comparative Timeline Analysis
+                    </h3>
+
+                    <div class="diff-options">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem;">Baseline Snapshot</label>
+                            <select id="diff-base-snapshot" class="form-control" style="background-color: rgba(0,0,0,0.3);">
+                                <option value="">Select baseline...</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem;">Comparison Snapshot</label>
+                            <select id="diff-comp-snapshot" class="form-control" style="background-color: rgba(0,0,0,0.3);">
+                                <option value="">Select comparison...</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-secondary" style="align-self: flex-end;" onclick="performDiffAnalysis()">Analyze Differences</button>
+                    </div>
+
+                    <div id="diff-results-content">
+                        <!-- Loaded Dynamically -->
+                        <div class="secured-state">
+                            <span data-icon="git-compare" data-size="28" style="color: var(--text-muted);"></span>
+                            <div class="secured-title">No Analysis Performed</div>
+                            <div class="secured-desc">Select two snapshots and click "Analyze Differences" to compare.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Settings Pane -->
+            <div id="pane-config" class="tab-content">
+                <div class="card">
+                    <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                        <span data-icon="settings" style="color: var(--primary);" data-size="18"></span> Orin Configuration
+                    </h3>
+
+                    <h4 style="font-size: 0.85rem; font-weight: 700; margin-top: 0.5rem; margin-bottom: 1rem; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em;">Operational Metrics</h4>
+                    <div id="metrics-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem;">
+                        <div class="stat-box"><div id="metric-db-size" class="stat-value">—</div><div class="stat-label">DB Size</div></div>
+                        <div class="stat-box"><div id="metric-total-collections" class="stat-value">—</div><div class="stat-label">Total Collections</div></div>
+                        <div class="stat-box"><div id="metric-alert-total" class="stat-value">—</div><div class="stat-label">Total Alerts</div></div>
+                        <div class="stat-box"><div id="metric-uptime" class="stat-value">—</div><div class="stat-label">Uptime</div></div>
+                    </div>
+
+                    <h4 style="font-size: 0.85rem; font-weight: 700; margin-top: 0.5rem; margin-bottom: 1rem; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em;">System Settings</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div>
+                            <div class="form-group">
+                                <label>Telemetry Collection Interval (seconds)</label>
+                                <input type="number" id="cfg-interval" class="form-control" value="300">
+                            </div>
+                            <div class="form-group">
+                                <label>Alert Notification Webhook URL</label>
+                                <input type="text" id="cfg-webhook" class="form-control" placeholder="https://hooks.slack.com/...">
+                            </div>
+                            <div class="form-group">
+                                <label>Max Historical Snapshots</label>
+                                <input type="number" id="cfg-max-snapshots" class="form-control" value="50">
+                            </div>
+                        </div>
+                        <div>
+                            <div class="form-group">
+                                <label>Log Level</label>
+                                <select id="cfg-log-level" class="form-control" style="background-color: rgba(0,0,0,0.3);">
+                                    <option value="INFO">Info</option>
+                                    <option value="DEBUG">Debug</option>
+                                    <option value="WARN">Warning</option>
+                                    <option value="ERROR">Error</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Data Retention Period (days)</label>
+                                <input type="number" id="cfg-retention" class="form-control" value="90">
+                            </div>
+                            <div class="form-group">
+                                <label>AI Triage API Endpoint</label>
+                                <input type="text" id="cfg-ai-api" class="form-control" placeholder="http://localhost:8080/v1/chat/completions">
+                            </div>
+                        </div>
+                    </div>
+
+                    <h4 style="font-size: 0.85rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 1rem; color: var(--primary); text-transform: uppercase; letter-spacing: 0.05em;">Forensic Rules Allowlist</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                        <div>
+                            <div class="form-group">
+                                <label>Expected Ports (comma-separated)</label>
+                                <input type="text" id="cfg-expected-ports" class="form-control" placeholder="e.g. 22, 80, 443">
+                            </div>
+                            <div class="form-group">
+                                <label>Whitelisted Processes (comma-separated)</label>
+                                <input type="text" id="cfg-whitelisted-processes" class="form-control" placeholder="e.g. sshd, nginx">
+                            </div>
+                        </div>
+                        <div>
+                            <div class="form-group">
+                                <label>Critical File Integrity Paths (comma-separated)</label>
+                                <input type="text" id="cfg-critical-paths" class="form-control" placeholder="e.g. /etc/passwd, /etc/shadow">
+                            </div>
+                            <div class="form-group">
+                                <label>Critical File Integrity Directories (comma-separated)</label>
+                                <input type="text" id="cfg-critical-dirs" class="form-control" placeholder="e.g. /etc/cron.d">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.5rem;">
+                        <button class="btn btn-secondary" onclick="loadConfig()">Reset to Defaults</button>
+                        <button class="btn" onclick="saveConfig()">Save Configuration</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. AI Triage Pane -->
+            <div id="pane-ai" class="tab-content">
+                <div class="card">
+                    <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+                        <span data-icon="bot" style="color: var(--primary);" data-size="18"></span> AI Triage Briefing
+                    </h3>
+
+                    <div style="display: flex; gap: 1.5rem; margin-bottom: 1.25rem;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 0.7rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem;">Contextual Snapshot</label>
+                            <select id="ai-context-snapshot" class="form-control" style="background-color: rgba(0,0,0,0.3);">
+                                <option value="">Use latest findings</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; display: flex; align-items: flex-end;">
+                            <button class="btn" style="width: 100%;" onclick="requestAIInsight()">
+                                <span data-icon="bot" data-size="14"></span> Generate Executive Summary
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="ai-output-content">
+                        <!-- Loaded Dynamically -->
+                        <div class="secured-state">
+                            <span data-icon="bot" data-size="28" style="color: var(--text-muted);"></span>
+                            <div class="secured-title">Ready for AI Analysis</div>
+                            <div class="secured-desc">Click "Generate Executive Summary" to get an AI-powered briefing on current findings.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detail-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Detail View</h3>
+                <button class="modal-close" onclick="closeModal()">
+                    <span data-icon="x" data-size="20"></span>
+                </button>
+            </div>
+            <div id="modal-body">
+                <!-- Content loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // API base URL - derived from current location
+        const API_BASE = window.location.origin;
+
+        // Get auth token from injected constant, sessionStorage or URL params
+        function getAuthToken() {
+            return (typeof ORIN_SESSION_TOKEN !== 'undefined' ? ORIN_SESSION_TOKEN : '') ||
+                   sessionStorage.getItem('orin_api_key') ||
+                   new URLSearchParams(window.location.search).get('token') ||
+                   '';
+        }
+
+        // API helper function
+        async function apiCall(endpoint, options = {}) {
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            // Add auth token if available - use Bearer token format
+            const token = getAuthToken();
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    ...options,
+                    headers
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ error: 'Request failed' }));
+                    throw new Error(error.message || error.error || `HTTP ${response.status}`);
+                }
+
+                return await response.json();
+            } catch (error) {
+                console.error(`API call failed: ${endpoint}`, error);
+                showToast(`API Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function triggerOnDemandCollect() {
+            showToast("Initiating on-demand telemetry collection...", "info");
+            apiCall('/api/collect', { method: 'POST' })
+                .then(() => {
+                    showToast("Collection completed successfully", "success");
+                    loadDashboard();
+                })
+                .catch(err => console.error('Collection failed:', err));
+        }
+
+        function triggerBaselineRefresh() {
+            showToast("Refreshing baseline ledger...", "info");
+            apiCall('/api/baseline/refresh', { method: 'POST' })
+                .then(() => {
+                    showToast("Baseline refresh completed successfully", "success");
+                    loadDashboard();
+                })
+                .catch(err => console.error('Baseline refresh failed:', err));
+        }
+
+        function addToAllowlist(type, inputId) {
+            const input = document.getElementById(inputId);
+            if (input.value.trim()) {
+                const payload = { type: type, name: input.value.trim() };
+                showToast(`Adding ${type} '${input.value}' to allowlist...`, "info");
+                apiCall('/api/baseline/add', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                })
+                .then(() => {
+                    showToast(`Added ${type} '${input.value}' to allowlist.`, "success");
+                    input.value = '';
+                })
+                .catch(err => console.error('Add to allowlist failed:', err));
+            } else {
+                showToast("Please enter a valid value.", "error");
+            }
+        }
+
+        function triggerRemoteScan(isBaseline) {
+            const hostInput = document.getElementById('scan-host');
+            const userInput = document.getElementById('scan-user');
+            const keyPathInput = document.getElementById('scan-key');
+            const portInput = document.getElementById('scan-port');
+
+            const host = hostInput?.value?.trim();
+            const user = userInput?.value?.trim();
+
+            if (!host || !user) {
+                showToast("Please enter SSH host and user.", "error");
+                return;
+            }
+
+            const action = isBaseline ? "initializing baseline" : "scanning";
+            showToast(`Initiating remote SSH host ${action}...`, "info");
+            const payload = {
+                host: host,
+                user: user,
+                init: isBaseline
+            };
+
+            if (keyPathInput?.value?.trim()) {
+                payload.key_path = keyPathInput.value.trim();
+            }
+            if (portInput?.value?.trim()) {
+                payload.port = parseInt(portInput.value, 10);
+            }
+
+            apiCall('/api/scan', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            })
+            .then(() => {
+                showToast(`Remote scan ${isBaseline ? 'baseline' : 'completed'} successfully`, "success");
+            })
+            .catch(err => console.error('Remote scan failed:', err));
+        }
+
+        let _alertsLedgerTimer = null;
+        function loadAlertsLedger() {
+            if (_alertsLedgerTimer) clearTimeout(_alertsLedgerTimer);
+            _alertsLedgerTimer = setTimeout(() => {
+                _alertsLedgerTimer = null;
+                _loadAlertsLedgerNow();
+            }, 400);
+        }
+
+        let _currentAlerts = [];
+
+        async function _loadAlertsLedgerNow() {
+            const content = document.getElementById('alert-feed-content');
+            try {
+                const filterHost = document.getElementById('filter-host');
+                const chkResolved = document.getElementById('chk-resolved');
+                const chkSuppressed = document.getElementById('chk-suppressed');
+
+                const params = new URLSearchParams();
+                if (filterHost && filterHost.value) params.append('host', filterHost.value);
+
+                // Server returns the full ledger; filtering for severity/resolved/suppressed happens client-side
+                const alerts = await apiCall(`/api/alerts?${params.toString()}`);
+
+                const showResolved = chkResolved && chkResolved.checked;
+                const showSuppressed = chkSuppressed && chkSuppressed.checked;
+                const activeSev = document.querySelector('.sev-pill.active');
+                const sevFilter = activeSev ? activeSev.dataset.severity : 'all';
+
+                const filtered = alerts.filter(a => {
+                    if (!showResolved && a.resolved) return false;
+                    if (!showSuppressed && a.suppressed) return false;
+                    if (sevFilter && sevFilter !== 'all' && (a.severity || '').toLowerCase() !== sevFilter) return false;
+                    return true;
+                });
+
+                _currentAlerts = filtered;
+
+                // Update severity counts on the stat card (unresolved, unsuppressed only)
+                const unresolved = alerts.filter(a => !a.resolved && !a.suppressed);
+                document.getElementById('stat-alerts').textContent = unresolved.length;
+
+                if (!content) return;
+
+                if (filtered.length === 0) {
+                    content.innerHTML = `
+                        <div class="secured-state">
+                            <div class="secured-title">No Alerts</div>
+                            <div class="secured-desc">No security events match the current filters.</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                content.innerHTML = filtered.slice(0, 100).map((alert, idx) => {
+                    const sevClass = (alert.severity || 'low').toLowerCase();
+                    return `
+                        <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-radius:8px;padding:0.85rem 1rem;margin-bottom:0.75rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
+                                <div style="flex:1;">
+                                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;">
+                                        <span class="severity-badge severity-${sevClass}">${escapeHtml(alert.severity || '')}</span>
+                                        <span style="font-weight:600;color:var(--text-primary);">${escapeHtml(alert.event_type || '')}</span>
+                                        ${alert.hostname ? `<span style="font-size:0.7rem;color:var(--text-secondary);">@ ${escapeHtml(alert.hostname)}</span>` : ''}
+                                        ${alert.resolved ? '<span style="font-size:0.7rem;color:var(--success);">Resolved</span>' : ''}
+                                        ${alert.suppressed ? '<span style="font-size:0.7rem;color:var(--text-muted);">Suppressed</span>' : ''}
+                                    </div>
+                                    <div style="font-size:0.85rem;color:var(--text-secondary);">${escapeHtml(alert.description || '')}</div>
+                                    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.25rem;">${formatTimestamp(alert.timestamp)}</div>
+                                </div>
+                                <div style="display:flex;gap:0.4rem;flex-shrink:0;">
+                                    <button class="btn btn-secondary btn-small" onclick="openAlertDetail(${idx})">Details</button>
+                                    ${!alert.resolved
+                                        ? `<button class="btn btn-secondary btn-small" onclick="handleAlertAction(${alert.id}, 'acknowledge')">Acknowledge</button>`
+                                        : `<button class="btn btn-secondary btn-small" onclick="handleAlertAction(${alert.id}, 'unresolve')">Reopen</button>`}
+                                    ${!alert.suppressed
+                                        ? `<button class="btn btn-secondary btn-small" onclick="handleAlertAction(${alert.id}, 'suppress')">Suppress</button>`
+                                        : `<button class="btn btn-secondary btn-small" onclick="handleAlertAction(${alert.id}, 'unsuppress')">Unsuppress</button>`}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Failed to load alerts:', error);
+                if (content) {
+                    content.innerHTML = `
+                        <div class="secured-state">
+                            <div class="secured-title">Failed to Load Alerts</div>
+                            <div class="secured-desc">${escapeHtml(error.message || 'Unknown error')}</div>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        function setSeverityFilter(level, evt) {
+            document.querySelectorAll('.sev-pill').forEach(el => el.classList.remove('active'));
+            const target = (evt && evt.target) || event.target;
+            target.classList.add('active');
+            loadAlertsLedger();
+        }
+
+        async function handleAlertAction(alertId, action) {
+            try {
+                const payload = { alert_id: alertId, action: action };
+                showToast(`Processing alert ${action}...`, "info");
+                await apiCall('/api/alerts/action', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                showToast(`Alert ${action} successfully`, "success");
+                loadAlertsLedger();
+            } catch (error) {
+                console.error('Alert action failed:', error);
+                showToast(`Failed to ${action} alert`, "error");
+            }
+        }
+
+        function openAlertDetail(idx) {
+            const alert = _currentAlerts[idx];
+            if (!alert) return;
+            const modal = document.getElementById('detail-modal');
+            const title = document.getElementById('modal-title');
+            const body = document.getElementById('modal-body');
+            if (!modal || !title || !body) return;
+
+            const sevClass = (alert.severity || 'low').toLowerCase();
+            title.innerHTML = `<span class="severity-badge severity-${sevClass}">${escapeHtml(alert.severity || '')}</span> ${escapeHtml(alert.event_type || 'Alert Detail')}`;
+
+            let attckHtml = '';
+            if (alert.attck_technique || alert.attck_tactic) {
+                attckHtml = `
+                    <div style="margin-top:1rem;padding:0.75rem;background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.15);border-radius:8px;">
+                        <div style="font-size:0.7rem;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem;">MITRE ATT&CK</div>
+                        ${alert.attck_technique ? `<div style="font-size:0.85rem;margin-bottom:0.25rem;"><strong>Technique:</strong> ${escapeHtml(alert.attck_technique)}</div>` : ''}
+                        ${alert.attck_tactic ? `<div style="font-size:0.85rem;margin-bottom:0.25rem;"><strong>Tactic:</strong> ${escapeHtml(alert.attck_tactic)}</div>` : ''}
+                        ${alert.attck_url ? `<div style="font-size:0.85rem;"><a href="${escapeHtml(alert.attck_url)}" target="_blank" rel="noopener" style="color:var(--primary);">${escapeHtml(alert.attck_url)}</a></div>` : ''}
+                    </div>
+                `;
+            }
+
+            body.innerHTML = `
+                <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem;">ID: ${alert.id} &middot; ${formatTimestamp(alert.timestamp)} ${alert.hostname ? '&middot; ' + escapeHtml(alert.hostname) : ''}</div>
+                <div style="font-size:0.9rem;color:var(--text-primary);margin-bottom:0.75rem;">${escapeHtml(alert.description || '')}</div>
+                ${alert.raw_details ? `<div style="margin-bottom:0.75rem;"><div style="font-size:0.7rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem;">Raw Details</div><pre style="background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:6px;padding:0.6rem;font-size:0.8rem;color:var(--text-primary);overflow-x:auto;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;">${escapeHtml(alert.raw_details)}</pre></div>` : ''}
+                ${attckHtml}
+                <div style="margin-top:1rem;">
+                    <div style="font-size:0.7rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem;">Analyst Notes</div>
+                    <textarea id="modal-notes-input" class="form-control" style="width:100%;min-height:70px;resize:vertical;font-size:0.85rem;">${escapeHtml(alert.notes || '')}</textarea>
+                    <button class="btn btn-small" style="margin-top:0.5rem;" onclick="saveAlertNotes(${alert.id})">Save Notes</button>
+                </div>
+                <div style="margin-top:1rem;display:flex;align-items:center;gap:0.75rem;">
+                    <div style="font-size:0.7rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;">Override Severity</div>
+                    <select id="modal-severity-select" class="form-control" style="width:auto;min-width:120px;background-color:rgba(0,0,0,0.3);font-size:0.85rem;">
+                        <option value="low" ${sevClass === 'low' ? 'selected' : ''}>Low</option>
+                        <option value="medium" ${sevClass === 'medium' ? 'selected' : ''}>Medium</option>
+                        <option value="high" ${sevClass === 'high' ? 'selected' : ''}>High</option>
+                        <option value="critical" ${sevClass === 'critical' ? 'selected' : ''}>Critical</option>
+                    </select>
+                    <button class="btn btn-small btn-secondary" onclick="overrideAlertSeverity(${alert.id})">Apply</button>
+                </div>
+                <div style="margin-top:1.5rem;border-top:1px solid var(--border-color);padding-top:1rem;display:flex;justify-content:flex-end;">
+                    <button class="btn btn-small btn-secondary" onclick="closeModal()">Close / Exit</button>
+                </div>
+            `;
+            modal.classList.add('open');
+        }
+
+        async function saveAlertNotes(alertId) {
+            const notes = document.getElementById('modal-notes-input')?.value || '';
+            try {
+                await apiCall('/api/alerts/action', {
+                    method: 'POST',
+                    body: JSON.stringify({ alert_id: alertId, action: 'update_notes', notes: notes })
+                });
+                showToast('Notes saved', 'success');
+                loadAlertsLedger();
+            } catch (e) {
+                showToast('Failed to save notes', 'error');
+            }
+        }
+
+        async function overrideAlertSeverity(alertId) {
+            const severity = document.getElementById('modal-severity-select')?.value;
+            if (!severity) return;
+            try {
+                await apiCall('/api/alerts/action', {
+                    method: 'POST',
+                    body: JSON.stringify({ alert_id: alertId, action: 'override_severity', severity: severity })
+                });
+                showToast(`Severity overridden to ${severity}`, 'success');
+                closeModal();
+                loadAlertsLedger();
+                loadDashboard();
+            } catch (e) {
+                showToast('Failed to override severity', 'error');
+            }
+        }
+
+        function installScheduleFromUI() {
+            const intervalInput = document.getElementById('schedule-interval');
+            const minutes = parseInt(intervalInput?.value || '10', 10);
+            if (isNaN(minutes) || minutes < 1 || minutes > 1440) {
+                showToast('Interval must be between 1 and 1440 minutes.', 'error');
+                return;
+            }
+            installSchedule(minutes);
+        }
+
+        async function installSchedule(intervalMinutes) {
+            try {
+                const payload = { interval_minutes: intervalMinutes || 10 };
+                showToast("Installing automation schedule...", "info");
+                await apiCall('/api/schedule/install', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                showToast("Schedule installed successfully", "success");
+                loadScheduleStatus();
+            } catch (error) {
+                console.error('Schedule install failed:', error);
+                showToast("Failed to install schedule", "error");
+            }
+        }
+
+        async function removeSchedule() {
+            try {
+                showToast("Removing automation schedule...", "info");
+                await apiCall('/api/schedule/remove', { method: 'POST' });
+                showToast("Schedule removed successfully", "success");
+                loadScheduleStatus();
+            } catch (error) {
+                console.error('Schedule remove failed:', error);
+                showToast("Failed to remove schedule", "error");
+            }
+        }
+
+        async function loadScheduleStatus() {
+            try {
+                const data = await apiCall('/api/schedule/status');
+                const statusEl = document.getElementById('schedule-status');
+                if (statusEl) {
+                    if (data.active) {
+                        const intervalDisplay = data.interval || (data.interval_minutes ? `${data.interval_minutes}m` : 'hourly');
+                        statusEl.innerHTML = `<span style="color:var(--success);">Active (${intervalDisplay})</span>`;
+                    } else {
+                        statusEl.innerHTML = '<span style="color:var(--text-muted);">No active schedule</span>';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load schedule status:', error);
+            }
+        }
+
+        async function killProcess(pid, hostname) {
+            if (!confirm(`Are you sure you want to terminate process PID ${pid} on ${hostname || 'local'}?`)) {
+                return;
+            }
+            try {
+                const payload = { pid: pid };
+                if (hostname) {
+                    payload.hostname = hostname;
+                }
+                showToast(`Terminating process ${pid} on ${hostname || 'local'}...`, "warning");
+                await apiCall('/api/process/kill', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                showToast(`Process ${pid} terminated`, "success");
+                loadDashboard();
+            } catch (error) {
+                console.error('Process kill failed:', error);
+                showToast(`Failed to terminate process: ${error.message}`, "error");
+            }
+        }
+
+        async function runCorrelation() {
+            try {
+                showToast("Running correlation analysis...", "info");
+                const data = await apiCall('/api/correlate', { method: 'POST' });
+                showToast("Correlation analysis complete", "success");
+                // Display correlation results if available
+                if (data.correlations && data.correlations.length > 0) {
+                    console.log('Correlations found:', data.correlations);
+                }
+            } catch (error) {
+                console.error('Correlation failed:', error);
+                showToast("Correlation analysis failed", "error");
+            }
+        }
+
+        let _currentTelemetryData = null;
+
+        async function loadTelemetry(snapshotId) {
+            try {
+                if (!snapshotId) {
+                    const select = document.getElementById('telemetry-snapshot-select');
+                    if (select && select.value) {
+                        snapshotId = select.value;
+                    }
+                }
+
+                const data = await apiCall(`/api/snapshot/telemetry${snapshotId ? `?id=${snapshotId}` : ''}`);
+                _currentTelemetryData = data;
+                renderTelemetryData(data);
+            } catch (error) {
+                console.error('Failed to load telemetry:', error);
+            }
+        }
+
+        function emptyRow(colspan, message) {
+            return `<tr><td colspan="${colspan}" style="text-align:center;color:var(--text-muted);">${escapeHtml(message)}</td></tr>`;
+        }
+
+        let activeFilters = {
+            services: {
+                status: 'all',
+                enablement: 'all'
+            }
+        };
+
+        function applyServicesFilters() {
+            const query = (document.getElementById('search-services')?.value || '').toLowerCase();
+            const tbody = document.getElementById('services-tbody');
+            if (!tbody) return;
+            const rows = tbody.getElementsByTagName('tr');
+            
+            const statusFilter = activeFilters.services.status;
+            const enablementFilter = activeFilters.services.enablement;
+
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                if (row.cells.length === 1 && row.cells[0].getAttribute('colspan')) {
+                    continue;
+                }
+                
+                const statusText = (row.cells[1]?.textContent || '').toLowerCase();
+                const enablementText = (row.cells[2]?.textContent || '').toLowerCase();
+                const allText = row.textContent.toLowerCase();
+
+                const matchesQuery = !query || allText.includes(query);
+                
+                let matchesStatus = true;
+                if (statusFilter !== 'all') {
+                    matchesStatus = statusText.includes(statusFilter);
+                }
+
+                let matchesEnablement = true;
+                if (enablementFilter !== 'all') {
+                    matchesEnablement = enablementText.includes(enablementFilter);
+                }
+
+                if (matchesQuery && matchesStatus && matchesEnablement) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+        }
+
+        function setServiceFilter(type, value, btnEl) {
+            activeFilters.services[type] = value;
+            
+            const parent = btnEl.parentElement;
+            const buttons = parent.getElementsByClassName('filter-pill');
+            for (let btn of buttons) {
+                btn.classList.remove('active');
+            }
+            btnEl.classList.add('active');
+            
+            applyServicesFilters();
+        }
+
+        function resetFilters() {
+            activeFilters = {
+                services: {
+                    status: 'all',
+                    enablement: 'all'
+                }
+            };
+            
+            const pills = document.querySelectorAll('.filter-pill');
+            pills.forEach(pill => {
+                const clickAttr = pill.getAttribute('onclick') || '';
+                if (clickAttr.includes("'all'")) {
+                    pill.classList.add('active');
+                } else {
+                    pill.classList.remove('active');
+                }
+            });
+        }
+
+        function filterTable(tbodyId, query) {
+            const lowerQuery = query.toLowerCase();
+            const tbody = document.getElementById(tbodyId);
+            if (!tbody) return;
+            const rows = tbody.getElementsByTagName('tr');
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                if (row.cells.length === 1 && row.cells[0].getAttribute('colspan')) {
+                    continue;
+                }
+                const text = row.textContent.toLowerCase();
+                if (text.includes(lowerQuery)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+        }
+
+        function renderTelemetryData(data) {
+            if (!data || !data.metadata) return;
+
+            // Reset all search inputs when new data is rendered
+            const searchInputs = [
+                'search-processes', 'search-network', 'search-files', 'search-services', 
+                'search-authlogs', 'search-suid', 'search-packages', 'search-users', 
+                'search-kernel', 'search-ssh-keys', 'search-deleted-bins', 'search-ebpf', 
+                'search-promisc', 'search-crontabs', 'search-ldpreload', 'search-specialfds'
+            ];
+            searchInputs.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            resetFilters();
+
+            // Processes
+            const procBody = document.getElementById('processes-tbody');
+            if (procBody) {
+                if (data.processes && data.processes.length) {
+                    procBody.innerHTML = data.processes.map(p => `
+                        <tr>
+                            <td>${p.pid}</td>
+                            <td>${escapeHtml(p.name || '')}</td>
+                            <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(p.cmdline || p.exe || '')}">${escapeHtml(p.cmdline || p.exe || '')}</td>
+                            <td>${p.ppid !== null ? p.ppid : '-'}</td>
+                            <td>
+                                <button class="btn btn-secondary btn-small" style="color:var(--critical);border-color:rgba(239,68,68,0.2);" onclick="killProcess(${p.pid}, '${escapeHtml(data.metadata.hostname || '')}')">Kill</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    procBody.innerHTML = emptyRow(5, 'No process data for this snapshot.');
+                }
+            }
+
+            // Network: listening ports + outbound connections
+            const listeningBody = document.getElementById('network-listening-tbody');
+            const activeBody = document.getElementById('network-active-tbody');
+            if (listeningBody && activeBody) {
+                if (data.ports && data.ports.length) {
+                    listeningBody.innerHTML = data.ports.map(p => {
+                        const procName = p.process_name || '-';
+                        const pidMatch = procName.match(/\(PID:\s*(\d+)\)/);
+                        const pid = pidMatch ? parseInt(pidMatch[1], 10) : null;
+                        
+                        let actionHtml = '-';
+                        if (pid) {
+                            actionHtml = `<button class="btn btn-secondary btn-small" style="color:var(--critical);border-color:rgba(239,68,68,0.2);" onclick="killProcess(${pid}, '${escapeHtml(data.metadata.hostname || '')}')">Kill</button>`;
+                        }
+                        
+                        return `
+                            <tr>
+                                <td><strong>${p.port}</strong></td>
+                                <td><span class="badge badge-secondary">${escapeHtml((p.protocol || 'TCP').toUpperCase())}</span></td>
+                                <td>${escapeHtml(procName)}</td>
+                                <td>${actionHtml}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    listeningBody.innerHTML = emptyRow(4, 'No listening ports for this snapshot.');
+                }
+
+                if (data.outbound && data.outbound.length) {
+                    activeBody.innerHTML = data.outbound.map(c => {
+                        const procName = c.process_name || '-';
+                        const pidMatch = procName.match(/\(PID:\s*(\d+)\)/);
+                        const pid = pidMatch ? parseInt(pidMatch[1], 10) : null;
+                        
+                        let actionHtml = '-';
+                        if (pid) {
+                            actionHtml = `<button class="btn btn-secondary btn-small" style="color:var(--critical);border-color:rgba(239,68,68,0.2);" onclick="killProcess(${pid}, '${escapeHtml(data.metadata.hostname || '')}')">Kill</button>`;
+                        }
+                        
+                        return `
+                            <tr>
+                                <td>${escapeHtml(c.local_ip)}:${c.local_port}</td>
+                                <td><span style="color: var(--primary); font-weight: 600;">${escapeHtml(c.remote_ip)}:${c.remote_port}</span></td>
+                                <td><span class="badge badge-${(c.state || '').toLowerCase() === 'established' ? 'success' : 'warning'}">${escapeHtml(c.state || 'ESTABLISHED')}</span></td>
+                                <td>${escapeHtml(procName)}</td>
+                                <td>${actionHtml}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    activeBody.innerHTML = emptyRow(5, 'No active outbound connections for this snapshot.');
+                }
+            }
+
+            // File changes (file integrity hashes - shows current hashes, not deltas)
+            const filesBody = document.getElementById('files-tbody');
+            if (filesBody) {
+                if (data.file_hashes && data.file_hashes.length) {
+                    filesBody.innerHTML = data.file_hashes.map(f => `
+                        <tr>
+                            <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.file_path)}</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td style="font-family:monospace;font-size:0.75rem;">${escapeHtml((f.sha256_hash || '').slice(0, 16))}&hellip;</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    filesBody.innerHTML = emptyRow(5, 'No file integrity data for this snapshot.');
+                }
+            }
+
+            // User sessions (wtmp + lastlog)
+            const usersBody = document.getElementById('users-tbody');
+            if (usersBody) {
+                const rows = [];
+                const parseTime = (timeVal) => {
+                    if (!timeVal) return 0;
+                    const parsed = new Date(timeVal).getTime();
+                    return isNaN(parsed) ? 0 : parsed;
+                };
+
+                const sortedWtmp = [...(data.wtmp_sessions || [])].sort((a, b) => parseTime(b.login_time) - parseTime(a.login_time));
+                sortedWtmp.forEach(s => {
+                    rows.push(`<tr><td>${escapeHtml(s.user || '')}</td><td>${formatTimestamp(s.logout_time) || '-'}</td><td>${formatTimestamp(s.login_time)}</td><td>${escapeHtml(s.host || '-')}</td><td>${escapeHtml(s.line || '')}</td></tr>`);
+                });
+                if (!rows.length) {
+                    const sortedLastlog = [...(data.lastlog_records || [])].sort((a, b) => parseTime(b.login_time) - parseTime(a.login_time));
+                    sortedLastlog.forEach(s => {
+                        rows.push(`<tr><td>${escapeHtml(s.username || '')}</td><td>-</td><td>${formatTimestamp(s.login_time)}</td><td>${escapeHtml(s.host || '-')}</td><td>${escapeHtml(s.line || '')}</td></tr>`);
+                    });
+                }
+                usersBody.innerHTML = rows.length ? rows.join('') : emptyRow(5, 'No session data for this snapshot.');
+            }
+
+            // Kernel modules
+            const kernelBody = document.getElementById('kernel-tbody');
+            if (kernelBody) {
+                if (data.kernel_modules && data.kernel_modules.length) {
+                    kernelBody.innerHTML = data.kernel_modules.map(m => `
+                        <tr>
+                            <td>${escapeHtml(m.module_name)}</td>
+                            <td>${m.memory_size ?? '-'}</td>
+                            <td>${m.instances_loaded ?? '-'}</td>
+                            <td>-</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    kernelBody.innerHTML = emptyRow(4, 'No kernel module data for this snapshot.');
+                }
+            }
+
+            // Services
+            const servicesBody = document.getElementById('services-tbody');
+            if (servicesBody) {
+                if (data.services && data.services.length) {
+                    servicesBody.innerHTML = data.services.map(s => {
+                        let statusHtml = '';
+                        if (s.status) {
+                            const statusLower = s.status.toLowerCase();
+                            let dotColor = 'var(--text-muted)';
+                            let isPulsing = false;
+                            
+                            if (statusLower.includes('running')) {
+                                dotColor = 'var(--success)';
+                                isPulsing = true;
+                            } else if (statusLower.includes('exited')) {
+                                dotColor = 'var(--text-secondary)';
+                            } else if (statusLower.includes('failed')) {
+                                dotColor = 'var(--critical)';
+                                isPulsing = true;
+                            }
+                            
+                            const pulseClass = isPulsing ? (statusLower.includes('failed') ? ' pulsing-critical' : ' pulsing') : '';
+                            statusHtml = `
+                                <span style="display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap;">
+                                    <span class="status-dot${pulseClass}" style="background-color: ${dotColor};"></span>
+                                    <span style="font-weight: 500; font-size: 0.8rem; text-transform: capitalize;">${escapeHtml(s.status)}</span>
+                                </span>
+                            `;
+                        } else {
+                            statusHtml = '<span style="color:var(--text-muted); font-size:0.8rem;">-</span>';
+                        }
+                        
+                        const isEnabled = s.enabled === 'enabled';
+                        const isDisabled = s.enabled === 'disabled';
+                        const enabledClass = isEnabled ? 'success' : (isDisabled ? 'warning' : 'secondary');
+                        
+                        const userHtml = `
+                            <span style="font-family: monospace; font-size: 0.75rem; background: rgba(255, 255, 255, 0.04); padding: 0.15rem 0.35rem; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.08); color: var(--text-secondary);">${escapeHtml(s.user || 'root')}</span>
+                        `;
+                        
+                        return `
+                            <tr>
+                                <td><strong>${escapeHtml(s.name || '')}</strong></td>
+                                <td>${statusHtml}</td>
+                                <td><span class="badge badge-${enabledClass}">${escapeHtml(s.enabled || 'static')}</span></td>
+                                <td>${userHtml}</td>
+                                <td style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(s.description || '')}">${escapeHtml(s.description || '')}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    servicesBody.innerHTML = emptyRow(5, 'No system services data for this snapshot.');
+                }
+            }
+
+            // Packages (package integrity drift records)
+            const packagesBody = document.getElementById('packages-tbody');
+            if (packagesBody) {
+                if (data.pkg_integrity && data.pkg_integrity.length) {
+                    packagesBody.innerHTML = data.pkg_integrity.map(pkg => `
+                        <tr>
+                            <td>${escapeHtml(pkg.package)}</td>
+                            <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(pkg.file_path || '')}</td>
+                            <td style="font-family:monospace;font-size:0.75rem;">${escapeHtml(pkg.expected_md5 || '-')}</td>
+                            <td style="font-family:monospace;font-size:0.75rem;">${escapeHtml(pkg.actual_md5 || '-')}</td>
+                            <td>${escapeHtml(pkg.status || '')}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    packagesBody.innerHTML = emptyRow(5, 'No package integrity data for this snapshot.');
+                }
+            }
+
+            // SSH Keys
+            const sshKeysBody = document.getElementById('ssh-keys-tbody');
+            if (sshKeysBody) {
+                if (data.ssh_keys && data.ssh_keys.length) {
+                    sshKeysBody.innerHTML = data.ssh_keys.map(k => `
+                        <tr><td>${escapeHtml(k.user_account || '')}</td><td>${escapeHtml(k.key_type || '')}</td><td style="font-family:monospace;font-size:0.75rem;">${escapeHtml((k.fingerprint || '').slice(0, 24))}&hellip;</td><td>${escapeHtml(k.raw_key_comment || '-')}</td></tr>
+                    `).join('');
+                } else { sshKeysBody.innerHTML = emptyRow(4, 'No SSH key data for this snapshot.'); }
+            }
+
+            // Deleted Binaries
+            const delBinsBody = document.getElementById('deleted-bins-tbody');
+            if (delBinsBody) {
+                if (data.deleted_binaries && data.deleted_binaries.length) {
+                    delBinsBody.innerHTML = data.deleted_binaries.map(d => `
+                        <tr><td>${d.pid}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(d.exe || '')}</td><td style="font-family:monospace;font-size:0.75rem;">${escapeHtml((d.sha256 || '').slice(0, 16))}&hellip;</td><td style="font-size:0.8rem;">${escapeHtml(d.vault_path || '-')}</td></tr>
+                    `).join('');
+                } else { delBinsBody.innerHTML = emptyRow(4, 'No deleted binary data for this snapshot.'); }
+            }
+
+            // SUID Binaries
+            const suidBody = document.getElementById('suid-tbody');
+            if (suidBody) {
+                if (data.suid_binaries && data.suid_binaries.length) {
+                    suidBody.innerHTML = data.suid_binaries.map(s => `
+                        <tr><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.file_path)}</td><td>${escapeHtml(s.owner || '')}</td><td>${escapeHtml(s.grp || '')}</td><td>${formatPermissions(s.permissions)}</td><td style="font-family:monospace;font-size:0.75rem;">${escapeHtml((s.sha256 || '').slice(0, 16))}&hellip;</td></tr>
+                    `).join('');
+                } else { suidBody.innerHTML = emptyRow(5, 'No SUID binary data for this snapshot.'); }
+            }
+
+            // eBPF Programs
+            const ebpfBody = document.getElementById('ebpf-tbody');
+            if (ebpfBody) {
+                if (data.ebpf_programs && data.ebpf_programs.length) {
+                    ebpfBody.innerHTML = data.ebpf_programs.map(e => `
+                        <tr><td>${e.bpf_id}</td><td>${escapeHtml(e.name || '')}</td><td>${escapeHtml(e.type || '')}</td><td style="font-family:monospace;font-size:0.8rem;">${escapeHtml(e.tag || '-')}</td><td>${e.gpl_compatible ? '<span style="color:var(--success);">Yes</span>' : '<span style="color:var(--text-muted);">No</span>'}</td></tr>
+                    `).join('');
+                } else { ebpfBody.innerHTML = emptyRow(5, 'No eBPF program data for this snapshot.'); }
+            }
+
+            // eBPF Pinned (merged into eBPF tab)
+            if (ebpfBody && data.ebpf_pinned && data.ebpf_pinned.length) {
+                ebpfBody.innerHTML += '<tr><td colspan="5" style="font-weight:700;color:var(--primary);padding-top:1rem;">Pinned BPF Objects</td></tr>';
+                ebpfBody.innerHTML += data.ebpf_pinned.map(p => `
+                    <tr><td>-</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.path || '')}</td><td>${escapeHtml(p.type || '')}</td><td>-</td><td>-</td></tr>
+                `).join('');
+            }
+
+            // Promiscuous Interfaces
+            const promiscBody = document.getElementById('promisc-tbody');
+            if (promiscBody) {
+                if (data.promisc_interfaces && data.promisc_interfaces.length) {
+                    promiscBody.innerHTML = data.promisc_interfaces.map(p => `
+                        <tr><td>${escapeHtml(p.interface || '')}</td><td>${escapeHtml(p.flags || '')}</td><td>${p.is_promiscuous ? '<span style="color:var(--critical);font-weight:700;">YES</span>' : 'No'}</td></tr>
+                    `).join('');
+                } else { promiscBody.innerHTML = emptyRow(3, 'No promiscuous interface data for this snapshot.'); }
+            }
+
+            // Crontabs
+            const crontabsBody = document.getElementById('crontabs-tbody');
+            if (crontabsBody) {
+                if (data.crontabs && data.crontabs.length) {
+                    crontabsBody.innerHTML = data.crontabs.map(c => `
+                        <tr><td>${escapeHtml(c.source || '')}</td><td>${escapeHtml(c.user || '')}</td><td><code>${escapeHtml(c.schedule || '')}</code></td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.command || '')}</td></tr>
+                    `).join('');
+                } else { crontabsBody.innerHTML = emptyRow(4, 'No crontab data for this snapshot.'); }
+            }
+
+            // LD Preload
+            const ldBody = document.getElementById('ldpreload-tbody');
+            if (ldBody) {
+                if (data.ld_preload && data.ld_preload.length) {
+                    ldBody.innerHTML = data.ld_preload.map(line => `
+                        <tr><td style="font-family:monospace;font-size:0.85rem;">${escapeHtml(line)}</td></tr>
+                    `).join('');
+                } else { ldBody.innerHTML = '<tr><td style="text-align:center;color:var(--text-muted);">No LD preload entries (clean).</td></tr>'; }
+            }
+
+            // Special FDs
+            const specialFdsBody = document.getElementById('specialfds-tbody');
+            if (specialFdsBody) {
+                if (data.special_fds && data.special_fds.length) {
+                    specialFdsBody.innerHTML = data.special_fds.map(fd => `
+                        <tr><td>${fd.pid}</td><td>${fd.fd_num}</td><td>${escapeHtml(fd.fd_type || '')}</td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(fd.resolved_path || '')}</td></tr>
+                    `).join('');
+                } else { specialFdsBody.innerHTML = emptyRow(4, 'No special FD data for this snapshot.'); }
+            }
+
+            // Auth Logs
+            const authLogsBody = document.getElementById('authlogs-tbody');
+            if (authLogsBody) {
+                if (data.auth_logs && data.auth_logs.length) {
+                    authLogsBody.innerHTML = [...data.auth_logs].reverse().map(line => {
+                        const match = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+\-]\d{2}:?\d{2}|Z)?)\s+([^\s]+)\s+([^:]+):\s*(.*)$/);
+                        
+                        let timestamp = '-';
+                        let service = 'system';
+                        let message = line;
+                        
+                        if (match) {
+                            timestamp = formatTimestamp(match[1]);
+                            service = match[3].trim();
+                            message = match[4];
+                        }
+                        
+                        // Service badge styling
+                        let serviceClass = 'secondary';
+                        const lowerService = service.toLowerCase();
+                        if (lowerService.includes('sudo')) {
+                            serviceClass = 'warning';
+                        } else if (lowerService.includes('ssh')) {
+                            serviceClass = 'primary';
+                        } else if (lowerService.includes('cron')) {
+                            serviceClass = 'low';
+                        } else if (lowerService.includes('pam')) {
+                            serviceClass = 'info';
+                        }
+                        
+                        // Message formatting: highlight commands and sessions
+                        let formattedMsg = escapeHtml(message);
+                        
+                        // Highlight TTY/PWD/USER/COMMAND parameters in sudo logs
+                        if (lowerService.includes('sudo') && message.includes(';')) {
+                            let userPrefix = "";
+                            let rest = message;
+                            const colonIdx = message.indexOf(':');
+                            if (colonIdx !== -1 && colonIdx < 30) {
+                                userPrefix = message.substring(0, colonIdx + 1);
+                                rest = message.substring(colonIdx + 1);
+                            }
+                            
+                            const parts = rest.split(';').map(p => {
+                                const kv = p.split('=');
+                                if (kv.length === 2) {
+                                    const key = kv[0].trim();
+                                    const val = kv[1].trim();
+                                    return `<strong>${escapeHtml(key)}</strong>=<code>${escapeHtml(val)}</code>`;
+                                }
+                                return escapeHtml(p.trim());
+                            });
+                            formattedMsg = (userPrefix ? `<strong>${escapeHtml(userPrefix.trim())}</strong> ` : "") + parts.join(' &middot; ');
+                        } else {
+                            if (message.includes('session opened')) {
+                                formattedMsg = `<span style="color: var(--success); font-weight: 600; margin-right: 0.25rem;">●</span>${formattedMsg.replace('session opened', '<strong>session opened</strong>')}`;
+                            } else if (message.includes('session closed')) {
+                                formattedMsg = `<span style="color: var(--text-muted); margin-right: 0.25rem;">○</span>${formattedMsg.replace('session closed', 'session closed')}`;
+                            } else if (message.toLowerCase().includes('fail') || message.toLowerCase().includes('incorrect')) {
+                                formattedMsg = `<span style="color: var(--critical); font-weight: 600; margin-right: 0.25rem;">⚠</span><span style="color: var(--critical);">${formattedMsg}</span>`;
+                            }
+                        }
+                        
+                        return `
+                            <tr>
+                                <td style="font-size: 0.8rem; color: var(--text-secondary); white-space: nowrap;">${timestamp}</td>
+                                <td><span class="badge badge-${serviceClass}">${escapeHtml(service)}</span></td>
+                                <td style="font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all;">${formattedMsg}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else { 
+                    authLogsBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">No auth log data for this snapshot.</td></tr>'; 
+                }
+            }
+        }
+
+        function switchTelemetryTab(tabId) {
+            document.querySelectorAll('.telemetry-tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.telemetry-menu-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+            // Data for all tabs is loaded together; no need to refetch on tab switch
+            if (_currentTelemetryData) {
+                renderTelemetryData(_currentTelemetryData);
+            } else {
+                loadTelemetry();
+            }
+        }
+
+        async function performDiffAnalysis() {
+            try {
+                showToast("Analyzing differences between snapshots...", "info");
+
+                const baseId = document.getElementById('diff-base-snapshot')?.value;
+                const targetId = document.getElementById('diff-comp-snapshot')?.value;
+
+                if (!baseId || !targetId) {
+                    showToast("Select two snapshots to compare", "error");
+                    return;
+                }
+
+                const data = await apiCall(`/api/delta?base=${baseId}&target=${targetId}`);
+
+                const newUsers = data.new_users || [];
+                const newModules = data.new_modules || [];
+                const modifiedFiles = data.modified_files || [];
+
+                // Display diff results
+                const diffResults = document.getElementById('diff-results-content');
+                if (diffResults) {
+                    let html = `
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem;">
+                            <div style="background:rgba(255,255,255,0.03);padding:1rem;border-radius:8px;">
+                                <div style="font-size:0.8rem;color:var(--text-secondary);">New Users</div>
+                                <div style="font-size:1.5rem;font-weight:700;color:var(--critical);">${newUsers.length}</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.03);padding:1rem;border-radius:8px;">
+                                <div style="font-size:0.8rem;color:var(--text-secondary);">New Kernel Modules</div>
+                                <div style="font-size:1.5rem;font-weight:700;color:var(--warning);">${newModules.length}</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.03);padding:1rem;border-radius:8px;">
+                                <div style="font-size:0.8rem;color:var(--text-secondary);">Modified Files</div>
+                                <div style="font-size:1.5rem;font-weight:700;color:var(--primary);">${modifiedFiles.length}</div>
+                            </div>
+                        </div>
+                    `;
+
+                    if (newUsers.length > 0) {
+                        html += '<h4 style="margin:1rem 0;">New Users</h4><ul style="list-style:none;padding:0;">';
+                        newUsers.forEach(u => {
+                            html += `<li style="padding:0.5rem;background:rgba(239,68,68,0.1);border-left:3px solid var(--critical);margin-bottom:0.5rem;">
+                                <strong>${escapeHtml(u.username)}</strong> (UID: ${u.uid})
+                            </li>`;
+                        });
+                        html += '</ul>';
+                    }
+
+                    if (newModules.length > 0) {
+                        html += '<h4 style="margin:1rem 0;">New Kernel Modules</h4><ul style="list-style:none;padding:0;">';
+                        newModules.forEach(m => {
+                            html += `<li style="padding:0.5rem;background:rgba(245,158,11,0.1);border-left:3px solid var(--warning);margin-bottom:0.5rem;">
+                                <strong>${escapeHtml(m.name)}</strong> (${m.size} bytes)
+                            </li>`;
+                        });
+                        html += '</ul>';
+                    }
+
+                    if (modifiedFiles.length > 0) {
+                        html += '<h4 style="margin:1rem 0;">Modified Files</h4><ul style="list-style:none;padding:0;">';
+                        modifiedFiles.forEach(f => {
+                            html += `<li style="padding:0.5rem;background:rgba(56,189,248,0.1);border-left:3px solid var(--primary);margin-bottom:0.5rem;">
+                                <strong>${escapeHtml(f.path)}</strong> &mdash; ${escapeHtml(f.status)}
+                            </li>`;
+                        });
+                        html += '</ul>';
+                    }
+
+                    if (newUsers.length === 0 && newModules.length === 0 && modifiedFiles.length === 0) {
+                        html += '<p style="color:var(--text-muted);">No differences detected between selected snapshots.</p>';
+                    }
+
+                    diffResults.innerHTML = html;
+                }
+
+                showToast("Diff analysis complete", "success");
+            } catch (error) {
+                console.error('Diff analysis failed:', error);
+                showToast("Diff analysis failed", "error");
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const data = await apiCall('/api/config');
+                const config = data.config || data; // handle both wrapped and unwrapped formats
+
+                // Populate agent Forensic Rules if they exist
+                if (config.expected_ports) {
+                    document.getElementById('cfg-expected-ports').value = config.expected_ports.join(', ');
+                }
+                if (config.whitelisted_processes) {
+                    document.getElementById('cfg-whitelisted-processes').value = config.whitelisted_processes.join(', ');
+                }
+                if (config.critical_paths) {
+                    document.getElementById('cfg-critical-paths').value = config.critical_paths.join(', ');
+                }
+                if (config.critical_dirs) {
+                    document.getElementById('cfg-critical-dirs').value = config.critical_dirs.join(', ');
+                }
+
+                // Populate system settings if they exist
+                if (config.collection_interval) document.getElementById('cfg-interval').value = config.collection_interval;
+                if (config.webhook_url) document.getElementById('cfg-webhook').value = config.webhook_url;
+                if (config.max_snapshots) document.getElementById('cfg-max-snapshots').value = config.max_snapshots;
+                if (config.log_level) document.getElementById('cfg-log-level').value = config.log_level;
+                if (config.retention_days) document.getElementById('cfg-retention').value = config.retention_days;
+                if (config.ai_api_endpoint) document.getElementById('cfg-ai-api').value = config.ai_api_endpoint;
+
+                showToast("Configuration loaded", "success");
+            } catch (error) {
+                console.error('Failed to load config:', error);
+                showToast("Failed to load configuration", "error");
+            }
+        }
+
+        async function saveConfig() {
+            try {
+                showToast("Saving configuration...", "info");
+
+                const expectedPortsVal = document.getElementById('cfg-expected-ports')?.value || "";
+                const whitelistedProcessesVal = document.getElementById('cfg-whitelisted-processes')?.value || "";
+                const criticalPathsVal = document.getElementById('cfg-critical-paths')?.value || "";
+                const criticalDirsVal = document.getElementById('cfg-critical-dirs')?.value || "";
+
+                const expected_ports = expectedPortsVal.split(',').map(x => x.trim()).filter(x => x).map(Number).filter(x => !isNaN(x));
+                const whitelisted_processes = whitelistedProcessesVal.split(',').map(x => x.trim()).filter(x => x);
+                const critical_paths = criticalPathsVal.split(',').map(x => x.trim()).filter(x => x);
+                const critical_dirs = criticalDirsVal.split(',').map(x => x.trim()).filter(x => x);
+
+                const collection_interval = parseInt(document.getElementById('cfg-interval')?.value) || 300;
+                const webhook_url = document.getElementById('cfg-webhook')?.value || "";
+                const max_snapshots = parseInt(document.getElementById('cfg-max-snapshots')?.value) || 50;
+                const log_level = document.getElementById('cfg-log-level')?.value || "INFO";
+                const retention_days = document.getElementById('cfg-retention')?.value || "";
+                const ai_api_endpoint = document.getElementById('cfg-ai-api')?.value || "";
+
+                const payload = {
+                    expected_ports,
+                    whitelisted_processes,
+                    critical_paths,
+                    critical_dirs,
+                    collection_interval,
+                    webhook_url,
+                    max_snapshots,
+                    log_level,
+                    retention_days,
+                    ai_api_endpoint
+                };
+
+                await apiCall('/api/config/update', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                showToast("Configuration saved successfully.", "success");
+            } catch (err) {
+                console.error('Failed to save config:', err);
+                showToast("Failed to save configuration: " + err.message, "error");
+            }
+        }
+
+        async function requestAIInsight() {
+            const aiSelect = document.getElementById('ai-context-snapshot');
+            const selectedOpt = aiSelect.options[aiSelect.selectedIndex];
+            const hostname = selectedOpt ? selectedOpt.dataset.hostname : null;
+
+            const aiOutput = document.getElementById('ai-output-content');
+            aiOutput.innerHTML = `
+                <div class="secured-state">
+                    <span data-icon="loader" class="spinner" data-size="28"></span>
+                    <div class="secured-title">Generating AI Briefing</div>
+                    <div class="secured-desc">Analyzing forensic database and composing executive summary...</div>
+                </div>
+            `;
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+
+            try {
+                const endpoint = document.getElementById('cfg-ai-api')?.value?.trim() || "http://127.0.0.1:11434";
+
+                const payload = {
+                    url: endpoint,
+                    model: "gemma3:1b"
+                };
+                if (hostname) {
+                    payload.hostnames = [hostname];
+                }
+
+                const response = await apiCall('/api/correlate', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.briefing) {
+                    renderAIBriefing(response.briefing);
+                } else {
+                    aiOutput.innerHTML = `
+                        <div class="secured-state">
+                            <div class="secured-title">AI Briefing Empty</div>
+                            <div class="secured-desc">The AI engine did not return any briefing text.</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('AI correlation failed:', error);
+                aiOutput.innerHTML = `
+                    <div class="secured-state">
+                        <div class="secured-title" style="color: var(--critical);">AI Briefing Failed</div>
+                        <div class="secured-desc">${escapeHtml(error.message || 'Check if local Ollama service is running.')}</div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderAIBriefing(markdownText) {
+            if (!markdownText) return;
+            // Simple markdown-to-HTML conversion
+            let html = markdownText
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^\- (.*$)/gim, '<li>$1</li>')
+                .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+                .replace(/\`(.*?)\`/gim, '<code>$1</code>');
+
+            // Wrap lists
+            html = html.replace(/(<li>.*<\/li>)/gis, '<ul>$1</ul>');
+
+            const container = document.getElementById('ai-output-content');
+            if (container) {
+                container.innerHTML = `<div class="ai-briefing-md" style="text-align: left;">${html}</div>`;
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('detail-modal').classList.remove('open');
+        }
+
+        function showToast(message, type) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <span data-icon="${type === 'error' ? 'alert-circle' : type === 'success' ? 'check-circle' : 'info'}" data-size="16"></span>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.25s reverse forwards';
+                setTimeout(() => {
+                    container.removeChild(toast);
+                }, 250);
+            }, 3000);
+        }
+
+        // Helper functions
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatTimestamp(ts) {
+            if (!ts) return '-';
+            try {
+                const d = new Date(ts);
+                if (isNaN(d.getTime())) {
+                    return ts;
+                }
+                return d.toLocaleString();
+            } catch {
+                return ts;
+            }
+        }
+
+        function formatPermissions(octalStr) {
+            if (!octalStr) return '-';
+            
+            let cleanOctal = octalStr;
+            if (octalStr.startsWith('0o')) {
+                cleanOctal = octalStr.slice(2);
+            }
+            
+            let val = parseInt(cleanOctal, 8);
+            if (isNaN(val)) return escapeHtml(octalStr);
+            
+            const suid = !!(val & 0o4000);
+            const sgid = !!(val & 0o2000);
+            const sticky = !!(val & 0o1000);
+            
+            const u = (val >> 6) & 7;
+            const g = (val >> 3) & 7;
+            const o = val & 7;
+            
+            const formatOctalDigit = (digit) => {
+                return ((digit & 4) ? 'r' : '-') +
+                       ((digit & 2) ? 'w' : '-') +
+                       ((digit & 1) ? 'x' : '-');
+            };
+            
+            let uStr = formatOctalDigit(u);
+            let gStr = formatOctalDigit(g);
+            let oStr = formatOctalDigit(o);
+            
+            if (suid) {
+                uStr = uStr.substring(0, 2) + (uStr[2] === 'x' ? 's' : 'S');
+            }
+            if (sgid) {
+                gStr = gStr.substring(0, 2) + (gStr[2] === 'x' ? 's' : 'S');
+            }
+            if (sticky) {
+                oStr = oStr.substring(0, 2) + (oStr[2] === 'x' ? 't' : 'T');
+            }
+            
+            const colorizeSpecial = (str) => {
+                if (str.endsWith('s') || str.endsWith('S') || str.endsWith('t') || str.endsWith('T')) {
+                    return str.substring(0, 2) + `<span style="color: var(--warning); font-weight: bold;">${str[2]}</span>`;
+                }
+                return str;
+            };
+            
+            const symbolic = colorizeSpecial(uStr) + colorizeSpecial(gStr) + colorizeSpecial(oStr);
+            return `<code style="font-family: monospace; font-size: 0.85rem; letter-spacing: 0.05em;">${symbolic}</code> <span class="badge badge-secondary" style="font-size: 0.7rem; font-family: monospace; margin-left: 0.4rem;">${cleanOctal}</span>`;
+        }
+
+        // Gauge update
+        function updateRiskGauge(score) {
+            const fillElement = document.getElementById('gauge-risk-fill');
+            const textElement = document.getElementById('gauge-risk-val');
+            const statusPill = document.getElementById('status-pill');
+
+            let normalizedScore = Math.min(Math.max(score, 0), 100);
+            textElement.textContent = Math.round(normalizedScore);
+
+            // Calculate dash offset (0% = full circle, 100% = no circle visible)
+            const circumference = 2 * Math.PI * 60; // r=60
+            const offset = circumference - (normalizedScore / 100) * circumference;
+            fillElement.style.strokeDashoffset = offset;
+
+            // Update color and status based on score
+            if (normalizedScore >= 80) {
+                fillElement.style.stroke = 'var(--critical)';
+                statusPill.textContent = 'Critical';
+                statusPill.className = 'status-pill';
+                statusPill.style.background = 'rgba(239, 68, 68, 0.1)';
+                statusPill.style.color = 'var(--critical)';
+                statusPill.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+            } else if (normalizedScore >= 60) {
+                fillElement.style.stroke = 'var(--warning)';
+                statusPill.textContent = 'High Risk';
+                statusPill.className = 'status-pill';
+                statusPill.style.background = 'rgba(245, 158, 11, 0.1)';
+                statusPill.style.color = 'var(--warning)';
+                statusPill.style.borderColor = 'rgba(245, 158, 11, 0.2)';
+            } else if (normalizedScore >= 40) {
+                fillElement.style.stroke = 'var(--warning)';
+                statusPill.textContent = 'Medium Risk';
+                statusPill.className = 'status-pill';
+                statusPill.style.background = 'rgba(245, 158, 11, 0.1)';
+                statusPill.style.color = 'var(--warning)';
+                statusPill.style.borderColor = 'rgba(245, 158, 11, 0.2)';
+            } else if (normalizedScore > 0) {
+                fillElement.style.stroke = 'var(--primary)';
+                statusPill.textContent = 'Monitor';
+                statusPill.className = 'status-pill';
+                statusPill.style.background = 'rgba(56, 189, 248, 0.1)';
+                statusPill.style.color = 'var(--primary)';
+                statusPill.style.borderColor = 'rgba(56, 189, 248, 0.2)';
+            } else {
+                fillElement.style.stroke = 'var(--success)';
+                statusPill.textContent = 'Healthy';
+                statusPill.className = 'status-pill';
+            }
+        }
+
+        // Populate snapshot select dropdowns used by telemetry tab and diff tab
+        function populateSnapshotSelects(snapshots) {
+            const fmt = (s) => `#${s.id} - ${formatTimestamp(s.timestamp)} (${s.hostname || 'local'})`;
+
+            const telSelect = document.getElementById('telemetry-snapshot-select');
+            if (telSelect) {
+                const prevValue = telSelect.value;
+                telSelect.innerHTML = '';
+                snapshots.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = fmt(s);
+                    telSelect.appendChild(opt);
+                });
+                if (prevValue && snapshots.some(s => String(s.id) === prevValue)) {
+                    telSelect.value = prevValue;
+                }
+            }
+
+            const aiSelect = document.getElementById('ai-context-snapshot');
+            if (aiSelect) {
+                const prevValue = aiSelect.value;
+                aiSelect.innerHTML = '<option value="">Use latest findings (All hosts)</option>';
+                snapshots.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.dataset.hostname = s.hostname || '';
+                    opt.textContent = fmt(s);
+                    aiSelect.appendChild(opt);
+                });
+                if (prevValue && snapshots.some(s => String(s.id) === prevValue)) {
+                    aiSelect.value = prevValue;
+                }
+            }
+
+            const baseSelect = document.getElementById('diff-base-snapshot');
+            const compSelect = document.getElementById('diff-comp-snapshot');
+            [baseSelect, compSelect].forEach((sel, idx) => {
+                if (!sel) return;
+                const prevValue = sel.value;
+                sel.innerHTML = '';
+                snapshots.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = fmt(s);
+                    sel.appendChild(opt);
+                });
+                if (prevValue && snapshots.some(s => String(s.id) === prevValue)) {
+                    sel.value = prevValue;
+                } else if (snapshots.length > 1) {
+                    // Default: base = oldest of the two most recent, comp = most recent
+                    sel.value = idx === 0 ? snapshots[1].id : snapshots[0].id;
+                } else if (snapshots.length === 1) {
+                    sel.value = snapshots[0].id;
+                }
+            });
+        }
+
+        // Render the recent snapshots list panel
+        function renderRecentSnapshots(snapshots) {
+            const container = document.getElementById('recent-snapshots-list');
+            if (!container) return;
+
+            if (!snapshots.length) {
+                container.innerHTML = '<p style="color:var(--text-muted);">No snapshots yet. Run a collection to get started.</p>';
+                return;
+            }
+
+            container.innerHTML = snapshots.slice(0, 10).map(s => `
+                <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.03);border:1px solid var(--border-color);padding:0.6rem 0.85rem;border-radius:6px;">
+                    <div>
+                        <div style="font-weight:600;color:var(--text-primary);">#${s.id} &mdash; ${escapeHtml(s.hostname || 'local')}</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">${escapeHtml(s.os_platform || '')} &middot; ${formatTimestamp(s.timestamp)}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Render the fleet hosts panel
+        function renderFleetHosts(fleetHosts) {
+            const container = document.getElementById('fleet-list');
+            if (!container) return;
+
+            if (!fleetHosts || !fleetHosts.length) {
+                container.innerHTML = '<p style="color:var(--text-muted);">No fleet hosts registered yet.</p>';
+                return;
+            }
+
+            container.innerHTML = fleetHosts.map(h => `
+                <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.03);border:1px solid var(--border-color);padding:0.6rem 0.85rem;border-radius:6px;">
+                    <div>
+                        <div style="font-weight:600;color:var(--text-primary);">${escapeHtml(h.hostname)}</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">${escapeHtml(h.os_platform || '')} &middot; Snapshot #${h.latest_snapshot_id} &middot; ${formatTimestamp(h.latest_snapshot_timestamp)}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-weight:700;color:${h.risk_score >= 65 ? 'var(--critical)' : (h.risk_score >= 35 ? 'var(--warning)' : 'var(--success)')};">${h.risk_score}/100</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">${h.unresolved_alerts} unresolved</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Main dashboard data loader: fetches status + snapshots and refreshes all panels
+        async function loadDashboard() {
+            try {
+                const status = await apiCall('/api/status');
+
+                updateRiskGauge(status.risk_score || 0);
+
+                document.getElementById('stat-snapshots').textContent = status.total_snapshots ?? 0;
+                document.getElementById('stat-alerts').textContent = status.unresolved_alerts ?? 0;
+                document.getElementById('stat-modules').textContent = status.total_baseline_modules ?? 0;
+                document.getElementById('stat-users').textContent = status.total_baseline_users ?? 0;
+
+                const latest = status.latest_snapshot;
+                document.getElementById('badge-host').textContent =
+                    `Host: ${latest && latest.hostname ? latest.hostname : '--'}`;
+                document.getElementById('badge-os').textContent =
+                    `OS: ${latest && latest.os_platform ? latest.os_platform : '--'}`;
+                document.getElementById('badge-vault').textContent = `Vault: ${status.vault_path || '--'}`;
+
+                renderFleetHosts(status.fleet_hosts || []);
+
+                const filterHost = document.getElementById('filter-host');
+                if (filterHost) {
+                    const prevValue = filterHost.value;
+                    filterHost.innerHTML = '<option value="">All Hosts</option>';
+                    (status.fleet_hosts || []).forEach(h => {
+                        const opt = document.createElement('option');
+                        opt.value = h.hostname;
+                        opt.textContent = h.hostname;
+                        filterHost.appendChild(opt);
+                    });
+                    filterHost.value = prevValue;
+                }
+
+                const snapshots = await apiCall('/api/snapshots');
+                renderRecentSnapshots(snapshots);
+                populateSnapshotSelects(snapshots);
+
+                // Keep telemetry view in sync with the latest snapshot if nothing selected yet
+                const telSelect = document.getElementById('telemetry-snapshot-select');
+                if (telSelect && telSelect.value) {
+                    loadTelemetry(telSelect.value);
+                }
+            } catch (error) {
+                console.error('Failed to load dashboard:', error);
+                showToast('Failed to load dashboard data', 'error');
+            }
+        }
+
+        let ws = null;
+        function connectAlertWebSocket() {
+            try {
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const token = getAuthToken();
+                const wsUrl = `${wsProtocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    console.log('Real-time alert WebSocket connected.');
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'new_alerts') {
+                            showToast(`Received ${data.alerts.length} new alert(s)!`, 'warning');
+                            loadDashboard();
+                            loadAlertsLedger();
+                        }
+                    } catch (err) {
+                        console.error('Failed to parse WebSocket message:', err);
+                    }
+                };
+
+                ws.onclose = () => {
+                    console.log('WebSocket connection closed. Retrying in 5 seconds...');
+                    setTimeout(connectAlertWebSocket, 5000);
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+            } catch (e) {
+                console.error('Failed to initialize WebSocket:', e);
+            }
+        }
+
+        // Load initial data when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDashboard();
+            loadAlertsLedger();
+            loadConfig();
+            loadScheduleStatus();
+            loadMetrics();
+            connectAlertWebSocket();
+
+            // Close modal when clicking outside modal-content
+            const detailModal = document.getElementById('detail-modal');
+            if (detailModal) {
+                detailModal.addEventListener('click', (e) => {
+                    if (e.target === detailModal) {
+                        closeModal();
+                    }
+                });
+            }
+        });
+
+        async function loadMetrics() {
+            try {
+                const data = await apiCall('/api/metrics');
+                
+                const dbSizeEl = document.getElementById('metric-db-size');
+                if (dbSizeEl) {
+                    const bytes = data.vault?.size_bytes || data.vault?.file_size_bytes || 0;
+                    if (bytes > 1048576) dbSizeEl.textContent = (bytes / 1048576).toFixed(1) + ' MB';
+                    else if (bytes > 1024) dbSizeEl.textContent = (bytes / 1024).toFixed(0) + ' KB';
+                    else dbSizeEl.textContent = bytes + ' B';
+                }
+
+                const colEl = document.getElementById('metric-total-collections');
+                if (colEl) colEl.textContent = data.vault?.total_snapshots ?? '—';
+
+                const alertEl = document.getElementById('metric-alert-total');
+                if (alertEl) alertEl.textContent = data.alerts?.total ?? '—';
+
+                const upEl = document.getElementById('metric-uptime');
+                if (upEl) {
+                    const secs = data.process?.uptime_s || 0;
+                    if (secs > 86400) upEl.textContent = (secs / 86400).toFixed(1) + 'd';
+                    else if (secs > 3600) upEl.textContent = (secs / 3600).toFixed(1) + 'h';
+                    else if (secs > 60) upEl.textContent = (secs / 60).toFixed(0) + 'm';
+                    else upEl.textContent = secs.toFixed(0) + 's';
+                }
+            } catch (e) {
+                console.error('Failed to load metrics:', e);
+            }
+        }
+    </script>
+</body>
+</html>

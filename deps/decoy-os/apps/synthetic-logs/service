@@ -1,5 +1,5 @@
 #!/sbin/openrc-run
-# /etc/init.d/synthetic-logs  —  runs log-synth and evidenceforge at boot on the
+# /etc/init.d/synthetic-logs  —  runs log-synth, evidenceforge and qafs at boot on the
 # Alpine cover system.  THIS is the file to edit to make the generators do more
 # specific things: edit the launcher /usr/local/bin/synthetic-logs-run (it runs both
 # generators, seeded), or override the variables in /etc/synthetic-logs.conf (sourced at start).
@@ -50,6 +50,7 @@ load_conf() {
 	: "${LAUNCHER:=/usr/local/bin/synthetic-logs-run}"        # the seed-taking runner
 	: "${RUN_LOGSYNTH:=yes}"                                  # set to "no" to disable one
 	: "${RUN_EVIDENCEFORGE:=yes}"
+	: "${RUN_QAFS:=yes}"                                      # qafs FUSE mount (see the launcher)
 	return 0
 }
 
@@ -177,7 +178,7 @@ run_generators() {
 }
 
 start() {
-	ebegin "Starting synthetic log generation (log-synth + evidenceforge)"
+	ebegin "Starting synthetic log generation (log-synth + evidenceforge + qafs)"
 	load_conf
 	mkdir -p "$OUTPUT_DIR"
 	# keep the previous boot's log; if /var/log isn't writable, fall back to /tmp

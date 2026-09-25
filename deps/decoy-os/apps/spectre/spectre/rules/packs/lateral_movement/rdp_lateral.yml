@@ -1,0 +1,22 @@
+title: RDP Lateral Movement
+id: spectre-lateral-005
+description: Detects RDP connections from internal hosts
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: network_connection
+    product: linux
+detection:
+    selection_rdp:
+        DestinationPort: 3389
+    condition: selection_rdp
+level: medium
+tags:
+    - attack.t1021.001
+    - attack.lateral_movement
+references:
+    - https://attack.mitre.org/techniques/T1021/001/
+falsepositives:
+    - Legitimate remote desktop
+license: MIT

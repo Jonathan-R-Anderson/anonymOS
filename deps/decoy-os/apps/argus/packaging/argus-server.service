@@ -1,0 +1,54 @@
+[Unit]
+Description=Argus fleet aggregation server
+Documentation=https://github.com/DennisPrudlik/argus
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/argus-server \
+    --port 9000 \
+    --output /var/log/argus/fleet.jsonl \
+    --stats-interval 60 \
+    --mgmt-port 8081 \
+    --hb-timeout 300
+StandardError=journal
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
+
+# Create /var/log/argus/ automatically (shared with argus sensor)
+LogsDirectory=argus
+LogsDirectoryMode=0750
+
+# ── Capability hardening ───────────────────────────────────────────────────
+# argus-server is pure userspace — only needs standard network capabilities.
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=
+
+# ── Process hardening ──────────────────────────────────────────────────────
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+RestrictNamespaces=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# ── Resource limits ────────────────────────────────────────────────────────
+MemoryMax=256M
+LimitNOFILE=65536
+OOMScoreAdjust=-200
+
+ReadWritePaths=/var/log/argus
+
+[Install]
+WantedBy=multi-user.target

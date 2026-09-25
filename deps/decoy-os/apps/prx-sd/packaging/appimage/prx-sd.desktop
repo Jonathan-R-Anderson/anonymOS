@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PRX-SD Antivirus
+GenericName=Antivirus Scanner
+Comment=Open-source antivirus engine with real-time protection
+Exec=sd scan %F
+Icon=prx-sd
+Terminal=true
+Categories=System;Security;
+Keywords=antivirus;malware;security;scan;virus;

@@ -1,0 +1,16 @@
+title: Security log files cleared or tampered
+id: 8a7b6c5d-4444-3333-2222-11110000aaaa
+description: Detects signs of log cleaning, truncation or tampering in wtmp, lastlog, or auth logs
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    - 'wtmp truncated'
+    - 'lastlog cleared'
+    - 'log files deleted'
+    - 'audit log cleared'
+  condition: selection
+level: critical
+tags:
+  - attack.t1070.002

@@ -1,0 +1,752 @@
+.TH ARGUS 8 "2026-03-22" "argus 0.4.0" "System Administration"
+.SH NAME
+argus \- eBPF-based Linux syscall telemetry and threat-detection daemon
+.SH SYNOPSIS
+.B argus
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B argus
+is a Linux kernel telemetry and intrusion-detection tool built on eBPF.
+It traces process execution, file access, network connections, privilege
+escalation, memory-resident shellcode, kernel module loads, and many other
+security-relevant events system-wide with sub-millisecond latency and
+minimal overhead.
+.PP
+Every event carries the full process ancestry
+.RB ( systemd\(->sshd\(->bash\(->curl ),
+container cgroup attribution, and (optionally) MITRE ATT&CK tactic/technique
+tags.
+.PP
+After all BPF programs are attached and the ring buffer file descriptor is
+open, argus drops from root to
+.B nobody
+so the event loop runs with minimal privilege.
+A seccomp denylist filter is then applied that prevents the event-loop code
+from executing new programs, forking processes, calling ptrace, or changing
+credentials even if the process is exploited.
+.SH OPTIONS
+.SS General
+.TP
+.BI \-\-config " path"
+Load a JSON configuration file.
+Argus loads
+.I /etc/argus/config.json
+and
+.I ~/.config/argus/config.json
+automatically at startup.
+CLI flags always override config file values.
+.TP
+.B \-\-config\-check
+Print the active configuration and exit without attaching BPF programs.
+.TP
+.B \-\-version
+Print the version string and exit.
+.TP
+.B \-\-help
+Show a usage summary and exit.
+.SS Filtering
+.TP
+.BI \-\-pid " pid"
+Only trace this PID (enforced in kernel via BPF map).
+.TP
+.BI \-\-follow " pid"
+Trace
+.I pid
+and all descendant processes.
+The BPF
+.B sched_process_fork
+tracepoint propagates the tracked set automatically.
+.TP
+.BI \-\-comm " name"
+Only trace processes whose comm equals
+.I name
+(enforced in kernel).
+.TP
+.BI \-\-path " str"
+Only show events whose filename contains
+.I str
+(userspace filter).
+.TP
+.BI \-\-exclude " prefix"
+Exclude file events (OPEN, UNLINK, RENAME, CHMOD) whose path starts with
+.I prefix
+(userspace filter, repeatable up to 8 times).
+.TP
+.BI \-\-events " list"
+Comma-separated list of event types to enable.
+Valid types:
+.BR EXEC ,
+.BR OPEN ,
+.BR EXIT ,
+.BR CONNECT ,
+.BR UNLINK ,
+.BR RENAME ,
+.BR CHMOD ,
+.BR BIND ,
+.BR PTRACE ,
+.BR DNS ,
+.BR SEND ,
+.BR WRITE_CLOSE ,
+.BR PRIVESC ,
+.BR MEMEXEC ,
+.BR KMOD_LOAD ,
+.BR THREAT_INTEL ,
+.BR PROC_SCRAPE ,
+.BR NS_ESCAPE .
+Specifying this flag prevents unused BPF programs from loading entirely.
+.SS Output
+.TP
+.BI \-\-output\-fmt " fmt"
+Set output format.
+Valid values:
+.BR text " (default human-readable table),"
+.BR json " (newline-delimited JSON),"
+.BR syslog " (syslog via LOG_DAEMON),"
+.BR cef " (ArcSight Common Event Format for SIEM integration)."
+.TP
+.B \-\-json
+Shorthand for
+.BR "\-\-output\-fmt json" .
+.TP
+.B \-\-syslog
+Shorthand for
+.BR "\-\-output\-fmt syslog" .
+.TP
+.BI \-\-output " path"
+Append event stream to
+.I path
+instead of stdout.
+.TP
+.BI \-\-summary " secs"
+Print a rolling summary every
+.I secs
+seconds instead of per-event output.
+.TP
+.BI \-\-ringbuf " kb"
+Ring buffer size in KB (default: 256, range: 4\-65536).
+Increase on high-event-rate hosts if drop warnings appear.
+.TP
+.BI \-\-pid\-file " path"
+Write the daemon PID to
+.I path
+at startup.
+The file is removed when argus exits.
+.SS Performance
+.TP
+.BI \-\-rate\-limit " n"
+Drop events after
+.I n
+per second per comm name (0 = off, kernel-enforced token bucket).
+.TP
+.B \-\-no\-drop\-privs
+Stay root after BPF attach.
+Not recommended; intended for debugging.
+.SS Forwarding
+.TP
+.BI \-\-forward " host:port"
+Stream every matched event as newline-delimited JSON over a persistent TCP
+connection.
+Reconnects automatically with exponential backoff (1\-30 s).
+Repeatable; up to 4 targets.
+.TP
+.B \-\-forward\-tls
+Enable TLS for the most recently specified
+.B \-\-forward
+target with server certificate verification.
+Requires OpenSSL at build time.
+.TP
+.B \-\-forward\-tls\-noverify
+Enable TLS without certificate verification
+(useful for self-signed certificates in private networks).
+.SS Anomaly detection
+.TP
+.BI \-\-baseline " path"
+Load a learnt per-comm behavioural profile from
+.I path
+and emit anomaly alerts for deviations.
+.TP
+.BI \-\-baseline\-learn " secs"
+Learn a baseline profile for
+.I secs
+seconds, then write it and stop learning.
+.TP
+.BI \-\-baseline\-out " path"
+Write the learnt profile to
+.I path
+(default:
+.IR baseline.json ).
+.TP
+.BI \-\-rules " path"
+Load alert rules from a JSON file.
+Matching events emit alerts to stderr (text mode) or inline
+.B {"type":"ALERT"}
+objects (JSON mode).
+Rules are reloaded on SIGHUP without restart.
+.TP
+.BI \-\-syscall\-anom " secs"
+Enable syscall-frequency anomaly detection using a chi-squared test.
+The BPF
+.B handle_sys_enter
+program samples syscall histograms; after each
+.I secs
+interval the userspace engine flags processes whose distribution deviates
+significantly from their historical baseline.
+0 disables the feature and prevents the BPF program from loading.
+.SS Enterprise: threat intelligence & enrichment
+.TP
+.B \-\-mitre\-tags
+Annotate each alert with the matching MITRE ATT&CK tactic and technique ID.
+The mapping is compiled into the binary; no network access is required.
+.TP
+.BI \-\-vt\-api\-key " key"
+VirusTotal API key for IOC enrichment.
+When set, EXEC and CONNECT events are enriched with VT reputation scores
+via HTTPS in a background thread.
+.TP
+.BI \-\-otx\-api\-key " key"
+AlienVault OTX API key for IP/domain reputation lookups.
+.TP
+.BI \-\-exec\-hash
+Compute a SHA-256 hash of each executed binary and annotate EXEC events with
+the
+.B sha256
+field.
+When
+.B \-\-vt\-api\-key
+is also set, the hash is submitted to VirusTotal.
+.TP
+.BI \-\-container\-enrich
+Query the Docker socket
+.RI ( /var/run/docker.sock )
+to enrich events with container name, image, and labels.
+.SS Enterprise: response
+.TP
+.B \-\-response\-isolate
+Automatically add iptables DROP rules to block outbound connections from
+processes that trigger THREAT_INTEL events.
+Rules are removed on clean exit.
+Requires
+.BR iptables (8)
+in PATH.
+.TP
+.B \-\-lsm\-deny
+Use the LSM BPF hook to block execve calls that match alert rules with
+.B action: deny
+(requires kernel \(>= 5.7 with
+.BR CONFIG_BPF_LSM=y ).
+.SS Enterprise: storage
+.TP
+.BI \-\-store\-path " path"
+Persist all events to a SQLite database at
+.IR path .
+Requires SQLite3 at build time.
+.TP
+.BI \-\-store\-query\-port " port"
+Expose a minimal HTTP query API on
+.BI 127.0.0.1: port
+for the SQLite event store.
+.RS
+.TP
+.B GET /query?type=EXEC&limit=100
+Return recent events as a JSON array, optionally filtered by type.
+.TP
+.B GET /stats
+Return row count and database file size.
+.RE
+.SS Enterprise: compliance
+.TP
+.BI \-\-compliance " framework"
+Map observed events to controls in the specified compliance framework.
+Valid values:
+.BR cis " (CIS Controls for Linux),"
+.BR pci\-dss " (PCI DSS 4.0 requirements 10\-12),"
+.BR nist " (NIST Cybersecurity Framework),"
+.BR soc2 " (SOC 2 Type II CC6\-CC9)."
+.TP
+.BI \-\-compliance\-report " path"
+Write an HTML compliance evidence report to
+.I path
+on clean exit.
+Each triggered control shows a timestamp, event type, and process context.
+.SS Enterprise: TLS inspection & memory forensics
+.TP
+.B \-\-tls\-data
+Attach uprobes to OpenSSL
+.B SSL_read
+to capture decrypted TLS payload (first 256 bytes) as
+.B EVENT_TLS_DATA
+events.
+Requires the target process to link against
+.BR libssl.so .
+0 disables the feature and prevents the SSL uprobe programs from loading.
+.TP
+.B \-\-mem\-forensics
+On each
+.B EVENT_MEMEXEC
+(anonymous executable mapping), walk
+.I /proc/<pid>/maps
+and read the content via
+.IR /proc/<pid>/mem ,
+compute Shannon entropy, and optionally scan with YARA rules.
+High-entropy anonymous executable regions indicate shellcode or packed payloads.
+.SS Enterprise: alerting
+.TP
+.BI \-\-webhook " url"
+POST JSON alert objects to
+.I url
+via HTTP in a background thread.
+A 64-entry queue absorbs burst traffic; excess alerts are dropped and counted.
+.SH OUTPUT FORMATS
+.SS Text (default)
+A human-readable table with columns
+.BR TYPE ,
+.BR PID ,
+.BR PPID ,
+.BR USER ,
+.BR GID ,
+.BR COMM ,
+.BR CGROUP ,
+.BR LINEAGE ,
+and
+.BR DETAIL .
+The USER column shows the username from
+.I /etc/passwd
+when available.
+.SS JSON (\-\-json / \-\-output\-fmt json)
+One JSON object per line (NDJSON).
+CONNECT and BIND events include a
+.B hostname
+field populated by reverse-DNS lookup.
+EXEC events include a
+.B user
+field when the uid can be resolved, and a
+.B sha256
+field when
+.B \-\-exec\-hash
+is active.
+.SS CEF (\-\-output\-fmt cef)
+ArcSight Common Event Format v0, suitable for direct ingestion by Splunk,
+ArcSight, QRadar, and other SIEMs.
+Format:
+.IR "CEF:0|argus|argus|version|SignatureID|Name|Severity|Extension" .
+.SS Syslog (\-\-syslog / \-\-output\-fmt syslog)
+All events go to
+.BR syslog (3)
+at
+.BR LOG_INFO / LOG_DAEMON .
+Overrides file output.
+.SH EVENT TYPES
+.TP
+.B EXEC
+.BR execve (2)
+/
+.BR execveat (2)
+— process execution.
+Fields:
+.BR filename ,
+.BR args ,
+.BR duration_ns .
+.TP
+.B OPEN
+.BR openat (2)
+— file open.
+Fields:
+.BR filename ,
+.BR open_flags ,
+.BR success ,
+.BR duration_ns .
+.TP
+.B EXIT
+.BR sched_process_exit
+— process termination.
+Field:
+.BR exit_code .
+.TP
+.B CONNECT
+.BR connect (2)
+— outbound network connection.
+Fields:
+.BR family ,
+.BR daddr ,
+.BR hostname ,
+.BR dport ,
+.BR success .
+.TP
+.B UNLINK
+.BR unlinkat (2)
+— file deletion.
+Fields:
+.BR filename ,
+.BR success .
+.TP
+.B RENAME
+.BR renameat2 (2)
+— file rename.
+Fields:
+.BR filename
+(old),
+.BR new_path ,
+.BR success .
+.TP
+.B CHMOD
+.BR fchmodat (2)
+— permission change.
+Fields:
+.BR filename ,
+.BR mode ,
+.BR success .
+.TP
+.B BIND
+.BR bind (2)
+— socket bind.
+Fields:
+.BR family ,
+.BR laddr ,
+.BR lport ,
+.BR success .
+.TP
+.B PTRACE
+.BR ptrace (2)
+— process tracing call.
+Fields:
+.BR ptrace_req ,
+.BR target_pid ,
+.BR success .
+.TP
+.B DNS
+Outbound DNS query (
+.BR sendto (2)
+on UDP port 53).
+Fields:
+.BR query
+(decoded QNAME),
+.BR daddr ,
+.BR dport .
+.TP
+.B SEND
+First 128 bytes of any
+.BR sendto (2)
+payload (non-DNS).
+Fields:
+.BR daddr ,
+.BR dport ,
+.BR payload_len .
+.TP
+.B WRITE_CLOSE
+.BR close (2)
+on a write-mode file descriptor — indicates a file was written.
+Field:
+.BR filename .
+.TP
+.B PRIVESC
+Privilege escalation:
+.BR setuid (2)
+/
+.BR setresuid (2)
+to uid 0, or
+.BR capset (2)
+with a dangerous capability.
+Fields:
+.BR uid_before ,
+.BR uid_after ,
+.BR cap_data .
+.TP
+.B MEMEXEC
+.BR mmap (2)
+/
+.BR mprotect (2)
+with
+.B PROT_EXEC
+on an anonymous mapping — indicates shellcode or reflective injection.
+Fields:
+.BR prot ,
+.BR mmap_flags .
+.TP
+.B KMOD_LOAD
+.BR init_module (2)
+/
+.BR finit_module (2)
+— kernel module load.
+Field:
+.BR filename .
+.TP
+.B NET_CORR
+Synthetic event (userspace-generated).
+Emitted when a DNS query is followed by a connection to a resolved address
+within 30 seconds.
+Fields:
+.BR dns_name ,
+.BR daddr ,
+.BR dport .
+.TP
+.B RATE_LIMIT
+Emitted when a PID exceeds the rate limit set by
+.BR \-\-rate\-limit .
+.TP
+.B THREAT_INTEL
+A
+.BR connect (2)
+destination matched an entry in the threat-intelligence blocklist.
+Fields:
+.BR daddr ,
+.BR dport .
+.TP
+.B TLS_SNI
+TLS ClientHello SNI hostname captured via uprobe on
+.BR SSL_write .
+Field:
+.BR sni .
+.TP
+.B PROC_SCRAPE
+A foreign process read
+.IR /proc/<pid>/mem ,
+.IR /proc/<pid>/maps ,
+or
+.IR /proc/<pid>/fd .
+Fields:
+.BR target_pid ,
+.BR path .
+.TP
+.B NS_ESCAPE
+.BR setns (2)
+/
+.BR unshare (2)
+/
+.BR clone (2)
+call with
+.B CLONE_NEW*
+flags, indicating a namespace escape attempt.
+Field:
+.BR ns_flags .
+.TP
+.B TLS_DATA
+Decrypted TLS payload (first 256 bytes) captured via uprobe on
+.BR SSL_read .
+Requires
+.BR \-\-tls\-data .
+Fields:
+.BR tls_payload_len .
+.TP
+.B HEARTBEAT
+Internal liveness ping emitted by the agent event loop every 30 seconds.
+Used by
+.B argus-server
+to track agent health and detect stale connections.
+.SH CONFIG FILE
+Argus loads
+.I /etc/argus/config.json
+then
+.I ~/.config/argus/config.json
+on startup (if present).
+All keys are optional; unset keys retain their compiled-in defaults.
+Unknown keys produce a warning on stderr.
+.PP
+.nf
+{
+    "pid":                    0,
+    "follow_pid":             0,
+    "comm":                   "",
+    "path":                   "",
+    "exclude_paths":          ["/proc", "/sys", "/dev"],
+    "event_types":            ["EXEC","OPEN","EXIT","CONNECT",
+                               "UNLINK","RENAME","CHMOD","BIND","PTRACE"],
+    "ring_buffer_kb":         256,
+    "summary_interval":       0,
+    "rate_limit_per_comm":    0,
+    "output_path":            "",
+    "output_fmt":             "text",
+    "pid_file":               "",
+    "syslog":                 false,
+    "rules":                  "",
+    "forward":                "",
+    "forward_tls":            false,
+    "forward_tls_noverify":   false,
+    "targets": [
+        {"addr": "siem1.corp:9000"},
+        {"addr": "siem2.corp:9000", "tls": true}
+    ],
+    "baseline":               "",
+    "baseline_out":           "",
+    "baseline_learn_secs":    0,
+    "threat_intel":           "",
+    "fim_paths":              ["/etc", "/usr/bin", "/usr/sbin"],
+    "yara_rules_dir":         "",
+    "metrics_port":           0,
+    "lsm_deny":               false,
+    "mitre_tags":             false,
+    "webhook_url":            "",
+    "exec_hash":              false,
+    "vt_api_key":             "",
+    "otx_api_key":            "",
+    "response_isolate":       false,
+    "store_path":             "",
+    "store_query_port":       0,
+    "container_enrich":       false,
+    "compliance_framework":   "",
+    "compliance_report":      "",
+    "syscall_anom_interval":  0,
+    "tls_data_enable":        false,
+    "mem_forensics":          false
+}
+.fi
+.PP
+Send
+.B SIGHUP
+to reload the config without restarting.
+.SH SECURITY
+.SS Privilege drop
+After attaching all BPF programs and opening the ring buffer,
+.B argus
+drops from root to
+.B nobody
+(uid 65534) via
+.BR setuid (2)
+/
+.BR setgid (2).
+All open file descriptors remain valid.
+Pass
+.B \-\-no\-drop\-privs
+to disable.
+.SS Seccomp filter
+Immediately after the privilege drop a seccomp BPF denylist is installed.
+The filter blocks the following syscalls with
+.BR EPERM :
+.BR execve ,
+.BR execveat ,
+.BR fork ,
+.BR vfork ,
+.BR ptrace ,
+.BR setuid ,
+.BR setgid ,
+.BR setresuid ,
+.BR setresgid ,
+.BR mount ,
+.BR init_module ,
+.BR finit_module ,
+.BR kexec_load ,
+.BR kexec_file_load .
+All other syscalls are allowed.
+The filter is combined with
+.BR PR_SET_NO_NEW_PRIVS .
+.SH SIGNALS
+.TP
+.B SIGINT / SIGTERM
+Graceful shutdown: flush baseline profile (if learning), write final drop
+count, write compliance report (if enabled), remove all iptables isolation
+rules (if
+.B \-\-response\-isolate
+is active), and remove the pid-file.
+.TP
+.B SIGHUP
+Reload configuration files, update BPF filter maps (pid/comm allowlists,
+rate limit), reload alert rules, and update userspace filters.
+The event type mask and ring buffer size cannot change at runtime.
+.SH FILES
+.TP
+.I /etc/argus/config.json
+System-wide configuration file.
+.TP
+.I ~/.config/argus/config.json
+Per-user configuration file.
+.TP
+.I /etc/argus/rules.json
+Default alert rules location (configurable).
+.TP
+.I /etc/argus/baseline.json
+Default baseline profile location (configurable).
+.TP
+.I /var/log/argus/events.jsonl
+Default event log when installed as a systemd service.
+.TP
+.I /run/argus/argus.pid
+Default PID file location.
+.TP
+.I /sys/kernel/btf/vmlinux
+BTF (BPF Type Format) blob required for CO-RE.
+Must exist; kernel 5.8+ with
+.B CONFIG_DEBUG_INFO_BTF=y
+required.
+.TP
+.I /var/run/docker.sock
+Docker socket used by
+.B \-\-container\-enrich
+to resolve container metadata.
+.SH REQUIREMENTS
+Linux kernel 5.8 or newer with BTF enabled
+.RB ( CONFIG_DEBUG_INFO_BTF=y ).
+Must run as root or with
+.B CAP_SYS_ADMIN
++
+.B CAP_BPF
++
+.BR CAP_NET_ADMIN .
+.PP
+Optional:
+SQLite3 (for
+.BR \-\-store\-path ),
+OpenSSL (for
+.B \-\-forward\-tls
+and
+.BR \-\-tls\-data ),
+YARA (for
+.B \-\-mem\-forensics
+YARA rule scanning),
+iptables (for
+.BR \-\-response\-isolate ).
+.SH EXAMPLES
+.TP
+Watch all process executions as JSON:
+.B sudo argus \-\-events EXEC \-\-json
+.TP
+Monitor a specific process tree:
+.B sudo argus \-\-follow $(pidof nginx | awk '{print $1}') \-\-json
+.TP
+Detect anomalies (learn 1 hour, then detect):
+.nf
+sudo argus \-\-baseline\-learn 3600 \-\-baseline\-out /etc/argus/baseline.json
+sudo argus \-\-baseline /etc/argus/baseline.json \-\-json
+.fi
+.TP
+Forward to two SIEM endpoints (one plain, one TLS):
+.nf
+sudo argus \-\-forward siem1.corp:9000 \\
+           \-\-forward siem2.corp:9001 \-\-forward\-tls
+.fi
+.TP
+CEF output for SIEM ingestion:
+.B sudo argus \-\-output\-fmt cef \-\-output /var/log/argus/events.cef
+.TP
+Full enterprise stack — hash, IOC enrichment, compliance, storage:
+.nf
+sudo argus \-\-json \\
+           \-\-exec\-hash \\
+           \-\-vt\-api\-key $VT_KEY \\
+           \-\-compliance pci\-dss \-\-compliance\-report /tmp/report.html \\
+           \-\-store\-path /var/lib/argus/events.db \-\-store\-query\-port 8080
+.fi
+.TP
+Automated isolation of threat-intel matches:
+.B sudo argus \-\-threat\-intel /etc/argus/blocklist.txt \-\-response\-isolate \-\-json
+.TP
+Capture decrypted TLS payloads from curl:
+.B sudo argus \-\-tls\-data \-\-comm curl \-\-json
+.TP
+Memory forensics on anonymous executable mappings:
+.B sudo argus \-\-mem\-forensics \-\-events MEMEXEC \-\-json
+.TP
+Fleet deployment — run as a systemd service:
+.nf
+sudo install \-m755 argus /usr/local/bin/argus
+sudo systemctl daemon\-reload
+sudo systemctl enable \-\-now argus
+.fi
+.SH SEE ALSO
+.BR argus\-server (8),
+.BR bpftool (8),
+.BR strace (1),
+.BR auditd (8),
+.BR seccomp (2),
+.BR prctl (2),
+.BR iptables (8)
+.SH AUTHOR
+argus project <https://github.com/DennisPrudlik/argus>

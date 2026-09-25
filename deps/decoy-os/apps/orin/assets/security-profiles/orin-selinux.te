@@ -1,0 +1,54 @@
+# Orin Forensic Engine SELinux Policy Module
+# Generated automatically by Orin Self-Defense Module
+# Compile with: checkmodule -M -m -o orin.mod orin.te
+# Package with: semodule_package -o orin.pp -m orin.mod
+# Install with: semodule -i orin.pp
+
+module orin 1.0;
+
+require {
+    type unconfined_t, proc_t, var_log_t, var_lib_t, var_run_t;
+    type bin_t, etc_t, shadow_t, passwd_file_t;
+    class file { read write open getattr setattr create unlink rename };
+    class dir { read write search add_name remove_name getattr };
+    class process { signal sigchld ptrace getsched setsched };
+    class capability { net_raw sys_admin dac_read_search ipc_lock };
+    class tcp_socket { name_connect name_bind };
+}
+
+# Define Orin type
+type orin_t;
+type orin_exec_t;
+domain_type(orin_t)
+
+# Allow execution of Orin binary
+files_type(orin_exec_t)
+
+# Main policy rules
+allow orin_t proc_t:file { read open getattr };
+allow orin_t proc_t:dir { read search getattr };
+allow orin_t var_log_t:file { read write open create append getattr setattr };
+allow orin_t var_log_t:dir { read write search add_name getattr };
+allow orin_t var_lib_t:file { read write open create getattr setattr };
+allow orin_t var_lib_t:dir { read write search add_name remove_name getattr };
+allow orin_t var_run_t:file { read write open create getattr setattr };
+allow orin_t var_run_t:dir { read write search add_name getattr };
+
+# Read system configuration
+allow orin_t etc_t:file { read open getattr };
+allow orin_t etc_t:dir { read search getattr };
+allow orin_t shadow_t:file { read open getattr };
+allow orin_t passwd_file_t:file { read open getattr };
+
+# Network access
+allow orin_t self:tcp_socket { name_connect };
+
+# Required capabilities
+allow orin_t self:capability { net_raw sys_admin dac_read_search ipc_lock };
+
+# Process monitoring (limited ptrace for forensic analysis)
+allow orin_t unconfined_t:process { signal sigchld getsched };
+
+# Deny dangerous operations (explicit denials for audit)
+auditallow orin_t bin_t:file { write };
+auditallow orin_t proc_t:process { ptrace setsched };

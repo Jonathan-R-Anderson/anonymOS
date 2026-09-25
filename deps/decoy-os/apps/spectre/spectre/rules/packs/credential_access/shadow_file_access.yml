@@ -1,0 +1,27 @@
+title: Shadow File Access
+id: spectre-credaccess-001
+description: Detects read access to /etc/shadow or /etc/passwd, potential credential harvesting
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: file_event
+    product: linux
+detection:
+    selection_sensitive_files:
+        TargetFilename:
+            - '/etc/shadow'
+            - '/etc/passwd'
+            - '/etc/gshadow'
+            - '/etc/group'
+    condition: selection_sensitive_files
+level: critical
+tags:
+    - attack.t1003.008
+    - attack.credential_access
+references:
+    - https://attack.mitre.org/techniques/T1003/008/
+falsepositives:
+    - Legitimate backup tools
+    - User management utilities
+license: MIT

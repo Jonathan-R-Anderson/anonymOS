@@ -1,0 +1,7 @@
+[Nemo Action]
+Name=Scan with PRX-SD
+Comment=Scan selected files for malware
+Exec=sd scan %F
+Icon-Name=security-high
+Selection=Any
+Extensions=any;

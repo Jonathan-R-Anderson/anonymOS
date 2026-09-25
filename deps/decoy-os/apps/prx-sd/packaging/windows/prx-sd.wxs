@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX v4 manifest for PRX-SD antivirus engine.
+
+  Build with:
+    wix build -d Version=0.1.0 -d BinaryPath=..\..\target\release packaging\windows\prx-sd.wxs -o target\windows\PRX-SD-0.1.0.msi
+
+  Requirements:
+    - .NET 6+ runtime
+    - wix (dotnet tool install - -global wix)
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+    Name="PRX-SD Antivirus"
+    Version="$(var.Version)"
+    Manufacturer="PRX-SD Team"
+    UpgradeCode="a3e7c1d0-5f8b-4e2a-9c6d-1b0f3e7a5d92">
+
+    <SummaryInformation
+      Description="PRX-SD open-source antivirus engine"
+      Manufacturer="PRX-SD Team" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of PRX-SD is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="Complete" Title="PRX-SD Antivirus" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="SignatureComponents" />
+    </Feature>
+
+  </Package>
+
+  <!-- Main installation directory and binary -->
+  <Fragment>
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="PRX-SD">
+        <Directory Id="SignaturesFolder" Name="signatures-db">
+          <Directory Id="YaraFolder" Name="yara" />
+          <Directory Id="HashesFolder" Name="hashes" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+  </Fragment>
+
+  <!-- Core binary + PATH environment variable -->
+  <Fragment>
+    <ComponentGroup Id="ProductComponents">
+      <Component Id="MainBinary" Directory="INSTALLFOLDER" Guid="*">
+        <File Source="$(var.BinaryPath)\sd.exe" KeyPath="yes" />
+      </Component>
+
+      <Component Id="PathEntry" Directory="INSTALLFOLDER" Guid="b4f8d2e1-6a9c-4b3d-8e5f-2c1a7d0e9f3b">
+        <Environment
+          Id="PATH"
+          Name="PATH"
+          Value="[INSTALLFOLDER]"
+          Permanent="no"
+          Part="last"
+          Action="set"
+          System="yes" />
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\PRX-SD"
+          Name="InstallDir"
+          Type="string"
+          Value="[INSTALLFOLDER]"
+          KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- Signature database files (populated at build time) -->
+  <Fragment>
+    <ComponentGroup Id="SignatureComponents">
+      <!-- Placeholder: actual YARA / hash files are added by build-msi.sh -->
+    </ComponentGroup>
+  </Fragment>
+
+</Wix>

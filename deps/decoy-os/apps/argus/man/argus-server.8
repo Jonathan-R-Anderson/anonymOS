@@ -1,0 +1,215 @@
+.TH ARGUS\-SERVER 8 "2026-03-22" "argus 0.4.0" "System Administration"
+.SH NAME
+argus\-server \- fleet aggregation server for multiple argus sensors
+.SH SYNOPSIS
+.B argus\-server
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B argus\-server
+is the fleet aggregation component of the argus suite.
+It accepts concurrent NDJSON event streams from any number of
+.BR argus (8)
+sensor instances (configured with
+.BR \-\-forward ),
+enriches every event with the remote sensor IP as a
+.B host
+field, writes the merged stream to an output sink, and runs a
+fleet-wide IOC correlation engine that fires alerts when the same
+indicator appears on multiple hosts within a configurable time window.
+.PP
+Up to 64 sensors can be connected simultaneously.
+The server uses a single
+.BR select (2)
+loop with no blocking I/O and is suitable for long-running unattended
+operation as a systemd service.
+.PP
+Agent health is tracked via periodic HEARTBEAT events sent by each sensor.
+Sensors that stop sending heartbeats are automatically evicted after a
+configurable timeout.
+If a sensor crashes and reconnects before the TCP half-close is detected,
+the stale connection is closed as soon as the new connection sends its
+first HEARTBEAT with the same
+.B hostname
+field.
+.SH OPTIONS
+.TP
+.BI \-\-port " N"
+TCP listen port (default: 9000).
+Binds on all interfaces using a dual-stack IPv6 socket that also accepts
+IPv4-mapped connections.
+.TP
+.BI \-\-output " path"
+Append the merged event stream to
+.I path
+instead of stdout.
+The file is opened in append mode so it is safe to rotate with
+.BR logrotate (8).
+.TP
+.BI \-\-stats\-interval " secs"
+Print a one-line connection summary to stderr every
+.I secs
+seconds (default: 60).
+Set to 0 to disable.
+.TP
+.BI \-\-correlate\-window " secs"
+Fleet correlation time window in seconds (default: 60).
+IOC sightings older than this are expired before checking the threshold.
+Set to 0 to disable fleet correlation entirely.
+.TP
+.BI \-\-correlate\-threshold " N"
+Number of distinct sensor hosts that must report the same IOC within
+.B \-\-correlate\-window
+before a
+.B [FLEET]
+alert is emitted and a
+.B FLEET_CORR
+event is injected into the output stream (default: 3).
+.TP
+.BI \-\-mgmt\-port " N"
+Start a minimal HTTP management API on
+.BI 127.0.0.1: N
+(default: 0 = disabled).
+.RS
+.TP
+.B GET /agents
+JSON array of connected sensor health objects.
+Each entry includes
+.BR ip ,
+.BR version ,
+.BR uptime_secs ,
+.BR connected_secs ,
+.BR lines ,
+.BR last_heartbeat_secs ,
+and
+.BR status
+.RB ( healthy / stale / missing / new ).
+.TP
+.B GET /stats
+JSON object with
+.BR agents ,
+.BR total_lines ,
+.BR uptime_secs ,
+.BR corr_window ,
+.BR corr_threshold .
+.RE
+.TP
+.BI \-\-hb\-timeout " secs"
+Close sensor connections that have not sent a HEARTBEAT event for this
+many seconds (default: 300).
+Set to 0 to disable heartbeat-based eviction.
+.TP
+.B \-\-help
+Show a usage summary and exit.
+.SH OUTPUT FORMAT
+Each line written to the output sink is a JSON object identical to what
+the originating sensor would emit with
+.BR \-\-json ,
+with one additional field prepended:
+.PP
+.nf
+{"host":"192.168.1.10","type":"EXEC","pid":1234,...}
+.fi
+.PP
+Fleet correlation alerts are injected as synthetic events:
+.PP
+.nf
+{"host":"fleet","type":"FLEET_CORR",
+ "ioc":"CONNECT:1.2.3.4:443",
+ "threshold":3,"window":60,
+ "trigger_host":"10.0.0.5"}
+.fi
+.SH FLEET CORRELATION ENGINE
+The correlation engine tracks the following IOC types across all
+connected sensors:
+.TP
+.B CONNECT / THREAT_INTEL
+Keyed on destination IP address and port.
+Useful for detecting coordinated C2 activity.
+.TP
+.B EXEC / OPEN / WRITE_CLOSE / UNLINK / KMOD_LOAD
+Keyed on filename.
+Useful for detecting lateral movement and implant deployment.
+.TP
+.B PRIVESC / NS_ESCAPE / PTRACE
+Keyed on comm (process name).
+Useful for detecting coordinated privilege escalation campaigns.
+.PP
+When the same IOC is reported by
+.B \-\-correlate\-threshold
+or more distinct hosts within
+.B \-\-correlate\-window
+seconds, a
+.B [FLEET]
+message is printed to stderr and a
+.B FLEET_CORR
+JSON event is appended to the output stream.
+Each IOC fires at most one alert (suppressed after the first threshold crossing).
+.SH AGENT HEALTH
+Each
+.BR argus (8)
+sensor sends a
+.B HEARTBEAT
+event every 30 seconds containing its version string, uptime, and hostname.
+.B argus\-server
+records the timestamp of the last heartbeat for each connection and
+classifies each agent as:
+.TP
+.B healthy
+Heartbeat received within the last 90 seconds.
+.TP
+.B stale
+Last heartbeat was 90\-300 seconds ago.
+.TP
+.B missing
+No heartbeat for more than 300 seconds; connection will be evicted.
+.TP
+.B new
+Connection established but no heartbeat received yet.
+.PP
+When a sensor reconnects (e.g. after a crash) with the same hostname,
+the old stale connection is closed immediately on receipt of the new
+HEARTBEAT, preventing duplicate event streams.
+.SH SIGNALS
+.TP
+.B SIGINT / SIGTERM
+Graceful shutdown: drain pending data, close all client connections,
+and flush the output file.
+.TP
+.B SIGPIPE
+Ignored.
+Broken sensor connections are detected by
+.BR recv (2)
+returning 0 and are cleaned up on the next
+.BR select (2)
+iteration.
+.SH EXAMPLES
+.TP
+Listen on the default port and write to a log file:
+.B argus\-server \-\-output /var/log/argus/fleet.jsonl
+.TP
+Strict fleet correlation (alert if same C2 IP seen on 2+ hosts within 30 s):
+.B argus\-server \-\-correlate\-threshold 2 \-\-correlate\-window 30
+.TP
+With management API and extended heartbeat timeout:
+.B argus\-server \-\-mgmt\-port 8081 \-\-hb\-timeout 600 \-\-output /var/log/argus/fleet.jsonl
+.TP
+Query the management API:
+.nf
+curl \-s http://127.0.0.1:8081/agents | python3 \-m json.tool
+curl \-s http://127.0.0.1:8081/stats
+.fi
+.TP
+Run as a systemd service:
+.nf
+sudo systemctl enable \-\-now argus\-server
+.fi
+.SH FILES
+.TP
+.I /var/log/argus/fleet.jsonl
+Default fleet event log when installed as a systemd service.
+.SH SEE ALSO
+.BR argus (8),
+.BR bpftool (8),
+.BR systemctl (1)
+.SH AUTHOR
+argus project <https://github.com/DennisPrudlik/argus>

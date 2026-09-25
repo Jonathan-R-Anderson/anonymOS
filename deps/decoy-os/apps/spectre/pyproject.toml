@@ -1,0 +1,134 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spectre-hids"
+version = "0.2.0-alpha"
+description = "Behavioral Host Intrusion Detection System with Active Containment"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Aayush Bankar", email = "aayushbankar42@gmail.com"}
+]
+maintainers = [
+    {name = "Spectre Contributors"}
+]
+keywords = [
+    "hids", "edr", "security", "behavioral-detection", "process-monitoring",
+    "mitre-attck", "yara", "active-containment", "threat-detection"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Monitoring",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "psutil>=5.9.0",
+    "networkx>=3.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "pyyaml>=6.0",
+    "click>=8.0",
+    "rich>=13.0",
+]
+[project.optional-dependencies]
+yara = ["yara-python>=4.3.0"]
+ebpf = []
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "ruff>=0.5.0",
+    "mypy>=1.0",
+    "pre-commit>=3.0",
+]
+docs = [
+    "mkdocs>=1.5",
+    "mkdocs-material>=9.0",
+    "mkdocstrings[python]>=0.24",
+]
+
+[project.scripts]
+spectre = "cli.main:app"
+
+[project.urls]
+Homepage = "https://github.com/Aayushbankar/spectre"
+Repository = "https://github.com/Aayushbankar/spectre"
+Issues = "https://github.com/Aayushbankar/spectre/issues"
+Documentation = "https://github.com/Aayushbankar/spectre/tree/main/docs"
+Changelog = "https://github.com/Aayushbankar/spectre/releases"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["spectre*", "cli*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yaml", "*.yml", "*.json", "*.yar", "*.yara"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+exclude = [
+    "scratch/**",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "T20", "RSE", "RET", "PTH", "ERA", "PD", "PGH", "PL", "TRY", "NPY", "FA", "ISC", "ICN", "FLY", "TID", "ARG", "PT", "S", "SLF", "SLOT", "TCH", "INT", "COM", "LOG"
+]
+ignore = [
+    "S101", "S106", "S311", "S603", "S607", "PLR2004", "T201", "T203", "ARG001", "ARG002", "COM812",
+    "B007", "B904", "E402", "E501", "E722", "ERA001", "F401", "F402", "PLC0415", "PLR0912", "PLR0913", 
+    "PLR0915", "PLR0917", "PLW2901", "PT011", "PTH107", "PTH108", "PTH110", "PTH113", "PTH118", "PTH123", 
+    "PTH208", "S104", "S108", "S110", "SIM102", "SIM115", "SLF001", "TRY003", "TRY004", "TRY401"
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S106", "S311", "T201", "T203"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+strict = false
+namespace_packages = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["spectre", "cli"]
+omit = ["tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

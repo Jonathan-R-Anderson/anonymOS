@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: OpenPRX.PRX-SD
+PackageVersion: "0.1.0"
+InstallerLocale: en-US
+Installers:
+  - Architecture: x64
+    InstallerType: msi
+    InstallerUrl: https://github.com/openprx/prx-sd/releases/download/v0.1.0/PRX-SD-0.1.0.msi
+    InstallerSha256: PLACEHOLDER_SHA256
+ManifestType: installer
+ManifestVersion: 1.6.0

@@ -1,0 +1,13 @@
+title: Privileged su session elevation
+id: 7b8c1234-abcd-4ef0-9e8c-1234567890cd
+description: Detects su execution switching context to root account
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    - 'su:session): session opened for user root'
+  condition: selection
+level: high
+tags:
+  - attack.t1548

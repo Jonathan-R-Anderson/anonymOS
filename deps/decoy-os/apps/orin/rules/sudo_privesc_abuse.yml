@@ -1,0 +1,21 @@
+title: Sudo privilege escalation execution
+id: 6a7b1234-abcd-4ef0-9e8c-1234567890bc
+description: Detects execution of highly sensitive binaries via sudo
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection_service:
+    - 'sudo:'
+  selection_binaries:
+    - 'COMMAND=/usr/bin/bash'
+    - 'COMMAND=/bin/bash'
+    - 'COMMAND=/usr/bin/sh'
+    - 'COMMAND=/bin/sh'
+    - 'COMMAND=/usr/bin/python'
+    - 'COMMAND=/usr/bin/find'
+    - 'COMMAND=/usr/bin/vim'
+  condition: selection_service and selection_binaries
+level: high
+tags:
+  - attack.t1548.002

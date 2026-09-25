@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spectre HIDS Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.7);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-glow: rgba(56, 189, 248, 0.15);
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+            --success: #10b981;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Glassmorphism utilities */
+        .glass {
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            font-weight: 500;
+            font-size: 0.875rem;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px var(--accent-glow);
+        }
+
+        .stat-title {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .panel {
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        /* Custom scrollbar */
+        .panel::-webkit-scrollbar {
+            width: 6px;
+        }
+        .panel::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+        .panel::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+        }
+
+        .panel-header {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0 0 1rem 0;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            z-index: 10;
+        }
+
+        .item-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: background 0.2s;
+        }
+
+        .item-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+        }
+
+        .item-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #fff;
+        }
+
+        .score-badge {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .mitre-badge {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            margin-right: 6px;
+            margin-top: 6px;
+        }
+
+        .item-meta {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .item-explanation {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+            white-space: pre-wrap;
+            margin-top: 0.75rem;
+            border-left: 3px solid var(--danger);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Spectre HIDS</h1>
+            <div class="status-badge" id="connStatus">
+                <div class="status-dot"></div>
+                Monitoring Active
+            </div>
+        </header>
+
+        <div class="grid">
+            <div class="glass stat-card">
+                <div class="stat-title">Total Events</div>
+                <div class="stat-value" id="statEvents">0</div>
+            </div>
+            <div class="glass stat-card">
+                <div class="stat-title">Active Threat Sessions</div>
+                <div class="stat-value" id="statSessions">0</div>
+            </div>
+            <div class="glass stat-card">
+                <div class="stat-title">High-Severity Alerts</div>
+                <div class="stat-value" id="statAlerts" style="color: var(--danger);">0</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Active Sessions Panel -->
+            <div class="glass panel">
+                <h2 class="panel-header">Threat Sessions</h2>
+                <div id="sessionsList">
+                    <div class="empty-state">Loading sessions...</div>
+                </div>
+            </div>
+
+            <!-- Recent Alerts Panel -->
+            <div class="glass panel">
+                <h2 class="panel-header">Recent Alerts</h2>
+                <div id="alertsList">
+                    <div class="empty-state">Loading alerts...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        function formatDate(timestamp) {
+            const d = new Date(timestamp * 1000);
+            return d.toLocaleTimeString() + ' ' + d.toLocaleDateString();
+        }
+
+        function renderMitreTags(mitreStr) {
+            if (!mitreStr) return '';
+            return mitreStr.split(' | ').map(tag => 
+                `<span class="mitre-badge">${tag}</span>`
+            ).join('');
+        }
+
+        async function updateDashboard() {
+            try {
+                // Fetch Stats
+                const statsRes = await fetch(`${API_BASE}/stats`);
+                const stats = await statsRes.json();
+                document.getElementById('statEvents').textContent = stats.total_events;
+                document.getElementById('statSessions').textContent = stats.total_sessions;
+                document.getElementById('statAlerts').textContent = stats.total_alerts;
+
+                // Fetch Sessions
+                const sessionsRes = await fetch(`${API_BASE}/sessions?limit=20`);
+                const sessionsData = await sessionsRes.json();
+                const sessionsList = document.getElementById('sessionsList');
+                
+                if (sessionsData.sessions.length === 0) {
+                    sessionsList.innerHTML = '<div class="empty-state">No threat sessions detected.</div>';
+                } else {
+                    sessionsList.innerHTML = sessionsData.sessions.map(s => `
+                        <div class="item-card">
+                            <div class="item-header">
+                                <div class="item-title">${s.leader_name}</div>
+                                <div class="score-badge">Score: ${s.total_score}</div>
+                            </div>
+                            <div class="item-meta">
+                                <span><strong>PID:</strong> ${s.leader_pid}</span>
+                                <span><strong>Last Updated:</strong> ${formatDate(s.last_updated)}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                // Fetch Alerts
+                const alertsRes = await fetch(`${API_BASE}/alerts?limit=20`);
+                const alertsData = await alertsRes.json();
+                const alertsList = document.getElementById('alertsList');
+                
+                if (alertsData.alerts.length === 0) {
+                    alertsList.innerHTML = '<div class="empty-state">No high-severity alerts.</div>';
+                } else {
+                    alertsList.innerHTML = alertsData.alerts.map(a => `
+                        <div class="item-card" style="border-left: 3px solid var(--danger);">
+                            <div class="item-header">
+                                <div class="item-title">${a.rule_name}</div>
+                                <div class="score-badge">Score: ${a.score}</div>
+                            </div>
+                            <div class="item-meta">
+                                <span><strong>Time:</strong> ${formatDate(a.timestamp)}</span>
+                                <div>${renderMitreTags(a.mitre)}</div>
+                            </div>
+                            <div class="item-explanation">${a.explanation}</div>
+                        </div>
+                    `).join('');
+                }
+                
+                // Update connection status
+                const badge = document.getElementById('connStatus');
+                badge.style.background = 'rgba(16, 185, 129, 0.1)';
+                badge.style.color = 'var(--success)';
+                badge.innerHTML = '<div class="status-dot"></div> Monitoring Active';
+
+            } catch (err) {
+                console.error("Dashboard update failed:", err);
+                const badge = document.getElementById('connStatus');
+                badge.style.background = 'rgba(239, 68, 68, 0.1)';
+                badge.style.color = 'var(--danger)';
+                badge.innerHTML = '<div class="status-dot" style="background:var(--danger); animation:none;"></div> Connection Lost';
+            }
+        }
+
+        // Initial load
+        updateDashboard();
+        
+        // Poll every 2 seconds
+        setInterval(updateDashboard, 2000);
+    </script>
+</body>
+</html>

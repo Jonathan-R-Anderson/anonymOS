@@ -1,0 +1,14 @@
+title: SSH brute-force attempts
+id: 5b6c1234-abcd-4ef0-9e8c-1234567890ab
+description: Detects multiple failed SSH login attempts
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    - 'Failed password for'
+    - 'authentication failure'
+  condition: selection
+level: medium
+tags:
+  - attack.t1110.001

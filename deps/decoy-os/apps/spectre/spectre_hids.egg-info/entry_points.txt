@@ -1,0 +1,2 @@
+[console_scripts]
+spectre = cli.main:app

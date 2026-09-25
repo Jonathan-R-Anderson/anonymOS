@@ -1,0 +1,38 @@
+{
+  "expected_ports": [
+    22,
+    80,
+    443,
+    631,
+    3306,
+    5432,
+    6379,
+    8080,
+    8443,
+    5353,
+    546
+  ],
+  "whitelisted_processes": [
+    "code",
+    "language_server",
+    "chrome",
+    "avahi-daemon"
+  ],
+  "critical_paths": [
+    "/etc/passwd",
+    "/etc/shadow",
+    "/etc/ssh/sshd_config",
+    "/etc/sudoers",
+    "/etc/crontab"
+  ],
+  "critical_dirs": [
+    "/etc/cron.d",
+    "/etc/systemd/system"
+  ],
+  "collection_interval": 300,
+  "webhook_url": "",
+  "max_snapshots": 5,
+  "log_level": "DEBUG",
+  "retention_days": "1",
+  "ai_api_endpoint": ""
+}

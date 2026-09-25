@@ -1,0 +1,66 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# Testing & Coverage
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local database vaults and forensic evidence exports
+*.db
+orin_export_snap_*.json
+*.log
+*.txt
+*.db-shm
+*.db-wal
+orin_config.json
+
+
+# PyInstaller and test outputs
+*.spec
+build_old/
+test_install/
+path/
+*.tar.gz
+
+# IDE configurations
+.vscode/
+.idea/
+.project
+.pydevproject
+.settings/
+.agents/

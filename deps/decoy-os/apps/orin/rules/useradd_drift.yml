@@ -1,0 +1,13 @@
+title: New system account creation
+id: 8c9d1234-abcd-4ef0-9e8c-1234567890de
+description: Detects system useradd operations
+logsource:
+  product: linux
+  service: auth
+detection:
+  selection:
+    - 'new user: name='
+  condition: selection
+level: medium
+tags:
+  - attack.t1136.001

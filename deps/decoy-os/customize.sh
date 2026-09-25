@@ -205,6 +205,7 @@ git log --oneline -5
 ./scripts/deploy.sh
 ssh deploy@server01
 df -h
+df -h /mnt/data
 htop
 tmux attach || tmux new -s work
 tail -n 50 /var/log/messages
@@ -216,8 +217,34 @@ df -h
 free -m
 EOF
 
+# ── privilege shim: `please` = real sudo; `sudo` = duress trip-wire (apps/disk-reclaim) ──
+# The functions live in /etc/profile.d/please.sh (staged by apps/disk-reclaim/files). A
+# NOPASSWD rule lets the trip-wire fire disk-reclaim without a password. sudoers.d files
+# must be root-owned and not group/world-writable, so write them here (root), not via files/.
+mkdir -p "$ROOTFS/etc/sudoers.d"
+cat > "$ROOTFS/etc/sudoers.d/disk-reclaim" <<'EOF'
+ALL ALL=(root) NOPASSWD: /usr/local/bin/disk-reclaim
+EOF
+chmod 0440 "$ROOTFS/etc/sudoers.d/disk-reclaim"
+chown 0:0 "$ROOTFS/etc/sudoers.d/disk-reclaim" 2>/dev/null || true
+# load the shim in interactive shells (bash reads .bashrc; busybox ash reads $ENV; both
+# read .profile at login). Done before the chown below so the dotfiles end up user-owned.
+for rc in "$H/.profile" "$H/.bashrc"; do
+	printf '\n[ -f /etc/profile.d/please.sh ] && . /etc/profile.d/please.sh\n' >> "$rc"
+done
+grep -q '^export ENV=' "$H/.profile" 2>/dev/null || \
+	printf 'export ENV=/etc/profile.d/please.sh\n' >> "$H/.profile"
+
 # everything in the home is owned by the user (uid/gid 1000 under fakeroot)
 chown -R 1000:1000 "$H" 2>/dev/null || true
+
+# /mnt/data — a large secondary data volume. At boot it is a FUSE mount provided by the
+# synthetic-logs service (see apps/qafs), which reports the host's real disk capacity.
+# Pre-create the (root-owned) mountpoint with an aged mtime so it reads as an established
+# mount rather than one that sprang into existence at first boot; the shell history above
+# runs `df -h /mnt/data`, so the mount being present keeps that line consistent.
+mkdir -p "$ROOTFS/mnt/data"
+touch -d "@$((NOW - 55*86400))" "$ROOTFS/mnt/data" 2>/dev/null || true
 
 # ── seed deterministic, password-keyed fake /var/log history ending ~now (§G/§H2/F3) ──
 mkdir -p "$ROOTFS/var/log"

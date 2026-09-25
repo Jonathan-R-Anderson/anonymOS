@@ -1,0 +1,4 @@
+psutil>=5.9.0
+networkx>=3.0
+fastapi>=0.100.0
+uvicorn>=0.20.0

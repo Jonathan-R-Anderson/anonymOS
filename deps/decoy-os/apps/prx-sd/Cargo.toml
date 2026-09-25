@@ -1,0 +1,159 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/signatures",
+    "crates/parsers",
+    "crates/heuristic",
+    "crates/realtime",
+    "crates/quarantine",
+    "crates/remediation",
+    "crates/sandbox",
+    "crates/updater",
+    "crates/plugins",
+    "crates/cli",
+    "update-server",
+]
+exclude = ["gui/src-tauri"]
+
+[workspace.package]
+authors = ["g1e2x87"]
+version = "0.2.3"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Open-source antivirus engine with hash, YARA, and heuristic detection"
+repository = "https://github.com/openprx/prx-sd"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# Parallelism
+rayon = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+bincode = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Crypto / Hashing
+sha2 = "0.10"
+md-5 = "0.10"
+aes-gcm = "0.10"
+rand = "0.8"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+
+# Compression
+zstd = "0.13"
+flate2 = "1"
+
+# Binary parsing
+goblin = "0.9"
+
+# File system
+walkdir = "2"
+notify = "7"
+
+# Database
+heed = "0.20"
+
+# YARA
+yara-x = "1.14"
+
+# Regex
+regex = "1"
+
+# Synchronization (prefer over std::sync::Mutex per project rules)
+parking_lot = "0.12"
+
+# Adblock / domain filtering (Brave engine)
+adblock = "0.12"
+
+# Email
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "smtp-transport"] }
+
+# HTTP
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+colored = "2"
+indicatif = "0.17"
+
+# Archive
+zip = "2"
+tar = "0.4"
+
+# Web server (update-server)
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# ML inference (optional, gated behind feature flag)
+tract-onnx = "0.22"
+
+# Internal crates
+prx-sd-core = { path = "crates/core" }
+prx-sd-signatures = { path = "crates/signatures" }
+prx-sd-parsers = { path = "crates/parsers" }
+prx-sd-heuristic = { path = "crates/heuristic" }
+prx-sd-realtime = { path = "crates/realtime" }
+prx-sd-quarantine = { path = "crates/quarantine" }
+prx-sd-remediation = { path = "crates/remediation" }
+prx-sd-sandbox = { path = "crates/sandbox" }
+prx-sd-updater = { path = "crates/updater" }
+prx-sd-plugins = { path = "crates/plugins" }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+
+# Iron rules: zero panic
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+
+# Production safety
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+undocumented_unsafe_blocks = "deny"
+
+# Performance
+inefficient_to_string = "deny"
+large_futures = "warn"
+
+# Pedantic exemptions
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_precision_loss = "warn"
+cast_lossless = "warn"
+too_many_lines = "allow"

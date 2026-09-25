@@ -36,11 +36,28 @@ KJOBS         ?= $(shell nproc 2>/dev/null || echo 4)
 DECOY_PKGS ?= openssh git vim htop tmux curl wget chrony bash sudo less tree rsync nano \
               tcpdump bind-tools mtr iproute2 file jq man-db docs
 
-# Runtimes for the boot-time synthetic-log generators, now staged as apps/ by
-# stage-apps.sh: openjdk -> apps/log-synth (Java), python3+pip -> apps/evidenceforge
-# (Python); the shared OpenRC service is apps/synthetic-logs. Added to BOTH rootfs
-# variants' apk add below.
-SYNTH_PKGS ?= openjdk17-jre-headless python3 py3-pip
+# Runtimes for the apps staged by stage-apps.sh: openjdk -> apps/log-synth (Java),
+# python3+pip -> apps/evidenceforge (Python; the shared OpenRC service is
+# apps/synthetic-logs), py3-fusepy+fuse -> apps/qafs (a Python FUSE filesystem).
+# Added to BOTH rootfs variants' apk add below.
+SYNTH_PKGS ?= openjdk17-jre-headless python3 py3-pip py3-fusepy fuse
+
+# Block-layer tooling used by apps/disk-reclaim (the deniability duress tool that reclaims
+# foreign partitions into the decoy and grows its dm-crypt+ext4 to fill the disk). These are
+# also plausible on an ordinary admin workstation, so they double as cover. NB: Alpine splits
+# util-linux — blockdev/wipefs/blkdiscard/partx live in util-linux-misc; sfdisk/lsblk are their
+# own subpackages; resize2fs is in e2fsprogs-extra; sgdisk is in gptfdisk. Verify these names
+# against the target Alpine version. growpart (cloud-utils) is optional (sfdisk fallback).
+RECLAIM_PKGS ?= sfdisk lsblk util-linux-misc e2fsprogs-extra cryptsetup gptfdisk
+
+# Runtime deps for the vendored snoop-detectors (apps/argus, spectre, orin, prx-sd), consumed
+# by snoop-monitor. DISABLED by default: they are heavy and a deniability tell, and argus/prx-sd
+# also need cross-build porting (see those apps' READMEs). Their install.sh scripts clone upstream
+# at build time (git is a HOST build dep, not a rootfs package). Enable only what you actually ship:
+#   spectre/orin (Python): py3-pip (already in SYNTH_PKGS) + their deps (py3-yara, etc.)
+#   argus (eBPF runtime): libbpf   |   prx-sd: static musl build, no rootfs pkg
+# DETECTOR_PKGS ?= libbpf py3-yara
+# and add $(DETECTOR_PKGS) to the two `apk ... add` lines below.
 
 # Your own programs. Everything under apps/ is installed into BOTH rootfs variants by
 # stage-apps.sh: apps/<name>/bin -> /usr/local/bin, files/ -> /, service -> an OpenRC
@@ -124,7 +141,7 @@ $(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd 
 	mkdir -p $(ROOTFS)
 	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(ROOTFS)
 	$(SUDO) $(BLD)/apk.static --root $(ROOTFS) --repository $(APKMAIN) --repository $(APKCOMM) \
-	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(SYNTH_PKGS)
+	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS)
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
 	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(ROOTFS) $(BLD)/fakelogd "$(DECOY_PW)"
@@ -227,7 +244,7 @@ $(DROOT)/.stamp: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.
 	mkdir -p $(DROOT)
 	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(DROOT)
 	$(SUDO) $(BLD)/apk.static --root $(DROOT) --repository $(APKMAIN) --repository $(APKCOMM) \
-	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(DESKTOP_PKGS) $(SYNTH_PKGS)
+	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(DESKTOP_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS)
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
 	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(DROOT) $(BLD)/fakelogd "$(DECOY_PW)"

@@ -1,0 +1,46 @@
+[package]
+name = "prx-sd-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+prx-sd-signatures = { workspace = true }
+prx-sd-parsers = { workspace = true }
+prx-sd-heuristic = { workspace = true }
+tokio = { workspace = true }
+rayon = { workspace = true }
+walkdir = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+reqwest = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+prx-sd-signatures = { workspace = true }
+prx-sd-quarantine = { workspace = true }
+prx-sd-heuristic = { workspace = true }
+sha2 = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
+rand = { workspace = true }
+prx-sd-remediation = { workspace = true }
+prx-sd-sandbox = { workspace = true }
+prx-sd-updater = { workspace = true }
+prx-sd-realtime = { workspace = true }
+ed25519-dalek = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+
+[[bench]]
+name = "scan_bench"
+harness = false
+
+[lints]
+workspace = true

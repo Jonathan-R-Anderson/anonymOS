@@ -1,0 +1,40 @@
+title: SUID Binary Execution
+id: spectre-privesc-002
+description: Detects execution of known SUID binaries that can be used for privilege escalation
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    selection_suid_binaries:
+        Image|endswith:
+            - '/find'
+            - '/vim'
+            - '/nano'
+            - '/less'
+            - '/more'
+            - '/awk'
+            - '/man'
+            - '/base64'
+            - '/python3'
+            - '/perl'
+            - '/ruby'
+            - '/php'
+            - '/node'
+            - '/nmap'
+            - '/tcpdump'
+            - '/wireshark'
+            - '/docker'
+    condition: selection_suid_binaries
+level: medium
+tags:
+    - attack.t1548.001
+    - attack.privilege_escalation
+references:
+    - https://attack.mitre.org/techniques/T1548/001/
+    - https://gtfobins.github.io/
+falsepositives:
+    - Legitimate use of these tools
+license: MIT

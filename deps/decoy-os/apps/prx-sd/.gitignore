@@ -1,0 +1,66 @@
+# Build artifacts
+/target/
+/gui/dist/
+/gui/node_modules/
+/update-server/target/
+/gui/src-tauri/target/
+
+# Compiled objects
+*.o
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+*.exe
+
+# Runtime data
+*.mdb
+*.lmdb
+*.dat
+
+# IDE & editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+._*
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.*
+secrets.*
+
+# Test artifacts
+*.profraw
+*.profdata
+lcov.info
+coverage/
+tarpaulin-report.html
+
+# Package manager
+gui/.nuxt/
+gui/.output/
+
+# Logs
+*.log
+logs/
+
+# Large test data (downloaded on demand)
+tests/cross-test/samples/real-world/
+
+# Local config overrides
+.cargo/config.local.toml

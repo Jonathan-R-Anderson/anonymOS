@@ -1,0 +1,369 @@
+[
+  {
+    "path": "/scanme/pe_packed_entropy.exe",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.100",
+    "details": [
+      "heuristic: Packed section '.text' (entropy 7.65)",
+      "heuristic: Suspicious API import: VirtualAllocEx",
+      "heuristic: Suspicious API import: WriteProcessMemory",
+      "heuristic: Suspicious API import: CreateRemoteThread",
+      "heuristic: Suspicious API import: IsDebuggerPresent",
+      "heuristic: Suspicious API import: InternetOpenA",
+      "heuristic: Suspicious API import: URLDownloadToFile",
+      "heuristic: Suspicious API import: RegSetValueEx",
+      "heuristic: Suspicious API import: CreateService",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/pdf_heap_spray.pdf",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.70",
+    "details": [
+      "heuristic: PDF contains JavaScript",
+      "heuristic: PDF threat score: 50"
+    ],
+    "scan_time_ms": 6
+  },
+  {
+    "path": "/scanme/doc_network.doc",
+    "threat_level": "Suspicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.45",
+    "details": [
+      "heuristic: Office auto-exec macro: autoopen",
+      "heuristic: Office macro contains network access"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/pe_injection_apis.exe",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.100",
+    "details": [
+      "heuristic: Suspicious API import: VirtualAllocEx",
+      "heuristic: Suspicious API import: WriteProcessMemory",
+      "heuristic: Suspicious API import: CreateRemoteThread",
+      "heuristic: Suspicious API import: IsDebuggerPresent",
+      "heuristic: Suspicious API import: InternetOpenA",
+      "heuristic: Suspicious API import: URLDownloadToFile",
+      "heuristic: Suspicious API import: RegSetValueEx",
+      "heuristic: Suspicious API import: CreateService",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/pdf_clean.pdf",
+    "threat_level": "Clean",
+    "detection_type": null,
+    "threat_name": null,
+    "details": [],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/manifest.json",
+    "threat_level": "Clean",
+    "detection_type": null,
+    "threat_name": null,
+    "details": [],
+    "scan_time_ms": 6
+  },
+  {
+    "path": "/scanme/eicar_double.txt",
+    "threat_level": "Malicious",
+    "detection_type": "YaraRule",
+    "threat_name": "EICAR_Test_File",
+    "details": [
+      "yara rule: EICAR_Test_File",
+      "yara rule: EICAR_Test_File_Anywhere"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/doc_powershell.doc",
+    "threat_level": "Suspicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.50",
+    "details": [
+      "heuristic: Office auto-exec macro: autoopen",
+      "heuristic: Office macro contains shell execution"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/evasive_timing.exe",
+    "threat_level": "Suspicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.35",
+    "details": [
+      "heuristic: PE timestamp is zero",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/eicar_standard.txt",
+    "threat_level": "Malicious",
+    "detection_type": "Hash",
+    "threat_name": "EICAR.Test.File",
+    "details": [
+      "hash match: EICAR.Test.File"
+    ],
+    "scan_time_ms": 0
+  },
+  {
+    "path": "/scanme/evasive_vm_detect.exe",
+    "threat_level": "Suspicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.35",
+    "details": [
+      "heuristic: PE timestamp is zero",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/evasive_env_check.exe",
+    "threat_level": "Suspicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.35",
+    "details": [
+      "heuristic: PE timestamp is zero",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/elf_reverse_shell.bin",
+    "threat_level": "Clean",
+    "detection_type": null,
+    "threat_name": null,
+    "details": [],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/elf_crypto_miner.bin",
+    "threat_level": "Malicious",
+    "detection_type": "YaraRule",
+    "threat_name": "Linux_CryptoMiner_XMRig",
+    "details": [
+      "yara rule: Linux_CryptoMiner_XMRig",
+      "heuristic: Suspicious API import: stratum+tcp",
+      "heuristic: Suspicious API import: xmrig"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/elf_ptrace.bin",
+    "threat_level": "Clean",
+    "detection_type": null,
+    "threat_name": null,
+    "details": [],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/elf_rootkit.bin",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.95",
+    "details": [
+      "heuristic: Suspicious API import: rootkit",
+      "heuristic: Suspicious API import: hide_pid",
+      "heuristic: Suspicious API import: sys_call_table",
+      "heuristic: Suspicious API import: module_hide"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/pdf_javascript.pdf",
+    "threat_level": "Suspicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.50",
+    "details": [
+      "heuristic: PDF contains JavaScript",
+      "heuristic: PDF threat score: 30"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/pe_dll_suspicious.dll",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.100",
+    "details": [
+      "heuristic: Suspicious API import: VirtualAllocEx",
+      "heuristic: Suspicious API import: WriteProcessMemory",
+      "heuristic: Suspicious API import: CreateRemoteThread",
+      "heuristic: Suspicious API import: IsDebuggerPresent",
+      "heuristic: Suspicious API import: InternetOpenA",
+      "heuristic: Suspicious API import: URLDownloadToFile",
+      "heuristic: Suspicious API import: RegSetValueEx",
+      "heuristic: Suspicious API import: CreateService",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/pdf_launch.pdf",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.70",
+    "details": [
+      "heuristic: PDF contains Launch action",
+      "heuristic: PDF threat score: 40"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/doc_clean.doc",
+    "threat_level": "Clean",
+    "detection_type": null,
+    "threat_name": null,
+    "details": [],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/url_bearer.bin",
+    "threat_level": "Clean",
+    "detection_type": null,
+    "threat_name": null,
+    "details": [],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/elf_preload.bin",
+    "threat_level": "Clean",
+    "detection_type": null,
+    "threat_name": null,
+    "details": [],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/elf_clean.bin",
+    "threat_level": "Clean",
+    "detection_type": null,
+    "threat_name": null,
+    "details": [],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/evasive_debug.exe",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.75",
+    "details": [
+      "heuristic: Suspicious API import: IsDebuggerPresent",
+      "heuristic: Suspicious API import: CheckRemoteDebuggerPresent",
+      "heuristic: PE timestamp is zero",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/pe_writable_code.exe",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.100",
+    "details": [
+      "heuristic: Writable code section (W+X)",
+      "heuristic: Suspicious API import: VirtualAllocEx",
+      "heuristic: Suspicious API import: WriteProcessMemory",
+      "heuristic: Suspicious API import: CreateRemoteThread",
+      "heuristic: Suspicious API import: IsDebuggerPresent",
+      "heuristic: Suspicious API import: InternetOpenA",
+      "heuristic: Suspicious API import: URLDownloadToFile",
+      "heuristic: Suspicious API import: RegSetValueEx",
+      "heuristic: Suspicious API import: CreateService",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 1
+  },
+  {
+    "path": "/scanme/doc_dde.doc",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.100",
+    "details": [
+      "heuristic: Office macro contains shell execution",
+      "heuristic: Office document contains DDE",
+      "heuristic: Office macro threat score: 55"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/pdf_openaction_js.pdf",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.100",
+    "details": [
+      "heuristic: PDF contains JavaScript",
+      "heuristic: PDF auto-executes JavaScript",
+      "heuristic: PDF threat score: 80"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/eicar_with_padding.txt",
+    "threat_level": "Malicious",
+    "detection_type": "YaraRule",
+    "threat_name": "EICAR_Test_File_Anywhere",
+    "details": [
+      "yara rule: EICAR_Test_File_Anywhere"
+    ],
+    "scan_time_ms": 3
+  },
+  {
+    "path": "/scanme/pe_clean.exe",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.100",
+    "details": [
+      "heuristic: Suspicious API import: VirtualAllocEx",
+      "heuristic: Suspicious API import: WriteProcessMemory",
+      "heuristic: Suspicious API import: CreateRemoteThread",
+      "heuristic: Suspicious API import: IsDebuggerPresent",
+      "heuristic: Suspicious API import: InternetOpenA",
+      "heuristic: Suspicious API import: URLDownloadToFile",
+      "heuristic: Suspicious API import: RegSetValueEx",
+      "heuristic: Suspicious API import: CreateService",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/doc_autoopen.doc",
+    "threat_level": "Suspicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.50",
+    "details": [
+      "heuristic: Office auto-exec macro: autoopen",
+      "heuristic: Office macro contains shell execution"
+    ],
+    "scan_time_ms": 2
+  },
+  {
+    "path": "/scanme/pe_zero_timestamp.exe",
+    "threat_level": "Malicious",
+    "detection_type": "Heuristic",
+    "threat_name": "Heuristic.Score.100",
+    "details": [
+      "heuristic: Suspicious API import: VirtualAllocEx",
+      "heuristic: Suspicious API import: WriteProcessMemory",
+      "heuristic: Suspicious API import: CreateRemoteThread",
+      "heuristic: Suspicious API import: IsDebuggerPresent",
+      "heuristic: Suspicious API import: InternetOpenA",
+      "heuristic: Suspicious API import: URLDownloadToFile",
+      "heuristic: Suspicious API import: RegSetValueEx",
+      "heuristic: Suspicious API import: CreateService",
+      "heuristic: PE timestamp is zero",
+      "heuristic: No imports found"
+    ],
+    "scan_time_ms": 2
+  }
+]

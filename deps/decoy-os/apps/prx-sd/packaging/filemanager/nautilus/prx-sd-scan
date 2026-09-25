@@ -1,0 +1,21 @@
+#!/bin/bash
+# PRX-SD: Scan selected files with PRX-SD antivirus
+# Install: cp this-file ~/.local/share/nautilus/scripts/"Scan with PRX-SD"
+# Then: chmod +x ~/.local/share/nautilus/scripts/"Scan with PRX-SD"
+
+RESULTS=$(sd scan "$@" 2>&1)
+THREATS=$(echo "$RESULTS" | grep -c "MALICIOUS\|SUSPICIOUS" || true)
+
+if [ "$THREATS" -gt 0 ]; then
+    TITLE="PRX-SD: Threats Found ($THREATS)"
+    ICON="dialog-warning"
+else
+    TITLE="PRX-SD: Clean"
+    ICON="dialog-information"
+fi
+
+if command -v zenity >/dev/null 2>&1; then
+    echo "$RESULTS" | zenity --text-info --title="$TITLE" --width=600 --height=400
+elif command -v notify-send >/dev/null 2>&1; then
+    notify-send --icon="$ICON" "$TITLE" "$(echo "$RESULTS" | head -5)"
+fi

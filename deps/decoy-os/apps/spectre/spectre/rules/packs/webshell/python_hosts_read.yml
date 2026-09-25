@@ -1,0 +1,26 @@
+title: Python Accessing Hosts File
+id: spectre-webshell-005
+description: Detects Python processes reading /etc/hosts, potential host redirection reconnaissance
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: file_event
+    product: linux
+detection:
+    selection_python:
+        Image|endswith:
+            - '/python'
+            - '/python3'
+    selection_hosts:
+        TargetFilename: '/etc/hosts'
+    condition: selection_python and selection_hosts
+level: medium
+tags:
+    - attack.t1016
+    - attack.discovery
+references:
+    - https://attack.mitre.org/techniques/T1016/
+falsepositives:
+    - Legitimate network configuration scripts
+license: MIT

@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure|upgrade)
+        if command -v systemctl >/dev/null 2>&1; then
+            systemd-tmpfiles --create /usr/lib/tmpfiles.d/argus.conf 2>/dev/null || true
+            systemctl daemon-reload
+            systemctl enable argus.service
+            systemctl start  argus.service || true
+        fi
+        ;;
+esac
+
+exit 0

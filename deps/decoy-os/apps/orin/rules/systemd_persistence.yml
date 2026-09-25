@@ -1,0 +1,15 @@
+title: Systemd service persistence modification
+id: 9a8b7c6d-5555-4444-3333-222211110000
+description: Detects modification of systemd service configurations for persistence
+logsource:
+  product: linux
+  service: fim
+detection:
+  selection:
+    file_path:
+      - 'systemd/system/'
+      - '/etc/systemd/'
+  condition: selection
+level: high
+tags:
+  - attack.t1543.001

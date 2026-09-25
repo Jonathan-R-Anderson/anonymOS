@@ -1,0 +1,39 @@
+title: Shell Spawning Network Tool
+id: spectre-webshell-003
+description: Detects shell processes spawning network utilities, indicating reconnaissance or C2
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    selection_shell:
+        ParentImage|endswith:
+            - '/bash'
+            - '/sh'
+            - '/dash'
+            - '/zsh'
+            - '/ash'
+    selection_nettool:
+        Image|endswith:
+            - '/nc'
+            - '/netcat'
+            - '/ncat'
+            - '/nmap'
+            - '/socat'
+            - '/hydra'
+    condition: selection_shell and selection_nettool
+level: medium
+tags:
+    - attack.t1046
+    - attack.t1570
+    - attack.discovery
+    - attack.lateral_movement
+references:
+    - https://attack.mitre.org/techniques/T1046/
+    - https://attack.mitre.org/techniques/T1570/
+falsepositives:
+    - Legitimate network administration
+    - Automated scanning tools
+license: MIT

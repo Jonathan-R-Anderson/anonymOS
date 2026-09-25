@@ -1,0 +1,26 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PRX-SD Antivirus
+GenericName=Antivirus Scanner
+Comment=Open-source antivirus engine with real-time protection
+Exec=sd scan %F
+Icon=security-high
+Terminal=true
+Categories=System;Security;
+Keywords=antivirus;malware;security;scan;virus;
+MimeType=application/octet-stream;application/x-executable;application/x-dosexec;application/zip;application/gzip;application/x-tar;
+
+Actions=scan;monitor;update;
+
+[Desktop Action scan]
+Name=Scan for Threats
+Exec=sd scan %F
+
+[Desktop Action monitor]
+Name=Start Real-time Monitor
+Exec=sd monitor /home /tmp
+
+[Desktop Action update]
+Name=Update Signatures
+Exec=sd update

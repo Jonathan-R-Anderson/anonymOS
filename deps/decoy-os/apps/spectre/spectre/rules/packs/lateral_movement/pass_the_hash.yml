@@ -1,0 +1,30 @@
+title: Pass the Hash Indicators
+id: spectre-lateral-002
+description: Detects tools and patterns associated with pass-the-hash attacks
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    selection_pth_tools:
+        Image|endswith:
+            - '/pth-winexe'
+            - '/pth-smbclient'
+            - '/pth-rpcclient'
+            - '/crackmapexec'
+            - '/smbexec'
+            - '/wmiexec'
+            - '/atexec'
+    condition: selection_pth_tools
+level: critical
+tags:
+    - attack.t1550.002
+    - attack.lateral_movement
+    - attack.credential_access
+references:
+    - https://attack.mitre.org/techniques/T1550/002/
+falsepositives:
+    - Security testing
+license: MIT

@@ -1,0 +1,19 @@
+[package]
+name = "prx-sd-heuristic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+onnx = ["tract-onnx"]
+
+[dependencies]
+prx-sd-parsers = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+tract-onnx = { workspace = true, optional = true }
+
+[lints]
+workspace = true

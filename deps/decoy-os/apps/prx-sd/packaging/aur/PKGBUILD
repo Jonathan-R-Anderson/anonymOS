@@ -1,0 +1,15 @@
+# Maintainer: OpenPRX <team@openprx.dev>
+pkgname=prx-sd
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Open-source antivirus engine with YARA-X, hash matching, and real-time protection"
+arch=('x86_64')
+url="https://github.com/openprx/prx-sd"
+license=('MIT' 'Apache-2.0')
+depends=()
+source=("https://github.com/openprx/prx-sd/releases/download/v${pkgver}/sd-linux-x86_64")
+sha256sums=('PLACEHOLDER')
+
+package() {
+    install -Dm755 "${srcdir}/sd-linux-x86_64" "${pkgdir}/usr/bin/sd"
+}

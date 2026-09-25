@@ -1,0 +1,2 @@
+# PRX-SD: Auto-scan USB mass storage devices when plugged in
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_USB_DRIVER}=="usb-storage", RUN+="/usr/local/bin/sd scan-usb %E{DEVNAME}"

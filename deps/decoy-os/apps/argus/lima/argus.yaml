@@ -1,0 +1,77 @@
+# Lima VM configuration for argus eBPF development
+#
+# Usage:
+#   limactl start --name=argus lima/argus.yaml
+#   limactl shell argus          # shell inside the VM
+#
+# VS Code Remote SSH:
+#   After starting, Lima registers the VM in ~/.ssh/config as "lima-argus".
+#   Open VS Code -> Remote-SSH -> Connect to Host -> lima-argus
+#
+# Build inside the VM:
+#   cd /Users/<you>/Desktop/argus   # your macOS home is auto-mounted read-write
+#   make
+#   sudo ./argus --comm curl --json
+
+# ── VM resources ─────────────────────────────────────────────────────────────
+cpus: 2
+memory: "4GiB"
+disk: "20GiB"
+
+# ── OS image ─────────────────────────────────────────────────────────────────
+# Ubuntu 22.04 LTS — kernel 5.15, full BTF + BPF ring buffer support.
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+# ── Filesystem mounts ─────────────────────────────────────────────────────────
+# Your macOS home directory is mounted read-write so you can edit files on
+# the host and build/run inside the VM without copying anything.
+mounts:
+  - location: "~"
+    writable: true
+  - location: "/tmp/lima"
+    writable: true
+
+# ── vmType ───────────────────────────────────────────────────────────────────
+# vz = Apple Virtualization Framework (Apple Silicon, much faster than QEMU).
+# Remove or change to "qemu" on Intel Macs.
+vmType: "vz"
+rosetta:
+  enabled: false
+
+# ── Provision script (runs once as root on first boot) ───────────────────────
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -e
+
+      apt-get update
+      apt-get install -y \
+        clang \
+        llvm \
+        gcc \
+        make \
+        libbpf-dev \
+        libelf-dev \
+        zlib1g-dev \
+        libssl-dev \
+        linux-tools-common \
+        linux-tools-generic \
+        bpftrace \
+        strace \
+        python3 \
+        git
+
+      # Symlink bpftool to a stable path
+      bpf=$(find /usr/lib/linux-tools -name bpftool 2>/dev/null | head -1)
+      [ -n "$bpf" ] && ln -sf "$bpf" /usr/local/bin/bpftool
+
+      # Pre-generate vmlinux.h from the VM's own kernel BTF
+      # (written to /tmp so it doesn't pollute the repo until you copy it)
+      bpftool btf dump file /sys/kernel/btf/vmlinux format c \
+        > /tmp/vmlinux.h
+      echo "vmlinux.h ready at /tmp/vmlinux.h — copy to your workspace to build"

@@ -1,0 +1,12 @@
+# PRX-SD MD5 Hash Blocklist
+# Format: md5_hash malware_name
+# Lines starting with # are comments
+# NOTE: MD5 is weak for collision resistance; SHA-256 preferred. Kept for ClamAV compatibility.
+#
+# EICAR test file
+44d88612fea8a8f36de82e1278abb02f EICAR.Test.File
+
+# Known malware samples (examples)
+db349b97c37d22f5ea1d1841e3c89eb4 Ransom.WannaCry
+71b6a493388e7d0b40c83ce903bc6b04 Ransom.NotPetya
+b94f730a27234eb4f528ef2c3d8e53f2 Trojan.Emotet

@@ -1,0 +1,16 @@
+{
+  "name": "Example Scanner",
+  "version": "0.1.0",
+  "author": "prx-sd",
+  "description": "Example plugin that detects MALICIOUS_MARKER string",
+  "wasm_file": "example_plugin.wasm",
+  "platforms": ["all"],
+  "file_types": ["all"],
+  "min_engine_version": "0.1.0",
+  "permissions": {
+    "network": false,
+    "filesystem": false,
+    "max_memory_mb": 64,
+    "max_exec_ms": 5000
+  }
+}

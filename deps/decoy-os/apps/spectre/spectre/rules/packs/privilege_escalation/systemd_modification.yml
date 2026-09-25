@@ -1,0 +1,28 @@
+title: Systemd Service Modification
+id: spectre-privesc-006
+description: Detects creation or modification of systemd service files
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: file_event
+    product: linux
+detection:
+    selection_systemd_files:
+        TargetFilename|contains:
+            - '/etc/systemd/system/'
+            - '/lib/systemd/system/'
+            - '/usr/lib/systemd/system/'
+    selection_write:
+    condition: selection_systemd_files
+level: high
+tags:
+    - attack.t1543.002
+    - attack.persistence
+    - attack.privilege_escalation
+references:
+    - https://attack.mitre.org/techniques/T1543/002/
+falsepositives:
+    - Legitimate service installation
+    - Package managers
+license: MIT

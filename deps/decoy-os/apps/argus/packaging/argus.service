@@ -1,0 +1,51 @@
+[Unit]
+Description=Argus eBPF kernel telemetry daemon
+Documentation=https://github.com/DennisPrudlik/argus
+After=sysinit.target network.target
+Wants=sysinit.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/argus --json
+StandardOutput=append:/var/log/argus/events.jsonl
+StandardError=journal
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=10s
+
+# Create /var/log/argus/ automatically
+LogsDirectory=argus
+LogsDirectoryMode=0750
+
+# ── Capability hardening ───────────────────────────────────────────────────
+# argus needs CAP_SYS_ADMIN (BPF), CAP_BPF (kernel ≥ 5.8), CAP_NET_ADMIN
+# (XDP / TC attach), CAP_DAC_READ_SEARCH (/proc/<pid>/mem forensics).
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_BPF CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_SYS_RESOURCE
+AmbientCapabilities=CAP_SYS_ADMIN CAP_BPF CAP_NET_ADMIN CAP_DAC_READ_SEARCH CAP_SYS_RESOURCE
+
+# ── Process hardening ──────────────────────────────────────────────────────
+NoNewPrivileges=no          # must stay off — BPF loading requires privilege
+PrivateTmp=yes
+ProtectSystem=full          # /usr, /boot read-only; /sys still accessible (BTF)
+ProtectHome=yes
+PrivateDevices=no           # needs /dev/null etc.
+ProtectKernelTunables=no    # BPF may touch sysctl
+ProtectKernelModules=yes
+ProtectControlGroups=no     # reads cgroup names for event enrichment
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=no   # BPF JIT allocates RWX memory
+
+# ── Resource limits ────────────────────────────────────────────────────────
+MemoryMax=512M
+LimitNOFILE=65536
+LimitMEMLOCK=infinity       # BPF map locking requires unlimited MEMLOCK
+OOMScoreAdjust=-500         # deprioritise for OOM kills
+
+# ── Network namespacing ────────────────────────────────────────────────────
+# Do NOT use PrivateNetwork — argus monitors all network sockets
+ReadWritePaths=/var/log/argus /run/argus
+
+[Install]
+WantedBy=multi-user.target

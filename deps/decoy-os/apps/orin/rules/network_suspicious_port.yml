@@ -1,0 +1,28 @@
+title: Suspicious Network Connection or Port Activity
+id: 6a5b4c3d-2222-1111-0000-cccccccccccc
+description: Detects outbound communication or listening sockets on suspicious ports or associated with threat tools
+logsource:
+  product: linux
+  service: connections
+detection:
+  selection_ports:
+    port:
+      - 4444
+      - 1337
+      - 6667
+  selection_remote_ports:
+    remote_port:
+      - 4444
+      - 1337
+      - 6667
+  selection_process:
+    process_name:
+      - '*xmrig*'
+      - '*miner*'
+      - '*nc*'
+      - '*netcat*'
+      - '*socat*'
+  condition: selection_ports or selection_remote_ports or selection_process
+level: high
+tags:
+  - attack.t1043

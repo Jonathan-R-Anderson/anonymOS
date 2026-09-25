@@ -1,0 +1,21 @@
+# spectre configuration for ignored paths and processes
+processes:
+  - antigravity
+  - language_server
+
+files:
+  - antigravity
+  - language_server
+  - .so
+  - .pyc
+  - __pycache__
+
+directories:
+  - /lib/
+  - /lib64/
+  - /usr/lib/
+  - /usr/lib64/
+  - /usr/share/locale/
+  - /usr/share/zoneinfo/
+  - /var/cache/
+  - /etc/ld.so.cache

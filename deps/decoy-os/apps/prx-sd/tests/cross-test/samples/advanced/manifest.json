@@ -1,0 +1,177 @@
+[
+  {
+    "file": "emotet_dropper.exe",
+    "sha256": "e25760ebcb6e8fe89fb44ec1b31b0d0d72c3889eb019dc7e52bf8d9dd6b0eb12",
+    "size": 8192,
+    "desc": "Emotet-style dropper: WinHTTP + RegSetValue + packed",
+    "expected": "Malicious"
+  },
+  {
+    "file": "cobalt_beacon.exe",
+    "sha256": "cf2eadf5d3465398bb6cdbd853505d0a1e0dd7b2f9a79ea7ccce088459e38ad5",
+    "size": 8192,
+    "desc": "CobaltStrike-style beacon: named pipe + process injection",
+    "expected": "Malicious"
+  },
+  {
+    "file": "ransomware_sim.exe",
+    "sha256": "98df06059739a322212a588a1927ce41468238db954e863fd3b597621d4e0597",
+    "size": 8192,
+    "desc": "Ransomware pattern: crypto + file ops + network",
+    "expected": "Malicious"
+  },
+  {
+    "file": "banking_trojan.exe",
+    "sha256": "3634053ea26222968976dc6c14b5a52da8e01d1b4028132dc2a1875d9ec53c4a",
+    "size": 8192,
+    "desc": "Banking trojan: browser hook + keylogger",
+    "expected": "Malicious"
+  },
+  {
+    "file": "linux_reverse_shell.elf",
+    "sha256": "f18b7f7abdb6058e5eba72f7a0fc8b1c2993acafda3779dc4cdb78a1686dbed7",
+    "size": 8192,
+    "desc": "Linux reverse shell: socket+connect+dup2+execve+/dev/tcp",
+    "expected": "Malicious"
+  },
+  {
+    "file": "linux_crypto_miner.elf",
+    "sha256": "02929d9360608f236d2df0a1d8db335d7b8c58ccbab27f72141590f6f6228aa3",
+    "size": 8192,
+    "desc": "Linux cryptominer: xmrig + mining pool URLs",
+    "expected": "Malicious"
+  },
+  {
+    "file": "linux_rootkit.elf",
+    "sha256": "feb49d2fcb849bca4da49ddc32e06c68f5f81605d97ff72d13e9a1b8558c6ce9",
+    "size": 8192,
+    "desc": "Linux rootkit: sys_call_table hook + hide_pid",
+    "expected": "Malicious"
+  },
+  {
+    "file": "evasion_full.exe",
+    "sha256": "28e1c7f2bc13bd39f971d664fbd3544c306c367f4974c5a568a4ae6bd320f92d",
+    "size": 8192,
+    "desc": "All evasion: VM+debug+env+timing+user+hw",
+    "expected": "Suspicious"
+  },
+  {
+    "file": "evasion_xor_encoded.exe",
+    "sha256": "4ae9ccf99d67f40b599a6f00059a43ff9e45b5bc5b826ff2d859f064210e8e8f",
+    "size": 4096,
+    "desc": "XOR-encoded strings + high entropy",
+    "expected": "Suspicious"
+  },
+  {
+    "file": "fp_compressed.gz",
+    "sha256": "6f341ee37614a1237a1ded6f8a09321f45af9cc637f0c9cb4ee6700f011fd3c4",
+    "size": 4096,
+    "desc": "Gzip compressed data (legitimate)",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_encrypted_archive.bin",
+    "sha256": "03ea395016e5fcc9fa42a0ec6c803b6e9e09101e6d153a2f0e6634054b1c5584",
+    "size": 8192,
+    "desc": "Encrypted archive (pure random, no PE/ELF header)",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_web_server.py",
+    "sha256": "cf3e35fbc327b9b069680ce125463b877386a9fa4bf17963faa28f842a28acca",
+    "size": 197,
+    "desc": "Legitimate Python web server",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_ssh_config.txt",
+    "sha256": "81ce8594e6b83312703e6a1e75b66fa8347ae386441bc4cb6b3d5f9c6ca59da2",
+    "size": 85,
+    "desc": "SSH config file (mentions .ssh but is config)",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_legit_pe.exe",
+    "sha256": "4db69fe8881efbadb295934b5bdcf2ff64ea77c74136e5f67a3c8054b8109107",
+    "size": 4090,
+    "desc": "Legitimate PE with normal characteristics",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_readme.md",
+    "sha256": "b456348041a5007a1e99d6694ea6df803e83d85eb6baae50febb66b1526b679a",
+    "size": 76,
+    "desc": "Normal markdown README",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_config.json",
+    "sha256": "928504440fe5d31f9010df2efa598a48138dbc850ae26f27dd900283ff9bc6d6",
+    "size": 67,
+    "desc": "Normal JSON config",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_deploy.sh",
+    "sha256": "7443d471d66d7d408e9f6359cf681df7806f79cd18d75764ad7081cea2117ba2",
+    "size": 129,
+    "desc": "Legitimate deploy script",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_empty.txt",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0,
+    "desc": "Empty file",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_one_byte.bin",
+    "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+    "size": 1,
+    "desc": "Single null byte",
+    "expected": "Clean"
+  },
+  {
+    "file": "fp_newline.txt",
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "size": 1,
+    "desc": "Single newline",
+    "expected": "Clean"
+  },
+  {
+    "file": "pdf_multi_exploit.pdf",
+    "sha256": "070d5fbeabeb9f8b91e24ae71b1347364bac752966078c3cdb20e1c12d7730d0",
+    "size": 663,
+    "desc": "PDF with JS + Launch + EmbeddedFile + OpenAction + AA",
+    "expected": "Malicious"
+  },
+  {
+    "file": "doc_kitchen_sink.doc",
+    "sha256": "589b389a2ed871143aa7a036bef4b35fedd7ad51e1903db67a32a971cd6bc830",
+    "size": 717,
+    "desc": "OLE2 with every macro indicator",
+    "expected": "Malicious"
+  },
+  {
+    "file": "pe_mega_suspicious.exe",
+    "sha256": "5ec74b7d6751a32fd81df47ac456e62f760fb7770a71686d01d049a8c5523c38",
+    "size": 32762,
+    "desc": "PE with 26 suspicious APIs + W+X + zero timestamp + high entropy",
+    "expected": "Malicious"
+  },
+  {
+    "file": "urls_multi_ioc.bin",
+    "sha256": "af355aed0d301ce6966998a0bb8756f5ff39ef8e993236021a25de9aba7ca0b2",
+    "size": 4096,
+    "desc": "Binary with multiple suspicious URLs",
+    "expected": "Suspicious"
+  },
+  {
+    "file": "polyglot_pe_pdf.bin",
+    "sha256": "f8d4d97ce263c97c820d5418d331bdbade5db11605fd25cf9584a34830600612",
+    "size": 8192,
+    "desc": "PE/PDF polyglot with embedded JS",
+    "expected": "Suspicious"
+  }
+]

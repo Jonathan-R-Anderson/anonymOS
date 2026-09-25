@@ -1,0 +1,29 @@
+title: Suspicious or Non-GPL eBPF Program Loaded
+id: 7a6b5c4d-3333-2222-1111-0000bbbbbbbb
+description: Detects unauthorized or suspicious eBPF programs loaded into the kernel
+logsource:
+  product: linux
+  service: ebpf
+detection:
+  selection_gpl:
+    gpl_compatible: 0
+  selection_prog:
+    name:
+      - '*rootkit*'
+      - '*hide*'
+      - '*sniff*'
+      - '*pamspy*'
+      - '*triplecross*'
+      - '*ebpfkit*'
+  selection_pin:
+    path:
+      - '*rootkit*'
+      - '*hide*'
+      - '*sniff*'
+      - '*pamspy*'
+      - '*triplecross*'
+      - '*ebpfkit*'
+  condition: selection_gpl or selection_prog or selection_pin
+level: critical
+tags:
+  - attack.t1014

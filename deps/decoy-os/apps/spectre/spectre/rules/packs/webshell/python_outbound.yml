@@ -1,0 +1,30 @@
+title: Python Outbound Network Connection
+id: spectre-webshell-006
+description: Detects Python processes establishing outbound connections, potential C2 or data exfiltration
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: network_connection
+    product: linux
+detection:
+    selection_python:
+        Image|endswith:
+            - '/python'
+            - '/python3'
+    selection_outbound:
+        DestinationIp: '*'
+    condition: selection_python and selection_outbound
+level: medium
+tags:
+    - attack.t1071
+    - attack.t1041
+    - attack.command_and_control
+    - attack.exfiltration
+references:
+    - https://attack.mitre.org/techniques/T1071/
+    - https://attack.mitre.org/techniques/T1041/
+falsepositives:
+    - Legitimate API calls
+    - Web scraping scripts
+license: MIT

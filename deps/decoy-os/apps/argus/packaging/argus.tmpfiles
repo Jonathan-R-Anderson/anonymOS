@@ -1,0 +1,6 @@
+# systemd-tmpfiles config for argus
+# Creates /var/log/argus/ at boot before the service starts.
+# Install to /usr/lib/tmpfiles.d/argus.conf (done by make install).
+#
+# Type  Path              Mode  User    Group  Age  Argument
+d       /var/log/argus    0750  nobody  adm    -    -

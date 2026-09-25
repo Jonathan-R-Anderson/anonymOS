@@ -1,0 +1,31 @@
+[Unit]
+Description=PRX-SD Antivirus Real-time Protection
+After=network.target
+Documentation=https://github.com/prx-sd/prx-sd
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/sd monitor /home /tmp /var/tmp --data-dir /etc/prx-sd
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+User=root
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=prx-sd
+
+# Security hardening
+ProtectSystem=strict
+ReadWritePaths=/etc/prx-sd /tmp /var/tmp
+ProtectHome=read-only
+NoNewPrivileges=false
+PrivateTmp=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

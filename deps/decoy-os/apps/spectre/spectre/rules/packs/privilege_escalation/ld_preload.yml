@@ -1,0 +1,24 @@
+title: LD_PRELOAD Injection
+id: spectre-privesc-004
+description: Detects use of LD_PRELOAD for library injection
+status: stable
+author: Spectre Project
+date: 2024-01-15
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    selection_ld_preload:
+        CommandLine|contains: 'LD_PRELOAD'
+    condition: selection_ld_preload
+level: high
+tags:
+    - attack.t1574.006
+    - attack.privilege_escalation
+    - attack.persistence
+references:
+    - https://attack.mitre.org/techniques/T1574/006/
+falsepositives:
+    - Legitimate debugging
+    - Application profiling
+license: MIT

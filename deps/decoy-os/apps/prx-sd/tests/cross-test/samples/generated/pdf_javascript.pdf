@@ -1,0 +1,10 @@
+%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj
+3 0 obj<</Type/Action/S/JavaScript/JS(app.alert('xss'))>>endobj
+xref
+0 5
+trailer<</Size 5/Root 1 0 R>>
+startxref
+0
+%%EOF

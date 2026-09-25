@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+MimeType=all/allfiles;inode/directory;
+Actions=scan;
+
+[Desktop Action scan]
+Name=Scan with PRX-SD
+Icon=security-high
+Exec=sd scan %F

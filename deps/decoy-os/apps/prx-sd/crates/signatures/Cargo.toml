@@ -1,0 +1,28 @@
+[package]
+name = "prx-sd-signatures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+heed = { workspace = true }
+sha2 = { workspace = true }
+md-5 = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+walkdir = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
+tokio = { workspace = true }
+yara-x = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["md-5"]  # imported as `md5` (crate rename), used in hash.rs
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

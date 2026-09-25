@@ -1,0 +1,195 @@
+{
+    // ── Basic process filtering ───────────────────────────────────────────────
+    // Only trace this specific PID (0 = no filter, trace all)
+    "pid": 0,
+
+    // Trace this PID and all of its child processes
+    "follow_pid": 0,
+
+    // Only trace processes whose comm (process name) exactly matches this value
+    // Example: "comm": "curl"
+    "comm": "",
+
+    // Only show events whose filename contains this substring (userspace filter)
+    // Example: "path": "/etc"
+    "path": "",
+
+    // Exclude file events (OPEN, UNLINK, RENAME, CHMOD) under these prefixes
+    // Set to [] to disable all exclusions
+    "exclude_paths": ["/proc", "/sys", "/dev"],
+
+    // ── Event selection ───────────────────────────────────────────────────────
+    // List of event types to trace. Comment out types you don't need to
+    // reduce overhead. DNS, SEND, WRITE_CLOSE, PRIVESC, MEMEXEC, KMOD_LOAD,
+    // THREAT_INTEL, PROC_SCRAPE, NS_ESCAPE are also valid.
+    "event_types": [
+        "EXEC", "OPEN", "EXIT", "CONNECT",
+        "UNLINK", "RENAME", "CHMOD", "BIND", "PTRACE"
+    ],
+
+    // ── Ring buffer ───────────────────────────────────────────────────────────
+    // Kernel ring buffer size in kilobytes (default: 256, range: 4–65536).
+    // Increase if you see "dropped N events" warnings on busy systems.
+    "ring_buffer_kb": 256,
+
+    // ── Output ────────────────────────────────────────────────────────────────
+    // "text"   — human-readable table (default)
+    // "json"   — newline-delimited JSON (NDJSON)
+    // "cef"    — ArcSight Common Event Format (SIEM-ready)
+    // "syslog" — emit via syslog(3) at LOG_DAEMON
+    "output_fmt": "json",
+
+    // Append events to this file instead of stdout ("" = stdout)
+    "output_path": "/var/log/argus/events.jsonl",
+
+    // Print a rolling summary table every N seconds instead of per-event output
+    // (0 = disabled)
+    "summary_interval": 0,
+
+    // Write the daemon PID to this file at startup ("" = disabled)
+    "pid_file": "/run/argus/argus.pid",
+
+    // ── Rate limiting ─────────────────────────────────────────────────────────
+    // Drop events after N per second per comm name, kernel-side token bucket
+    // (0 = disabled)
+    "rate_limit_per_comm": 0,
+
+    // ── Alert rules ───────────────────────────────────────────────────────────
+    // Path to JSON alert rules file. Reloaded on SIGHUP.
+    // See /etc/argus/rules.json for the format.
+    "rules": "/etc/argus/rules.json",
+
+    // ── Forwarding ────────────────────────────────────────────────────────────
+    // Simple single-target forwarding (deprecated in favour of "targets" below)
+    "forward": "",
+    "forward_tls": false,
+    "forward_tls_noverify": false,
+
+    // Multiple forwarding targets (preferred)
+    // Each entry: {"addr": "host:port", "tls": false, "tls_noverify": false}
+    "targets": [
+        // {"addr": "siem1.corp:9000"},
+        // {"addr": "siem2.corp:9000", "tls": true},
+        // {"addr": "backup.corp:9000", "tls": true, "tls_noverify": true}
+    ],
+
+    // ── Behavioural baseline ──────────────────────────────────────────────────
+    // Path to a pre-learnt baseline profile (JSON). Anomalies are flagged.
+    "baseline": "",
+
+    // Write learnt baseline to this path ("" = baseline.json)
+    "baseline_out": "/etc/argus/baseline.json",
+
+    // Learn for this many seconds then stop (0 = use existing baseline only)
+    "baseline_learn_secs": 0,
+
+    // Group baselines by cgroup name (useful in container environments)
+    "baseline_cgroup_aware": false,
+
+    // ── File Integrity Monitoring (FIM) ───────────────────────────────────────
+    // Monitor these directory trees for write-close events via inotify
+    "fim_paths": ["/etc", "/usr/bin", "/usr/sbin", "/bin", "/sbin"],
+
+    // ── Threat intelligence ───────────────────────────────────────────────────
+    // Path to a blocklist file (one IP or CIDR per line). Matching CONNECT
+    // events generate THREAT_INTEL events.
+    "threat_intel": "/etc/argus/blocklist.txt",
+
+    // Shannon entropy threshold for DGA domain detection (0 = disabled)
+    // Domains with entropy above this value are flagged. Typical: 3.5–4.0
+    "dga_entropy_threshold": 3.7,
+
+    // ── Metrics ───────────────────────────────────────────────────────────────
+    // Expose Prometheus metrics on this port (0 = disabled)
+    "metrics_port": 0,
+
+    // ── YARA scanning ─────────────────────────────────────────────────────────
+    // Directory containing .yar rule files. Requires YARA at build time.
+    "yara_rules_dir": "/etc/argus/yara",
+
+    // ── LD_PRELOAD detection ──────────────────────────────────────────────────
+    // Warn when EXEC events show LD_PRELOAD in the environment (default: true)
+    "ldpreload_check": true,
+
+    // ── Alert deduplication ───────────────────────────────────────────────────
+    // Suppress duplicate alerts for the same rule+comm within N seconds
+    // (0 = no deduplication)
+    "alert_dedup_secs": 30,
+
+    // ── Beacon detection ─────────────────────────────────────────────────────
+    // Flag periodic outbound connections with coefficient-of-variation below
+    // this threshold as potential C2 beacons (0.0 = disabled, typical: 0.2)
+    "beacon_cv_threshold": 0.2,
+
+    // ── LSM enforcement ───────────────────────────────────────────────────────
+    // Block execve calls matching rules with action:"deny" via LSM BPF hook.
+    // Requires kernel >= 5.7 with CONFIG_BPF_LSM=y.
+    "lsm_deny": false,
+
+    // ── Response: process kill ────────────────────────────────────────────────
+    // Send SIGKILL to processes that trigger THREAT_INTEL or high-severity rules
+    "response_kill": false,
+
+    // ── Enterprise: MITRE ATT&CK tagging ─────────────────────────────────────
+    // Annotate alerts with MITRE ATT&CK tactic/technique IDs (built-in mapping)
+    "mitre_tags": false,
+
+    // ── Enterprise: webhook alerts ────────────────────────────────────────────
+    // POST JSON alert objects to this HTTP URL in a background thread
+    // Example: "webhook_url": "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    "webhook_url": "",
+
+    // ── Enterprise: executable hash & IOC enrichment ──────────────────────────
+    // Compute SHA-256 of each executed binary and add "sha256" to EXEC events
+    "exec_hash": false,
+
+    // VirusTotal API key for hash/IP reputation lookups (requires exec_hash)
+    "vt_api_key": "",
+
+    // AlienVault OTX API key for IP/domain reputation lookups
+    "otx_api_key": "",
+
+    // ── Enterprise: automated response isolation ──────────────────────────────
+    // Add iptables DROP rules for THREAT_INTEL event source IPs.
+    // Rules are removed cleanly on exit. Requires iptables in PATH.
+    "response_isolate": false,
+
+    // ── Enterprise: SQLite event store ───────────────────────────────────────
+    // Persist all events to this SQLite database ("" = disabled)
+    "store_path": "/var/lib/argus/events.db",
+
+    // Expose a query API on 127.0.0.1:<port> (0 = disabled)
+    // GET /query?type=EXEC&limit=100  →  JSON event array
+    // GET /stats                      →  DB row count + file size
+    "store_query_port": 8080,
+
+    // ── Enterprise: container enrichment ─────────────────────────────────────
+    // Query /var/run/docker.sock to add container name/image to events
+    "container_enrich": false,
+
+    // ── Enterprise: compliance reporting ─────────────────────────────────────
+    // Map events to compliance controls. Valid values:
+    //   "cis"     — CIS Controls for Linux
+    //   "pci-dss" — PCI DSS 4.0
+    //   "nist"    — NIST Cybersecurity Framework
+    //   "soc2"    — SOC 2 Type II
+    "compliance_framework": "pci-dss",
+
+    // Write HTML compliance evidence report to this path on exit ("" = disabled)
+    "compliance_report": "/var/log/argus/compliance.html",
+
+    // ── Enterprise: syscall anomaly detection ─────────────────────────────────
+    // Sample syscall histograms and run a chi-squared test every N seconds.
+    // 0 disables the feature and prevents handle_sys_enter from loading.
+    "syscall_anom_interval": 60,
+
+    // ── Enterprise: TLS payload inspection ───────────────────────────────────
+    // Attach uprobes to OpenSSL SSL_read to capture decrypted TLS payloads.
+    // 0/false disables and prevents uprobe programs from loading.
+    "tls_data_enable": false,
+
+    // ── Enterprise: memory forensics ─────────────────────────────────────────
+    // On MEMEXEC events, read /proc/<pid>/mem and compute Shannon entropy.
+    // High-entropy anon-exec regions indicate shellcode.
+    "mem_forensics": false
+}

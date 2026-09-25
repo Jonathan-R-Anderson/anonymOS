@@ -1,0 +1,13 @@
+{
+  "max_file_size": 104857600,
+  "scan_threads": 16,
+  "timeout_per_file_ms": 30000,
+  "exclude_paths": [],
+  "scan_archives": true,
+  "max_archive_depth": 3,
+  "heuristic_threshold": 60,
+  "signatures_dir": "/opt/worker/task/prx-sd/tests/cross-test/sd-data-cross/signatures",
+  "yara_rules_dir": "/opt/worker/task/prx-sd/tests/cross-test/sd-data-cross/yara",
+  "quarantine_dir": "/opt/worker/task/prx-sd/tests/cross-test/sd-data-cross/quarantine",
+  "vt_api_key": ""
+}

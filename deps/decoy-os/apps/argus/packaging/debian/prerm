@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|purge|upgrade)
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop    argus.service || true
+            systemctl disable argus.service || true
+        fi
+        ;;
+esac
+
+exit 0

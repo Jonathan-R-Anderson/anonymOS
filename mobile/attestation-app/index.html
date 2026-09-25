@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>anonymOS Attestation</title>
+<!--
+  anonymOS Attestation — mobile PWA to edit the IP whitelist/blacklist in the EncryptedAttestationVault.
+
+  WHAT IT IS: a single-page app you open inside a mobile wallet's dApp browser (MetaMask/Rainbow on
+  iOS or Android), or any browser with an injected EIP-1193 wallet. It reproduces the SAME crypto as
+  scripts/attest-seal.py (Argon2id 64MiB/t=3 → SHA256 subkeys → AES-256-GCM, seal = 0x01‖nonce‖ct+tag),
+  so it can unseal your on-chain record, let you edit whitelist/blacklist, re-seal, and submit put().
+
+  SECURITY — READ:
+   * Your PASSWORD never leaves the device: Argon2id runs in-browser; only the derived AES key +
+     contract id are used. There is no server.
+   * You still need the OWNER WALLET (the one that first wrote this id) to sign put() — the contract
+     rejects updates from any other address.
+   * You need the per-install SALT from the machine's ESP (export it as hex/QR). Without it the id/key
+     can't be derived.
+   * The RPC read/write goes over THIS PHONE's network. For the privacy the OS is built on, run it
+     behind Orbot/Tor on the phone. The libraries below load from a CDN — vendor them locally before
+     you trust this offline.
+   * !!! UNTESTED scaffold — verify the round-trip against attest-seal.py on a testnet before real use.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/argon2-browser/1.18.0/argon2-bundled.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<style>
+  :root { --bg:#0b0f14; --card:#131a22; --fg:#e6edf3; --mut:#8aa0b2; --acc:#4da3ff; --bad:#ff6b6b; --ok:#4ade80; --line:#243240; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg:#f6f8fa; --card:#fff; --fg:#0b0f14; --mut:#5a6b7a; --line:#dfe6ee; } }
+  * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 -apple-system,system-ui,Segoe UI,Roboto,sans-serif; padding:16px; max-width:640px; margin:0 auto; }
+  h1 { font-size:20px; margin:4px 0 12px; } h2 { font-size:15px; color:var(--mut); margin:18px 0 8px; text-transform:uppercase; letter-spacing:.04em; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  label { display:block; font-size:13px; color:var(--mut); margin:8px 0 4px; }
+  input, textarea { width:100%; background:var(--bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:10px; font:14px/1.4 ui-monospace,monospace; }
+  textarea { min-height:96px; resize:vertical; }
+  button { width:100%; background:var(--acc); color:#06121f; border:0; border-radius:10px; padding:12px; font-weight:600; margin-top:12px; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--acc); border:1px solid var(--acc); }
+  button:disabled { opacity:.5; }
+  #log { white-space:pre-wrap; font:12px/1.5 ui-monospace,monospace; color:var(--mut); }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { border-left:3px solid var(--bad); padding-left:10px; color:var(--mut); font-size:13px; }
+</style>
+</head>
+<body>
+<h1>anonymOS · Attestation whitelist</h1>
+<p class="warn">This edits the sealed IP list that the boot gatekeeper reads. A non-whitelisted (or blacklisted) network makes the machine boot the <b>decoy</b>. Use on a trusted device, behind Tor.</p>
+
+<div class="card">
+  <h2>1 · Connection</h2>
+  <label>L2 RPC URL</label>
+  <input id="rpc" placeholder="https://mainnet.base.org  (or your L2 / testnet)" autocapitalize="off" autocorrect="off">
+  <label>Vault contract address</label>
+  <input id="addr" placeholder="0x…" autocapitalize="off" autocorrect="off">
+  <button id="connect" class="secondary">Connect wallet</button>
+  <div id="wallet" style="font-size:13px;color:var(--mut);margin-top:8px"></div>
+</div>
+
+<div class="card">
+  <h2>2 · Unlock your record</h2>
+  <label>Install password (never leaves this device)</label>
+  <input id="pw" type="password" autocapitalize="off" autocorrect="off">
+  <label>Per-install salt — hex, from the machine's ESP</label>
+  <input id="salt" placeholder="e.g. 3f9a…  (32 hex chars)" autocapitalize="off" autocorrect="off">
+  <button id="unlock">Derive key · fetch · decrypt</button>
+</div>
+
+<div class="card" id="editcard" style="display:none">
+  <h2>3 · Edit lists</h2>
+  <label>Whitelist — one IP or CIDR per line (allowed → real OS boots)</label>
+  <textarea id="wl" autocapitalize="off" autocorrect="off"></textarea>
+  <label>Blacklist — one per line (forces the decoy)</label>
+  <textarea id="bl" autocapitalize="off" autocorrect="off"></textarea>
+  <div style="font-size:12px;color:var(--mut)">integrity root (read-only): <span id="root"></span></div>
+  <button id="save">Re-seal &amp; submit (put)</button>
+</div>
+
+<div class="card"><h2>Log</h2><div id="log">idle.</div></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const log = (m, cls) => { const l=$("log"); l.innerHTML += `\n<span class="${cls||''}">${m}</span>`; l.scrollTop=1e9; };
+  const enc = new TextEncoder(), dec = new TextDecoder();
+  const hexToBytes = h => { h=h.replace(/^0x/,'').trim(); const a=new Uint8Array(h.length/2); for(let i=0;i<a.length;i++)a[i]=parseInt(h.substr(i*2,2),16); return a; };
+  const bytesToHex = b => '0x'+[...b].map(x=>x.toString(16).padStart(2,'0')).join('');
+  const concat = (...as) => { const n=as.reduce((s,a)=>s+a.length,0), o=new Uint8Array(n); let p=0; for(const a of as){o.set(a,p);p+=a.length;} return o; };
+
+  // shared KDF/format contract — MUST match scripts/attest-seal.py
+  const ARGON = { time:3, mem:65536, parallelism:1, hashLen:32, type: (window.argon2||{}).ArgonType?window.argon2.ArgonType.Argon2id:2 };
+  const SEAL_VERSION = 1, NONCE = 12;
+
+  async function sha256(b){ return new Uint8Array(await crypto.subtle.digest('SHA-256', b)); }
+  async function derive(pw, saltBytes){
+    if(!window.argon2) throw new Error("argon2 lib not loaded");
+    const r = await window.argon2.hash({ pass: pw, salt: saltBytes, time:ARGON.time, mem:ARGON.mem, parallelism:ARGON.parallelism, hashLen:ARGON.hashLen, type:ARGON.type });
+    const km = r.hash; // Uint8Array(32)
+    const id  = await sha256(concat(km, enc.encode("anos-id\0")));
+    const kE  = await sha256(concat(km, enc.encode("anos-enc\0")));
+    return { id, kE };
+  }
+  async function aesKey(raw){ return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt','decrypt']); }
+  async function unseal(kRaw, blob){
+    if(blob.length < 1+NONCE+16 || blob[0]!==SEAL_VERSION) throw new Error("bad seal header");
+    const key = await aesKey(kRaw), iv = blob.slice(1,1+NONCE), ct = blob.slice(1+NONCE);
+    return new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM', iv, tagLength:128}, key, ct));
+  }
+  async function seal(kRaw, ptBytes){
+    const key = await aesKey(kRaw), iv = crypto.getRandomValues(new Uint8Array(NONCE));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM', iv, tagLength:128}, key, ptBytes));
+    return concat(new Uint8Array([SEAL_VERSION]), iv, ct);
+  }
+  const VAULT_ABI = [
+    "function get(bytes32 id) view returns (bytes)",
+    "function put(bytes32 id, bytes ciphertext)",
+    "function exists(bytes32 id) view returns (bool)"
+  ];
+
+  let signer=null, state=null;
+
+  $("connect").onclick = async () => {
+    try {
+      if(!window.ethereum) return log("no injected wallet — open this page inside MetaMask/Rainbow's dApp browser.","bad");
+      const bp = new ethers.BrowserProvider(window.ethereum);
+      await bp.send("eth_requestAccounts", []);
+      signer = await bp.getSigner();
+      $("wallet").textContent = "wallet: " + await signer.getAddress();
+      log("wallet connected.","ok");
+    } catch(e){ log("connect failed: "+e.message,"bad"); }
+  };
+
+  $("unlock").onclick = async () => {
+    try {
+      const rpc=$("rpc").value.trim(), addr=$("addr").value.trim(), pw=$("pw").value, saltHex=$("salt").value.trim();
+      if(!rpc||!addr) return log("set RPC + contract address first.","bad");
+      if(pw.length<12) return log("password too short (<12).","bad");
+      if(!/^([0-9a-fA-F]{2})+$/.test(saltHex.replace(/^0x/,''))) return log("salt must be hex.","bad");
+      log("deriving key (Argon2id 64MiB — a few seconds)…");
+      const { id, kE } = await derive(pw, hexToBytes(saltHex));
+      const provider = new ethers.JsonRpcProvider(rpc);
+      const vault = new ethers.Contract(addr, VAULT_ABI, provider);
+      log("fetching record get("+bytesToHex(id).slice(0,12)+"…)…");
+      const recHex = await vault.get(bytesToHex(id));
+      const rec = hexToBytes(recHex);
+      if(rec.length===0) return log("no record for this id — wrong password/salt, or nothing written yet.","bad");
+      const pt = JSON.parse(dec.decode(await unseal(kE, rec)));
+      state = { id, kE, addr, root: pt.root };
+      $("wl").value = (pt.whitelist||[]).join("\n");
+      $("bl").value = (pt.blacklist||[]).join("\n");
+      $("root").textContent = pt.root;
+      $("editcard").style.display="block";
+      log("decrypted. whitelist="+(pt.whitelist||[]).length+" blacklist="+(pt.blacklist||[]).length,"ok");
+    } catch(e){ log("unlock failed: "+e.message+" (wrong password/salt gives a decrypt error)","bad"); }
+  };
+
+  const parseIps = t => t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+
+  $("save").onclick = async () => {
+    try {
+      if(!signer) return log("connect the owner wallet first.","bad");
+      if(!state) return log("unlock a record first.","bad");
+      const payload = { v:1, root: state.root, whitelist: parseIps($("wl").value), blacklist: parseIps($("bl").value), ts: Math.floor(Date.now()/1000) };
+      const ptBytes = enc.encode(JSON.stringify(payload));   // compact JSON (matches attest-seal)
+      const rec = await seal(state.kE, ptBytes);
+      if(rec.length>8192) return log("sealed record exceeds the 8192-byte contract cap.","bad");
+      log("submitting put() — confirm in your wallet…");
+      const vault = new ethers.Contract(state.addr, VAULT_ABI, signer);
+      const tx = await vault.put(bytesToHex(state.id), bytesToHex(rec));
+      log("tx "+tx.hash+" — waiting…");
+      await tx.wait();
+      log("whitelist/blacklist updated on-chain.","ok");
+    } catch(e){ log("save failed: "+e.message+" (contract rejects put from a non-owner wallet)","bad"); }
+  };
+})();
+</script>
+</body>
+</html>

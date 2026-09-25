@@ -290,9 +290,19 @@ BOOT_INTEGRITY_CONTRACT := contracts/BootIntegrityRegistry.sol
 BOOT_INTEGRITY_ABI := contracts/BootIntegrityRegistry.abi.json
 BOOT_INTEGRITY_ARTIFACT := build/contracts/BootIntegrityRegistry.artifact.json
 BOOT_INTEGRITY_MANIFEST := build/zksync-attestation.json
-ZKSYNC_NETWORK ?= zksync-sepolia
-ZKSYNC_CHAIN_ID ?= 300
-ZKSYNC_RPC_URL ?= https://sepolia.era.zksync.dev
+# Attestation chain: migrated off zkSync Era to a generic Ethereum L2 (Base / Arbitrum / Optimism —
+# all plain EVM, so the contracts deploy unchanged). Default is Base SEPOLIA (free testnet); switch
+# to Base mainnet (CHAIN_ID 8453, RPC https://mainnet.base.org) only when you accept real gas per
+# install. The ZKSYNC_ prefix is a misnomer now (kept to avoid a one-shot repo-wide rename); the
+# values point at the L2, and scripts/build-boot-integrity-manifest.py + boot_integrity.d's fallback
+# host still need the same repoint (follow-through).
+ZKSYNC_NETWORK ?= base-sepolia
+ZKSYNC_CHAIN_ID ?= 84532
+ZKSYNC_RPC_URL ?= https://sepolia.base.org
+# New permissionless per-install encrypted registry (contracts/EncryptedAttestationVault.sol),
+# written at install (attest-seal.py) and read by the boot gatekeeper. Set the deployed address here.
+ATTEST_VAULT_CONTRACT := contracts/EncryptedAttestationVault.sol
+ATTEST_VAULT_ADDRESS ?=
 BOOT_INTEGRITY_CONTRACT_ADDRESS ?=
 BOOT_INTEGRITY_DEPLOY_TX ?=
 DISPLAY_CONF := build/display.conf

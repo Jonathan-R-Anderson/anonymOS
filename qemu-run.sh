@@ -51,6 +51,28 @@ else
   echo "[qemu-run] /dev/kvm unavailable — using slow TCG emulation (expect a sluggish desktop)"
 fi
 
+# `-d int,cpu_reset,guest_errors -D qemu-debug.log` logs EVERY interrupt/exception to disk. On an
+# interactive desktop that is a constant firehose (timer + every input IRQ), which makes the whole
+# guest — and especially the cursor — slow and jumpy, and it disables KVM fast paths. It is a
+# hang-analysis tool, not something to run by default. OFF by default; QEMU_DEBUG=1 restores it.
+DBGLOG=()
+if [ "${QEMU_DEBUG:-0}" = "1" ]; then
+  DBGLOG=(-d int,cpu_reset,guest_errors -D qemu-debug.log)
+  echo "[qemu-run] QEMU_DEBUG=1: interrupt/reset logging -> qemu-debug.log (slower guest)"
+fi
+
+# Absolute pointer: a USB tablet makes the guest cursor track the host pointer 1:1, eliminating the
+# relative-PS/2 "jumping" + the need to grab. OPT-IN (TABLET=1) because it only helps a guest whose
+# HID stack parses ABSOLUTE reports: Linux (the decoy) does; EpinAnonymOS's own HID driver currently
+# handles a RELATIVE mouse, so with a tablet active QEMU stops feeding the PS/2 mouse and its cursor
+# could stall. Use TABLET=1 for the decoy; leave it off for EpinAnonymOS until its HID driver learns
+# absolute reports (src/kernel/d/drivers/input).
+POINTERDEV=()
+if [ "${TABLET:-0}" = "1" ]; then
+  POINTERDEV=( -device qemu-xhci,id=ptxhci -device usb-tablet,bus=ptxhci.0 )
+  echo "[qemu-run] TABLET=1: absolute USB tablet (host cursor tracks 1:1; no grab/jump)"
+fi
+
 # QEMU binary: prefer the locally-built virgl-capable QEMU >= 9.1 (~/.local/qemu-virgl), which is
 # REQUIRED for the GPU/blob path — the Ubuntu repo only ships 8.2.2, which refuses virgl+blob
 # ("blobs and virgl are not compatible (yet)").  Built from source, no sudo.  Falls back to system.
@@ -312,17 +334,17 @@ exec "$QEMU_BIN" \
   -serial file:serial.log \
   "${WIFISERIAL[@]}" \
   -m "$MEM" \
-  -smp "${SMP:-1}" \
+  -smp "${SMP:-2}" \
   -no-reboot \
   -no-shutdown \
   -monitor "unix:$PWD/mon.sock,server=on,wait=off" \
-  -d int,cpu_reset,guest_errors \
-  -D qemu-debug.log \
+  "${DBGLOG[@]}" \
   "${ACCEL[@]}" \
   -drive file="$DISK_IMG",if=none,id=hosdisk,format=raw \
   "${DISKDEV[@]}" \
   "${NVME[@]}" \
   "${USBDEV[@]}" \
+  "${POINTERDEV[@]}" \
   "${LOGUSBDEV[@]}" \
   "${GPUDEV[@]}" \
   "${NETDEV[@]}" \

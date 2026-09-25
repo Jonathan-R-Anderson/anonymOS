@@ -37,10 +37,11 @@ DECOY_PKGS ?= openssh git vim htop tmux curl wget chrony bash sudo less tree rsy
               tcpdump bind-tools mtr iproute2 file jq man-db docs
 
 # Runtimes for the apps staged by stage-apps.sh: openjdk -> apps/log-synth (Java),
-# python3+pip -> apps/evidenceforge (Python; the shared OpenRC service is
-# apps/synthetic-logs), py3-fusepy+fuse -> apps/qafs (a Python FUSE filesystem).
+# python3+pip -> apps/evidenceforge (Python; the shared OpenRC service is apps/synthetic-logs),
+# fuse (libfuse) -> apps/qafs. NB fusepy is NOT an Alpine 3.19 package (only py3-llfuse/py3-pyfuse3,
+# a different API), so apps/qafs/install.sh pip-installs fusepy into the rootfs instead.
 # Added to BOTH rootfs variants' apk add below.
-SYNTH_PKGS ?= openjdk17-jre-headless python3 py3-pip py3-fusepy fuse
+SYNTH_PKGS ?= openjdk17-jre-headless python3 py3-pip fuse
 
 # Block-layer tooling used by apps/disk-reclaim (the deniability duress tool that reclaims
 # foreign partitions into the decoy and grows its dm-crypt+ext4 to fill the disk). These are
@@ -219,9 +220,21 @@ $(BLD)/vmlinuz-decoy: $(DL)/$(KERNEL_TAR) kernel/decoy-kernel.config | $(BLD)
 	         USB USB_XHCI_HCD USB_EHCI_HCD USB_STORAGE USB_UAS \
 	         INPUT_EVDEV SERIO_I8042 KEYBOARD_ATKBD MOUSE_PS2 HID_GENERIC USB_HID \
 	         DRM DRM_VIRTIO_GPU DRM_BOCHS DRM_FBDEV_EMULATION FRAMEBUFFER_CONSOLE \
-	         EFI EFI_STUB DEBUG_INFO_BTF; do \
+	         EFI EFI_STUB; do \
 	   grep -q "^CONFIG_$$s=y" $(KSRC)/.config || { echo "[decoy-os] FATAL: kernel config lost CONFIG_$$s (unmet dep?) — the decoy would not boot"; exit 1; }; \
 	 done
+	@# apps/argus needs kernel BTF, which needs pahole (dwarves) at build time. Enable BTF when pahole
+	@# is present; otherwise DISABLE it and warn — don't hard-fail the whole OS build over one optional
+	@# detector (argus just won't load until dwarves is installed and the kernel rebuilt).
+	@if command -v pahole >/dev/null 2>&1; then \
+	   grep -q '^CONFIG_DEBUG_INFO_BTF=y' $(KSRC)/.config || { echo "[decoy-os] FATAL: BTF requested but olddefconfig dropped it"; exit 1; }; \
+	   echo "[decoy-os] pahole present -> kernel BTF ON (apps/argus eBPF can load)"; \
+	 else \
+	   echo "[decoy-os] WARNING: pahole (dwarves) not installed -> building the kernel WITHOUT BTF;"; \
+	   echo "[decoy-os]          apps/argus will NOT load until you install dwarves and rebuild."; \
+	   sed -i 's/^CONFIG_DEBUG_INFO_BTF=y/# CONFIG_DEBUG_INFO_BTF is not set/' $(KSRC)/.config; \
+	   $(MAKE) -C $(KSRC) ARCH=x86_64 olddefconfig; \
+	 fi
 	$(MAKE) -C $(KSRC) ARCH=x86_64 -j$(KJOBS) bzImage modules
 	cp $(KSRC)/arch/x86/boot/bzImage $@
 	@echo "[decoy-os] built from-scratch kernel $(KERNEL_VER) -> $@ ($$(du -h $@|cut -f1))"

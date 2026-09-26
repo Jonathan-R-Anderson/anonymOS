@@ -1,22 +1,49 @@
 # boot/gatekeeper — IP-gated boot for anonymOS
 
-A minimal-Linux UKI the §E5 pre-boot loader StartImages **first**, before it decrypts either OS. It
-enforces the encrypted IP whitelist/blacklist from `contracts/EncryptedAttestationVault.sol` so the
-real OS is only decrypted from an allowed network; anything else (or any failure) boots the decoy.
+A minimal-Linux UKI the §E5 pre-boot loader StartImages **after it has routed a password to DECOY or
+HIDDEN** (`preboot_auth.c` opens the two VeraCrypt headers; the loader holds the matching volume
+key). The gatekeeper IP-gates the **hidden** OS and — crucially — runs the **identical** dance on the
+**decoy** route, so the two boots are indistinguishable to anyone watching.
 
-Chosen over a UEFI-firmware check because Tor + an L2 RPC + Argon2/AEAD need a real OS — they can't
-run in the pre-boot firmware environment.
+Chosen over a UEFI-firmware check because Tor + an L2 RPC + Argon2/AEAD need a real OS.
 
 ## Flow (`init`)
 ```
-password → Argon2id(64MiB,t3) → {id,key}   (salt read locally from the ESP, no network yet)
-net up (DHCP) → Tor up → eth_call get(id) over Tor → AES-256-GCM decrypt the record
-learn public IP over Tor → classify:
-    blacklist match      → DECOY   (armed: a wipe could fire here)
-    not in whitelist / empty whitelist → DECOY   (fail-closed)
-    whitelist match      → REAL OS
-any error (no net / Tor down / RPC fail / decrypt fail / no record) → DECOY
+loader routes the password → gkroute=decoy|hidden (+ the matched volume key/geometry)
+ALWAYS (both routes): salt from ESP → Argon2id{id,key} → net (wired→WiFi) → Tor
+                      → eth_call get(id) → decrypt record → public IP → classify
+decide (no early exits):
+    gkroute=decoy                         → DECOY   (verdict ignored; dance was for parity)
+    gkroute=hidden AND whitelist match    → REAL OS
+    gkroute=hidden AND (blacklist/deny/any error) → REJECT
+hold to a fixed deadline (constant time)  → then hand off
 ```
+
+**Fail-closed = REJECT, not "boot the decoy."** The gatekeeper on the hidden route holds only the
+*hidden* key; it cannot decrypt the decoy (separate header/key). So a failed check returns the
+loader's **reject** path — indistinguishable from a wrong password (`preboot_auth.c` already makes
+wrong ≡ "no hidden OS here"). It never summons the decoy.
+
+## Indistinguishability (enforced in `init`)
+The loader already keeps decoy/hidden/reject identical on screen, serial, and *timing*. The
+gatekeeper must not break that:
+- **Constant time** — every outcome pads to `GK_DEADLINE` (must exceed worst-case Tor+fetch) before
+  handing off, so decoy-boot, hidden-boot, and hidden→reject all take the same wall-clock.
+- **Same traffic** — the DECOY route runs the same Tor + vault fetch and discards it, so the network
+  signature is identical whichever password was typed.
+- **Silent** — all logging is redirected to `/run/gk.log` (tmpfs); nothing route/outcome-specific
+  ever reaches console or serial.
+
+## Unsolved (needs loader work — flagging honestly)
+- **A WRONG password must also produce this exact dance.** Today a wrong password rejects in the
+  loader with no network activity; the hidden password now produces a ~`GK_DEADLINE` delay + Tor
+  traffic. A coercer who tries a known-wrong password and then the extracted one sees the difference
+  and learns the extracted password is *conditional*. Truly closing this means routing **every**
+  attempt (including wrong ones) through an identical traffic-producing stage — heavy, and it's the
+  deepest part. Until then, the timing is matched but the *traffic-only-on-real-passwords* leak
+  remains.
+- **The gatekeeper stage itself is a forensic artifact** — a Linux kernel boots before the "OS."
+  Uniform across routes it isn't *password*-distinguishing, but its existence is discoverable.
 
 ## Crypto contract (identical in `scripts/attest-seal.py` and `mobile/attestation-app/`)
 Argon2id `t=3, m=64MiB, p=1, len=32, type=id`; `id=SHA256(km‖"anos-id\0")`, `key=SHA256(km‖"anos-enc\0")`;

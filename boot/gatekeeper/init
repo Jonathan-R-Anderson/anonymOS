@@ -1,150 +1,111 @@
 #!/bin/busybox sh
 # boot/gatekeeper/init — PID 1 of the anonymOS boot GATEKEEPER (a minimal-Linux UKI the §E5
-# pre-boot loader StartImages FIRST, before it decrypts either OS).
+# pre-boot loader StartImages after it routes a password to DECOY or HIDDEN — see the README).
 #
-# PURPOSE: enforce the IP whitelist/blacklist that lives ENCRYPTED in the EncryptedAttestationVault
-# (contracts/) BEFORE the real OS is ever decrypted. Flow:
-#     password → Argon2id → {id, key} → (net + Tor up) → eth_call get(id) over Tor
-#       → decrypt record → learn our public IP over Tor → decide:
-#           IP in blacklist          → boot DECOY  (and, if armed, this is where a wipe could fire)
-#           IP not in whitelist      → boot DECOY
-#           whitelist empty          → boot DECOY  (fail-closed: nothing allowed = nothing revealed)
-#           IP in whitelist          → boot the REAL OS
-#       any failure (no net, Tor down, RPC error, decrypt fail, no record) → boot DECOY.
+# It IP-gates the HIDDEN OS: only a whitelisted network reaches it; anything else fails to a
+# REJECT (indistinguishable from a wrong password). The DECOY route runs the IDENTICAL dance and
+# boots the decoy regardless — so the two boots look the same to an observer.
 #
-# The gatekeeper holds NO real-OS key of its own: it only decides, then hands control to the real
-# or decoy boot path. That is what gives the "never decrypt the real OS from a wrong network"
-# property the UEFI loader alone can't (no Tor in firmware).
+# INDISTINGUISHABILITY (the whole point — do not "optimize" these away):
+#   * CONSTANT TIME  — every route pads to GK_DEADLINE before handing off, so a decoy boot, a
+#                      passing hidden boot, and a failing→reject attempt all take the same time.
+#   * SAME TRAFFIC   — the DECOY route runs the same Tor + vault fetch and discards the result, so
+#                      the on-the-wire signature is identical whichever password was typed.
+#   * SILENT         — all logging goes to /run/gk.log (tmpfs), NEVER console/serial. Nothing
+#                      route- or outcome-specific is ever printed.
+#   NB one thing this stage CANNOT fix alone: a WRONG password must also produce this same dance
+#   (see README "Unsolved") or the real password is distinguishable by its boot-time traffic.
 #
-# ┌─ !!! UNTESTED DRAFT — boot-critical. A mistake here bricks boot or reveals the hidden OS. ─┐
-# │ It must be built into a UKI and iterated against a REAL boot; that loop is yours, not mine. │
-# └─────────────────────────────────────────────────────────────────────────────────────────────┘
-#
-# INTEGRATION (finalize against the §E5 loader — these are the contract points I could not verify):
-#   * How the loader hands us the typed password (or a seed) + the geometry/keys for BOTH the real
-#     and decoy regions. Assumed cmdline params below (gk*=…), mirroring init-crypt's decoy*=… .
-#   * How we transfer control: kexec the real/decoy kernel+initramfs with the right cmdline, OR
-#     signal the loader which to StartImage. Drafted as kexec; adjust to your loader's model.
-#   * The unseal helper /bin/attest-unseal (compiled counterpart of scripts/attest-seal.py:
-#     Argon2id 64MiB/t=3 → SHA256 subkeys → AES-256-GCM). Must be baked into this initramfs.
+# ┌ !!! UNTESTED DRAFT. Boot-critical. kexec/reject hand-offs are placeholders; the §E5 loader must ┐
+# │ pass gkroute/gkkey/geometry; build + iterate in a THROWAWAY VM. See README.                     │
+# └───────────────────────────────────────────────────────────────────────────────────────────────┘
 B=/bin/busybox
 $B mount -t proc proc /proc 2>/dev/null
 $B mount -t sysfs sys /sys 2>/dev/null
 $B mount -t devtmpfs dev /dev 2>/dev/null
+$B mount -t tmpfs tmp /run 2>/dev/null
 
-log(){ $B echo "[gatekeeper] $*"; }
-# Every abnormal exit lands here: fail CLOSED to the decoy. `boot_decoy` never returns.
-fail(){ log "FAIL-CLOSED: $* → decoy"; boot_decoy; }
+# SILENCE: everything from here goes to tmpfs, not the console/serial the coercer can watch.
+exec >>/run/gk.log 2>&1
+log(){ $B echo "$(cut -d' ' -f1 /proc/uptime) $*"; }
 
-# ── load modules (net + crypto + kexec), order-independent like init-crypt ──────────────────
+# Constant-time deadline: read the boot clock now; hold_to_deadline() pads to START+GK_DEADLINE on
+# EVERY exit path. GK_DEADLINE must exceed the worst-case Tor+fetch so padding is always downward
+# (a fetch that overruns it would leak timing). Overridable via the gkdeadline= cmdline param.
+START=$($B cut -d. -f1 /proc/uptime)
+GK_DEADLINE=90
+hold_to_deadline(){
+  now=$($B cut -d. -f1 /proc/uptime)
+  end=$((START + GK_DEADLINE))
+  while [ "$($B cut -d. -f1 /proc/uptime)" -lt "$end" ]; do $B sleep 1; done
+}
+
 for pass in 1 2 3 4 5 6 7 8; do for m in /mod/*.ko; do $B insmod "$m" 2>/dev/null; done; done
 
-# ── cmdline handoff from the §E5 loader (INTEGRATION: confirm names/þsemantics) ──────────────
-pw=""; vault=""; rpc=""; ipsvc=""
-for tok in $($B cat /proc/cmdline); do
-  case "$tok" in
-    gkpass=*)  pw=${tok#gkpass=}     ;;   # the typed password (or a seed we KDF from)
-    gkvault=*) vault=${tok#gkvault=} ;;   # EncryptedAttestationVault address (0x…)
-    gkrpc=*)   rpc=${tok#gkrpc=}     ;;   # L2 RPC URL (reached only via Tor below)
-    gkipsvc=*) ipsvc=${tok#gkipsvc=} ;;   # public-IP echo endpoint (also via Tor)
-  esac
-done
-[ -n "$pw" ] && [ -n "$vault" ] && [ -n "$rpc" ] || fail "missing gatekeeper cmdline params"
+# ── loader handoff (INTEGRATION: confirm names against efi_main.c) ───────────────────────────
+#   gkroute=decoy|hidden   which universe the loader matched (it holds the matching volume key)
+#   gkpass=<pw>            the typed password (for the attestation id/key + WiFi creds)
+#   gkvault=/gkrpc=/gkipsvc=   attestation contract / L2 RPC / public-IP endpoint (via Tor)
+#   gkkey=/gkrl=/gkiv=/gksz=   the matched volume's key + geometry, for kexec-ing that OS
+route=""; pw=""; vault=""; rpc=""; ipsvc=""
+for tok in $($B cat /proc/cmdline); do case "$tok" in
+  gkroute=*) route=${tok#gkroute=} ;; gkpass=*) pw=${tok#gkpass=} ;;
+  gkvault=*) vault=${tok#gkvault=} ;; gkrpc=*) rpc=${tok#gkrpc=} ;;
+  gkipsvc=*) ipsvc=${tok#gkipsvc=} ;; gkdeadline=*) GK_DEADLINE=${tok#gkdeadline=} ;;
+esac; done
+salt=$($B cat /esp/anonymos/attest.salt 2>/dev/null)
 
-# The per-install SALT lives locally on the ESP (so we can derive id/key before any network).
-# INTEGRATION: mount the ESP and read it; path is a placeholder.
-SALT_FILE=/esp/anonymos/attest.salt
-salt=$($B cat "$SALT_FILE" 2>/dev/null)
-[ -n "$salt" ] || fail "no attestation salt on ESP ($SALT_FILE)"
-
-# ── network up: try WIRED (DHCP) first, then WIFI (wpa_supplicant + DHCP) ────────────────────
-# Whatever link is available. Wired needs no credentials. WiFi needs (a) the wireless driver +
-# FIRMWARE and wpa_supplicant baked into THIS initramfs (hardware-specific — see the README) and
-# (b) credentials, which live ENCRYPTED on the ESP as a sealed wpa_supplicant.conf, decrypted here
-# with the password-derived key (attest-unseal --decrypt-file). No plaintext WiFi key on disk.
+# ── the DANCE — run identically for decoy and hidden (traffic uniformity) ────────────────────
 WIFI_ENC=/esp/anonymos/wifi.enc
 is_wireless(){ [ -d "/sys/class/net/$1/wireless" ] || [ -e "/sys/class/net/$1/phy80211" ]; }
 have_route(){ $B ip route 2>/dev/null | $B grep -q '^default'; }
 net_up(){
   $B ip link set lo up 2>/dev/null
-  # 1. WIRED first (Ethernet / USB-NIC / virtio) — no credentials needed
-  for d in /sys/class/net/*; do
-    [ -e "$d" ] || continue; n=$($B basename "$d"); [ "$n" = lo ] && continue; is_wireless "$n" && continue
-    $B ip link set "$n" up 2>/dev/null
-    log "wired $n: DHCP…"
-    $B udhcpc -i "$n" -n -q -t 3 -T 3 2>/dev/null && have_route && { log "network up (wired $n)"; return 0; }
-  done
-  # 2. WIFI — needs the sealed creds + wpa_supplicant + driver/firmware present
-  for d in /sys/class/net/*; do
-    [ -e "$d" ] || continue; n=$($B basename "$d"); is_wireless "$n" || continue
-    [ -f "$WIFI_ENC" ] || { log "wifi $n: no sealed creds at $WIFI_ENC — skipping"; continue; }
-    printf '%s' "$pw" | /bin/attest-unseal --decrypt-file "$WIFI_ENC" --salt "$salt" > /tmp/wpa.conf 2>/dev/null \
-      || { log "wifi $n: credential decrypt failed"; continue; }
-    $B ip link set "$n" up 2>/dev/null
-    wpa_supplicant -B -i "$n" -c /tmp/wpa.conf >/tmp/wpa.log 2>&1 \
-      || { log "wifi $n: wpa_supplicant failed (driver/firmware missing?)"; $B rm -f /tmp/wpa.conf; continue; }
-    ok=""; for i in $($B seq 1 30); do \
-      wpa_cli -i "$n" status 2>/dev/null | $B grep -q 'wpa_state=COMPLETED' && { ok=1; break; }; $B sleep 1; done
-    [ -n "$ok" ] || { log "wifi $n: no association"; $B rm -f /tmp/wpa.conf; continue; }
-    log "wifi $n: associated; DHCP…"
-    $B udhcpc -i "$n" -n -q -t 3 -T 3 2>/dev/null && have_route && { log "network up (wifi $n)"; $B rm -f /tmp/wpa.conf; return 0; }
-    $B rm -f /tmp/wpa.conf
-  done
+  for d in /sys/class/net/*; do [ -e "$d" ] || continue; n=$($B basename "$d"); [ "$n" = lo ] && continue; is_wireless "$n" && continue
+    $B ip link set "$n" up 2>/dev/null; $B udhcpc -i "$n" -n -q -t 3 -T 3 2>/dev/null && have_route && return 0; done
+  for d in /sys/class/net/*; do [ -e "$d" ] || continue; n=$($B basename "$d"); is_wireless "$n" || continue
+    [ -f "$WIFI_ENC" ] || continue
+    printf '%s' "$pw" | /bin/attest-unseal --decrypt-file "$WIFI_ENC" --salt "$salt" > /tmp/wpa.conf 2>/dev/null || continue
+    $B ip link set "$n" up 2>/dev/null; wpa_supplicant -B -i "$n" -c /tmp/wpa.conf >/dev/null 2>&1 || { $B rm -f /tmp/wpa.conf; continue; }
+    ok=""; for i in $($B seq 1 30); do wpa_cli -i "$n" status 2>/dev/null | $B grep -q 'wpa_state=COMPLETED' && { ok=1; break; }; $B sleep 1; done
+    [ -n "$ok" ] && $B udhcpc -i "$n" -n -q -t 3 -T 3 2>/dev/null && have_route && { $B rm -f /tmp/wpa.conf; return 0; }
+    $B rm -f /tmp/wpa.conf; done
   return 1
 }
-net_up || fail "no network (wired or WiFi) — cannot validate boot"
+# Returns ALLOW / DENY / BLACKLIST / ERR — same code runs on both routes (decoy discards it).
+run_check(){
+  net_up || { log "no network"; echo ERR; return; }
+  tor -f /etc/tor/torrc >/tmp/tor.log 2>&1 &
+  ok=""; for i in $($B seq 1 60); do $B nc -z 127.0.0.1 9050 2>/dev/null && { ok=1; break; }; $B sleep 1; done
+  [ -n "$ok" ] || { log "no tor"; echo ERR; return; }
+  T="--socks5-hostname 127.0.0.1:9050"
+  id=$(printf '%s' "$pw" | /bin/attest-unseal --derive-id --salt "$salt" 2>/dev/null) || { echo ERR; return; }
+  data="0x8eaa6ac0${id}"
+  req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"$vault\",\"data\":\"$data\"},\"latest\"]}"
+  resp=$(curl -s --max-time 30 $T -H 'Content-Type: application/json' -d "$req" "$rpc" 2>/dev/null) || { echo ERR; return; }
+  rec=$(printf '%s' "$resp" | /bin/attest-unseal --decode-ethcall --password "$pw" --salt "$salt" 2>/dev/null) || { echo ERR; return; }
+  myip=$(curl -s --max-time 30 $T "${ipsvc:-https://check.torproject.org/api/ip}" 2>/dev/null | $B grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | $B head -n1)
+  [ -n "$myip" ] || { echo ERR; return; }
+  printf '%s' "$rec" | /bin/attest-unseal --match "$myip" 2>/dev/null || echo ERR
+}
+verdict=$(run_check)
+log "route=$route verdict=$verdict"
 
-# ── Tor up; wait for the SOCKS port ─────────────────────────────────────────────────────────
-# INTEGRATION: ship a tor binary + a minimal torrc (SocksPort 9050) in this initramfs.
-tor -f /etc/tor/torrc >/tmp/tor.log 2>&1 &
-ok=""
-for i in $($B seq 1 60); do
-  $B nc -z 127.0.0.1 9050 2>/dev/null && { ok=1; break; }
-  $B sleep 1
-done
-[ -n "$ok" ] || fail "Tor did not come up"
-TORSOCKS="--socks5-hostname 127.0.0.1:9050"
+# ── decide outcome (no early exits — every path reaches hold_to_deadline) ─────────────────────
+outcome=REJECT
+if [ "$route" = decoy ]; then
+  outcome=DECOY                              # decoy always boots; the check above was only for traffic parity
+elif [ "$route" = hidden ] && [ "$verdict" = ALLOW ]; then
+  outcome=REAL
+fi                                           # hidden+anything-else, or unknown route → REJECT
 
-# ── derive id + key, fetch the record over Tor, decrypt ─────────────────────────────────────
-# /bin/attest-unseal: given password+salt on stdin/args, prints the record id (hex) and, when fed
-# the fetched ciphertext, prints the decrypted JSON. (Compiled counterpart of attest-seal.py.)
-id=$(printf '%s' "$pw" | /bin/attest-unseal --derive-id --salt "$salt") || fail "KDF failed"
-[ -n "$id" ] || fail "empty id"
+hold_to_deadline                             # <-- constant time: all outcomes leave here together
 
-# eth_call get(bytes32 id): selector for get(bytes32) = 0x8eaa6ac0 (keccak256("get(bytes32)")[:4]).
-# INTEGRATION: verify the selector against the compiled ABI (contracts/…abi.json).
-data="0x8eaa6ac0${id}"
-req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"$vault\",\"data\":\"$data\"},\"latest\"]}"
-resp=$(curl -s --max-time 30 $TORSOCKS -H 'Content-Type: application/json' -d "$req" "$rpc" 2>/dev/null) \
-  || fail "vault RPC failed (Tor/RPC unreachable → decoy is correct)"
-# The eth_call result is ABI-encoded `bytes`; attest-unseal strips the ABI wrapper + AES-GCM-decrypts.
-record_json=$(printf '%s' "$resp" | /bin/attest-unseal --decode-ethcall --password "$pw" --salt "$salt") \
-  || fail "record decrypt failed (wrong password/salt, or no record)"
-
-# ── learn our public IP over Tor and decide ─────────────────────────────────────────────────
-myip=$(curl -s --max-time 30 $TORSOCKS "${ipsvc:-https://check.torproject.org/api/ip}" 2>/dev/null | \
-       $B grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | $B head -n1)
-[ -n "$myip" ] || fail "could not determine public IP"
-log "public IP via Tor: $myip"
-
-# attest-unseal --match classifies the IP against the decrypted whitelist/blacklist and prints one
-# of: BLACKLIST | ALLOW | DENY  (DENY = not in a non-empty whitelist, or whitelist empty).
-verdict=$(printf '%s' "$record_json" | /bin/attest-unseal --match "$myip") || fail "match failed"
-case "$verdict" in
-  ALLOW)     log "IP whitelisted → booting the real OS"; boot_real ;;
-  BLACKLIST) log "IP blacklisted → decoy"; boot_decoy ;;
-  *)         log "IP not whitelisted ($verdict) → decoy"; boot_decoy ;;
+# ── hand off (INTEGRATION: replace with real kexec / reject-to-loader) ───────────────────────
+case "$outcome" in
+  REAL)   log "-> real"; : ;;   # TODO kexec the hidden OS with gkkey/geometry
+  DECOY)  log "-> decoy"; : ;;  # TODO kexec the decoy with gkkey/geometry
+  *)      log "-> reject"; : ;; # TODO reset back to the loader's prompt, indistinguishable from a wrong password
 esac
-fail "unreachable"
-
-# ── control transfer (INTEGRATION: match your loader's real/decoy boot mechanism) ────────────
-boot_real(){
-  # Hand back to the §E5 real-OS path. Drafted as kexec of the real UKI; the real key/geometry are
-  # derived/held by the loader path, NOT here. Replace with your loader's signal if not kexec.
-  log "TODO: transfer to the REAL OS boot path (kexec real UKI / signal loader)"
-  exec $B sh   # placeholder: DO NOT ship — must transfer control, not drop to a shell
-}
-boot_decoy(){
-  log "TODO: transfer to the DECOY boot path (kexec decoy UKI / signal loader)"
-  exec $B sh   # placeholder: DO NOT ship
-}
+# Placeholders: DO NOT SHIP. Must transfer control (kexec) or reset — never fall through.
+exec $B sh

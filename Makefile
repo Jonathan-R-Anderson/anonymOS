@@ -246,9 +246,10 @@ $(DECOY_IMAGE):
 # build the decoy first (or set APK_STATIC=). Override GK_FIRMWARE for your WiFi chipset.
 gatekeeper-uki:
 	boot/gatekeeper/build-uki.sh
-# Deploy the EncryptedAttestationVault over Tor (interactive: prompts for a fresh, Tor-funded
-# deployer key — NOT part of `all`, and it spends real testETH). Inherits the L2 RPC/network
-# defaults. Writes the address to build/attest-contract.txt; feed it back via
+# Deploy the EncryptedAttestationVault over Tor. Generates a fresh BIP-39 wallet and REVEALS its
+# seed (that wallet owns the on-chain records — back it up / move to cold storage), waits for you to
+# fund it, then deploys. Interactive; NOT part of `all`; spends real testETH. Inherits the L2
+# RPC/network defaults. Writes the CONTRACT address to build/attest-contract.txt; feed it back via
 # BOOT_INTEGRITY_CONTRACT_ADDRESS=… (build time) or cp to /config/attest-contract (live installer).
 attest-deploy:
 	ZKSYNC_RPC_URL="$(ZKSYNC_RPC_URL)" ZKSYNC_NETWORK="$(ZKSYNC_NETWORK)" \

@@ -59,6 +59,8 @@ __gshared char[IC_FIELD_MAX] g_icDecoyFullName;
 __gshared uint g_icDecoyFullNameLen;
 __gshared char[IC_FIELD_MAX] g_icDecoyHostname;
 __gshared uint g_icDecoyHostnameLen;
+__gshared char[IC_FIELD_MAX] g_icAttestContract;   // per-install attestation contract address (0x…) from install.json
+__gshared uint g_icAttestContractLen;
 
 public bool installConfigPresent() {
     return g_icPresent;
@@ -69,6 +71,16 @@ public bool installConfigBootIntegrityZkSync() {
     return g_icBootIntegrity[0] == 'z' && g_icBootIntegrity[1] == 'k' &&
            g_icBootIntegrity[2] == 's' && g_icBootIntegrity[3] == 'y' &&
            g_icBootIntegrity[4] == 'n' && g_icBootIntegrity[5] == 'c';
+}
+
+// The per-install attestation contract address the installer wrote to install.json (empty if none).
+// boot_integrity prefers this over the image-baked manifest so a user-deployed contract activates
+// on-chain attestation without an image rebuild. Copies into outBuf, returns the length.
+public uint installConfigAttestContract(char[] outBuf) {
+    uint n = g_icAttestContractLen;
+    if (n > cast(uint)outBuf.length) n = cast(uint)outBuf.length;
+    foreach (i; 0 .. n) outBuf[i] = g_icAttestContract[i];
+    return n;
 }
 
 private bool icStrEq(const(char)* a, const(char)* b) {
@@ -199,6 +211,7 @@ public bool installConfigApply() {
     icJsonGetString("decoyUser", g_icDecoyUser[], g_icDecoyUserLen);
     icJsonGetString("decoyFullName", g_icDecoyFullName[], g_icDecoyFullNameLen);
     icJsonGetString("decoyHostname", g_icDecoyHostname[], g_icDecoyHostnameLen);
+    icJsonGetString("attestContract", g_icAttestContract[], g_icAttestContractLen);
     g_icRealPasswordSet = icJsonHasNonEmpty("userPasswordSha512") ||
                           icJsonHasNonEmpty("userPassword");
     g_icHiddenPasswordSet = icJsonHasNonEmpty("hiddenPasswordSha512") ||

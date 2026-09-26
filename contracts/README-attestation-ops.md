@@ -1,30 +1,38 @@
-# Attestation ops — deploy, record, manage (manual, until the installer wires it)
+# Attestation ops — deploy, record, manage
 
-`wl-installer` does **not** yet deploy the vault or record your info, and the mobile app isn't
-packaged/served — that integration is unbuilt. Until it exists, this is the manual path that does
-the same three things with standard tools.
+**Deploy is now one command** (`scripts/attest-deploy.sh`, over Tor) and the **installer records the
+deployed address for you** (it lands in `install.json` as `attestContract`; `boot_integrity.d`
+prefers it over the image-baked manifest and verifies against it on-chain). What is still manual:
+sealing + submitting the *record* itself (step 2 — `put()`), and hosting the mobile app.
 
 > ⚠ Boot enforcement is NOT live yet. `boot/gatekeeper/` is a skeleton (placeholder transfer logic),
 > so a recorded whitelist gates nothing at boot until the gatekeeper is finished. You can still
 > deploy/record/manage now to exercise the chain + app; enforcement comes with the gatekeeper.
+>
+> ℹ Why deploy runs here and not in the installer: signing a deploy tx needs secp256k1 + keccak +
+> RLP + a live RPC. The kernel/installer only does read-only `eth_call` (no signing), so the deploy
+> uses a real EVM toolchain (Foundry) in a normal userland — never hand-rolled crypto in the boot path.
 
-Prereqs: an L2 wallet with a little test ETH (Base Sepolia faucet), one of Remix/Foundry, `torsocks`
-(or Orbot), and `pip install argon2-cffi cryptography` for the seal tool.
+Prereqs: an L2 wallet with a little test ETH (Base Sepolia faucet), Foundry (`forge`; Remix works as
+a fallback), `tor` + `torsocks` (or Orbot), and `pip install argon2-cffi cryptography` for the seal tool.
 
-## 1. Deploy the vault (once)
-**Remix (zero-install):** open remix.ethereum.org → paste `contracts/EncryptedAttestationVault.sol`
-→ compile (0.8.24) → Deploy, environment "Injected Provider" with your wallet on **Base Sepolia**.
-Copy the deployed address.
-
-**Foundry (CLI):**
+## 1. Deploy the vault (once), over Tor
 ```sh
-forge create contracts/EncryptedAttestationVault.sol:EncryptedAttestationVault \
-  --rpc-url https://sepolia.base.org --private-key $DEPLOYER_KEY
+tor &                         # or Tor Browser / Orbot — anything with a SOCKS port on 9050
+make attest-deploy            # == scripts/attest-deploy.sh  (Base Sepolia default)
+# prompts for your FRESH, Tor-funded deployer key (entered interactively — never in argv/env/disk)
 ```
-Then set the address everywhere that reads it:
-- `Makefile` → `ATTEST_VAULT_ADDRESS := 0x…`
-- the mobile app's "Vault contract address" field
-- the gatekeeper cmdline `gkvault=0x…` (once it's built)
+It tunnels `forge create` through Tor, prints the deployed address, and writes it to
+`build/attest-contract.txt`. Then wire it in **one** way:
+- **Live installer (no rebuild):** `cp build/attest-contract.txt /config/attest-contract` on the
+  installer/live environment → the installer records it as `attestContract`, and the on-chain
+  attestation option un-greys. This is the per-install path.
+- **Baked into the image (build time):** `make BOOT_INTEGRITY_CONTRACT_ADDRESS=0x… ATTEST_VAULT_ADDRESS=0x… …`
+- Also: the mobile app's "Vault contract address" field, and the gatekeeper cmdline `gkvault=0x…`.
+
+**Remix fallback (zero-install):** open remix.ethereum.org → paste `contracts/EncryptedAttestationVault.sol`
+→ compile (0.8.24) → Deploy with "Injected Provider" on **Base Sepolia** (drive the browser through
+Tor) → copy the address → wire it in as above.
 
 ## 2. Record your install (per machine)
 ```sh
@@ -53,7 +61,10 @@ Enter the RPC (`https://sepolia.base.org`), the vault address, your password, an
 whitelist/blacklist and re-submit `put()` signed by the owner wallet.
 
 ## What's still required for this to be a real product feature
-- **Wire steps 1–2 into `wl-installer`** (new screens: password, whitelist, deploy/record) so an
-  installing user isn't running `cast` by hand. Substantial C/Wayland work.
+- **Done:** deploy is one command (`make attest-deploy`, Tor-routed); the installer records the
+  deployed address (`attestContract` → `install.json`) and `boot_integrity.d` verifies against it.
+- **Still manual — step 2 (`put()`):** the installer does not yet run `attest-seal.py` + `cast send`
+  for you (it would need password + whitelist entry screens and a signer, which the install kernel
+  lacks). An installing user still records the sealed payload by hand as above.
 - **Finish `boot/gatekeeper/`** so the whitelist actually gates boot (see its README).
 - **Package/serve the mobile app** (bundle its CDN libs for offline/Tor, ship it somewhere).

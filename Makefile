@@ -222,7 +222,7 @@ WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 #   make decoy          # §G deterministic decoy activity generator engine    [engine DONE, tests PASS]
 #   make decoy-os       # §H1 decoy Linux distro (Alpine, seeded fake history) [rootfs DONE]
 # =========================================================
-.PHONY: qt-stack parted-stack calamares-deps calamares veracrypt decoy decoy-os installer-deps gatekeeper-uki
+.PHONY: qt-stack parted-stack calamares-deps calamares veracrypt decoy decoy-os installer-deps gatekeeper-uki attest-deploy
 qt-stack:
 	+$(MAKE) -C deps/qt-stack all
 calamares-deps:
@@ -246,6 +246,13 @@ $(DECOY_IMAGE):
 # build the decoy first (or set APK_STATIC=). Override GK_FIRMWARE for your WiFi chipset.
 gatekeeper-uki:
 	boot/gatekeeper/build-uki.sh
+# Deploy the EncryptedAttestationVault over Tor (interactive: prompts for a fresh, Tor-funded
+# deployer key — NOT part of `all`, and it spends real testETH). Inherits the L2 RPC/network
+# defaults. Writes the address to build/attest-contract.txt; feed it back via
+# BOOT_INTEGRITY_CONTRACT_ADDRESS=… (build time) or cp to /config/attest-contract (live installer).
+attest-deploy:
+	ZKSYNC_RPC_URL="$(ZKSYNC_RPC_URL)" ZKSYNC_NETWORK="$(ZKSYNC_NETWORK)" \
+	ATTEST_VAULT_CONTRACT="$(ATTEST_VAULT_CONTRACT)" scripts/attest-deploy.sh
 veracrypt-efi:
 	+$(MAKE) -C deps/veracrypt efi
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt

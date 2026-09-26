@@ -255,40 +255,83 @@ static int hex_digit(int c)
            (c >= 'A' && c <= 'F');
 }
 
-static int zksync_attestation_has_contract(void)
+/* Validate a 0x-prefixed 20-byte address at `p` (40 hex digits, at least one nonzero, so an
+ * all-zero placeholder counts as "unset").  On success copies the 42-char "0x..." (NUL-terminated)
+ * into out and returns 1.  cap must be >= 43. */
+static int parse_hex_address_at(const char *p, char *out, size_t cap)
 {
-    static int cached = -1;
-    if (cached >= 0)
-        return cached;
-
-    cached = 0;
-    int fd = open("/zksync-attestation.json", O_RDONLY);
-    if (fd < 0)
+    if (!p || cap < 43)
         return 0;
-
-    char buf[8192];
-    ssize_t n = read(fd, buf, sizeof(buf) - 1);
-    close(fd);
-    if (n <= 0)
+    if (p[0] != '0' || (p[1] != 'x' && p[1] != 'X'))
         return 0;
-    buf[n] = 0;
-
-    char *key = strstr(buf, "\"contractAddress\"");
-    if (!key)
-        return 0;
-    char *addr = strstr(key, "0x");
-    if (!addr)
-        return 0;
-
     int nonzero = 0;
     for (int i = 0; i < 40; ++i) {
-        int c = addr[2 + i];
+        int c = (unsigned char)p[2 + i];
         if (!hex_digit(c))
             return 0;
         if (c != '0')
             nonzero = 1;
     }
-    cached = nonzero;
+    if (!nonzero)
+        return 0;
+    out[0] = '0';
+    out[1] = 'x';
+    for (int i = 0; i < 40; ++i)
+        out[2 + i] = p[2 + i];
+    out[42] = 0;
+    return 1;
+}
+
+/* The per-install attestation contract address (0x + 40 hex) the system should use, in priority:
+ *   1. /config/attest-contract  — dropped at runtime by scripts/attest-deploy.sh after the user
+ *      DEPLOYS their own EncryptedAttestationVault over Tor with a funded wallet.  The file is just
+ *      the address (a leading "0x..." anywhere in it is taken).
+ *   2. /zksync-attestation.json "contractAddress" — baked into the image at build time from
+ *      BOOT_INTEGRITY_CONTRACT_ADDRESS (Makefile), for a preconfigured contract.
+ * Returns 1 and fills out on success; 0 if neither source holds a usable address.  This is what
+ * flows into install.json as "attestContract", which boot_integrity.d prefers over the manifest. */
+static int read_attest_contract(char *out, size_t cap)
+{
+    char buf[8192];
+
+    int fd = open("/config/attest-contract", O_RDONLY);
+    if (fd >= 0) {
+        ssize_t n = read(fd, buf, sizeof(buf) - 1);
+        close(fd);
+        if (n > 0) {
+            buf[n] = 0;
+            char *at = strstr(buf, "0x");
+            if (at && parse_hex_address_at(at, out, cap))
+                return 1;
+        }
+    }
+
+    fd = open("/zksync-attestation.json", O_RDONLY);
+    if (fd < 0)
+        return 0;
+    ssize_t n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0)
+        return 0;
+    buf[n] = 0;
+    char *key = strstr(buf, "\"contractAddress\"");
+    if (!key)
+        return 0;
+    char *at = strstr(key, "0x");
+    return (at && parse_hex_address_at(at, out, cap)) ? 1 : 0;
+}
+
+/* Gate for the on-chain attestation option: enabled once a contract address exists from either
+ * source above.  Cached because it is polled every render; the deploy happens before/at this
+ * screen (it needs a real EVM toolchain + Tor, not available inside this installer), so a
+ * first-read cache is safe. */
+static int zksync_attestation_has_contract(void)
+{
+    static int cached = -1;
+    if (cached >= 0)
+        return cached;
+    char addr[64];
+    cached = read_attest_contract(addr, sizeof addr) ? 1 : 0;
     return cached;
 }
 
@@ -927,7 +970,7 @@ static const char *opt_disabled_reason(struct app *app, int s, int idx)
     if (s == SCREEN_BOOTINTEGRITY) {
         if (strcmp(NETWORKS[app->network_idx].code, "offline") == 0)
             return "needs Wired or Wi-Fi";
-        return "no registry on this medium";
+        return "no contract — deploy one first (scripts/attest-deploy.sh)";
     }
     return "unavailable";
 }
@@ -3890,6 +3933,15 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap, int r
     append_json_string(buf, cap, &pos, "filesystem", FILESYSTEMS[app->filesystem_idx].code, 1);
     append_json_string(buf, cap, &pos, "targetDisk", target, 1);
     append_json_string(buf, cap, &pos, "bootIntegrity", BOOTINTEGRITY[app->bootintegrity_idx].code, 1);
+    /* Per-install attestation contract (the user's own deployed EncryptedAttestationVault, or the
+     * image-baked one).  Emitted only when present; boot_integrity.d prefers it over the manifest's
+     * contractAddress, and treats its absence as "fall back to the manifest / local-only".  It is a
+     * PUBLIC on-chain address, not a secret, so it is emitted in the redacted /tmp copy too. */
+    {
+        char attest_addr[64];
+        if (read_attest_contract(attest_addr, sizeof attest_addr))
+            append_json_string(buf, cap, &pos, "attestContract", attest_addr, 1);
+    }
     append_json_string(buf, cap, &pos, "identities", ids, 1);
     append_json_string(buf, cap, &pos, "drivers", drv, 1);
     append_json_string(buf, cap, &pos, "encryption", encryption_name(app), 1);

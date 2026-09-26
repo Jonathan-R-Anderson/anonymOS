@@ -5,7 +5,7 @@ import core.io : klog, klog_hex;
 import core.console : console_force_framebuffer_log;
 import core.exports : g_mboot_modules, g_module_count, phys_to_virt;
 import core.crypto : Sha256, sha256Init, sha256Update, sha256Final, sha256, ctEqual32;
-import core.install_config : installConfigBootIntegrityZkSync;
+import core.install_config : installConfigBootIntegrityZkSync, installConfigAttestContract;
 import network.stack : isNetworkStackRunning;
 import network.https : httpsPostHostname;
 import network.http : HTTPResponse, httpPost;
@@ -60,6 +60,7 @@ __gshared bool g_biSelected;
 __gshared bool g_biLocalOk;
 __gshared bool g_biChainAttempted;
 __gshared bool g_biChainOk;
+__gshared bool g_biChainConfigured;   // a valid on-chain contract address is present
 
 private void biPanic(const(char)* msg) {
     console_force_framebuffer_log();
@@ -351,15 +352,26 @@ public void bootIntegrityVerifyLocal() {
     if (!biJsonGetString("root", rootHex[], rootHexLen) || !biParseHex32(rootHex.ptr, rootHexLen, g_biRoot.ptr))
         biPanic("attestation root is missing or invalid");
 
-    g_biContractAddressLen = 0;
-    biJsonGetString("contractAddress", g_biContractAddress[], g_biContractAddressLen);
-    if (!biContractAddressConfigured())
-        biPanic("zkSync registry contractAddress is not configured");
-
-    g_biRpcUrlLen = 0;
-    biJsonGetString("rpcUrl", g_biRpcUrl[], g_biRpcUrlLen);
-    if (!biExtractRpcHost())
-        biPanic("rpcUrl host is invalid");
+    // Prefer a PER-INSTALL contract address written by the installer into install.json
+    // (attestContract) — this is the user's own deployed EncryptedAttestationVault. Fall back to
+    // the image-baked manifest's contractAddress only if the installer didn't set one. Either
+    // source may be empty/invalid, in which case we degrade to LOCAL-ONLY below (never panic).
+    g_biContractAddressLen = installConfigAttestContract(g_biContractAddress[]);
+    if (g_biContractAddressLen == 0)
+        biJsonGetString("contractAddress", g_biContractAddress[], g_biContractAddressLen);
+    g_biChainConfigured = biContractAddressConfigured();
+    if (!g_biChainConfigured) {
+        // No contract deployed/configured yet. Do NOT brick the boot — fall back to LOCAL-ONLY
+        // integrity (the boot modules are still hashed against this manifest's root below). Deploy
+        // a contract and set its address to enable the on-chain attestation. This is the correct
+        // degrade: you can't boot to deploy a contract if a missing contract blocks booting.
+        klog("[boot-integrity] no contractAddress configured -> LOCAL-ONLY integrity (on-chain check skipped)\n");
+    } else {
+        g_biRpcUrlLen = 0;
+        biJsonGetString("rpcUrl", g_biRpcUrl[], g_biRpcUrlLen);
+        if (!biExtractRpcHost())
+            biPanic("rpcUrl host is invalid");
+    }
 
     if (!biParseEntries()) biPanic("attestation file list is missing or invalid");
     if (!biHashEntriesAndCompare()) biPanic("local boot-module hashes do not match attestation root");
@@ -418,6 +430,10 @@ private bool biFindResultRoot(const(ubyte)* body, size_t len, ubyte* out32) {
 
 public void bootIntegrityVerifyChain() {
     if (!g_biSelected) return;
+    if (!g_biChainConfigured) {
+        klog("[boot-integrity] on-chain check skipped (no contract configured; local-only)\n");
+        return;
+    }
     if (!g_biLocalOk) biPanic("chain check reached before local verification passed");
     if (g_biChainAttempted) return;
     g_biChainAttempted = true;

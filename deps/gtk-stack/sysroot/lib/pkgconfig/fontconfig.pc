@@ -1,15 +1,17 @@
-prefix=${pcfiledir}/../..
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
-sysconfdir=${pcfiledir}/../../etc
-localstatedir=${pcfiledir}/../../var
-confdir=${pcfiledir}/../../etc/fonts
-cachedir=${pcfiledir}/../../var/cache/fontconfig
+sysconfdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/etc
+localstatedir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/var
+confdir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/etc/fonts
+cachedir=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/var/cache/fontconfig
 
 Name: Fontconfig
 Description: Font configuration and customization library
 Version: 2.15.0
-Requires: freetype2 >=  21.0.15, expat
-Libs: -L${libdir} -lfontconfig -pthread
-Cflags: -I${includedir} -pthread
+Requires: freetype2 >=  21.0.15
+Requires.private: expat
+Libs: -L${libdir} -lfontconfig
+Libs.private: -pthread
+Cflags: -I${includedir}

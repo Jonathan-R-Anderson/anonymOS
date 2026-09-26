@@ -24,6 +24,13 @@ $(BUILD_ROOT)/libkernel_d.a: $(D_OBJECTS) $(ASM_OBJECTS)
 D_HOT_OPT ?= -O2
 $(BUILD_ROOT)/d/drivers/veracrypt_crypto.o $(BUILD_ROOT)/d/drivers/veracrypt_impl.o $(BUILD_ROOT)/d/core/random.o: D_OPT_OVERRIDE = $(D_HOT_OPT)
 
+# DESKTOP HOT PATH — every frame + input event crosses the syscall dispatcher (posix.d), the scanout
+# blit + scheduler (kernel_main.d) and the framebuffer pixel writes; at the tree -O0 default these
+# cost several times the instructions they need (no reg-alloc/inlining/vectorization). Compile them
+# at -O2 (verified: all three compile clean at -O2). `make OPT_LEVEL=-O2` bumps the whole tree;
+# `make OPT_LEVEL=-O0` (the default reason: low-RAM build hosts) still opts these out too.
+$(BUILD_ROOT)/d/core/syscalls/posix.o $(BUILD_ROOT)/d/core/kernel_main.o $(BUILD_ROOT)/d/display/framebuffer.o: D_OPT_OVERRIDE = $(D_HOT_OPT)
+
 # Rule for local kernel sources
 $(BUILD_ROOT)/d/%.o: %.d
 	mkdir -p $(dir $@)

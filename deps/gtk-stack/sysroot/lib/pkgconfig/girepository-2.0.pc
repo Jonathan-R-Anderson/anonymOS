@@ -1,4 +1,4 @@
-prefix=${pcfiledir}/../..
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 datadir=${prefix}/share
 includedir=${prefix}/include
 libdir=${prefix}/lib
@@ -10,6 +10,8 @@ typelibdir=${libdir}/girepository-1.0
 Name: girepository
 Description: GObject Introspection repository parser
 Version: 2.80.4
-Requires: glib-2.0, gobject-2.0, gmodule-no-export-2.0, gio-2.0, libffi >=  3.0.0
-Libs: -L${libdir} -lgirepository-2.0 -lm
+Requires: glib-2.0, gobject-2.0
+Requires.private: gmodule-no-export-2.0, gio-2.0, libffi >=  3.0.0
+Libs: -L${libdir} -lgirepository-2.0
+Libs.private: -lm
 Cflags: -I${includedir}

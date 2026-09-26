@@ -1,10 +1,12 @@
-prefix=${pcfiledir}/../..
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
 Name: cairo-script-interpreter
 Description: script surface backend for cairo graphics library
 Version: 1.18.2
-Requires: cairo, zlib, libpng >=  1.4.0, fontconfig >=  2.13.0, freetype2 >=  23.0.17, pixman-1 >=  0.40.0
-Libs: -L${libdir} -lcairo-script-interpreter -lm -ldl
+Requires: cairo
+Requires.private: zlib, libpng >=  1.4.0, fontconfig >=  2.13.0, freetype2 >=  23.0.17, pixman-1 >=  0.40.0
+Libs: -L${libdir} -lcairo-script-interpreter
+Libs.private: -lm -ldl
 Cflags: -I${includedir}/cairo

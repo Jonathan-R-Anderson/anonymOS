@@ -5,13 +5,13 @@
 # It is necessary for linking the library.
 
 # The name that we can dlopen(3).
-dlname=''
+dlname='libfreetype.so.6'
 
 # Names of this library.
-library_names=''
+library_names='libfreetype.so.6.20.2 libfreetype.so.6 libfreetype.so'
 
 # The name of the static archive.
-old_library='libfreetype.a'
+old_library=''
 
 # Linker flags that cannot go in dependency_libs.
 inherited_linker_flags=' -pthread'

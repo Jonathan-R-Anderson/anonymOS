@@ -1,10 +1,12 @@
-prefix=${pcfiledir}/../..
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
 Name: harfbuzz-cairo
 Description: HarfBuzz cairo support
 Version: 9.0.0
-Requires: freetype2 >=  12.0.6, cairo >=  1.10.0, harfbuzz =  9.0.0
-Libs: -L${libdir} -lharfbuzz-cairo -lm -lharfbuzz -pthread
-Cflags: -I${includedir}/harfbuzz -pthread
+Requires: harfbuzz =  9.0.0
+Requires.private: freetype2 >=  12.0.6, cairo >=  1.10.0
+Libs: -L${libdir} -lharfbuzz-cairo
+Libs.private: -lm -L${libdir} -lharfbuzz -pthread
+Cflags: -I${includedir}/harfbuzz

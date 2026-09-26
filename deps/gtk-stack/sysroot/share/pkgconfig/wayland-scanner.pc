@@ -1,4 +1,4 @@
-prefix=${pcfiledir}/../..
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 exec_prefix=${prefix}
 datadir=${prefix}/share
 pkgdatadir=${datadir}/wayland

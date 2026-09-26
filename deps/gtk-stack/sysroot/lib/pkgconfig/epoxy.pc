@@ -1,4 +1,4 @@
-prefix=${pcfiledir}/../..
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
@@ -9,6 +9,7 @@ epoxy_has_wgl=0
 Name: epoxy
 Description: GL dispatch library
 Version: 1.5.10
-Requires: egl
-Libs: -L${libdir} -lepoxy -ldl
+Requires.private: egl
+Libs: -L${libdir} -lepoxy
+Libs.private: -ldl
 Cflags: -I${includedir}

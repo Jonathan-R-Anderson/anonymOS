@@ -153,6 +153,11 @@ struct app {
     unsigned char        *font_data;
     size_t                font_size;
     int                   font_ready;
+    // Load-time glyph cache: printable ASCII (0x20..0x7e) rasterized ONCE per font size, so the
+    // per-frame render blends a cached alpha bitmap instead of calling FT_Load_Char per cell per
+    // frame (the dominant render() cost during shell output/scrolling). Rebuilt lazily on size change.
+    struct gcache { unsigned char *alpha; short w, rows, left, top; } glyphs[0x7f - 0x20];
+    int                   glyph_cache_px;   // font_px the cache was built at; 0 = empty/stale
 };
 
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -304,33 +309,60 @@ static uint32_t blend_over(uint32_t dst, uint32_t src, unsigned int alpha) {
     return 0xff000000u | (r << 16) | (g << 8) | b;
 }
 
+// (Re)rasterize the printable-ASCII glyph cache for the current font_px. Called lazily from
+// render_ft_glyph when the size changed (glyph_cache_px != font_px). This is the ONLY place
+// FT_Load_Char runs now — once per glyph per size, not per glyph per frame.
+static void rebuild_glyph_cache(struct app *a) {
+    if (!a->font_ready) return;
+    if (a->glyph_cache_px)   // free a previous cache (only if one was built — pointers are NULL at init)
+        for (int i = 0; i < 0x7f - 0x20; i++) { free(a->glyphs[i].alpha); a->glyphs[i].alpha = NULL; }
+    for (int ch = 0x20; ch < 0x7f; ch++) {
+        struct gcache *gc = &a->glyphs[ch - 0x20];
+        gc->alpha = NULL; gc->w = gc->rows = gc->left = gc->top = 0;
+        if (FT_Load_Char(a->face, (FT_ULong)ch, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL) != 0)
+            continue;
+        FT_GlyphSlot g = a->face->glyph;
+        FT_Bitmap *bm = &g->bitmap;
+        int pitch = bm->pitch;
+        const unsigned char *base = bm->buffer;
+        if (pitch < 0) { pitch = -pitch; base = bm->buffer - (int)(bm->rows - 1) * pitch; }
+        int w = (int)bm->width, rows = (int)bm->rows;
+        gc->left = (short)g->bitmap_left; gc->top = (short)g->bitmap_top;
+        if (w <= 0 || rows <= 0) continue;
+        gc->alpha = malloc((size_t)w * rows);
+        if (!gc->alpha) continue;
+        gc->w = (short)w; gc->rows = (short)rows;
+        for (int row = 0; row < rows; row++) {
+            const unsigned char *src = base + row * pitch;
+            unsigned char *dst = gc->alpha + (size_t)row * w;
+            if (bm->pixel_mode == FT_PIXEL_MODE_GRAY) {
+                memcpy(dst, src, (size_t)w);
+            } else if (bm->pixel_mode == FT_PIXEL_MODE_MONO) {
+                for (int col = 0; col < w; col++)
+                    dst[col] = (src[col >> 3] & (0x80 >> (col & 7))) ? 255 : 0;
+            } else {
+                memset(dst, 0, (size_t)w);
+            }
+        }
+    }
+    a->glyph_cache_px = a->font_px;
+}
+
 static void render_ft_glyph(struct app *a, int x, int y, unsigned char ch, uint32_t fg) {
     if (!a->font_ready || ch < 0x20 || ch >= 0x7f) return;
-    if (FT_Load_Char(a->face, (FT_ULong)ch, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL) != 0)
-        return;
-    FT_GlyphSlot g = a->face->glyph;
-    FT_Bitmap *bm = &g->bitmap;
-    int gx = x + g->bitmap_left;
-    int gy = y + a->baseline - g->bitmap_top;
-    int pitch = bm->pitch;
-    const unsigned char *base = bm->buffer;
-    if (pitch < 0) {
-        pitch = -pitch;
-        base = bm->buffer - (int)(bm->rows - 1) * pitch;
-    }
-    for (int row = 0; row < (int)bm->rows; row++) {
+    if (a->glyph_cache_px != a->font_px) rebuild_glyph_cache(a);  // lazy (re)build on first use / resize
+    struct gcache *gc = &a->glyphs[ch - 0x20];
+    if (!gc->alpha) return;
+    int gx = x + gc->left;
+    int gy = y + a->baseline - gc->top;
+    for (int row = 0; row < gc->rows; row++) {
         int py = gy + row;
         if (py < 0 || py >= a->height) continue;
-        const unsigned char *src_row = base + row * pitch;
-        for (int col = 0; col < (int)bm->width; col++) {
+        const unsigned char *src_row = gc->alpha + (size_t)row * gc->w;
+        for (int col = 0; col < gc->w; col++) {
             int px = gx + col;
             if (px < 0 || px >= a->width) continue;
-            unsigned int alpha = 0;
-            if (bm->pixel_mode == FT_PIXEL_MODE_GRAY) {
-                alpha = src_row[col];
-            } else if (bm->pixel_mode == FT_PIXEL_MODE_MONO) {
-                alpha = (src_row[col >> 3] & (0x80 >> (col & 7))) ? 255 : 0;
-            }
+            unsigned int alpha = src_row[col];
             uint32_t *dst = &a->pixels[py * a->width + px];
             *dst = blend_over(*dst, fg, alpha);
         }

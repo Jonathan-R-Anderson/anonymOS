@@ -117,12 +117,20 @@ static void gf_put(gf_u32 *buf, int pitch_px, int bw, int bh, int x, int y, gf_u
     buf[y * pitch_px + x] = c;
 }
 
-// Filled rectangle.
+// Filled rectangle. Clip the rect to the buffer ONCE, then fill each row with a tight inner store
+// loop (no per-pixel bounds check) so the compiler vectorizes it — the old per-pixel gf_put form
+// did 4 compares + a multiply + a branch per pixel, defeating vectorization on the full-window
+// clear that wl-term does every frame. Output is identical.
 static void gf_fill(gf_u32 *buf, int pitch_px, int bw, int bh,
                     int x, int y, int w, int h, gf_u32 c) {
-    for (int row = y; row < y + h; row++)
-        for (int col = x; col < x + w; col++)
-            gf_put(buf, pitch_px, bw, bh, col, row, c);
+    int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
+    int x1 = x + w, y1 = y + h;
+    if (x1 > bw) x1 = bw;
+    if (y1 > bh) y1 = bh;
+    for (int row = y0; row < y1; row++) {
+        gf_u32 *p = buf + (long)row * pitch_px + x0;
+        for (int col = x0; col < x1; col++) *p++ = c;
+    }
 }
 
 // One glyph; bg<0 means transparent background.

@@ -5,13 +5,13 @@
 # It is necessary for linking the library.
 
 # The name that we can dlopen(3).
-dlname=''
+dlname='libpng16.so.16'
 
 # Names of this library.
-library_names=''
+library_names='libpng16.so.16.43.0 libpng16.so.16 libpng16.so'
 
 # The name of the static archive.
-old_library='libpng16.a'
+old_library=''
 
 # Linker flags that cannot go in dependency_libs.
 inherited_linker_flags=''

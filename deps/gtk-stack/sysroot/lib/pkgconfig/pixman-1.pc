@@ -1,9 +1,10 @@
-prefix=${pcfiledir}/../..
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
 Name: Pixman
 Description: The pixman library (version 1)
 Version: 0.43.4
-Libs: -L${libdir} -lpixman-1 -lm -pthread
-Cflags: -I${includedir}/pixman-1 -pthread
+Libs: -L${libdir} -lpixman-1
+Libs.private: -lm -pthread
+Cflags: -I${includedir}/pixman-1

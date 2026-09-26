@@ -12,13 +12,13 @@
 #include <float.h>
 #define GLIB_HAVE_ALLOCA_H
 
-#define GLIB_STATIC_COMPILATION 1
-#define GOBJECT_STATIC_COMPILATION 1
-#define GIO_STATIC_COMPILATION 1
-#define GMODULE_STATIC_COMPILATION 1
-#define GI_STATIC_COMPILATION 1
-#define G_INTL_STATIC_COMPILATION 1
-#define FFI_STATIC_BUILD 1
+/* #undef GLIB_STATIC_COMPILATION */
+/* #undef GOBJECT_STATIC_COMPILATION */
+/* #undef GIO_STATIC_COMPILATION */
+/* #undef GMODULE_STATIC_COMPILATION */
+/* #undef GI_STATIC_COMPILATION */
+/* #undef G_INTL_STATIC_COMPILATION */
+/* #undef FFI_STATIC_BUILD */
 
 /* Specifies that GLib's g_print*() functions wrap the
  * system printf functions.  This is useful to know, for example,

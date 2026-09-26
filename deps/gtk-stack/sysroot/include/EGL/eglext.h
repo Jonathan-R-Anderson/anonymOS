@@ -14,12 +14,12 @@ extern "C" {
 ** used to make the header, and the header can be found at
 **   http://www.khronos.org/registry/egl
 **
-** Khronos $Git commit SHA1: 6fb1daea15 $ on $Git commit date: 2022-05-25 09:41:13 -0600 $
+** Khronos $Git commit SHA1: 992aa3914f $ on $Git commit date: 2021-11-23 18:20:45 +0100 $
 */
 
 #include <EGL/eglplatform.h>
 
-#define EGL_EGLEXT_VERSION 20220525
+#define EGL_EGLEXT_VERSION 20211210
 
 /* Generated C header for:
  * API: egl
@@ -723,10 +723,6 @@ EGLAPI EGLBoolean EGLAPIENTRY eglQueryDeviceBinaryEXT (EGLDeviceEXT device, EGLi
 #define EGL_RENDERER_EXT                  0x335F
 #endif /* EGL_EXT_device_query_name */
 
-#ifndef EGL_EXT_explicit_device
-#define EGL_EXT_explicit_device 1
-#endif /* EGL_EXT_explicit_device */
-
 #ifndef EGL_EXT_gl_colorspace_bt2020_linear
 #define EGL_EXT_gl_colorspace_bt2020_linear 1
 #define EGL_GL_COLORSPACE_BT2020_LINEAR_EXT 0x333F
@@ -971,9 +967,9 @@ EGLAPI EGLBoolean EGLAPIENTRY eglStreamConsumerOutputEXT (EGLDisplay dpy, EGLStr
 #define EGL_SURFACE_COMPRESSION_FIXED_RATE_10BPC_EXT 0x34BD
 #define EGL_SURFACE_COMPRESSION_FIXED_RATE_11BPC_EXT 0x34BE
 #define EGL_SURFACE_COMPRESSION_FIXED_RATE_12BPC_EXT 0x34BF
-typedef EGLBoolean (EGLAPIENTRYP PFNEGLQUERYSUPPORTEDCOMPRESSIONRATESEXTPROC) (EGLDisplay dpy, EGLConfig config, const EGLAttrib *attrib_list, EGLint *rates, EGLint rate_size, EGLint *num_rates);
+typedef EGLBoolean (EGLAPIENTRYP PFNEGLQUERYSUPPORTEDCOMPRESSIONRATESEXTPROC) (EGLDisplay dpy, EGLConfig *configs, const EGLAttrib *attrib_list, EGLint *rates, EGLint rate_size, EGLint *num_rates);
 #ifdef EGL_EGLEXT_PROTOTYPES
-EGLAPI EGLBoolean EGLAPIENTRY eglQuerySupportedCompressionRatesEXT (EGLDisplay dpy, EGLConfig config, const EGLAttrib *attrib_list, EGLint *rates, EGLint rate_size, EGLint *num_rates);
+EGLAPI EGLBoolean EGLAPIENTRY eglQuerySupportedCompressionRatesEXT (EGLDisplay dpy, EGLConfig *configs, const EGLAttrib *attrib_list, EGLint *rates, EGLint rate_size, EGLint *num_rates);
 #endif
 #endif /* EGL_EXT_surface_compression */
 

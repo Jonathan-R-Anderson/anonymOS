@@ -1,0 +1,531 @@
+package dev.kuml.sysml2
+
+import dev.kuml.core.model.KumlMetaValue
+import dev.kuml.kerml.KermlFeature
+import dev.kuml.kerml.KermlSpecialization
+import dev.kuml.kerml.KermlType
+import kotlinx.serialization.Serializable
+
+/**
+ * Sealed root for every SysML 2 **definition** — the "what *is* it" side of
+ * the definition/usage duality.
+ *
+ * A SysML 2 definition is structurally a KerML type that owns features. The
+ * features themselves usually surface in tooling as SysML 2 usages
+ * ([Sysml2Usage]) — but at the KerML layer there is no separate concept,
+ * just `Feature`s and their `typeId`s. The MVP keeps the SysML 2 layer
+ * thin and trusts the KerML primitives.
+ */
+@Serializable
+sealed interface Sysml2Definition :
+    Sysml2Element,
+    KermlType
+
+/**
+ * `PartDefinition` — the SysML 2 successor to UML class / SysML 1 block.
+ *
+ * Represents a system part *type* (e.g. `Vehicle`, `Engine`, `Cylinder`).
+ * Owns attribute / port / part usages via [features]. Inheritance is
+ * encoded via [specializations] (KerML `:>`).
+ *
+ * @property constraints OCL invariants on this part definition (V3.2.23).
+ *   Reuses [dev.kuml.uml.UmlConstraint] — the same shape UML classifiers use —
+ *   so `kuml-core-ocl`'s `OclValidator` evaluates them via the same
+ *   lexer/parser/evaluator, with `self` bound to this [PartDefinition]. Distinct
+ *   from PAR [ConstraintDefinition]/[dev.kuml.sysml2.constraint.Sysml2ConstraintChecker],
+ *   which type-checks parametric equations bound via [dev.kuml.sysml2.BindingConnectorUsage]s.
+ */
+@Serializable
+data class PartDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    val constraints: List<dev.kuml.uml.UmlConstraint> = emptyList(),
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `AttributeDefinition` — a SysML 2 attribute *type*, e.g. `Mass`, `Voltage`,
+ * `Boolean`. Used in BDD diagrams as the typing reference for attribute
+ * usages. Backed by a KerML data type (value semantics, not parts).
+ */
+@Serializable
+data class AttributeDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `PortDefinition` — a typed connection point. The SysML 2 successor to
+ * SysML 1 ports / UML interface-pair patterns.
+ */
+@Serializable
+data class PortDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `ConnectionDefinition` — a typed relationship between two port-bearing
+ * elements. Connection *usages* live on a `PartDefinition`'s feature list;
+ * this is the type they instantiate.
+ */
+@Serializable
+data class ConnectionDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `ActorDefinition` — V2.0.7 entry for the SysML 2 Use Case Diagram.
+ *
+ * Represents an external entity that interacts with the system under
+ * consideration (a human user, a downstream service, a sensor, …). In a UC
+ * Diagram, actors are the *sources* of associations to use cases — they
+ * "participate in" a capability.
+ *
+ * Structurally identical to [PartDefinition] (KerML type that owns features)
+ * — the differentiation is purely diagrammatic: actors render as stick
+ * figures, parts render as boxes. Future polish waves may add actor-
+ * specialisation arrows or system-boundary frames; V2.0.7 keeps the actor
+ * as a flat leaf node.
+ */
+@Serializable
+data class ActorDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `UseCaseDefinition` — V2.0.7 entry for the SysML 2 Use Case Diagram.
+ *
+ * Represents a capability or scenario the system offers, e.g.
+ * `BorrowBook`, `Authenticate`, `PayLateFee`. In a UC Diagram, use cases
+ * are the *targets* of actor-associations and the endpoints of the
+ * `«include»` / `«extend»` relationships between two use cases.
+ *
+ * Structurally identical to [PartDefinition] — the distinction lives in
+ * the renderer (use cases become ellipses, parts become boxes) and in the
+ * way UC diagrams aggregate them via [dev.kuml.sysml2.UcAssociation] /
+ * [dev.kuml.sysml2.UcInclude] / [dev.kuml.sysml2.UcExtend]. Use-case
+ * generalisation (`UC :> ParentUC`) is V2.x polish.
+ */
+@Serializable
+data class UseCaseDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `RequirementDefinition` — V2.0.8 entry for the SysML 2 Requirement Diagram.
+ *
+ * Represents a system requirement *type*: a constraint or expectation that a
+ * design must satisfy, an external test must verify, or that other
+ * requirements derive from / contain. Maps to SysML 2's `requirement def`
+ * keyword.
+ *
+ * Carries three V2.0.8-specific fields on top of the structural base:
+ *  - [text] — the requirement statement in natural language, e.g.
+ *    `"The vehicle shall reach at least 180 km/h on flat road"`. Rendered as
+ *    the third compartment of the box (word-wrapped). Empty string omits the
+ *    text compartment in the SVG renderer.
+ *  - [reqId] — the optional human-readable identifier, e.g. `"R-001"`. When
+ *    set, the box title compartment shows `"R-001 :: TopSpeedRequirement"`.
+ *  - [subject] — id of the element this requirement constrains (a
+ *    [PartDefinition], [UseCaseDefinition], etc.). Maps to SysML 2's
+ *    `subject`-keyword on `requirement def`. V2.0.8 carries this as a slot;
+ *    automatic subject-edge inference is V2.x polish (see wave plan).
+ *
+ * Structurally otherwise identical to [PartDefinition] — a KerML type that
+ * owns features. Renderer differentiation lives in
+ * [dev.kuml.io.svg.sysml2.renderSysml2Definition] (three-compartment box
+ * with `«requirement»`-stereotype).
+ *
+ * V2.0.8 MVP scope (per the wave plan):
+ *  - Box-with-three-compartments rendering: `«requirement»`, name (+ optional
+ *    `R-NNN ::`-prefix), text.
+ *  - Four edge kinds via [ReqDiagram]: [ReqSatisfy], [ReqVerify],
+ *    [ReqDerive], [ReqContains].
+ *  - V2.x: dashed-line + `«satisfy»` / `«verify»` / `«deriveReqt»` stereotype
+ *    labels on edges; typed constraint expressions; automatic subject-edge
+ *    inference from [subject].
+ */
+@Serializable
+data class RequirementDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    /** The requirement statement in natural language. Empty = omit text compartment. */
+    val text: String = "",
+    /** Optional human-readable identifier, e.g. `"R-001"`. Empty = name only. */
+    val reqId: String = "",
+    /** Optional id of the constrained element (PartDefinition, UseCaseDefinition, …). */
+    val subject: String? = null,
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `ActionDefinition` — V2.0.10 entry for the SysML 2 Activity Diagram.
+ *
+ * Represents one of the seven activity-node shapes that an ACT diagram
+ * supports:
+ *  - **Regular action** (`kind = Action`) — rounded box with the action body
+ *    rendered as a second text line beneath the name.
+ *  - **Initial node** (`kind = Initial`) — small filled circle marking the
+ *    start of the activity.
+ *  - **Final node** (`kind = Final`) — donut shape marking the end of the
+ *    entire activity.
+ *  - **Flow Final node** (`kind = FlowFinal`) — circle with an X inside,
+ *    marking the end of one token (other concurrent tokens continue).
+ *  - **Decision node** (`kind = Decision`) — diamond, branches on guards.
+ *  - **Merge node** (`kind = Merge`) — diamond, merges alternative branches.
+ *  - **Fork node** (`kind = Fork`) — synchronisation bar, splits into
+ *    parallel branches.
+ *  - **Join node** (`kind = Join`) — synchronisation bar, synchronises
+ *    parallel branches.
+ *
+ * **Design rationale — one class + an enum, not seven sealed sub-types**:
+ * the V2.0.9 STM wave handled two pseudo-state flavours with Boolean flags
+ * on a single `StateDefinition`. ACT has seven flavours; a sealed-class
+ * explosion (seven sub-types of [Sysml2Definition], each empty save for a
+ * marker) would bloat the metamodel surface for no semantic gain. A single
+ * [ActionDefinition] discriminated by [ActivityNodeKind] keeps the
+ * metamodel compact, the SVG renderer's dispatch shape uniform, and the
+ * layout-bridge's size-provider trivially expressible as a `when (kind)`.
+ *
+ * Carries one V2.0.10-specific data slot:
+ *  - [action] — optional raw action body (`"log('processing')"`,
+ *    `"computeTotal(items)"`). Only meaningful when
+ *    `kind = ActivityNodeKind.Action`; ignored by the renderer for every
+ *    other kind. Raw string in V2.0.10 MVP — the typed action AST (with a
+ *    proper expression tree, side-effect typing, and behaviour-runtime
+ *    hooks) is a separate V2.x wave, identical reasoning to the V2.0.9
+ *    `entry/exit/do`-action strings on [StateDefinition].
+ *
+ * V2.0.10 MVP scope (per the wave plan):
+ *  - Flat activity: no Activity-Partition (swimlanes), no interruptible
+ *    regions, no pin notation on actions.
+ *  - Token-Flow runtime execution is a separate Behaviour-Runtime wave;
+ *    V2.0.10 only captures the structural projection.
+ *  - Stream-flow / multicast semantics on Object Flow are V2.x polish.
+ */
+@Serializable
+data class ActionDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    /** Which of the seven activity-node shapes this is. Defaults to a regular action. */
+    val kind: ActivityNodeKind = ActivityNodeKind.Action,
+    /**
+     * Optional raw action body (`"log('processing')"`). Only meaningful for
+     * `kind = ActivityNodeKind.Action`; ignored by the renderer for every
+     * other kind.
+     */
+    val action: String? = null,
+    /**
+     * Optional id of the [ActivityPartitionDefinition] that owns this action
+     * (V2.0.16). When set, the layout-bridge places the action node inside
+     * the partition's group (rendered as a vertical lane with a header bar);
+     * when unset, the action floats outside any lane. Validator's job to flag
+     * dangling references — the bridge silently renders the node outside
+     * any group when the id does not resolve to a visible partition.
+     *
+     * Only meaningful for `kind = ActivityNodeKind.Action` and the four
+     * non-pseudo pseudo-nodes (Initial / Final / FlowFinal / Decision /
+     * Merge / Fork / Join); the SVG renderer applies it uniformly across
+     * all kinds so a Decision diamond can sit inside a lane just like a
+     * regular Action box.
+     */
+    val partitionId: String? = null,
+    /**
+     * Typed input / output pins on this action (V2.0.16). Each pin renders
+     * as a small white square on the appropriate edge of the action box
+     * (Input pins → left edge, Output pins → right edge), vertically
+     * distributed. Only meaningful for `kind = ActivityNodeKind.Action`;
+     * the renderer skips pins for pseudo-nodes (Initial / Final / FlowFinal /
+     * Decision / Merge / Fork / Join — these kinds have no semantically
+     * meaningful pin slots in SysML 2).
+     *
+     * Defaults to an empty list so existing V2.0.10 actions stay byte-
+     * identical in the renderer output.
+     */
+    val pins: List<ActionPin> = emptyList(),
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `ActivityPartitionDefinition` — V2.0.16 entry for the SysML 2 Activity
+ * Diagram (closes the V2.0.10 deferred-item list).
+ *
+ * Represents an **Activity Partition** (a.k.a. **Swimlane**) — a visual grouping
+ * of action nodes by the entity that owns / executes them (a department, a
+ * subsystem, a deployed service, an actor). Maps to SysML 2's `partition`
+ * keyword inside an `activity`. In a Activity Diagram, partitions appear as
+ * vertical lanes with a header bar containing the partition name at the top;
+ * actions assigned to a partition (via [ActionDefinition.partitionId]) render
+ * inside that lane.
+ *
+ * Carries one V2.0.16-specific slot on top of the structural base:
+ *  - [represents] — optional id of the represented entity, typically a
+ *    [PartDefinition] id (e.g. `"Customer"`, `"OrderSystem"`, `"Warehouse"`).
+ *    Read-only metadata in the V2.0.16 MVP (the renderer surfaces only the
+ *    partition's own [name] in the header bar); surfaces as a tooltip / link
+ *    in V2.x polish — identical reasoning to [LifelineDefinition.represents].
+ *
+ * **Layout integration**: the V2.0.16 bridge emits one [dev.kuml.layout.LayoutGroup]
+ * per visible partition, reusing the `groups` slot on `LayoutGraph` that V2.0
+ * C4-SoftwareSystem grouping already populated. ELK respects groups (it
+ * positions all child nodes inside the group bounds); the SVG renderer then
+ * draws a dashed lane outline + a solid header bar over each group, with the
+ * partition name centred in the header.
+ *
+ * V2.0.16 MVP scope (per the wave plan):
+ *  - **Vertical lanes only**. Horizontal partitions (lanes that run left-to-
+ *    right with time flowing across) are V2.x polish.
+ *  - **Flat**, no nested partitions (a partition cannot contain another).
+ *    Hierarchical partitions are V2.x.
+ *  - Only the [name] surfaces in the header; the optional [represents]-target
+ *    name is V2.x.
+ *  - The LaTeX renderer renders an [ActivityPartitionDefinition] as a plain
+ *    rectangle fallback (same kind-stereotype-fallback strategy as the
+ *    V2.0.7–15 LaTeX path); the lane / header polish is SVG-only in V2.0.16,
+ *    as is the pin rendering.
+ */
+@Serializable
+data class ActivityPartitionDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    /**
+     * Optional reference to the represented entity — typically a
+     * [PartDefinition] id (`"Customer"`, `"OrderSystem"`). Read-only metadata
+     * in the V2.0.16 MVP; surfaces as a tooltip / link in V2.x polish.
+     */
+    val represents: String? = null,
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `LifelineDefinition` — V2.0.11 entry for the SysML 2 Sequence Diagram.
+ *
+ * Represents a participant in a sequence-diagram interaction: a system part,
+ * an external actor, a service component, a thread — anything that messages
+ * can be exchanged between. The lifeline carries the participant identity
+ * (head + dashed time-axis below); messages connect two lifelines at a
+ * time-ordered Y position.
+ *
+ * Structurally identical to [PartDefinition] (KerML type that owns features)
+ * plus an optional [represents] reference back to the *real* participant —
+ * typically a [PartDefinition] id, but the metamodel keeps the slot a string
+ * so an [ActorDefinition] / [UseCaseDefinition] / other definition kind can be
+ * referenced too without a type-system gymnastics. The reference is read-only
+ * in the V2.0.11 MVP (the renderer ignores it; it surfaces as a tooltip /
+ * link in V2.x polish).
+ *
+ * V2.0.11 MVP scope (per the wave plan):
+ *  - Lifeline head is a plain `«lifeline»`-stereotyped box; richer headers
+ *    (actor stick-figure for actor-typed lifelines, boundary / control / entity
+ *    icons in the Robustness-style) are V2.x.
+ *  - Execution Specifications (the activation rectangles drawn on the dashed
+ *    axis while the lifeline is "busy") are V2.x — separate wave because they
+ *    require activation-stack accounting.
+ *  - Combined Fragments (`alt` / `opt` / `loop` / `par` / `strict`) are V2.x
+ *    — separate wave because they require nested layout-engine work.
+ *  - `Create` and `Destroy` lifecycle messages are V2.x (see [MessageKind]).
+ */
+@Serializable
+data class LifelineDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    /**
+     * Optional reference to the represented participant — typically a
+     * [PartDefinition] id, but can also point at an [ActorDefinition] or
+     * other definition kind. Read-only metadata in the V2.0.11 MVP; surfaces
+     * as a tooltip / link in V2.x polish.
+     */
+    val represents: String? = null,
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `StateDefinition` — V2.0.9 entry for the SysML 2 State Transition Diagram.
+ *
+ * Represents a *state* of the system under modelling: a discrete situation
+ * in which the system rests until a [dev.kuml.sysml2.TransitionUsage] fires.
+ * Maps to SysML 2's `state def`/`state` keywords. Three flavours are encoded
+ * by the two boolean pseudo-state markers ([isInitial], [isFinal]) plus the
+ * "regular state" default (both `false`):
+ *
+ *  - **Initial pseudo-state** (`isInitial = true`) — rendered as a small
+ *    filled circle. There is exactly one per state machine in the MVP (the
+ *    enforcement is a validator concern; the metamodel allows multiple).
+ *  - **Final pseudo-state** (`isFinal = true`) — rendered as a "donut" (an
+ *    outer circle with an inner filled circle).
+ *  - **Regular state** (both flags `false`) — rendered as a rounded-rect with
+ *    the name centred at top and optional `entry / exit / do` action lines
+ *    below a divider.
+ *
+ * Carries three V2.0.9-specific action slots ([entryAction], [exitAction],
+ * [doAction]) holding the SysML 2 concrete-syntax action statement *as a
+ * raw string*. The typed action AST (with a proper expression tree, side
+ * effect typing, and behaviour-runtime hooks) is a separate V2.x wave —
+ * keeping action strings in the MVP unblocks rendering without committing
+ * to an action-language semantics that is still under discussion.
+ *
+ * V2.0.9 MVP scope (per the wave plan):
+ *  - Flat state machine: no composite / orthogonal / history states. Each
+ *    state is a leaf.
+ *  - No fork / join pseudo-states. Initial + final are the only two
+ *    pseudo-state kinds.
+ *  - [isInitial] and [isFinal] are mutually exclusive *by spec* but the
+ *    metamodel does not enforce it — that check belongs in the validator
+ *    so callers can construct partially-invalid states for testing /
+ *    diagnostics without a panic.
+ *  - Behaviour runtime (live execution of the state machine) is a separate
+ *    "Executable Behaviour Runtime" wave per the V2.0 plan; V2.0.9 only
+ *    captures the structural projection.
+ */
+@Serializable
+data class StateDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    /**
+     * Pseudo-state marker: `true` = initial pseudo-state (filled circle).
+     * Mutually exclusive with [isFinal] *by spec*; the metamodel does not
+     * enforce the rule.
+     */
+    val isInitial: Boolean = false,
+    /**
+     * Pseudo-state marker: `true` = final pseudo-state (donut shape).
+     * Mutually exclusive with [isInitial] *by spec*; the metamodel does not
+     * enforce the rule.
+     */
+    val isFinal: Boolean = false,
+    /** Optional `entry / do … ` action statement (raw string in MVP). */
+    val entryAction: String? = null,
+    /** Optional `exit / do … ` action statement (raw string in MVP). */
+    val exitAction: String? = null,
+    /** Optional `do … ` activity statement (raw string in MVP). */
+    val doAction: String? = null,
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition
+
+/**
+ * `ConstraintDefinition` — V2.0.12 entry for the SysML 2 Parametric Diagram (PAR).
+ *
+ * Represents a *constraint type* — a mathematical relationship that holds between
+ * a set of typed parameters. The classical example is Newton's second law,
+ * `F = m * a`, with three parameters `F` (Force, Out), `m` (Mass, In),
+ * `a` (Acceleration, In). In a PAR diagram, constraint definitions are the
+ * three-compartment boxes (`«constraint»` stereotype + name + expression body +
+ * parameter list) whose pins are connected to attribute references via
+ * [BindingConnectorUsage]s.
+ *
+ * Carries two V2.0.12-specific slots on top of the structural base:
+ *  - [expression] — the constraint body **as a raw string**, e.g. `"F = m * a"`.
+ *
+ *    **Architecture decision** for the V2.0.12 MVP: the expression is kept as
+ *    a raw string, matching the precedent set by [StateDefinition.entryAction],
+ *    [TransitionUsage.guard], [ControlFlowUsage.guard] — none of those have a
+ *    typed AST yet either. A typed constraint-expression surface (OCL-subset
+ *    AST, type-checked operands, side-effect classification) is a separate
+ *    V2.x wave that touches *every* SysML 2 feature with an expression slot
+ *    (state guards, action bodies, constraint expressions, transition
+ *    triggers). Bundling it into V2.0.12 would expand the wave by an order
+ *    of magnitude and delay the closing of the SysML 2 diagram-type series.
+ *    The raw-string MVP unblocks rendering immediately and the typed AST
+ *    lands as a coordinated cross-cutting wave when it's ready.
+ *
+ *  - [parameters] — list of [ConstraintParameter] pins on the constraint's
+ *    edge. Each parameter has a name, optional type-id reference, and a
+ *    [ConstraintParameterDirection]. The bindings ([BindingConnectorUsage])
+ *    reference parameters by the synthetic endpoint id
+ *    `"<constraintId>::<parameterName>"`.
+ *
+ * Constraints are nodes in a [ParDiagram]; bindings between constraint
+ * parameter pins and attribute references are captured separately via
+ * [BindingConnectorUsage], which is registered on the model's `usages` list
+ * (V2.0.6 architecture bonus). The bridge auto-includes bindings when both
+ * endpoints resolve to visible elements — **Pattern A**, the same convention
+ * as V2.0.6 IBD / V2.0.9 STM / V2.0.10 ACT.
+ *
+ * V2.0.12 MVP scope (per the wave plan):
+ *  - Raw-string expression body (see architecture note above).
+ *  - Three-compartment box rendering: `«constraint»` stereotype, name,
+ *    expression body (monospaced, truncated at ~30 chars with ellipsis if
+ *    longer), parameter list (one line per parameter with `«in»` / `«out»` /
+ *    `«inout»` direction stereotype prefix).
+ *  - Parameter-pin endpoint anchoring on bindings is V2.x polish — V2.0.12
+ *    renders bindings as plain edges between the two nodes (same
+ *    `EdgeRendererDispatcher` lookup-miss limitation as UC / REQ / STM / ACT).
+ *  - Composite constraints (one constraint includes another) are V2.x.
+ *  - Solver hookup (parametric value propagation, equation rewriting) belongs
+ *    to the Behaviour-Runtime line; V2.0.12 only captures the structural
+ *    projection.
+ *  - Equation rendering via MathJax / KaTeX is V2.x; today the expression
+ *    is monospaced raw text.
+ */
+@Serializable
+data class ConstraintDefinition(
+    override val id: String,
+    override val name: String,
+    override val qualifiedName: String = name,
+    override val isAbstract: Boolean = false,
+    override val features: List<KermlFeature> = emptyList(),
+    override val specializations: List<KermlSpecialization> = emptyList(),
+    /**
+     * Raw expression body — e.g. `"F = m * a"`. Kept as a raw string in the
+     * V2.0.12 MVP; a typed constraint-expression AST lands in a separate
+     * V2.x wave that also covers state guards, action bodies, and the
+     * OCL-subset surface. See the class KDoc for the full rationale.
+     */
+    val expression: String = "",
+    /** Parameter pins of this constraint. */
+    val parameters: List<ConstraintParameter> = emptyList(),
+    override val metadata: Map<String, KumlMetaValue> = emptyMap(),
+) : Sysml2Definition

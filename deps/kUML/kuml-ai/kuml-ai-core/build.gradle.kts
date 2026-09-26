@@ -1,0 +1,74 @@
+plugins {
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
+}
+
+kotlin {
+    jvmToolchain(21)
+    explicitApi()
+}
+
+dependencies {
+    // ── Published SPI (api: transitively exposed to consumers) ──────────────
+    api(project(":kuml-ai:kuml-ai-spi")) // V3.1.15
+
+    // ── Koog (JetBrains AI Agent Framework, Maven Central) ──────────────────
+    // koog-agents-jvm is api (transitively exposed) because KumlLlmProvider exposes
+    // LLMProvider in its public API, and KumlAiExecutor exposes LLModel/LLMClient.
+    api(libs.koog.agents.jvm)
+
+    // Provider client artifacts: runtimeOnly — built-ins instantiate them
+    // reflectively so the compile classpath is client-free (tree-shaking).
+    // Consumers who want to exclude a provider can remove the client JAR at
+    // packaging time; only that provider's factory will fail lazily.  V3.1.15
+    runtimeOnly(libs.koog.prompt.executor.openai.client)
+    runtimeOnly(libs.koog.prompt.executor.anthropic.client)
+    runtimeOnly(libs.koog.prompt.executor.google.client)
+    runtimeOnly(libs.koog.prompt.executor.ollama.client)
+    // V3.x.y — Gonka decentralized-network provider (tree-shaken like the others)
+    runtimeOnly(libs.koog.gonka) {
+        // kUML only ever uses koog-gonka's ApiKey (Broker) auth path, never GonkaAuth.Wallet —
+        // these two transitive deps exist solely to support that unused wallet-signing code
+        // (de.betchvaia.koog.gonka.wallet.*) and would otherwise ship dead native binaries
+        // (secp256k1 for darwin/linux/mingw) + a full BouncyCastle provider for nothing.
+        exclude(group = "fr.acinq.secp256k1")
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk18on")
+    }
+
+    // ── kUML-internal ────────────────────────────────────────────────────────
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlin.reflect)
+
+    // ── Optional: JNA for platform keystore access (Windows DPAPI) ──────────
+    implementation(libs.jna)
+    implementation(libs.jna.platform)
+
+    // ── Tests ────────────────────────────────────────────────────────────────
+    testImplementation(libs.kotest.runner.junit5)
+    testImplementation(libs.kotest.assertions.core)
+    testImplementation(libs.kotest.property)
+    testImplementation(libs.kotlinx.coroutines.test)
+}
+
+tasks.withType<Test>().configureEach {
+    jvmArgs("-Xmx512m")
+    // Privacy-Mode tests run locally; live provider tests are opt-in
+    systemProperty("kuml.ai.test.live", System.getProperty("kuml.ai.test.live") ?: "false")
+    // V3.7.4 — real macOS Keychain / Linux secret-tool round trip for KeyVaultBackendContract
+    // (see MacOsKeychainBackendTest/LinuxSecretToolBackendTest). Forwarded the same way as
+    // kuml.ai.test.live above — without this, `-Dkuml.ai.vault.liveKeystoreTests=true` on the
+    // Gradle command line only sets the property in the build JVM, never in the forked test
+    // worker, and the live contract test silently (and misleadingly) reports "skipped".
+    systemProperty(
+        "kuml.ai.vault.liveKeystoreTests",
+        System.getProperty("kuml.ai.vault.liveKeystoreTests") ?: "false",
+    )
+    // Exclude @Tag("live") tests unless explicitly opted in
+    val liveEnabled = System.getProperty("kuml.ai.test.live") == "true"
+    useJUnitPlatform {
+        if (!liveEnabled) {
+            excludeTags("live")
+        }
+    }
+}

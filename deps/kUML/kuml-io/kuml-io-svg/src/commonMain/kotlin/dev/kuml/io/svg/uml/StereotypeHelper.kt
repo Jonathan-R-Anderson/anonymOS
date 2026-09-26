@@ -1,0 +1,225 @@
+package dev.kuml.io.svg.uml
+
+import dev.kuml.io.svg.SvgBuilder
+import dev.kuml.io.svg.fmt2
+import dev.kuml.io.svg.xmlEscapeContent
+import dev.kuml.renderer.theme.core.KumlTheme
+import dev.kuml.renderer.theme.core.StereotypeTheme
+import dev.kuml.uml.AppliedStereotype
+import dev.kuml.uml.Stereotypable
+import dev.kuml.uml.TagValue
+import dev.kuml.uml.UmlAssociation
+import dev.kuml.uml.UmlNamedElement
+
+/**
+ * Hilfsfunktionen für das Stereotyp-Rendering im SVG-Renderer.
+ *
+ * Alle Methoden sind pure-Kotlin und Compose-unabhängig — sie können ohne
+ * Lauf-Zeit-Kontext aufgerufen werden.
+ *
+ * Generisches Muster (kein 25-fach-when):
+ * ```kotlin
+ * val header = (element as? Stereotypable)?.stereotypeHeader(theme.stereotypes)
+ * ```
+ */
+internal object StereotypeHelper {
+    /**
+     * Gibt die formatierte Headerzeile `«A, B»` zurück, oder `null` wenn keine
+     * Stereotypen angewendet sind.
+     *
+     * Mehrfach-Stereotype werden mit [StereotypeTheme.joinSeparator] verbunden.
+     */
+    fun headerLabel(
+        element: Stereotypable,
+        theme: StereotypeTheme,
+    ): String? {
+        // V2.0.44: Combine applied (typed) stereotypes from profiles with the
+        // simple `stereotypes: List<String>` field on `UmlNamedElement`. Either
+        // alone produces a header; both together produce one combined header.
+        // Previously only `appliedStereotypes` were rendered, so a DSL like
+        // `stereotypes += "service"` was silently dropped — observed on
+        // docker/k8s component diagrams.
+        // ADR-0017: `UmlAssociation` is not a `UmlNamedElement` — it carries its
+        // own `stereotypes: List<String>` field, so it needs its own branch here.
+        val appliedNames = element.appliedStereotypes.map { it.stereotypeName }
+        val plainNames =
+            when (element) {
+                is UmlNamedElement -> element.stereotypes
+                is UmlAssociation -> element.stereotypes
+                else -> emptyList()
+            }.filter { it.isNotBlank() }
+        val joined = (appliedNames + plainNames).distinct()
+        if (joined.isEmpty()) return null
+        return "«" + joined.joinToString(theme.joinSeparator) + "»"
+    }
+
+    /**
+     * Rendert die Stereotyp-Headerzeile über den Klassenname in den [SvgBuilder].
+     *
+     * Gibt zurück, um wie viele Pixel `cy` (der laufende Y-Cursor) erhöht wurde.
+     * Wenn keine Stereotypen vorhanden: gibt 0 zurück.
+     */
+    fun renderHeader(
+        element: Stereotypable,
+        theme: KumlTheme,
+        builder: SvgBuilder,
+        cx: Float,
+        cy: Float,
+    ): Float {
+        val label = headerLabel(element = element, theme = theme.stereotypes) ?: return 0f
+        val fontSize = theme.stereotypes.headerFontSize
+        builder.tag(
+            name = "text",
+            attrs =
+                mapOf(
+                    "class" to "kuml-stereotype",
+                    "x" to fmt(cx),
+                    "y" to fmt(cy),
+                    "text-anchor" to "middle",
+                ),
+        ) { text(label) }
+        return fontSize + 4f
+    }
+
+    /**
+     * Rendert das Tagged-Value-Compartment (wenn [StereotypeTheme.showTaggedValues] aktiv).
+     *
+     * Jede Tagged-Value-Zeile hat die Form `{tag = value}`.
+     * Gibt zurück, um wie viele Pixel `cy` erhöht wurde (0 wenn kein Compartment).
+     */
+    fun renderTaggedValues(
+        element: Stereotypable,
+        theme: KumlTheme,
+        builder: SvgBuilder,
+        w: Float,
+        cy: Float,
+    ): Float {
+        if (!theme.stereotypes.showTaggedValues) return 0f
+        val rows = buildTaggedValueRows(element.appliedStereotypes)
+        if (rows.isEmpty()) return 0f
+
+        val fontSize = theme.stereotypes.taggedValueFontSize
+        val lineH = fontSize + 3f
+
+        // Divider before compartment
+        builder.tag(
+            name = "line",
+            attrs =
+                mapOf(
+                    "x1" to "0",
+                    "y1" to fmt(cy),
+                    "x2" to fmt(w),
+                    "y2" to fmt(cy),
+                    "class" to "kuml-divider",
+                ),
+        )
+        var cy2 = cy + lineH
+
+        for (row in rows) {
+            builder.tag(
+                name = "text",
+                attrs =
+                    mapOf(
+                        "class" to "kuml-tagged-value",
+                        "x" to "8",
+                        "y" to fmt(cy2),
+                    ),
+            ) { text(row) }
+            cy2 += lineH
+        }
+        return cy2 - cy
+    }
+
+    /**
+     * Rendert ein Stereotyp-Label an einer Edge als Mittelpunkt-Label.
+     * Gibt zurück ob ein Label gerendert wurde.
+     *
+     * Bug-fix V0.27.1: das Label sitzt auf der Edge-Polyline — ohne Halo lief
+     * die Linie sichtbar durch die kursiven Glyphen (z. B. `«FK»` auf einer
+     * Assoziation, siehe "38 UML Profil – Exposed"-Vault-Beispiel). Zwei-Pass-
+     * Rendering analog zu [dev.kuml.io.svg.renderEdgeLabelWithHalo]: zuerst die
+     * gestrokte Halo-Kopie (`kuml-stereotype-halo`), danach die sichtbare Kopie
+     * (`kuml-stereotype`) — beide teilen sich x/y/text-anchor.
+     */
+    fun renderEdgeStereotype(
+        element: Stereotypable,
+        theme: KumlTheme,
+        builder: SvgBuilder,
+        midX: Float,
+        midY: Float,
+    ): Boolean {
+        val label = headerLabel(element = element, theme = theme.stereotypes) ?: return false
+        val attrs =
+            mapOf(
+                "x" to fmt(midX),
+                "y" to fmt(midY),
+                "text-anchor" to "middle",
+            )
+        builder.tag(name = "text", attrs = mapOf("class" to "kuml-stereotype-halo") + attrs) { text(label) }
+        builder.tag(name = "text", attrs = mapOf("class" to "kuml-stereotype") + attrs) { text(label) }
+        return true
+    }
+
+    // ── Feature-level stereotype prefix ───────────────────────────────────────
+
+    /**
+     * Gibt den Stereotyp-Präfix als kursives `<tspan>` zurück, oder den leeren
+     * String wenn keine Stereotypen gesetzt sind oder der Theme-Toggle
+     * [dev.kuml.renderer.theme.core.StereotypeTheme.showFeatureStereotypes] deaktiviert ist.
+     *
+     * Der trailing Space hinter dem schließenden `</tspan>` ist Teil des Strings,
+     * damit der nachfolgende Feature-Name visuell vom Präfix getrennt ist.
+     *
+     * Beispiel-Output für `stereotype("PersistenceContext")`:
+     * ```
+     * <tspan class="kuml-feature-stereotype" font-style="italic" font-size="9">«PersistenceContext»</tspan>
+     * ```
+     *
+     * Der Aufrufer muss das Ergebnis via [SvgBuilder.rawXml] in einen `<text>`-Block
+     * einfügen — **nicht** via [SvgBuilder.text], da [text] den Tspan-Markup escaped.
+     */
+    fun featureStereotypeTspan(
+        element: Stereotypable,
+        theme: KumlTheme,
+    ): String {
+        if (!theme.stereotypes.showFeatureStereotypes) return ""
+        // ADR-0017: merge applied (typed, profile-bound) stereotypes with the
+        // simple `stereotypes: List<String>` display-label field on
+        // `UmlNamedElement` (attributes/operations) — analog to headerLabel().
+        // Previously only appliedStereotypes were rendered here, so a plain
+        // `stereotypes += "Column"` on an attribute/operation was silently
+        // dropped even though the DSL field existed and was set.
+        val appliedNames = element.appliedStereotypes.map { it.stereotypeName }
+        val plainNames = (element as? UmlNamedElement)?.stereotypes.orEmpty().filter { it.isNotBlank() }
+        val joined = (appliedNames + plainNames).distinct()
+        if (joined.isEmpty()) return ""
+        val fontSize = theme.stereotypes.featureStereotypeFontSize.toInt()
+        val label = xmlEscapeContent("«" + joined.joinToString(theme.stereotypes.joinSeparator) + "»")
+        return """<tspan class="kuml-feature-stereotype" font-style="italic" font-size="$fontSize">$label</tspan> """
+    }
+
+    // ── Tagged-value formatting ────────────────────────────────────────────────
+
+    /**
+     * Baut die Liste der `{tag = value}`-Zeilen aus allen angewendeten Stereotypen.
+     * Stabile Reihenfolge: Stereotype in Deklarationsreihenfolge, Tags in map-Reihenfolge.
+     */
+    fun buildTaggedValueRows(applications: List<AppliedStereotype>): List<String> =
+        applications.flatMap { app ->
+            app.tags.entries.map { (k, v) -> "{$k = ${formatTagValue(v)}}" }
+        }
+
+    /** Formatiert einen [TagValue] zu einem lesbaren String. */
+    fun formatTagValue(v: TagValue): String =
+        when (v) {
+            is TagValue.StringVal -> v.v
+            is TagValue.IntVal -> v.v.toString()
+            is TagValue.LongVal -> v.v.toString()
+            is TagValue.DoubleVal -> v.v.toString()
+            is TagValue.BoolVal -> v.v.toString()
+            is TagValue.EnumVal -> v.valueName
+            is TagValue.ListVal -> v.items.joinToString(", ", "[", "]") { formatTagValue(it) }
+        }
+
+    private fun fmt(v: Float): String = fmt2(v)
+}

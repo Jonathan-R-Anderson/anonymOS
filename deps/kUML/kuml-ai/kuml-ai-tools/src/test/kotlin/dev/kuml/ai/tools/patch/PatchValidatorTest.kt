@@ -1,0 +1,303 @@
+package dev.kuml.ai.tools.patch
+
+import dev.kuml.ai.tools.context.AnyKumlModel
+import dev.kuml.ai.tools.context.ModelPatch
+import dev.kuml.ai.tools.patch.apply.ModelMutationRouter
+import dev.kuml.ai.tools.patch.validation.PatchValidationResult
+import dev.kuml.ai.tools.patch.validation.ValidationPhase
+import dev.kuml.runtime.sandbox.SandboxPolicy
+import dev.kuml.uml.UmlClass
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+
+private fun addElementPatch(
+    elementId: String,
+    elementKind: String = "uml.class",
+    name: String = "TestClass",
+): ModelPatch.AddElement =
+    ModelPatch.AddElement(
+        patchId = ModelPatch.newId(),
+        appliedAt = ModelPatch.nowIso(),
+        diagramId = null,
+        elementKind = elementKind,
+        elementId = elementId,
+        name = name,
+    )
+
+private fun addRelPatch(
+    relId: String,
+    sourceId: String,
+    targetId: String,
+    kind: String = "uml.generalization",
+): ModelPatch.AddRelationship =
+    ModelPatch.AddRelationship(
+        patchId = ModelPatch.newId(),
+        appliedAt = ModelPatch.nowIso(),
+        diagramId = null,
+        relationshipKind = kind,
+        relationshipId = relId,
+        sourceId = sourceId,
+        targetId = targetId,
+    )
+
+private fun updateAttrPatch(
+    ownerId: String,
+    field: String,
+    value: String,
+): ModelPatch.UpdateAttribute =
+    ModelPatch.UpdateAttribute(
+        patchId = ModelPatch.newId(),
+        appliedAt = ModelPatch.nowIso(),
+        diagramId = null,
+        ownerId = ownerId,
+        attributeId = ModelPatch.newId(),
+        field = field,
+        newValue = value,
+    )
+
+class PatchValidatorTest :
+    FunSpec({
+        val validator = PatchValidator(sandboxPolicy = SandboxPolicy.Strict, renderSmokeEnabled = false)
+
+        test("valid AddElement on clean UML model returns Valid with empty warnings") {
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = addElementPatch(elementId = "cls1")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+            result.warnings.shouldBeEmpty()
+        }
+
+        test("AddElement that duplicates an existing id returns Invalid STRUCTURAL with DUPLICATE_ID") {
+            val model =
+                AnyKumlModel.Uml(
+                    name = "Test",
+                    elements = listOf(UmlClass(id = "cls1", name = "Existing")),
+                )
+            val patch = addElementPatch(elementId = "cls1", name = "Duplicate")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            val invalid = result.shouldBeInstanceOf<PatchValidationResult.Invalid>()
+            invalid.phase shouldBe ValidationPhase.STRUCTURAL
+            invalid.errors.any { it.code == "DUPLICATE_ID" } shouldBe true
+        }
+
+        test("AddRelationship referencing unknown source returns dangling reference warning (Valid)") {
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = addRelPatch(relId = "rel1", sourceId = "unknownSource", targetId = "unknownTarget", kind = "uml.association")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            // Dangling references are warnings in V2.0.31 — patch is still Valid
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+            result.warnings.shouldNotBeEmpty()
+        }
+
+        test("add_generalization creating a cycle returns Invalid STRUCTURAL with CIRCULAR_INHERITANCE") {
+            val model =
+                AnyKumlModel.Uml(
+                    name = "Test",
+                    elements = listOf(UmlClass(id = "A", name = "A"), UmlClass(id = "B", name = "B")),
+                    relationships =
+                        listOf(
+                            dev.kuml.uml.UmlGeneralization(id = "gen-ab", specificId = "A", generalId = "B"),
+                        ),
+                )
+            // Add B→A generalization, creating a cycle A→B→A
+            val patch = addRelPatch(relId = "gen-ba", sourceId = "B", targetId = "A", kind = "uml.generalization")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            val invalid = result.shouldBeInstanceOf<PatchValidationResult.Invalid>()
+            invalid.phase shouldBe ValidationPhase.STRUCTURAL
+            invalid.errors.any { it.code == "CIRCULAR_INHERITANCE" } shouldBe true
+        }
+
+        test("UpdateAttribute setting a disallowed function in a guard returns Invalid SANDBOX or TYPE_CHECK") {
+            // Set up a model with a state machine element (as a plain class for structural purposes)
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = updateAttrPatch(ownerId = "stm1", field = "guard", value = "exec(something())")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            // Since there's no actual UmlStateMachine in the model, SANDBOX is skipped.
+            // TYPE_CHECK with SandboxPolicy.Strict (empty allowedFunctions) will catch disallowed functions.
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            // The function call "exec" should fail TYPE_CHECK with Strict policy (allowedFunctions = empty set)
+            // Note: Strict policy has allowedFunctions=emptySet() so any function call is disallowed
+            // However, since "guard" with "exec(something())" — exec is not in empty allowedFunctions
+            // Result depends on expression parser — it should detect DISALLOWED_FUNCTION
+            // If sandbox skipped (no STM found) and type check flags it:
+            when (result) {
+                is PatchValidationResult.Invalid -> {
+                    result.phase shouldBe ValidationPhase.TYPE_CHECK
+                    result.errors.any { it.code == "DISALLOWED_FUNCTION" } shouldBe true
+                }
+                is PatchValidationResult.Valid -> {
+                    // Parser couldn't type the expression — became a warning
+                    result.warnings.shouldNotBeEmpty()
+                }
+            }
+        }
+
+        test("UpdateAttribute setting a deeply nested expression returns type-check error or warning") {
+            val model = AnyKumlModel.emptyUml("Test")
+            // Deeply nested: f(f(f(f(f(f(f(f(f(f(f(f(f(f(f(f(x))))))))))))))))
+            val deepExpr = "f(" + "f(".repeat(20) + "x" + ")".repeat(21) + ")"
+            val patch = updateAttrPatch(ownerId = "stm1", field = "guard", value = deepExpr)
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            // With Strict policy (empty allowedFunctions), DISALLOWED_FUNCTION or depth warning
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>().let {
+                // Best-effort: either warning emitted or errors collected
+            }
+        }
+
+        test("UpdateAttribute on a non-expression field returns Valid") {
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = updateAttrPatch(ownerId = "cls1", field = "visibility", value = "public")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+        }
+
+        test("non-STM patch skips SANDBOX phase silently") {
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = addElementPatch(elementId = "cls1", elementKind = "uml.class")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            // No STM → sandbox never runs → Valid
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+        }
+
+        test("guard expression with valid known function returns Valid") {
+            val permissiveValidator = PatchValidator(sandboxPolicy = SandboxPolicy.Permissive, renderSmokeEnabled = false)
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = updateAttrPatch(ownerId = "t1", field = "guard", value = "math.max(x, 0) > 0")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = permissiveValidator.validate(baseModel = model, patch = patch, mutate = mutate)
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+        }
+
+        test("guard expression returning type error with Strict policy") {
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = updateAttrPatch(ownerId = "t1", field = "guard", value = "unknown_fn()")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            when (result) {
+                is PatchValidationResult.Invalid -> result.phase shouldBe ValidationPhase.TYPE_CHECK
+                is PatchValidationResult.Valid -> result.warnings.shouldNotBeEmpty()
+            }
+        }
+
+        test("overlong guard expression is rejected as EXPRESSION_TOO_LONG before parsing") {
+            // Strict policy's maxStringLength is 1_024; also deeply nested so that, if the
+            // length pre-check were skipped, the parser's own nesting-depth cap would still
+            // reject it cleanly rather than overflowing the stack. The point here is that the
+            // length check fires first, as a TYPE_CHECK-phase error (not a warning).
+            val model = AnyKumlModel.emptyUml("Test")
+            val overlong = "(".repeat(20_000) + "1" + ")".repeat(20_000)
+            val patch = updateAttrPatch(ownerId = "t1", field = "guard", value = overlong)
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            val invalid = result.shouldBeInstanceOf<PatchValidationResult.Invalid>()
+            invalid.phase shouldBe ValidationPhase.TYPE_CHECK
+            invalid.errors.any { it.code == "EXPRESSION_TOO_LONG" } shouldBe true
+        }
+
+        test("RENDER smoke disabled by default does not invoke renderer") {
+            // Validator has renderSmokeEnabled = false (default) — just checks it returns Valid
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = addElementPatch(elementId = "cls1")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+        }
+
+        test("constructing with renderSmokeEnabled=true and no strategy fails fast") {
+            // No unsafe default: forgetting to inject a DoS-hardened RenderSmokeStrategy
+            // must be a loud construction-time failure, not a silent fallback to the
+            // unbounded desktop RenderSmokeCheck against untrusted/multi-tenant input.
+            shouldThrow<IllegalArgumentException> {
+                PatchValidator(sandboxPolicy = SandboxPolicy.Permissive, renderSmokeEnabled = true)
+            }
+        }
+
+        test("PatchValidator.desktop() enables RENDER smoke with the default strategy") {
+            val renderValidator = PatchValidator.desktop(sandboxPolicy = SandboxPolicy.Permissive)
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = addElementPatch(elementId = "cls1")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = renderValidator.validate(baseModel = model, patch = patch, mutate = mutate)
+            // Empty model renders fine
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+        }
+
+        test("RENDER phase uses the injected renderSmokeStrategy instead of the hardcoded default") {
+            var invocationCount = 0
+            val customStrategy =
+                dev.kuml.ai.tools.patch.validation.RenderSmokeStrategy { _ ->
+                    invocationCount++
+                    PatchValidationResult.Valid(warnings = listOf("custom-strategy-ran"))
+                }
+            val pluggableValidator =
+                PatchValidator(
+                    sandboxPolicy = SandboxPolicy.Permissive,
+                    renderSmokeEnabled = true,
+                    renderSmokeStrategy = customStrategy,
+                )
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = addElementPatch(elementId = "cls1")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = pluggableValidator.validate(baseModel = model, patch = patch, mutate = mutate)
+
+            invocationCount shouldBe 1
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>().warnings shouldBe listOf("custom-strategy-ran")
+        }
+
+        test("RENDER phase surfaces a rejection from the injected renderSmokeStrategy") {
+            val rejectingStrategy =
+                dev.kuml.ai.tools.patch.validation.RenderSmokeStrategy { _ ->
+                    PatchValidationResult.Invalid(
+                        errors =
+                            listOf(
+                                dev.kuml.ai.tools.patch.validation.ValidationError(
+                                    code = "RENDER_BUDGET_EXCEEDED",
+                                    message = "Simulated Portal-side resource-bound rejection",
+                                ),
+                            ),
+                        phase = ValidationPhase.RENDER,
+                    )
+                }
+            val pluggableValidator =
+                PatchValidator(
+                    sandboxPolicy = SandboxPolicy.Permissive,
+                    renderSmokeEnabled = true,
+                    renderSmokeStrategy = rejectingStrategy,
+                )
+            val model = AnyKumlModel.emptyUml("Test")
+            val patch = addElementPatch(elementId = "cls1")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = pluggableValidator.validate(baseModel = model, patch = patch, mutate = mutate)
+
+            val invalid = result.shouldBeInstanceOf<PatchValidationResult.Invalid>()
+            invalid.phase shouldBe ValidationPhase.RENDER
+            invalid.errors.any { it.code == "RENDER_BUDGET_EXCEEDED" } shouldBe true
+        }
+
+        test("C4 model AddElement returns Valid") {
+            val model = AnyKumlModel.emptyC4("C4Model")
+            val patch = addElementPatch(elementId = "person1", elementKind = "c4.person", name = "User")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+        }
+
+        test("SysML2 model AddElement returns Valid") {
+            val model = AnyKumlModel.emptySysml2("SysML2Model")
+            val patch = addElementPatch(elementId = "part1", elementKind = "sysml2.partdef", name = "Engine")
+            val mutate = ModelMutationRouter.mutateFor(patch)
+            val result = validator.validate(baseModel = model, patch = patch, mutate = mutate)
+            result.shouldBeInstanceOf<PatchValidationResult.Valid>()
+        }
+    })

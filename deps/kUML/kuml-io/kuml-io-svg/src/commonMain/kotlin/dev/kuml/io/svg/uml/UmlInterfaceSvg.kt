@@ -1,0 +1,103 @@
+package dev.kuml.io.svg.uml
+
+import dev.kuml.io.svg.SvgBuilder
+import dev.kuml.io.svg.fmt2
+import dev.kuml.io.svg.xmlEscapeAttr
+import dev.kuml.io.svg.xmlEscapeContent
+import dev.kuml.layout.NodeLayout
+import dev.kuml.renderer.theme.core.KumlTheme
+import dev.kuml.uml.UmlInterface
+
+/**
+ * Rendert eine [UmlInterface] — wie UmlClass, aber mit `«interface»`-Stereotyp-Header.
+ *
+ * In V1.1: Wenn [UmlInterface.appliedStereotypes] gesetzt sind, werden diese als
+ * zusätzliche `«…»`-Zeile vor dem `«interface»`-Keyword gerendert.
+ * Das `«interface»`-Keyword bleibt immer erhalten.
+ */
+internal fun renderUmlInterface(
+    element: UmlInterface,
+    layout: NodeLayout,
+    theme: KumlTheme,
+    builder: SvgBuilder,
+) {
+    val x = layout.bounds.origin.x
+    val y = layout.bounds.origin.y
+    val w = layout.bounds.size.width
+    val h = layout.bounds.size.height
+
+    builder.tag(
+        name = "g",
+        attrs = mapOf("id" to xmlEscapeAttr(element.id), "transform" to "translate(${fmt(x)},${fmt(y)})"),
+    ) {
+        tag(name = "rect", attrs = mapOf("width" to fmt(w), "height" to fmt(h), "class" to "kuml-interface"))
+
+        var cy = 18f
+
+        // Applied stereotypes header (V1.1) — prepended before «interface»
+        val stereoAdv = StereotypeHelper.renderHeader(element = element, theme = theme, builder = this, cx = w / 2f, cy = cy)
+        cy += stereoAdv
+
+        // Fixed «interface» keyword always present
+        tag(
+            name = "text",
+            attrs =
+                mapOf(
+                    "class" to "kuml-stereotype",
+                    "x" to fmt(w / 2f),
+                    "y" to fmt(cy),
+                    "text-anchor" to "middle",
+                ),
+        ) { text("«interface»") }
+        cy += 14f
+
+        tag(
+            name = "text",
+            attrs =
+                mapOf(
+                    "class" to "kuml-title",
+                    "x" to fmt(w / 2f),
+                    "y" to fmt(cy),
+                    "text-anchor" to "middle",
+                ),
+        ) { text(element.name) }
+        cy += 6f
+
+        // Tagged-value compartment (V1.1, opt-in)
+        val tvAdv = StereotypeHelper.renderTaggedValues(element = element, theme = theme, builder = this, w = w, cy = cy)
+        cy += tvAdv
+
+        if (element.attributes.isNotEmpty() || element.operations.isNotEmpty()) {
+            tag(
+                name = "line",
+                attrs = mapOf("x1" to "0", "y1" to fmt(cy), "x2" to fmt(w), "y2" to fmt(cy), "class" to "kuml-divider"),
+            )
+            cy += 14f
+        }
+        for (attr in element.attributes) {
+            val stereoPrefix = StereotypeHelper.featureStereotypeTspan(element = attr, theme = theme)
+            tag(
+                name = "text",
+                attrs = mapOf("class" to "kuml-body", "x" to "8", "y" to fmt(cy)),
+            ) { rawXml(stereoPrefix + xmlEscapeContent(attr.format())) }
+            cy += 13f
+        }
+        if (element.attributes.isNotEmpty() && element.operations.isNotEmpty()) {
+            tag(
+                name = "line",
+                attrs = mapOf("x1" to "0", "y1" to fmt(cy), "x2" to fmt(w), "y2" to fmt(cy), "class" to "kuml-divider"),
+            )
+            cy += 14f
+        }
+        for (op in element.operations) {
+            val stereoPrefix = StereotypeHelper.featureStereotypeTspan(element = op, theme = theme)
+            tag(
+                name = "text",
+                attrs = mapOf("class" to "kuml-body", "x" to "8", "y" to fmt(cy)),
+            ) { rawXml(stereoPrefix + xmlEscapeContent(op.format(theme))) }
+            cy += 13f
+        }
+    }
+}
+
+private fun fmt(v: Float): String = fmt2(v)

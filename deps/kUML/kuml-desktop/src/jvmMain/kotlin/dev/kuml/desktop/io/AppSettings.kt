@@ -1,0 +1,40 @@
+package dev.kuml.desktop.io
+
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class AppSettings(
+    val schemaVersion: Int = 1,
+    val theme: String = "kuml",
+    val language: String = "en",
+    val recentFiles: List<String> = emptyList(),
+    val lastDir: String? = null,
+    val windowWidth: Int = 1200,
+    val windowHeight: Int = 800,
+    val windowX: Int = -1,
+    val windowY: Int = -1,
+    // V3.0.24 — AI panel state
+    val aiPanelOpen: Boolean = false,
+    val aiPanelWidthPx: Int = 420,
+    // V3.6.4 — Knowledge Workspace viewer: canonical absolute paths of workspace
+    // roots the user has explicitly trusted (see WorkspaceTrust). Additive field —
+    // absent in old settings files, decodes to emptyList() via ignoreUnknownKeys.
+    val trustedWorkspaces: List<String> = emptyList(),
+    // P5 — persisted view mode (source/split/diagram). Stored as the enum's name(); an
+    // unknown/corrupt value (old settings file predating this field, or a future enum value
+    // read by an older build) is handled by AppState's runCatching { ViewMode.valueOf(...) }
+    // fallback to SPLIT — additive field, no schema-version bump needed.
+    val viewMode: String = "SPLIT",
+    // V3.7.4 — opt-in "Powered by kUML" watermark in the preview AND in exports (the export
+    // writes state.lastSvg, i.e. exactly what is visible). Default false, identical to the
+    // CLI's default (`kuml render` without `--watermark`) — the desktop app must never
+    // silently write a brand mark into someone else's file that the CLI would omit. Additive
+    // field, no schemaVersion bump (same reasoning as trustedWorkspaces/viewMode above — no
+    // code path actually reads schemaVersion; see AppSettingsStore.load()).
+    val showWatermark: Boolean = false,
+) {
+    companion object {
+        val DEFAULT = AppSettings()
+        const val MAX_RECENT_FILES = 10
+    }
+}

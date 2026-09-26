@@ -1,0 +1,261 @@
+package dev.kuml.core.script
+
+import java.io.BufferedReader
+import java.io.File
+import java.io.IOException
+import java.nio.file.FileVisitResult
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
+import java.util.concurrent.TimeUnit
+
+/**
+ * Shared helpers for launching and talking to a script-evaluation child JVM
+ * ([ScriptWorkerMain]). Used by both the cold-start [ChildProcessScriptEvaluator]
+ * (Welle 2) and the warm-pool [WarmScriptWorker] / [WorkerPool] (Welle 3), so the
+ * process-launch hardening (fixed argv, minimal environment, capped heap) lives
+ * in exactly one place and cannot drift between the two paths.
+ *
+ * V0.23.3 — Welle 3.
+ */
+internal object WorkerProcessSupport {
+    const val WORKER_MAIN_CLASS: String = "dev.kuml.core.script.ScriptWorkerMain"
+
+    /** 32 MiB — large legitimate models are allowed, unbounded gibberish is not. */
+    const val MAX_RESPONSE_LENGTH: Int = 32 * 1024 * 1024
+
+    /**
+     * A launched worker process together with the per-worker temp directory that
+     * is its **only** writable location under the OS sandbox (Welle 4). The
+     * directory is created before launch and must be deleted by the caller when
+     * the worker is done (via [LaunchedWorker.cleanup]).
+     */
+    class LaunchedWorker(
+        val process: Process,
+        private val workDir: File,
+        private val cage: OsSandbox.PostStartCage = OsSandbox.PostStartCage.NONE,
+    ) {
+        /**
+         * Closes the post-start OS cage (on Windows this kills the caged process
+         * via `KILL_ON_JOB_CLOSE`) and recursively removes the per-worker temp
+         * directory. Idempotent, best-effort.
+         *
+         * **Sandbox-escape hardening:** two properties matter here and both used
+         * to be missing.
+         *
+         * 1. Callers destroy the child with `process.destroyForcibly()`, which is
+         *    *asynchronous* — the call returns before the child has actually
+         *    exited. If [cleanup] deleted [workDir] immediately afterwards, a
+         *    still-alive child could plant e.g. a symlink into [workDir] in the
+         *    window between `destroyForcibly()` and this delete. So we first wait
+         *    (bounded) for the child to actually exit before touching the
+         *    sandbox-writable directory at all.
+         * 2. `File.deleteRecursively()` walks via `File.isDirectory()` /
+         *    `File.listFiles()`, which **follow symbolic links** — a directory
+         *    symlink planted inside [workDir] (the *only* read-write path bound
+         *    into the OS cage, see [launch]) would cause a recursive delete of
+         *    whatever it points to, running with the *parent* JVM's privileges,
+         *    i.e. outside the OS sandbox entirely. [deleteRecursivelySafely] uses
+         *    `Files.walkFileTree` without `FOLLOW_LINKS`, which visits a symlink
+         *    as a leaf (deleting only the link) instead of descending into its
+         *    target.
+         */
+        fun cleanup() {
+            runCatching { cage.close() }
+            runCatching { process.waitFor(WorkerProcessSupport.PROCESS_EXIT_WAIT_MILLIS, TimeUnit.MILLISECONDS) }
+            runCatching { WorkerProcessSupport.deleteRecursivelySafely(workDir) }
+        }
+    }
+
+    /** Bounded wait for a just-destroyed child to actually exit before [LaunchedWorker.cleanup] touches its workdir. */
+    private const val PROCESS_EXIT_WAIT_MILLIS: Long = 2_000
+
+    /**
+     * Recursively deletes [root] **without following symbolic links** — a
+     * directory symlink is deleted as the link itself, never traversed into.
+     * `Files.walkFileTree` only follows symlinks when `FileVisitOption.FOLLOW_LINKS`
+     * is passed, which it deliberately is not here. Best-effort: failures to
+     * delete an individual entry are swallowed so one stubborn file can't abort
+     * the rest of the cleanup (matching the previous `deleteRecursively()`
+     * best-effort contract).
+     */
+    private fun deleteRecursivelySafely(root: File) {
+        if (!root.exists() && !Files.isSymbolicLink(root.toPath())) return
+        runCatching {
+            Files.walkFileTree(
+                root.toPath(),
+                object : SimpleFileVisitor<Path>() {
+                    override fun visitFile(
+                        file: Path,
+                        attrs: BasicFileAttributes,
+                    ): FileVisitResult {
+                        runCatching { Files.deleteIfExists(file) }
+                        return FileVisitResult.CONTINUE
+                    }
+
+                    override fun visitFileFailed(
+                        file: Path,
+                        exc: IOException,
+                    ): FileVisitResult {
+                        runCatching { Files.deleteIfExists(file) }
+                        return FileVisitResult.CONTINUE
+                    }
+
+                    override fun postVisitDirectory(
+                        dir: Path,
+                        exc: IOException?,
+                    ): FileVisitResult {
+                        runCatching { Files.deleteIfExists(dir) }
+                        return FileVisitResult.CONTINUE
+                    }
+                },
+            )
+        }
+    }
+
+    /**
+     * Launches a worker JVM with a **fixed argument list** (never a shell string,
+     * so there is no command-injection surface — nothing from the untrusted
+     * script influences argv) and a **minimal environment** (the parent's env,
+     * which may carry API keys / tokens, is NOT inherited; only `PATH` is
+     * restored so the JVM can boot; `TMPDIR` is pinned to the per-worker
+     * sandbox-writable [LaunchedWorker] directory so the child's own temp files
+     * land inside the OS cage).
+     *
+     * On macOS the command is additionally wrapped in `sandbox-exec` with the
+     * strict seatbelt profile ([OsSandbox]) and on Linux in `bwrap`; the per-worker
+     * temp directory is the sole writable path. If OS isolation is `required` but
+     * cannot be applied, this throws [SandboxUnavailableException] — the caller
+     * must fail closed and never launch an un-caged worker.
+     *
+     * On **Windows** the cage cannot be a command prefix: the process is started
+     * first, then [OsSandbox.applyPostStart] installs a Job Object on it (memory
+     * cap + single-process + kill-on-close). If that fails under `required`, the
+     * just-started process is destroyed and [SandboxUnavailableException] is
+     * rethrown — again, never a surviving un-caged worker.
+     *
+     * @param warm when true, passes [ScriptWorkerMain.ARG_WARM] so the child
+     *   pre-warms and emits a ready line before consuming a request.
+     */
+    fun launch(
+        javaBinary: String,
+        classpath: String,
+        maxHeapMb: Int,
+        warm: Boolean,
+    ): LaunchedWorker {
+        // Per-worker temp dir: created up front, used as the JVM temp dir AND as
+        // the sole file-write-allowed subpath in the OS sandbox profile.
+        //
+        // Canonicalize the path: on macOS the system temp lives under
+        // /var/folders/… which is a symlink to /private/var/folders/…. The
+        // seatbelt kernel evaluates the *canonical* path, but the JVM writes via
+        // the path we hand it. If the sandbox `subpath` param used the
+        // non-canonical /var/… form, a legitimate write to the canonical
+        // /private/var/… path would be denied. Using the canonical path for both
+        // the sandbox param and java.io.tmpdir keeps them in lockstep.
+        val workDir =
+            Files
+                .createTempDirectory("kuml-worker-work-")
+                .toRealPath()
+                .toFile()
+                .apply { deleteOnExit() }
+
+        val bareCommand =
+            buildList {
+                add(javaBinary)
+                add("-Xmx${maxHeapMb}m")
+                // Keep the child headless & quiet; a conservative, fixed set of
+                // flags so behaviour cannot be perturbed by inherited JVM options.
+                add("-XX:+UseSerialGC")
+                add("-Djava.awt.headless=true")
+                // Pin the JVM temp dir into the sandbox-writable workdir so the
+                // Kotlin compiler / scripting host can write their scratch files.
+                add("-Djava.io.tmpdir=${workDir.absolutePath}")
+                add("-cp")
+                add(classpath)
+                add(WORKER_MAIN_CLASS)
+                if (warm) add(ScriptWorkerMain.ARG_WARM)
+            }
+
+        val command =
+            try {
+                OsSandbox.wrap(command = bareCommand, workDir = workDir)
+            } catch (e: SandboxUnavailableException) {
+                runCatching { workDir.deleteRecursively() }
+                throw e
+            }
+
+        val builder = ProcessBuilder(command)
+        builder.environment().clear()
+        System.getenv("PATH")?.let { builder.environment()["PATH"] = it }
+        // TMPDIR is pinned to the writable workdir (not the parent's TMPDIR),
+        // so any tool that honours $TMPDIR also stays inside the cage.
+        builder.environment()["TMPDIR"] = workDir.absolutePath
+        // Welle 7: propagate the allowlist-classloader policy to the child. The
+        // env is otherwise cleared (no secret inheritance), so this one flag must
+        // be forwarded explicitly. Absent → the child defaults to `enforced`
+        // (secure default), so forwarding only matters when an operator set
+        // `disabled` to debug a suspected false-positive. Never forwarded as a
+        // secret; it is a boolean policy switch.
+        System.getenv(WorkerClassLoaderPolicy.ENV_VAR)?.let {
+            builder.environment()[WorkerClassLoaderPolicy.ENV_VAR] = it
+        }
+        builder.redirectErrorStream(false)
+        val process =
+            try {
+                builder.start()
+            } catch (e: Exception) {
+                runCatching { workDir.deleteRecursively() }
+                throw e
+            }
+
+        // Post-start OS cage (Windows Job Object; no-op elsewhere). Applied AFTER
+        // start because a Job Object cannot be a command prefix. Under `required`,
+        // a cage failure destroys the just-started process and rethrows, so no
+        // un-caged worker ever survives.
+        val cage =
+            try {
+                OsSandbox.applyPostStart(process = process, workDir = workDir)
+            } catch (e: SandboxUnavailableException) {
+                runCatching { process.destroyForcibly() }
+                runCatching { workDir.deleteRecursively() }
+                throw e
+            }
+
+        return LaunchedWorker(process = process, workDir = workDir, cage = cage)
+    }
+
+    /**
+     * Reads up to [MAX_RESPONSE_LENGTH] characters, stopping at the first
+     * newline. Returns null on EOF-before-any-data, `""` for an empty first line,
+     * or the (bounded) content otherwise. Never buffers unboundedly — a hostile
+     * child that writes a huge blob with no newline must never OOM the *parent*.
+     */
+    fun readBoundedLine(reader: BufferedReader): String? =
+        try {
+            val sb = StringBuilder()
+            var sawAny = false
+            while (sb.length < MAX_RESPONSE_LENGTH) {
+                val c = reader.read()
+                if (c < 0) break // EOF
+                sawAny = true
+                if (c == '\n'.code) break
+                sb.append(c.toChar())
+            }
+            if (!sawAny) null else sb.toString()
+        } catch (_: Exception) {
+            null
+        }
+
+    /** Absolute path to the `java` binary of the *currently running* JVM. */
+    fun defaultJavaBinary(): String {
+        val javaHome = System.getProperty("java.home")
+        val exe = if (System.getProperty("os.name").orEmpty().startsWith("Windows")) "java.exe" else "java"
+        return if (javaHome != null) {
+            File(javaHome, "bin${File.separator}$exe").absolutePath
+        } else {
+            exe // last-resort: rely on PATH
+        }
+    }
+}

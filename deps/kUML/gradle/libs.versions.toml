@@ -1,0 +1,233 @@
+[versions]
+kotlin                 = "2.4.0"
+shadow                 = "9.6.1"
+koog                   = "1.2.0"
+koog-mcp               = "1.2.0-beta"
+koog-google            = "1.2.0-beta"
+koog-gonka             = "0.1.0"
+jna                    = "5.19.1"
+batik                  = "1.19"
+compose-multiplatform  = "1.12.0"
+compose-material3      = "1.9.0"
+kuiver                 = "0.4.1"
+elk                    = "0.12.0"
+xtext-xbase-lib        = "2.44.0"
+kotlinx-serialization  = "1.11.0"
+kotlinx-coroutines     = "1.11.0"
+ktor                   = "3.5.2"
+coil                   = "3.6.2"
+kotest                 = "6.2.4"
+junit                  = "6.1.1"
+ktlint-plugin          = "14.2.0"
+clikt                  = "5.1.0"
+graalvm-native         = "1.1.12"
+vanniktech-publish     = "0.37.0"
+gradle-publish-plugin  = "2.1.1"
+intellij-platform      = "2.18.1"
+intellij-idea          = "2025.1.7.2"
+# Marketplace-only plugin (not bundled with the IDE), used optionally by
+# kuml-jetbrains-plugin's AsciiDoc preview integration. Pinned to 0.43.6
+# deliberately: newer releases (0.44.1+) raise the minimum supported IDE
+# build to 251.0.0+/251.23536.34+ and 0.45.x further raises it to
+# 253.25908+ (IntelliJ 2025.3+) — verified against the JetBrains Marketplace
+# API on 2026-09-08. Our pinned intellij-idea (2025.1.7.2, build 251.x) sits
+# right at that boundary; bumping without also re-verifying/raising
+# intellij-idea is a real IDE-compatibility risk, not a routine catalog bump,
+# so it is deliberately left at 0.43.6 for this wave.
+asciidoctor-intellij-plugin = "0.43.6"
+javaparser             = "3.28.2"
+jsqlparser             = "5.3"
+eclipse-emf-ecore      = "2.43.0"
+eclipse-emf-ecore-xmi  = "2.41.0"
+jdom2                  = "2.0.6.1"
+eclipse-uml2           = "5.0.1.v20140910-1354"
+eclipse-uml2-types     = "2.0.0.v20140910-1354"
+eclipse-uml2-common    = "2.0.1.v20140910-1354"
+sqlite-jdbc            = "3.53.4.0"
+atomicfu               = "0.33.0"
+lsp4j                  = "1.0.0"
+markdown-renderer      = "0.45.0"
+detekt                 = "2.0.0-alpha.6"
+logback                = "1.6.3"
+
+[libraries]
+# ── Compose / Kuiver ─────────────────────────────────────────────────────────
+# Note: Since Compose Multiplatform 1.11 the `compose.runtime/foundation/ui/material3`
+# plugin DSL string accessors are deprecated ("Specify dependency directly"), so we
+# reference the artifacts directly through this catalog. material3 ships on its own
+# version cadence since CMP 1.10 (decoupled from `compose-multiplatform`) — hence a
+# separate `compose-material3` version ref. These are the exact coordinates the
+# Compose plugin's dependency resolution selects for CMP 1.11.1.
+kuiver                          = { module = "io.github.justdeko:kuiver",                              version.ref = "kuiver" }
+compose-runtime                 = { module = "org.jetbrains.compose.runtime:runtime",                 version.ref = "compose-multiplatform" }
+compose-foundation              = { module = "org.jetbrains.compose.foundation:foundation",           version.ref = "compose-multiplatform" }
+compose-ui                      = { module = "org.jetbrains.compose.ui:ui",                            version.ref = "compose-multiplatform" }
+compose-material3               = { module = "org.jetbrains.compose.material3:material3",              version.ref = "compose-material3" }
+compose-ui-test-junit4           = { module = "org.jetbrains.compose.ui:ui-test-junit4",               version.ref = "compose-multiplatform" }
+
+# ── Kotlin ──────────────────────────────────────────────────────────────────
+# ── Eclipse Layout Kernel ────────────────────────────────────────────────────
+elk-core                        = { module = "org.eclipse.elk:org.eclipse.elk.core",                version.ref = "elk" }
+elk-alg-layered                 = { module = "org.eclipse.elk:org.eclipse.elk.alg.layered",         version.ref = "elk" }
+xtext-xbase-lib                 = { module = "org.eclipse.xtext:org.eclipse.xtext.xbase.lib",       version.ref = "xtext-xbase-lib" }
+
+# ── Kotlin ──────────────────────────────────────────────────────────────────
+kotlin-stdlib                   = { module = "org.jetbrains.kotlin:kotlin-stdlib",                   version.ref = "kotlin" }
+kotlin-reflect                  = { module = "org.jetbrains.kotlin:kotlin-reflect",                  version.ref = "kotlin" }
+
+# ── Kotlin Scripting ─────────────────────────────────────────────────────────
+kotlin-scripting-common         = { module = "org.jetbrains.kotlin:kotlin-scripting-common",         version.ref = "kotlin" }
+kotlin-scripting-jvm            = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm",            version.ref = "kotlin" }
+kotlin-scripting-jvm-host       = { module = "org.jetbrains.kotlin:kotlin-scripting-jvm-host",       version.ref = "kotlin" }
+kotlin-scripting-dependencies   = { module = "org.jetbrains.kotlin:kotlin-scripting-dependencies",   version.ref = "kotlin" }
+
+# ── Kotlinx ──────────────────────────────────────────────────────────────────
+kotlinx-serialization-core      = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core",    version.ref = "kotlinx-serialization" }
+kotlinx-serialization-json      = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json",    version.ref = "kotlinx-serialization" }
+kotlinx-coroutines-core         = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core",       version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-swing        = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing",       version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test         = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test",       version.ref = "kotlinx-coroutines" }
+
+# ── Koog (AI Agent Framework) ────────────────────────────────────────────────
+# Note: provider clients are under group "ai.koog", not "ai.koog.prompt" (plan had wrong group)
+koog-agents-jvm                         = { module = "ai.koog:koog-agents-jvm",                          version.ref = "koog" }
+koog-agents-mcp                         = { module = "ai.koog:agents-mcp-jvm",                            version.ref = "koog-mcp" }
+koog-prompt-executor-openai-client      = { module = "ai.koog:prompt-executor-openai-client",            version.ref = "koog" }
+koog-prompt-executor-anthropic-client   = { module = "ai.koog:prompt-executor-anthropic-client",         version.ref = "koog" }
+koog-prompt-executor-google-client      = { module = "ai.koog:prompt-executor-google-client",            version.ref = "koog-google" }
+koog-prompt-executor-ollama-client      = { module = "ai.koog:prompt-executor-ollama-client",            version.ref = "koog" }
+koog-gonka                              = { module = "de.betchvaia:koog-gonka",                          version.ref = "koog-gonka" }
+
+# ── JNA (Platform Keystore Backends) ────────────────────────────────────────
+jna                                     = { module = "net.java.dev.jna:jna",                              version.ref = "jna" }
+jna-platform                            = { module = "net.java.dev.jna:jna-platform",                     version.ref = "jna" }
+
+# ── Ktor (MCP server — Phase 2 / Web UI — V2.0.34) ───────────────────────────
+# ── Coil 3 (async image loading — V3.1.13 Plugin Marketplace Screenshots) ────
+coil-compose                    = { module = "io.coil-kt.coil3:coil-compose",                        version.ref = "coil" }
+coil-network-ktor               = { module = "io.coil-kt.coil3:coil-network-ktor3",                  version.ref = "coil" }
+
+# ── Ktor Client (used by Coil network fetcher on desktop JVM) ────────────────
+ktor-client-core                = { module = "io.ktor:ktor-client-core",                              version.ref = "ktor" }
+ktor-client-java                = { module = "io.ktor:ktor-client-java",                              version.ref = "ktor" }
+
+ktor-server-core                = { module = "io.ktor:ktor-server-core",                            version.ref = "ktor" }
+ktor-server-netty               = { module = "io.ktor:ktor-server-netty",                           version.ref = "ktor" }
+ktor-serialization-json         = { module = "io.ktor:ktor-serialization-kotlinx-json",             version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation",             version.ref = "ktor" }
+ktor-server-status-pages        = { module = "io.ktor:ktor-server-status-pages",                    version.ref = "ktor" }
+ktor-server-test-host           = { module = "io.ktor:ktor-server-test-host",                       version.ref = "ktor" }
+
+# ── Apache Batik ─────────────────────────────────────────────────────────────
+batik-transcoder                = { module = "org.apache.xmlgraphics:batik-transcoder", version.ref = "batik" }
+batik-codec                     = { module = "org.apache.xmlgraphics:batik-codec",      version.ref = "batik" }
+batik-swing                     = { module = "org.apache.xmlgraphics:batik-swing",      version.ref = "batik" }
+batik-bridge                    = { module = "org.apache.xmlgraphics:batik-bridge",     version.ref = "batik" }
+batik-anim                      = { module = "org.apache.xmlgraphics:batik-anim",       version.ref = "batik" }
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+kotlin-test                     = { module = "org.jetbrains.kotlin:kotlin-test",                    version.ref = "kotlin" }
+kotest-runner-junit5            = { module = "io.kotest:kotest-runner-junit5",                      version.ref = "kotest" }
+kotest-assertions-core          = { module = "io.kotest:kotest-assertions-core",                    version.ref = "kotest" }
+kotest-property                 = { module = "io.kotest:kotest-property",                           version.ref = "kotest" }
+junit-bom                       = { module = "org.junit:junit-bom",                                version.ref = "junit" }
+junit-jupiter                   = { module = "org.junit.jupiter:junit-jupiter",                    version.ref = "junit" }
+clikt                           = { module = "com.github.ajalt.clikt:clikt",                         version.ref = "clikt" }
+
+# ── Eclipse EMF / UML2 (kuml-io-emf, JVM-only) ──────────────────────────────
+eclipse-emf-ecore      = { module = "org.eclipse.emf:org.eclipse.emf.ecore",            version.ref = "eclipse-emf-ecore" }
+eclipse-emf-ecore-xmi  = { module = "org.eclipse.emf:org.eclipse.emf.ecore.xmi",        version.ref = "eclipse-emf-ecore-xmi" }
+jdom2                  = { module = "org.jdom:jdom2",                                    version.ref = "jdom2" }
+eclipse-uml2-uml       = { module = "org.eclipse.uml2:org.eclipse.uml2.uml",            version.ref = "eclipse-uml2" }
+eclipse-uml2-types     = { module = "org.eclipse.uml2:org.eclipse.uml2.types",          version.ref = "eclipse-uml2-types" }
+eclipse-uml2-common    = { module = "org.eclipse.uml2:org.eclipse.uml2.common",         version.ref = "eclipse-uml2-common" }
+
+# ── JavaParser (Reverse Engineering — V3.0.7) ────────────────────────────────
+javaparser-core                 = { module = "com.github.javaparser:javaparser-core",                version.ref = "javaparser" }
+javaparser-symbol-solver-core   = { module = "com.github.javaparser:javaparser-symbol-solver-core",  version.ref = "javaparser" }
+
+# ── SQLite (PersistentPatchStore — V3.1.19) ───────────────────────────────────
+sqlite-jdbc                     = { module = "org.xerial:sqlite-jdbc",                                  version.ref = "sqlite-jdbc" }
+
+# ── JSqlParser (Reverse Engineering SQL→ERM — V3.4.9) ────────────────────────
+# NOTE: the historic Maven Central coordinate "net.sf.jsqlparser:jsqlparser" is
+# abandoned at 0.8.0 (2012) — the project moved groupId to "com.github.jsqlparser"
+# years ago. Verified current coordinate against repo1.maven.org metadata.
+jsqlparser                      = { module = "com.github.jsqlparser:jsqlparser",                        version.ref = "jsqlparser" }
+
+# ── Kotlin Compiler Embeddable (Reverse Engineering — V3.0.8) ─────────────────
+kotlin-compiler-embeddable      = { module = "org.jetbrains.kotlin:kotlin-compiler-embeddable",       version.ref = "kotlin" }
+
+# ── atomicfu (KMP-safe atomics — V3.2.6) ─────────────────────────────────────
+kotlinx-atomicfu                 = { module = "org.jetbrains.kotlinx:atomicfu",                        version.ref = "atomicfu" }
+
+# ── Eclipse LSP4J (kuml-language-server — Wave 2) ────────────────────────────
+lsp4j                            = { module = "org.eclipse.lsp4j:org.eclipse.lsp4j",                    version.ref = "lsp4j" }
+
+# ── Markdown renderer (Desktop Knowledge Workspace viewer — V3.6.4) ──────────
+# Compose-version-agnostic: the jvm variant declares no Compose coordinate of
+# its own, it compiles against whatever Compose/material3 the app supplies
+# (verified against this repo's compose-multiplatform 1.11.1 / material3 1.9.0).
+markdown-renderer-m3             = { module = "com.mikepenz:multiplatform-markdown-renderer-m3",         version.ref = "markdown-renderer" }
+
+# ── Detekt (custom ruleset :kuml-detekt-rules — RequireNamedArguments gate) ──
+# Pinned to the 2.0.0-alpha.x K2/Analysis-API line, NOT the stable 1.23.8 line —
+# 1.23.8 pins kotlin-compiler-embeddable:2.0.21, whose shaded IntelliJ JavaVersion
+# cannot parse JDK 26's version string ("26.0.2") and crashes in the Gradle daemon
+# JVM (jvmToolchain does not help, it runs in-process). 2.0.0-alpha.x pins
+# kotlin-compiler:2.4.0, matching this repo's Kotlin version. Verified against
+# 2.0.0-alpha.6 (bumped from alpha.5) on 2026-09-02 — same pinning rationale holds.
+detekt-api                       = { module = "dev.detekt:detekt-api",         version.ref = "detekt" }
+# NOTE: dev.detekt:detekt-test is deliberately NOT declared here — its published
+# module metadata cannot be resolved outside the detekt monorepo (see the
+# comment in kuml-detekt-rules/build.gradle.kts). detekt-test-utils resolves
+# fine and is all RequireNamedArgumentsSpec needs.
+detekt-test-utils                = { module = "dev.detekt:detekt-test-utils",  version.ref = "detekt" }
+
+# ── kUML source-style validation worker (:kuml-style-worker) ─────────────────
+# The Kotlin Analysis API standalone session, repackaged by detekt because
+# Maven Central carries no other coordinate for it (org.jetbrains.kotlin:
+# analysis-api-standalone* is only published to JetBrains' own
+# cache-redirector, not Central). detekt-kotlin-analysis-api-standalone
+# references UNSHADED com/intellij/** classes, so it needs the plain
+# `kotlin-compiler` artifact below — NEVER the `-embeddable` one on the same
+# classpath (both relocate/ship com.intellij differently; mixing them throws
+# NoSuchMethodError on KotlinCoreEnvironment$Companion at session-build time).
+# This is why the style check runs in its own child-process worker JVM with
+# its own isolated classpath (see dev.kuml.core.script.style.NamedArgumentStyleCheck)
+# rather than on kuml-cli/kuml-mcp's own runtime classpath, which already
+# carries kotlin-compiler-embeddable for the DSL scripting host.
+detekt-kotlin-analysis-api            = { module = "dev.detekt:detekt-kotlin-analysis-api",            version.ref = "detekt" }
+detekt-kotlin-analysis-api-standalone = { module = "dev.detekt:detekt-kotlin-analysis-api-standalone", version.ref = "detekt" }
+kotlin-compiler                       = { module = "org.jetbrains.kotlin:kotlin-compiler",             version.ref = "kotlin" }
+
+# ── Logging: SLF4J-Backend ───────────────────────────────────────────────────
+# kUML's code logs through the SLF4J facade (org.slf4j.LoggerFactory). slf4j-api
+# arrives transitively via Koog / aws-smithy-kotlin, but until this entry existed
+# NO provider was on any runtime classpath — SLF4J fell back to its NOP logger
+# ("SLF4J(W): No SLF4J providers were found."), silently discarding every log
+# statement, including ApiKeyVault's plaintext-API-key security warning.
+#
+# logback-classic 1.6.3 declares slf4j-api 2.0.18 — exactly the version this repo
+# already resolves — and pulls only logback-core in addition (mail/servlet/jackson
+# deps in its POM are optional, provided, or test scope).
+#
+# Declared runtimeOnly in :kuml-desktop, :kuml-cli and :kuml-mcp only. It must
+# NEVER reach :kuml-jetbrains-plugin (the IDE supplies its own provider) or
+# :kuml-gradle (Gradle supplies its own).
+logback-classic                 = { module = "ch.qos.logback:logback-classic",                version.ref = "logback" }
+
+[plugins]
+kotlin-jvm              = { id = "org.jetbrains.kotlin.jvm",                      version.ref = "kotlin" }
+kotlin-multiplatform    = { id = "org.jetbrains.kotlin.multiplatform",            version.ref = "kotlin" }
+kotlin-serialization    = { id = "org.jetbrains.kotlin.plugin.serialization",     version.ref = "kotlin" }
+compose-multiplatform   = { id = "org.jetbrains.compose",                         version.ref = "compose-multiplatform" }
+compose-compiler        = { id = "org.jetbrains.kotlin.plugin.compose",           version.ref = "kotlin" }
+ktlint                  = { id = "org.jlleitschuh.gradle.ktlint",                 version.ref = "ktlint-plugin" }
+graalvm-native          = { id = "org.graalvm.buildtools.native",                 version.ref = "graalvm-native" }
+vanniktech-publish      = { id = "com.vanniktech.maven.publish",                  version.ref = "vanniktech-publish" }
+gradle-plugin-publish   = { id = "com.gradle.plugin-publish",                     version.ref = "gradle-publish-plugin" }
+intellij-platform       = { id = "org.jetbrains.intellij.platform",               version.ref = "intellij-platform" }
+shadow                  = { id = "com.gradleup.shadow",                            version.ref = "shadow" }
+kotlinx-atomicfu        = { id = "org.jetbrains.kotlinx.atomicfu",                version.ref = "atomicfu" }
+detekt                  = { id = "dev.detekt",                                    version.ref = "detekt" }

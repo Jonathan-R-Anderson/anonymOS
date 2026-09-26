@@ -1,0 +1,243 @@
+= VS Code Extension
+:description: Syntax highlighting, snippets, LSP diagnostics/completion, and live-preview rendering in VS Code.
+
+The `kuml-vscode` extension brings kUML to Visual Studio Code and any VS Code-compatible
+editor (Cursor, VSCodium, Code Server). The extension itself is a thin TypeScript client —
+no Kotlin extension dependency for syntax highlighting and snippets — but diagnostics,
+completion, and rendering are backed by two external processes it shells out to or
+speaks LSP with: the `kuml` CLI and the `kuml-lsp` language server (see
+xref:tooling:cli.adoc[] and `kuml-language-server`). Both need to be installed
+separately; see <<Requirements>>.
+
+== Install
+
+*Extensions sidebar → Search "kUML" → Install.*
+
+Or install a local `.vsix` distribution built from source (the extension lives in its
+own repository, https://github.com/kuml-dev/kuml-vscode):
+
+[source,bash]
+----
+git clone git@github.com:kuml-dev/kuml-vscode.git
+cd kuml-vscode
+npm install
+npm run package
+# → kuml-vscode-0.X.Y.vsix
+
+code --install-extension kuml-vscode-0.X.Y.vsix
+----
+
+[[Requirements]]
+== Requirements
+
+* The `kuml` CLI must be installed and reachable on `PATH` (or pointed at via the
+  `kuml.cliPath` setting). The render command and the live preview's CLI fallback both
+  shell out to `kuml render`.
+* The `kuml-lsp` language server binary must also be reachable — discovered the same way
+  as `kuml`: an explicit path (`kuml.lspPath` setting or `KUML_LSP` env var) → `PATH` →
+  Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`) / `~/.local/bin` → a local Gradle
+  build. If you're running from a clone of the `kUML` repo rather than an installed
+  distribution, run `./gradlew :kuml-language-server:installDist` first so
+  `kuml-language-server/build/install/kuml-lsp/bin/kuml-lsp` exists for the walk-up
+  discovery to find.
+* Syntax highlighting and snippets work without either binary installed — only
+  diagnostics, completion, rendering, and the live preview need them.
+
+== What you get
+
+* *Syntax highlighting* — own TextMate grammar (`source.kuml`) with Kotlin basics plus
+  a dedicated `#kuml-dsl` pattern group. Diagram entry points, UML DSL builders, and C4
+  DSL builders all highlight as first-class language constructs. Works offline, no
+  dependency on a third-party Kotlin extension.
+
+* *File icon* — distinct icon for `*.kuml.kts` files in the Explorer and editor tabs
+  (light and dark variants).
+
+* *Snippets* — type any of these prefixes and `Tab` to expand:
++
+[cols="1,3"]
+|===
+| Prefix | Expands to
+
+| `diagram`
+| Empty class diagram with a name placeholder.
+
+| `umlModel`
+| `umlModel { classDiagram { … } }` wrapper.
+
+| `classOf`
+| Class with attribute, operation, and stereotype placeholders.
+
+| `interfaceOf`
+| Interface with one operation.
+
+| `enumOf`
+| Enum with two literal placeholders.
+
+| `c4Model`
+| Person + SoftwareSystem + Container + `systemContextDiagram`.
+
+| `association`
+| Binary association with role names and multiplicities.
+
+| `generalization`
+| Inheritance between a child and a parent.
+
+| `realization`
+| Implements between a class and an interface.
+
+| `stateMachine`
+| State machine with initial, two states, two transitions.
+
+| `applyProfile`
+| `applyProfile(...)` with the five built-in profiles as a choice list.
+|===
+
+* *Render command* — *kUML: Render to SVG* (command palette, editor title bar, or
+  editor context menu). Shells out to `kuml render`, writes to a temp file, opens the
+  result. Works on unsaved buffers too. SVG output routes into the live-preview panel
+  (see below); PNG output still opens in the OS's default image viewer.
+
+* *Diagnostics + completion* via the `kuml-lsp` language server — parse and validation
+  errors are pushed as you type (debounced), and completion (including resolve) is
+  available for DSL builders and identifiers, over stdio via
+  `vscode-languageclient`.
+
+* *kUML: Open Live Preview* — a persistent webview panel that renders the active
+  document as sanitized inline SVG and re-renders automatically on save and when you
+  switch to another `*.kuml.kts` editor tab.
+
+* *kUML: Restart Language Server* — stops and relaunches `kuml-lsp` without reloading
+  the whole extension host window.
+
+== Configuration
+
+Seven settings, all under `kuml.*`:
+
+[cols="1,1,3"]
+|===
+| Setting | Default | Description
+
+| `kuml.cliPath`
+| `kuml`
+| Path to the `kuml` CLI executable. Override if installed in a non-standard location.
+
+| `kuml.theme`
+| `kuml`
+| Default `--theme` passed to `kuml render`. Any `ThemeRegistry` name works.
+
+| `kuml.format`
+| `svg`
+| Output format for *kUML: Render to SVG* (`svg` or `png`). SVG routes into the
+  live-preview panel; PNG opens in your OS viewer.
+
+| `kuml.lspPath`
+| `""`
+| Explicit path to the `kuml-lsp` launcher. Empty auto-detects it (`PATH` → Homebrew →
+  `~/.local/bin` → local build).
+
+| `kuml.serverUrl`
+| `""`
+| Base URL of a running `kuml serve` instance used by the live preview. Empty makes the
+  preview shell out to `kuml render` instead.
+
+| `kuml.diagnostics.enable`
+| `true`
+| Enable push diagnostics from the language server.
+
+| `kuml.diagnostics.debounceMs`
+| `300`
+| Debounce interval (ms) between an edit and the server re-validating the document.
+|===
+
+Edit via *Settings → Extensions → kUML*, or directly in `settings.json`:
+
+[source,json]
+----
+{
+    "kuml.cliPath": "/usr/local/bin/kuml",
+    "kuml.theme": "elegant",
+    "kuml.format": "svg",
+    "kuml.serverUrl": "http://127.0.0.1:8080"
+}
+----
+
+== Render command — how it works
+
+When you trigger *kUML: Render to SVG* on the active buffer:
+
+. The extension writes the buffer's text to a temp file in `os.tmpdir()`. This works
+  for unsaved buffers and for *Untitled* documents.
+. It spawns `kuml render --theme … --format … --output <tmpOut> <tmpSrc>` (no shell,
+  so paths with spaces and special characters are safe).
+. On success: SVG output opens in the live-preview panel; PNG opens in the OS viewer
+  because VS Code's binary handling is awkward.
+. On failure: notification with the trimmed CLI stderr; if `ENOENT`, hints at the
+  `kuml.cliPath` setting.
+
+== Live preview — dual render strategy
+
+The *kUML: Open Live Preview* panel renders via two strategies, in order:
+
+. *`kuml serve` HTTP API* — if `kuml.serverUrl` is set (e.g. `http://127.0.0.1:8080`,
+  from a locally running `kuml serve --port …`), the panel POSTs to
+  `{serverUrl}/api/render` and inlines the returned SVG.
+. *CLI fallback* — if `kuml.serverUrl` is empty, or the HTTP call fails for any reason,
+  the panel shells out to `kuml render` against a temp-file snapshot of the buffer
+  (works for unsaved/dirty documents too).
+
+Only SVG is inlined into the webview. The panel re-renders on save and whenever you
+switch to another `*.kuml.kts` editor tab.
+
+== What's deliberately NOT in scope
+
+This extension is intentionally minimal — it gives you a good editor without trying to
+be a full IDE. The following are deliberately left out for now:
+
+* *Hover, go-to-definition, rename, and code actions.*
+* *Any custom render request on the LSP itself* — the server stays render-agnostic; all
+  rendering is a client-side concern.
+
+For OCL validation and code generation, use the `dev.kuml` Gradle plugin or the CLI
+directly.
+
+== Troubleshooting
+
+[cols="1,3"]
+|===
+| Symptom | Likely cause
+
+| *kUML: Render to SVG* prompts "kUML CLI is not on PATH"
+| `kuml` is not in your `PATH`. Either install it (see xref:ROOT:install.adoc[Installation])
+  or point `kuml.cliPath` at the binary.
+
+| Render fails with a script syntax error
+| The buffer has a syntax problem. Save the buffer and run `kuml render <file>` directly
+  to see the full error.
+
+| File opens as plain text
+| The file extension isn't `.kuml.kts`. The grammar only activates for that suffix.
+
+| Snippets don't show up
+| Snippets are scoped to the `kuml` language. If you have other extensions registering
+  for `*.kts` files, they may take precedence. Check *Language Mode* in the bottom-right
+  status bar — it should say *kUML*.
+
+| No diagnostics or completion appear
+| `kuml-lsp` was not found by the discovery walk-up. Set `kuml.lspPath` explicitly, or —
+  if running from a repo clone — run
+  `./gradlew :kuml-language-server:installDist` first. Then run
+  *kUML: Restart Language Server*.
+
+| Live preview stays blank or shows a stale diagram
+| If `kuml.serverUrl` points at a `kuml serve` instance that isn't running, the panel
+  should fall back to the CLI automatically; if it doesn't, clear `kuml.serverUrl` and
+  retry. Otherwise check the same causes as the render command above.
+|===
+
+== Sister extensions
+
+VS Code Marketplace has Kotlin extensions (Fwcd Kotlin, Mathias Frohlich's Kotlin) that
+provide deeper Kotlin support. They co-exist with the kUML extension cleanly — the kUML
+grammar takes precedence for `*.kuml.kts`, and a separate Kotlin extension handles
+`*.kt` and ordinary `*.kts`.

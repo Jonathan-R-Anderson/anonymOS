@@ -1,0 +1,117 @@
+package dev.kuml.core.script
+
+import java.io.File
+import java.nio.file.Files
+import kotlin.script.experimental.api.ResultWithDiagnostics
+import kotlin.script.experimental.api.ScriptDiagnostic
+
+/**
+ * Shared evaluate-then-extract logic used by **both** [InProcessScriptEvaluator]
+ * (running in the MCP server JVM) and the child-process worker
+ * ([ScriptWorkerMain]).
+ *
+ * Keeping this in one place guarantees the in-process and out-of-process paths
+ * behave identically: same guard, same eval, same [DiagramExtractor.extractAny],
+ * same failure classification. That is exactly the interface-contract shared by
+ * the two evaluators' tests.
+ *
+ * V0.23.3.
+ */
+internal object ScriptEvaluationCore {
+    /**
+     * Guards, evaluates, and extracts a diagram from [source]. Writes the script
+     * to a temp file (the Kotlin scripting host is happiest with a real file),
+     * evaluates it, and always deletes the temp file afterwards.
+     *
+     * Never throws for ordinary script problems — returns [EvaluatedScript.Failure].
+     */
+    internal fun evaluateAndExtract(
+        source: String,
+        fileName: String,
+        evaluationClassLoader: ClassLoader? = null,
+    ): EvaluatedScript {
+        // Layer 1: cheap regex denylist, before the compiler is ever invoked.
+        try {
+            KumlScriptGuard.validate(source)
+        } catch (e: ScriptSecurityException) {
+            return EvaluatedScript.Failure(
+                kind = FailureKind.GUARD,
+                message = e.message ?: "kUML script rejected by security guard.",
+            )
+        }
+
+        val tmp = Files.createTempFile("kuml-eval-", ".kuml.kts").toFile()
+        return try {
+            tmp.writeText(source)
+            // Layer B (Welle 7): when a filtering base classloader is supplied
+            // (sandbox worker path), the compiled script's class references
+            // resolve through it — a reference to a denied class (java.net.Socket,
+            // ProcessBuilder, …) fails to link before the script body runs. The
+            // in-process trusted path passes null → no filtering (unchanged).
+            val evalResult = KumlScriptHost.eval(file = tmp, evaluationClassLoader = evaluationClassLoader)
+            val errors = evalResult.reports.filter { it.severity == ScriptDiagnostic.Severity.ERROR }
+            if (errors.isNotEmpty() || evalResult is ResultWithDiagnostics.Failure) {
+                return EvaluatedScript.Failure(
+                    kind = FailureKind.EVALUATION,
+                    message = "Script evaluation failed:\n${sanitiseDiagnostics(
+                        messages = errors.map { it.message },
+                        tmp = tmp,
+                        fileName = fileName,
+                    )}",
+                )
+            }
+            val success =
+                evalResult as? ResultWithDiagnostics.Success
+                    ?: return EvaluatedScript.Failure(kind = FailureKind.EVALUATION, message = "Script evaluation produced no result")
+
+            val extracted =
+                try {
+                    DiagramExtractor.extractAny(returnValue = success.value.returnValue, input = tmp)
+                } catch (e: ScriptEvaluationException) {
+                    return EvaluatedScript.Failure(
+                        kind = FailureKind.EVALUATION,
+                        message =
+                            sanitiseMessage(
+                                message = e.message ?: "Script did not produce a renderable diagram.",
+                                tmp = tmp,
+                                fileName = fileName,
+                            ),
+                    )
+                }
+            EvaluatedScript.Success(extracted)
+        } catch (e: Throwable) {
+            // Any other exception (e.g. an exception thrown *inside* the script
+            // body at runtime) — classify as evaluation, sanitise the message.
+            EvaluatedScript.Failure(
+                kind = FailureKind.EVALUATION,
+                message =
+                    sanitiseMessage(
+                        message = e.message ?: e::class.simpleName ?: "Unknown script error",
+                        tmp = tmp,
+                        fileName = fileName,
+                    ),
+            )
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /**
+     * Replaces the temp-file path (which leaks a server-internal absolute path)
+     * with the caller-supplied virtual [fileName] in a diagnostic message.
+     */
+    private fun sanitiseMessage(
+        message: String,
+        tmp: File,
+        fileName: String,
+    ): String =
+        message
+            .replace(tmp.absolutePath, fileName)
+            .replace(tmp.name, fileName)
+
+    private fun sanitiseDiagnostics(
+        messages: List<String>,
+        tmp: File,
+        fileName: String,
+    ): String = messages.joinToString("\n") { sanitiseMessage(message = it, tmp = tmp, fileName = fileName) }
+}

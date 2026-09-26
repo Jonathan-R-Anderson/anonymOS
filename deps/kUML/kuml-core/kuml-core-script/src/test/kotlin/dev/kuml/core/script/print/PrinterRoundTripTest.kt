@@ -1,0 +1,364 @@
+package dev.kuml.core.script.print
+
+import dev.kuml.core.dsl.classDiagram
+import dev.kuml.core.model.DiagramType
+import dev.kuml.core.model.KumlDiagram
+import dev.kuml.core.script.EvaluatedScript
+import dev.kuml.core.script.ExtractedDiagram
+import dev.kuml.core.script.InProcessScriptEvaluator
+import dev.kuml.uml.AggregationKind
+import dev.kuml.uml.ParameterDirection
+import dev.kuml.uml.UmlAssociationClass
+import dev.kuml.uml.UmlAssociationEnd
+import dev.kuml.uml.UmlConstraintKind
+import dev.kuml.uml.Visibility
+import dev.kuml.uml.dsl.association
+import dev.kuml.uml.dsl.associationClass
+import dev.kuml.uml.dsl.attribute
+import dev.kuml.uml.dsl.classOf
+import dev.kuml.uml.dsl.comment
+import dev.kuml.uml.dsl.constraint
+import dev.kuml.uml.dsl.dependency
+import dev.kuml.uml.dsl.enumOf
+import dev.kuml.uml.dsl.generalization
+import dev.kuml.uml.dsl.interfaceOf
+import dev.kuml.uml.dsl.literal
+import dev.kuml.uml.dsl.operation
+import dev.kuml.uml.dsl.print.UmlModelDslPrinter
+import dev.kuml.uml.dsl.realization
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
+
+/**
+ * Full-equality round-trip tests for [UmlModelDslPrinter]: build a
+ * [KumlDiagram] directly via the `classDiagram { … }` DSL, print it, re-parse
+ * the printed script through the **compiler** path
+ * ([InProcessScriptEvaluator] → `KumlScriptHost`), and assert the re-parsed
+ * [KumlDiagram] is fully data-class-equal to the original.
+ *
+ * This lives in `kuml-core-script` (not `kuml-core-dsl`, where
+ * [UmlModelDslPrinter] itself lives) because the compiler-path oracle
+ * ([InProcessScriptEvaluator]) is only available here — `kuml-core-script`
+ * depends on `kuml-core-dsl`, and a dependency the other way around would be
+ * a forbidden Gradle project cycle.
+ *
+ * The compiler dialect is the printer's documented contract (see
+ * [UmlModelDslPrinter]'s KDoc) — these tests deliberately do **not** exercise
+ * `InterpreterScriptEvaluator`, which only accepts a stricter subset (no
+ * string-ID relationships, no constraint `kind`/`contextOperation`, no
+ * parameter `direction`/`defaultValue`, no multi-anchor comments).
+ *
+ * ## Element-ordering discipline
+ *
+ * [UmlModelDslPrinter] re-emits `diagram.elements` grouped by kind, in a
+ * fixed canonical order: enumerations, interfaces, classes, association
+ * classes, generalizations, realizations, associations, dependencies,
+ * comments (with their anchor links). Because `KumlDiagram.elements` is a flat, order-sensitive list
+ * containing every element regardless of kind, a re-parsed diagram's
+ * `elements` list follows that same canonical order (it is simply the order
+ * the printed script's top-level statements run in). For full data-class
+ * equality to hold, every fixture below therefore declares its DSL calls in
+ * that exact same canonical order at the top level: all classifiers first,
+ * then generalization(s), then realization(s), then association(s), then
+ * dependency(ies), then comment(s). (Ordering *within* one classifier's body
+ * — attributes vs. operations vs. constraints — does not matter: those are
+ * separate list fields on [dev.kuml.uml.UmlClass]/[dev.kuml.uml.UmlInterface],
+ * not part of the flat top-level `elements` list.)
+ */
+class PrinterRoundTripTest :
+    StringSpec({
+
+        fun reparse(printed: String): KumlDiagram {
+            val result = InProcessScriptEvaluator.evaluate(source = printed, fileName = "roundtrip.kuml.kts")
+            require(result is EvaluatedScript.Success) { "re-parse failed: $result" }
+            val extracted = result.diagram
+            require(extracted is ExtractedDiagram.Uml) { "expected a UML diagram, got: $extracted" }
+            return extracted.diagram
+        }
+
+        "dependency (with and without name) round-trips" {
+            val original =
+                classDiagram(name = "D") {
+                    val a = classOf(name = "Order")
+                    val b = classOf(name = "NotificationService")
+                    val c = classOf(name = "AuditLog")
+                    dependency(client = a, supplier = b, name = "notifies")
+                    dependency(client = a, supplier = c)
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "invariant and precondition constraints round-trip" {
+            val original =
+                classDiagram(name = "D") {
+                    classOf(name = "Order") {
+                        attribute(name = "total", type = "Int")
+                        operation(name = "place")
+                        constraint(name = "hasTotal", body = "self.total >= 0")
+                        constraint(
+                            name = "PlacePre",
+                            body = "self.total > 0",
+                            kind = UmlConstraintKind.Precondition,
+                            contextOperation = "place",
+                        )
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "comments (zero-anchor and multi-anchor) round-trip" {
+            val original =
+                classDiagram(name = "D") {
+                    val order = classOf(name = "Order")
+                    val item = classOf(name = "OrderItem")
+                    comment(text = "General remark, not attached to anything.")
+                    comment(text = "Applies to both.", firstAnchor = order, item)
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "association name, aggregation, role and navigable round-trip" {
+            val original =
+                classDiagram(name = "D") {
+                    val customer = classOf(name = "Customer")
+                    val order = classOf(name = "Order")
+                    association(source = customer, target = order) {
+                        name = "places"
+                        aggregation = AggregationKind.COMPOSITE
+                        source { navigable = false }
+                        target {
+                            multiplicity("0..*")
+                            role = "orders"
+                        }
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "association stereotypes round-trip and force block form" {
+            val original =
+                classDiagram(name = "D") {
+                    val customer = classOf(name = "Customer")
+                    val order = classOf(name = "Order")
+                    association(source = customer, target = order) {
+                        stereotypes += "FK"
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            printed shouldContain "stereotypes += \"FK\""
+            reparse(printed) shouldBe original
+        }
+
+        "operation parameters (IN, OUT, defaultValue) round-trip in declared order" {
+            val original =
+                classDiagram(name = "D") {
+                    classOf(name = "Order") {
+                        operation(name = "place") {
+                            parameter(name = "items", type = "List<OrderItem>")
+                            parameter(name = "flags", type = "Int", direction = ParameterDirection.OUT, defaultValue = "0")
+                            returns("OrderId")
+                        }
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "non-default visibility on class, operation and attribute round-trips" {
+            val original =
+                classDiagram(name = "D") {
+                    classOf(name = "Order") {
+                        visibility = Visibility.PROTECTED
+                        attribute(name = "id", type = "UUID", visibility = Visibility.PUBLIC)
+                        operation(name = "internalHelper") {
+                            visibility = Visibility.PRIVATE
+                        }
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "classifier-typed attribute (referencedId) round-trips via typeRef(name, referencedId)" {
+            val original =
+                classDiagram(name = "D") {
+                    val status =
+                        enumOf(name = "OrderStatus") {
+                            literal(name = "DRAFT")
+                            literal(name = "CONFIRMED")
+                        }
+                    classOf(name = "Order") {
+                        attribute(name = "status", type = status)
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "comprehensive: every gap combined into a single diagram round-trips exactly" {
+            val original =
+                classDiagram(name = "Order Domain") {
+                    val status =
+                        enumOf(name = "OrderStatus") {
+                            literal(name = "DRAFT")
+                            literal(name = "PAID")
+                        }
+                    val greeter = interfaceOf(name = "Greeter") { operation(name = "greet") }
+                    val greeterImpl = classOf(name = "GreeterImpl")
+                    val customer =
+                        classOf(name = "Customer") {
+                            attribute(name = "id", type = "UUID", visibility = Visibility.PUBLIC)
+                        }
+                    val order =
+                        classOf(name = "Order") {
+                            visibility = Visibility.PROTECTED
+                            attribute(name = "status", type = status)
+                            attribute(name = "total", type = "Int")
+                            operation(name = "place") {
+                                parameter(name = "items", type = "List<String>")
+                                parameter(
+                                    name = "flags",
+                                    type = "Int",
+                                    direction = ParameterDirection.OUT,
+                                    defaultValue = "0",
+                                )
+                                returns("OrderId")
+                            }
+                            operation(name = "cancel") {
+                                visibility = Visibility.PRIVATE
+                                isStatic = true
+                            }
+                            constraint(name = "hasTotal", body = "self.total >= 0")
+                            constraint(
+                                name = "PlacePre",
+                                body = "self.total > 0",
+                                kind = UmlConstraintKind.Precondition,
+                                contextOperation = "place",
+                            )
+                        }
+                    val notifier = classOf(name = "NotificationService")
+                    val auditLog = classOf(name = "AuditLog")
+
+                    // NOTE: UmlModelDslPrinter always emits generalizations before
+                    // realizations (its fixed canonical dispatch order), regardless of
+                    // the order they were declared in — so these two top-level calls
+                    // must appear in that same order here for the re-parsed diagram's
+                    // flat `elements` list to line up with this one.
+                    generalization(specific = auditLog, general = notifier)
+                    realization(implementing = greeterImpl, iface = greeter)
+                    association(source = customer, target = order) {
+                        name = "places"
+                        aggregation = AggregationKind.COMPOSITE
+                        stereotypes += "FK"
+                        source { navigable = false }
+                        target {
+                            multiplicity("0..*")
+                            role = "orders"
+                        }
+                    }
+                    dependency(client = order, supplier = notifier, name = "notifies")
+                    comment(text = "General remark, not attached to anything.")
+                    comment(text = "Encapsulates the order lifecycle.", firstAnchor = order, customer)
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "attribute defaultValue and isStatic round-trip" {
+            val original =
+                classDiagram(name = "D") {
+                    classOf(name = "Config") {
+                        attribute(name = "maxRetries", type = "Int", defaultValue = "3", isStatic = true)
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "associationClass with attribute/constraint/aggregation/ends round-trips (ADR-0017 Wave D)" {
+            val original =
+                classDiagram(name = "D") {
+                    val party = classOf(name = "Party")
+                    val district = classOf(name = "District")
+                    associationClass(name = "Tally", source = party, target = district) {
+                        isAbstract = true
+                        aggregation = AggregationKind.SHARED
+                        stereotypes += "Auditable"
+                        attribute(name = "votes", type = "Int")
+                        constraint(name = "nonNegative", body = "votes >= 0")
+                        source { multiplicity("1") }
+                        target {
+                            multiplicity("0..*")
+                            role = "districts"
+                        }
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            printed shouldContain "associationClass(name = \"Tally\""
+            reparse(printed) shouldBe original
+        }
+
+        "an association class as the endpoint of a normal association round-trips" {
+            // NOTE: same element-ordering discipline as above — UmlModelDslPrinter
+            // groups ALL classes together before any associationClass, so this
+            // fixture declares Party/District/Auditor together first (matching the
+            // printer's canonical order), not interleaved with the associationClass.
+            val original =
+                classDiagram(name = "D") {
+                    val party = classOf(name = "Party")
+                    val district = classOf(name = "District")
+                    val auditor = classOf(name = "Auditor")
+                    val tally = associationClass(name = "Tally", source = party, target = district)
+                    association(source = tally, target = auditor)
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+
+        "an association class with fewer than 2 ends prints a TODO marker, not a broken call" {
+            val degenerate =
+                UmlAssociationClass(id = "Broken", name = "Broken", ends = listOf(UmlAssociationEnd(typeId = "Only")))
+            val diagram = KumlDiagram(name = "D", type = DiagramType.CLASS, elements = listOf(degenerate))
+
+            val printed = UmlModelDslPrinter.print(diagram)
+            printed shouldContain "// TODO: UmlAssociationClass \"Broken\""
+            printed shouldNotContain "associationClass(name = \"Broken\""
+        }
+
+        "adversarial string content (quotes, backslashes, template-injection payloads, embedded newlines) round-trips byte-identically" {
+            // Regression test for a security-review finding: verifies quote()'s escaping survives
+            // the REAL compiler, not just a substring assertion on the printed text. `${'$'}{...}`
+            // is Kotlin's own string-template escape for a literal `${...}` sequence - the actual
+            // adversarial payload being tested is the four literal characters `$`, `{`, `}` inside
+            // a name, which could otherwise inject a Kotlin string-template expression into the
+            // printed script if quote() didn't escape `$`.
+            val trickyName = "Foo\"Bar\\Baz\${'$'}{1+1}\nLine2\r\tTabbed"
+            val original =
+                classDiagram(name = "D") {
+                    classOf(name = trickyName) {
+                        attribute(name = "field", type = "String", defaultValue = trickyName)
+                    }
+                }
+
+            val printed = UmlModelDslPrinter.print(original)
+            reparse(printed) shouldBe original
+        }
+    })

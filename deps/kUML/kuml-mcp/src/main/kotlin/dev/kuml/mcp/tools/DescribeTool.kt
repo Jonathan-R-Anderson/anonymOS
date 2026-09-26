@@ -1,0 +1,128 @@
+package dev.kuml.mcp.tools
+
+import dev.kuml.core.script.ExtractedDiagram
+import dev.kuml.core.script.ScriptEvaluationException
+import dev.kuml.mcp.McpContent
+import dev.kuml.mcp.McpScriptEvaluator
+import dev.kuml.mcp.McpToolDescriptor
+import dev.kuml.uml.UmlAssociation
+import dev.kuml.uml.UmlClass
+import dev.kuml.uml.UmlEnumeration
+import dev.kuml.uml.UmlGeneralization
+import dev.kuml.uml.UmlInterface
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
+
+internal object DescribeTool : McpTool {
+    override val descriptor: McpToolDescriptor =
+        McpToolDescriptor(
+            name = "kuml.describe",
+            description = "Describe a specific model element by its ID: attributes, operations, relationships, and constraints.",
+            inputSchema =
+                buildJsonObject {
+                    put("type", "object")
+                    putJsonObject("properties") {
+                        putJsonObject("script") {
+                            put("type", "string")
+                            put("description", "kUML DSL script content.")
+                        }
+                        putJsonObject("elementId") {
+                            put("type", "string")
+                            put("description", "The ID of the element to describe. Use kuml.list_elements to discover IDs.")
+                        }
+                    }
+                    putJsonArray("required") {
+                        add(JsonPrimitive("script"))
+                        add(JsonPrimitive("elementId"))
+                    }
+                },
+        )
+
+    override fun call(arguments: JsonObject): List<McpContent> {
+        val script =
+            arguments["script"]?.jsonPrimitive?.content
+                ?: throw IllegalArgumentException("Missing required argument: script")
+        val elementId =
+            arguments["elementId"]?.jsonPrimitive?.content
+                ?: throw IllegalArgumentException("Missing required argument: elementId")
+
+        val extracted = McpScriptEvaluator.extract(script = script, fileName = "describe.kuml.kts")
+        val diagram =
+            (extracted as? ExtractedDiagram.Uml)?.diagram
+                ?: throw ScriptEvaluationException(
+                    message =
+                        "kuml.describe currently supports UML diagrams. " +
+                            "End the script with a `classDiagram { … }` / `diagram { … }` expression.",
+                )
+        val element =
+            diagram.elements.firstOrNull { it.id == elementId }
+                ?: return listOf(
+                    McpContent(type = "text", text = "Element '$elementId' not found. Use kuml.list_elements to list available IDs."),
+                )
+
+        val sb = StringBuilder()
+        when (element) {
+            is UmlClass -> {
+                sb.appendLine("Class: ${element.name} (id: ${element.id})")
+                if (element.isAbstract) sb.appendLine("  abstract: true")
+                if (element.stereotypes.isNotEmpty()) sb.appendLine("  stereotypes: ${element.stereotypes.joinToString()}")
+                if (element.attributes.isNotEmpty()) {
+                    sb.appendLine("  Attributes:")
+                    element.attributes.forEach { a ->
+                        val staticMark = if (a.isStatic) " [static]" else ""
+                        val readOnlyMark = if (a.isReadOnly) " [readOnly]" else ""
+                        sb.appendLine("    - ${a.name}: ${a.type.name}$staticMark$readOnlyMark")
+                    }
+                }
+                if (element.operations.isNotEmpty()) {
+                    sb.appendLine("  Operations:")
+                    element.operations.forEach { op ->
+                        val params = op.parameters.joinToString(", ") { "${it.name}: ${it.type.name}" }
+                        sb.appendLine("    - ${op.name}($params): ${op.returnType?.name ?: "void"}")
+                    }
+                }
+                if (element.constraints.isNotEmpty()) {
+                    sb.appendLine("  Constraints:")
+                    element.constraints.forEach { c -> sb.appendLine("    - ${c.name}: ${c.body}") }
+                }
+            }
+            is UmlInterface -> {
+                sb.appendLine("Interface: ${element.name} (id: ${element.id})")
+                if (element.attributes.isNotEmpty()) {
+                    sb.appendLine("  Attributes:")
+                    element.attributes.forEach { a -> sb.appendLine("    - ${a.name}: ${a.type.name}") }
+                }
+                if (element.operations.isNotEmpty()) {
+                    sb.appendLine("  Operations:")
+                    element.operations.forEach { op -> sb.appendLine("    - ${op.name}(${op.parameters.joinToString { it.name }})") }
+                }
+            }
+            is UmlEnumeration -> {
+                sb.appendLine("Enumeration: ${element.name} (id: ${element.id})")
+                sb.appendLine("  Literals: ${element.literals.joinToString { it.name }}")
+            }
+            is UmlAssociation -> {
+                sb.appendLine("Association: ${element.id}")
+                val source = element.ends.firstOrNull()?.typeId ?: "?"
+                val target = element.ends.lastOrNull()?.typeId ?: "?"
+                sb.appendLine("  source: $source  →  target: $target")
+                sb.appendLine("  aggregation: ${element.aggregation}")
+            }
+            is UmlGeneralization -> {
+                sb.appendLine("Generalization: ${element.id}")
+                sb.appendLine("  specific: ${element.specificId}  →  general: ${element.generalId}")
+            }
+            else -> {
+                sb.appendLine("${element::class.simpleName}: id=${element.id}")
+                sb.appendLine("  (no detailed description available for this element type)")
+            }
+        }
+
+        return listOf(McpContent(type = "text", text = sb.toString().trimEnd()))
+    }
+}

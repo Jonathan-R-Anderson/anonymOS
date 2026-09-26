@@ -1,0 +1,274 @@
+package dev.kuml.ai.bench
+
+import ai.koog.agents.core.tools.ToolDescriptor
+import ai.koog.prompt.Prompt
+import ai.koog.prompt.dsl.ModerationResult
+import ai.koog.prompt.executor.model.PromptExecutor
+import ai.koog.prompt.llm.LLMProvider
+import ai.koog.prompt.llm.LLModel
+import ai.koog.prompt.message.AssistantMessageBuilder
+import ai.koog.prompt.message.Message
+import ai.koog.prompt.streaming.StreamFrame
+import dev.kuml.ai.KumlAiExecutor
+import dev.kuml.ai.privacy.PrivacyEnforcer
+import dev.kuml.ai.provider.ProviderRegistry
+import dev.kuml.ai.settings.KumlAiSettings
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.comparables.shouldBeGreaterThanOrEqualTo
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+
+// Koog 1.0.0: AssistantMessageBuilder.addText() replaces .content()
+private fun assistantMessage(text: String): Message.Assistant = AssistantMessageBuilder().addText(text).build()
+
+/**
+ * Fake executor that returns canned responses based on prompt id.
+ * [responseMap] maps prompt.id to the text to return.
+ * If the prompt id is not found, returns the [defaultResponse].
+ * If [throwOnFirst] is true, throws an IOException on the first call (simulates connection error).
+ *
+ * Koog 1.0.0: execute() returns Message.Assistant (not List<Message.Response>).
+ */
+private class FakePromptExecutor(
+    private val responseMap: Map<String, String> = emptyMap(),
+    private val defaultResponse: String = "ok",
+    private val throwOnFirst: Boolean = false,
+) : PromptExecutor() {
+    private var callCount = 0
+
+    override suspend fun execute(
+        prompt: Prompt,
+        model: LLModel,
+        tools: List<ToolDescriptor>,
+    ): Message.Assistant {
+        callCount++
+        if (throwOnFirst && callCount == 1) {
+            throw java.io.IOException("Connection refused")
+        }
+        val text = responseMap[prompt.id] ?: defaultResponse
+        return assistantMessage(text)
+    }
+
+    override fun executeStreaming(
+        prompt: Prompt,
+        model: LLModel,
+        tools: List<ToolDescriptor>,
+    ): Flow<StreamFrame> = flowOf(StreamFrame.End("stop"))
+
+    override suspend fun moderate(
+        prompt: Prompt,
+        model: LLModel,
+    ): ModerationResult = ModerationResult(isHarmful = false, categories = emptyMap())
+
+    override fun close(): Unit = Unit
+}
+
+private fun fakeExecutor(
+    responseMap: Map<String, String> = emptyMap(),
+    defaultResponse: String = "ok",
+    throwOnFirst: Boolean = false,
+): KumlAiExecutor =
+    KumlAiExecutor.forTest(
+        delegate = FakePromptExecutor(responseMap = responseMap, defaultResponse = defaultResponse, throwOnFirst = throwOnFirst),
+        settings = KumlAiSettings(defaultProvider = "ollama", privacyMode = false),
+        privacy = PrivacyEnforcer(privacyMode = false),
+        registry = ProviderRegistry.builtIns(),
+    )
+
+/**
+ * Tests for [AiBench] — pass/fail logic, latency, report aggregation,
+ * provider-unreachable detection.
+ */
+class AiBenchTest :
+    FunSpec({
+
+        val ollamaModel = LLModel(LLMProvider.Ollama, "llama3.2")
+
+        // ── Test 1: all tasks pass when response contains expected substrings ──
+
+        test("all tasks pass when all expected substrings are present in response") {
+            val tasks =
+                listOf(
+                    BenchTask(id = "t1", systemPrompt = "sys", userPrompt = "q1", expectedSubstrings = listOf("class", "attribute")),
+                    BenchTask(id = "t2", systemPrompt = "sys", userPrompt = "q2", expectedSubstrings = listOf("Context")),
+                )
+            val executor =
+                fakeExecutor(
+                    responseMap =
+                        mapOf(
+                            "t1" to "A UML class diagram has class elements with attributes.",
+                            "t2" to "C4 starts with Context then Container.",
+                        ),
+                )
+
+            val report = AiBench.run(tasks = tasks, executor = executor, provider = "ollama", model = ollamaModel)
+
+            report.allPassed.shouldBeTrue()
+            report.passed shouldBe 2
+            report.total shouldBe 2
+        }
+
+        // ── Test 2: task fails when expected substring is missing ─────────────
+
+        test("task fails when a required substring is absent from the response") {
+            val tasks =
+                listOf(
+                    BenchTask(
+                        id = "fail-task",
+                        systemPrompt = "",
+                        userPrompt = "What is UML?",
+                        expectedSubstrings = listOf("xyz-not-there"),
+                    ),
+                )
+            val executor = fakeExecutor(defaultResponse = "UML is a modelling language.")
+
+            val report = AiBench.run(tasks = tasks, executor = executor, provider = "ollama", model = ollamaModel)
+
+            report.allPassed.shouldBeFalse()
+            report.passed shouldBe 0
+            report.failed shouldBe 1
+            report.results[0].pass.shouldBeFalse()
+            report.results[0].actual shouldContain "UML"
+        }
+
+        // ── Test 3: mixed pass/fail ────────────────────────────────────────────
+
+        test("report correctly counts mixed pass and fail tasks") {
+            val tasks =
+                listOf(
+                    BenchTask(id = "pass1", systemPrompt = "", userPrompt = "q", expectedSubstrings = listOf("yes")),
+                    BenchTask(id = "fail1", systemPrompt = "", userPrompt = "q", expectedSubstrings = listOf("no-match")),
+                    BenchTask(id = "pass2", systemPrompt = "", userPrompt = "q", expectedSubstrings = listOf("yes")),
+                )
+            val executor = fakeExecutor(defaultResponse = "yes this is the answer")
+
+            val report = AiBench.run(tasks = tasks, executor = executor, provider = "ollama", model = ollamaModel)
+
+            report.passed shouldBe 2
+            report.failed shouldBe 1
+            report.allPassed.shouldBeFalse()
+        }
+
+        // ── Test 4: latency is non-negative ───────────────────────────────────
+
+        test("all task results have non-negative latency") {
+            val tasks = listOf(BenchTask(id = "t1", systemPrompt = "", userPrompt = "hello", expectedSubstrings = listOf("ok")))
+            val executor = fakeExecutor(defaultResponse = "ok response")
+
+            val report = AiBench.run(tasks = tasks, executor = executor, provider = "ollama", model = ollamaModel)
+
+            report.results.forEach { result ->
+                result.latencyMs shouldBeGreaterThanOrEqualTo 0L
+            }
+        }
+
+        // ── Test 5: error on first call → ProviderUnreachableException ────────
+
+        test("connection error on first task produces ProviderUnreachableException") {
+            val tasks = listOf(BenchTask(id = "net-task", systemPrompt = "", userPrompt = "q", expectedSubstrings = listOf("ok")))
+            val executor = fakeExecutor(throwOnFirst = true)
+
+            shouldThrow<AiBench.ProviderUnreachableException> {
+                AiBench.run(tasks = tasks, executor = executor, provider = "ollama", model = ollamaModel)
+            }
+        }
+
+        // ── Test 6: error after first success is treated as task failure ───────
+
+        test("error on second task does not produce ProviderUnreachableException") {
+            val tasks =
+                listOf(
+                    BenchTask(id = "first", systemPrompt = "", userPrompt = "q1", expectedSubstrings = listOf("ok")),
+                    BenchTask(id = "second", systemPrompt = "", userPrompt = "q2", expectedSubstrings = listOf("ok")),
+                )
+            // Executor succeeds first call, throws on second
+            var call = 0
+            val fakeDelegate =
+                object : PromptExecutor() {
+                    override suspend fun execute(
+                        prompt: Prompt,
+                        model: LLModel,
+                        tools: List<ToolDescriptor>,
+                    ): Message.Assistant {
+                        call++
+                        if (call == 2) throw java.net.ConnectException("Connection refused")
+                        return assistantMessage("ok response")
+                    }
+
+                    override fun executeStreaming(
+                        prompt: Prompt,
+                        model: LLModel,
+                        tools: List<ToolDescriptor>,
+                    ): Flow<StreamFrame> = flowOf(StreamFrame.End("stop"))
+
+                    override suspend fun moderate(
+                        prompt: Prompt,
+                        model: LLModel,
+                    ): ModerationResult = ModerationResult(isHarmful = false, categories = emptyMap())
+
+                    override fun close(): Unit = Unit
+                }
+
+            val executor =
+                KumlAiExecutor.forTest(
+                    delegate = fakeDelegate,
+                    settings = KumlAiSettings(defaultProvider = "ollama", privacyMode = false),
+                    privacy = PrivacyEnforcer(privacyMode = false),
+                    registry = ProviderRegistry.builtIns(),
+                )
+
+            // Must not throw — second error is recorded as a task failure
+            val report = AiBench.run(tasks = tasks, executor = executor, provider = "ollama", model = ollamaModel)
+            report.results shouldHaveSize 2
+            report.results[0].pass.shouldBeTrue()
+            report.results[1].pass.shouldBeFalse()
+            report.results[1].error.shouldNotBeNull()
+        }
+
+        // ── Test 7: BenchReport aggregates correctly ───────────────────────────
+
+        test("BenchReport allPassed is false when any task failed") {
+            val results =
+                listOf(
+                    BenchTaskResult(
+                        task = BenchTask(id = "a", systemPrompt = "", userPrompt = "q", expectedSubstrings = emptyList()),
+                        actual = "response",
+                        pass = true,
+                        latencyMs = 10L,
+                        inputTokens = 0L,
+                        outputTokens = 0L,
+                    ),
+                    BenchTaskResult(
+                        task = BenchTask(id = "b", systemPrompt = "", userPrompt = "q", expectedSubstrings = listOf("missing")),
+                        actual = "response",
+                        pass = false,
+                        latencyMs = 10L,
+                        inputTokens = 0L,
+                        outputTokens = 0L,
+                    ),
+                )
+            val report = BenchReport(provider = "ollama", model = "llama3.2", results = results)
+            report.allPassed.shouldBeFalse()
+            report.passed shouldBe 1
+            report.failed shouldBe 1
+        }
+
+        // ── Test 8: BenchTaskSuite.all is non-empty ────────────────────────────
+
+        test("BenchTaskSuite default suite has at least 5 tasks") {
+            BenchTaskSuite.all.size shouldBe 5
+        }
+
+        // ── Test 9: BenchTaskSuite.take caps to limit ─────────────────────────
+
+        test("BenchTaskSuite.take(2) returns exactly 2 tasks") {
+            BenchTaskSuite.take(2) shouldHaveSize 2
+        }
+    })

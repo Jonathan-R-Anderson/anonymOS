@@ -1,0 +1,515 @@
+package dev.kuml.plugin.examples.cpp
+
+import dev.kuml.codegen.api.KumlCodeGenerator
+import dev.kuml.core.model.KumlDiagram
+import dev.kuml.uml.UmlAssociation
+import dev.kuml.uml.UmlAssociationEnd
+import dev.kuml.uml.UmlClass
+import dev.kuml.uml.UmlEnumeration
+import dev.kuml.uml.UmlGeneralization
+import dev.kuml.uml.UmlInterface
+import dev.kuml.uml.UmlNamedElement
+import dev.kuml.uml.UmlOperation
+import dev.kuml.uml.UmlPackage
+import java.io.File
+
+/**
+ * Generates C++ header (`.hpp`) and optional source (`.cpp`) skeletons from UML class diagrams.
+ *
+ * - [UmlClass] → `<Name>.hpp` + `<Name>.cpp` (unless `generateCpp=false`)
+ * - [UmlInterface] → `<Name>.hpp` abstract class with pure-virtual methods (no `.cpp`)
+ * - [UmlEnumeration] → `<Name>.hpp` `enum class`
+ */
+public class CppCodeGenerator : KumlCodeGenerator {
+    override val id: String = "cpp"
+    override val displayName: String = "C++"
+
+    override fun generate(
+        diagram: KumlDiagram,
+        outputDir: File,
+        options: Map<String, String>,
+    ): List<File> {
+        val opts = CppGeneratorOptions.from(options)
+        outputDir.mkdirs()
+
+        // Flatten all named elements, collecting package membership along the way.
+        // elementNamespace[elementId] = namespace derived from its owning UmlPackage (if any).
+        val elementNamespace = mutableMapOf<String, String>()
+        val umlNamedElements = diagram.elements.filterIsInstance<UmlNamedElement>()
+        val flatElements = flattenElements(elements = umlNamedElements, namespace = null, elementNamespace = elementNamespace)
+
+        // Pre-build index: element id → class name
+        val idToName = mutableMapOf<String, String>()
+        for (el in flatElements) {
+            when (el) {
+                is UmlClass -> idToName[el.id] = el.name
+                is UmlInterface -> idToName[el.id] = el.name
+                is UmlEnumeration -> idToName[el.id] = el.name
+                else -> {}
+            }
+        }
+
+        // Pre-collect generalizations: specificId → generalId
+        // UmlGeneralization is a UmlRelationship (not UmlNamedElement) so read from raw elements.
+        val generalizations = mutableMapOf<String, String>()
+        for (el in diagram.elements) {
+            if (el is UmlGeneralization) {
+                generalizations[el.specificId] = el.generalId
+            }
+        }
+
+        // Pre-collect associations (also UmlRelationship, not UmlNamedElement).
+        val associations = mutableListOf<UmlAssociation>()
+        for (el in diagram.elements) {
+            if (el is UmlAssociation) {
+                associations += el
+            }
+        }
+
+        val generated = mutableListOf<File>()
+        for (el in flatElements) {
+            // Effective namespace: package-derived namespace takes precedence over global option.
+            val effectiveNs =
+                elementNamespace[el.id]
+                    ?: opts.namespaceName
+            val effectiveOpts = opts.copy(namespaceName = effectiveNs)
+            when (el) {
+                is UmlClass -> {
+                    val hppContent =
+                        generateClassHeader(
+                            cls = el,
+                            generalizations = generalizations,
+                            associations = associations,
+                            idToName = idToName,
+                            opts = effectiveOpts,
+                        )
+                    val safeName = sanitizeElementName(el.name)
+                    val hppFile = File(outputDir, "$safeName.hpp")
+                    hppFile.writeText(hppContent)
+                    generated += hppFile
+                    if (opts.generateCpp) {
+                        val cppContent = generateClassSource(cls = el, opts = effectiveOpts)
+                        val cppFile = File(outputDir, "$safeName.cpp")
+                        cppFile.writeText(cppContent)
+                        generated += cppFile
+                    }
+                }
+                is UmlInterface -> {
+                    val hppContent = generateInterfaceHeader(iface = el, opts = effectiveOpts)
+                    val safeName = sanitizeElementName(el.name)
+                    val hppFile = File(outputDir, "$safeName.hpp")
+                    hppFile.writeText(hppContent)
+                    generated += hppFile
+                }
+                is UmlEnumeration -> {
+                    val hppContent = generateEnumHeader(enum = el, opts = effectiveOpts)
+                    val safeName = sanitizeElementName(el.name)
+                    val hppFile = File(outputDir, "$safeName.hpp")
+                    hppFile.writeText(hppContent)
+                    generated += hppFile
+                }
+                else -> {}
+            }
+        }
+        return generated
+    }
+
+    /**
+     * Sanitizes a UML element name for use as a file name component.
+     *
+     * Path-separator characters (`/`, `\`) and dot sequences that could form traversal
+     * sequences (`..`) are replaced with `_` to prevent path-traversal attacks when models
+     * are imported from untrusted sources (ARXML/XMI via kuml-io-arxml or kuml-io-emf).
+     *
+     * Only characters that are valid C++ identifier characters (`[A-Za-z0-9_]`) plus dots
+     * are allowed; everything else is replaced with `_`. Dot sequences that result in `..`
+     * (after other replacements) are also replaced to close the traversal vector.
+     *
+     * Examples:
+     * - `"../../evil"` → `"______evil"`
+     * - `"my/class"` → `"my_class"`
+     * - `"Order"` → `"Order"` (unchanged)
+     */
+    private fun sanitizeElementName(name: String): String {
+        // Replace every character that is not a letter, digit, or underscore with '_'.
+        // This eliminates '/', '\', '.', and any other separator that could form traversal paths.
+        val sanitized = name.replace(Regex("[^A-Za-z0-9_]"), "_")
+        // Guard against the degenerate all-underscore case producing an empty or misleading name.
+        return sanitized.ifBlank { "_" }
+    }
+
+    /**
+     * Recursively flattens [elements], descending into [UmlPackage.members].
+     * For each element inside a package the owning package name is accumulated
+     * into a `::` namespace string and stored in [elementNamespace].
+     */
+    private fun flattenElements(
+        elements: List<UmlNamedElement>,
+        namespace: String?,
+        elementNamespace: MutableMap<String, String>,
+    ): List<UmlNamedElement> {
+        val result = mutableListOf<UmlNamedElement>()
+        for (el in elements) {
+            when (el) {
+                is UmlPackage -> {
+                    val childNs = if (namespace != null) "$namespace::${el.name}" else el.name
+                    result += flattenElements(elements = el.members, namespace = childNs, elementNamespace = elementNamespace)
+                }
+                else -> {
+                    if (namespace != null) {
+                        elementNamespace[el.id] = namespace
+                    }
+                    result += el
+                }
+            }
+        }
+        return result
+    }
+
+    private fun generateClassHeader(
+        cls: UmlClass,
+        generalizations: Map<String, String>,
+        associations: List<UmlAssociation>,
+        idToName: Map<String, String>,
+        opts: CppGeneratorOptions,
+    ): String {
+        val mapper = CppTypeMapper(opts.naming)
+
+        // Collect association members for this class (where this class owns the navigable end)
+        val assocMembers = buildAssocMembers(ownerId = cls.id, associations = associations, idToName = idToName, opts = opts)
+        val hasVectorMembers = assocMembers.any { it.contains("std::vector") }
+
+        // Collect all C++ types used in attributes
+        val attrTypes = cls.attributes.map { mapper.mapType(it.type.name) }
+        val allTypes = attrTypes + assocMembers.map { extractTypeName(it) }
+        val includes =
+            mapper.headerIncludesFor(
+                typeNames = allTypes,
+                useSmartPointers = opts.useSmartPointers,
+                hasVectorMembers = hasVectorMembers,
+            )
+
+        val baseClass = generalizations[cls.id]?.let { idToName[it] }
+
+        // Collect the user-defined target types of association pointer members (not vectors)
+        // for which we can emit forward declarations instead of full includes.
+        val assocTargetNames = buildAssocTargetNames(ownerId = cls.id, associations = associations, idToName = idToName)
+        // Pointer-only targets (single pointer, not via vector) can be forward-declared.
+        val pointerOnlyTargets =
+            assocTargetNames.filter { name ->
+                assocMembers.any { it.contains("$name*") || it.contains("<$name>") } &&
+                    !assocMembers.any { it.contains("std::vector") && it.contains(name) }
+            }
+        // Vector targets need the full type visible → #include; pointer-only → forward declare.
+        val vectorTargetNames =
+            assocTargetNames.filter { name ->
+                assocMembers.any { it.contains("std::vector") && it.contains(name) }
+            }
+
+        val sb = StringBuilder()
+        sb.appendLine("// Generated by kUML C++ Code Generator")
+        sb.appendLine("#pragma once")
+
+        // System/stdlib includes
+        if (includes.isNotEmpty()) {
+            sb.appendLine()
+            for (inc in includes) {
+                sb.appendLine("#include $inc")
+            }
+        }
+
+        // Include for base class (needed for inheritance — full definition required)
+        if (baseClass != null) {
+            sb.appendLine()
+            sb.appendLine("#include \"$baseClass.hpp\"")
+        }
+
+        // Includes for vector association targets (full type required for vector elements)
+        for (name in vectorTargetNames.sorted()) {
+            sb.appendLine("#include \"$name.hpp\"")
+        }
+
+        sb.appendLine()
+
+        // Forward declarations for pointer-only association targets
+        if (pointerOnlyTargets.isNotEmpty()) {
+            for (name in pointerOnlyTargets.sorted()) {
+                sb.appendLine("class $name;")
+            }
+            sb.appendLine()
+        }
+
+        val inheritance = if (baseClass != null) " : public $baseClass" else ""
+
+        openNamespace(sb = sb, opts = opts)
+        sb.appendLine("class ${cls.name}$inheritance {")
+        sb.appendLine("public:")
+
+        // Attributes
+        for (attr in cls.attributes) {
+            val cppType = mapper.mapType(attr.type.name)
+            val memberName = opts.naming.apply(attr.name) + "_"
+            sb.appendLine("    $cppType $memberName;")
+        }
+
+        // Association members
+        for (member in assocMembers) {
+            sb.appendLine("    $member")
+        }
+
+        // Operations
+        for (op in cls.operations) {
+            sb.appendLine("    ${formatOperationDecl(op = op, mapper = mapper, opts = opts)};")
+        }
+
+        sb.appendLine("};")
+        closeNamespace(sb = sb, opts = opts)
+
+        return sb.toString()
+    }
+
+    private fun generateClassSource(
+        cls: UmlClass,
+        opts: CppGeneratorOptions,
+    ): String {
+        val mapper = CppTypeMapper(opts.naming)
+        val sb = StringBuilder()
+        sb.appendLine("// Generated by kUML C++ Code Generator")
+        sb.appendLine("#include \"${sanitizeElementName(cls.name)}.hpp\"")
+        sb.appendLine()
+
+        openNamespace(sb = sb, opts = opts)
+        for (op in cls.operations) {
+            val returnType = op.returnType?.let { mapper.mapType(it.name) } ?: "void"
+            val params =
+                op.parameters.joinToString(", ") { p ->
+                    "${mapper.mapType(p.type.name)} ${opts.naming.apply(p.name)}"
+                }
+            sb.appendLine("$returnType ${cls.name}::${opts.naming.apply(op.name)}($params) {")
+            if (returnType != "void") {
+                sb.appendLine("    return {};")
+            }
+            sb.appendLine("}")
+            sb.appendLine()
+        }
+        closeNamespace(sb = sb, opts = opts)
+
+        return sb.toString()
+    }
+
+    private fun generateInterfaceHeader(
+        iface: UmlInterface,
+        opts: CppGeneratorOptions,
+    ): String {
+        val mapper = CppTypeMapper(opts.naming)
+        val attrTypes = iface.attributes.map { mapper.mapType(it.type.name) }
+        val includes = mapper.headerIncludesFor(typeNames = attrTypes, useSmartPointers = opts.useSmartPointers, hasVectorMembers = false)
+
+        val sb = StringBuilder()
+        sb.appendLine("// Generated by kUML C++ Code Generator")
+        sb.appendLine("#pragma once")
+        if (includes.isNotEmpty()) {
+            sb.appendLine()
+            for (inc in includes) {
+                sb.appendLine("#include $inc")
+            }
+        }
+        sb.appendLine()
+
+        openNamespace(sb = sb, opts = opts)
+        sb.appendLine("class ${iface.name} {")
+        sb.appendLine("public:")
+        sb.appendLine("    virtual ~${iface.name}() = default;")
+        for (attr in iface.attributes) {
+            val cppType = mapper.mapType(attr.type.name)
+            val memberName = opts.naming.apply(attr.name) + "_"
+            sb.appendLine("    $cppType $memberName;")
+        }
+        for (op in iface.operations) {
+            val returnType = op.returnType?.let { mapper.mapType(it.name) } ?: "void"
+            val params =
+                op.parameters.joinToString(", ") { p ->
+                    "${mapper.mapType(p.type.name)} ${opts.naming.apply(p.name)}"
+                }
+            sb.appendLine("    virtual $returnType ${opts.naming.apply(op.name)}($params) = 0;")
+        }
+        sb.appendLine("};")
+        closeNamespace(sb = sb, opts = opts)
+
+        return sb.toString()
+    }
+
+    private fun generateEnumHeader(
+        enum: UmlEnumeration,
+        opts: CppGeneratorOptions,
+    ): String {
+        val sb = StringBuilder()
+        sb.appendLine("// Generated by kUML C++ Code Generator")
+        sb.appendLine("#pragma once")
+        sb.appendLine()
+
+        openNamespace(sb = sb, opts = opts)
+        sb.appendLine("enum class ${enum.name} {")
+        enum.literals.forEachIndexed { i, lit ->
+            val comma = if (i < enum.literals.size - 1) "," else ""
+            sb.appendLine("    ${lit.name}$comma")
+        }
+        sb.appendLine("};")
+        closeNamespace(sb = sb, opts = opts)
+
+        return sb.toString()
+    }
+
+    /**
+     * Returns the set of user-defined type names that appear as association targets for [ownerId].
+     * These are the names of classes/interfaces on the "other end" of navigable associations.
+     */
+    private fun buildAssocTargetNames(
+        ownerId: String,
+        associations: List<UmlAssociation>,
+        idToName: Map<String, String>,
+    ): List<String> {
+        val names = mutableListOf<String>()
+        for (assoc in associations) {
+            if (assoc.ends.size != 2) continue
+            val ownerEndIndex = assoc.ends.indexOfFirst { it.typeId == ownerId }
+            if (ownerEndIndex < 0) continue
+            val otherEndIndex = 1 - ownerEndIndex
+            val otherEnd = assoc.ends[otherEndIndex]
+            if (!otherEnd.navigable) continue
+            val targetName = idToName[otherEnd.typeId] ?: continue
+            names += targetName
+        }
+        return names
+    }
+
+    /**
+     * Builds the association member declarations for the class identified by [ownerId].
+     *
+     * Only emits a member for the navigable end that points AWAY from [ownerId]
+     * (i.e., the other end). The owning end must match [ownerId] as typeId.
+     */
+    private fun buildAssocMembers(
+        ownerId: String,
+        associations: List<UmlAssociation>,
+        idToName: Map<String, String>,
+        opts: CppGeneratorOptions,
+    ): List<String> {
+        val members = mutableListOf<String>()
+        for (assoc in associations) {
+            if (assoc.ends.size != 2) continue
+            val ownerEndIndex = assoc.ends.indexOfFirst { it.typeId == ownerId }
+            if (ownerEndIndex < 0) continue
+            val otherEndIndex = 1 - ownerEndIndex
+            val otherEnd = assoc.ends[otherEndIndex]
+            if (!otherEnd.navigable) continue
+            val targetName = idToName[otherEnd.typeId] ?: continue
+            val member = associationMemberFor(end = otherEnd, opts = opts, targetName = targetName)
+            members += member
+        }
+        return members
+    }
+
+    private fun associationMemberFor(
+        end: UmlAssociationEnd,
+        opts: CppGeneratorOptions,
+        targetName: String,
+    ): String {
+        val roleName = opts.naming.apply(end.role ?: targetName.replaceFirstChar { it.lowercaseChar() }) + "_"
+        return if (end.multiplicity.upper == null) {
+            // 0..* or 1..* → vector
+            val elemType = if (opts.useSmartPointers) "std::shared_ptr<$targetName>" else "$targetName*"
+            "std::vector<$elemType> $roleName;"
+        } else {
+            // 0..1 or 1 → single pointer
+            val ptrType = if (opts.useSmartPointers) "std::shared_ptr<$targetName>" else "$targetName*"
+            "$ptrType $roleName;"
+        }
+    }
+
+    private fun formatOperationDecl(
+        op: UmlOperation,
+        mapper: CppTypeMapper,
+        opts: CppGeneratorOptions,
+    ): String {
+        val returnType = op.returnType?.let { mapper.mapType(it.name) } ?: "void"
+        val params =
+            op.parameters.joinToString(", ") { p ->
+                "${mapper.mapType(p.type.name)} ${opts.naming.apply(p.name)}"
+            }
+        return "$returnType ${opts.naming.apply(op.name)}($params)"
+    }
+
+    /**
+     * Extracts the C++ type name from a member declaration line.
+     *
+     * Examples:
+     * - `"std::vector<Order*> orders_;"` → `"std::vector<Order*>"`
+     * - `"Order* order_;"` → `"Order*"`
+     * - `"std::shared_ptr<Item> item_;"` → `"std::shared_ptr<Item>"`
+     *
+     * The strategy: strip trailing semicolon, then take everything before the last whitespace
+     * token (which is the variable name). Template types like `std::vector<Foo*>` contain no
+     * unbalanced whitespace before the variable name token.
+     */
+    private fun extractTypeName(memberDecl: String): String {
+        val stripped = memberDecl.trimEnd().removeSuffix(";").trim()
+        // Find the last whitespace that separates type from variable name.
+        // We scan from the end, respecting angle-bracket depth so that
+        // template parameters are not mistaken for variable names.
+        var depth = 0
+        var splitIdx = -1
+        for (i in stripped.indices.reversed()) {
+            when (stripped[i]) {
+                '>' -> depth++
+                '<' -> depth--
+                ' ', '\t' ->
+                    if (depth == 0) {
+                        splitIdx = i
+                        break
+                    }
+            }
+        }
+        return if (splitIdx > 0) stripped.substring(0, splitIdx).trim() else stripped
+    }
+
+    private fun openNamespace(
+        sb: StringBuilder,
+        opts: CppGeneratorOptions,
+    ) {
+        val ns = opts.namespaceName ?: return
+        when (opts.namespaceStyle) {
+            CppNamespaceStyle.FLAT -> {
+                sb.appendLine("namespace $ns {")
+                sb.appendLine()
+            }
+            CppNamespaceStyle.NESTED -> {
+                val parts = ns.split("::")
+                for (part in parts) {
+                    sb.appendLine("namespace $part {")
+                }
+                sb.appendLine()
+            }
+        }
+    }
+
+    private fun closeNamespace(
+        sb: StringBuilder,
+        opts: CppGeneratorOptions,
+    ) {
+        val ns = opts.namespaceName ?: return
+        when (opts.namespaceStyle) {
+            CppNamespaceStyle.FLAT -> {
+                sb.appendLine()
+                sb.appendLine("} // namespace $ns")
+            }
+            CppNamespaceStyle.NESTED -> {
+                val parts = ns.split("::")
+                sb.appendLine()
+                for (part in parts.reversed()) {
+                    sb.appendLine("} // namespace $part")
+                }
+            }
+        }
+    }
+}

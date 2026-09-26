@@ -1,0 +1,276 @@
+package dev.kuml.ai
+
+import ai.koog.agents.core.tools.ToolDescriptor
+import ai.koog.prompt.dsl.ModerationResult
+import ai.koog.prompt.dsl.prompt
+import ai.koog.prompt.executor.model.PromptExecutor
+import ai.koog.prompt.llm.LLMProvider
+import ai.koog.prompt.llm.LLModel
+import ai.koog.prompt.message.AssistantMessageBuilder
+import ai.koog.prompt.message.Message
+import ai.koog.prompt.streaming.StreamFrame
+import dev.kuml.ai.privacy.PrivacyEnforcer
+import dev.kuml.ai.provider.ProviderRegistry
+import dev.kuml.ai.settings.KumlAiSettings
+import dev.kuml.ai.vault.ApiKeyVault
+import dev.kuml.ai.vault.PlainJsonFallbackBackend
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import java.nio.file.Files
+
+/** Create a simple Message.Assistant with text content via builder. */
+private fun assistantMessage(text: String): Message.Assistant = AssistantMessageBuilder().addText(text).build()
+
+/**
+ * Fake PromptExecutor for unit tests — does not call any real LLM.
+ *
+ * Koog 1.0.0: execute() returns Message.Assistant (not List<Message.Response>).
+ */
+private class FakePromptExecutor(
+    private val responsesByModel: Map<LLModel, Message.Assistant> = emptyMap(),
+    private val streamsByModel: Map<LLModel, Flow<StreamFrame>> = emptyMap(),
+) : PromptExecutor() {
+    /** Set to true by [close] — used to assert KumlAiExecutor.close() delegates through. */
+    var closed: Boolean = false
+        private set
+
+    override suspend fun execute(
+        prompt: ai.koog.prompt.Prompt,
+        model: LLModel,
+        tools: List<ToolDescriptor>,
+    ): Message.Assistant = responsesByModel[model] ?: assistantMessage("fake response")
+
+    override fun executeStreaming(
+        prompt: ai.koog.prompt.Prompt,
+        model: LLModel,
+        tools: List<ToolDescriptor>,
+    ): Flow<StreamFrame> = streamsByModel[model] ?: flowOf(StreamFrame.End("stop"))
+
+    override suspend fun moderate(
+        prompt: ai.koog.prompt.Prompt,
+        model: LLModel,
+    ): ModerationResult = ModerationResult(isHarmful = false, categories = emptyMap())
+
+    override fun close() {
+        closed = true
+    }
+}
+
+private fun testRegistry(): ProviderRegistry = ProviderRegistry.builtIns()
+
+class KumlAiExecutorTest :
+    FunSpec({
+
+        val ollamaModel = LLModel(LLMProvider.Ollama, "llama3.2")
+        val openAiModel = LLModel(LLMProvider.OpenAI, "gpt-4o")
+
+        test("execute dispatches to the configured default model") {
+            val fakeExecutor =
+                FakePromptExecutor(
+                    responsesByModel =
+                        mapOf(
+                            ollamaModel to assistantMessage("hello from ollama"),
+                        ),
+                )
+            val executor =
+                KumlAiExecutor.forTest(
+                    delegate = fakeExecutor,
+                    settings = KumlAiSettings(defaultProvider = "ollama", privacyMode = true),
+                    privacy = PrivacyEnforcer(privacyMode = true),
+                    registry = testRegistry(),
+                )
+            val testPrompt = prompt("test") { user("hello") }
+            val result = executor.execute(prompt = testPrompt, model = ollamaModel)
+            result.textContent() shouldBe "hello from ollama"
+        }
+
+        test("execute(prompt, model, tools) dispatches tools through to the delegate and applies the same guards") {
+            var seenTools: List<ToolDescriptor>? = null
+            val recordingExecutor =
+                object : PromptExecutor() {
+                    override suspend fun execute(
+                        prompt: ai.koog.prompt.Prompt,
+                        model: LLModel,
+                        tools: List<ToolDescriptor>,
+                    ): Message.Assistant {
+                        seenTools = tools
+                        return assistantMessage("tool-aware response")
+                    }
+
+                    override fun executeStreaming(
+                        prompt: ai.koog.prompt.Prompt,
+                        model: LLModel,
+                        tools: List<ToolDescriptor>,
+                    ): Flow<StreamFrame> = flowOf(StreamFrame.End("stop"))
+
+                    override suspend fun moderate(
+                        prompt: ai.koog.prompt.Prompt,
+                        model: LLModel,
+                    ): ModerationResult = ModerationResult(isHarmful = false, categories = emptyMap())
+
+                    override fun close() {}
+                }
+            val executor =
+                KumlAiExecutor.forTest(
+                    delegate = recordingExecutor,
+                    settings = KumlAiSettings(defaultProvider = "ollama", privacyMode = true),
+                    privacy = PrivacyEnforcer(privacyMode = true),
+                    registry = testRegistry(),
+                )
+            val testPrompt = prompt("test") { user("hello") }
+            val descriptor = ToolDescriptor(name = "add_class", description = "Adds a UML class.")
+
+            val result = executor.execute(prompt = testPrompt, model = ollamaModel, tools = listOf(descriptor))
+
+            result.textContent() shouldBe "tool-aware response"
+            seenTools shouldBe listOf(descriptor)
+        }
+
+        test("execute(prompt, model, tools) throws PrivacyModeViolation when privacy mode blocks the provider") {
+            val executor =
+                KumlAiExecutor.forTest(
+                    delegate = FakePromptExecutor(),
+                    settings = KumlAiSettings(privacyMode = true),
+                    privacy = PrivacyEnforcer(privacyMode = true),
+                    registry = testRegistry(),
+                )
+            val testPrompt = prompt("test") { user("hello") }
+            val anthropicModel = LLModel(LLMProvider.Anthropic, "claude-sonnet-4-5")
+            shouldThrow<KumlAiException.PrivacyModeViolation> {
+                executor.execute(prompt = testPrompt, model = anthropicModel, tools = emptyList())
+            }
+        }
+
+        test("execute throws PrivacyModeViolation when privacy mode is on and provider is Anthropic") {
+            val executor =
+                KumlAiExecutor.forTest(
+                    delegate = FakePromptExecutor(),
+                    settings = KumlAiSettings(privacyMode = true),
+                    privacy = PrivacyEnforcer(privacyMode = true),
+                    registry = testRegistry(),
+                )
+            val testPrompt = prompt("test") { user("hello") }
+            val anthropicModel = LLModel(LLMProvider.Anthropic, "claude-sonnet-4-5")
+            shouldThrow<KumlAiException.PrivacyModeViolation> {
+                executor.execute(prompt = testPrompt, model = anthropicModel)
+            }
+        }
+
+        test("executeStreaming emits stream frames in order from Ollama") {
+            val fakeExecutor =
+                FakePromptExecutor(
+                    streamsByModel = mapOf(ollamaModel to flowOf(StreamFrame.End("stop"))),
+                )
+            val executor =
+                KumlAiExecutor.forTest(
+                    delegate = fakeExecutor,
+                    settings = KumlAiSettings(privacyMode = true),
+                    privacy = PrivacyEnforcer(privacyMode = true),
+                    registry = testRegistry(),
+                )
+            val testPrompt = prompt("test") { user("hello") }
+            val flow = executor.executeStreaming(prompt = testPrompt, model = ollamaModel)
+            flow.shouldBeInstanceOf<Flow<StreamFrame>>()
+        }
+
+        test("executeStreaming throws PrivacyModeViolation eagerly when privacy mode is on") {
+            val executor =
+                KumlAiExecutor.forTest(
+                    delegate = FakePromptExecutor(),
+                    settings = KumlAiSettings(privacyMode = true),
+                    privacy = PrivacyEnforcer(privacyMode = true),
+                    registry = testRegistry(),
+                )
+            val testPrompt = prompt("test") { user("hello") }
+            shouldThrow<KumlAiException.PrivacyModeViolation> {
+                executor.executeStreaming(prompt = testPrompt, model = openAiModel)
+            }
+        }
+
+        test("fromSettings throws when defaultProvider is unknown") {
+            val settings = KumlAiSettings(defaultProvider = "nonexistent-provider", privacyMode = false)
+            val tempDir = Files.createTempDirectory("kuml-vault-test")
+            try {
+                shouldThrow<KumlAiException.UnknownProvider> {
+                    KumlAiExecutor.fromSettings(
+                        settings = settings,
+                        vault = ApiKeyVault(PlainJsonFallbackBackend(tempDir.resolve("secrets.json"))),
+                        registry = testRegistry(),
+                    )
+                }
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        test("fromSettings throws MissingApiKey when gonka is default/enabled but no key is stored") {
+            val settings =
+                KumlAiSettings(
+                    defaultProvider = "gonka",
+                    enabledProviders = setOf("gonka"),
+                    privacyMode = false,
+                    defaultModels = mapOf("gonka" to "some-model"),
+                )
+            val tempDir = Files.createTempDirectory("kuml-vault-test-gonka")
+            try {
+                shouldThrow<KumlAiException.MissingApiKey> {
+                    KumlAiExecutor.fromSettings(
+                        settings = settings,
+                        vault = ApiKeyVault(PlainJsonFallbackBackend(tempDir.resolve("secrets.json"))),
+                        registry = testRegistry(),
+                    )
+                }
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        test("fromSettings throws MissingApiKey when the stored key is blank, not just when absent") {
+            // Regression test for the fail-silent finding: a vault backend that (through a
+            // storage bug or, on MacOsKeychainBackend, a desynced `security add-generic-password`
+            // stdin prompt sequence) has `get()` return a non-null but blank/whitespace-only
+            // string must NOT be treated as "an API key is configured". Otherwise a client is
+            // built with an empty Authorization header and fails opaquely at the provider instead
+            // of failing locally as MissingApiKey.
+            val settings =
+                KumlAiSettings(
+                    defaultProvider = "gonka",
+                    enabledProviders = setOf("gonka"),
+                    privacyMode = false,
+                    defaultModels = mapOf("gonka" to "some-model"),
+                )
+            val tempDir = Files.createTempDirectory("kuml-vault-test-gonka-blank")
+            try {
+                val registry = testRegistry()
+                val gonkaKoogProvider = registry.get("gonka")!!.koogProvider!!
+                val vault = ApiKeyVault(PlainJsonFallbackBackend(tempDir.resolve("secrets.json")))
+                vault.put(provider = gonkaKoogProvider, key = "   ") // simulate a corrupted, blank-valued entry
+                shouldThrow<KumlAiException.MissingApiKey> {
+                    KumlAiExecutor.fromSettings(
+                        settings = settings,
+                        vault = vault,
+                        registry = registry,
+                    )
+                }
+            } finally {
+                tempDir.toFile().deleteRecursively()
+            }
+        }
+
+        test("close() delegates to the underlying PromptExecutor") {
+            val fakeExecutor = FakePromptExecutor()
+            val executor =
+                KumlAiExecutor.forTest(
+                    delegate = fakeExecutor,
+                    settings = KumlAiSettings(privacyMode = true),
+                    privacy = PrivacyEnforcer(privacyMode = true),
+                    registry = testRegistry(),
+                )
+            executor.close()
+            fakeExecutor.closed shouldBe true
+        }
+    })

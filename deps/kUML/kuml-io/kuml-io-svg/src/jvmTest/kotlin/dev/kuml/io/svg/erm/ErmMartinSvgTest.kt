@@ -1,0 +1,527 @@
+package dev.kuml.io.svg.erm
+
+import dev.kuml.erm.model.Cardinality
+import dev.kuml.erm.model.ErmAttribute
+import dev.kuml.erm.model.ErmDataType
+import dev.kuml.erm.model.ErmDiagram
+import dev.kuml.erm.model.ErmEntity
+import dev.kuml.erm.model.ErmForeignKey
+import dev.kuml.erm.model.ErmModel
+import dev.kuml.erm.model.ErmNotation
+import dev.kuml.erm.model.ErmRelationship
+import dev.kuml.erm.model.ErmView
+import dev.kuml.erm.model.RelationshipKind
+import dev.kuml.io.svg.KumlSvgRenderer
+import dev.kuml.io.svg.SampleOutput
+import dev.kuml.io.svg.SvgRenderOptions
+import dev.kuml.layout.EdgeId
+import dev.kuml.layout.EdgeRoute
+import dev.kuml.layout.LayoutEngineId
+import dev.kuml.layout.LayoutResult
+import dev.kuml.layout.NodeId
+import dev.kuml.layout.NodeLayout
+import dev.kuml.layout.Point
+import dev.kuml.layout.Rect
+import dev.kuml.layout.Size
+import dev.kuml.renderer.theme.core.PlainTheme
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
+
+/**
+ * Structural + smoke tests for the ERM/Martin (crow's-foot) SVG renderer
+ * (V3.4.2). Uses a hand-built [LayoutResult] — this is fine here because
+ * these tests exercise the *renderer's* drawing logic, not content-aware
+ * sizing (that lives in `ErmContentSizeProviderTest`, which goes through the
+ * real `ErmLayoutBridge` → ELK pipeline, per the CLAUDE.md "no hardcoded
+ * LayoutResult" pitfall for sizing tests specifically).
+ *
+ * Each test also writes its SVG (+ auto-generated PNG) to
+ * `kuml-io-svg/build/sample-output/erm/<test-name>.svg` for visual review.
+ */
+class ErmMartinSvgTest :
+    StringSpec({
+
+        "entity names render as visible text, no empty canvas" {
+            val customer = ErmEntity(id = "customer", name = "Customer", attributes = listOf(pk("id")))
+            val order = ErmEntity(id = "order", name = "Order", attributes = listOf(pk("id")))
+            val model = ErmModel(name = "Shop", entities = listOf(customer, order))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout =
+                layoutOf(
+                    "customer" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 180f, height = 90f)),
+                    "order" to Rect(origin = Point(x = 260f, y = 20f), size = Size(width = 180f, height = 90f)),
+                )
+
+            val svg = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+
+            svg shouldContain "Customer"
+            svg shouldContain "Order"
+            SampleOutput.write(filename = "erm/two-entities.svg", content = svg)
+        }
+
+        "many-cardinality end renders a crow's-foot path" {
+            val customer = ErmEntity(id = "customer", name = "Customer", attributes = listOf(pk("id")))
+            val order = ErmEntity(id = "order", name = "Order", attributes = listOf(pk("id")))
+            val rel =
+                ErmRelationship(
+                    id = "rel1",
+                    name = "places",
+                    sourceEntityId = "customer",
+                    targetEntityId = "order",
+                    sourceCardinality = Cardinality.ONE,
+                    targetCardinality = Cardinality.ZERO_MANY,
+                )
+            val model = ErmModel(name = "Shop", entities = listOf(customer, order), relationships = listOf(rel))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout =
+                layoutOf(
+                    nodes =
+                        listOf(
+                            "customer" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 180f, height = 90f)),
+                            "order" to Rect(origin = Point(x = 260f, y = 20f), size = Size(width = 180f, height = 90f)),
+                        ),
+                    edges = listOf("rel1" to EdgeRoute.Direct(source = Point(x = 200f, y = 65f), target = Point(x = 260f, y = 65f))),
+                )
+
+            val svg = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+
+            svg shouldContain "kuml-erm-crowfoot"
+            svg shouldContain "kuml-erm-mandatory-marker"
+            SampleOutput.write(filename = "erm/crowfoot-one-to-many.svg", content = svg)
+        }
+
+        "optional zero-cardinality end renders a circle marker" {
+            val customer = ErmEntity(id = "customer", name = "Customer", attributes = listOf(pk("id")))
+            val order = ErmEntity(id = "order", name = "Order", attributes = listOf(pk("id")))
+            val rel =
+                ErmRelationship(
+                    id = "rel1",
+                    name = "places",
+                    sourceEntityId = "customer",
+                    targetEntityId = "order",
+                    sourceCardinality = Cardinality.ZERO_ONE,
+                    targetCardinality = Cardinality.ZERO_MANY,
+                )
+            val model = ErmModel(name = "Shop", entities = listOf(customer, order), relationships = listOf(rel))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout =
+                layoutOf(
+                    nodes =
+                        listOf(
+                            "customer" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 180f, height = 90f)),
+                            "order" to Rect(origin = Point(x = 260f, y = 20f), size = Size(width = 180f, height = 90f)),
+                        ),
+                    edges = listOf("rel1" to EdgeRoute.Direct(source = Point(x = 200f, y = 65f), target = Point(x = 260f, y = 65f))),
+                )
+
+            val svg = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+
+            svg shouldContain "kuml-erm-optional-marker"
+            SampleOutput.write(filename = "erm/optional-zero-one.svg", content = svg)
+        }
+
+        "weak entity draws a second, inner rect (double border)" {
+            val order = ErmEntity(id = "order", name = "Order", attributes = listOf(pk("id")))
+            val item =
+                ErmEntity(
+                    id = "item",
+                    name = "OrderItem",
+                    weak = true,
+                    attributes =
+                        listOf(
+                            ErmAttribute(
+                                id = "order_id",
+                                name = "order_id",
+                                type = ErmDataType.Uuid,
+                                foreignKey = ErmForeignKey(targetEntityId = "order"),
+                            ),
+                        ),
+                )
+            val model = ErmModel(name = "Shop", entities = listOf(order, item))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout =
+                layoutOf(
+                    "order" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 180f, height = 90f)),
+                    "item" to Rect(origin = Point(x = 260f, y = 20f), size = Size(width = 180f, height = 90f)),
+                )
+
+            val svg = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+
+            svg shouldContain "kuml-erm-entity-inner"
+            SampleOutput.write(filename = "erm/weak-entity.svg", content = svg)
+        }
+
+        "NON_IDENTIFYING relationship renders dashed, IDENTIFYING renders solid" {
+            val customer = ErmEntity(id = "customer", name = "Customer", attributes = listOf(pk("id")))
+            val order = ErmEntity(id = "order", name = "Order", attributes = listOf(pk("id")))
+            val item = ErmEntity(id = "item", name = "OrderItem", weak = true, attributes = listOf(pk("id")))
+            val nonIdentifying =
+                ErmRelationship(
+                    id = "rel1",
+                    name = "places",
+                    sourceEntityId = "customer",
+                    targetEntityId = "order",
+                    sourceCardinality = Cardinality.ONE,
+                    targetCardinality = Cardinality.ZERO_MANY,
+                    kind = RelationshipKind.NON_IDENTIFYING,
+                )
+            val identifying =
+                ErmRelationship(
+                    id = "rel2",
+                    name = "contains",
+                    sourceEntityId = "order",
+                    targetEntityId = "item",
+                    sourceCardinality = Cardinality.ONE,
+                    targetCardinality = Cardinality.ZERO_MANY,
+                    kind = RelationshipKind.IDENTIFYING,
+                )
+            val model =
+                ErmModel(name = "Shop", entities = listOf(customer, order, item), relationships = listOf(nonIdentifying, identifying))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout =
+                layoutOf(
+                    nodes =
+                        listOf(
+                            "customer" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 160f, height = 90f)),
+                            "order" to Rect(origin = Point(x = 220f, y = 20f), size = Size(width = 160f, height = 90f)),
+                            "item" to Rect(origin = Point(x = 420f, y = 20f), size = Size(width = 160f, height = 90f)),
+                        ),
+                    edges =
+                        listOf(
+                            "rel1" to EdgeRoute.Direct(source = Point(x = 180f, y = 65f), target = Point(x = 220f, y = 65f)),
+                            "rel2" to EdgeRoute.Direct(source = Point(x = 380f, y = 65f), target = Point(x = 420f, y = 65f)),
+                        ),
+                )
+
+            val svg = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+
+            svg shouldContain "kuml-edge-dashed"
+            svg shouldContain "kuml-edge\""
+            SampleOutput.write(filename = "erm/identifying-vs-non-identifying.svg", content = svg)
+        }
+
+        "primary key is underlined, foreign key shows FK marker" {
+            val customer = ErmEntity(id = "customer", name = "Customer", attributes = listOf(pk("id")))
+            val order =
+                ErmEntity(
+                    id = "order",
+                    name = "Order",
+                    attributes =
+                        listOf(
+                            pk("id"),
+                            ErmAttribute(
+                                id = "customer_id",
+                                name = "customer_id",
+                                type = ErmDataType.Uuid,
+                                foreignKey = ErmForeignKey(targetEntityId = "customer"),
+                            ),
+                        ),
+                )
+            val model = ErmModel(name = "Shop", entities = listOf(customer, order))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout =
+                layoutOf(
+                    "customer" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 180f, height = 90f)),
+                    "order" to Rect(origin = Point(x = 260f, y = 20f), size = Size(width = 180f, height = 120f)),
+                )
+
+            val svg = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+
+            svg shouldContain "kuml-erm-pk-underline"
+            svg shouldContain "FK"
+            svg shouldContain "customer_id : UUID"
+            SampleOutput.write(filename = "erm/pk-fk-markers.svg", content = svg)
+        }
+
+        "no raw XML entities leak into rendered text" {
+            val customer = ErmEntity(id = "customer", name = "Customer's Table", attributes = listOf(pk("id")))
+            val model = ErmModel(name = "Shop", entities = listOf(customer))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout = layoutOf("customer" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 200f, height = 90f)))
+
+            val svg = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+
+            svg shouldNotContain "&amp;apos;"
+            svg shouldNotContain "&amp;lt;"
+            SampleOutput.write(filename = "erm/xml-escape-guard.svg", content = svg)
+        }
+
+        // ── Divider-position regression guards (fix/erm-martin-spacing) ──
+
+        "entity compartment divider sits at the top of the gap, not the midpoint" {
+            // Reported 2026-07-11 against the ERM/Martin E-Commerce Schema sample:
+            // renderDivider used to draw the line at `cy + DIVIDER_GAP / 2f` (the
+            // gap's midpoint), leaving only ~7px clearance to the next
+            // compartment's first row — less than a row's ascent — so the line
+            // visually cut through the first attribute row's glyphs. It must now
+            // sit at the TOP of the gap (`cy`), giving the full 14px DIVIDER_GAP
+            // as clearance.
+            val order =
+                ErmEntity(
+                    id = "order",
+                    name = "Order",
+                    attributes =
+                        listOf(
+                            pk("id"),
+                            ErmAttribute(id = "status", name = "status", type = ErmDataType.Varchar(20)),
+                        ),
+                )
+            val model = ErmModel(name = "Shop", entities = listOf(order))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout = layoutOf("order" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 180f, height = 120f)))
+
+            val svg =
+                KumlSvgRenderer.toSvg(
+                    model = model,
+                    diagram = diagram,
+                    layoutResult = layout,
+                    theme = PlainTheme(),
+                    options = SvgRenderOptions(prettyPrint = false),
+                )
+            val dividerYs = dividerLineYs(svg)
+
+            // First divider (title -> PK compartment) sits right after the title row.
+            dividerYs[0] shouldBe ErmSizing.TITLE_ROW_H
+            // Second divider (PK -> non-PK compartment) sits right after the PK row,
+            // i.e. TITLE_ROW_H + DIVIDER_GAP + one PK row, not + DIVIDER_GAP/2f extra.
+            dividerYs[1] shouldBe ErmSizing.TITLE_ROW_H + ErmSizing.DIVIDER_GAP + ErmSizing.ROW_H
+            SampleOutput.write(filename = "erm/divider-position-entity.svg", content = svg)
+        }
+
+        "view query-preview divider sits at the top of the gap, not the midpoint" {
+            // Same fix, applied to ErmViewSvg.renderErmView's query-preview divider.
+            val view = ErmView(id = "active_customers", name = "ActiveCustomers", query = "SELECT * FROM customer WHERE active = true")
+            val model = ErmModel(name = "Shop", views = listOf(view))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout = layoutOf("active_customers" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 200f, height = 80f)))
+
+            val svg =
+                KumlSvgRenderer.toSvg(
+                    model = model,
+                    diagram = diagram,
+                    layoutResult = layout,
+                    theme = PlainTheme(),
+                    options = SvgRenderOptions(prettyPrint = false),
+                )
+            val dividerYs = dividerLineYs(svg)
+
+            dividerYs shouldBe listOf(ErmSizing.TITLE_ROW_H)
+            SampleOutput.write(filename = "erm/divider-position-view.svg", content = svg)
+        }
+
+        "notation override IDEF1X no longer throws (regression guard, V3.4.5)" {
+            val customer = ErmEntity(id = "customer", name = "Customer", attributes = listOf(pk("id")))
+            val model = ErmModel(name = "Shop", entities = listOf(customer))
+            val diagram = ErmDiagram(name = "Overview", notation = ErmNotation.MARTIN)
+            val layout = layoutOf("customer" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 180f, height = 90f)))
+
+            val svg =
+                KumlSvgRenderer.toSvg(
+                    model = model,
+                    diagram = diagram,
+                    layoutResult = layout,
+                    theme = PlainTheme(),
+                    notation = ErmNotation.IDEF1X,
+                )
+
+            svg shouldContain "kuml-erm-entity"
+        }
+
+        "deterministic output — same input renders byte-identically" {
+            val customer = ErmEntity(id = "customer", name = "Customer", attributes = listOf(pk("id")))
+            val model = ErmModel(name = "Shop", entities = listOf(customer))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout = layoutOf("customer" to Rect(origin = Point(x = 20f, y = 20f), size = Size(width = 180f, height = 90f)))
+
+            val one = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+            val two = KumlSvgRenderer.toSvg(model = model, diagram = diagram, layoutResult = layout, theme = PlainTheme())
+            one shouldBe two
+        }
+
+        // ── Self-loop / edge-label-collision regression guards (fix/erm-martin-edge-label-collision) ──
+
+        "self-referential relationship name label does not overflow into the entity box" {
+            val svg = selfLoopSvg()
+
+            val nameLabel = edgeLabels(svg).single { it.text == "subcategory of" }
+            // V3.4.x — ERM self-loops are now routed through SelfLoopRouter (the
+            // same wide C-loop UML/C4 self-associations get), which always bulges
+            // OUTWARD from the node's RIGHT edge — the hand-crafted route this
+            // fixture used to pass in (bulging left, past x=180) is discarded and
+            // replaced. Box right edge sits at x=380 (origin.x=200 + width=180,
+            // see selfLoopSvg()); the label must grow AWAY from the box
+            // (text-anchor="start") and its anchor x must not be to the left of
+            // the border.
+            nameLabel.textAnchor shouldBe "start"
+            (nameLabel.x >= 380f) shouldBe true
+            SampleOutput.write(filename = "erm/self-loop-name-label-no-overflow.svg", content = svg)
+        }
+
+        "self-loop role labels occupy distinct vertical bands from the name label" {
+            val svg = selfLoopSvg()
+            val labels = edgeLabels(svg)
+
+            val parentY = labels.single { it.text == "parent" }.y
+            val nameY = labels.single { it.text == "subcategory of" }.y
+            val childY = labels.single { it.text == "child" }.y
+
+            (kotlin.math.abs(parentY - nameY) >= 12f) shouldBe true
+            (kotlin.math.abs(nameY - childY) >= 12f) shouldBe true
+            (kotlin.math.abs(parentY - childY) >= 12f) shouldBe true
+        }
+
+        "self-loop determinism — same input renders byte-identically" {
+            val one = selfLoopSvg()
+            val two = selfLoopSvg()
+            one shouldBe two
+        }
+
+        "vertical-segment name label is pushed to the side, not centered on the line" {
+            val parent = ErmEntity(id = "parent", name = "Parent", attributes = listOf(pk("id")))
+            val child = ErmEntity(id = "child", name = "Child", attributes = listOf(pk("id")))
+            val rel =
+                ErmRelationship(
+                    id = "rel1",
+                    name = "contains",
+                    sourceEntityId = "parent",
+                    targetEntityId = "child",
+                    sourceCardinality = Cardinality.ONE,
+                    targetCardinality = Cardinality.ZERO_MANY,
+                )
+            val model = ErmModel(name = "Tree", entities = listOf(parent, child), relationships = listOf(rel))
+            val diagram = ErmDiagram(name = "Overview")
+            val layout =
+                layoutOf(
+                    nodes =
+                        listOf(
+                            "parent" to Rect(origin = Point(x = 50f, y = 20f), size = Size(width = 160f, height = 90f)),
+                            "child" to Rect(origin = Point(x = 50f, y = 300f), size = Size(width = 160f, height = 90f)),
+                        ),
+                    edges =
+                        listOf(
+                            "rel1" to
+                                EdgeRoute.OrthogonalRounded(
+                                    source = Point(x = 130f, y = 110f),
+                                    target = Point(x = 130f, y = 300f),
+                                    waypoints = emptyList(),
+                                    cornerRadiusPx = 6f,
+                                ),
+                        ),
+                )
+
+            val svg =
+                KumlSvgRenderer.toSvg(
+                    model = model,
+                    diagram = diagram,
+                    layoutResult = layout,
+                    theme = PlainTheme(),
+                    options = SvgRenderOptions(prettyPrint = false),
+                )
+
+            val nameLabel = edgeLabels(svg).single { it.text == "contains" }
+            nameLabel.textAnchor shouldBe "start"
+            (nameLabel.x > 130f) shouldBe true
+            SampleOutput.write(filename = "erm/vertical-segment-name-label.svg", content = svg)
+        }
+    })
+
+private fun selfLoopSvg(): String {
+    val category = ErmEntity(id = "category", name = "Category", attributes = listOf(pk("id")))
+    val rel =
+        ErmRelationship(
+            id = "rel1",
+            name = "subcategory of",
+            sourceEntityId = "category",
+            targetEntityId = "category",
+            sourceCardinality = Cardinality.ZERO_ONE,
+            targetCardinality = Cardinality.ZERO_MANY,
+            sourceRole = "parent",
+            targetRole = "child",
+        )
+    val model = ErmModel(name = "Catalog", entities = listOf(category), relationships = listOf(rel))
+    val diagram = ErmDiagram(name = "Overview")
+    val layout =
+        layoutOf(
+            nodes = listOf("category" to Rect(origin = Point(x = 200f, y = 100f), size = Size(width = 180f, height = 120f))),
+            edges =
+                listOf(
+                    "rel1" to
+                        EdgeRoute.OrthogonalRounded(
+                            source = Point(x = 200f, y = 140f),
+                            target = Point(x = 200f, y = 190f),
+                            waypoints = listOf(Point(x = 180f, y = 140f), Point(x = 180f, y = 190f)),
+                            cornerRadiusPx = 6f,
+                        ),
+                ),
+        )
+    return KumlSvgRenderer.toSvg(
+        model = model,
+        diagram = diagram,
+        layoutResult = layout,
+        theme = PlainTheme(),
+        options = SvgRenderOptions(prettyPrint = false),
+    )
+}
+
+/**
+ * One `kuml-edge-label` `<text>` element (the coloured pass, not its halo
+ * twin). Internal (not private) so `ErmBachmanSvgTest`/`ErmIdef1xSvgTest` can
+ * reuse it for their own self-loop overflow guard tests instead of
+ * duplicating the parsing logic.
+ */
+internal data class EdgeLabelInfo(
+    val x: Float,
+    val y: Float,
+    val textAnchor: String,
+    val text: String,
+)
+
+/**
+ * Extracts every `kuml-edge-label` (non-halo) `<text>` element from [svg]. The
+ * halo pass shares the same x/y/text-anchor but carries the
+ * `kuml-edge-label-halo` class, whose value does not match the exact
+ * `class="kuml-edge-label"` literal below (different closing quote position).
+ */
+internal fun edgeLabels(svg: String): List<EdgeLabelInfo> {
+    val regex =
+        Regex("""<text class="kuml-edge-label" x="([^"]+)" y="([^"]+)" text-anchor="([^"]+)">([^<]*)</text>""")
+    return regex
+        .findAll(svg)
+        .map { m ->
+            val (x, y, anchor, text) = m.destructured
+            EdgeLabelInfo(x = x.toFloat(), y = y.toFloat(), textAnchor = anchor, text = text)
+        }.toList()
+}
+
+/**
+ * Extracts the `y` coordinate of every compartment-divider `<line>` (in
+ * document order) from [svg] — used by the divider-position regression
+ * guards to assert the line sits at the TOP of `ErmSizing.DIVIDER_GAP`
+ * (`cy`), not its midpoint (`cy + DIVIDER_GAP / 2f`).
+ */
+private fun dividerLineYs(svg: String): List<Float> {
+    val regex = Regex("""<line x1="0" y1="([^"]+)" x2="[^"]+" y2="[^"]+" class="kuml-divider"/>""")
+    return regex.findAll(svg).map { it.groupValues[1].toFloat() }.toList()
+}
+
+private fun pk(name: String): ErmAttribute = ErmAttribute(id = name, name = name, type = ErmDataType.Uuid, primaryKey = true)
+
+private fun layoutOf(vararg nodes: Pair<String, Rect>): LayoutResult = layoutOf(nodes = nodes.toList(), edges = emptyList())
+
+private fun layoutOf(
+    nodes: List<Pair<String, Rect>>,
+    edges: List<Pair<String, EdgeRoute>>,
+): LayoutResult {
+    val maxX = nodes.maxOfOrNull { it.second.origin.x + it.second.size.width } ?: 200f
+    val maxY = nodes.maxOfOrNull { it.second.origin.y + it.second.size.height } ?: 150f
+    return LayoutResult(
+        engineId = LayoutEngineId("test"),
+        seed = 1L,
+        canvas = Size(width = maxX + 20f, height = maxY + 20f),
+        nodes = nodes.associate { (id, rect) -> NodeId(id) to NodeLayout(bounds = rect) },
+        edges = edges.associate { (id, route) -> EdgeId(id) to route },
+        groups = emptyMap(),
+    )
+}

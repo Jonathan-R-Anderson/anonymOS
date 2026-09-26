@@ -1,0 +1,112 @@
+import java.io.File
+
+plugins {
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.serialization)
+}
+
+kotlin {
+    jvmToolchain(21)
+    explicitApi()
+
+    jvm()
+    js {
+        browser()
+        nodejs()
+    }
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmJs {
+        browser()
+        nodejs()
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            api(project(":kuml-renderer:kuml-layout-api"))
+            api(project(":kuml-renderer:kuml-layout-bridge")) // IBD port enrichment (V3.1.x)
+            api(project(":kuml-renderer:kuml-themes-core"))
+            api(project(":kuml-metamodel:kuml-metamodel-uml"))
+            api(project(":kuml-metamodel:kuml-metamodel-c4"))
+            api(project(":kuml-metamodel:kuml-metamodel-sysml2")) // V2.0.4 — SysML 2 BDD-Rendering
+            api(project(":kuml-metamodel:kuml-metamodel-bpmn")) // V3.1.3 — BPMN Process SVG-Renderer
+            api(project(":kuml-metamodel:kuml-metamodel-blueprint")) // V3.1.23 — Blueprint-Rendering
+            api(project(":kuml-metamodel:kuml-metamodel-erm")) // V3.4.2 — ERM Martin renderer
+            implementation(project(":kuml-core:kuml-core-model"))
+            implementation(libs.kotlinx.serialization.json)
+        }
+        jvmMain.dependencies {
+            // V3.1.30 — BPMN SMIL animation + TraceFile for BPMN animation.
+            // JVM-only: reachable exclusively from the `**/smil/**` subpackages
+            // (moved to jvmMain in the V3.2.8/9 KMP split) plus the 13
+            // `toSvgFile(...)` file-writing overloads in KumlSvgRenderer.jvm.kt.
+            // Deferred from KMP conversion — see CLAUDE.md kUML section for
+            // rationale (java.time.Instant/MessageDigest/ConcurrentHashMap/File
+            // usage in kuml-runtime-core is unreachable from the wasmJs render
+            // path).
+            api(project(":kuml-io:kuml-render-smil"))
+            api(project(":kuml-runtime:kuml-runtime-core"))
+        }
+        jvmTest.dependencies {
+            implementation(libs.kotest.runner.junit5)
+            implementation(libs.kotest.assertions.core)
+            // V1.1: stereotype render tests use KumlStereotypeApplication from kuml-profile-api
+            implementation(project(":kuml-profile:kuml-profile-api"))
+            // PNG co-generation in SampleOutput: converts each SVG sample to PNG for visual regression
+            implementation(project(":kuml-io:kuml-io-png"))
+            // V3.1.36 — ArxmlComponentRenderTest: render an imported ARXML composition as SVG
+            implementation(project(":kuml-io:kuml-io-arxml"))
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "Powered by kUML" branding — build-time version constant for commonMain.
+//
+// SvgDocument.render() (the single choke point every SVG passes through) needs
+// the resolved project version for the always-on attribution comment. The
+// `kuml-cli:generateVersionProperties` pattern (a JVM `.properties` resource
+// read via `Class.getResourceAsStream`) does not work here: this module is
+// Kotlin Multiplatform (jvm + js + wasmJs) and SvgDocument lives in
+// commonMain, which has no JVM classloader/resource API. Instead we generate
+// a plain Kotlin source file exposing the version as a `const val`.
+//
+// The version is captured into a plain string at configuration time (not
+// read from `project.*` inside the task action) so the task stays compatible
+// with the Gradle configuration cache — same rationale as `projectVersionForResources`
+// in kuml-cli/build.gradle.kts.
+val kumlBuildInfoVersion: String = version.toString()
+val kumlBuildInfoDir = layout.buildDirectory.dir("generated/kuml-buildinfo")
+
+// The generated file is written to be ktlint-clean by construction (4-space
+// indent, trailing newline, no wildcard imports, lowercase package name) so
+// it does not need an explicit ktlint exclude — the ktlint-gradle plugin's
+// task types are not resolvable from this module's own build script classpath
+// (they are applied to this project from the root build script's
+// `subprojects { pluginManager.withPlugin(...) }` hook, not declared in this
+// module's own `plugins { }` block), so excluding by task type is not an
+// option here without adding a redundant plugin declaration.
+val generateKumlBuildInfo =
+    tasks.register("generateKumlBuildInfo") {
+        val outputDirProvider = kumlBuildInfoDir
+        val versionValue = kumlBuildInfoVersion
+        inputs.property("version", versionValue)
+        outputs.dir(outputDirProvider)
+        doLast {
+            val pkgDir = outputDirProvider.get().dir("dev/kuml/io/svg").asFile
+            pkgDir.mkdirs()
+            File(pkgDir, "KumlBuildInfo.kt").writeText(
+                "package dev.kuml.io.svg\n" +
+                    "\n" +
+                    "// Generated by :kuml-io:kuml-io-svg:generateKumlBuildInfo — do not edit by hand.\n" +
+                    "internal object KumlBuildInfo {\n" +
+                    "    const val VERSION: String = \"$versionValue\"\n" +
+                    "}\n",
+            )
+        }
+    }
+
+kotlin.sourceSets.commonMain {
+    kotlin.srcDir(generateKumlBuildInfo)
+}
+
+tasks.withType<Test>().configureEach { useJUnitPlatform() }

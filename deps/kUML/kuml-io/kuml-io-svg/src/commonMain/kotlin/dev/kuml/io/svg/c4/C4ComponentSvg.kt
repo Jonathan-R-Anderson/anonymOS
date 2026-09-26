@@ -1,0 +1,70 @@
+package dev.kuml.io.svg.c4
+
+import dev.kuml.c4.model.C4Component
+import dev.kuml.io.svg.SvgBuilder
+import dev.kuml.io.svg.fmt2
+import dev.kuml.io.svg.xmlEscapeAttr
+import dev.kuml.layout.NodeLayout
+import dev.kuml.renderer.theme.core.KumlTheme
+
+/**
+ * Rendert eine [C4Component] als gerundetes Rechteck mit dünnem Rahmen.
+ *
+ * Zeigt `[Component: <technology>]`-Header, Name (fett) und optionale,
+ * mehrzeilig umbrechende Beschreibung.
+ */
+internal fun renderC4Component(
+    element: C4Component,
+    layout: NodeLayout,
+    theme: KumlTheme,
+    builder: SvgBuilder,
+) {
+    val x = layout.bounds.origin.x
+    val y = layout.bounds.origin.y
+    val w = layout.bounds.size.width
+    val h = layout.bounds.size.height
+    val r = theme.borders.cornerRadiusPx
+
+    builder.tag(
+        name = "g",
+        attrs = mapOf("id" to xmlEscapeAttr(element.id), "transform" to "translate(${fmt(x)},${fmt(y)})"),
+    ) {
+        tag(
+            name = "rect",
+            attrs =
+                mapOf(
+                    "width" to fmt(w),
+                    "height" to fmt(h),
+                    "rx" to fmt(r),
+                    "ry" to fmt(r),
+                    "class" to "kuml-c4component",
+                ),
+        )
+        val tech = element.technology?.let { " $it" } ?: ""
+        tag(
+            name = "text",
+            attrs =
+                mapOf(
+                    "class" to "kuml-stereotype",
+                    "x" to fmt(w / 2f),
+                    "y" to "18",
+                    "text-anchor" to "middle",
+                ),
+        ) { text("[Component:$tech]") }
+        tag(
+            name = "text",
+            attrs =
+                mapOf(
+                    "class" to "kuml-title",
+                    "x" to fmt(w / 2f),
+                    "y" to "36",
+                    "text-anchor" to "middle",
+                ),
+        ) { text(element.name) }
+        element.description?.let { desc ->
+            renderWrappedDescription(builder = this, desc = desc, boxWidth = w)
+        }
+    }
+}
+
+private fun fmt(v: Float): String = fmt2(v)

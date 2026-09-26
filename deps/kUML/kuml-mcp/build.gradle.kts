@@ -1,0 +1,141 @@
+plugins {
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
+    application
+}
+
+kotlin {
+    jvmToolchain(21)
+    explicitApi()
+}
+
+application {
+    mainClass.set("dev.kuml.mcp.MainKt")
+    applicationName = "kuml-mcp"
+}
+
+dependencies {
+    implementation(libs.kotlinx.serialization.json)
+    implementation(project(":kuml-codegen:kuml-codegen-api"))
+    implementation(project(":kuml-codegen:kuml-gen-kotlin"))
+    implementation(project(":kuml-codegen:kuml-gen-java"))
+    implementation(project(":kuml-codegen:kuml-gen-sql"))
+
+    implementation(project(":kuml-core:kuml-core-script"))
+    // V2.0.27 — Behaviour-Runtime MCP tools
+    implementation(project(":kuml-runtime:kuml-runtime-core"))
+    // ADR-0015 / security fix B2 — sandboxed guard evaluation (TimeLimitedGuardEvaluator)
+    // for ACT sessions started via kuml.run.* MCP tools. Previously missing entirely,
+    // so ACT guard evaluation here had no time bound at all.
+    implementation(project(":kuml-runtime:kuml-runtime-sandbox"))
+    implementation(libs.kotlin.scripting.common)
+    implementation(libs.kotlin.scripting.jvm)
+    implementation(libs.kotlin.scripting.jvm.host)
+    implementation(libs.kotlin.reflect)
+    implementation(project(":kuml-core:kuml-core-dsl"))
+    implementation(project(":kuml-core:kuml-core-ocl"))
+    implementation(project(":kuml-renderer:kuml-layout-api"))
+    implementation(project(":kuml-renderer:kuml-layout-elk"))
+    implementation(project(":kuml-renderer:kuml-layout-bridge"))
+    implementation(project(":kuml-renderer:kuml-themes-core"))
+    implementation(project(":kuml-io:kuml-io-svg"))
+    implementation(project(":kuml-io:kuml-io-png"))
+    implementation(project(":kuml-metamodel:kuml-metamodel-uml"))
+    implementation(project(":kuml-metamodel:kuml-metamodel-c4"))
+    // SLF4J backend — see gradle/libs.versions.toml. This module owns the single
+    // repo-wide `logback.xml`, because it is the deepest node in the dependency
+    // graph among the modules that ship a backend
+    // (kuml-mcp ⊂ kuml-ai-tools ⊂ kuml-cli ⊂ kuml-desktop), so exactly one
+    // logback.xml is ever on any runtime classpath.
+    runtimeOnly(libs.logback.classic)
+
+    testImplementation(libs.kotest.runner.junit5)
+    testImplementation(libs.kotest.assertions.core)
+    // McpStdoutPurityTest / LoggingSecurityPinsTest inspect the parsed Logback
+    // configuration directly (JoranConfigurator, LoggerContext, ConsoleAppender) —
+    // needs compile-time access, unlike production code which only ever touches
+    // the SLF4J facade.
+    testImplementation(libs.logback.classic)
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+    jvmArgs("-Xmx512m")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Source-style validation worker (`kuml.validate` positional-argument check).
+// Same wiring and rationale as kuml-cli/build.gradle.kts — see the comment
+// there for the full explanation (kuml-style-worker's unshaded kotlin-compiler
+// must never share a classpath with this module's kotlin-compiler-embeddable).
+// ─────────────────────────────────────────────────────────────────────────────
+val styleWorkerRuntime =
+    configurations.create("styleWorkerRuntime") {
+        // See kuml-cli/build.gradle.kts's identical block for why this force
+        // lives here (the consumer) rather than in :kuml-style-worker itself.
+        resolutionStrategy {
+            force("org.jetbrains.kotlin:kotlin-reflect:${libs.versions.kotlin.get()}")
+        }
+    }
+
+dependencies {
+    styleWorkerRuntime(project(path = ":kuml-style-worker"))
+}
+
+val copyStyleWorkerLibForTest =
+    // Sync, not Copy — see kuml-cli/build.gradle.kts's identical block for why.
+    tasks.register<Sync>("copyStyleWorkerLibForTest") {
+        description = "Stages the :kuml-style-worker runtime classpath for test-time discovery via -Dkuml.style.lib."
+        from(styleWorkerRuntime)
+        into(layout.buildDirectory.dir("style-worker-lib"))
+    }
+
+tasks.withType<Test>().configureEach {
+    dependsOn(copyStyleWorkerLibForTest)
+    systemProperty(
+        "kuml.style.lib",
+        layout.buildDirectory
+            .dir("style-worker-lib")
+            .get()
+            .asFile.absolutePath,
+    )
+}
+
+distributions {
+    main {
+        contents {
+            from(styleWorkerRuntime) { into("lib/style") }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V3.2.17 — Bundle the DSL reference handbook pages and curated vault examples
+// as classpath resources for the `kuml://dsl/reference` and `kuml://dsl/examples`
+// MCP resources (see ResourceRegistry.kt). Declarative `from(...)` copy specs
+// (not a custom `doLast`/`doFirst` task) keep this Configuration-Cache-safe —
+// see CLAUDE.md "kuml-packaging Exec-Task doFirst" pitfall.
+//
+// - reference: the four DSL-reference handbook pages (not authoring-mcp.adoc,
+//   which documents the MCP server itself, not the DSL).
+// - examples: the curated vault-examples Markdown files, sourced from the
+//   `kuml-vault-examples-tests` module's test resources (already the
+//   classpath-resource mirror of the vault per CLAUDE.md's Classpath-Resource
+//   rule — never read absolute vault paths here).
+// ─────────────────────────────────────────────────────────────────────────────
+val handbookReferenceDir = rootProject.layout.projectDirectory.dir("docs/handbook/modules/reference/pages")
+val vaultExamplesDir =
+    rootProject.layout.projectDirectory.dir(
+        "kuml-tests/kuml-vault-examples-tests/src/test/resources/vault-examples",
+    )
+
+tasks.named<ProcessResources>("processResources") {
+    from(handbookReferenceDir) {
+        include("uml-dsl.adoc", "sysml2.adoc", "c4-dsl.adoc", "bpmn-dsl.adoc")
+        into("dsl/reference")
+    }
+    from(vaultExamplesDir) {
+        include("*.md")
+        into("dsl/examples")
+    }
+}

@@ -1,0 +1,135 @@
+package dev.kuml.desktop.workspace
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.kuml.desktop.AppState
+import dev.kuml.desktop.editor.EditorActions
+import dev.kuml.desktop.editor.EditorPane
+import dev.kuml.desktop.editor.FindBar
+import dev.kuml.desktop.i18n.Strings
+import dev.kuml.desktop.io.FileMenu
+import dev.kuml.desktop.preview.PreviewPane
+import java.io.File
+
+/**
+ * Engineering-mode workspace layout (V3.6.4): a tree of `*.kuml.kts` files next
+ * to the existing single-file [EditorPane]/[PreviewPane] pair. Selecting a script
+ * loads it into [state] via [AppState.loadFrom] — exactly the normal File → Open
+ * flow — so the existing render pipeline (driven from `MainWindow`'s single
+ * `RenderInputs` derivation — see the V3.7.4 design-review note there) picks it
+ * up unchanged.
+ *
+ * Selecting a different file first runs it through [confirmUnsavedAndThen] (P1,
+ * design review) — the same unsaved-changes guard used everywhere else in the app
+ * (File → New/Open/Quit) — so unsaved edits in the currently-open file are no
+ * longer silently discarded when the user clicks another entry in the tree.
+ */
+@Composable
+fun EngineeringWorkspaceScreen(
+    state: AppState,
+    strings: Strings,
+    scriptFiles: List<File>,
+    confirmUnsavedAndThen: (() -> Unit) -> Unit,
+    modifier: Modifier = Modifier,
+    onEditorReady: (EditorActions?) -> Unit = {},
+) {
+    // P5 — Ansichtsmodus: der Dateibaum bleibt in allen drei Modi sichtbar (Susan Kare, design
+    // review: "Baum ist Navigation, nicht Inhalt"). Gewichte: SPLIT 1:2:2 (unverändert
+    // gegenüber vor P5), SOURCE 1:4, DIAGRAM 1:4 — der ausgeblendete Bereich wird NICHT
+    // komponiert (echtes if, keine Nullbreite, siehe MainWindow.kt's identischer Kommentar
+    // zum PreviewPane-State-Reset).
+    val editorWeight = if (state.viewMode == AppState.ViewMode.SPLIT) 2f else 4f
+    val previewWeight = if (state.viewMode == AppState.ViewMode.SPLIT) 2f else 4f
+    // V3.7.4 (design review P8) — mirrored locally so FindBar (below) can reach the same
+    // handle the outer onEditorReady callback forwards up to MainWindow's Edit menu.
+    var localActions by remember { mutableStateOf<EditorActions?>(null) }
+    Row(modifier = modifier.fillMaxWidth().fillMaxHeight()) {
+        EngineeringFileTreePane(
+            files = scriptFiles,
+            selected = state.currentFile,
+            onSelect = { file ->
+                confirmUnsavedAndThen {
+                    state.loadFrom(file = file, content = FileMenu.readScript(file))
+                    state.isDirty = false
+                }
+            },
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+        )
+        HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp))
+        if (state.viewMode != AppState.ViewMode.DIAGRAM) {
+            Column(modifier = Modifier.weight(editorWeight).fillMaxHeight()) {
+                EditorPane(
+                    state = state,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onEditorReady = { actions ->
+                        localActions = actions
+                        onEditorReady(actions)
+                    },
+                )
+                if (state.findBarOpen) {
+                    FindBar(
+                        actions = localActions,
+                        strings = strings,
+                        onClose = { state.findBarOpen = false },
+                    )
+                }
+            }
+        }
+        if (state.viewMode == AppState.ViewMode.SPLIT) {
+            HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp))
+        }
+        if (state.viewMode != AppState.ViewMode.SOURCE) {
+            PreviewPane(
+                state = state,
+                modifier = Modifier.weight(previewWeight).fillMaxHeight(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun EngineeringFileTreePane(
+    files: List<File>,
+    selected: File?,
+    onSelect: (File) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(modifier = modifier) {
+        items(files, key = { it.absolutePath }) { file ->
+            val bg = if (file == selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+            Text(
+                text = file.name,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(bg)
+                        .clickable { onSelect(file) }
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+        }
+    }
+}

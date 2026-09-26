@@ -1,0 +1,1028 @@
+# CLAUDE.md — kUML Repository
+
+## Projektüberblick
+
+**kUML** ist ein Modellierungswerkzeug, das drei gleichberechtigte Modellierungssprachen als type-safe Kotlin-DSL ausdrückt: **UML 2.x**, **SysML 2** (auf KerML) und **C4**. Dazu kommt eine vollständige OCL-2.4/2.5-Expression-Language für Constraints. Das Projekt folgt dem Prinzip der Model Driven Architecture (MDA): Modelle werden stufenweise transformiert (Design → Implementation → Deployment) und daraus Code generiert.
+
+Das zentrale Alleinstellungsmerkmal: kUML ist **das erste UML-Werkzeug, das bewusst für die LLM-Ära entworfen wurde** — Kotlin-Syntax, semantische Validierung, strukturierte Fehler (JSON), kanonischer Formatter, MCP-Server.
+
+Das Metamodell ist **pure Kotlin** (`sealed`/`data class`), keine EMF-Abhängigkeit im Kern. XMI-Roundtrip mit klassischen UML-Werkzeugen läuft über ein optionales Modul `kuml-io-emf`.
+
+- **Sprache:** Kotlin (JVM)
+- **Build:** Gradle Kotlin DSL (Multimodul)
+- **Lizenz:** Apache 2.0
+- **Dokumentation:** AsciiDoc (`.adoc`) — **kein Markdown** für Projektdokumentation
+- **Obsidian-Vault-Notizen:** [[03 Bereiche/kUML/Übersicht]]
+- **Architektur-Entscheidungen:** [[03 Bereiche/kUML/ADR/ADR-0001 EMF aus dem Kern entfernen]], [[03 Bereiche/kUML/ADR/ADR-0002 kuml Format durch kts mit Implicit Imports ersetzen]], [[03 Bereiche/kUML/ADR/ADR-0003 SysML 2 als eigenständiges Metamodell]], [[03 Bereiche/kUML/ADR/ADR-0005 C4 als First-Class-Modellierungssprache]]
+
+---
+
+## Tech-Stack
+
+| Bereich | Technologie |
+|---|---|
+| Sprache | Kotlin (JVM) |
+| Build | Gradle Kotlin DSL |
+| Metamodell | Pure Kotlin (`sealed`/`data class`) — kein EMF im Kern |
+| Eingabeformat | Kotlin Scripting (`*.kuml.kts` mit `KumlScriptDefinition` + `defaultImports`) |
+| Serialisierung | `kotlinx.serialization` |
+| OCL | Eigener OCL-2.4/2.5-Expression-Language-Interpreter auf dem Kotlin-Modell |
+| Rendering | Kuiver (Kotlin/Compose) + ELK (Layout) |
+| Native | GraalVM Native Image für die CLI |
+| XMI (optional) | `kuml-io-emf` über Eclipse UML2 — separat geladen, nicht im Kern |
+| C4-Brücke | `kuml-io-structurizr` — Roundtrip mit Structurizr DSL |
+| Web-UI | Ktor + KVision + Kilua RPC |
+| Desktop-UI | Kotlin Compose Multiplatform |
+| CLI | Kotlinx CLI |
+| MCP-Server | Ktor (Stdio + SSE Transport) |
+| LLM-Integration | Eigenes `LlmBackend`-Interface (Anthropic, OpenAI, Ollama) |
+| Tests (Unit/Integration) | Kotlin Test + JUnit 5 + Kotest + AssertJ |
+| Tests (Web-UI) | Playwright (JVM) — Headless-Browser-Tests für `kuml-web` |
+| Tests (Desktop-UI) | Compose UI Testing (`org.jetbrains.compose.ui:ui-test-junit4`) |
+| Tests (IDE-Plugin) | IntelliJ Platform Test Framework (`LightCodeInsightFixtureTestCase`) |
+
+---
+
+## Modulstruktur
+
+```
+kuml/
+├── kuml-core/
+│   ├── kuml-core-model/    # Pure Kotlin Modell-Basistypen (KumlElement, KumlModel, …)
+│   ├── kuml-core-dsl/      # DSL-Builder-Infrastruktur (sprachenübergreifend)
+│   ├── kuml-core-script/   # Kotlin Scripting Host + KumlScriptDefinition
+│   └── kuml-core-ocl/      # OCL-2.4/2.5-Expression-Language-Interpreter auf dem Kotlin-Modell
+├── kuml-metamodel/         # Modellierungssprachen — jede mit eigenem Metamodell
+│   ├── kuml-metamodel-uml/      # UML 2.x — pure Kotlin
+│   ├── kuml-metamodel-kerml/    # KerML — Basis für SysML 2
+│   ├── kuml-metamodel-sysml2/   # SysML 2 auf KerML
+│   └── kuml-metamodel-c4/       # C4-Modell — eigenständige Sprache
+├── kuml-renderer/
+│   ├── kuml-kuiver/        # Kuiver-basiertes SVG-Rendering
+│   ├── kuml-layout/        # ELK-Anbindung, sprachenspezifische Layouts
+│   └── kuml-themes/        # Theme-System & Built-in Themes
+├── kuml-io/
+│   ├── kuml-io-svg/        # SVG-Export, PNG-Konvertierung
+│   ├── kuml-io-json/       # kotlinx.serialization Modell-Persistenz
+│   ├── kuml-io-structurizr/# C4 ⇌ Structurizr DSL (Bridge)
+│   └── kuml-io-emf/        # OPTIONAL: XMI ⇌ Eclipse UML2 (EA/Papyrus/MagicDraw)
+├── kuml-profile/           # UML-Profile (Stereotypen, Tagged Values, OCL)
+│   ├── kuml-profile-api/
+│   ├── kuml-profile-soaml/     # OMG SoaML — Pilot
+│   ├── kuml-profile-autosar/
+│   ├── kuml-profile-javaee/
+│   ├── kuml-profile-spring/
+│   └── kuml-profile-openapi/
+├── kuml-transform/         # M2M Modell-zu-Modell-Transformation
+│   ├── kuml-transform-api/
+│   ├── kuml-transform-uml-to-jpa/
+│   ├── kuml-transform-uml-to-rest/
+│   ├── kuml-transform-uml-to-k8s/
+│   ├── kuml-transform-uml-to-docker/
+│   └── kuml-transform-c4-to-uml/
+├── kuml-codegen/           # M2T Code-Generierung
+│   ├── kuml-codegen-api/
+│   ├── kuml-gen-kotlin/
+│   ├── kuml-gen-java/
+│   └── kuml-gen-sql/
+├── kuml-reverse/
+│   ├── kuml-reverse-kotlin/
+│   └── kuml-reverse-java/
+├── kuml-llm/               # LLM-Integration (provider-neutral)
+│   ├── kuml-llm-core/      # LlmBackend Interface
+│   ├── kuml-llm-anthropic/ # Claude (Sonnet, Haiku, Opus)
+│   ├── kuml-llm-openai/    # GPT-4o, o1
+│   ├── kuml-llm-ollama/    # Lokale Modelle
+│   ├── kuml-llm-spec/      # llms.txt + JSON-Schema Generator
+│   ├── kuml-llm-describe/  # Modell → Natursprache
+│   ├── kuml-llm-fewshot/   # Few-Shot-Bibliothek
+│   └── kuml-llm-bench/     # LLM-Benchmark-Suite
+├── kuml-mcp/               # MCP-Server (Ktor, Stdio + SSE)
+├── kuml-cli/               # Kommandozeilen-Interface
+├── kuml-gradle-plugin/     # Gradle-Plugin (dev.kuml)
+├── kuml-detekt-rules/      # Build-Tooling: custom Detekt-Ruleset (kuml/RequireNamedArguments), nie published
+├── kuml-web/               # Web-Interface (Ktor + KVision)
+├── kuml-desktop/           # Compose Desktop UI
+├── kuml-docs/
+│   ├── kuml-markdown/      # Markdown kuml-Codeblock → SVG
+│   └── kuml-asciidoc/      # Asciidoctor Extension
+├── kuml-intellij-plugin/   # JetBrains IDE Plugin
+├── kuml-tests/             # Alle Tests (Unit, Integration, System, UI)
+│   ├── kuml-dsl-tests/             # Unit: alle 14 UML + SysML 2 + C4 Diagrammtypen
+│   ├── kuml-ocl-tests/             # Unit: OCL-Constraint-Validierung (2.4/2.5-Expression-Language)
+│   ├── kuml-formatter-tests/       # Unit: kuml fmt Idempotenz
+│   ├── kuml-renderer-tests/        # Integration: SVG Snapshot-Tests
+│   ├── kuml-structurizr-tests/     # Integration: C4 ⇌ Structurizr Roundtrip
+│   ├── kuml-emf-tests/             # Integration: optionaler XMI-Roundtrip (kuml-io-emf)
+│   ├── kuml-transform-tests/       # Integration: M2M Transformationen
+│   ├── kuml-codegen-tests/         # Integration: Kotlin / Java / SQL Generatoren
+│   ├── kuml-reverse-tests/         # Integration: Kotlin/Java → Modell
+│   ├── kuml-mcp-tests/             # Integration: MCP-Tool-Aufrufe
+│   ├── kuml-gradle-plugin-tests/   # Integration: GradleRunner-Tests
+│   ├── kuml-cli-tests/             # System: CLI-Befehle end-to-end
+│   ├── kuml-llm-tests/             # System: LLM-Mock + @Tag("live")
+│   ├── kuml-web-tests/             # UI: Playwright Browser-Tests
+│   ├── kuml-desktop-tests/         # UI: Compose UI Testing
+│   └── kuml-intellij-plugin-tests/ # UI: IntelliJ Platform Test Framework
+├── kuml-examples/          # Vollständige Beispielprojekte
+├── kuml-packaging/         # GraalVM Native, DEB, RPM, DMG, MSI, Docker
+└── docs/                   # Benutzerhandbuch (AsciiDoc + Antora)
+```
+
+> Bewusste Streichungen gegenüber frühen Entwürfen: `kuml-preprocessor` (durch Kotlin Scripting ersetzt), `kuml-profile-sysml` / `kuml-profile-c4` (SysML 2 und C4 sind eigene Metamodelle). `kuml-xmi` ist umbenannt zu `kuml-io-emf` und auf optional zurückgestuft.
+
+---
+
+## Wichtige Gradle-Befehle
+
+```bash
+# Gesamtes Projekt bauen
+./gradlew build
+
+# Nur Tests ausführen
+./gradlew test
+
+# Ein Modul bauen
+./gradlew :kuml-core:kuml-core-dsl:build
+
+# Tests für ein Modul
+./gradlew :kuml-tests:kuml-dsl-tests:test
+
+# Snapshot-Tests aktualisieren (SVG-Referenzen)
+./gradlew :kuml-tests:kuml-renderer-tests:test -PupdateSnapshots
+
+# CLI lokal ausführen
+./gradlew :kuml-cli:run --args="render examples/hello.kuml.kts --format svg"
+
+# Alle Beispiele rendern (Smoke-Test)
+./gradlew :kuml-examples:kumlRender
+
+# UI-Tests (Web, Desktop, IDE-Plugin)
+./gradlew :kuml-tests:kuml-web-tests:test
+./gradlew :kuml-tests:kuml-desktop-tests:test
+./gradlew :kuml-tests:kuml-intellij-plugin-tests:test
+
+# Nur Live-LLM-Tests ausführen (erfordert ANTHROPIC_API_KEY)
+./gradlew :kuml-tests:kuml-llm-tests:test -Dgroups=live
+
+# Alle Tests außer @Tag("live")
+./gradlew test -DexcludeTags=live
+
+# Code formatieren
+./gradlew ktlintFormat
+
+# Abhängigkeiten prüfen
+./gradlew dependencyUpdates
+```
+
+---
+
+## Sprachkonventionen
+
+| Bereich | Sprache |
+|---|---|
+| Klassen-, Methoden-, Variablennamen | **Englisch** |
+| Kommentare und KDoc | **Englisch** |
+| Dokumentation (README.adoc, CONTRIBUTING.adoc, Handbuch) | **Englisch** |
+| Commit-Messages, PR-Titel und -Beschreibungen | **Englisch** |
+| Fehler-`message`-Felder im JSON-Output | **Englisch** |
+| UI-Texte (Labels, Tooltips, Fehlermeldungen) | **Englisch** primär — Deutsch via `de`-Lokalisierung |
+| Snapshot-Test-Methodennamen | **Englisch** |
+
+**UI-Lokalisierung:** Alle UI-Strings (Web-UI, Desktop, IDE-Plugin) werden über ein i18n-Framework ausgeliefert. Keine hart codierten Strings im Quellcode. `en` ist Pflicht, `de` ist die erste Übersetzung.
+
+---
+
+## Git-/Repository-Konventionen
+
+> [!important] Default-Branch: **`master`** — niemals `main`
+> In **allen** kUML-Repos (`kuml-dev/kuml`, `kuml-dev/homebrew-kuml` und alle künftigen) ist der Default-Branch `master`. Workflows, Doku, Skripte und Examples verwenden ausschließlich `master`.
+>
+> Konkret:
+> - GitHub Actions `on.push.branches` / `on.pull_request.branches` → `[ master ]`
+> - `git push origin master`, `git checkout master` in Doku
+> - Release-Workflows triggern auf Tags (`v*.*.*`) — die Branch-Frage entfällt dort ohnehin
+> - Neue Repos: nach `git init` direkt `git branch -m main master` und `gh repo edit --default-branch master`
+
+> [!important] Keine Commit-SHAs in READMEs
+> READMEs nennen **niemals** einen Commit-SHA als „Aktualitätsstempel" (`Commit: \`fc1a8ba\`.`). Solche Stempel sind ab der nächsten Änderung am Modul falsch und vermitteln eine Aktualität, die die Datei nicht garantieren kann.
+>
+> - Quelle der Wahrheit für Modul-Stand: `git log <pfad>` und das Inhaltsverzeichnis der `.adoc`-Datei.
+> - Wenn ein Modul-README einen Bezug zu einem bestimmten Commit braucht (z. B. „ADR-konform seit …"), nenne stattdessen das **Datum** oder den **Versions-Tag** (`Seit v0.1.0`), nicht den SHA.
+
+### Release-Choreographie (kUML ↔ kuml.dev synchron)
+
+Bei **jedem neuen kUML-Release** (Tag `v*.*.*` auf `kuml-dev/kUML`) gehört dazu ein
+synchrones Update der kuml.dev-Webseite:
+
+1. **CHANGELOG-Eintrag** in `CHANGELOG.md` für die neue Version, vor dem Push des Tags.
+2. **`src/pages/whats-new.astro`** (EN) und **`src/pages/de/aktuelles.astro`** (DE) auf
+   kuml.dev bekommen einen neuen Eintrag oben — gleicher Inhalt wie der CHANGELOG-Block,
+   aber Marketing-tauglich aufbereitet (bürgernah, Features statt Commits).
+3. **`src/pages/features.astro`** und die Vergleichs-Matrix `src/pages/comparison.astro`
+   werden um neue Features ergänzt, sodass kuml.dev nie hinter dem aktuellen Code zurück
+   bleibt.
+4. **Build-Smoke-Test**: `npm run build` muss clean durchlaufen.
+5. **Webseite-Review (nach `git tag v…`, vor `git push --tags`)**: Bevor der Tag gepusht
+   und das Release damit öffentlich wird, die kuml.dev-Änderungen für dieses Release
+   tatsächlich ansehen (lokal `npm run dev` oder Staging-Deploy) — nicht nur die
+   Datei-Diffs lesen. Konkret prüfen: Whats-New-Eintrag ist vorhanden und stimmt inhaltlich
+   (EN + DE), `features.astro`/`comparison.astro` sind in beiden Sprachen konsistent, und
+   der Playground rendert noch fehlerfrei (`npm run build:with-render` mit lokalem
+   `kuml-cli/build/install/kuml/bin` vorangestelltem PATH — siehe Stille-Fallback-Falle-
+   Warnhinweis weiter unten). Erst nach diesem Review den Tag pushen.
+6. **Maven-Central-Badge-Verifikation**: Direkt nach dem Maven-Central-Sync (sobald
+   die JARs im Sync-Cache sind) den Badge-Endpoint **live** prüfen, statt sich auf
+   das CDN-cachende `<img>` zu verlassen:
+   ```bash
+   curl -sL "https://img.shields.io/maven-central/v/dev.kuml/kuml-core-dsl.json"
+   ```
+   Erwartet: `"message":"vX.Y.Z"` (nicht `"not found"`). Wenn `"not found"`:
+   entweder ist der GAV-Pfad im Badge falsch (z. B. weil das Anker-Artefakt
+   umbenannt/zerteilt wurde) oder der Maven-Central-Sync hängt noch. Der Badge
+   im Root-`README.adoc` zeigt aktuell auf `dev.kuml:kuml-core-dsl`. **Wenn das
+   Anker-Artefakt jemals umbenannt, zerteilt oder durch ein anderes ersetzt wird,
+   muss die Badge-URL in `README.adoc` Zeile 13 mitgepflegt werden** — sonst meldet
+   shields.io dauerhaft `not found`, obwohl die JARs auf Central liegen. Erkenntnis
+   2026-06-18: Der vorherige Badge zeigte auf `dev.kuml:kuml-core` (Single-Artefakt
+   vor dem Modulsplit) — existierte auf Maven Central nie und produzierte einen
+   roten „not found"-Badge auf GitHub.
+7. **Commit-Format auf kuml.dev**:
+   `Sync site with kUML vX.Y.Z (<kurzbeschreibung der hauptneuerung>)`
+8. **Social-Media-Ankündigungen** (automatisch, kein expliziter Prompt nötig): Sofort
+   nach dem Tag-Push erstellt Claudian im Obsidian-Vault einen vollständigen Satz
+   Ankündigungsdateien in `03 Bereiche/kUML/Ankündigungen/` — LinkedIn, X (Thread),
+   Reddit und Facebook. Grundlage: die CHANGELOG-Sektion der neuen Version und die
+   Marketing-Leitplanken aus `03 Bereiche/kUML/AUTOSAR Marketing-Priorität.md`.
+   Die Übersicht `03 Bereiche/kUML/Ankündigungen/Übersicht.md` wird ebenfalls aktualisiert.
+
+> [!warning] Stille-Fallback-Falle beim Playground-Render (2026-07-09 gelernt)
+> `npm run build:with-render` (kuml.dev-Repo) ruft die `kuml`-CLI über den `PATH` auf.
+> Existiert daneben ein global installiertes `kuml` (z. B. via Homebrew), fällt ein
+> lokaler `PATH`-Prepend **lautlos** darauf zurück, sobald das lokale installDist-Bundle
+> unter `kuml-cli/build/install/kuml/bin/kuml` fehlt — etwa weil ein vorausgegangenes
+> `./gradlew clean …` es weggeräumt hat. Das Render-Skript meldet trotzdem
+> „✓ rendered 41/41", produziert aber **veraltete SVGs** mit dem zuletzt veröffentlichten
+> Release-Renderer statt dem aktuellen `master`-Stand. Deshalb vor jedem `build:with-render`:
+> 1. **Unmittelbar davor** `./gradlew :kuml-cli:installDist` laufen lassen (nach jedem
+>    `clean` neu!).
+> 2. Verifizieren, dass der lokale Build genutzt wird:
+>    `PATH="<pfad-zum-kuml-repo>/kuml-cli/build/install/kuml/bin:$PATH" which kuml`
+>    muss auf das lokale Repo zeigen, **nicht** auf ein global installiertes `kuml`
+>    (z. B. `/opt/homebrew/bin/kuml` auf macOS). Im Zweifel eine bekannte Änderung im
+>    gerenderten SVG gegenprüfen (z. B. eine gefixte Kanten-Route).
+
+Die Webseite **muss vor dem nächsten Release wieder aktuell sein** — kein Drift
+zwischen Code und Marketing-Surface.
+
+---
+
+## Kotlin-Coding-Konventionen
+
+### 1. Named Parameters — PFLICHT
+
+In **allen** Funktions- und Konstruktoraufrufen sind benannte Parameter zu verwenden, wo die API dies erlaubt. Dies ist besonders wichtig für die DSL, da LLMs zuverlässigeren Code generieren, wenn Parameternamen explizit sind.
+
+```kotlin
+// ✅ Korrekt
+diagram(
+    name = "Systemübersicht",
+    type = DiagramType.CLASS,
+)
+
+classOf("Order") {
+    attribute(name = "id", type = UUID, visibility = PRIVATE)
+    operation(name = "confirm", visibility = PUBLIC, returns = Unit::class)
+}
+
+association(source = Order::class, target = OrderItem::class) {
+    aggregation = COMPOSITE
+    source { multiplicity = "1" }
+    target { multiplicity = "1..*" }
+}
+
+// ❌ Vermeiden
+diagram("Systemübersicht", DiagramType.CLASS)
+attribute("id", UUID, PRIVATE)
+```
+
+> [!note] Maschinell durchgesetzt seit V-detekt-named-arguments (2026-07-30)
+> Diese Konvention wird nicht mehr nur durch Review geprüft, sondern durch den
+> Custom-Detekt-Rule `kuml/RequireNamedArguments` (Modul `kuml-detekt-rules`,
+> siehe Modulstruktur oben) via `./gradlew check` erzwungen: jeder Aufruf einer
+> `dev.kuml.*`-Funktion oder eines `dev.kuml.*`-Konstruktors mit mehr als einem
+> Value-Parameter muss benannte Argumente verwenden. Ausnahmen (automatisch,
+> nicht konfigurierbar pro Aufruf): `vararg`-Parameter, Operator-/Infix-Funktionen,
+> und die abschließende Trailing-Lambda eines Block-DSL-Aufrufs (`state("Idle", 2) { }`
+> — `"Idle"`/`2` müssen benannt werden, das `{ }` nicht). Kotlin-Stdlib- und
+> Drittanbieter-Aufrufe (`listOf(...)`, `"x".substring(...)`, ELK, Batik, JavaParser
+> usw.) sind bewusst nicht erfasst — Java-deklarierte Parameter können in Kotlin
+> ohnehin nicht benannt werden, ein generisches "alles außer kotlin/kotlinx"-Denylist
+> hätte dort nur unfixbare Findings erzeugt.
+>
+> **Bekannte, bewusste Lücken** (der Rule-Autocorrect erreicht sie strukturell nicht):
+> Annotation-Argumente (`@Serializable(with = Foo::class)`), Konstruktor-Delegation
+> (`: this(a, 0)` / `: super(x, y)`), und die `.kuml.kts`-DSL-Beispielskripte selbst
+> (kein Kotlin-Compile-Target, daher keine Typauflösung) — letztere sind bereits von
+> Hand im benannten Stil geschrieben, siehe `03 Bereiche/kUML/Beispiele/`.
+>
+> **Weitere bekannte Lücke** (2026-07-30, Review-Fund): Bei den KMP-Modulen mit
+> `jvm()`-Target (`kuml-io-svg`, `kuml-profile-api`, `kuml-layout-api`,
+> `kuml-themes-core`) läuft die Typauflösung nur über `detektMainJvm`/
+> `detektTestJvm`, deckt also nur `commonMain` + `jvmMain` ab. Code, der
+> ausschließlich in einem `jsMain`/`wasmJsMain`-Actual liegt, wird von keiner
+> Typauflösungs-Task erfasst (`detektJsMainSourceSet`/`detektWasmJsMainSourceSet`
+> sind die Nicht-Typauflösungs-Variante und bewusst deaktiviert). Aktuell
+> harmlos — alle betroffenen `jsMain`/`wasmJsMain`-Actuals sind triviale
+> Ein-bis-Drei-Zeilen-Stubs mit ≤1 signifikantem Argument — aber ein künftiger
+> `dev.kuml.*`-Aufruf mit >1 Positionsargument, der ausschließlich in einem
+> solchen Actual-Body steht, würde das Gate lautlos umgehen.
+>
+> **Modul-Ausnahmen vom Gate** (dokumentiert in `kumlDetektExemptModules`,
+> root `build.gradle.kts`, mit Begründung im jeweiligen Modul-Build-Skript):
+> `kuml-wasm-playground` (kein `jvm()`-Target → keine Typauflösung möglich) und
+> `kuml-jetbrains-plugin` (`dev.detekt` kollidiert mit
+> `org.jetbrains.intellij.platform.gradle` im gemeinsamen Plugin-Classpath —
+> gelöst für den Rest des Repos über ein erzwungenes `kotlinx-serialization-core`
+> im root `buildscript{}`-Block, siehe Kommentar dort; `kuml-jetbrains-plugin`
+> bleibt trotzdem ausgenommen, weil es `dev.detekt` gar nicht erst anwendet).
+>
+> Autocorrect ist textuelles Ersetzen (`param = ` wird nur eingefügt, nie
+> umsortiert) — Kotlin wertet Argumente in Aufrufreihenfolge aus, nicht in
+> Deklarationsreihenfolge, daher ist reines Einfügen evaluation-order-neutral.
+> **Beim manuellen Nacharbeiten niemals Argumente umsortieren** — das wäre die
+> einzige Möglichkeit, wie diese Welle einen echten Bug einführen könnte.
+
+### 2. Visibility Modifier — immer explizit in der DSL
+
+```kotlin
+// ✅ Korrekt — explizit
+classOf("User") {
+    visibility = PUBLIC
+    attribute(name = "id", type = UUID, visibility = PRIVATE)
+}
+
+// ❌ Vermeiden — implizit
+classOf("User") {
+    attribute(name = "id", type = UUID)
+}
+```
+
+### 3. Immutabilität bevorzugen
+
+```kotlin
+// ✅ val bevorzugen — Modelle sind immutable Kotlin-Hierarchien
+val model: KumlModel = diagram(name = "Test") { classOf("User") }.toModel()
+
+// data classes für Datencontainer
+data class DiagramError(
+    val code: String,
+    val line: Int,
+    val column: Int,
+    val message: String,
+    val suggestion: String? = null,
+)
+```
+
+### 4. Kotlin-Idiome
+
+- `when` statt `if-else if`-Ketten
+- `?.let`, `?:`, `!!` nur wenn wirklich nötig (NPE vermeiden)
+- Extension Functions für DSL-Builder bevorzugen
+- Keine Java-Collection-API wenn Kotlin-Stdlib verfügbar
+
+### 5. Fehlerbehandlung
+
+Alle Fehler (Skript-Compiler, Typchecker, OCL-Interpreter, optionaler XMI) müssen **strukturiert** ausgegeben werden — niemals plain text:
+
+```kotlin
+data class KumlError(
+    val code: String,           // z.B. "KUML-E-201"
+    val severity: Severity,     // ERROR, WARNING, INFO
+    val file: String,
+    val line: Int,
+    val column: Int,
+    val symbol: String,
+    val message: String,
+    val expected: List<String> = emptyList(),
+    val suggestion: String? = null,
+    val docUrl: String? = null,
+)
+```
+
+Jeder CLI-Befehl unterstützt `--output json` für maschinenlesbare Fehlerausgabe.
+
+### 6. Logging
+
+kUML loggt über die SLF4J-Fassade (`org.slf4j.LoggerFactory`), nicht über
+`kotlin-logging`. Das weicht von der vault-weiten Kotlin-Konvention ab
+("Logging ausschließlich über kotlin-logging") — **dokumentierte Ausnahme für
+dieses Repo**: alle bestehenden Log-Aufrufe im Code stammen von vor dieser
+Konvention, und `kotlin-logging` ist seinerseits nur eine Fassade über
+derselben SLF4J-API, sodass eine Migration am eigentlichen Backend-Problem
+nichts ändert. Eine `kotlin-logging`-Migration ist als eigene, separate Welle
+denkbar, aber nicht Teil der Logging-Backend-Welle (siehe CHANGELOG
+`[Unreleased]`).
+
+`kuml-cli`, `kuml-mcp` und `kuml-desktop` liefern `logback-classic` als
+`runtimeOnly`-Backend aus (`gradle/libs.versions.toml`). **Regel: es gibt
+repo-weit genau eine Datei namens `logback.xml`** (in `kuml-mcp`, dem
+tiefsten Punkt im Abhängigkeitsgraphen unter den Backend-liefernden Modulen:
+`kuml-mcp ⊂ kuml-ai-tools ⊂ kuml-cli ⊂ kuml-desktop`). `kuml-cli` und
+`kuml-desktop` wählen ihre eigene, eindeutig benannte Konfiguration
+(`logback-kuml-cli.xml`, `logback-kuml-desktop.xml`) explizit über
+`-Dlogback.configurationFile` in ihrem jeweiligen `Main.kt` — niemals eine
+zweite Datei `logback.xml` anlegen, sonst hängt die Konfigurationswahl von
+der (nichtdeterministischen) Classpath-Reihenfolge ab.
+
+Stdout ist bei `kuml-cli` (gerenderte Ausgabe/strukturiertes JSON) und
+`kuml-mcp` (JSON-RPC-Protokoll) ein Daten-/Protokollkanal — alle drei
+Konfigurationen routen deshalb ausnahmslos nach **stderr**.
+Umgebungsvariable `KUML_LOG_LEVEL` steuert die Verbosity von kUML-eigenem
+Code (Default `WARN` bei cli/mcp, `INFO` für die Desktop-Logdatei);
+Fremd-Logger (`io.ktor`, `ai.koog`, `de.betchvaia`, `aws.smithy.kotlin`,
+`software.amazon.awssdk`, `org.eclipse.elk`, `org.apache.hc`, `io.netty`)
+bleiben davon unabhängig fest auf `WARN` gepinnt, damit `KUML_LOG_LEVEL=DEBUG`
+niemals versehentlich `Authorization`-Header dieser HTTP-Clients mitloggt.
+
+`kuml-jetbrains-plugin` und `kuml-gradle` bekommen **niemals** ein eigenes
+SLF4J-Backend — ein IDE-Plugin bzw. Gradle-Plugin nutzt den vom Host
+bereitgestellten Provider.
+
+---
+
+## DSL-Konventionen
+
+### Top-Level-Schlüsselwörter (konsistent, vorhersagbar)
+
+**UML 2.x** (`diagram { … }`)
+
+| Konzept | Schlüsselwort |
+|---|---|
+| Klasse | `classOf` |
+| Interface | `interfaceOf` |
+| Enum | `enumOf` |
+| Abstrakte Klasse | `classOf` + `isAbstract = true` |
+| Assoziation | `association` |
+| Komposition | `association` + `aggregation = COMPOSITE` |
+| Aggregation | `association` + `aggregation = SHARED` |
+| Abhängigkeit | `dependency` |
+| Realisierung | `realization` |
+
+**SysML 2** (`sysml2Model { … }`)
+
+| Konzept | Schlüsselwort |
+|---|---|
+| Part-Definition | `partDef` |
+| Part-Usage | `part` |
+| Port-Definition | `portDef` |
+| Port-Usage | `port` |
+| Attribut | `attribute` |
+| Requirement | `requirementDef` |
+| Constraint | `constraintDef` |
+
+**C4** (`c4Model { … }`)
+
+| Konzept | Schlüsselwort |
+|---|---|
+| Person | `person` |
+| Software-System | `softwareSystem` |
+| Container | `container` |
+| Component | `component` |
+| Beziehung | `relationship` |
+
+### Kanonische Form
+
+Es gibt genau **eine** idiomatische Schreibweise pro Konzept. `kuml fmt` erzwingt sie. Der Formatter ist idempotent: `fmt(fmt(x)) == fmt(x)`.
+
+### Dateiformat
+
+```
+*.kt        → Vollständige Kotlin-Datei mit expliziten Imports
+*.kts       → Kotlin-Skript mit expliziten Imports
+*.kuml.kts  → Kotlin-Skript mit KumlScriptDefinition + defaultImports — keine Imports nötig (empfohlen)
+```
+
+> Das frühere Format `*.kuml` mit eigenem Preprocessor entfällt — siehe [[03 Bereiche/kUML/ADR/ADR-0002 kuml Format durch kts mit Implicit Imports ersetzen]].
+
+---
+
+## Architektur-Entscheidungen (frühe Weichenstellungen)
+
+Diese Entscheidungen wirken quer durch alle Module — nie nachträglich ändern ohne alle Betroffenen zu aktualisieren. Formelle ADRs liegen im Vault unter `03 Bereiche/kUML/ADR/`.
+
+### ✅ ADR-0001: Pure Kotlin-Metamodell, kein EMF im Kern
+
+Das Metamodell ist eine pure Kotlin-Hierarchie (`sealed`/`data class`), keine EMF-Typen in der öffentlichen API. EMF/XMI ist auf das optionale Modul `kuml-io-emf` zurückgezogen. Details: [[03 Bereiche/kUML/ADR/ADR-0001 EMF aus dem Kern entfernen]].
+
+### ✅ ADR-0002: `*.kuml.kts` statt eigenem Preprocessor
+
+Eingabeformat ist Kotlin Scripting mit eigener `ScriptDefinition` und `defaultImports`. Kein eigener Preprocessor, keine temporären `.kt`-Dateien. Details: [[03 Bereiche/kUML/ADR/ADR-0002 kuml Format durch kts mit Implicit Imports ersetzen]].
+
+### ✅ ADR-0003: SysML 2 als eigenständiges Metamodell
+
+SysML 2 ist kein UML-Profil mehr, sondern ein eigenes Metamodell auf KerML-Basis (`kuml-metamodel-sysml2`). Details: [[03 Bereiche/kUML/ADR/ADR-0003 SysML 2 als eigenständiges Metamodell]].
+
+### ✅ ADR-0005: C4 als First-Class-Modellierungssprache
+
+C4 ist eine eigene Sprache mit eigenem Metamodell (`kuml-metamodel-c4`) und eigener DSL (`c4Model { … }`), kein UML-Profil. Migration aus/nach Structurizr DSL über `kuml-io-structurizr`. Details: [[03 Bereiche/kUML/ADR/ADR-0005 C4 als First-Class-Modellierungssprache]].
+
+### ✅ ADR-0004: Scope-Reduktion für V1
+
+V1 ist radikal geschnitten: **UML 2.x (5 Diagrammtypen)** + **C4 (vollständig)** + OCL-Subset + CLI + Markdown-Code-Block + `kuml-gen-kotlin` + MCP-Server + Maven Central + Homebrew. SysML 2, M2M, Reverse Engineering, Web/Desktop-UI, IDE-Plugin (voll), XMI-Roundtrip sind V1.1 oder V2. Details: [[03 Bereiche/kUML/ADR/ADR-0004 Scope Reduktion fuer V1]].
+
+### ✅ Entschieden: Strukturierte Fehler (Phase 1)
+
+Fehler sind JSON-serialisierbar von Anfang an. Kein späteres Umbauen. Gilt für den Skript-Compiler, Typchecker, OCL-Interpreter und das optionale `kuml-io-emf`.
+
+### ✅ Entschieden: Kanonischer Formatter
+
+`kuml fmt` wird idempotent implementiert. Keine alternativen Schreibweisen zulassen.
+
+### ✅ Entschieden: Provider-neutrales LLM-Backend
+
+`LlmBackend`-Interface in `kuml-llm-core`. Keine eingebaute Präferenz. Implementierungen: `kuml-llm-anthropic`, `kuml-llm-openai`, `kuml-llm-ollama`.
+
+### ✅ Entschieden: Apache 2.0 Lizenz
+
+Gilt für gesamten Quellcode, alle Bibliotheken und Artefakte.
+
+### ✅ Entschieden: AsciiDoc für alle Dokumentation
+
+`README.adoc`, API-Docs, `CONTRIBUTING.adoc`, `CHANGELOG.adoc`, Handbuch (Antora). **Kein Markdown** für Projektdokumentation.
+
+### ✅ Entschieden: Ktor + KVision + Kilua RPC für Web-UI
+
+Nicht Compose Web, nicht HTMX. Kilua RPC übernimmt die typsichere Kommunikation zwischen Ktor-Backend und KVision-Frontend — kein manuelles REST/JSON-Mapping.
+
+### ✅ Entschieden: GraalVM Native Image für die CLI
+
+GraalVM Native Image für CLI — Ziel < 100 ms Startzeit. Reflection-Konfiguration ausschließlich für den Kotlin Scripting Host und `kotlinx.serialization`. Das optionale `kuml-io-emf` wird **nicht** in die Native Image gebaut.
+
+---
+
+## Test-Konventionen
+
+```kotlin
+// Test class naming
+class ClassDiagramTest                // UML structural diagram
+class SequenceDiagramTest             // UML behavioral diagram
+class SysML2PartDefinitionTest        // SysML 2
+class C4ContainerDiagramTest          // C4
+
+// Test method names in English (backtick syntax for readability)
+@Test
+fun `minimal class diagram builds a KumlModel`() { }
+
+@Test
+fun `inheritance and interfaces are modeled correctly`() { }
+
+@Test
+fun `invalid multiplicity is reported as KUML-E-xxx`() { }
+
+@Test
+fun `c4 container diagram renders all containers of a system`() { }
+```
+
+### Test-Frameworks
+
+- **Kotlin Test + JUnit 5** — Unit Tests
+- **Kotest** — Property-Based Testing, Matchers
+- **AssertJ** — SVG/XML-Assertions
+- **Snapshot Testing** — SVG-Ausgaben gegen Referenzen (`src/test/resources/snapshots/`)
+- **Playwright (JVM)** — Browser-Tests für `kuml-web` (Ktor + KVision)
+- **Compose UI Testing** — Headless-Desktop-Tests für `kuml-desktop`
+- **IntelliJ Platform Test Framework** — Plugin-Tests (Highlighting, Completion, Annotator, Preview)
+
+### UI-Test-Konventionen
+
+```kotlin
+// Web-UI (Playwright) — data-testid-Attribute für stabile Selektoren
+page.locator("[data-testid='kuml-editor']").fill(code)
+page.waitForSelector("[data-testid='kuml-preview'] svg")
+
+// Compose Desktop — semantische Tags
+onNodeWithTag("kuml-editor").performTextInput(code)
+mainClock.advanceTimeBy(400)   // Debounce-Zeit überbrücken
+
+// IntelliJ Plugin — JUnit-3-Konvention (Methoden beginnen mit "test ")
+// Klassen erben von LightCodeInsightFixtureTestCase
+fun `test completion offers attribute in class body`() { ... }
+
+// Live-Tests (echte LLM-Calls, CI-Flag)
+@Test
+@Tag("live")
+fun `anthropic backend returns valid kuml`() { ... }
+// Ausführen: ./gradlew test -Dgroups=live
+// Ausschließen: ./gradlew test -DexcludeTags=live   ← Standard-CI
+```
+
+### `data-testid`-Attribute (Web-UI)
+
+Alle interaktiven UI-Elemente in `kuml-web` erhalten ein `data-testid`-Attribut — nie auf CSS-Klassen oder XPath testen:
+
+| Element | `data-testid` |
+|---|---|
+| Editor-Textbereich | `kuml-editor` |
+| SVG-Vorschau | `kuml-preview` |
+| Fehleranzeige | `error-panel` |
+| Theme-Auswahl | `theme-select` |
+| Sprachwechsel (UML / SysML 2 / C4) | `language-select` |
+| SVG-Download | `download-svg` |
+| Structurizr-Export (C4) | `download-structurizr` |
+| XMI-Download (nur wenn `kuml-io-emf` aktiv) | `download-xmi` |
+
+### Compose-Tags (Desktop-UI)
+
+Alle Compose-Komponenten in `kuml-desktop` erhalten `Modifier.testTag("...")`:
+
+| Komponente | `testTag` |
+|---|---|
+| Editor | `kuml-editor` |
+| Vorschau | `kuml-preview` |
+| Toolbar | `toolbar` |
+| Fehler-Panel | `error-panel` |
+| Theme-Dropdown | `theme-dropdown` |
+| Datei-Öffnen | `open-file-button` |
+| Speichern | `save-button` |
+| Plugin-Manager | `plugin-manager-button` |
+
+### Snapshot-Tests aktualisieren
+
+Snapshots nur aktualisieren wenn das Rendering-Ergebnis bewusst geändert wird:
+
+```bash
+./gradlew :kuml-tests:kuml-renderer-tests:test -PupdateSnapshots
+```
+
+---
+
+## MCP-Server (`kuml-mcp`)
+
+Der MCP-Server läuft via Stdio oder SSE. Tools:
+
+| Tool | Funktion |
+|---|---|
+| `kuml.validate(code)` | Strukturierte Fehlerliste (JSON) |
+| `kuml.render(code, format)` | SVG / PNG / ASCII inline |
+| `kuml.describe(code)` | Natursprachliche Beschreibung |
+| `kuml.list_elements(code)` | Alle Klassen/Beziehungen |
+| `kuml.suggest(partial)` | Autovervollständigung |
+| `kuml.diff(a, b)` | Semantisches Modell-Diff |
+| `kuml.transform(code, transformer)` | M2M-Transformation |
+| `kuml.generate(code, plugin)` | Code-Generator |
+
+Lokaler Start für Entwicklung:
+
+```bash
+./gradlew :kuml-mcp:run
+```
+
+---
+
+## LLM-Konfiguration (`kuml.config.kts`)
+
+```kotlin
+ai {
+    provider = "anthropic"          // oder "openai", "ollama"
+    model = "claude-sonnet-4-7"
+    apiKey = env("ANTHROPIC_API_KEY")
+    maxIterations = 3               // Self-correction tries
+    contextFiles = listOf("llms-full.txt", "examples/")
+}
+```
+
+---
+
+## Aktuelle Phase
+
+Roadmap: **Phase 0 — Setup** (Woche 1–2)
+
+- ✅ GitHub Organisation angelegt: https://github.com/kuml-dev
+- ✅ GitHub Repository angelegt: https://github.com/kuml-dev/kUML (`git@github.com:kuml-dev/kUML.git`)
+- ✅ Gradle-Multimodul-Projekt eingerichtet (Kotlin 2.1.21, Gradle 9.5.1, JVM 21, Version Catalog, ktlint)
+- ✅ CI/CD (GitHub Actions — `.github/workflows/ci.yml`)
+- ✅ Pure Kotlin Metamodell-Basis (`kuml-core-model`) implementiert
+- ✅ Kotlin Scripting Host (`kuml-core-script`) mit `KumlScriptDefinition` aufgesetzt
+- ✅ Hello-World: `diagram(name = "Test") { }` in `*.kuml.kts` läuft — 4/4 Tests grün
+- Gradle-Multimodul-Projekt einrichten
+- CI/CD (GitHub Actions)
+- Pure Kotlin Metamodell-Basis (`kuml-core-model`) skizzieren
+- Kotlin Scripting Host (`kuml-core-script`) mit `KumlScriptDefinition` aufsetzen
+- Erstes Hello-World: `diagram(name = "Test") { }` in einer `*.kuml.kts`-Datei compiliert
+
+**Phase 0 abgeschlossen ✅** (2026-05-28)
+
+Nächste Phase: **Phase 1 — Kern: UML-DSL + Rendering** (Klassendiagramme → SVG)
+
+Vollständige Roadmap: siehe Vault [[03 Bereiche/kUML/Roadmap]]
+
+---
+
+## Branding & Logos
+
+Logo-Quelldateien liegen im Vault unter `03 Bereiche/kUML/Design/` und müssen beim Repository-Setup nach `docs/images/` kopiert werden:
+
+| Vault-Datei | Repo-Pfad | Verwendung |
+|---|---|---|
+| `Gemini_16x9.png` | `docs/images/kuml-banner.png` | Root-README-Header (Banner, 16:9) |
+| `Gemini_1x1.png` | `docs/images/kuml-logo.png` | Modul-READMEs, GitHub-Profil (Quadrat) |
+
+AsciiDoc-Einbindung im **Root-README** (Banner oben):
+
+```asciidoc
+image::docs/images/kuml-banner.png[kUML — Kotlin UML Modelling,link=https://kuml.dev]
+```
+
+AsciiDoc-Einbindung in **Modul-READMEs** (kleines Icon mit Titel):
+
+```asciidoc
+image:../../docs/images/kuml-logo.png[kUML,width=64,role=left] *kuml-core-dsl*
+```
+
+> Hinweis: Der Pfad `../../docs/images/` ist relativ zum Modul-Unterordner. Im Root-README entfällt das `../../`.
+
+---
+
+## Dokumentation schreiben
+
+- Alle README-Dateien: `README.adoc` (AsciiDoc)
+- API-Dokumentation: KDoc in Kotlin-Quellcode
+- Benutzerhandbuch: `docs/` (Antora + AsciiDoc)
+- Changelog: Conventional Commits → automatisch generiert
+- `llms.txt` und `llms-full.txt`: automatisch generiert aus DSL-Schema via `kuml-llm-spec`
+
+Vorlage für das **Root-README** (`README.adoc`):
+
+```asciidoc
+= kUML
+:toc:
+:toc-placement: preamble
+:icons: font
+
+image::docs/images/kuml-banner.png[kUML Banner,link=https://kuml.dev]
+
+*kUML* ist ein Modellierungswerkzeug, das UML 2.x, SysML 2 und C4 als
+type-safe Kotlin-DSL ausdrückt — das erste UML-Werkzeug, das bewusst
+für die LLM-Ära entworfen wurde.
+
+image:https://img.shields.io/maven-central/v/dev.kuml/kuml-core-dsl[Maven Central]
+image:https://img.shields.io/github/license/kuml-dev/kUML[Apache 2.0]
+
+== Quick Start
+
+[source,kotlin]
+----
+// hello.kuml.kts
+diagram(name = "Hello kUML", type = DiagramType.CLASS) {
+    classOf("User") {
+        attribute(name = "id", type = UUID, visibility = PRIVATE)
+        operation(name = "greet", visibility = PUBLIC, returns = String::class)
+    }
+}
+----
+
+[source,bash]
+----
+kuml render hello.kuml.kts --format svg
+----
+
+== Lizenz
+
+Apache 2.0 — siehe link:LICENSE[LICENSE]
+```
+
+Vorlage für ein **Modul-README** (z. B. `kuml-core-dsl/README.adoc`):
+
+```asciidoc
+= kuml-core-dsl
+:toc:
+
+image:../../docs/images/kuml-logo.png[kUML,width=48,role=left]
+
+Kotlin-DSL-Builder für kUML. Sprachenübergreifende Infrastruktur — die konkreten
+DSLs für UML 2.x, SysML 2 und C4 leben in den `kuml-metamodel-*`-Modulen.
+
+== Installation
+
+[source,kotlin]
+----
+dependencies {
+    implementation("dev.kuml:kuml-core-dsl:1.0.0")
+    implementation("dev.kuml:kuml-metamodel-uml:1.0.0")   // optional
+    implementation("dev.kuml:kuml-metamodel-c4:1.0.0")    // optional
+    implementation("dev.kuml:kuml-metamodel-sysml2:1.0.0")// optional
+}
+----
+```
+
+---
+
+## Claude Code Skills
+
+### Empfohlene Skills (nach Priorität)
+
+| Priorität | Skill | Zweck |
+|---|---|---|
+| 🥇 | **`/init`** | Als erstes ausführen — erstellt/aktualisiert diese CLAUDE.md mit aktuellem Codebase-Kontext |
+| 🥇 | **Context7** (MCP) | Aktuelle Doku für Kotlin Scripting, Gradle DSL, Ktor, KVision, Kilua RPC, ELK, Structurizr DSL — Trainingsdaten sind veraltet. Eclipse UML2 nur relevant, wenn `kuml-io-emf` berührt wird. |
+| 🥈 | **`/claude-api`** | Für `kuml-llm-anthropic/` und `kuml ai`-Kommandos — triggert automatisch bei Anthropic-SDK-Imports |
+| 🥈 | **`/review`** | PR-Reviews: DSL-API-Design, Plugin-Contracts, Kotlin-Idiome |
+| 🥈 | **`/security-review`** | MCP-Server (Stdio/SSE, externe Inputs) und API-Key-Handling in `kuml.config.kts` |
+| 🥉 | **`/simplify`** | Code-Qualität nach schnellen Implementierungsphasen |
+| 🥉 | **Mermaid Chart** (MCP) | Für LLM-Benchmark (F10): Mermaid-Diagramme direkt rendern zum Qualitätsvergleich |
+
+### Installation
+
+#### MCP-Server (Context7, Mermaid Chart)
+
+```bash
+# Context7 — aktuelle Bibliotheksdoku
+claude mcp add context7 -- npx -y @upstash/context7-mcp
+
+# Mermaid Chart
+claude mcp add mermaid -- npx -y @mermaid-chart/mcp
+```
+
+Alternativ manuell in `~/.claude/claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}
+```
+
+#### Custom Skills / Slash Commands
+
+Skills sind Markdown-Dateien in `.claude/commands/` (projekt-lokal) oder `~/.claude/commands/` (global):
+
+```bash
+# Projektverzeichnis vorbereiten
+mkdir -p .claude/commands
+
+# Skill-Pack klonen (global)
+git clone https://github.com/kepano/obsidian-skills ~/.claude/commands/
+```
+
+#### kUML-spezifische Slash Commands (bereits eingerichtet)
+
+Projektspezifische Commands in `.claude/commands/` — prüfen DSL-Konventionen, generieren Tests und Fehler nach kUML-Schema:
+
+| Priorität | Command | Zweck | Roadmap-Phase |
+|---|---|---|---|
+| 🥇 | `/dsl-check` | DSL-Konsistenz: Named Params, kanonische Form, Sichtbarkeit | Phase 1+ |
+| 🥇 | `/kuml-error` | Strukturierte Fehler mit korrekten KUML-E-xxx Codes | Phase 1+ |
+| 🥇 | `/gen-test` | Test-Boilerplate nach kUML-Konventionen generieren | Phase 1–8 |
+| 🥈 | `/adoc` | AsciiDoc-Dokumentation schreiben (nie Markdown!) | Phase 0+ |
+| 🥈 | `/emf` | Eclipse EMF Guidance für `kuml-io-emf` (optional) | Phase 0–3 |
+| 🥉 | `/mcp-review` | Sicherheits-Review für MCP-Tool-Implementierungen | Phase 6.5 |
+
+#### Allgemeine Workflow-Commands (bereits eingerichtet)
+
+Universelle Entwicklungs-Commands aus offiziellen Claude Code Plugins — in `.claude/commands/` eingecheckt, für alle Repo-Kloner sofort verfügbar:
+
+| Priorität | Command | Zweck | Wann verwenden |
+|---|---|---|---|
+| 🥇 | `/feature-dev` | 7-Phasen-Feature-Entwicklung mit Multi-Agenten (Exploration → Architektur → Review) | Neue Roadmap-Features implementieren |
+| 🥇 | `/code-review` | GitHub-PR-Review: 5 parallele Agenten + Confidence-Scoring (≥80 = real) | Nach PR-Erstellung, automatisch kommentiert |
+| 🥇 | `/commit` | Git-Commit mit automatisch generierter Commit-Message | Schneller Commit auf aktuellem Branch |
+| 🥈 | `/commit-push-pr` | Branch → Commit → Push → PR in einem Schritt | Feature fertig, PR direkt aufmachen |
+| 🥈 | `/review-pr` | Lokales Pre-PR-Review: Tests, Types, Error-Handling, Simplification | Vor dem PR-Erstellen, ohne GitHub |
+| 🥉 | `/clean-gone` | Verwaiste lokale Branches löschen (nach remote-Merge) | Regelmäßige Branch-Hygiene |
+
+#### Reihenfolge beim ersten Öffnen des Repos
+
+```bash
+# 1. Im Repo-Root
+cd ~/workspace/kuml
+
+# 2. CLAUDE.md initialisieren (oder aktualisieren)
+/init
+
+# 3. Context7 prüfen
+/use-mcp context7
+
+# 4. Ersten DSL-Code schreiben → /dsl-check
+# 5. Ersten Test schreiben → /gen-test
+# 6. Feature entwickeln → /feature-dev "Klassendiagramm-DSL für Phase 1"
+```
+
+---
+
+## Verwandte Vault-Notizen
+
+- [[03 Bereiche/kUML/Übersicht]]
+- [[03 Bereiche/kUML/Architektur]]
+- [[03 Bereiche/kUML/DSL und Dateiformate]]
+- [[03 Bereiche/kUML/LLM Eignung und Vibe Coding]]
+- [[03 Bereiche/kUML/Plugin-API Design]]
+- [[03 Bereiche/kUML/Tests und Beispiele]]
+- [[03 Bereiche/kUML/Roadmap]]
+
+## Renderer/Layout Validation Procedure
+
+Run this procedure whenever the SVG renderer, PNG renderer, layout bridge, or layout engine is modified.
+
+### 1. Generate PNGs
+```bash
+./gradlew :kuml-io:kuml-io-svg:test --rerun-tasks
+```
+All SVG sample-output tests auto-write PNG alongside each SVG via `SampleOutput.write(path, svg)`.
+PNGs appear under `kuml-io/kuml-io-svg/build/sample-output/`.
+
+### 2. Visual inspection
+Inspect all PNG files. For each diagram type verify:
+- All expected nodes are visible (no blank canvases)
+- All expected edges/arrows are present and correctly styled
+- Labels are legible and not overlapping critical content
+- No raw XML entities (`&apos;`, `&amp;lt;`, etc.) in rendered text
+- Node sizes fit their content (no excessive empty space)
+- Stereotype labels, arrow heads, and line styles are correct
+
+### 3. Model round-trip check
+For each PNG, visually reconstruct the source kUML model and compare against the
+`.kuml.kts` script or test fixture. The visual output must be a faithful representation
+of the source model with no structural information loss.
+
+### 4. Fix → retest cycle
+Plan fixes with Opus, implement with Sonnet, re-run step 1, re-inspect PNGs.
+
+### 5. Regression guard
+After fixes: `./gradlew check` must pass.
+
+## Sequence-Diagram Fragment-Frame Geometry — Asymmetric Outsets
+
+**Applies to**: `UmlSequenceSvg.renderUmlFragment` and `Sysml2SequenceSvg.renderCombinedFragment` — i.e. the combined-fragment frame (`alt`, `opt`, `loop`, `par`, `break`, `critical`, …).
+
+### The trap
+
+The intuitive formula is symmetric around the half-row mark:
+```kotlin
+frame_top    = headBottom + (minSeq - 0.5) * SEQ_ROW_HEIGHT - PADDING
+frame_bottom = headBottom + (maxSeq + 0.5) * SEQ_ROW_HEIGHT + PADDING
+```
+This is **wrong**, and the wrongness only manifests when there are messages immediately before and after the fragment in the same interaction. Test fixtures with only-fragment-contents miss it.
+
+### Why symmetric padding is wrong
+
+Message labels sit 4 px **above** the arrow line (`label_baseline = arrow_y - 4`). With body-text ascent ≈ 11 px and descent ≈ 3 px, the label background occupies `arrow_y - 15` to `arrow_y - 1`. The *free corridor* between two consecutive message labels is therefore:
+
+```
+prev_msg_label_bottom = arrow_n - 1
+next_msg_label_top    = arrow_(n+1) - 15
+corridor_width        = 18 px
+corridor_centre       = arrow_n + 8        (NOT arrow_n + 16!)
+```
+
+The corridor centre is **8 px below the upper arrow**, not at the midpoint between arrows. Symmetric ±0.5-row padding puts the frame border 16 px from each arrow — 8 px past the corridor on both sides. The bottom border lands *inside* the next outside message's label background.
+
+### The fix — asymmetric outsets
+
+```kotlin
+private const val FRAGMENT_TOP_OUTSET = 24f      // = SEQ_ROW_HEIGHT - 8
+private const val FRAGMENT_BOTTOM_OUTSET = 8f    // = corridor centre offset
+
+// UML — arrow_y = headBottom + seq * SEQ_ROW_HEIGHT
+val frameY      = headBottom + minSeq * SEQ_ROW_HEIGHT - FRAGMENT_TOP_OUTSET
+val frameBottom = headBottom + maxSeq * SEQ_ROW_HEIGHT + FRAGMENT_BOTTOM_OUTSET
+
+// SysML 2 — arrow_y = headBottom + (seqNo + 1) * SEQ_RENDERER_MESSAGE_ROW_HEIGHT
+val frameY      = headBottom + (minStartSeqNo + 1) * ROW - FRAGMENT_TOP_OUTSET
+val frameBottom = headBottom + (maxEndSeqNo + 1)   * ROW + FRAGMENT_BOTTOM_OUTSET
+```
+
+Both edges now sit at the centre of the 18-px label corridor. The frame extends 24 px above the first inside arrow (the upper corridor is centred there because labels for the *inside* first message are 15 px above the arrow) and 8 px below the last inside arrow (the lower corridor is centred there because the *outside next* message's label starts 17 px below).
+
+### Symptoms of the symmetric-padding bug
+
+When messages flank the fragment, you will see one or more of:
+- A message immediately before the fragment appears to be *inside* the frame's top border
+- A message immediately after appears to be *inside* the frame's bottom border
+- The last inside message's label is clipped by the bottom border
+- The dashed bottom border passes through the next outside message's label glyphs
+
+If your test sample doesn't flank the fragment with messages, the geometry looks fine even though the formula is wrong. Always test with a fragment that has at least one message before *and* after it.
+
+### Related — horizontal padding and the canvas viewBox
+
+`FRAGMENT_PADDING` (horizontal, currently 24 px) controls how far the frame extends left and right of the outermost lifelines — needed for the guard text (`[valid]`, `[invalid]`) below the operator-tag pentagon. When fragments are present, `KumlSvgRenderer.renderUmlSequence` / `toSvg(SeqDiagram, …)` overrides `options.paddingPx` to `max(default, FRAGMENT_PADDING + 4)` = 28 px so the frame's outer extents stay inside the SVG `viewBox`. Without this override the right edge of the frame is clipped (the canvas was sized assuming only lifeline content).
+
+Constants are exported as `internal const val UML_SEQ_FRAGMENT_PADDING` / `SYSML2_SEQ_FRAGMENT_PADDING` so the renderer file can read them without duplicating the value.
+
+### Label-background dimensioning
+
+Body-text labels (messages, guards, self-calls) get a white `<rect>` background to break dashed lifelines and operand separators that would otherwise cross through the glyphs. Heuristic dimensions:
+- `BODY_CHAR_WIDTH = 6.5f` (per-character pixel estimate — slightly generous so wide glyphs like M, W are covered)
+- `BODY_TEXT_ASCENT = 11f` (cap height + 1 px above baseline)
+- `BODY_TEXT_DESCENT = 3f` (descender + 1 px below baseline)
+
+The background extends `BODY_TEXT_ASCENT` above the baseline and `BODY_TEXT_DESCENT` below — ending **4 px above the arrow line** so the arrow stays drawn through (labels are at `arrow_y - 4`, baseline at `arrow_y - 4`, background bottom at `arrow_y - 1`). Don't increase descent past 3 px or arrows start getting white-rect-overpainted by their own labels.
+
+### When this lesson stops applying
+
+If the rendering pipeline ever moves to a layout engine that positions labels (not the renderer dropping them at `arrow_y - 4`), this asymmetry disappears — the engine handles label boxes as first-class layout objects and the frame can shrink-wrap them. Until then: asymmetric outsets, hand-tuned to the label geometry.

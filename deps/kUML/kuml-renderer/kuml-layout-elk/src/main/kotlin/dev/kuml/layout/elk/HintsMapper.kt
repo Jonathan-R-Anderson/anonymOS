@@ -1,0 +1,338 @@
+package dev.kuml.layout.elk
+
+import dev.kuml.layout.EdgeRouteStyle
+import dev.kuml.layout.GroupId
+import dev.kuml.layout.Insets
+import dev.kuml.layout.LayoutDirection
+import dev.kuml.layout.LayoutGraph
+import dev.kuml.layout.LayoutHints
+import dev.kuml.layout.LayoutWarning
+import dev.kuml.layout.NodeId
+import org.eclipse.elk.alg.layered.options.CrossingMinimizationStrategy
+import org.eclipse.elk.alg.layered.options.LayeredOptions
+import org.eclipse.elk.core.math.ElkPadding
+import org.eclipse.elk.core.options.CoreOptions
+import org.eclipse.elk.core.options.Direction
+import org.eclipse.elk.core.options.EdgeRouting
+import org.eclipse.elk.core.options.HierarchyHandling
+import org.eclipse.elk.graph.ElkNode
+
+/**
+ * Bildet [LayoutHints] und [dev.kuml.layout.NodeHints] auf ELK-Layout-Optionen ab.
+ *
+ * Hints, die ELK nicht unterstützt (Grid, Pinned, Relative), werden ignoriert
+ * und als [LayoutWarning] gesammelt. Kein ELK-Typ verlässt dieses Objekt.
+ */
+internal object HintsMapper {
+    /**
+     * Wendet globale [LayoutHints] und [ElkEngineConfiguration] auf den ELK-Root-Knoten an.
+     * Gibt eine Liste von [LayoutWarning]s für unbekannte Engine-Optionen zurück.
+     */
+    fun applyGlobalHints(
+        root: ElkNode,
+        hints: LayoutHints,
+        config: ElkEngineConfiguration,
+    ): List<LayoutWarning> {
+        val warnings = mutableListOf<LayoutWarning>()
+
+        // Algorithm
+        root.setProperty(CoreOptions.ALGORITHM, LayeredOptions.ALGORITHM_ID)
+
+        // Direction
+        root.setProperty(
+            CoreOptions.DIRECTION,
+            when (hints.direction) {
+                LayoutDirection.TopToBottom -> Direction.DOWN
+                LayoutDirection.BottomToTop -> Direction.UP
+                LayoutDirection.LeftToRight -> Direction.RIGHT
+                LayoutDirection.RightToLeft -> Direction.LEFT
+            },
+        )
+
+        // Edge routing style
+        root.setProperty(
+            CoreOptions.EDGE_ROUTING,
+            when (hints.defaultEdgeStyle) {
+                EdgeRouteStyle.Direct -> EdgeRouting.POLYLINE
+                EdgeRouteStyle.OrthogonalRounded -> EdgeRouting.ORTHOGONAL
+                // ELK doesn't natively support TreeRounded or Bezier;
+                // fall back to ORTHOGONAL and note in docs
+                EdgeRouteStyle.TreeRounded -> EdgeRouting.ORTHOGONAL
+                EdgeRouteStyle.Bezier -> EdgeRouting.SPLINES
+            },
+        )
+
+        // Node-to-node spacing (overridable via hints.spacing, then from config default)
+        val nodeSpacing = hints.spacing.nodeToNode
+        root.setProperty(CoreOptions.SPACING_NODE_NODE, nodeSpacing.toDouble())
+
+        // Edge-to-edge spacing
+        root.setProperty(CoreOptions.SPACING_EDGE_EDGE, hints.spacing.edgeToEdge.toDouble())
+
+        // Layer spacing (between layers) — V2.0.45: per-diagram hint
+        // overrides the engine default. `hints.spacing.layerToLayer` is
+        // `NaN` when no override was set (DEFAULT case), in which case we
+        // fall back to `config.layerSpacing`. Required so SysML-2 ACT
+        // diagrams can request roomier vertical layer gaps without bumping
+        // the global ELK config (which would also affect UML / C4).
+        val layerSpacing =
+            hints.spacing.layerToLayer.takeUnless { it.isNaN() } ?: config.layerSpacing
+        root.setProperty(
+            LayeredOptions.SPACING_NODE_NODE_BETWEEN_LAYERS,
+            layerSpacing.toDouble(),
+        )
+
+        // Edge-to-node spacing
+        root.setProperty(
+            CoreOptions.SPACING_EDGE_NODE,
+            config.edgeNodeSpacing.toDouble(),
+        )
+
+        // V11.x — Stub-Länge zwischen einem Knoten und dem ersten/letzten
+        // Bend der orthogonalen Edge-Route. `CoreOptions.SPACING_EDGE_NODE`
+        // schützt nur den Abstand zu *nicht-adjazenten* Knoten; die Stub-
+        // Länge an Source/Target wird in ELK Layered durch diese
+        // spezifischere Option gesteuert. Ohne sie legt ELK den horizontalen
+        // Joiner einer L-Route ~10 px unter die Source-Bottom-Edge, wodurch
+        // das Edge-Label auf der Source-Box-Beschreibung landet (siehe
+        // C4-Context Internet-Banking-Beispiel, V11.x-Validierung).
+        //
+        // Wert = max(edgeNodeSpacing, 25) — gleicher Faden wie der globale
+        // Edge-Node-Abstand, aber nie unter 25 px, damit Edge-Label-Halos
+        // (~14 px Texthöhe + 4 px Halo) sicher in den Korridor passen.
+        root.setProperty(
+            LayeredOptions.SPACING_EDGE_NODE_BETWEEN_LAYERS,
+            maxOf(config.edgeNodeSpacing, 25f).toDouble(),
+        )
+
+        // Group padding (applied to each group node individually, set globally here as default)
+        val pad = hints.spacing.groupPadding.toDouble()
+        root.setProperty(CoreOptions.PADDING, ElkPadding(pad))
+
+        // Crossing minimization strategy
+        root.setProperty(
+            LayeredOptions.CROSSING_MINIMIZATION_STRATEGY,
+            when (config.crossingMinimizationStrategy) {
+                CrossingMinimization.LayerSweep -> CrossingMinimizationStrategy.LAYER_SWEEP
+                CrossingMinimization.Interactive -> CrossingMinimizationStrategy.INTERACTIVE
+            },
+        )
+
+        // V3.0.x — [LayoutHints.preserveNodeOrder]: keep ELK from reordering nodes that
+        // have no edges connecting them (e.g. UML sequence-diagram lifelines, which are
+        // laid out as bare, edge-less nodes — see UmlLayoutBridge's UmlInteraction branch).
+        //
+        // Root cause (confirmed empirically): with zero edges, every node is its own
+        // disconnected "component". ELK's default `separateConnectedComponents = true`
+        // lays each component out independently and then PACKS the components back
+        // together using `ComponentOrderingStrategy.NONE` ("ordered by priority or
+        // size") — NOT input order. That's why uniform-width lifelines stayed stable
+        // (order-by-size ≈ order-by-input when all sizes are equal) but a single wider
+        // lifeline (content-aware width, V3.0.x) got sorted to the end. Setting
+        // `CONSIDER_MODEL_ORDER_STRATEGY` alone (which only affects in-layer crossing-
+        // minimization ordering of a single connected component) did NOT fix this —
+        // disabling component separation is what actually keeps the nodes as one graph
+        // so model-order ordering applies.
+        //
+        // Opt-in only (via LayoutHints.preserveNodeOrder), so diagram types that
+        // benefit from ELK's free reordering/packing (class, activity, …) are
+        // unaffected.
+        if (hints.preserveNodeOrder) {
+            root.setProperty(CoreOptions.SEPARATE_CONNECTED_COMPONENTS, false)
+            root.setProperty(
+                LayeredOptions.CONSIDER_MODEL_ORDER_STRATEGY,
+                org.eclipse.elk.alg.layered.options.OrderingStrategy.NODES_AND_EDGES,
+            )
+        }
+
+        // V2.x — Merge edges that share a target/source port to consolidate
+        // visual "fan-in" / "fan-out" bundles (z.B. 18 Generalisierungen, die
+        // alle auf `AbstractTable` zeigen, oder N Foreign-Keys, die ein
+        // gemeinsames Stamm-Segment teilen). Opt-in über [LayoutHints.mergeEdges];
+        // Default: false, weil Trunk-Routing andere Diagramme schwerer lesbar
+        // machen kann (Strang läuft durch Whitespace zwischen Klassen).
+        root.setProperty(LayeredOptions.MERGE_EDGES, hints.mergeEdges)
+
+        // Engine escape-hatch options (raw key/value strings)
+        for ((key, value) in hints.engineOptions) {
+            val resolved = resolveEngineOption(key = key, value = value, root = root)
+            if (!resolved) {
+                warnings.add(
+                    LayoutWarning(
+                        code = "engine.option.unknown",
+                        message = "Unknown ELK option key '$key' — ignored.",
+                    ),
+                )
+            }
+        }
+
+        return warnings
+    }
+
+    /**
+     * Sammelt [LayoutWarning]s für nicht unterstützte [dev.kuml.layout.NodeHints] im [graph].
+     * Diese Hints werden nicht angewendet (ELK kennt kein Grid-Layout).
+     */
+    fun collectNodeHintWarnings(graph: LayoutGraph): List<LayoutWarning> {
+        val warnings = mutableListOf<LayoutWarning>()
+
+        for (node in graph.nodes) {
+            val hints = node.hints
+            val id = node.id
+
+            if (hints.gridCol != null || hints.gridRow != null) {
+                warnings.add(gridWarning(id))
+            }
+            if (hints.pinned) {
+                warnings.add(
+                    LayoutWarning(
+                        code = "hint.ignored.pinned",
+                        message = "Node '${id.value}' has pinned=true which ELK does not support — ignored.",
+                        affectedNodes = listOf(id),
+                    ),
+                )
+            }
+            if (hints.relative.isNotEmpty()) {
+                warnings.add(
+                    LayoutWarning(
+                        code = "hint.ignored.relative",
+                        message = "Node '${id.value}' has relative constraints which ELK does not support — ignored.",
+                        affectedNodes = listOf(id),
+                    ),
+                )
+            }
+        }
+
+        return warnings
+    }
+
+    /**
+     * Applies padding from a [LayoutGraph]'s groups onto their corresponding ELK nodes.
+     *
+     * For groups that opted into compound layout (`layoutAsCompound = true`), this also
+     * enables `HIERARCHY_HANDLING = INCLUDE_CHILDREN` on the root so ELK routes edges
+     * that cross the compound boundary (e.g. an Actor → UseCase association where the
+     * UseCase is inside the system-boundary subject) and edges whose endpoints are both
+     * children of the compound (e.g. `«include»` / `«extend»` between two UseCases
+     * inside the same subject). Without this flag, ELK leaves cross-hierarchy edges
+     * with empty edge sections (rendered as degenerated point lines at the canvas
+     * origin) and intra-compound edges are routed by the compound's child layout but
+     * their bend points remain relative to the compound, which only resolves cleanly
+     * when the result mapper also translates them to absolute coordinates.
+     *
+     * @param extraPadding Additional per-group padding (on top of [dev.kuml.layout.LayoutGroup.padding])
+     *   used by [ElkLayoutEngine]'s [dev.kuml.layout.LayoutGroup.minSize] re-layout pass (V3.1.x — see
+     *   its KDoc): once a first layout pass reveals that a compound group's ELK-computed size falls
+     *   short of its declared `minSize`, the engine reruns the *entire* layout with this extra padding
+     *   added to the affected group(s) so ELK itself reserves the wider/taller box for the compound
+     *   node *before* positioning that node's siblings — avoiding the sibling-overlap that a purely
+     *   post-layout bounds-widening (the previous approach) could produce. Empty by default (first pass).
+     */
+    fun applyGroupPadding(
+        builder: ElkGraphBuilder,
+        hints: LayoutHints,
+        config: ElkEngineConfiguration,
+        extraPadding: Map<GroupId, Insets> = emptyMap(),
+    ) {
+        var anyCompound = false
+        for (group in builder.groups()) {
+            val elkGroup = builder.groupMap[group.id] ?: continue
+            val p = group.padding
+            val extra = extraPadding[group.id] ?: Insets.ZERO
+            elkGroup.setProperty(
+                CoreOptions.PADDING,
+                ElkPadding(
+                    (p.top + extra.top).toDouble(),
+                    (p.right + extra.right).toDouble(),
+                    (p.bottom + extra.bottom).toDouble(),
+                    (p.left + extra.left).toDouble(),
+                ),
+            )
+            if (group.layoutAsCompound) {
+                anyCompound = true
+                // ELK does NOT inherit spacing options from the root onto a
+                // compound node's *internal* layered layout. A compound group
+                // (e.g. a UML state-machine frame containing its states, or a
+                // composite state containing its substates) therefore runs its
+                // children with ELK's tight ~20 px defaults regardless of the
+                // spacing the caller requested on the root. Mirror the same
+                // spacing onto every compound node so its children honour the
+                // requested node/edge/layer gaps — otherwise transition arrows
+                // between states collapse onto each other.
+                applyCompoundSpacing(elkGroup = elkGroup, hints = hints, config = config)
+
+                // NOTE on [LayoutGroup.minSize]: ELK's own `NODE_SIZE_CONSTRAINTS` /
+                // `NODE_SIZE_MINIMUM` properties are intentionally *not* set here.
+                // Verified empirically that `elk.layered` ignores them for a node
+                // with `HIERARCHY_HANDLING = INCLUDE_CHILDREN` children — such a
+                // compound node's size is derived purely from its children's
+                // laid-out bounding box plus padding; the size-constraint
+                // machinery only takes effect for leaf nodes. The floor is instead
+                // enforced by [ElkLayoutEngine] via an iterative re-layout: after a
+                // first pass, any compound group whose ELK-computed size falls short
+                // of `minSize` gets its [extraPadding] increased by the deficit and
+                // the *whole graph* is laid out again from scratch, so ELK reserves
+                // the wider/taller box for this compound node — and therefore also
+                // for its siblings — during the actual layout pass, instead of only
+                // after the fact. `ResultMapper.buildGroupLayouts` still applies a
+                // defensive `maxOf(rawSize, minSize)` floor as a last-resort safety
+                // net for the (expected to be rare) case where the re-layout loop
+                // hits its attempt cap without fully closing the gap — see that
+                // function's KDoc.
+            }
+        }
+        if (anyCompound) {
+            // Walk up to the ELK root and enable inter-hierarchy edge routing.
+            var root: ElkNode? = builder.groupMap.values.firstOrNull()
+            while (root?.parent != null) root = root.parent
+            root?.setProperty(CoreOptions.HIERARCHY_HANDLING, HierarchyHandling.INCLUDE_CHILDREN)
+        }
+    }
+
+    /**
+     * Copies the spacing-relevant layout options from [hints] / [config] onto a
+     * single compound ELK node. Kept in sync with the corresponding `setProperty`
+     * calls in [applyGlobalHints] (node-node, edge-edge, layer spacing, and the
+     * between-layer edge-node corridor).
+     */
+    private fun applyCompoundSpacing(
+        elkGroup: ElkNode,
+        hints: LayoutHints,
+        config: ElkEngineConfiguration,
+    ) {
+        elkGroup.setProperty(CoreOptions.SPACING_NODE_NODE, hints.spacing.nodeToNode.toDouble())
+        elkGroup.setProperty(CoreOptions.SPACING_EDGE_EDGE, hints.spacing.edgeToEdge.toDouble())
+        elkGroup.setProperty(CoreOptions.SPACING_EDGE_NODE, config.edgeNodeSpacing.toDouble())
+        val layerSpacing =
+            hints.spacing.layerToLayer.takeUnless { it.isNaN() } ?: config.layerSpacing
+        elkGroup.setProperty(LayeredOptions.SPACING_NODE_NODE_BETWEEN_LAYERS, layerSpacing.toDouble())
+        elkGroup.setProperty(
+            LayeredOptions.SPACING_EDGE_NODE_BETWEEN_LAYERS,
+            maxOf(config.edgeNodeSpacing, 25f).toDouble(),
+        )
+    }
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
+
+    private fun gridWarning(id: NodeId): LayoutWarning =
+        LayoutWarning(
+            code = "hint.ignored.grid",
+            message = "Node '${id.value}' has grid hints (gridCol/gridRow) which ELK does not support — ignored.",
+            affectedNodes = listOf(id),
+        )
+
+    /**
+     * Attempts to apply a raw engine option string to the root node.
+     * Returns true if the key was recognized, false otherwise.
+     *
+     * Currently a stub — a full implementation would parse the ELK option registry.
+     * Unknown keys are surfaced as warnings.
+     */
+    private fun resolveEngineOption(
+        @Suppress("UNUSED_PARAMETER") key: String,
+        @Suppress("UNUSED_PARAMETER") value: String,
+        @Suppress("UNUSED_PARAMETER") root: ElkNode,
+    ): Boolean = false
+}

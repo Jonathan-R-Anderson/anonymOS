@@ -1,0 +1,138 @@
+package dev.kuml.uml.dsl
+
+import dev.kuml.core.dsl.KumlDsl
+import dev.kuml.core.dsl.layout.LayoutMetadataKeys
+import dev.kuml.core.model.DiagramType
+import dev.kuml.core.model.KumlDiagram
+import dev.kuml.core.model.KumlMetaValue
+import dev.kuml.core.model.StateDiagramConfig
+import dev.kuml.core.model.StateDiagramOrientation
+import dev.kuml.profile.KumlProfile
+import dev.kuml.profile.KumlStereotypeApplication
+import dev.kuml.profile.UmlMetaclass
+import dev.kuml.uml.AppliedStereotype
+import dev.kuml.uml.UmlComment
+import dev.kuml.uml.UmlCommentLink
+import dev.kuml.uml.UmlNamedElement
+import dev.kuml.uml.UmlStateMachine
+import dev.kuml.uml.UmlTransition
+import dev.kuml.uml.UmlVertex
+import dev.kuml.uml.Visibility
+
+/**
+ * Builder for a UML state-machine diagram.
+ *
+ * A state diagram contains exactly one [UmlStateMachine]. All [state],
+ * [initialState], [finalState], [choice], [fork], [join], [compositeState],
+ * and [transition] declarations populate that single state machine.
+ *
+ * Also implements [UmlContainerScope] so that [StateBodyBuilder] and
+ * [TransitionBuilder] can resolve stereotypes from profiles applied here.
+ *
+ * Do not instantiate directly — use the [dev.kuml.core.dsl.stateDiagram] entry-point function.
+ */
+@KumlDsl
+class StateDiagramBuilder(
+    private val name: String,
+) : UmlStateMachineScope,
+    UmlContainerScope,
+    UmlElementScope {
+    override val stateMachineId: String = name
+    override val takenIds: MutableSet<String> = mutableSetOf(name)
+
+    // UmlContainerScope
+    override val containerId: String? = null
+
+    // UmlElementScope — allows stereotype("BehaviorSpec") on the state-machine root
+    override val metaclass: UmlMetaclass = UmlMetaclass.StateMachine
+    override val container: UmlContainerScope get() = this
+
+    private val vertices = mutableListOf<UmlVertex>()
+    private val transitions = mutableListOf<UmlTransition>()
+    private val appliedProfilesList = mutableListOf<KumlProfile>()
+    private val stateMachineAppliedStereotypes = mutableListOf<KumlStereotypeApplication>()
+    private val comments = mutableListOf<UmlComment>()
+    private val commentLinks = mutableListOf<UmlCommentLink>()
+
+    // State machine properties
+    var stateMachineVisibility: Visibility = Visibility.PUBLIC
+    val stateMachineStereotypes: MutableList<String> = mutableListOf()
+
+    // Display options
+    var showGuards: Boolean = true
+    var showEffects: Boolean = true
+    var showEntryExitActions: Boolean = true
+    var orientation: StateDiagramOrientation = StateDiagramOrientation.TOP_DOWN
+
+    /**
+     * Override der Layout-Engine für dieses Diagramm.
+     *
+     * Standard: `null` → Pipeline wählt `"kuml.grid"` als Default für
+     * Zustands-Diagramme. Setze `"elk"` oder `"elk.layered"` um zur
+     * ELK-Engine zurückzukehren.
+     */
+    var layoutEngine: String? = null
+
+    override fun addVertex(vertex: UmlVertex) {
+        vertices += vertex
+    }
+
+    override fun addTransition(transition: UmlTransition) {
+        transitions += transition
+    }
+
+    // UmlElementScope — accept stereotype applications on the state-machine root
+    override fun addStereotype(app: KumlStereotypeApplication) {
+        stateMachineAppliedStereotypes += app
+    }
+
+    // UmlContainerScope — profiles for stereotype resolution inside state/transition bodies
+    override fun addAppliedProfile(profile: KumlProfile) {
+        appliedProfilesList += profile
+    }
+
+    override fun appliedProfiles(): List<KumlProfile> = appliedProfilesList.toList()
+
+    /** State diagrams don't own named elements — this is a no-op (states are UmlVertex, not UmlNamedElement). */
+    override fun addNamedElement(element: UmlNamedElement) = Unit
+
+    override fun addComment(comment: UmlComment) {
+        comments += comment
+    }
+
+    override fun addCommentLink(link: UmlCommentLink) {
+        commentLinks += link
+    }
+
+    fun build(): KumlDiagram {
+        val sm =
+            UmlStateMachine(
+                id = stateMachineId,
+                name = name,
+                visibility = stateMachineVisibility,
+                vertices = vertices.toList(),
+                transitions = transitions.toList(),
+                stereotypes = stateMachineStereotypes.toList(),
+                appliedStereotypes = stateMachineAppliedStereotypes.toList<AppliedStereotype>(),
+            )
+        val meta: Map<String, KumlMetaValue> =
+            if (layoutEngine != null) {
+                mapOf(LayoutMetadataKeys.ENGINE to KumlMetaValue.Text(layoutEngine!!))
+            } else {
+                emptyMap()
+            }
+        return KumlDiagram(
+            name = name,
+            type = DiagramType.STATE,
+            elements = listOf(sm) + comments + commentLinks,
+            metadata = meta,
+            config =
+                StateDiagramConfig(
+                    showGuards = showGuards,
+                    showEffects = showEffects,
+                    showEntryExitActions = showEntryExitActions,
+                    orientation = orientation,
+                ),
+        )
+    }
+}

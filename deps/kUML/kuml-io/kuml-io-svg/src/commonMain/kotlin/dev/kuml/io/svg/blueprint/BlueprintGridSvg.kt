@@ -1,0 +1,250 @@
+package dev.kuml.io.svg.blueprint
+
+import dev.kuml.blueprint.model.BlueprintDiagram
+import dev.kuml.blueprint.model.BlueprintDiagramFull
+import dev.kuml.blueprint.model.BlueprintGridConstants
+import dev.kuml.blueprint.model.BlueprintLayer
+import dev.kuml.blueprint.model.BlueprintLine
+import dev.kuml.blueprint.model.BlueprintModel
+import dev.kuml.blueprint.model.JourneyDiagram
+import dev.kuml.io.svg.SvgBuilder
+import dev.kuml.io.svg.SvgDocument
+import dev.kuml.io.svg.blueprint.edge.renderConnection
+import dev.kuml.renderer.theme.core.KumlTheme
+import dev.kuml.renderer.theme.core.PlainTheme
+
+/**
+ * Top-level Journey-Map / Service-Blueprint SVG renderer.
+ *
+ * V3.1.23 introduced the Journey-Map view (Customer layer + emotion curve).
+ * V3.1.24 extends it to the full Service Blueprint:
+ *
+ *  - distinct per-layer band styling (each Shostack layer has its own tint),
+ *  - the three separator lines (Interaction/Visibility/Internal Interaction),
+ *  - actor-role icons on backstage/support step cards,
+ *  - per-layer accent strokes on the step cards.
+ *
+ * The renderer owns its geometry via [BlueprintGeometry] (grid, not ELK).
+ */
+internal fun renderBlueprintJourney(
+    model: BlueprintModel,
+    diagram: BlueprintDiagram,
+    theme: KumlTheme = PlainTheme(),
+): String {
+    val visibleLayers =
+        when (diagram) {
+            is JourneyDiagram -> diagram.visibleLayers
+            is BlueprintDiagramFull -> diagram.visibleLayers
+        }
+    val showEmotion =
+        when (diagram) {
+            is JourneyDiagram -> diagram.showEmotionCurve
+            is BlueprintDiagramFull -> diagram.showEmotionCurve
+        }
+    // Journey view hides empty layers; full view keeps requested layers visible
+    // (even when empty) so the blueprint structure stays complete.
+    val effectiveLayers =
+        when (diagram) {
+            is JourneyDiagram -> visibleLayers.filter { it in model.activeLayers() }.toSet()
+            is BlueprintDiagramFull -> visibleLayers
+        }.ifEmpty { setOf(BlueprintLayer.CUSTOMER_ACTIONS) }
+
+    // Which separator lines to draw — only the full view carries them.
+    val showLines: Set<BlueprintLine> =
+        when (diagram) {
+            is BlueprintDiagramFull -> diagram.showLines
+            is JourneyDiagram -> emptySet()
+        }
+
+    val geo = BlueprintGeometry(model = model, visibleLayers = effectiveLayers, showEmotionCurve = showEmotion)
+    // Touchpoint id -> legend badge number, so each touchpoint's icon in the
+    // grid (below) can carry the same number the legend uses for its name.
+    val badgeByTouchpointId = geo.legendEntries.associate { (badge, tp) -> tp.id to badge }
+    val b = SvgBuilder(pretty = false)
+
+    b.tag(
+        name = "svg",
+        attrs =
+            mapOf(
+                "xmlns" to "http://www.w3.org/2000/svg",
+                "width" to f(geo.totalWidth),
+                "height" to f(geo.totalHeight),
+                "viewBox" to "0 0 ${f(geo.totalWidth)} ${f(geo.totalHeight)}",
+            ),
+    ) {
+        // Arrowhead marker — emitted once per SVG in the root <defs> block.
+        rawXml(
+            """<defs><marker id="bp-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">""" +
+                """<path d="M0,0 L8,4 L0,8 z" fill="#555"/></marker></defs>""",
+        )
+        // Standard kUML CSS (kuml-title, kuml-body, etc.) so that text renders
+        // correctly in standalone SVG/PNG — same style block used by all other renderers.
+        SvgDocument.buildDefs(b = b, theme = theme)
+
+        // 1. layer band backgrounds (z-order: background first) with distinct
+        //    per-layer tint + the swimlane (layer) header on the left.
+        geo.layers.forEach { layer ->
+            val band = geo.bandY(layer)
+            rawXml(
+                """<rect x="${f(geo.contentLeft)}" y="${f(band.start)}" """ +
+                    """width="${f(geo.columnWidth * geo.phases.size)}" height="${f(geo.rowHeight)}" """ +
+                    """fill="${layerBandFill(layer)}"/>""",
+            )
+            tag(
+                name = "text",
+                attrs =
+                    mapOf(
+                        "x" to f(geo.padding + 6),
+                        "y" to f(band.start + geo.rowHeight / 2),
+                        "class" to "kuml-body",
+                        "font-size" to "12",
+                        "font-weight" to "600",
+                        "fill" to "#1d2968",
+                    ),
+            ) { text(layerLabel(layer)) }
+        }
+
+        // 2. phase column headers
+        geo.phases.forEachIndexed { i, phase ->
+            tag(
+                name = "text",
+                attrs =
+                    mapOf(
+                        "x" to f(geo.columnCenters[i]),
+                        "y" to f(geo.padding + 22),
+                        "text-anchor" to "middle",
+                        "class" to "kuml-title",
+                        "font-size" to "13",
+                        "font-weight" to "700",
+                    ),
+            ) { text(phase.name ?: phase.id) }
+        }
+
+        // 3. emotion curve band (over the customer layer)
+        if (showEmotion) {
+            renderEmotionCurve(
+                curve = model.emotionCurve(),
+                columnCenters = geo.columnCenters,
+                bandTop = geo.emotionTop,
+                bandHeight = geo.emotionHeight,
+                contentLeft = geo.contentLeft,
+                contentRight = geo.contentRight,
+                labelX = geo.padding + 6,
+            )
+        }
+
+        // 4. step cards + touchpoints per cell
+        geo.layers.forEach { layer ->
+            geo.phases.forEachIndexed { i, phase ->
+                val (cellX, cellY) = geo.cellOrigin(phaseIndex = i, layer = layer)
+                val stepsHere = model.stepsIn(phaseId = phase.id, layer = layer)
+                stepsHere.forEach { step ->
+                    val actor = step.actorRef?.let { ref -> model.actors.firstOrNull { it.id == ref } }
+                    renderStepCard(
+                        step = step,
+                        cellX = cellX,
+                        cellY = cellY,
+                        cellW = geo.columnWidth,
+                        cellH = geo.rowHeight,
+                        actor = actor,
+                        accent = layerAccent(layer),
+                    )
+                    step.touchpointRefs.forEachIndexed { tIdx, tpId ->
+                        val tp = model.touchpoints.firstOrNull { it.id == tpId } ?: return@forEachIndexed
+                        val ch = tp.channelRef?.let { ref -> model.channels.firstOrNull { it.id == ref } }
+                        // Position touchpoint icons 8 px above the card bottom edge.
+                        // Card bottom = cellY + cardMarginTop + (rowHeight - cardMarginTop - cardMarginBottom)
+                        //             = cellY + rowHeight - cardMarginBottom
+                        // Icon cy     = card bottom - 8
+                        //
+                        // No longer needs a pain-specific offset: the pain dot + caption
+                        // now share their own row above this one (see renderStepCard),
+                        // so this row is exclusively the touchpoint icons' again.
+                        val tpStartX = cellX + 18
+                        renderTouchpoint(
+                            tp = tp,
+                            channel = ch,
+                            cx = tpStartX + tIdx * 30,
+                            cy = cellY + geo.rowHeight - geo.cardMarginBottom - 8,
+                            badge = badgeByTouchpointId[tp.id],
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. separator lines (full view only), drawn over the bands/cards but
+        //    under the connections.
+        if (showLines.isNotEmpty()) {
+            renderBlueprintLines(lines = showLines, geo = geo)
+        }
+
+        // 6. connections on top
+        model.connections.forEach { conn ->
+            val src = cellCenterOf(model = model, geo = geo, elementId = conn.sourceRef)
+            val dst = cellCenterOf(model = model, geo = geo, elementId = conn.targetRef)
+            if (src != null && dst != null) {
+                renderConnection(id = conn.id, from = src, to = dst, style = conn.style)
+            }
+        }
+
+        // 7. touchpoint legend (fix: touchpoint names were never rendered
+        // anywhere — see BlueprintLegendSvg.kt). Empty when no step
+        // references a touchpoint, so unaffected diagrams render unchanged.
+        if (geo.legendRows.isNotEmpty()) {
+            renderBlueprintLegend(
+                rows = geo.legendRows,
+                x = geo.contentLeft,
+                y = geo.gridBottom + BlueprintGridConstants.LEGEND_TOP_PADDING,
+            )
+        }
+    }
+    // "Powered by kUML" branding — this renderer bypasses SvgDocument.render's
+    // `<svg>` assembly entirely (deterministic grid geometry, no LayoutResult),
+    // so the always-on attribution comment must be prepended explicitly here
+    // to keep the same "every SVG this project emits carries it" guarantee.
+    return SvgDocument.attributionComment() + b.toString()
+}
+
+/** Per-layer band tint (distinct Shostack-layer styling, V3.1.24). */
+private fun layerBandFill(layer: BlueprintLayer): String =
+    when (layer) {
+        BlueprintLayer.CUSTOMER_ACTIONS -> "#fff8e1" // warm — the customer's world
+        BlueprintLayer.FRONTSTAGE -> "#eaf2fb" // light blue — visible interaction
+        BlueprintLayer.BACKSTAGE -> "#eef1f6" // grey-blue — internal
+        BlueprintLayer.SUPPORT_PROCESSES -> "#f3eef8" // light violet — systems/partners
+    }
+
+/** Per-layer step-card accent stroke (V3.1.24). */
+private fun layerAccent(layer: BlueprintLayer): String =
+    when (layer) {
+        BlueprintLayer.CUSTOMER_ACTIONS -> "#fab500"
+        BlueprintLayer.FRONTSTAGE -> "#186cb4"
+        BlueprintLayer.BACKSTAGE -> "#6b7588"
+        BlueprintLayer.SUPPORT_PROCESSES -> "#8a4fbf"
+    }
+
+private fun layerLabel(layer: BlueprintLayer): String =
+    when (layer) {
+        BlueprintLayer.CUSTOMER_ACTIONS -> "Customer Actions"
+        BlueprintLayer.FRONTSTAGE -> "Frontstage"
+        BlueprintLayer.BACKSTAGE -> "Backstage"
+        BlueprintLayer.SUPPORT_PROCESSES -> "Support Processes"
+    }
+
+private fun cellCenterOf(
+    model: BlueprintModel,
+    geo: BlueprintGeometry,
+    elementId: String,
+): Pair<Double, Double>? {
+    val step =
+        model.steps.firstOrNull { it.id == elementId }
+            ?: model.touchpoints
+                .firstOrNull { it.id == elementId }
+                ?.let { tp -> model.steps.firstOrNull { tp.id in it.touchpointRefs } }
+            ?: return null
+    val phaseIdx = geo.phases.indexOfFirst { it.id == step.phaseRef }
+    if (phaseIdx < 0 || step.layer !in geo.layers) return null
+    val (cx, cy) = geo.cellOrigin(phaseIndex = phaseIdx, layer = step.layer)
+    return (cx + geo.columnWidth / 2) to (cy + geo.rowHeight / 2)
+}

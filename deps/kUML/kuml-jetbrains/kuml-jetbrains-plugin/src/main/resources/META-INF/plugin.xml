@@ -1,0 +1,152 @@
+<idea-plugin>
+    <id>dev.kuml.ide</id>
+    <name>kUML</name>
+    <vendor organizationId="kuml" email="info@kuml.dev" url="https://kuml.dev">kUML</vendor>
+
+    <description><![CDATA[
+        <h3>kUML — Kotlin-based UML &amp; C4 modelling</h3>
+        <img src="https://raw.githubusercontent.com/kuml-dev/kUML/master/docs/screenshots/jetbrains-plugin-split-view.png"
+             alt="kUML split-view in IntelliJ IDEA: script on the left, live UML class diagram on the right"
+             width="800"/>
+        <p>
+            Adds first-class IntelliJ support for kUML diagram scripts (<code>*.kuml.kts</code>):
+        </p>
+        <ul>
+            <li>
+                Recognises <code>*.kuml.kts</code> as a custom Kotlin script kind via the
+                <code>org.jetbrains.kotlin.scriptDefinitionsProvider</code> extension point.
+            </li>
+            <li>
+                Syntax highlighting and structural navigation are inherited from IntelliJ's
+                Kotlin language support — no custom lexer or parser.
+            </li>
+            <li>
+                Default imports for the kUML DSL (<code>dev.kuml.core.dsl.*</code>,
+                <code>dev.kuml.uml.dsl.*</code>, <code>dev.kuml.c4.dsl.*</code>) are visible
+                to the editor, so unqualified <code>classDiagram { ... }</code>,
+                <code>c4Model { ... }</code>, and friends resolve without explicit imports.
+            </li>
+            <li>
+                Distinct file icon for kUML scripts.
+            </li>
+        </ul>
+        <p>
+            Rendering, code generation, OCL validation, and state-machine simulation are
+            provided by the <code>kuml</code> CLI and the <code>dev.kuml</code> Gradle plugin —
+            this IDE plugin is intentionally minimal and stays out of the render pipeline.
+        </p>
+        <p>
+            <b>Without the Kotlin plugin</b> (WebStorm, PyCharm, GoLand, Rider, CLion,
+            DataGrip, RubyMine): the plugin still loads and provides the kUML file icon and
+            the live split-view SVG preview. Script recognition, completion, structure view,
+            folding, rename and inline diagnostics require the Kotlin plugin and activate
+            automatically once it is installed.
+        </p>
+        <p>
+            Project page: <a href="https://kuml.dev">https://kuml.dev</a>.
+        </p>
+    ]]></description>
+
+    <change-notes><![CDATA[
+        <!-- Diese Datei wird beim Build durch patchPluginXml überschrieben.
+             Maßgeblich sind die changeNotes in build.gradle.kts. -->
+        <h4>0.20.0</h4>
+        <ul>
+            <li><code>org.jetbrains.kotlin</code> is now an optional dependency: on IDEs without the
+                Kotlin plugin (WebStorm, PyCharm, GoLand, Rider, CLion, DataGrip, RubyMine) the plugin
+                still loads and provides the file icon and the live split-view SVG preview. Script
+                recognition, completion, structure view, folding, rename and inline diagnostics move to
+                a config-file fragment (<code>META-INF/kuml-kotlin-support.xml</code>) that only loads
+                when the Kotlin plugin is present.</li>
+        </ul>
+        <h4>0.8.0</h4>
+        <ul>
+            <li>K2-Kompatibilität: Plugin läuft wieder in IntelliJ 2024.x+ mit aktivem K2-Frontend.</li>
+            <li>Versions-Alignment: Plugin-Version folgt dem kUML-Monorepo.</li>
+        </ul>
+        <h4>0.4.1</h4>
+        <ul>
+            <li>Code completion für kUML-DSL-Top-Level-Funktionen (42 Items).</li>
+            <li>Rename Refactoring (Shift+F6) für DSL-Element-Namen.</li>
+            <li>Live Templates (12 Templates).</li>
+        </ul>
+        <h4>0.3.0</h4>
+        <ul>
+            <li>Code Folding für DSL-Lambda-Blöcke.</li>
+        </ul>
+        <h4>0.2.0</h4>
+        <ul>
+            <li>Live-SVG Split-View, Structure View, External Annotator + Quick Fixes.</li>
+        </ul>
+        <h4>0.1.0</h4>
+        <ul>
+            <li>Initiale Version: Script-Definition Provider, Dateityp-Registrierung, Datei-Icon.</li>
+        </ul>
+    ]]></change-notes>
+
+    <!--
+        Compatibility:
+        sinceBuild is in build.gradle.kts (intellijPlatform.pluginConfiguration.ideaVersion).
+
+        `com.intellij.modules.platform` is the only HARD dependency — it makes the plugin
+        installable on every IntelliJ-Platform IDE (IDEA, WebStorm, PyCharm, GoLand, Rider,
+        CLion, DataGrip, RubyMine, Android Studio).
+
+        `org.jetbrains.kotlin` is OPTIONAL. Everything that genuinely needs the Kotlin
+        plugin — the script definition source and every extension bound to the Kotlin
+        language — lives in the config-file fragment META-INF/kuml-kotlin-support.xml,
+        which the platform loads ONLY when the Kotlin plugin is actually present.
+
+        Consequence: on an IDE without the Kotlin plugin the kUML plugin still loads and
+        provides the file icon, the split-view SVG preview, the settings page, live
+        templates and export notifications. Previously the hard <depends> made the
+        platform refuse to load the ENTIRE plugin there
+        ("Plugin kUML requires plugin org.jetbrains.kotlin to be installed").
+    -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends optional="true" config-file="kuml-kotlin-support.xml">org.jetbrains.kotlin</depends>
+    <depends optional="true" config-file="kuml-markdown-support.xml">org.intellij.plugins.markdown</depends>
+    <depends optional="true" config-file="kuml-asciidoc-support.xml">org.asciidoctor.intellij.asciidoc</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!--
+            Custom file icon for `*.kuml.kts`.
+            Matches purely on the filename suffix — no Kotlin file type required,
+            so this works on IDEs without the Kotlin plugin.
+        -->
+        <fileIconProvider
+            implementation="dev.kuml.jetbrains.KumlFileIconProvider"
+            order="first"/>
+
+        <!--
+            V2.0.28b: Split-editor — shows the diagram SVG alongside the code editor.
+            Registered with editorTypeId = "kuml-split-editor".
+            Kotlin-plugin-free: accepts files via fileName.endsWith(".kuml.kts") and
+            renders through the external `kuml` CLI. THE reason the Kotlin dependency
+            is optional — this must keep working on WebStorm/PyCharm/GoLand/Rider/CLion.
+        -->
+        <fileEditorProvider implementation="dev.kuml.jetbrains.KumlSplitEditorProvider"/>
+
+        <!--
+            Settings → Tools → kUML Preview: configure the path to the external
+            `kuml` CLI used to render previews (empty = auto-detect).
+        -->
+        <applicationConfigurable
+            parentId="tools"
+            instance="dev.kuml.jetbrains.KumlPreviewConfigurable"
+            id="dev.kuml.jetbrains.KumlPreviewConfigurable"
+            displayName="kUML Preview"/>
+
+        <!--
+            V2.0.41: Live Templates — kUML.xml wird automatisch geladen.
+        -->
+        <defaultLiveTemplates file="/liveTemplates/kUML.xml"/>
+
+        <!--
+            kUML Export balloon notifications (SVG / PNG / TeX export results).
+        -->
+        <notificationGroup
+            id="kUML Export"
+            displayType="BALLOON"/>
+    </extensions>
+</idea-plugin>

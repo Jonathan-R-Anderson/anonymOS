@@ -1,0 +1,228 @@
+= kuml-core-dsl
+:toc:
+
+image:../../docs/images/kuml-logo.png[kUML,width=48,role=left] *kuml-core-dsl*
+
+Type-safe Kotlin DSL builder infrastructure for kUML.
+Provides the `diagram{}` / `umlModel{}` entry-points, the `@KumlDsl` scope marker,
+and the complete set of UML element builders (`classOf`, `interfaceOf`, `enumOf`, …).
+
+== Entry Points
+
+[cols="1,3"]
+|===
+| Function | Description
+
+| `diagram(name, type, block)`
+| Creates a generic `KumlDiagram`.
+  Default type: `DiagramType.CLASS`.
+  Full UML element builders available in the lambda.
+
+| `umlModel(name, level, block)`
+| Creates a `KumlModel` with `language = UML`.
+  Use for model files without a fixed diagram type.
+  Full UML element builders available in the lambda.
+
+| `classDiagram(name, block)`
+| Creates a class diagram (V1).
+
+| `sequenceDiagram(name, block)`
+| Creates a sequence diagram (V1).
+
+| `stateDiagram(name, block)`
+| Creates a state-machine diagram (V1).
+
+| `componentDiagram(name, block)`
+| Creates a component diagram (V1).
+
+| `useCaseDiagram(name, block)`
+| Creates a use-case diagram (V1).
+
+| `objectDiagram(name, block)`
+| *V1.1* — instance snapshot with slots + links.
+
+| `packageDiagram(name, block)`
+| *V1.1* — package tree with `«import»` / `«merge»` / `«access»` dependencies.
+
+| `compositeStructureDiagram(name, block)`
+| *V1.1* — classes + ports + connectors for internal wiring.
+
+| `deploymentDiagram(name, block)`
+| *V1.1* — nodes (hardware / execution environment / device), artifacts,
+  `deploy(artifact, node)`, `communicationPath(end1, end2)`.
+
+| `profileDiagram(name, block)`
+| *V1.1* — stereotype declarations with tagged-value definitions and
+  `«extension»` dependencies.
+
+| `activityDiagram(name, block)`
+| *V1.1* — initial / final / action / decision / fork / join, control flow
+  with optional `guard` and object flow.
+
+| `communicationDiagram(name, block)`
+| *V1.1* — roles + auto-numbered messages.
+
+| `timingDiagram(name, block)`
+| *V1.1* — lifelines + discrete state-change ticks.
+
+| `interactionOverviewDiagram(name, block)`
+| *V1.1* — activity-style control flow over `ref Interaction` frames.
+|===
+
+== UML Builder Functions
+
+All functions are available inside `diagram { }` and `umlModel { }` lambdas.
+
+[cols="1,3"]
+|===
+| Function | Description
+
+| `classOf(name) { … }`
+| Builds a `UmlClass`. Inline `extends(…)` / `implements(…)` add relationships to the diagram.
+
+| `interfaceOf(name) { … }`
+| Builds a `UmlInterface`. Inline `extends(…)` supported.
+
+| `enumOf(name) { literal(…) }`
+| Builds a `UmlEnumeration` with literal values.
+
+| `` `package`(name) { … } `` / `packageOf(name)`
+| Builds a `UmlPackage`. Contents can be nested packages, classes, interfaces, enumerations.
+
+| `association(source, target) { … }`
+| Builds a `UmlAssociation`. Pass classifier `val`-handles (preferred) or a `(sourceId, targetId)` `String` pair.
+
+| `generalization(specific, general)`
+| Builds a `UmlGeneralization` (inheritance arrow). Same overload shape as `association`.
+
+| `realization(implementing, iface)`
+| Builds a `UmlInterfaceRealization` (dashed arrow with open triangle). Same overload shape.
+
+| `dependency(client, supplier)`
+| Builds a `UmlDependency` (dashed open arrow). Same overload shape.
+|===
+
+Inside `classOf { }` and `interfaceOf { }`:
+
+[cols="1,3"]
+|===
+| Function | Description
+
+| `attribute(name = "…", type = "…")`
+| Adds a `UmlProperty`. `type` accepts a `String` name *or* a classifier handle (e.g. an `enumOf` val).
+
+| `operation(name = "…") { … }`
+| Adds a `UmlOperation`. Inside the body: `parameter(name = "…", type = "…")` drives overload disambiguation in the element ID. Set the return type with `returns(typeName = "…")`.
+
+| `extends(general = parentVal)`
+| Records an inline generalization (propagated to the diagram/model scope).
+
+| `implements(iface = interfaceVal)`
+| Records an inline interface realization.
+
+| `isAbstract = true`
+| Marks the class as abstract. Property assignment inside the body, not a constructor argument.
+|===
+
+== Usage
+
+The kUML DSL convention (see `CLAUDE.md`) is *named parameters everywhere* —
+classifier references are first-class `val` values, not `"namespace::Id"` strings.
+
+[source,kotlin]
+----
+// order-domain.kuml.kts — no imports needed (KumlScriptDefinition provides them)
+umlModel(name = "Order Domain") {
+
+    val status = enumOf(name = "OrderStatus") {
+        literal(name = "DRAFT")
+        literal(name = "CONFIRMED")
+        literal(name = "SHIPPED")
+    }
+
+    val orderRepoIface = interfaceOf(name = "IOrderRepo") {
+        operation(name = "findById") {
+            parameter(name = "id", type = "Long")
+            returns(typeName = "Order")
+        }
+    }
+
+    val order = classOf(name = "Order") {
+        attribute(name = "id", type = "UUID")
+        attribute(name = "status", type = status)             // enum val used as attribute type
+        operation(name = "confirm")
+        operation(name = "find") {
+            parameter(name = "id", type = "Long")
+            returns(typeName = "Order")
+        }
+    }
+
+    val orderItem = classOf(name = "OrderItem") {
+        attribute(name = "quantity", type = "Int")
+        attribute(name = "unitPrice", type = "BigDecimal")
+    }
+
+    classOf(name = "OrderRepo") {
+        implements(iface = orderRepoIface)                    // realization without strings
+    }
+
+    association(source = order, target = orderItem) {
+        aggregation = AggregationKind.COMPOSITE
+        source { multiplicity(spec = "1") }
+        target { multiplicity(spec = "1..*"); role = "items" }
+    }
+}
+----
+
+NOTE: Relationships (`association`, `generalization`, `realization`, `dependency`)
+live on `UmlModelScope` — call them at the top level of `umlModel { … }` or
+`classDiagram { … }`, *not* inside a `\`package\`(…) { }` block. If you nest
+classes inside packages, pass the classifier `val`s back out by capturing them
+above the package block (or use the `sourceId`/`targetId` `String` overloads).
+
+NOTE: `umlModel { … }` returns a `KumlModel`. Use it for multi-diagram model
+files. For a single-diagram script intended for `kuml render`, use
+`classDiagram(name = "…") { … }` instead — it returns a `KumlDiagram` directly.
+
+== DSL Scope Safety
+
+`@KumlDsl` is applied to all builder classes and scope interfaces.
+This prevents accidentally calling an outer-scope builder inside an inner lambda:
+
+[source,kotlin]
+----
+classDiagram(name = "Scope demo") {
+    classOf(name = "A") {
+        classOf(name = "B") { }  // ← compile error: @DslMarker prevents implicit outer scope call
+    }
+}
+----
+
+== ID Strategy
+
+All element IDs are derived deterministically from the qualified namespace path
+using `::` as separator.
+The function `UmlIds.disambiguate` appends `~2`, `~3`, … on collisions.
+Explicit overrides are always possible via the `id = "…"` parameter.
+
+| Element | Example ID |
+|---|---|
+| Root class | `Order` |
+| Packaged class | `domain::Order` |
+| Attribute | `domain::Order::id` |
+| Operation | `domain::Order::confirm()` / `domain::Order::find(Long)` |
+
+== Installation
+
+[source,kotlin]
+----
+dependencies {
+    implementation("dev.kuml:kuml-core-dsl:0.24.3")
+    // kuml-core-model is exposed transitively via api()
+    // kuml-metamodel-uml is an implementation dependency (builders only)
+}
+----
+
+== License
+
+Apache 2.0 — see link:../../LICENSE[LICENSE]

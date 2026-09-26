@@ -1,0 +1,233 @@
+= JetBrains IDE Plugin
+:description: First-class editor support for `*.kuml.kts` in IntelliJ IDEA, Android Studio, PyCharm, …
+
+The `dev.kuml.ide` plugin adds editor support for kUML script files in every JetBrains
+IDE based on IntelliJ Platform build 243+ (IDEA 2024.3 or newer). It is intentionally
+minimal — Syntax highlighting, default imports, file icon. Nothing more, nothing less.
+
+== Install
+
+*Settings → Plugins → Marketplace*, search for `kUML`, click *Install*, restart the IDE.
+
+Or install a local `.zip` distribution built from source:
+
+[source,bash]
+----
+./gradlew :kuml-jetbrains:kuml-jetbrains-plugin:buildPlugin
+# → kuml-jetbrains/kuml-jetbrains-plugin/build/distributions/kuml-jetbrains-plugin-X.Y.Z.zip
+----
+
+Then *Settings → Plugins → ⚙ → Install Plugin from Disk…* and pick the zip.
+
+== What you get
+
+* *Syntax highlighting* — full Kotlin highlighting inherited from the bundled Kotlin
+  plugin. kUML DSL builders (`classDiagram`, `umlModel`, `classOf`, `c4Model`, …)
+  highlight like ordinary Kotlin functions because that's exactly what they are.
+
+* *Default imports resolved by the editor* — when you type `classDiagram(name = "X") { }`,
+  IntelliJ knows `classDiagram` comes from `dev.kuml.core.dsl` even though there's no
+  `import` line. Same for `dev.kuml.uml.dsl.*`, `dev.kuml.c4.dsl.*`,
+  `dev.kuml.core.model.*`, and the UML / C4 metamodel packages.
+
+* *Structure view* — diagrams and elements show up in the *Structure* tool window
+  (since they're nested Kotlin lambdas).
+
+* *Refactoring & Find Usages* — works the same as for any Kotlin file. Rename a
+  classifier val, every reference updates. Find Usages on `classOf(...)` lists every
+  call site.
+
+* *Custom file icon* — `*.kuml.kts` files are visually distinct in the project view
+  and editor tabs.
+
+== Annotator and Quick Fixes (V2.0.28a)
+
+The plugin highlights `.kuml.kts` errors inline by invoking the external `kuml` CLI
+(`kuml diagnostics`, which returns each diagnostic with its source location). Errors and
+warnings appear as red/yellow wave underlines directly in the editor; hover to read the
+message.
+
+[IMPORTANT]
+====
+Both the annotator and the live preview require the `kuml` CLI to be available — the
+Kotlin scripting host cannot run inside the IDE plugin classloader, so validation and
+rendering are delegated to the CLI process. The CLI is located automatically (PATH,
+common install locations, or a local Gradle `installDist` build discovered by walking up
+from the edited file); you can also set an explicit path under
+*Settings → Tools → kUML Preview*. If the CLI cannot be found, the preview panel shows a
+"kUML-CLI nicht gefunden" message with setup instructions and the annotator stays silent.
+See xref:tooling:cli.adoc[the CLI reference] for installation.
+====
+
+Four quick-fix types are offered via the intention-action bulb (Alt+Enter):
+
+[cols="1,2"]
+|===
+| Quick fix | What it does
+
+| *Add missing constraint body*
+| Inserts a placeholder OCL expression `self.todo = true` inside an empty
+  `constraint(name, body = ...)` call so the file compiles.
+
+| *Remove duplicate element*
+| Deletes the duplicate `classOf` / `interfaceOf` / `stereotype` call that caused a
+  `duplicate-id` structural violation.
+
+| *Add required port direction*
+| Inserts `direction = PortDirection.In` (or `.Out`) on a `port(...)` call that is
+  missing the direction argument.
+
+| *Break circular inheritance*
+| Removes the `generalization(child = ..., parent = ...)` edge that closes a cycle.
+|===
+
+Quick fixes are applied in-editor, with full undo history. The annotator re-evaluates
+on every keystroke (debounced at 300 ms) so the underlines clear as soon as the violation
+is resolved.
+
+NOTE: The annotator runs `kuml diagnostics` in the IDE's background thread pool and caches
+the result per file-modification-stamp. Because each pass spawns the CLI, the first pass on
+a cold editor open may take 1–2 seconds (CLI JVM start); subsequent passes reuse the cache
+until the next edit.
+
+== Live SVG Preview (V2.0.28b / V2.0.30)
+
+Opening any `.kuml.kts` file activates a split editor: the source is on the left, a live
+SVG preview panel on the right. The preview updates automatically — changes in the source
+trigger a re-render after a 300 ms debounce, so the SVG stays in sync without blocking
+the typing flow.
+
+The preview toolbar provides icon-only buttons for:
+
+* *Fit to Window* — scale the SVG so the entire diagram is visible within the current panel size.
+* *Fit Width* — scale the SVG to fill the panel width.
+* *Fit Height* — scale the SVG to fill the panel height.
+* *Zoom In / Zoom Out* — incrementally scale the canvas.
+* *100%* — reset to native pixel size.
+* *Refresh* — force a re-render even if the file has not changed on disk.
+* *Copy SVG* — copy the current SVG source to the clipboard.
+* *Open in browser* — save a temporary file and open the system browser for full-resolution inspection.
+
+=== Scroll Pane and Hand-Drag Panning (v0.19.0)
+
+The SVG preview canvas is embedded in a `JScrollPane`. Whenever a rendered diagram exceeds
+the visible panel area, horizontal and/or vertical scrollbars appear automatically — no
+more clipping of large class, communication, or SysML diagrams.
+
+Interaction model:
+
+* *Left-click + drag* — pans the view (hand cursor on hover, grab cursor while dragging).
+* *Mouse wheel* — scrolls vertically.
+* *Ctrl + mouse wheel* — zooms in/out using the same preferred-size mechanism as the toolbar buttons.
+
+The zoom model was revised in v0.19.0: all fit/zoom actions control the preferred size of
+the SVG canvas rather than Batik's internal rendering transform. Batik scales the SVG
+automatically to the actual canvas size, so the visual result is identical to the previous
+approach but fully compatible with the scroll pane.
+
+The live preview is rendered by invoking `kuml render` on the current (including unsaved)
+buffer — the SVG is therefore byte-identical to the CLI output for the same theme and
+engine settings. The same CLI-availability requirement as the annotator applies (see the
+IMPORTANT note above).
+
+NOTE: If the SVG preview panel is not visible after opening a `.kuml.kts` file, toggle it
+via *View → Tool Windows → kUML Preview*, or split the editor manually with the preview
+button in the gutter (the kUML file-type icon on the right edge of the editor).
+
+== Structure View (V2.0.28b)
+
+The IntelliJ *Structure* tool window (Alt+7) shows the diagram element tree for any open
+`.kuml.kts` file. The tree mirrors the DSL nesting:
+
+* Diagram node (e.g. *classDiagram "Domain"*)
+** Classifiers (classes, interfaces, enums)
+*** Attributes and operations
+** Relationships (generalisations, associations, realisations)
+
+Clicking any tree node navigates the cursor to the corresponding DSL call in the source.
+The tree updates in sync with the live preview — the same 300 ms debounce applies.
+
+The Structure view is particularly useful for large scripts with many elements: use
+Ctrl+F (or the search field in the tool window header) to filter the tree by element name.
+
+NOTE: The Structure view is provided by kUML's own `StructureViewBuilder` extension,
+not by IntelliJ's default Kotlin structure provider. It shows kUML model semantics
+(classifiers, ports, state machines) rather than raw Kotlin symbols.
+
+== Under the hood
+
+The plugin registers a `ScriptDefinitionsProvider` (Kotlin scripting extension point)
+that hands the `dev.kuml.core.script.KumlScript` template to IntelliJ's Kotlin plugin.
+The Kotlin plugin reads the `@KotlinScript(fileExtension = "kuml.kts", …)` annotation
+and provides the editing experience.
+
+There is no custom lexer and no custom parser — the core editing experience (highlighting,
+completion, navigation) rides entirely on the Kotlin plugin's investment, inheriting every
+future improvement to Kotlin scripting for free. The kUML-specific layers on top — the
+inline annotator and the live preview — delegate to the external `kuml` CLI rather than
+running the scripting host in-process (which is not reachable from the plugin classloader).
+
+The bundled runtime includes:
+
+* `kuml-core-script` — the script template
+* `kuml-core-model`, `kuml-core-dsl` — DSL surface for resolution
+* `kuml-metamodel-uml`, `kuml-metamodel-c4` — metamodel types
+* The Kotlin scripting infrastructure
+
+So default imports resolve to real symbols in the editor — autocomplete works, hover
+shows KDoc, *Go to Declaration* opens the metamodel class.
+
+== What's deliberately NOT in scope
+
+* *Language Server Protocol* — pure platform-plugin implementation, no LSP layer.
+  Not planned until there is user demand from non-JetBrains editors.
+
+* *Refactoring helpers beyond Kotlin* — no "Extract package", no "Rename diagram",
+  no "Convert class to interface". Kotlin's general-purpose refactoring still works.
+
+Features that were originally listed as V2 aspirations and have since shipped:
+
+* *Inline annotator + quick fixes* — shipped in V2.0.28a (see above).
+* *Live SVG preview panel* — shipped in V2.0.28b / V2.0.30 (see above).
+* *Structure view* — shipped in V2.0.28b (see above).
+
+== Configuration
+
+A single setting under *Settings → Tools → kUML Preview*: the path to the `kuml` CLI used
+by the live preview and the annotator. Leave it empty to auto-detect (PATH, common install
+locations, or a local Gradle `installDist` build found by walking up from the edited file);
+set it explicitly only if auto-detection cannot find the binary. The path can also be
+overridden via the `KUML_CLI` environment variable or the `-Dkuml.cli.path=…` system
+property.
+
+Theme, generator, and layout engine are not IDE settings — choose those in
+`kuml.config.kts` or on the command line.
+
+== Troubleshooting
+
+[cols="1,3"]
+|===
+| Symptom | Likely cause
+
+| Editor highlights `classDiagram` as unresolved
+| The kUML plugin isn't enabled, or the Kotlin plugin is disabled. Check *Settings →
+  Plugins → Installed*.
+
+| File opens as plain text, no syntax highlighting
+| The file extension isn't `.kuml.kts`. The plugin only activates on that suffix.
+
+| Preview shows "kUML-CLI nicht gefunden" / no error squiggles appear
+| The `kuml` CLI could not be located. Install it (so it is on the `PATH`), run
+  `./gradlew :kuml-cli:installDist` for a local build, or set the path explicitly under
+  *Settings → Tools → kUML Preview*. Note that `./gradlew clean` deletes a local
+  `installDist` build — re-run `installDist` afterwards.
+
+| Refactoring renames break references in other `*.kuml.kts` files
+| The Kotlin scripting infrastructure indexes scripts independently. Run *Invalidate
+  Caches and Restart* after large refactors.
+
+| Performance degrades with many `*.kuml.kts` files
+| Each script is independently compiled by the IDE's Kotlin plugin. Performance scales
+  with script count and complexity; if you have hundreds of scripts, consider splitting
+  the project so the IDE only indexes the subset you're editing.
+|===

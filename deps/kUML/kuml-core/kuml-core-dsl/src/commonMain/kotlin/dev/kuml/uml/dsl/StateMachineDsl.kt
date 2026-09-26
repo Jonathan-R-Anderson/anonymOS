@@ -1,0 +1,517 @@
+package dev.kuml.uml.dsl
+
+import dev.kuml.core.dsl.KumlDsl
+import dev.kuml.core.dsl.layout.LayoutHintsBuilder
+import dev.kuml.core.dsl.layout.LayoutHintsScope
+import dev.kuml.core.model.KumlMetaValue
+import dev.kuml.profile.KumlStereotypeApplication
+import dev.kuml.profile.UmlMetaclass
+import dev.kuml.uml.AppliedStereotype
+import dev.kuml.uml.PseudostateKind
+import dev.kuml.uml.TransitionMetadataKeys
+import dev.kuml.uml.UmlFinalState
+import dev.kuml.uml.UmlPseudostate
+import dev.kuml.uml.UmlState
+import dev.kuml.uml.UmlTransition
+import dev.kuml.uml.UmlVertex
+import dev.kuml.uml.ids.UmlIds
+
+// ── state() ──────────────────────────────────────────────────────────────────
+
+/**
+ * Adds a simple [UmlState] to the enclosing state machine.
+ *
+ * ```kotlin
+ * stateDiagram("Order Lifecycle") {
+ *     val draft = state("Draft") {
+ *         entry = "validate()"
+ *         doActivity = "notifyCustomer()"
+ *     }
+ * }
+ * ```
+ */
+fun UmlStateMachineScope.state(
+    name: String,
+    id: String? = null,
+    block: StateBodyBuilder.() -> Unit = {},
+): UmlState {
+    val resolvedId =
+        id ?: UmlIds.disambiguate(
+            candidate = UmlIds.vertex(stateMachineId = stateMachineId, name = name),
+            taken = takenIds,
+        )
+    takenIds += resolvedId
+    val containerScope = this as? UmlContainerScope
+    val body = StateBodyBuilder(containerScope = containerScope).apply(block)
+    val s =
+        UmlState(
+            id = resolvedId,
+            name = name,
+            entry = body.entry,
+            exit = body.exit,
+            doActivity = body.doActivity,
+            stereotypes = body.stereotypes.toList(),
+            metadata = body.layoutHintsBuilder.toMetadata(),
+            appliedStereotypes = body.appliedStereotypeList.toList<AppliedStereotype>(),
+        )
+    addVertex(s)
+    return s
+}
+
+fun UmlCompositeStateScope.state(
+    name: String,
+    id: String? = null,
+    block: StateBodyBuilder.() -> Unit = {},
+): UmlState {
+    val resolvedId =
+        id ?: UmlIds.disambiguate(
+            candidate = UmlIds.child(parentId = parentStateId, name = name),
+            taken = takenIds,
+        )
+    takenIds += resolvedId
+    // CompositeStateScope has no UmlContainerScope — stereotype() not available in sub-states
+    val body = StateBodyBuilder(containerScope = null).apply(block)
+    val s =
+        UmlState(
+            id = resolvedId,
+            name = name,
+            entry = body.entry,
+            exit = body.exit,
+            doActivity = body.doActivity,
+            stereotypes = body.stereotypes.toList(),
+            metadata = body.layoutHintsBuilder.toMetadata(),
+            appliedStereotypes = body.appliedStereotypeList.toList<AppliedStereotype>(),
+        )
+    addSubstate(s)
+    return s
+}
+
+/**
+ * Configuration builder for a [UmlState] body.
+ *
+ * Implements [LayoutHintsScope] to allow grid-layout hints and [UmlElementScope]
+ * to enable [stereotype] calls (when the enclosing [UmlStateMachineScope] also
+ * implements [UmlContainerScope], i.e. [StateDiagramBuilder]).
+ *
+ * ```kotlin
+ * state("Draft") {
+ *     entry = "validate()"
+ *     layout { col = 1; row = 2 }
+ *     stereotype("InitialState")
+ * }
+ * ```
+ */
+@KumlDsl
+class StateBodyBuilder internal constructor(
+    private val containerScope: UmlContainerScope?,
+) : LayoutHintsScope,
+    UmlElementScope {
+    var entry: String? = null
+    var exit: String? = null
+    var doActivity: String? = null
+    val stereotypes: MutableList<String> = mutableListOf()
+    override val layoutHintsBuilder: LayoutHintsBuilder = LayoutHintsBuilder()
+
+    override val metaclass: UmlMetaclass = UmlMetaclass.State
+
+    internal val appliedStereotypeList = mutableListOf<KumlStereotypeApplication>()
+
+    override fun addStereotype(app: KumlStereotypeApplication) {
+        appliedStereotypeList += app
+    }
+
+    /**
+     * The enclosing container — required for stereotype resolution.
+     *
+     * If [stereotype] is called inside a sub-state (where no [UmlContainerScope]
+     * is available), this throws [IllegalStateException] with a clear message.
+     */
+    override val container: UmlContainerScope
+        get() =
+            containerScope
+                ?: error(
+                    "stereotype() cannot be used inside a sub-state — " +
+                        "no UmlContainerScope is available at this nesting level. " +
+                        "Apply the profile and call stereotype() at the top-level stateDiagram scope instead.",
+                )
+}
+
+// ── Pseudostate helper (Variante B) ──────────────────────────────────────────
+
+/**
+ * Shared logic for building a [UmlPseudostate] — Variante B with explicit [takenIds] parameter.
+ *
+ * Callers pass [takenIds] from their scope, making this a pure helper with no magic.
+ */
+private fun pseudoOn(
+    parentId: String,
+    takenIds: MutableSet<String>,
+    name: String,
+    kind: PseudostateKind,
+    explicitId: String?,
+): UmlPseudostate {
+    val resolvedId =
+        explicitId ?: UmlIds.disambiguate(
+            candidate = UmlIds.vertex(stateMachineId = parentId, name = name),
+            taken = takenIds,
+        )
+    takenIds += resolvedId
+    return UmlPseudostate(id = resolvedId, name = name, kind = kind)
+}
+
+/** Same as [pseudoOn] but derives the child ID from [UmlIds.child] for composite state sub-scopes. */
+private fun pseudoOnChild(
+    parentId: String,
+    takenIds: MutableSet<String>,
+    name: String,
+    kind: PseudostateKind,
+    explicitId: String?,
+): UmlPseudostate {
+    val resolvedId =
+        explicitId ?: UmlIds.disambiguate(
+            candidate = UmlIds.child(parentId = parentId, name = name),
+            taken = takenIds,
+        )
+    takenIds += resolvedId
+    return UmlPseudostate(id = resolvedId, name = name, kind = kind)
+}
+
+// ── initialState() ───────────────────────────────────────────────────────────
+
+/**
+ * Adds an initial pseudostate to the enclosing state machine.
+ *
+ * Every state machine should have exactly one initial pseudostate.
+ * V1 does not enforce this — it's a renderer-level concern.
+ */
+fun UmlStateMachineScope.initialState(
+    name: String = "initial",
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOn(parentId = stateMachineId, takenIds = takenIds, name = name, kind = PseudostateKind.INITIAL, explicitId = id)
+        .also { addVertex(it) }
+
+fun UmlCompositeStateScope.initialState(
+    name: String = "initial",
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOnChild(parentId = parentStateId, takenIds = takenIds, name = name, kind = PseudostateKind.INITIAL, explicitId = id)
+        .also { addSubstate(it) }
+
+// ── finalState() ─────────────────────────────────────────────────────────────
+
+/**
+ * Adds a final state to the enclosing state machine.
+ */
+fun UmlStateMachineScope.finalState(
+    name: String,
+    id: String? = null,
+): UmlFinalState {
+    val resolvedId =
+        id ?: UmlIds.disambiguate(
+            candidate = UmlIds.vertex(stateMachineId = stateMachineId, name = name),
+            taken = takenIds,
+        )
+    takenIds += resolvedId
+    val fs = UmlFinalState(id = resolvedId, name = name)
+    addVertex(fs)
+    return fs
+}
+
+fun UmlCompositeStateScope.finalState(
+    name: String,
+    id: String? = null,
+): UmlFinalState {
+    val resolvedId =
+        id ?: UmlIds.disambiguate(
+            candidate = UmlIds.child(parentId = parentStateId, name = name),
+            taken = takenIds,
+        )
+    takenIds += resolvedId
+    val fs = UmlFinalState(id = resolvedId, name = name)
+    addSubstate(fs)
+    return fs
+}
+
+// ── choice, fork, join, junction (Convenience-Wrapper) ───────────────────────
+
+fun UmlStateMachineScope.choice(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOn(parentId = stateMachineId, takenIds = takenIds, name = name, kind = PseudostateKind.CHOICE, explicitId = id).also {
+        addVertex(it)
+    }
+
+fun UmlCompositeStateScope.choice(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOnChild(parentId = parentStateId, takenIds = takenIds, name = name, kind = PseudostateKind.CHOICE, explicitId = id).also {
+        addSubstate(it)
+    }
+
+fun UmlStateMachineScope.fork(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOn(parentId = stateMachineId, takenIds = takenIds, name = name, kind = PseudostateKind.FORK, explicitId = id).also {
+        addVertex(it)
+    }
+
+fun UmlCompositeStateScope.fork(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOnChild(parentId = parentStateId, takenIds = takenIds, name = name, kind = PseudostateKind.FORK, explicitId = id).also {
+        addSubstate(it)
+    }
+
+fun UmlStateMachineScope.join(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOn(parentId = stateMachineId, takenIds = takenIds, name = name, kind = PseudostateKind.JOIN, explicitId = id).also {
+        addVertex(it)
+    }
+
+fun UmlCompositeStateScope.join(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOnChild(parentId = parentStateId, takenIds = takenIds, name = name, kind = PseudostateKind.JOIN, explicitId = id).also {
+        addSubstate(it)
+    }
+
+fun UmlStateMachineScope.junction(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOn(parentId = stateMachineId, takenIds = takenIds, name = name, kind = PseudostateKind.JUNCTION, explicitId = id).also {
+        addVertex(it)
+    }
+
+fun UmlCompositeStateScope.junction(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOnChild(parentId = parentStateId, takenIds = takenIds, name = name, kind = PseudostateKind.JUNCTION, explicitId = id).also {
+        addSubstate(it)
+    }
+
+fun UmlStateMachineScope.shallowHistory(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOn(parentId = stateMachineId, takenIds = takenIds, name = name, kind = PseudostateKind.SHALLOW_HISTORY, explicitId = id).also {
+        addVertex(it)
+    }
+
+fun UmlCompositeStateScope.shallowHistory(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOnChild(
+        parentId = parentStateId,
+        takenIds = takenIds,
+        name = name,
+        kind = PseudostateKind.SHALLOW_HISTORY,
+        explicitId = id,
+    ).also {
+        addSubstate(it)
+    }
+
+fun UmlStateMachineScope.deepHistory(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOn(parentId = stateMachineId, takenIds = takenIds, name = name, kind = PseudostateKind.DEEP_HISTORY, explicitId = id).also {
+        addVertex(it)
+    }
+
+fun UmlCompositeStateScope.deepHistory(
+    name: String,
+    id: String? = null,
+): UmlPseudostate =
+    pseudoOnChild(parentId = parentStateId, takenIds = takenIds, name = name, kind = PseudostateKind.DEEP_HISTORY, explicitId = id).also {
+        addSubstate(it)
+    }
+
+// ── transition() ─────────────────────────────────────────────────────────────
+
+/**
+ * Creates a [UmlTransition] between two vertices at the state-machine level.
+ *
+ * ```kotlin
+ * transition(draft, confirmed) {
+ *     trigger = "confirm()"
+ *     guard = "[isValid]"
+ *     effect = "logConfirmation()"
+ * }
+ * ```
+ *
+ * Even when [source] and [target] are substates of composite states,
+ * the transition is registered on the enclosing state machine, not on
+ * the composite — matching UML semantics.
+ */
+fun UmlStateMachineScope.transition(
+    source: UmlVertex,
+    target: UmlVertex,
+    id: String? = null,
+    block: TransitionBuilder.() -> Unit = {},
+): UmlTransition =
+    transitionByIds(
+        sourceId = source.id,
+        targetId = target.id,
+        sourceName = source.name,
+        targetName = target.name,
+        explicitId = id,
+        block = block,
+    )
+
+fun UmlStateMachineScope.transitionByIds(
+    sourceId: String,
+    targetId: String,
+    sourceName: String = sourceId.substringAfterLast(UmlIds.SEP),
+    targetName: String = targetId.substringAfterLast(UmlIds.SEP),
+    explicitId: String? = null,
+    block: TransitionBuilder.() -> Unit = {},
+): UmlTransition {
+    val baseId = UmlIds.transition(stateMachineId = stateMachineId, sourceName = sourceName, targetName = targetName)
+    val resolvedId = explicitId ?: UmlIds.disambiguate(candidate = baseId, taken = takenIds)
+    takenIds += resolvedId
+    val containerScope = this as? UmlContainerScope
+    val body = TransitionBuilder(containerScope = containerScope).apply(block)
+    val metadata: Map<String, KumlMetaValue> =
+        if (body.protected) mapOf(TransitionMetadataKeys.PROTECTED to KumlMetaValue.Flag(true)) else emptyMap()
+    val t =
+        UmlTransition(
+            id = resolvedId,
+            sourceId = sourceId,
+            targetId = targetId,
+            trigger = body.trigger,
+            guard = body.guard,
+            effect = body.effect,
+            metadata = metadata,
+            appliedStereotypes = body.appliedStereotypeList.toList<AppliedStereotype>(),
+        )
+    addTransition(t)
+    return t
+}
+
+@KumlDsl
+class TransitionBuilder internal constructor(
+    private val containerScope: UmlContainerScope? = null,
+) : UmlElementScope {
+    var trigger: String? = null
+    var guard: String? = null
+    var effect: String? = null
+
+    /** When true, marks the transition protected (guard edits need confirmation in widgets). */
+    var protected: Boolean = false
+
+    override val metaclass: UmlMetaclass = UmlMetaclass.Transition
+
+    internal val appliedStereotypeList = mutableListOf<KumlStereotypeApplication>()
+
+    override fun addStereotype(app: KumlStereotypeApplication) {
+        appliedStereotypeList += app
+    }
+
+    override val container: UmlContainerScope
+        get() =
+            containerScope
+                ?: error(
+                    "stereotype() cannot be used on a transition without an enclosing " +
+                        "UmlContainerScope. Call applyProfile() at the stateDiagram level first.",
+                )
+}
+
+// ── compositeState() ─────────────────────────────────────────────────────────
+
+/**
+ * Adds a composite [UmlState] — a state that contains [substates].
+ *
+ * Substates declared inside the [block] are stored in [UmlState.substates]
+ * and get IDs of the form `<parentStateId>::<substateName>`. Transitions
+ * between substates are declared at the enclosing state-machine scope,
+ * not inside the composite.
+ *
+ * ```kotlin
+ * val processing = compositeState("Processing") {
+ *     val picking = state("Picking")
+ *     val packing = state("Packing")
+ * }
+ * transition(processing, draft)              // outer
+ * transition(picking, packing)               // inner (declared at SM scope)
+ * ```
+ */
+fun UmlStateMachineScope.compositeState(
+    name: String,
+    id: String? = null,
+    block: CompositeStateBuilder.() -> Unit,
+): UmlState {
+    val resolvedId =
+        id ?: UmlIds.disambiguate(
+            candidate = UmlIds.vertex(stateMachineId = stateMachineId, name = name),
+            taken = takenIds,
+        )
+    takenIds += resolvedId
+    val builder = CompositeStateBuilder(parentStateId = resolvedId, takenIds = takenIds).apply(block)
+    val composite =
+        UmlState(
+            id = resolvedId,
+            name = name,
+            entry = builder.entry,
+            exit = builder.exit,
+            doActivity = builder.doActivity,
+            substates = builder.substates.toList(),
+            stereotypes = builder.stereotypes.toList(),
+        )
+    addVertex(composite)
+    return composite
+}
+
+fun UmlCompositeStateScope.compositeState(
+    name: String,
+    id: String? = null,
+    block: CompositeStateBuilder.() -> Unit,
+): UmlState {
+    val resolvedId =
+        id ?: UmlIds.disambiguate(
+            candidate = UmlIds.child(parentId = parentStateId, name = name),
+            taken = takenIds,
+        )
+    takenIds += resolvedId
+    val builder = CompositeStateBuilder(parentStateId = resolvedId, takenIds = takenIds).apply(block)
+    val composite =
+        UmlState(
+            id = resolvedId,
+            name = name,
+            entry = builder.entry,
+            exit = builder.exit,
+            doActivity = builder.doActivity,
+            substates = builder.substates.toList(),
+            stereotypes = builder.stereotypes.toList(),
+        )
+    addSubstate(composite)
+    return composite
+}
+
+@KumlDsl
+class CompositeStateBuilder internal constructor(
+    override val parentStateId: String,
+    override val takenIds: MutableSet<String>,
+) : UmlCompositeStateScope {
+    var entry: String? = null
+    var exit: String? = null
+    var doActivity: String? = null
+    val stereotypes: MutableList<String> = mutableListOf()
+
+    internal val substates = mutableListOf<UmlVertex>()
+    internal val appliedStereotypeList = mutableListOf<KumlStereotypeApplication>()
+
+    override fun addSubstate(vertex: UmlVertex) {
+        substates += vertex
+    }
+}

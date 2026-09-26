@@ -1,0 +1,731 @@
+= LLM Benchmark (GCR)
+:description: How kUML's Generate-Compile-Repair benchmark works, the exact prompt primers used per DSL and diagram family, and how to reproduce the published results with your own LLM.
+
+kUML's core research thesis — argued in full in
+https://github.com/kuml-dev/kUML[the arXiv preprint, window=_blank] — is that a
+statically typed *internal* DSL turns the host compiler into a free, deterministic
+validation oracle for LLM-generated architecture models. Compile errors (unresolved
+references, type mismatches, scope violations) become structured repair signals a
+*Generate-Compile-Repair (GCR)* loop can act on directly, unlike the silent
+auto-declaration or lexical parse errors of untyped external DSLs like PlantUML or
+Mermaid.
+
+This page documents the benchmark that tests that thesis: a 50-task corpus across four
+diagram families, the exact GCR loop and prompt primers used, and how to reproduce the
+published run with any LLM. Announcement and result interpretation:
+https://kuml.dev/blog/2026-07-06-gcr-benchmark-kuml-vs-plantuml-mermaid[kuml.dev blog post, window=_blank].
+All artifacts referenced below live in
+https://github.com/kuml-dev/kUML/tree/master/research/gcr-benchmark[`research/gcr-benchmark/`, window=_blank].
+
+== The corpus
+
+50 natural-language architecture descriptions, each paired with a hand-authored
+kUML gold-standard model and a normalized node/edge set (for scoring — see below),
+stratified along two axes:
+
+[cols="1,1"]
+|===
+| Diagram family | Count
+
+| Class diagrams
+| 20
+
+| Sequence diagrams
+| 10
+
+| C4 container/context diagrams
+| 12
+
+| SysML 2.0 block definition diagrams
+| 8
+|===
+
+[cols="1,1"]
+|===
+| Difficulty | Count
+
+| Simple (≤ 6 elements, ≤ 6 relationships)
+| 15
+
+| Medium (7–15 elements, ≥ 1 inheritance hierarchy)
+| 20
+
+| Complex (16–30 elements, cross-cutting constraints)
+| 15
+|===
+
+Descriptions are target-language-neutral prose — no PlantUML/Mermaid/kUML keywords.
+The full corpus, including every gold-standard `.kuml.kts` script, is
+`research/gcr-benchmark/corpus.json`.
+
+== The GCR loop
+
+For each (task, DSL) pair:
+
+1. **Generate.** An LLM receives the natural-language task and a compact syntax primer
+   for the target DSL and diagram family (see below) — but never the gold standard.
+2. **Compile/validate.** The generated code is validated with the real toolchain:
+   `kuml render <file>.kuml.kts -f svg -o out.svg`, `plantuml -tsvg <file>.puml`, or
+   `mmdc -i <file>.mmd -o out.svg` (Mermaid CLI).
+3. **Repair.** On failure, the diagnostic is read back and the code is fixed, up to
+   3 total attempts. Two byte-identical consecutive attempts stop the loop early
+   (`status: "stuck"`) rather than wasting another attempt.
+4. **Extract.** From the final code, a normalized node list (`"EntityName (kind)"`) and
+   edge list (`"Source → Target (relationshipKind[, multiplicity])"`) are extracted —
+   the same convention `corpus.json`'s gold standards use, so scoring is a pure string
+   comparison regardless of source syntax.
+
+== PlantUML/Mermaid are permissive by design — verified directly
+
+Before running the benchmark we verified the core claim behind it with a minimal
+smoke test: feed a class diagram with a typo'd association target (`Boook` instead of
+`Book`) to all three tools.
+
+[cols="1,1,1"]
+|===
+| Tool | Exit code | Behavior
+
+| kUML (`kuml render`)
+| 3
+| `Script error: ... Unresolved reference 'boook'.`
+
+| PlantUML (`plantuml -tsvg`)
+| 0
+| Silently auto-declares a phantom class `Boook` and renders successfully.
+
+| Mermaid (`mmdc`)
+| 0
+| Same — phantom class rendered successfully.
+|===
+
+This is the mechanism behind the benchmark's headline result: PlantUML and Mermaid
+"compile" almost unconditionally, which is not the same as being correct. Structural
+Fidelity (below) is what actually distinguishes them.
+
+== Metrics
+
+* *CR* (Compile Rate) — fraction of first-shot generations that validate cleanly.
+* *FCR* (Final Compile Rate) — fraction that validate within 3 repair attempts.
+* *SF* (Structural Fidelity) — mean of node-set and edge-set Jaccard similarity between
+  the generated and gold-standard normalized sets (case/whitespace-normalized).
+* *HR* (Hallucination Rate) — fraction of generated nodes with no fuzzy match in the
+  gold-standard node names. **This is an algorithmic approximation**, not a semantic
+  judge — it is stricter than a human/LLM judge would be, since a correct but
+  differently-named modeling decision counts as a false-positive hallucination.
+* *RI* (Repair Iterations) — mean attempts-to-success among successful runs only.
+
+`score.py` in `research/gcr-benchmark/` implements all five metrics; see its docstring
+for the exact input shape it expects.
+
+== Prompt primers
+
+Each DSL/diagram-family combination gets a compact syntax reference (~150–300 tokens)
+plus a worked example using generic entity names — this stands in for the few-shot
+examples the arXiv preprint describes, kept minimal since kUML's syntax is
+underrepresented in LLM training data relative to PlantUML/Mermaid. PlantUML and
+Mermaid get the same style of primer for tooling/output-format instructions, but no
+extended few-shot beyond that — consistent with the preprint's asymmetric design
+(baselines are well-represented in training data already).
+
+For SysML 2 specifically: neither PlantUML nor Mermaid has native SysML 2 support.
+Both were instructed to transliterate blocks (`partDef`) into plain class notation
+with composition/generalization arrows — the realistic fallback a developer would
+reach for, and a fair stress test of the "no native support" gap the preprint predicts.
+
+The exact primer text for all three DSLs × four families is preserved in the workflow
+script history for the published run (see the raw generation prompts embedded in
+`results/2026-07-06-claude-sonnet-5/raw-generations.json` — each row's `finalCode`
+reflects what the primer successfully elicited). A condensed version of each primer's
+structure:
+
+[source,kotlin]
+----
+// kUML — Class Diagram primer skeleton
+classDiagram(name = "ModelName") {
+    val a = classOf(name = "A") {
+        isAbstract = true
+        attribute(name = "field", type = "String", isReadOnly = true)
+        operation(name = "doThing") { parameter(name = "x", type = "Int"); returns(typeName = "Boolean") }
+    }
+    val sub = classOf(name = "Sub") { extends(general = a) }
+    association(source = a, target = sub) {
+        aggregation = AggregationKind.COMPOSITE
+        source { multiplicity(spec = "1") }
+        target { multiplicity(spec = "0..*"); role = "items" }
+    }
+}
+----
+
+[source]
+----
+@startuml
+' PlantUML — Class Diagram primer skeleton
+abstract class A
+class Sub
+A "1" *-- "0..*" Sub : items
+Sub <|-- A
+@enduml
+----
+
+[source]
+----
+classDiagram
+  %% Mermaid — Class Diagram primer skeleton
+  class A
+  class Sub
+  A "1" *-- "0..*" Sub : items
+  A <|-- Sub
+----
+
+== Published results (2026-07-06, Claude Sonnet 5, n=1 sample/cell)
+
+[cols="1,1,1,1,1,1"]
+|===
+| DSL | CR | FCR | SF | HR | RI
+
+| kUML + GCR
+| 78.0%
+| 98.0%
+| *45.3%*
+| *15.4%*
+| 1.27
+
+| PlantUML
+| 98.0%
+| 100.0%
+| 37.9%
+| 16.5%
+| 1.02
+
+| Mermaid
+| 98.0%
+| 100.0%
+| 37.4%
+| 21.9%
+| 1.02
+|===
+
+Full per-family and per-difficulty breakdowns: `results/2026-07-06-claude-sonnet-5/aggregates.json`.
+Interpretation and notable findings (the C4 first-shot compile-rate cliff, the SysML 2 ×
+Mermaid transliteration loss): see the
+https://kuml.dev/blog/2026-07-06-gcr-benchmark-kuml-vs-plantuml-mermaid[blog post, window=_blank].
+
+Want to see the actual diagrams behind these numbers? The xref:ROOT:gallery/index.adoc[Benchmark Gallery]
+renders all 50 tasks — gold standard next to what each DSL generated, including the one task (C4-S-01)
+where kUML never got a diagram out at all after 3 repair attempts. A per-task model tab lets you
+compare all four models below against each other visually.
+
+== Published results — GPT-4o, Gemini 2.5 Flash, Gemini 2.5 Pro (2026-07-06, n=1 sample/cell)
+
+Three more full-corpus runs, via `run-gpt4o.py`/`run-gemini.py` (own Python orchestration scripts,
+since Claude Code subagents can't call other providers' APIs) instead of Claude subagents.
+
+[cols="1,1,1,1,1,1"]
+|===
+| DSL | CR | FCR | SF | HR | RI
+
+6+| **GPT-4o**
+| kUML + GCR | 86.0% | 96.0% | *46.4%* | *11.8%* | 1.15
+| PlantUML | 98.0% | 98.0% | 36.9% | 18.5% | 1.00
+| Mermaid | 100.0% | 100.0% | 33.5% | 19.9% | 1.00
+
+6+| **Gemini 2.5 Flash**
+| kUML + GCR | 52.0% | 74.0% | 26.9% | 20.7% | 1.30
+| PlantUML | 90.0% | 98.0% | 33.7% | 21.8% | 1.10
+| Mermaid | 100.0% | 100.0% | *35.2%* | 26.7% | 1.00
+
+6+| **Gemini 2.5 Pro**
+| kUML + GCR | 58.0% | 70.0% | 26.2% | *18.5%* | 1.23
+| PlantUML | 96.0% | 100.0% | *32.7%* | 22.9% | 1.04
+| Mermaid | 92.0% | 100.0% | 31.4% | 29.2% | 1.08
+|===
+
+GPT-4o reproduces the Claude pattern (kUML highest SF, lowest HR), even more pronounced. Gemini 2.5
+Flash does **not** — kUML trails both baselines on SF, and C4 is nearly unsolvable for kUML at this
+model (0% CR, 25% FCR). The obvious explanation was a capability-tier confound (Flash is Google's
+fast/cheap tier, not a like-for-like peer of Claude Sonnet 5 or GPT-4o) — so we ran **Gemini 2.5 Pro**
+under identical corpus/primers/orchestration to test it directly. **The tier hypothesis is not
+supported**: Pro is not meaningfully better than Flash at kUML, and on several metrics nominally
+worse (FCR 70.0% vs. 74.0%; SysML 2 FCR 25.0% vs. 50.0%; C4 repair effort RI 2.67 vs. 2.00; sequence
+hallucination rate 68.9% vs. 64.6%, the highest HR value in the whole four-model study). The more
+plausible reading is a model-family-specific effect rather than a capability-tier effect, though a
+single sample per cell across two Gemini variants can't fully exclude tier effects statistically.
+Full per-family/per-difficulty breakdowns and raw generations (including `finalCode` per cell, so
+images can be re-rendered without new LLM calls): `research/gcr-benchmark/results/gpt-4o/`,
+`results/gemini-2.5-flash/`, and `results/gemini-2.5-pro/`.
+
+== Published results — qwen3-coder:30b, local via Ollama (2026-08-19, n=1)
+
+A fifth run, this time against a locally hosted open-weight model
+(https://ollama.com[Ollama, window=_blank], `qwen3-coder:30b`, Q4_K_M quantization) instead of a
+cloud API, via `run-ollama.py` (same `gcr_common.py` primers/GCR-loop/scoring as every other
+provider script — see "Reproduce with your own LLM" below).
+
+[cols="1,1,1,1,1,1"]
+|===
+| DSL | CR | FCR | SF | HR | RI
+
+| kUML + GCR
+| 70.0%
+| 80.0%
+| 26.4%
+| 20.1%
+| 1.15
+
+| PlantUML
+| 98.0%
+| 100.0%
+| 27.4%
+| 23.2%
+| 1.02
+
+| Mermaid
+| 94.0%
+| 96.0%
+| *32.4%*
+| *18.5%*
+| 1.02
+|===
+
+Unlike Claude Sonnet 5 and GPT-4o (kUML highest SF, lowest HR), qwen3-coder:30b reproduces the
+Gemini pattern: kUML trails both baselines on Structural Fidelity, and its Final Compile Rate
+(80.0%) is well below PlantUML/Mermaid's near-100%, with 10 of 50 kUML generations exhausting
+all 3 repair attempts without converging, concentrated in the Sequence and SysML 2 families
+(`SEQ-S-03`, `SEQ-M-01`, `SEQ-M-02`, `SEQ-M-04`, `SEQ-C-03`, `SYS-S-02`, `SYS-M-02`, `SYS-M-03`,
+`SYS-C-03`, plus `CLASS-C-03`). This is consistent with the working hypothesis that kUML's
+syntax is underrepresented in training data relative to PlantUML/Mermaid — a 30B open-weight
+model appears more sensitive to that gap than the frontier models tested so far, though a single
+model at a single quantization level can't separate "smaller/open-weight" from "this specific
+model family" as the driving factor. Raw generations (including `finalCode` per cell):
+`research/gcr-benchmark/results/qwen3-coder:30b/raw-results.json`.
+
+== Published results — llama4:scout, local via Ollama (2026-08-19, n=1)
+
+A sixth run, another locally hosted open-weight model via Ollama: `llama4:scout` (Llama 4 Scout,
+a 109B-parameter mixture-of-experts model with ~17B active parameters, Q4_K_M quantization).
+
+[cols="1,1,1,1,1,1"]
+|===
+| DSL | CR | FCR | SF | HR | RI
+
+| kUML + GCR
+| 60.0%
+| 72.0%
+| *26.5%*
+| 15.1%
+| 1.17
+
+| PlantUML
+| 68.0%
+| 74.0%
+| 23.1%
+| *11.5%*
+| 1.14
+
+| Mermaid
+| 64.0%
+| 80.0%
+| 24.4%
+| 18.5%
+| 1.23
+|===
+
+Unlike qwen3-coder:30b, llama4:scout reproduces the Claude Sonnet 5/GPT-4o pattern rather than
+the Gemini one: kUML has the highest Structural Fidelity of the three DSLs, though its Hallucination
+Rate (15.1%) sits between PlantUML's best-in-class 11.5% and Mermaid's 18.5% rather than leading
+outright. What stands out most is that **all three DSLs** compile far less reliably against this
+model than against every other model tested so far — even PlantUML's Final Compile Rate (74.0%)
+and Mermaid's (80.0%) are well below their near-100% norm across every other run in this benchmark,
+suggesting llama4:scout struggles with strict output-format adherence in general, not specifically
+with kUML's syntax. kUML's 14 non-converging generations spread across Class-Complex (3:
+`CLASS-C-03`, `CLASS-C-05`, `CLASS-C-06`), Sequence (6: `SEQ-S-03`, `SEQ-M-01`, `SEQ-M-03`,
+`SEQ-C-01`, `SEQ-C-02`, `SEQ-C-03` — every Sequence-Complex task), and SysML 2 (5: `SYS-S-02`,
+`SYS-M-01`, `SYS-M-02`, `SYS-M-03`, `SYS-C-03`) — notably, all 12 C4 tasks compiled successfully
+for kUML this run, the inverse of the C4 first-shot compile-rate cliff seen with Claude Sonnet 5.
+Raw generations: `research/gcr-benchmark/results/llama4:scout/raw-results.json`.
+
+== Published results — deepseek-r1:70b, local via Ollama (2026-08-20, n=1)
+
+A third local Ollama model, this time a reasoning model: `deepseek-r1:70b` (70.6B parameters,
+Q4_K_M quantization). Generation was markedly slower than the other two local runs (reasoning
+traces before the final answer), and one cell (`SEQ-M-02` PlantUML) hit the client-side request
+timeout on its first attempt — re-run individually via `run-ollama.py --ids SEQ-M-02` to
+completion, same as any other retry.
+
+[cols="1,1,1,1,1,1"]
+|===
+| DSL | CR | FCR | SF | HR | RI
+
+| kUML + GCR
+| 44.0%
+| 62.0%
+| 21.4%
+| *15.8%*
+| 1.32
+
+| PlantUML
+| 54.0%
+| 70.0%
+| 17.2%
+| 20.6%
+| 1.23
+
+| Mermaid
+| 60.0%
+| 82.0%
+| *21.6%*
+| 22.5%
+| 1.29
+|===
+
+deepseek-r1:70b doesn't cleanly fit either prior pattern: kUML's Structural Fidelity (21.4%) is
+essentially tied with Mermaid's (21.6%, a 0.2-point gap) while clearly ahead of PlantUML's
+(17.2%), and kUML has the lowest Hallucination Rate of the three — but the SF "win" over Mermaid
+is too small at n=1 to call outright, unlike llama4:scout's clearer lead. All three DSLs again
+compile markedly worse than against the frontier models (kUML FCR 62.0%, the lowest of any run in
+this benchmark), continuing the pattern from llama4:scout that local/smaller models generally
+struggle with strict output-format adherence regardless of target DSL. kUML's 19 non-converging
+generations spread across Class (7: `CLASS-C-01`, `CLASS-C-02`, `CLASS-C-06`, `CLASS-M-01`,
+`CLASS-M-03`, `CLASS-M-05`, `CLASS-S-02`), Sequence (4: `SEQ-C-01`, `SEQ-C-02`, `SEQ-C-03`,
+`SEQ-M-01`), C4 (3: `C4-C-02`, `C4-M-01`, `C4-M-04`), and SysML 2 (5: `SYS-C-01`, `SYS-C-02`,
+`SYS-M-02`, `SYS-M-03`, `SYS-S-02`) — the most evenly spread failure pattern of the three local
+runs, with no family fully clean (unlike llama4:scout's all-successful C4). Raw generations:
+`research/gcr-benchmark/results/deepseek-r1:70b/raw-results.json`.
+
+== Published results — Grok 4, xAI (2026-08-20, n=1)
+
+A fifth frontier cloud model, run via xAI's OpenAI-compatible Chat Completions endpoint
+(`run-grok.py`).
+
+[cols="1,1,1,1,1,1"]
+|===
+| DSL | CR | FCR | SF | HR | RI
+
+| kUML + GCR
+| 90.0%
+| 98.0%
+| *36.8%*
+| *28.1%*
+| 1.08
+
+| PlantUML
+| 100.0%
+| 100.0%
+| 34.6%
+| 22.4%
+| 1.00
+
+| Mermaid
+| 92.0%
+| 100.0%
+| 36.4%
+| 23.0%
+| 1.10
+|===
+
+kUML narrowly leads on Structural Fidelity, but the margin is thin (0.4 points over Mermaid, 2.2
+over PlantUML) — not the wide gap seen with Claude Sonnet 5 or GPT-4o. More notable is
+Hallucination Rate: kUML's 28.1% is the *worst* of the three DSLs for this model, and the highest
+kUML HR of any frontier model tested (compare Claude 15.1%, GPT-4o 11.8%, Gemini 2.5 Flash 20.7%,
+Gemini 2.5 Pro 18.5%). Grok reproduces the Claude/GPT-4o "kUML leads" pattern on SF, but not their
+"kUML also hallucinates least" pattern on HR — the two metrics that moved together for every other
+frontier model diverge here. PlantUML's 100.0% first-shot compile rate ties the highest recorded
+for any DSL/model pair in this benchmark (also reached by Mermaid against GPT-4o and Gemini 2.5
+Flash). Raw generations:
+`research/gcr-benchmark/results/grok-4/raw-results.json`.
+
+== Published results — MiniMax-M2.7, Gonka via GonkaRouter (2026-08-21, n=1)
+
+A decentralized/blockchain compute network entry, run via GonkaRouter (`https://gonkarouter.io`), a
+third-party OpenAI-compatible broker for the Gonka network — distinct from kUML's built-in `kuml ai`
+Gonka provider, which is hardcoded to the official broker (`run-gonka.py`).
+
+MiniMax-M2.7 is a reasoning model that emits a visible `<think>...</think>` trace inline in its
+response content before any code. At `max_tokens=32768`, **73.3% of all 150 baseline cells ended in
+`stuck` status** — the model exhausted its entire token budget mid-reasoning without ever producing
+code. The scores below are computed only over the cells that did produce final code (n=40 of 150);
+read them as "what the model does when it finishes reasoning in time," not as a representative sample
+of all 150 attempts — the 73.3% that never finished are timeouts, not compile failures on code the
+model actually wrote.
+
+[cols="1,1,1,1,1,1"]
+|===
+| DSL | CR | FCR | SF | HR | RI
+
+| kUML + GCR
+| 14.0%
+| 18.0%
+| *6.0%*
+| 5.4%
+| 1.22
+
+| PlantUML
+| 22.0%
+| 32.0%
+| 7.7%
+| 11.6%
+| 1.31
+
+| Mermaid
+| 24.0%
+| 30.0%
+| 7.7%
+| *8.0%*
+| 1.20
+|===
+
+Every FCR and SF figure here is the lowest of any model tested in this benchmark, by a wide margin —
+the next-lowest kUML FCR is deepseek-r1:70b's 62.0% (see above), ~44 points higher. This
+isn't evidence MiniMax-M2.7 is unusually weak at the DSLs themselves: manually inspecting the
+successful generations (e.g. `CLASS-S-01`/`CLASS-S-03`/`CLASS-S-05`) shows clean, structurally sound
+output comparable to other models' successes. The gap is almost entirely explained by the stuck rate
+— see the MCP tool-use arm below for evidence that access to `kuml.examples` substantially improves
+completion, consistent with shorter/more directed reasoning once the tool supplies a concrete example
+to anchor on. Raw generations: `research/gcr-benchmark/results/MiniMaxAI-MiniMax-M2.7/raw-results.json`.
+
+== MCP tool-use arm: does `kuml.examples` help? (2026-08-20)
+
+Every result above is pure prompt-to-text generation — the model never gets to *ask* for anything
+mid-generation, only to react to compiler errors via the GCR repair loop. `run-claude-examples.py`,
+`run-gemini-examples.py`, `run-gpt4o-examples.py`, `run-grok-examples.py`, `run-gonka-examples.py`,
+and `run-ollama-examples.py` test a different
+mechanism: give the model a real `kuml_examples` tool, backed by a live `kuml-mcp` server
+subprocess over stdio (the same binary a real MCP client would talk to, not a reimplementation),
+and let it pull curated `.kuml.kts` examples for the target diagram type mid-conversation before
+producing its final answer. Bounded at 4 tool-use rounds; whatever text the model settles on is
+validated by the exact same GCR loop and toolchain as every other run. Only kUML's 50 cells run
+(`kuml.examples` is kUML-specific — offering it for PlantUML/Mermaid cells would be either unused
+or irrelevant to what's being measured).
+
+[cols="1,1,1,1,1,1"]
+|===
+| Model | CR | FCR | SF | HR | RI
+
+6+| **Claude Sonnet 5** — tool called in 50/50 cells (mean 1.24 calls/cell)
+| Without `kuml.examples` (baseline) | 72.0% | 88.0% | 44.5% | 15.1% | 1.23
+| With `kuml.examples` (MCP tool) | *92.0%* | *98.0%* | *56.0%* | *12.8%* | *1.06*
+
+6+| **Gemini 2.5 Flash** — tool called in 18/50 cells (mean 0.5 calls/cell)
+| Without `kuml.examples` (baseline) | 52.0% | 74.0% | 26.9% | 20.7% | 1.30
+| With `kuml.examples` (MCP tool) | *60.0%* | *82.0%* | *39.3%* | *18.0%* | 1.32
+
+6+| **GPT-4o** — tool called in 49/50 cells (mean 1.1 calls/cell)
+| Without `kuml.examples` (baseline) | 86.0% | 96.0% | 46.4% | 11.8% | 1.15
+| With `kuml.examples` (MCP tool) | 92.0% | 100.0% | 44.6% | 18.4% | 1.10
+
+6+| **qwen3-coder:30b, local** — tool called in 10/50 cells (mean 0.2 calls/cell)
+| Without `kuml.examples` (baseline) | 70.0% | 80.0% | 26.4% | 20.1% | 1.15
+| With `kuml.examples` (MCP tool) | 70.0% | 80.0% | 26.0% | 22.2% | 1.18
+
+6+| **llama4:scout, local** — tool called in 0/50 cells (mean 0.0 calls/cell)
+| Without `kuml.examples` (baseline) | 60.0% | 72.0% | 26.5% | 15.1% | 1.17
+| With `kuml.examples` (MCP tool) | *2.0%* | *40.0%* | *15.3%* | 10.5% | *2.40*
+
+6+| **Grok 4** — tool called in 12/50 cells (mean 0.24 calls/cell)
+| Without `kuml.examples` (baseline) | 90.0% | 98.0% | 36.8% | 28.1% | 1.08
+| With `kuml.examples` (MCP tool) | 94.0% | 100.0% | 37.8% | 25.8% | 1.06
+
+6+| **MiniMax-M2.7 (Gonka)** — tool called in 21/50 cells (mean 0.84 calls/cell)
+| Without `kuml.examples` (baseline) | 14.0% | 18.0% | 6.0% | 5.4% | 1.22
+| With `kuml.examples` (MCP tool) | *10.0%* | *46.0%* | *15.3%* | *14.5%* | *2.04*
+|===
+
+**Tool access does not uniformly help — the effect is model-specific, and correlates only loosely
+with how often the model actually calls the tool.** Two models improve substantially (Claude, +11.5
+SF points; Gemini 2.5 Flash, +12.4 SF points). Two are roughly flat: qwen3-coder:30b barely reaches
+for the tool (10/50) and its numbers barely move. GPT-4o is the interesting middle case — it calls
+the tool almost every time (49/50, nearly as often as Claude) yet ends up *slightly worse* on SF
+(-1.8 points) and clearly worse on Hallucination Rate (+6.6 points): frequent tool use is not the
+same as the tool improving the final answer. Grok 4 lands in between: a modest, genuine improvement
+(SF +1.0, HR -2.3) on light tool usage (12/50, a call rate close to qwen3-coder:30b's) — the closest
+this arm gets to "small positive effect roughly proportional to how often the tool is actually
+used," though even that reading doesn't survive contact with GPT-4o's near-universal-but-unhelpful
+usage or llama4:scout's zero-usage-but-catastrophic result. MiniMax-M2.7 is the clearest positive
+outlier: FCR more than doubled (18.0%→46.0%) and SF more than doubled (6.0%→15.3%) with only
+moderate tool usage (21/50, comparable to Grok 4's call rate) — but HR also nearly tripled
+(5.4%→14.5%) and CR actually fell (14.0%→10.0%), so the tool appears to trade first-shot precision
+and hallucination discipline for a much higher rate of eventually finishing at all. The most
+plausible mechanism, consistent with this model's very high baseline stuck rate (see the results
+section above): a concrete example gives the reasoning trace something to anchor on, shortening it
+enough to finish within the token budget more often — a different failure mode than the other five
+models, none of which showed anywhere near MiniMax-M2.7's baseline stuck rate.
+
+The sharpest result is llama4:scout, where merely **offering** the tool — despite it being called
+zero times across all 50 cells — collapsed first-shot Compile Rate from 60.0% to 2.0% and Final
+Compile Rate from 72.0% to 40.0%. This isn't a script artifact: manually re-validating a sample of
+the failing generations against the real `kuml` toolchain confirms genuine defects the no-tool
+baseline didn't produce at this rate — forward references to `val`s declared later in the same
+block (`Unresolved reference 'hotel'`, where `hotel` is declared after the association that uses
+it), and `association(...)` calls emitted in the wrong builder scope
+(`cannot be called in this context with an implicit receiver`). The tool schema was never invoked,
+so the model's own inference-time reasoning about the code didn't change — what changed is the
+request shape it saw. The most plausible read: llama4:scout's tool-calling behavior is fragile
+enough that the mere presence of a `tools` array in the request measurably disrupts its plain-text
+Kotlin-DSL generation, independent of whether it uses that array. This is a single sample and could
+be a quantization- or prompt-specific artifact, not necessarily true of llama4:scout at a different
+quantization or with a different tool schema — but it's a concrete counterexample to "offering
+tools can only help."
+
+deepseek-r1:70b was not run in this arm: Ollama reports no `tools` capability for it, and a smoke
+test confirmed the model never emits a tool call when one is offered (silently ignoring the `tools`
+parameter rather than erroring) — a full 50-cell run would only reproduce the no-tool baseline.
+Raw generations, including `toolCallCount` per cell, for every tested configuration:
+`research/gcr-benchmark/results/<model>-with-examples/raw-results.json`.
+
+== Which model should I use with kUML?
+
+Pulling every SF result in this benchmark into one ranking, strictly sorted by SF (n=1 per cell
+throughout — read as "suggestive," not "significant"):
+
+[cols="1,1,1"]
+|===
+| Model | kUML SF | kUML leads baselines?
+
+| Claude Sonnet 5 + `kuml.examples` (MCP)
+| *56.0%*
+| Yes, by a wide margin
+
+| GPT-4o
+| 46.4%
+| Yes
+
+| Claude Sonnet 5 (no tool)
+| 45.3% footnote:claudesf[The 2026-07-06 single-sample run and the later 9-model dataset's own
+  Claude Sonnet 5 baseline (44.5%, see the MCP arm table above) differ slightly — both are real
+  n=1 samples from separately-run generations against the same primers, not a data error; treat
+  the ~1-point gap as sampling noise on top of the existing n=1 caveat, not a discrepancy to
+  resolve.]
+| Yes
+
+| GPT-4o + `kuml.examples` (MCP)
+| 44.6%
+| Yes, but slightly below GPT-4o's own no-tool result
+
+| Gemini 2.5 Flash + `kuml.examples` (MCP)
+| 39.3%
+| No — still below Mermaid's baseline SF on the plain run, though a large improvement over its own no-tool number
+
+| Grok 4 + `kuml.examples` (MCP)
+| 37.8%
+| Yes, narrowly — but has the worst Hallucination Rate (25.8%) of any leading configuration
+
+| Grok 4 (no tool)
+| 36.8%
+| Yes, narrowly — but has the worst Hallucination Rate (28.1%) of the three DSLs for this model
+
+| Gemini 2.5 Flash (no tool)
+| 26.9%
+| No
+
+| llama4:scout (local)
+| 26.5%
+| Yes
+
+| qwen3-coder:30b (local)
+| 26.4%
+| No — Mermaid ahead (32.4%)
+
+| Gemini 2.5 Pro
+| 26.2%
+| No
+
+| qwen3-coder:30b + `kuml.examples` (MCP, local)
+| 26.0%
+| No — essentially unchanged from its own no-tool result
+
+| deepseek-r1:70b (local)
+| 21.4%
+| Essentially tied with Mermaid (21.6%)
+
+| llama4:scout + `kuml.examples` (MCP, local)
+| 15.3%
+| No — collapsed from its own no-tool result (see MCP arm section: tool never called, but merely offered)
+
+| MiniMax-M2.7 + `kuml.examples` (MCP, Gonka)
+| 15.3%
+| No same-model PlantUML/Mermaid SF exists for this arm (kUML-only cells) — but more than double its own no-tool result (6.0%)
+
+| MiniMax-M2.7 (no tool, Gonka)
+| *6.0%*
+| No — PlantUML and Mermaid both ahead (7.7% each); the lowest kUML SF of any model tested
+|===
+
+Three practical takeaways, all with the n=1 caveat above attached:
+
+* **MCP tool access is not a free lunch — it helps some models substantially, is a wash for
+  others, and actively hurt one of the seven configurations tested.** Claude Sonnet 5, Gemini 2.5
+  Flash, and MiniMax-M2.7 all improve clearly, though MiniMax-M2.7's improvement is a third
+  pattern of its own: completion rate more than doubled while precision and hallucination
+  discipline both got worse (CR fell, HR nearly tripled) — a trade, not an unambiguous win. Grok 4
+  improves modestly; GPT-4o and qwen3-coder:30b are roughly flat; llama4:scout got dramatically
+  worse despite never calling the tool. "Give the model more tools" is not a substitute for
+  measuring what happens when you do.
+* **If you're calling Claude specifically, offering `kuml.examples` is the single largest lever in
+  this entire benchmark** — Claude with the tool beats every other configuration tested by a wide
+  margin. That result doesn't generalize to "any model, any tool" though — see the first point.
+* **Local-model choice doesn't reduce to "bigger is better" or "newer is better."** llama4:scout
+  (109B MoE) leads its baselines *without* tool access but craters *with* it; qwen3-coder:30b (30B)
+  and deepseek-r1:70b (70B) don't lead either way. If you're picking a local model specifically for
+  kUML generation without MCP tools, llama4:scout's no-tool result is the strongest so far among
+  the three tested — but this is one sample per model, not a recommendation to standardize on it.
+* **On decentralized-compute networks (tested here via GonkaRouter for Gonka), matching the model's
+  reasoning-token appetite to the request budget matters as much as DSL choice.** MiniMax-M2.7's
+  headline weakness in this benchmark — 73.3% of baseline cells never finishing — is a budget/timeout
+  issue, not a demonstrated DSL-competence issue: its completed generations are qualitatively
+  comparable to other models' successes, and giving it `kuml.examples` more than doubled its
+  completion rate. Treat a low score from this class of model as "ran out of reasoning budget," not
+  automatically as "can't write kUML."
+
+== Limitations
+
+* **The MCP tool-use arm ran on 7 of 9 baseline model configurations, kUML only, n=1.** Claude
+  Sonnet 5, GPT-4o, Gemini 2.5 Flash, Grok 4, qwen3-coder:30b, llama4:scout, and MiniMax-M2.7 all
+  have a with-tool data point; Gemini 2.5 Pro and deepseek-r1:70b have none — the latter deliberately
+  excluded, since Ollama reports no `tools` capability for it and a smoke test confirmed it never
+  emits a tool call when one is offered.
+  The arm only exercises `kuml.examples` — the other five `kuml-mcp` tools (`kuml.validate`,
+  `kuml.render`, `kuml.list_elements`, `kuml.describe`, `kuml.generate`) are untested in this
+  benchmark. The llama4:scout result in particular (catastrophic CR collapse despite zero tool
+  calls) is a single sample — treat it as "a thing that happened once," not a general property of
+  offering tools to that model.
+* **MiniMax-M2.7's benchmark scores are computed over a minority of cells that finished within the
+  token budget.** 110 of 150 baseline cells (73.3%) ended in `stuck` status — the model's `<think>`
+  reasoning trace exhausted the 32,768-token request budget before producing any code, not a compile
+  failure on code it actually produced. The FCR/SF/HR figures reported for this model describe "what
+  it does when it finishes reasoning in time," not a representative sample of all 150 attempts. A
+  higher token budget, a different quantization, or a different Gonka broker could plausibly show a
+  different completion rate — this looks like a property of this specific broker/budget combination,
+  not necessarily an intrinsic limit of the model.
+* **qwen3-coder:30b, llama4:scout, and deepseek-r1:70b are single-sample, single-quantization
+  exploratory runs, not part of the primary four-model dataset.** All three use the same
+  byte-identical `gcr_common.py` primers as the primary datasets (no primer-parity caveat), but
+  only 1 sample per cell like the retained `2026-07-06-claude-sonnet-5/` robustness check, and a
+  local Q4_K_M-quantized weight — results may differ from an unquantized or differently-quantized
+  run of the same model. The three local runs don't converge on a single pattern for whether kUML
+  leads on Structural Fidelity: qwen3-coder:30b trails (reproducing the Gemini pattern),
+  llama4:scout leads clearly (reproducing the Claude/GPT-4o pattern), and deepseek-r1:70b is
+  effectively tied with Mermaid — with n=1 per model this is at most suggestive that open-weight-
+  vs-frontier is not itself the deciding factor, not proof of a specific mechanism.
+* **Four models ran, testing a tier confound directly — inconclusively resolved.** Claude Sonnet 5
+  and GPT-4o are comparable frontier/flagship models; Gemini 2.5 Flash is a faster/cheaper tier. A
+  Gemini 2.5 Pro run was added specifically to separate model-tier effects from model-family effects
+  (see the results above): Pro reproduces Flash's divergence rather than resolving it, which shifts
+  the burden of proof away from "it's just the tier" without yet supplying a mechanistic alternative.
+* **Prompt primers aren't byte-identical across models** for Sequence/C4/SysML2 (Class-diagram is).
+  The GPT-4o/Gemini primers are reconstructed from `corpus.json`'s gold-standard code in the same
+  style/token budget, since the original Claude subagent prompts were never saved as a standalone
+  artifact.
+* **One sample per cell**, not three — no variance measure, no significance testing.
+* **HR is algorithmic**, not judged — see the metrics section above.
+* **No visual inspection** of rendered SVGs — only compile/parse success and
+  structural (node/edge) content were checked.
+* API rate limiting during the run required throttling concurrent generations down to
+  batches of 4 with per-pair retries; this has no bearing on the scored results, only
+  on how long the run took.
+
+== Reproduce with your own LLM
+
+See `research/gcr-benchmark/README.adoc` for the step-by-step loop and the exact
+`score.py` invocation. In short: generate from `corpus.json`'s `nl` field per task/DSL,
+validate with the real toolchain, repair up to 3×, extract normalized nodes/edges in
+the format above, then run `python3 score.py your-results.json --corpus corpus.json`.

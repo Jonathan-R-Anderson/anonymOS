@@ -1,0 +1,204 @@
+package dev.kuml.uml.dsl
+
+import dev.kuml.uml.AggregationKind
+import dev.kuml.uml.Multiplicity
+import dev.kuml.uml.UmlAssociation
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.shouldBe
+
+class AssociationBuilderTest :
+    FunSpec(body = {
+
+        // ── By string IDs ──────────────────────────────────────────────────────────
+
+        test(name = "association by string ids creates UmlAssociation") {
+            val model =
+                umlModel(name = "M") {
+                    classOf(name = "Order")
+                    classOf(name = "Item")
+                    association(sourceId = "Order", targetId = "Item")
+                }
+            model.elements.filterIsInstance<UmlAssociation>() shouldHaveSize 1
+        }
+
+        test(name = "association by string ids has correct end type ids") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Order", targetId = "Item")
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.ends[0].typeId shouldBe "Order"
+            assoc.ends[1].typeId shouldBe "Item"
+        }
+
+        test(name = "association id format is assoc::source-->target") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Order", targetId = "Item")
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.id shouldBe "assoc::Order-->Item"
+        }
+
+        test(name = "named association id includes name segment") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Order", targetId = "Item") { name = "contains" }
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.id shouldBe "assoc::Order-->Item::contains"
+        }
+
+        // ── By classifier handles ──────────────────────────────────────────────────
+
+        test(name = "association by classifier handles uses handle ids") {
+            val model =
+                umlModel(name = "M") {
+                    val order = classOf(name = "Order")
+                    val item = classOf(name = "Item")
+                    association(source = order, target = item)
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.ends[0].typeId shouldBe "Order"
+            assoc.ends[1].typeId shouldBe "Item"
+        }
+
+        test(name = "association by handle from enum uses enum id as typeId") {
+            val model =
+                umlModel(name = "M") {
+                    val status = enumOf(name = "OrderStatus") { literal(name = "DRAFT") }
+                    val order = classOf(name = "Order") {}
+                    association(source = order, target = status)
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.ends[1].typeId shouldBe "OrderStatus"
+        }
+
+        // ── Aggregation ────────────────────────────────────────────────────────────
+
+        test(name = "association default aggregation is NONE") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "A", targetId = "B")
+                }
+            model.elements
+                .filterIsInstance<UmlAssociation>()
+                .first()
+                .aggregation shouldBe AggregationKind.NONE
+        }
+
+        test(name = "association aggregation COMPOSITE is stored") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Order", targetId = "Item") {
+                        aggregation = AggregationKind.COMPOSITE
+                    }
+                }
+            model.elements
+                .filterIsInstance<UmlAssociation>()
+                .first()
+                .aggregation shouldBe AggregationKind.COMPOSITE
+        }
+
+        test(name = "association aggregation SHARED is stored") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Team", targetId = "Member") {
+                        aggregation = AggregationKind.SHARED
+                    }
+                }
+            model.elements
+                .filterIsInstance<UmlAssociation>()
+                .first()
+                .aggregation shouldBe AggregationKind.SHARED
+        }
+
+        // ── Multiplicity ───────────────────────────────────────────────────────────
+
+        test(name = "source end multiplicity string is parsed correctly") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Order", targetId = "Item") {
+                        source { multiplicity(spec = "1") }
+                    }
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.ends[0].multiplicity shouldBe Multiplicity(lower = 1, upper = 1)
+        }
+
+        test(name = "target end multiplicity 1..* is parsed correctly") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Order", targetId = "Item") {
+                        target { multiplicity(spec = "1..*") }
+                    }
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.ends[1].multiplicity shouldBe Multiplicity(lower = 1, upper = null)
+        }
+
+        test(name = "target end multiplicity 0..* is parsed correctly") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Customer", targetId = "Order") {
+                        target { multiplicity(spec = "0..*") }
+                    }
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.ends[1].multiplicity shouldBe Multiplicity(lower = 0, upper = null)
+        }
+
+        // ── Role ──────────────────────────────────────────────────────────────────
+
+        test(name = "source end role is stored") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Order", targetId = "Item") {
+                        target { role = "items" }
+                    }
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.ends[1].role shouldBe "items"
+        }
+
+        // ── Stereotypes (ADR-0017) ────────────────────────────────────────────────
+
+        test(name = "association without block has empty stereotypes by default") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "Order", targetId = "Item")
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.stereotypes.shouldBeEmpty()
+        }
+
+        test(name = "association stereotypes += adds a plain display-label stereotype") {
+            val model =
+                umlModel(name = "M") {
+                    classOf(name = "User")
+                    classOf(name = "Address")
+                    association(sourceId = "User", targetId = "Address") {
+                        stereotypes += "FK"
+                    }
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.stereotypes shouldBe listOf("FK")
+        }
+
+        // ── Both ends default navigable ────────────────────────────────────────────
+
+        test(name = "association ends are navigable by default") {
+            val model =
+                umlModel(name = "M") {
+                    association(sourceId = "A", targetId = "B")
+                }
+            val assoc = model.elements.filterIsInstance<UmlAssociation>().first()
+            assoc.ends[0].navigable shouldBe true
+            assoc.ends[1].navigable shouldBe true
+        }
+    })
+
+private val dev.kuml.core.model.KumlModel.elements
+    get() = (root as dev.kuml.core.model.KumlDiagram).elements

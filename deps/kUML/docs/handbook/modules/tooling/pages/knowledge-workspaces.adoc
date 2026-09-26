@@ -1,0 +1,420 @@
+= Knowledge Workspaces
+:description: OKF knowledge workspaces — the `kuml workspace` subcommand group, the `.kuml-workspace.toml` marker, and the `type:` frontmatter vocabulary.
+
+An *OKF knowledge workspace* is a directory tree of Markdown documents, each carrying a
+small YAML frontmatter block with a `type:` field drawn from a fixed vocabulary
+(`UmlClassDiagram`, `Concept`, `BpmnProcess`, ...) and — for diagram types — exactly one
+` ```kuml ` fenced code block. `kuml workspace` inspects, validates and renders such
+workspaces.
+
+The canonical entry point is the `kuml workspace` subcommand group:
+
+[source,bash]
+----
+kuml workspace init [--name <name>] [--mode knowledge|engineering]   # scaffold a new workspace (see below)
+kuml workspace info <dir>                     # mode + document inventory
+kuml workspace validate <dir>                 # structural OKF conformance checks
+kuml workspace render <dir>                   # render every ```kuml block to SVG/PNG
+kuml workspace convert <src> --to okf|kts     # convert between OKF notes and .kuml.kts scripts
+----
+
+`init` takes its target from the `--output` option (default `./<slug>`), *not* a positional
+directory argument; `info`, `validate` and `render` each take the workspace root as a
+positional `<dir>`.
+
+There are no top-level `kuml validate`/`kuml render` aliases for workspace operations —
+`kuml validate`/`kuml render` operate on a single `*.kuml.kts` script, `kuml workspace
+validate`/`render` operate on a whole document tree. Keep the two mental models separate.
+
+== `kuml workspace init`
+
+`kuml workspace init` scaffolds a new workspace from a built-in template set — a
+`.kuml-workspace.toml` marker plus starter documents — using the same scaffold engine as
+`kuml plugin init`. The freshly generated workspace passes `kuml workspace validate` with
+zero findings and renders cleanly out of the box.
+
+[source,bash]
+----
+kuml workspace init --name "My Club Bylaws" --mode knowledge
+kuml workspace init --name "My Diagrams" --mode engineering --non-interactive
+----
+
+[cols="1,3"]
+|===
+| Option | Meaning
+
+| `--name <text>`
+| Human-readable workspace name. Used for the marker's `[workspace] name`, the generated
+  content, and — after slugification (`[a-z0-9-]`) — the default output directory. When
+  omitted, `init` prompts for it interactively unless `--non-interactive` is set.
+
+| `--mode knowledge\|engineering`
+| Template set to scaffold. `knowledge` (default) generates prose + diagram Markdown
+  documents (`index.md`, an article, a domain-model diagram, a glossary). `engineering`
+  generates a bare `<slug>.kuml.kts` script plus `.gitignore`.
+
+| `--output <path>`
+| Target directory. Defaults to `./<slug>` derived from `--name`.
+
+| `-y`, `--non-interactive`
+| Fail with a usage error instead of prompting for a missing `--name`.
+
+| `--force`
+| Overwrite the target directory if it already exists and is non-empty.
+|===
+
+The `knowledge`-mode scaffold produces this tree:
+
+[source]
+----
+<slug>/
+├── .kuml-workspace.toml
+├── index.md                    # type: KumlWorkspace
+├── articles/01-introduction.md # type: Article
+├── models/domain-classes.md    # type: UmlClassDiagram
+└── glossary/index.md           # type: Glossary
+----
+
+== `kuml workspace convert`
+
+`kuml workspace convert` converts between OKF knowledge-workspace notes and bare
+`.kuml.kts` engineering scripts (FT-7). The two formats share identical DSL text — an
+OKF ` ```kuml ` block's source is byte-for-byte a valid standalone `.kuml.kts` body
+(the same fact `kuml workspace render` relies on). "Convert" is therefore a text
+wrap/unwrap plus frontmatter synthesis/stripping operation, not a model
+re-serialization.
+
+[source,bash]
+----
+kuml workspace convert ./scripts --to okf --output ./vault/models   # engineering -> knowledge
+kuml workspace convert ./vault --to kts --output ./scripts          # knowledge -> engineering
+----
+
+[cols="1,3"]
+|===
+| Option | Meaning
+
+| `<src>`
+| A single file or a directory. For `--to okf` this is `.kuml.kts` script(s); for
+  `--to kts` this is OKF Markdown note(s).
+
+| `--to okf\|kts`
+| Required. `okf` wraps each `.kuml.kts` script as an OKF Markdown note. `kts` extracts
+  each ` ```kuml ` block as a bare script.
+
+| `--output <dir>`
+| Output directory. Defaults to a sibling `<src>-okf` / `<src>-kts` for a directory
+  source, or the current directory for a single-file source.
+
+| `--force`
+| Overwrite an output file that already exists (default: skip it and report it under
+  `skipped`).
+
+| `--strict`
+| Escalate `OKF-C-002` (multi-block split) and `OKF-C-003` (un-mappable diagram type)
+  from WARNING to ERROR and exit with a non-zero code if any finding was reported.
+
+| `-o text\|json`
+| Report output format, matching `info`/`validate`/`render`'s convention.
+|===
+
+=== Directionality of losslessness
+
+This is the one property to internalise before relying on `convert` for a real
+workflow:
+
+* **`kts -> okf -> kts` is lossless** for the DSL text. Wrapping adds only frontmatter
+  and an H1 heading; extracting discards exactly that and nothing else, recovering the
+  original script byte-for-byte (modulo trailing-newline normalisation — the wrapped
+  block always carries exactly one trailing newline before the closing fence,
+  regardless of how many the source had).
+* **`okf -> kts -> okf` is *not* lossless.** The reverse round trip drops the original
+  prose, the note's own `title:`/`tags:`/other frontmatter, and any non-diagram document
+  (`Concept`, `Article`, `Glossary`, `KumlWorkspace` index, ...) entirely — only the
+  diagram DSL survives. The regenerated note's `title:` and heading come from the
+  diagram's own name, not the original note's `title:`.
+
+Keep prose-authored knowledge in the vault as the source of truth; use `convert` to
+pull diagrams out for engineering-side editing, not as a way to shuttle whole documents
+back and forth.
+
+=== Type mapping and unmappable diagram kinds
+
+`--to okf` evaluates each `.kuml.kts` script (the only way to know its *concrete*
+diagram kind) and maps it to an OKF `type:` value. Most UML, C4, SysML 2, BPMN,
+Blueprint and ERM diagram kinds have a vocabulary entry (see the type tables below).
+A few UML 2.x and C4 diagram kinds do not (e.g. `packageDiagram`, `objectDiagram`,
+`deploymentDiagram`, C4's `SystemLandscapeDiagram`/`DeploymentDiagram`/`DynamicDiagram`)
+— `convert` does not fabricate a vocabulary entry for these; it writes a deterministic
+custom `type:` (e.g. `UmlPackageDiagram`) and reports `OKF-C-003`.
+
+A script that declares multiple diagrams in one model only yields its *first* diagram
+on `--to okf` — the same "first diagram" behaviour as `kuml render`.
+
+=== Multi-block documents
+
+Consistent with `OKF-W-004` ("one file = one diagram"), a knowledge document with more
+than one ` ```kuml ` block is split by `--to kts` into `<stem>-1.kuml.kts`,
+`<stem>-2.kuml.kts`, ... (1-based) and reported as `OKF-C-002`.
+
+=== Trust model
+
+`--to kts` is pure text extraction and never evaluates anything — converting a
+knowledge document to a script never runs its diagram code. `--to okf` evaluates every
+`.kuml.kts` script to determine its concrete diagram kind, inheriting the same
+arbitrary-code-execution trust model as `kuml render` / `kuml workspace render`: only
+run it over scripts you already trust.
+
+== The `.kuml-workspace.toml` marker
+
+An optional marker file at the workspace root declares its mode and OKF metadata instead
+of leaving `kuml workspace info` to infer it:
+
+[source,toml]
+----
+[workspace]
+mode = "knowledge"
+name = "PZB Domain Model"
+kuml-version = ">=0.30.0"
+
+[okf]
+version = "0.1"
+vocabulary = "dev.kuml.okf@1.0"
+strict = false
+----
+
+[cols="1,3"]
+|===
+| Key | Meaning
+
+| `[workspace] mode`
+| `"knowledge"` or `"engineering"`. When absent, the mode is *inferred*: any `*.kuml.kts`
+  file anywhere in the tree → `engineering`; else an `index.md` plus other `*.md` files →
+  `knowledge`; else `unknown`.
+
+| `[workspace] name`
+| Free-form workspace display name.
+
+| `[workspace] kuml-version`
+| Declared kUML CLI version constraint (informational; not currently enforced).
+
+| `[okf] version`
+| Declared OKF spec version the workspace was authored against.
+
+| `[okf] vocabulary`
+| Declared `type:` vocabulary identifier (see below).
+
+| `[okf] strict`
+| Declared default for `--strict-vocabulary` (informational; the CLI flag always wins).
+|===
+
+The parser is a small hand-rolled subset of TOML — comments (`#`), `[section]` headers,
+and `key = value` lines with quoted or bare scalar values. It never throws: a malformed
+or partial marker degrades to "field absent", falling back to the inference heuristic
+above rather than aborting the scan.
+
+== The `type:` vocabulary
+
+Every document's frontmatter `type:` field is resolved against a fixed vocabulary
+(current version: `1.0`, `29` entries). Types with `requiresKumlBlock = true` must
+contain exactly one ` ```kuml ` fenced code block; the others are prose/collection types.
+
+=== UML
+
+[cols="2,1"]
+|===
+| `type:` | Requires a ```kuml block
+
+| `UmlClassDiagram` | yes
+| `UmlStateMachine` | yes
+| `UmlSequenceDiagram` | yes
+| `UmlActivityDiagram` | yes
+| `UmlComponentDiagram` | yes
+| `UmlUseCaseDiagram` | yes
+|===
+
+=== C4
+
+[cols="2,1"]
+|===
+| `type:` | Requires a ```kuml block
+
+| `C4ContextDiagram` | yes
+| `C4ContainerDiagram` | yes
+| `C4ComponentDiagram` | yes
+| `C4CodeDiagram` | yes
+|===
+
+=== ERM
+
+[cols="2,1"]
+|===
+| `type:` | Requires a ```kuml block
+
+| `ErmDiagram` | yes
+|===
+
+=== SysML 2
+
+[cols="2,1"]
+|===
+| `type:` | Requires a ```kuml block
+
+| `Sysml2BlockDefinition` | yes
+| `Sysml2InternalBlock` | yes
+| `Sysml2StateMachine` | yes
+| `Sysml2Activity` | yes
+| `Sysml2Sequence` | yes
+| `Sysml2UseCase` | yes
+| `Sysml2Requirement` | yes
+| `Sysml2Parametric` | yes
+|===
+
+=== BPMN
+
+[cols="2,1"]
+|===
+| `type:` | Requires a ```kuml block
+
+| `BpmnProcess` | yes
+| `BpmnCollaboration` | yes
+| `BpmnChoreography` | yes
+| `BpmnConversation` | yes
+|===
+
+=== Blueprint
+
+[cols="2,1"]
+|===
+| `type:` | Requires a ```kuml block
+
+| `ServiceBlueprint` | yes
+|===
+
+=== Knowledge (non-diagram)
+
+[cols="2,1"]
+|===
+| `type:` | Requires a ```kuml block
+
+| `KumlWorkspace` | no
+| `ConceptCollection` | no
+| `Concept` | no
+| `Article` | no
+| `Glossary` | no
+|===
+
+The vocabulary is checked into the codebase as a machine-readable contract at
+`kuml-docs/kuml-workspace/src/main/resources/okf/kuml-okf-vocabulary.json` (`id`,
+`requiresKumlBlock`, `since`, `description` per entry) and is kept in lockstep with the
+`OkfType` enum by a dedicated contract test. An unrecognised `type:` value is not an
+error by default — custom types are allowed — but see `--strict-vocabulary` below.
+
+== OKF finding codes
+
+`kuml workspace validate` runs a fixed structural rule set:
+
+[cols="1,1,3,1"]
+|===
+| Code | Severity | Meaning | Blocks a Desktop save?
+
+| `OKF-E-001` | ERROR | Frontmatter missing or has no `type:` field. | Yes
+| `OKF-W-002` | WARNING (or ERROR under `--strict-vocabulary`) | Unrecognised `type:` value. | Yes
+| `OKF-E-003` | ERROR | A diagram type has no ```kuml block. | No
+| `OKF-W-004` | WARNING | A document has more than one ```kuml block ("one file = one diagram"). | No
+| `OKF-E-005` | ERROR | A relative Markdown link to a `.md` target that does not exist. | No
+| `OKF-W-006` | WARNING | The workspace root has no `index.md` with `type: KumlWorkspace`. | n/a — workspace-wide, never raised for a single document
+| `OKF-E-007` | ERROR | A ```kuml block failed to render (`kuml workspace render` only). | n/a — render-only, not raised by validate
+|===
+
+The last column refers to kUML Desktop's editable Knowledge Workspace document editor —
+see "Editing documents in kUML Desktop" below. `kuml workspace validate` itself never
+blocks anything; it only assigns severities.
+
+`kuml workspace convert` (FT-7) reports its own, disjoint code space:
+
+[cols="1,1,3"]
+|===
+| Code | Severity | Meaning
+
+| `OKF-C-001` | (skip, not a finding) | A knowledge document has no ```kuml block — nothing to extract (`--to kts`).
+| `OKF-C-002` | WARNING (or ERROR under `--strict`) | A document has more than one ```kuml block; split into `<stem>-1`, `<stem>-2`, ... (`--to kts`).
+| `OKF-C-003` | WARNING (or ERROR under `--strict`) | The diagram's kind has no OKF vocabulary entry; wrote a custom `type:` (`--to okf`).
+| `OKF-C-004` | ERROR | A `.kuml.kts` script failed to evaluate, or an output file could not be written.
+|===
+
+`OKF-W-002` findings include a *did-you-mean* suggestion (Levenshtein distance ≤ 3
+against the vocabulary) when a close match exists, e.g. `type: UmlClassDigram` suggests
+`Did you mean 'UmlClassDiagram'?`.
+
+== `--strict-vocabulary`
+
+By default an unrecognised `type:` is a warning — custom, workspace-local vocabulary is
+allowed. Pass `--strict-vocabulary` to `kuml workspace validate` to treat it as an error
+instead (exit code `5`, same as any other validation failure):
+
+[source,bash]
+----
+kuml workspace validate ./docs --strict-vocabulary
+----
+
+The finding code stays `OKF-W-002` in both modes — only the severity changes — so a JSON
+consumer parsing `kuml workspace validate -o json` output keys on a stable code space
+regardless of strictness.
+
+== Trust model
+
+`kuml workspace render` executes every ` ```kuml ` block's Kotlin script source through
+the same pipeline as `kuml render` — this is arbitrary code execution by design, not
+something introduced by workspace rendering. Only run it over workspaces you already
+trust, exactly like `kuml render` itself.
+
+== Editing documents in kUML Desktop
+
+Opening a Knowledge-mode workspace in kUML Desktop shows the usual document
+tree | document | SVG-preview three-column layout, and the middle column is editable.
+Every document has an independent *Read* / *Edit* toggle (a small segmented control
+above the document, or a double-click on the rendered prose to jump straight into Edit;
+Esc returns to Read as long as the buffer has no unsaved changes). The raw Markdown
+editor is the same `RSyntaxTextArea` widget the single-file script editor uses — full
+Undo/Redo and Ctrl+F find/replace work identically.
+
+The header above the document also carries the `type:` and `title:` frontmatter fields
+as first-class controls (a dropdown listing the full `type:` vocabulary — see
+"The `type:` vocabulary" above — and a text field), so retyping YAML by hand is never
+required for the two fields every OKF document has. Changing either splices the
+corresponding line into the in-memory buffer directly — the rest of the frontmatter
+(comments, unrelated keys, their order) is left byte-identical.
+
+=== The save gate
+
+Saving (Ctrl+S, or the Save button that appears once a document has unsaved changes)
+does *not* write whatever is in the buffer unconditionally. A persistent banner above
+the document — never a pop-up dialog, so it can't be dismissed and forgotten — shows
+every current OKF finding (see "OKF finding codes" above) for the buffer, and exactly
+two of them **refuse the save outright**:
+
+[cols="1,3"]
+|===
+| Code | Why it blocks
+
+| `OKF-E-001` | Frontmatter missing or has no `type:` field — the desktop editor's own header controls have nowhere to write to.
+| `OKF-W-002` | An unrecognised `type:` value — treated as blocking here regardless of the workspace marker's `strict` setting, because it is always fixable with a single click in the `type:` dropdown.
+|===
+
+There is deliberately **no "save anyway" override** for these two — the fix is one
+click away, and a workspace-local document silently drifting out of OKF conformance
+serves no one. Every other finding (`OKF-E-003` no diagram block yet, `OKF-W-004`
+multiple diagram blocks, `OKF-E-005` a broken link) is shown as a warning in the same
+banner but does **not** block the write: a document may legitimately point at a file
+that's about to be created next, or be saved mid-edit while its diagram block is being
+cut and pasted back in.
+
+Saving is atomic (write to a temporary file in the same directory, then rename over the
+original) and re-validates the buffer immediately before writing — the same
+`kuml workspace validate` rule set the CLI runs, invoked on exactly the one document
+being saved. A successful save re-parses only that file and updates the workspace's
+in-memory document set and cross-link index accordingly; it never re-scans the whole
+workspace tree, and — same as `kuml workspace render` — it never introduces a second
+trust prompt: opening the workspace is still the only gate for evaluating a
+` ```kuml ` block's script.

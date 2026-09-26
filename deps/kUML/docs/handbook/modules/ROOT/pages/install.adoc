@@ -1,0 +1,209 @@
+= Installation
+:description: Install the kUML CLI, Gradle plugin, IntelliJ plugin, or VS Code plugin.
+
+You can use kUML in four ways: as a standalone CLI, as a Gradle plugin in your build,
+as an IntelliJ IDE plugin for editor support, or as a VS Code extension. Pick whichever
+matches the workflow you want; they all read the same `*.kuml.kts` script files.
+
+== Prerequisites
+
+* Java 21 or newer for the CLI, Gradle plugin, and JetBrains plugin.
+* Node 20+ for the VS Code extension's command palette (rendering shells out to the CLI).
+* No additional native dependencies — kUML runs on plain Java, no GraphViz, no Python.
+
+== CLI
+
+The CLI is the most direct way to render diagrams, generate code, validate OCL constraints,
+and run state-machine simulations.
+
+=== Homebrew (macOS / Linux)
+
+[source,bash]
+----
+brew install kuml-dev/kuml/kuml
+kuml --version
+----
+
+=== Chocolatey (Windows)
+
+https://chocolatey.org[Chocolatey] is the established package manager for Windows
+developers and DevOps — the Windows counterpart to Homebrew. The kUML package ships
+a self-contained Java 21 runtime (jlink), so **no separate JDK installation is required**.
+
+[source,powershell]
+----
+choco install kuml
+kuml --version
+----
+
+Upgrade or remove it the usual way:
+
+[source,powershell]
+----
+choco upgrade kuml
+choco uninstall kuml
+----
+
+[NOTE]
+====
+The Chocolatey package is built and pushed automatically by the release pipeline on
+every version tag. The first release of a new package enters Chocolatey community
+moderation (typically 1–3 days); until it is approved, `choco install kuml` may not yet
+resolve. Use xref:#_direct_download[a direct download] in the meantime. Subsequent version
+updates are approved automatically.
+====
+
+=== SDKMAN! (coming soon)
+
+SDKMAN! is the JVM-ecosystem package manager (`kotlin`, `gradle`, `maven`, `springboot`, …).
+kUML is published as a single `UNIVERSAL` candidate — one archive for every platform, no
+bundled JRE — the same shape every other JVM candidate on SDKMAN! uses. **Requires an
+active Java 21+** (`sdk install java` if you don't already have one); SDKMAN!'s whole
+purpose is managing that for you, so kUML relies on it here instead of shipping its own
+runtime the way the Homebrew/Chocolatey/direct-download channels do.
+
+[NOTE]
+====
+SDKMAN! installation is **not available yet**. The release pipeline is in place, but the
+SDKMAN! vendor onboarding (API keys) is still pending. Until it completes, please use
+xref:#_homebrew_macos_linux[Homebrew], the native installers, or a
+xref:#_direct_download[direct download]. This page will be updated with the working
+`sdk install kuml` command as soon as the candidate goes live.
+====
+
+Once the candidate is published, installation will work like this:
+
+[source,bash]
+----
+# Make sure a Java 21+ is active first (skip if you already have one):
+sdk install java 21.0.10-tem
+sdk use java 21.0.10-tem
+
+# Install the latest stable kUML:
+sdk install kuml
+
+# Or pin a specific version:
+sdk install kuml {kuml-version}
+
+# Switch between installed versions:
+sdk use kuml {kuml-version}
+----
+
+Because the candidate is `UNIVERSAL`, this works identically on macOS, Linux, and Windows
+(via WSL or Git Bash) — there is no per-platform gating.
+
+=== Direct download
+
+Pre-built distributions are attached to each https://github.com/kuml-dev/kUML/releases[GitHub release].
+Download the `kuml-{kuml-version}.zip` for your platform, unzip, and put `bin/kuml` on your `PATH`.
+
+=== From source
+
+[source,bash]
+----
+git clone https://github.com/kuml-dev/kUML.git
+cd kUML
+./gradlew :kuml-cli:installDist
+./kuml-cli/build/install/kuml-cli/bin/kuml --version
+----
+
+== Gradle plugin
+
+[NOTE]
+====
+The `dev.kuml` Gradle plugin is published on the
+https://plugins.gradle.org/plugin/dev.kuml[Gradle Plugin Portal] and on Maven Central
+since v0.32.0 — see xref:tooling:gradle.adoc[the Gradle plugin reference] for details.
+====
+
+Add the plugin to any Gradle build. The plugin contributes three tasks: `kumlRender`,
+`kumlGenerate`, and `kumlValidate`.
+
+[source,kotlin]
+----
+plugins {
+    id("dev.kuml") version "{kuml-version}"
+}
+
+kuml {
+    sourceDir.set(file("src/main/kuml"))
+    outputDir.set(layout.buildDirectory.dir("kuml"))
+    format.set("svg")             // "svg" | "png"
+    theme.set("kuml")             // any ThemeRegistry name
+    generator.set("kotlin")       // "kotlin" | "java" | "sql" | any CodeGenRegistry name
+}
+----
+
+Run any of the three tasks:
+
+[source,bash]
+----
+./gradlew kumlRender    // renders *.kuml.kts to SVG / PNG
+./gradlew kumlGenerate  // emits code via the configured generator
+./gradlew kumlValidate  // checks OCL invariants, fails on violations
+----
+
+The Gradle plugin uses `@CacheableTask` annotations throughout — running the same task twice
+with unchanged inputs is a no-op (UP-TO-DATE).
+
+See xref:tooling:gradle.adoc[the Gradle plugin reference] for the full configuration surface.
+
+== JetBrains IDE plugin
+
+The IntelliJ Platform plugin adds first-class support for `*.kuml.kts` files in IntelliJ
+IDEA, Android Studio, PyCharm, and any other JetBrains IDE based on platform build 243+
+(2024.3 or newer).
+
+Install via *Settings -> Plugins -> Marketplace*, search for `kUML`, click *Install*.
+
+Features:
+
+* Syntax highlighting inherited from the bundled Kotlin plugin
+* Default imports (`dev.kuml.core.dsl.*`, `dev.kuml.uml.dsl.*`, `dev.kuml.c4.dsl.*`)
+  resolve without explicit `import` statements
+* Custom file icon for `*.kuml.kts`
+* Refactoring, Find Usages, Structure View — all inherited from Kotlin scripting
+
+See xref:tooling:intellij.adoc[the JetBrains plugin reference] for details.
+
+== VS Code extension
+
+The VS Code extension provides syntax highlighting, snippets, and a one-click "Render to SVG"
+command that shells out to the CLI.
+
+Install via *Extensions -> Search "kUML" -> Install*.
+
+Features:
+
+* Syntax highlighting (own TextMate grammar — no Kotlin extension dependency)
+* Snippets: `diagram`, `umlModel`, `classOf`, `interfaceOf`, `enumOf`, `c4Model`, `association`,
+  `stateMachine`, `applyProfile`, and more
+* File icon for `*.kuml.kts`
+* Command palette: *kUML: Render to SVG*
+
+Configuration:
+
+[source,json]
+----
+{
+  "kuml.cliPath": "kuml",
+  "kuml.theme": "kuml",
+  "kuml.format": "svg"
+}
+----
+
+See xref:tooling:vscode.adoc[the VS Code extension reference] for details.
+
+== Verifying the installation
+
+Run this in any directory:
+
+[source,bash]
+----
+echo 'classDiagram(name = "Smoke") { classOf("Hello") }' > smoke.kuml.kts
+kuml render smoke.kuml.kts --output smoke.svg
+open smoke.svg     # or xdg-open / start, depending on your OS
+----
+
+If you see a labelled box for `Hello`, the installation is working. Continue with the
+xref:quickstart.adoc[quick start].

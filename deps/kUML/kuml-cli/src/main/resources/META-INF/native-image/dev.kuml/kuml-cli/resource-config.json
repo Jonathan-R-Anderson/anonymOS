@@ -1,0 +1,17 @@
+{
+  "resources": {
+    "includes": [
+      {"pattern": "META-INF/services/.*"},
+      {"pattern": "META-INF/.*\\.kotlin_module"},
+      {"pattern": "META-INF/kotlin/.*"},
+      {"pattern": "META-INF/extensions/.*"},
+      {"pattern": "kotlin/.*"},
+      {"pattern": ".*\\.elk\\.metadata"},
+      {"pattern": "META-INF/native-image/.*"},
+      {"pattern": "plugin-templates/.*"},
+      {"pattern": "logback\\.xml"},
+      {"pattern": "logback-kuml-cli\\.xml"}
+    ]
+  },
+  "bundles": []
+}

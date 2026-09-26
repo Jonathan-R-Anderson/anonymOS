@@ -154,19 +154,19 @@ static const struct opt TIMEZONES[] = {
 
 /* The network choice is recorded only (nothing is downloaded, no interface is
  * configured on the installed system); its one live effect is unlocking the
- * zkSync row on the Boot integrity page.  The copy says exactly that. */
+ * Ethereum attestation row on the Boot integrity page.  The copy says exactly that. */
 static const struct opt NETWORKS[] = {
     { "Offline install",         "Recommended: nothing is fetched during installation (default)", "offline", 0 },
     { "Wired connection (DHCP)", "Note that this machine has a wired Ethernet link",             "wired",   0 },
-    { "Wi-Fi",                   "Show the live Wi-Fi status; unlocks the zkSync option",         "wifi",    0 },
+    { "Wi-Fi",                   "Show the live Wi-Fi status; unlocks Ethereum attestation",      "wifi",    0 },
 };
 static const char *const NETWORK_DETAIL[] = {
     ("Recorded as offline. Nothing is downloaded either way and no network is set up on the "
-    "installed system. zkSync boot attestation stays unavailable, which is the safe default "
+    "installed system. Ethereum boot attestation stays unavailable, which is the safe default "
     "because it needs a network at every boot."),
     ("Recorded as wired. Nothing is downloaded and no interface is configured by this choice. "
-    "It only unlocks the zkSync option on the Boot integrity page; enable that only on an "
-    "always-connected machine."),
+    "It only unlocks the Ethereum attestation option on the Boot integrity page; enable that only "
+    "on an always-connected machine."),
     ("Recorded as wifi. The live session brought Wi-Fi up on its own; this choice does not "
     "start or stop it and configures nothing on the installed system."),
 };
@@ -188,16 +188,18 @@ static const char *const FILESYSTEM_DETAIL[] = {
     "and the object store takes the free space at first boot, whatever you pick here."),
 };
 
+/* NOTE: the option CODE is still "zksync" (a stable wire value in install.json read by the kernel's
+ * installConfigBootIntegrityZkSync() and the /zksync-attestation.json manifest name); only the
+ * user-visible label/copy is "Ethereum", to avoid a boot-path-wide rename of the wire identifier. */
 static const struct opt BOOTINTEGRITY[] = {
-    { "Off",                "No boot-time attestation (default, recommended)",             "off",    0 },
-    { "zkSync attestation", "Verify the boot files on-chain at every boot; needs network", "zksync", 0 },
+    { "Off",                  "No boot-time attestation (default, recommended)",             "off",    0 },
+    { "Ethereum attestation", "Verify the boot files on-chain at every boot; needs network", "zksync", 0 },
 };
 static const char *const BOOTINTEGRITY_DETAIL[] = {
     ("Recorded as off. The installed system boots without checking its boot files against any "
     "outside record. Safe for a machine that may ever start without a network."),
-    ("Every boot hashes the boot files, compares them with the manifest, then checks the zkSync "
-    "registry over the network. A mismatch, a missing manifest or no network stops the boot "
-    "with a kernel panic."),
+    ("Every boot hashes the boot files and checks them against your Ethereum vault over Tor; "
+    "no vault, a mismatch, or no network stops the boot."),
 };
 
 /* Toggleable identity profiles.  The kernel seeds its own fixed identity set on every
@@ -319,6 +321,26 @@ static int read_attest_contract(char *out, size_t cap)
         return 0;
     char *at = strstr(key, "0x");
     return (at && parse_hex_address_at(at, out, cap)) ? 1 : 0;
+}
+
+/* One-line status of the on-chain attestation "wallet infrastructure", surfaced in the Boot
+ * integrity page's detail panel next to the Ethereum option: whether a vault CONTRACT is
+ * configured for this install, and — if not — how to deploy one (scripts/attest-deploy.sh, which
+ * also mints the seed-backed OWNER wallet that alone can update the whitelist afterwards). Kept
+ * short so it fits after the option detail in the same 400-char / ~3-line card. */
+static void attest_status_text(char *out, size_t cap)
+{
+    char addr[64];
+    if (read_attest_contract(addr, sizeof addr))
+        snprintf(out, cap,
+                 "Vault %s is recorded for this install; the wallet that deployed it owns the "
+                 "record -- keep that seed phrase to update the whitelist later (phone app / cold storage).",
+                 addr);
+    else
+        snprintf(out, cap,
+                 "No vault deployed yet: on a networked machine run 'make attest-deploy' (it mints a "
+                 "seed-backed owner wallet over Tor and deploys the vault), then copy "
+                 "build/attest-contract.txt to /config/attest-contract here.");
 }
 
 /* Gate for the on-chain attestation option: enabled once a contract address exists from either
@@ -765,7 +787,7 @@ static const char *screen_subtitle(struct app *app)
     case SCREEN_FILESYSTEM: return "A preference for the data area, recorded but not applied yet.";
     case SCREEN_ENCRYPTION: return "Plain install, full-disk encryption, or a Hidden OS with a decoy.";
     case SCREEN_DECOY: return "Details for the decoy Linux you can reveal under coercion.";
-    case SCREEN_BOOTINTEGRITY: return "Optionally check the boot files against the zkSync registry at every boot.";
+    case SCREEN_BOOTINTEGRITY: return "Optionally check the boot files against your Ethereum attestation vault at every boot.";
     case SCREEN_ACCOUNT: return "Create your account on the installed system.";
     case SCREEN_IDENTITIES: return "Separate worlds for the separate parts of your life.";
     case SCREEN_REVIEW: return "Check the summary; nothing has been written to the disk yet.";
@@ -798,7 +820,7 @@ static const char *screen_body(struct app *app)
                "install.json and will set the local time once time zone support lands, so any choice is safe.";
     case SCREEN_NETWORK:
         return "Recorded only: it changes nothing on the installed system. It decides whether the "
-               "zkSync option on the Boot integrity page can be picked, and Wi-Fi shows the live link status.";
+               "Ethereum attestation option on the Boot integrity page can be picked, and Wi-Fi shows the live link status.";
     case SCREEN_DRIVERS:
         return "Pre-ticked from the PCI devices found on this machine and saved as a list in "
                "install.json. No driver or firmware is downloaded or installed into either system yet.";
@@ -822,8 +844,8 @@ static const char *screen_body(struct app *app)
         return "A prebuilt Linux written encrypted to its own partition and started with the decoy "
                "boot password. The details below are recorded only; the decoy image is not changed.";
     case SCREEN_BOOTINTEGRITY:
-        return "Off does nothing. zkSync checks the boot files against the manifest and an on-chain "
-               "record at every boot; a mismatch, a missing manifest or no network stops the boot.";
+        return "Off does nothing. Ethereum hashes the boot files and checks them against your "
+               "on-chain vault every boot; a missing vault, a mismatch or no network stops the boot.";
     case SCREEN_ACCOUNT:
         return "Username and computer name are applied at every boot. The password is kept as a hash "
                "only and login does not ask for it yet, so anyone at the keyboard can use the system.";
@@ -941,8 +963,8 @@ static int *screen_sel_ptr(struct app *app, int s)
     }
 }
 
-/* Boot-integrity zkSync attestation needs the network step and a deployed registry;
- * the row is greyed out otherwise and the REASON is shown on the row itself
+/* Boot-integrity Ethereum attestation needs the network step and a deployed vault contract
+ * (code "zksync"); the row is greyed out otherwise and the REASON is shown on the row itself
  * (opt_disabled_reason) instead of a bare "unavailable". */
 static int opt_is_disabled(struct app *app, int s, int idx)
 {
@@ -2674,8 +2696,18 @@ static void review_disk(struct review_ctx *c)
     review_row(c, "Encryption", v, "applied at install");
     review_row(c, "Filesystem", FILESYSTEMS[app->filesystem_idx].label, "recorded only");
     int zk = strcmp(BOOTINTEGRITY[app->bootintegrity_idx].code, "zksync") == 0;
-    review_row(c, "Boot check", zk ? "zkSync - checked at every boot, needs network" : "Off",
+    review_row(c, "Boot check", zk ? "Ethereum - checked at every boot, needs network" : "Off",
                zk ? "checked at every boot" : "nothing checked");
+    if (zk) {
+        /* The on-chain attestation vault this install will verify against every boot. It is enabled
+         * only when a contract is configured, so read_attest_contract() should succeed here; show
+         * the full address so it can be confirmed before install. */
+        char addr[64];
+        if (read_attest_contract(addr, sizeof addr))
+            review_row(c, "Vault", addr, "on-chain, per-install");
+        else
+            review_row(c, "Vault", "address not found", "run make attest-deploy");
+    }
 }
 
 static void review_accounts(struct review_ctx *c, int show_password)
@@ -3060,7 +3092,7 @@ static void review_card(struct app *app, struct card *c)
         secondary = "This disk is too small for the layout; Install Now is disabled.";
         color = COL_RED;
     } else if (zk) {
-        secondary = "zkSync is on: the installed system will not boot without a working network.";
+        secondary = "Ethereum attestation is on: the installed system will not boot without a working network.";
         color = COL_AMBER;
     } else if (!plain && pos >= 0 && app->disks[pos].size_mib < 1200) {
         /* Same sizing rule for both encrypted modes: the system partition is
@@ -3166,12 +3198,17 @@ static void screen_card(struct app *app, struct card *c)
             snprintf(buf, sizeof buf, "%s  -  %s", o[idx].label, o[idx].sub);
         card_init(c, kind, buf, tag);
         opt_detail(app, app->screen, idx, buf, sizeof buf);
-        if (app->screen == SCREEN_BOOTINTEGRITY && idx == 0 && opt_is_disabled(app, app->screen, 1)) {
+        if (app->screen == SCREEN_BOOTINTEGRITY && idx == 1) {
+            /* Ethereum row: the wallet/vault status IS the detail here (what it does is already in
+             * the paragraph above), so the address / deploy instruction shows in full. */
+            attest_status_text(buf, sizeof buf);
+        } else if (app->screen == SCREEN_BOOTINTEGRITY && idx == 0 &&
+                   opt_is_disabled(app, app->screen, 1)) {
             size_t l = strlen(buf);
-            snprintf(buf + l, sizeof buf - l, " zkSync is unavailable here: %s.",
+            snprintf(buf + l, sizeof buf - l, " Ethereum attestation is unavailable here: %s.",
                      strcmp(NETWORKS[app->network_idx].code, "offline") == 0
                          ? "needs a Wired or Wi-Fi choice on the Network page"
-                         : "this medium carries no registry contract");
+                         : "no vault is configured yet -- run make attest-deploy");
         }
         card_detail(c, color, buf);
         return;
@@ -4093,7 +4130,7 @@ static void enter_screen(struct app *app)
     app->axis_accum = 0;         /* a sub-notch remainder must not bleed into the next page */
     focus_first_field(app);      /* Keyboard page: FIELD_KEYTEST, so typing lands in the test box */
     /* auto-scroll a list to reveal the current selection; a selection that became
-     * disabled since it was made (zkSync after Network went back to Offline) falls
+     * disabled since it was made (Ethereum attestation after Network went back to Offline) falls
      * back to the first row, which is the safe default on every list */
     if (screen_is_list(app->screen)) {
         int *sel = screen_sel_ptr(app, app->screen);

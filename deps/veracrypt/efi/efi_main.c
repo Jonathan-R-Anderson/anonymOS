@@ -79,7 +79,19 @@ typedef struct EFI_SIMPLE_TEXT_INPUT {
     void *WaitForKey;
 } EFI_SIMPLE_TEXT_INPUT;
 
-/* Field names/offsets per the UEFI spec; only ConIn and BS are used. */
+/* EFI_RUNTIME_SERVICES — only Get/SetVariable, for the stage-1 gatekeeper's one-shot AnosHiddenUnlock
+ * variable (see boot/gatekeeper/). GetVariable is service #7, SetVariable #9 (after the 24-byte hdr
+ * and six pointers #1..#6 GetTime..ConvertPointer). Retyping RuntimeServices below is layout-neutral
+ * (still a pointer at offset 88); it is only dereferenced under PREBOOT_IPGATE. */
+typedef struct {
+    char hdr[24];
+    void *p_1to6[6];                                                          /* #1..#6 */
+    EFI_STATUS (*GetVariable)(u16*, EFI_GUID*, u32*, u64*, void*);            /* #7 */
+    void *p_8[1];                                                             /* #8 */
+    EFI_STATUS (*SetVariable)(u16*, EFI_GUID*, u32, u64, void*);              /* #9 */
+} EFI_RUNTIME_SERVICES;
+
+/* Field names/offsets per the UEFI spec; only ConIn, BS and (under PREBOOT_IPGATE) RuntimeServices used. */
 typedef struct {
     char hdr[24];
     void *FirmwareVendor; u32 FirmwareRevision, _pad;     /* 24, 32 */
@@ -87,7 +99,7 @@ typedef struct {
     EFI_SIMPLE_TEXT_INPUT *ConIn;                          /* 48 */
     EFI_HANDLE ConsoleOutHandle; void *ConOut;             /* 56, 64 */
     EFI_HANDLE StdErrHandle; void *StdErr;                 /* 72, 80 */
-    void *RuntimeServices;                                 /* 88 */
+    EFI_RUNTIME_SERVICES *RuntimeServices;                 /* 88 */
     EFI_BOOT_SERVICES *BS;                                 /* 96 */
 } EFI_SYSTEM_TABLE;
 
@@ -537,6 +549,28 @@ static void decrypt_and_boot(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_I
 /* Interactive pre-boot authentication: prompt, route, retry. The prompt and the wrong-
  * password message are identical regardless of whether a hidden OS exists. A match decrypts
  * that OS's bootloader payload (DECOY at sys_first+1, HIDDEN at hidden_lba+1) and starts it. */
+#ifdef PREBOOT_IPGATE
+/* Stage-1 gatekeeper handoff (boot/gatekeeper/): the Linux gate sets the one-shot EFI variable
+ * AnosHiddenUnlock="ALLOW" iff the machine's public IP is whitelisted, then chains here. We read it,
+ * DELETE it (one-shot — a stale value must never linger), and return whether the hidden OS may open.
+ * On any error/absence we return 0 (fail-closed: decoy-only). This gate is a heuristic ON TOP of the
+ * password — a forged ALLOW only re-enables the prompt; the hidden password is still required. */
+static EFI_GUID ANOS_UNLOCK_GUID = {0x8f1e9a2c,0x6b7d,0x4e3f,{0x9a,0x0b,0x1c,0x2d,0x3e,0x4f,0x5a,0x6b}};
+static u16 ANOS_UNLOCK_NAME[] = {'A','n','o','s','H','i','d','d','e','n','U','n','l','o','c','k',0};
+static int anos_hidden_unlocked(EFI_SYSTEM_TABLE *ST){
+    EFI_RUNTIME_SERVICES *rs = ST->RuntimeServices;
+    if (!rs) return 0;
+    u8 buf[8]; u64 sz = sizeof buf; u32 attr = 0;
+    int allow = 0;
+    if (rs->GetVariable(ANOS_UNLOCK_NAME, &ANOS_UNLOCK_GUID, &attr, &sz, buf) == 0
+        && sz == 5 && buf[0]=='A'&&buf[1]=='L'&&buf[2]=='L'&&buf[3]=='O'&&buf[4]=='W')
+        allow = 1;
+    /* one-shot: delete regardless (size 0). Deleting an absent var is harmless. */
+    rs->SetVariable(ANOS_UNLOCK_NAME, &ANOS_UNLOCK_GUID, attr ? attr : 0x7, 0, (void*)0);
+    return allow;
+}
+#endif
+
 static void interactive(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_IO *bio,
                         const u8*decoy, const u8*hidden, const INSTALL_LAYOUT *L){
     EFI_SIMPLE_TEXT_INPUT *ci = ST->ConIn;
@@ -567,6 +601,20 @@ static void interactive(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_IO *bi
             return;
         }
         if (v==PREBOOT_HIDDEN){
+#ifdef PREBOOT_IPGATE
+            /* Stage-1 gate: off-whitelist, the hidden OS is locked. Discard the derived key and fall
+             * through to the SAME "incorrect passphrase" path as a wrong password — indistinguishable,
+             * and the decoy remains reachable with its own password. */
+            if (!anos_hidden_unlocked(ST)){
+                scrub(key, sizeof key);
+#ifdef PREBOOT_PROOF
+                ss("[preboot-efi] access denied\n");
+#else
+                ss("\r\nIncorrect passphrase.\r\n\r\n");
+#endif
+                continue;
+            }
+#endif
             PDBG("[preboot-efi] unlocked; BOOTING HIDDEN OS\n");
             /* volume size counts the data area after the header at hidden_lba; clamp to the
              * partition so a malformed header can never point the store past it */

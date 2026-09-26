@@ -1,62 +1,57 @@
 #!/bin/busybox sh
-# boot/gatekeeper/init — PID 1 of the anonymOS boot GATEKEEPER (a minimal-Linux UKI the §E5
-# pre-boot loader StartImages after it routes a password to DECOY or HIDDEN — see the README).
+# boot/gatekeeper/init — PID 1 of the STAGE-1 anonymOS boot GATEKEEPER.
 #
-# It IP-gates the HIDDEN OS: only a whitelisted network reaches it; anything else fails to a
-# REJECT (indistinguishable from a wrong password). The DECOY route runs the IDENTICAL dance and
-# boots the decoy regardless — so the two boots look the same to an observer.
+# NEW ARCHITECTURE (gatekeeper-first): this Linux UKI is the DEFAULT boot entry and runs BEFORE the
+# VeraCrypt disk-password loader. Linux gives us what EFI can't: WiFi, Tor, TLS and Argon2. It:
+#   1. brings up the network (WiFi via a connection panel, or Ethernet);
+#   2. reads the on-chain attestation record with its OWN STORED, READ-ONLY attestation password
+#      (Argon2id -> id/kEnc). eth_call get(id) is PERMISSIONLESS, so the gatekeeper holds NO wallet
+#      and never signs — nothing here can update the record or the contract (that needs the separate
+#      owner/deploy wallet, kept in cold storage). Extracting this stage yields only READ access.
+#   3. checks the machine's public IP against the record's whitelist;
+#   4. hands off to the VeraCrypt loader for the disk-password challenge (hidden vs decoy):
+#        ALLOW -> one-shot EFI var AnosHiddenUnlock=ALLOW, then BootNext=<loader> + reboot.
+#                 Stage 2 offers hidden|decoy by password, as normal.
+#        else  -> AnosHiddenUnlock unset/DENY, then BootNext=<loader> + reboot. Stage 2 is
+#                 DECOY-ONLY: the hidden password is rejected exactly like a wrong password, so from
+#                 off-whitelist the hidden OS is UNREACHABLE (even if the password is coerced).
 #
-# INDISTINGUISHABILITY (the whole point — do not "optimize" these away):
-#   * CONSTANT TIME  — every route pads to GK_DEADLINE before handing off, so a decoy boot, a
-#                      passing hidden boot, and a failing→reject attempt all take the same time.
-#   * SAME TRAFFIC   — the DECOY route runs the same Tor + vault fetch and discards the result, so
-#                      the on-the-wire signature is identical whichever password was typed.
-#   * SILENT         — all logging goes to /run/gk.log (tmpfs), NEVER console/serial. Nothing
-#                      route- or outcome-specific is ever printed.
-#   NB one thing this stage CANNOT fix alone: a WRONG password must also produce this same dance
-#   (see README "Unsolved") or the real password is distinguishable by its boot-time traffic.
+# The IP gate is a DENIABILITY HEURISTIC layered on top of the disk password, not access control:
+# the hidden password is still required in stage 2. The AnosHiddenUnlock var is writable by anything
+# with EFI-var access, so forging ALLOW only re-enables the *prompt* — it never reveals the hidden OS
+# without the password. See README.
 #
-# ┌ !!! UNTESTED DRAFT. Boot-critical. kexec/reject hand-offs are placeholders; the §E5 loader must ┐
-# │ pass gkroute/gkkey/geometry; build + iterate in a THROWAWAY VM. See README.                     │
-# └───────────────────────────────────────────────────────────────────────────────────────────────┘
+# ┌ !!! UNTESTED DRAFT. Boot-critical. Build + iterate in a THROWAWAY VM. The stage-2 loader must be
+# │ built to honor AnosHiddenUnlock (see README "Stage-2 loader gate"). See README.
+# └──────────────────────────────────────────────────────────────────────────────────────────────
 B=/bin/busybox
 $B mount -t proc proc /proc 2>/dev/null
 $B mount -t sysfs sys /sys 2>/dev/null
 $B mount -t devtmpfs dev /dev 2>/dev/null
 $B mount -t tmpfs tmp /run 2>/dev/null
+$B mount -t efivarfs efivarfs /sys/firmware/efi/efivars 2>/dev/null   # to set BootNext + the unlock var
+ESP=/esp
 
-# SILENCE: everything from here goes to tmpfs, not the console/serial the coercer can watch.
-exec >>/run/gk.log 2>&1
-log(){ $B echo "$(cut -d' ' -f1 /proc/uptime) $*"; }
-
-# Constant-time deadline: read the boot clock now; hold_to_deadline() pads to START+GK_DEADLINE on
-# EVERY exit path. GK_DEADLINE must exceed the worst-case Tor+fetch so padding is always downward
-# (a fetch that overruns it would leak timing). Overridable via the gkdeadline= cmdline param.
-START=$($B cut -d. -f1 /proc/uptime)
-GK_DEADLINE=90
-hold_to_deadline(){
-  now=$($B cut -d. -f1 /proc/uptime)
-  end=$((START + GK_DEADLINE))
-  while [ "$($B cut -d. -f1 /proc/uptime)" -lt "$end" ]; do $B sleep 1; done
-}
+log(){ $B echo "$(cut -d' ' -f1 /proc/uptime) $*" >>/run/gk.log; }
 
 for pass in 1 2 3 4 5 6 7 8; do for m in /mod/*.ko; do $B insmod "$m" 2>/dev/null; done; done
 
-# ── loader handoff (INTEGRATION: confirm names against efi_main.c) ───────────────────────────
-#   gkroute=decoy|hidden   which universe the loader matched (it holds the matching volume key)
-#   gkpass=<pw>            the typed password (for the attestation id/key + WiFi creds)
-#   gkvault=/gkrpc=/gkipsvc=   attestation contract / L2 RPC / public-IP endpoint (via Tor)
-#   gkkey=/gkrl=/gkiv=/gksz=   the matched volume's key + geometry, for kexec-ing that OS
-route=""; pw=""; vault=""; rpc=""; ipsvc=""
+# ── config: endpoints from cmdline, secrets/creds from the ESP (never a wallet) ──────────────
+#   gkvault=   attestation contract address        gkrpc=   L2 JSON-RPC endpoint (https)
+#   gkipsvc=   public-IP echo service (default below)
+#   gkloader=  the VeraCrypt loader's EFI Boot#### number to chain via BootNext (e.g. gkloader=0001)
+vault=""; rpc=""; ipsvc=""; loadernum=""
 for tok in $($B cat /proc/cmdline); do case "$tok" in
-  gkroute=*) route=${tok#gkroute=} ;; gkpass=*) pw=${tok#gkpass=} ;;
   gkvault=*) vault=${tok#gkvault=} ;; gkrpc=*) rpc=${tok#gkrpc=} ;;
-  gkipsvc=*) ipsvc=${tok#gkipsvc=} ;; gkdeadline=*) GK_DEADLINE=${tok#gkdeadline=} ;;
+  gkipsvc=*) ipsvc=${tok#gkipsvc=} ;; gkloader=*) loadernum=${tok#gkloader=} ;;
 esac; done
-salt=$($B cat /esp/anonymos/attest.salt 2>/dev/null)
+salt=$($B cat "$ESP/anonymos/attest.salt" 2>/dev/null)
+# The gatekeeper's STORED read-only attestation password (derives the record id + decrypt key).
+# Stored on the ESP; see README for the "prompt instead of store" hardening option.
+pw=$($B cat "$ESP/anonymos/attest.pass" 2>/dev/null)
+WIFI_ENC="$ESP/anonymos/wifi.enc"
 
-# ── the DANCE — run identically for decoy and hidden (traffic uniformity) ────────────────────
-WIFI_ENC=/esp/anonymos/wifi.enc
+# ── network bring-up: Ethernet first, then WiFi from the sealed config (panel hook below) ────
 is_wireless(){ [ -d "/sys/class/net/$1/wireless" ] || [ -e "/sys/class/net/$1/phy80211" ]; }
 have_route(){ $B ip route 2>/dev/null | $B grep -q '^default'; }
 net_up(){
@@ -64,16 +59,22 @@ net_up(){
   for d in /sys/class/net/*; do [ -e "$d" ] || continue; n=$($B basename "$d"); [ "$n" = lo ] && continue; is_wireless "$n" && continue
     $B ip link set "$n" up 2>/dev/null; $B udhcpc -i "$n" -n -q -t 3 -T 3 2>/dev/null && have_route && return 0; done
   for d in /sys/class/net/*; do [ -e "$d" ] || continue; n=$($B basename "$d"); is_wireless "$n" || continue
-    [ -f "$WIFI_ENC" ] || continue
-    printf '%s' "$pw" | /bin/attest-unseal --decrypt-file "$WIFI_ENC" --salt "$salt" > /tmp/wpa.conf 2>/dev/null || continue
+    # PANEL HOOK: /bin/gk-wifi-panel may write a fresh wpa_supplicant.conf to /tmp/wpa.conf (a user
+    # picking an SSID + entering the key on the graphical panel). Otherwise fall back to the sealed
+    # config so a known network connects unattended.
+    [ -x /bin/gk-wifi-panel ] && /bin/gk-wifi-panel "$n" >/tmp/wpa.conf 2>/dev/null
+    [ -s /tmp/wpa.conf ] || { [ -f "$WIFI_ENC" ] && printf '%s' "$pw" | /bin/attest-unseal --decrypt-file "$WIFI_ENC" --salt "$salt" > /tmp/wpa.conf 2>/dev/null; }
+    [ -s /tmp/wpa.conf ] || continue
     $B ip link set "$n" up 2>/dev/null; wpa_supplicant -B -i "$n" -c /tmp/wpa.conf >/dev/null 2>&1 || { $B rm -f /tmp/wpa.conf; continue; }
     ok=""; for i in $($B seq 1 30); do wpa_cli -i "$n" status 2>/dev/null | $B grep -q 'wpa_state=COMPLETED' && { ok=1; break; }; $B sleep 1; done
     [ -n "$ok" ] && $B udhcpc -i "$n" -n -q -t 3 -T 3 2>/dev/null && have_route && { $B rm -f /tmp/wpa.conf; return 0; }
     $B rm -f /tmp/wpa.conf; done
   return 1
 }
-# Returns ALLOW / DENY / BLACKLIST / ERR — same code runs on both routes (decoy discards it).
+
+# ── the on-chain IP check: ALLOW / DENY / BLACKLIST / ERR (read-only; over Tor) ──────────────
 run_check(){
+  [ -n "$pw" ] && [ -n "$vault" ] && [ -n "$rpc" ] || { log "unconfigured (pw/vault/rpc)"; echo ERR; return; }
   net_up || { log "no network"; echo ERR; return; }
   tor -f /etc/tor/torrc >/tmp/tor.log 2>&1 &
   ok=""; for i in $($B seq 1 60); do $B nc -z 127.0.0.1 9050 2>/dev/null && { ok=1; break; }; $B sleep 1; done
@@ -84,28 +85,45 @@ run_check(){
   req="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"$vault\",\"data\":\"$data\"},\"latest\"]}"
   resp=$(curl -s --max-time 30 $T -H 'Content-Type: application/json' -d "$req" "$rpc" 2>/dev/null) || { echo ERR; return; }
   rec=$(printf '%s' "$resp" | /bin/attest-unseal --decode-ethcall --password "$pw" --salt "$salt" 2>/dev/null) || { echo ERR; return; }
-  myip=$(curl -s --max-time 30 $T "${ipsvc:-https://check.torproject.org/api/ip}" 2>/dev/null | $B grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | $B head -n1)
+  # Public IP: NOT via Tor — we need the machine's real egress IP for the whitelist, not a Tor exit.
+  myip=$(curl -s --max-time 30 "${ipsvc:-https://api.ipify.org}" 2>/dev/null | $B grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | $B head -n1)
   [ -n "$myip" ] || { echo ERR; return; }
   printf '%s' "$rec" | /bin/attest-unseal --match "$myip" 2>/dev/null || echo ERR
 }
+
 verdict=$(run_check)
-log "route=$route verdict=$verdict"
+log "verdict=$verdict"
 
-# ── decide outcome (no early exits — every path reaches hold_to_deadline) ─────────────────────
-outcome=REJECT
-if [ "$route" = decoy ]; then
-  outcome=DECOY                              # decoy always boots; the check above was only for traffic parity
-elif [ "$route" = hidden ] && [ "$verdict" = ALLOW ]; then
-  outcome=REAL
-fi                                           # hidden+anything-else, or unknown route → REJECT
+# ── set the one-shot unlock var, then chain to the loader ────────────────────────────────────
+# AnosHiddenUnlock GUID: fixed, anonymOS-specific. Attributes 0x07 = NV|BS|RT so it survives the
+# reboot into the loader; the loader reads it and DELETES it (one-shot). Absent => decoy-only.
+UNLOCK_GUID=8f1e9a2c-6b7d-4e3f-9a0b-1c2d3e4f5a6b
+UNLOCK_VAR=/sys/firmware/efi/efivars/AnosHiddenUnlock-$UNLOCK_GUID
+set_unlock(){  # $1 = ALLOW | DENY
+  $B rm -f "$UNLOCK_VAR" 2>/dev/null
+  # efivarfs write = 4-byte little-endian attributes (0x07,0,0,0) followed by the value.
+  printf '\007\000\000\000%s' "$1" > "$UNLOCK_VAR" 2>/dev/null
+}
+chain_to_loader(){
+  # One-shot boot into the VeraCrypt loader. Prefer efibootmgr; fall back to writing BootNext.
+  if [ -n "$loadernum" ]; then
+    efibootmgr -n "$loadernum" >/dev/null 2>&1 || \
+      printf '\007\000\000\000%b' "$(printf '\\x%02x\\x%02x' $((0x$loadernum & 255)) $(((0x$loadernum >> 8) & 255)))" \
+        > /sys/firmware/efi/efivars/BootNext-8be4df61-93ca-11d2-aa0d-00e098032b8c 2>/dev/null
+  fi
+  $B sync
+  $B reboot -f 2>/dev/null
+  echo b > /proc/sysrq-trigger 2>/dev/null
+  while :; do $B sleep 3600; done
+}
 
-hold_to_deadline                             # <-- constant time: all outcomes leave here together
-
-# ── hand off (INTEGRATION: replace with real kexec / reject-to-loader) ───────────────────────
-case "$outcome" in
-  REAL)   log "-> real"; : ;;   # TODO kexec the hidden OS with gkkey/geometry
-  DECOY)  log "-> decoy"; : ;;  # TODO kexec the decoy with gkkey/geometry
-  *)      log "-> reject"; : ;; # TODO reset back to the loader's prompt, indistinguishable from a wrong password
-esac
-# Placeholders: DO NOT SHIP. Must transfer control (kexec) or reset — never fall through.
-exec $B sh
+if [ "$verdict" = ALLOW ]; then
+  log "-> ALLOW: unlock hidden, chain to loader"
+  set_unlock ALLOW
+else
+  # DENY / BLACKLIST / ERR / no-network: hidden stays locked. Decoy is still reachable in stage 2
+  # (so the machine boots something innocuous); the hidden password will read as wrong.
+  log "-> $verdict: decoy-only, chain to loader"
+  set_unlock DENY
+fi
+chain_to_loader

@@ -350,10 +350,20 @@ $(DROPBEAR_SCP_BIN) $(DROPBEAR_SSH_BIN): deps/dropbear/Makefile
 # R0 — Rust->musl toolchain (the analogue of musl-clang for the Wayland clients; install via rustup
 # + `rustup target add x86_64-unknown-linux-musl`).  Builds NON-PIE static-musl AnonymOS binaries.
 RUSTC ?= $(HOME)/.cargo/bin/rustc
+CARGO ?= $(HOME)/.cargo/bin/cargo
 RUST_TARGET := x86_64-unknown-linux-musl
 RUSTFLAGS_STATIC := --target $(RUST_TARGET) -C target-feature=+crt-static -C relocation-model=static -O
 HELLO_WL_BIN := build/hello-wl
 HOSTERM_BIN := build/hos-term
+# hos-ethsign: the on-device Ethereum transaction signer (Cargo crate, not a single .rs file, so it
+# builds with cargo). ring's C/asm cross-compiles with the same musl gcc LKL uses.
+ETHSIGN_SRC := src/util/hos-ethsign
+ETHSIGN_BIN := build/hos-ethsign
+ETHSIGN_MUSL_CC ?= $(HOME)/lkl-build/x86_64-linux-musl-cross/bin/x86_64-linux-musl-gcc
+# hos-attest-deploy: static `hos-`-named launcher that runs hos-ethsign-dyn under
+# LD_PRELOAD=/libnshim.so and records the deployed address to /config/attest-contract.
+ATTESTDEPLOY_BIN := build/hos-attest-deploy
+ATTEST_VAULT_BIN := contracts/EncryptedAttestationVault.bin
 XDG_SHELL_XML := $(WAYLAND_SYSROOT)/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
 XDG_SHELL_HEADER := build/xdg-shell-client-protocol.h
 XDG_SHELL_CODE := build/xdg-shell-protocol.c
@@ -778,6 +788,41 @@ $(HELLO_WL_BIN): src/util/hello-wl.rs
 $(HOSTERM_BIN): src/util/hos-term.rs src/util/term_font8x8.rs
 	@echo "==== Building hos-term (R1: Rust CPU/SHM Wayland terminal hosting zsh) ===="
 	$(RUSTC) --edition 2021 $(RUSTFLAGS_STATIC) $< -o $@
+
+# hos-ethsign — on-device Ethereum signer. Static-musl, NON-PIE (matches the boot-module shape),
+# built with cargo (it has audited crate deps: k256/sha3/bip39/bip32/rustls). `cargo build` fetches
+# crates from the network the first time. Run tests with `make hos-ethsign-test`.
+.PHONY: hos-ethsign hos-ethsign-test
+hos-ethsign: $(ETHSIGN_BIN)
+$(ETHSIGN_BIN): $(ETHSIGN_SRC)/Cargo.toml $(wildcard $(ETHSIGN_SRC)/src/*.rs)
+	@echo "==== Building hos-ethsign (secp256k1 + keccak256 + RLP + EIP-1559, static musl) ===="
+	cd $(ETHSIGN_SRC) && \
+	  CC_x86_64_unknown_linux_musl="$(ETHSIGN_MUSL_CC)" \
+	  RUSTFLAGS="-C target-feature=+crt-static -C relocation-model=static" \
+	  "$(CARGO)" build --release --target $(RUST_TARGET)
+	@mkdir -p build
+	cp $(ETHSIGN_SRC)/target/$(RUST_TARGET)/release/hos-ethsign $@
+hos-ethsign-test:
+	cd $(ETHSIGN_SRC) && "$(CARGO)" test
+# Dynamic-musl variant for the ON-DEVICE networked path: real userland TCP is only reachable via
+# libnshim.so (LD_PRELOAD -> LKL net provider), and LD_PRELOAD needs a DYNAMIC binary. Run it as
+# `LD_PRELOAD=/path/libnshim.so hos-ethsign-dyn deploy …` with LKL up. The static build above is
+# for offline `sign`/`address` (no loader interposition possible). See src/util/hos-ethsign/README.md.
+.PHONY: hos-ethsign-dyn
+hos-ethsign-dyn:
+	@echo "==== Building hos-ethsign-dyn (dynamic musl, for libnshim->LKL on-device networking) ===="
+	cd $(ETHSIGN_SRC) && \
+	  CC_x86_64_unknown_linux_musl="$(ETHSIGN_MUSL_CC)" \
+	  RUSTFLAGS="-C target-feature=-crt-static" \
+	  "$(CARGO)" build --release --target $(RUST_TARGET)
+	@mkdir -p build
+	cp $(ETHSIGN_SRC)/target/$(RUST_TARGET)/release/hos-ethsign build/hos-ethsign-dyn
+
+# hos-attest-deploy — the on-device deploy launcher (static musl; runs hos-ethsign-dyn under
+# LD_PRELOAD=/libnshim.so, writes the deployed address to /config/attest-contract).
+$(ATTESTDEPLOY_BIN): src/util/hos-attest-deploy.c
+	@echo "==== Building hos-attest-deploy (on-device deploy launcher -> /config/attest-contract) ===="
+	$(MUSL_CC) -static -O2 -Wall -o $@ src/util/hos-attest-deploy.c
 
 # Z1: real upstream zsh (static musl). Built by deps/zsh/Makefile (Z0) from the
 # vendored, checksum-pinned tarballs; the committed binary makes the ISO build a no-op.
@@ -1260,6 +1305,36 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	   printf '\n    module_path: boot():/hos-term\n' >> cd/boot/limine/limine.conf && \
 	   echo "Included hos-term (R1: Rust CPU/SHM terminal)"; \
 	 else echo "Skipping hos-term (R1: $(RUSTC) not found)"; fi
+
+	@# hos-ethsign: the on-device Ethereum tx signer. Non-fatal — a missing cargo or an offline
+	@# crate fetch skips it (deploy still works host-side via scripts/attest-deploy.sh + Foundry).
+	@if [ -x "$(CARGO)" ]; then \
+	   if $(MAKE) --no-print-directory $(ETHSIGN_BIN); then \
+	     cp $(ETHSIGN_BIN) cd/hos-ethsign && \
+	     printf '\n    module_path: boot():/hos-ethsign\n' >> cd/boot/limine/limine.conf && \
+	     echo "Included hos-ethsign (on-device ETH tx signer, static — offline sign/address)"; \
+	   else echo "Skipping hos-ethsign (cargo build failed — offline crate fetch? run 'make hos-ethsign' with network)"; fi; \
+	 else echo "Skipping hos-ethsign ($(CARGO) not found — rustup + 'rustup target add $(RUST_TARGET)')"; fi
+
+	@# hos-ethsign-dyn (dynamic, for libnshim->LKL networking) + hos-attest-deploy launcher +
+	@# the vault creation bytecode — together these give on-device deploy. All non-fatal.
+	@if [ -x "$(CARGO)" ]; then \
+	   if $(MAKE) --no-print-directory hos-ethsign-dyn; then \
+	     cp build/hos-ethsign-dyn cd/hos-ethsign-dyn && \
+	     printf '\n    module_path: boot():/hos-ethsign-dyn\n' >> cd/boot/limine/limine.conf && \
+	     echo "Included hos-ethsign-dyn (networked signer, via libnshim->LKL)"; \
+	   else echo "Skipping hos-ethsign-dyn (cargo build failed)"; fi; \
+	 fi
+	@if $(MAKE) --no-print-directory $(ATTESTDEPLOY_BIN); then \
+	   cp $(ATTESTDEPLOY_BIN) cd/hos-attest-deploy && \
+	   printf '\n    module_path: boot():/hos-attest-deploy\n' >> cd/boot/limine/limine.conf && \
+	   echo "Included hos-attest-deploy (on-device deploy launcher -> /config/attest-contract)"; \
+	 else echo "Skipping hos-attest-deploy (build failed)"; fi
+	@if [ -f "$(ATTEST_VAULT_BIN)" ]; then \
+	   cp $(ATTEST_VAULT_BIN) cd/attest-vault.bin && \
+	   printf '\n    module_path: boot():/attest-vault.bin\n' >> cd/boot/limine/limine.conf && \
+	   echo "Included attest-vault.bin (EncryptedAttestationVault creation bytecode)"; \
+	 else echo "Skipping attest-vault.bin (run scripts/compile-contracts.sh to produce $(ATTEST_VAULT_BIN))"; fi
 
 	@# ROADMAP 2.3: upstream GTK's own demo applications.  gtk-hello proves the toolkit links
 	@# and opens a window, but we wrote it; these are unmodified upstream application code.

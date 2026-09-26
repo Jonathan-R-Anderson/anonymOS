@@ -212,6 +212,15 @@ efi: | $(BLD)
 	clang $(EFI_CFLAGS) -c $(EFI)/efi_stage2.c -o $(BLD)/efi_stage2.o
 	lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
 	    $(BLD)/efi_stage2.o -out:$(BLD)/stage2.efi
+	# Opt-in: PREBOOT_IPGATE=1 also builds preboot-ipgate.efi — the loader that honors the stage-1
+	# gatekeeper's one-shot AnosHiddenUnlock EFI var (decoy-only unless the IP was whitelisted). NOT
+	# the shipped loader (preboot.efi stays the default); build + boot-test it in a THROWAWAY VM first.
+	@if [ "$(PREBOOT_IPGATE)" = "1" ]; then \
+	    clang $(EFI_CFLAGS) -DPREBOOT_IPGATE -c $(EFI)/efi_main.c -o $(BLD)/efi_main_ipgate.o && \
+	    lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
+	        $(BLD)/efi_main_ipgate.o $(BLD)/efi_vc_pe.o $(BLD)/efi_aesni_pe.o -out:$(BLD)/preboot-ipgate.efi && \
+	    echo "[veracrypt] built $(BLD)/preboot-ipgate.efi (stage-1 IP gate ENABLED — test-only)"; \
+	 fi
 	@echo "[veracrypt] built $(BLD)/preboot.efi (production) + preboot-proof.efi + stage2.efi"; file $(BLD)/preboot.efi
 
 clean:

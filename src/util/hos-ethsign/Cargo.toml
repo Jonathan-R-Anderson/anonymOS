@@ -1,0 +1,41 @@
+[package]
+name = "hos-ethsign"
+version = "0.1.0"
+edition = "2021"
+description = "On-device Ethereum transaction signer for anonymOS (secp256k1 + keccak256 + RLP + EIP-1559)"
+
+[[bin]]
+name = "hos-ethsign"
+path = "src/main.rs"
+
+[dependencies]
+# Audited RustCrypto primitives — NOT hand-rolled. secp256k1 ECDSA (recoverable) + keccak256.
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std", "arithmetic"] }
+sha3 = "0.10"
+# BIP-39 mnemonic (any valid length: 12/15/18/21/24 words) + BIP-32 HD derivation, so the
+# on-device signer reproduces the exact key `cast wallet new-mnemonic` (scripts/attest-deploy.sh)
+# shows the user. bip32's own mnemonic parser is 24-word-only, so parse/seed with the rust-bitcoin
+# `bip39` crate and use bip32 solely for XPrv derivation.
+bip39 = { version = "2", default-features = false, features = ["std"] }
+bip32 = { version = "0.5", default-features = false, features = ["secp256k1", "std", "alloc"] }
+hex = "0.4"
+
+# JSON-RPC transport. The kernel's own TLS is stubbed (openssl_stubs.d), so TLS is done here in
+# userland with rustls+ring (pure-ish, static-musl friendly). serde_json parses replies. The TCP
+# socket is what libnshim routes to the LKL network provider on-device; a SOCKS5 client hops
+# through Tor. All network features are behind `net` so the offline signer can build without them.
+serde_json = { version = "1", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
+webpki-roots = { version = "0.26", optional = true }
+
+[features]
+default = ["net"]
+net = ["dep:serde_json", "dep:rustls", "dep:webpki-roots"]
+
+# Small, fast release binary — this ships as a boot module, so keep it lean.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

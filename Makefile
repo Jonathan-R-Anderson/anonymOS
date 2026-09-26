@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean iso zsh scp-client progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi arbiter-efi hos-install.iso wallpaper
+.PHONY: all clean iso zsh scp-client progs-haskell kuml deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi arbiter-efi hos-install.iso wallpaper
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -345,6 +345,11 @@ ETHSIGN_MUSL_CC ?= $(HOME)/lkl-build/x86_64-linux-musl-cross/bin/x86_64-linux-mu
 # LD_PRELOAD=/libnshim.so and records the deployed address to /config/attest-contract.
 ATTESTDEPLOY_BIN := build/hos-attest-deploy
 ATTEST_VAULT_BIN := contracts/EncryptedAttestationVault.bin
+# kUML (Haskell port): the JVM-free class-diagram renderer for the Development
+# domain.  Built via JHC + the in-tree musl-clang into a static, NON-PIE musl
+# ELF (same boot-module shape as hos-ethsign).  See deps/kUML/kuml-haskell/.
+KUML_HS_DIR := deps/kUML/kuml-haskell
+KUML_BIN := $(KUML_HS_DIR)/build/kuml
 XDG_SHELL_XML := $(WAYLAND_SYSROOT)/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
 XDG_SHELL_HEADER := build/xdg-shell-client-protocol.h
 XDG_SHELL_CODE := build/xdg-shell-protocol.c
@@ -798,6 +803,16 @@ hos-ethsign-dyn:
 	  "$(CARGO)" build --release --target $(RUST_TARGET)
 	@mkdir -p build
 	cp $(ETHSIGN_SRC)/target/$(RUST_TARGET)/release/hos-ethsign build/hos-ethsign-dyn
+
+# kuml — the kUML Haskell port (class-diagram DSL -> SVG). Delegates to the
+# self-contained sub-Makefile, which concatenates the modules (JHC's multi-module
+# C backend mis-links) and compiles them via JHC + musl-clang into a static,
+# NON-PIE musl ELF. Needs `jhc` on PATH and the in-tree musl-clang. Run its own
+# tests/parity check with `make -C deps/kUML/kuml-haskell check`.
+.PHONY: kuml
+kuml:
+	@echo "==== Building kUML (Haskell port; static-musl class-diagram renderer) ===="
+	+$(MAKE) -C $(KUML_HS_DIR) anos MUSL_CC="$(abspath $(MUSL_CC))"
 
 # hos-attest-deploy — the on-device deploy launcher (static musl; runs hos-ethsign-dyn under
 # LD_PRELOAD=/libnshim.so, writes the deployed address to /config/attest-contract).
@@ -1290,6 +1305,17 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	     echo "Included hos-ethsign (on-device ETH tx signer, static — offline sign/address)"; \
 	   else echo "Skipping hos-ethsign (cargo build failed — offline crate fetch? run 'make hos-ethsign' with network)"; fi; \
 	 else echo "Skipping hos-ethsign ($(CARGO) not found — rustup + 'rustup target add $(RUST_TARGET)')"; fi
+
+	@# kUML (Haskell port): static-musl UML class-diagram renderer for the Development domain,
+	@# run from a terminal (its .desktop entry, Categories=Development, makes it show in the app grid).
+	@# Non-fatal — needs `jhc` on PATH and the in-tree musl-clang; skipped cleanly if either is absent.
+	@if command -v jhc >/dev/null 2>&1 && [ -x $(MUSL_CC) ]; then \
+	   if $(MAKE) --no-print-directory kuml && [ -f $(KUML_BIN) ]; then \
+	     cp $(KUML_BIN) cd/kuml && \
+	     printf '\n    module_path: boot():/kuml\n' >> cd/boot/limine/limine.conf && \
+	     echo "Included kuml (Development-domain UML class-diagram renderer, static musl)"; \
+	   else echo "Skipping kuml (jhc build failed — run 'make -C $(KUML_HS_DIR) check')"; fi; \
+	 else echo "Skipping kuml (need jhc on PATH + $(MUSL_CC))"; fi
 
 	@# On-device NETWORKED deploy (hos-ethsign-dyn + hos-attest-deploy) is intentionally NOT staged
 	@# into the ISO: dynamic-musl Rust needs the out-of-tree musl-cross toolchain (absent -> it links

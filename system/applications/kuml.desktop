@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=kUML
+GenericName=UML Modeler
+Comment=Render UML class diagrams to SVG from the kUML DSL (Haskell port; CLI, run from a Development-domain terminal)
+Exec=/kuml
+Icon=applications-development
+Categories=Development;Graphics;
+Keywords=uml;diagram;model;class;svg;

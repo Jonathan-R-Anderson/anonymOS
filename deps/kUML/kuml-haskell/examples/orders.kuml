@@ -1,0 +1,48 @@
+// orders.kuml — kUML native DSL sample (class diagram)
+// Comments are // to end-of-line. Visibility glyphs: + public, - private,
+// # protected, ~ package.
+diagram "Order Management" {
+
+  abstract class Entity {
+    - id : UUID
+    + equals(other : Entity) : Boolean
+  }
+
+  class Order {
+    - id : UUID
+    - total : Money
+    + confirm(item : Item, qty : Int) : Boolean
+    + cancel()
+  }
+
+  class Customer {
+    + name : String
+    - email : String
+  }
+
+  class OrderItem {
+    - sku : String
+    - quantity : Int
+  }
+
+  interface Payable {
+    + pay(amount : Money) : Boolean
+  }
+
+  enum Status {
+    NEW
+    PAID
+    SHIPPED
+    CANCELLED
+  }
+
+  class Logger
+
+  // relationships
+  generalization Order Entity
+  generalization Customer Entity
+  realization Order Payable
+  composition Order OrderItem
+  aggregation Order Customer
+  dependency Order Logger
+}

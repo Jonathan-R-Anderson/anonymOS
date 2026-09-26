@@ -1,10 +1,10 @@
-prefix=${pcfiledir}/../..
+prefix=/home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot
 includedir=${prefix}/include
 libdir=${prefix}/lib
 
 Name: Libinput
 Description: Input device library
 Version: 1.29.2
-Requires.private: libudev
-Libs: -L${libdir} -linput
+Requires: libudev, libevdev >=  1.10.0
+Libs: -L${libdir} -linput -lm -lrt
 Cflags: -I${includedir}

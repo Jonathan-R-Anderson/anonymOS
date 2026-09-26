@@ -1291,20 +1291,13 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	   else echo "Skipping hos-ethsign (cargo build failed — offline crate fetch? run 'make hos-ethsign' with network)"; fi; \
 	 else echo "Skipping hos-ethsign ($(CARGO) not found — rustup + 'rustup target add $(RUST_TARGET)')"; fi
 
-	@# hos-ethsign-dyn (dynamic, for libnshim->LKL networking) + hos-attest-deploy launcher +
-	@# the vault creation bytecode — together these give on-device deploy. All non-fatal.
-	@if [ -x "$(CARGO)" ]; then \
-	   if $(MAKE) --no-print-directory hos-ethsign-dyn && [ -f build/hos-ethsign-dyn ]; then \
-	     cp build/hos-ethsign-dyn cd/hos-ethsign-dyn && \
-	     printf '\n    module_path: boot():/hos-ethsign-dyn\n' >> cd/boot/limine/limine.conf && \
-	     echo "Included hos-ethsign-dyn (networked signer, via libnshim->LKL)"; \
-	   else echo "Skipping hos-ethsign-dyn (cargo build failed)"; fi; \
-	 fi
-	@if $(MAKE) --no-print-directory $(ATTESTDEPLOY_BIN) && [ -f $(ATTESTDEPLOY_BIN) ]; then \
-	   cp $(ATTESTDEPLOY_BIN) cd/hos-attest-deploy && \
-	   printf '\n    module_path: boot():/hos-attest-deploy\n' >> cd/boot/limine/limine.conf && \
-	   echo "Included hos-attest-deploy (on-device deploy launcher -> /config/attest-contract)"; \
-	 else echo "Skipping hos-attest-deploy (build failed)"; fi
+	@# On-device NETWORKED deploy (hos-ethsign-dyn + hos-attest-deploy) is intentionally NOT staged
+	@# into the ISO: dynamic-musl Rust needs the out-of-tree musl-cross toolchain (absent -> it links
+	@# glibc/libc.so.6, which cannot run on anonymOS) plus a staged libgcc_s.so.1, and its
+	@# libnshim->LKL network path is untested on hardware. The linkage gate below correctly rejects
+	@# a staged glibc/unstaged-dep binary as a boot-brick. Build it on demand with `make hos-ethsign-dyn`
+	@# once that path is proven. The STATIC hos-ethsign (offline sign/address, staged above) plus the
+	@# host-side scripts/attest-deploy.sh cover signing + deploy today.
 	@if [ -f "$(ATTEST_VAULT_BIN)" ]; then \
 	   cp $(ATTEST_VAULT_BIN) cd/attest-vault.bin && \
 	   printf '\n    module_path: boot():/attest-vault.bin\n' >> cd/boot/limine/limine.conf && \

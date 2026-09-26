@@ -59,7 +59,7 @@ boot), unless explicitly marked| Whole-image A/B update unit — signed `.hosupd
 | **Software Center** — one searchable catalog over the package repositories of every major Linux distribution: Alpine main+community (complete), Debian stable, Ubuntu 24.04 main+universe, Fedora, Arch core+extra, openSUSE Tumbleweed and Flathub — **73,191 real packages** with their real versions, sizes, licences and summaries, harvested from the distributions' own indexes at build time (`scripts/pack-software-catalog.py`) and shipped in the image, so the catalog is browsable with no network. Honest about installability: Alpine is musl, the same libc this Linux personality implements, so apk packages are installable and an install request is cap-gated by the kernel (`/config/software.action`); glibc rows say why they cannot run here and show the upstream command. | ✅ | [`wl-software.c`](src/util/wl-software.c) |
 | **Install EpinAnonymOS to a disk** (native in-OS installer, no Calamares dependency) — boot the installer ISO, click **"Install to Disk"** on the desktop, and the kernel writes a GPT + EFI System Partition + the whole boot image to a target disk; reboot and the machine boots EpinAnonymOS from disk. **Validated end-to-end in QEMU/OVMF *and* real VirtualBox** (`make hos-install.iso` + `scripts/vbox-install-test.sh`); the installed disk boots **repeatedly** (the object store refuses to clobber a partitioned boot disk). | ✅ | [`INSTALLER`](roadmap/INSTALLER.md) |
 | Disk installer + **hidden/decoy-OS disk encryption** — install a second OS in a deeper encryption layer for plausible deniability (VeraCrypt-derived, an *optional* install step). **Proven end-to-end (E0–E5):** VeraCrypt crypto core (NIST KATs) → kernel builds byte-identical headers → 3-partition encrypted install on a real GPT (decoy + outer/hidden volumes, deniability + free-fill entropy validated) → cap-gated writes → **a real UEFI pre-boot loader that prompts for a password and routes decoy/hidden/reject + chain-loads, validated in OVMF**. Remaining: the real decoy OS image + installer page | 🚧 | [`INSTALLER`](roadmap/INSTALLER.md) |
-| **Blockchain-anchored boot integrity** (zkSync anti-rootkit) — at boot, verify the `/system` file hashes against a Merkle root published to a zkSync Era smart contract; anchored *off-machine* so a rootkit that rewrites local files (and the local manifest) still can't forge it, and re-published on every system update. *Optional* step. Specified (F0–F7); gated on the network stack (RX) + a Wi-Fi path, contract yet to be written | 🔵 | [`INSTALLER`](roadmap/INSTALLER.md) |
+| **Blockchain-anchored boot integrity** (Ethereum L2 / Base — migrated off zkSync) — at boot, verify `/system` + boot-module hashes against a Merkle root anchored *off-machine*, so a rootkit that rewrites local files (and the local manifest) still can't forge it. Two on-chain paths exist: an **EncryptedAttestationVault** (`contracts/`) holding a per-install *encrypted* record (integrity root + IP whitelist), sealed client-side with Argon2id+AES-GCM (`attest-seal.py`) and deployed over Tor (`attest-deploy.sh`, or the on-device `hos-ethsign` — a from-scratch secp256k1+keccak+RLP+EIP-1559 signer); and an in-kernel `boot_integrity.d` `eth_call` of a plaintext `systemRoot()` registry that panics on mismatch. A stage-1 Linux **gatekeeper** reads the vault to IP-gate the hidden OS. *Optional.* Contracts + signer + in-kernel verify are built; the gatekeeper handoff + on-device deploy are **written-but-untested drafts** (some kernel symbols still read "zksync" — cosmetic). | 🚧 | [`README-attestation-ops`](contracts/README-attestation-ops.md) |
 | **Perlin-noise decoy histories** — deterministic, lazily-generated fake system activity so a plausible-deniability decoy looks lived-in. The fake universe is a pure function of `seed = KDF(password)` — never stored, so it's reboot-deterministic + snapshot-trivial. **Engine + renderer built (`make decoy`):** integer/fixed-point coherent noise (cross-arch deterministic), a shared intensity field driving 8 correlated subsystems, heavy-tailed bursts, and a renderer that emits believable syslog/auth.log lines. Tests pass — same password → byte-identical universe, different → different, bursty (Fano 1.76), correlated (r 0.77), 10-years-out O(window). The **honey-hashed, typo-tolerant boot matcher** (G2.2) is built + wired into the §E pre-boot loader (a typo unlocks the decoy in OVMF). Remaining: kernel object-view (G1/G4) | 🚧 | [`INSTALLER`](roadmap/INSTALLER.md) |
 | **Linux decoy OS + concealed activity synthesis** — the decoy OS is a *real Linux distribution* (most believable); the fake history is produced *inside* it by a concealed program. **Built:** the §H1 decoy is a real **Alpine** (`make decoy-os`) seeded with a year of deterministic fake `/var/log` history via `fakelogd`; the real rootfs encrypts byte-perfectly into the encrypted partition (§E4c) and the §E5 loader chain-loads it. **Deniability security review done** ([`DECOY_SECURITY_REVIEW`](roadmap/DECOY_SECURITY_REVIEW.md)) — evidence-based, found the decoy *not yet* deniable, then **all 6 findings fixed**: **F1** distro/log consistency · **F2** full-disk featureless install (in-kernel installer encrypts the rootfs + random-fills both partitions; entropy map uniformly 8.000) · **F3** seed-anchored virtual clock + coherent mtimes · **F4** fixed-budget (length-independent) loader timing · **F5/F6** disk-illusion + concealment. **To-do:** **§H3** full-disk-illusion Linux dm-module (package the validated protection logic) | 🚧 | [`INSTALLER`](roadmap/INSTALLER.md) · [`DECOY_SECURITY_REVIEW`](roadmap/DECOY_SECURITY_REVIEW.md) |
 
@@ -68,49 +68,55 @@ boot), unless explicitly marked| Whole-image A/B update unit — signed `.hosupd
 ## Architecture at a glance
 
 ```
-  ┌──────────────────────────────────────────────────────────────────────────────┐
-  │   system.json  — one declarative source of truth for the whole system          │
-  │   anonymos-config compiler (host, D)  →  manifest.blob (HMAC-signed TLV)        │
-  └───────────────────────────────────────┬────────────────────────────────────────┘
-                                           │ verified at boot
-  ┌────────────────────────────────────────▼───────────────────────────────────────┐
-  │ BOOT   Limine → [ optional §E pre-boot auth (UEFI .efi): password →             │
-  │                  DECOY | HIDDEN, decrypt + chain-load the chosen OS ] → kernel    │
-  └────────────────────────────────────────┬───────────────────────────────────────┘
-                                           │
-  ┌────────────────────────────────────────▼───────────────────────────────────────┐
-  │ anonymOS kernel   (D · -betterC · no GC)   x86_64 · SMP (preemptive, N cores)     │
-  │   ┌──────────────────────── 6 native pillars ────────────────────────┐           │
-  │   │ Scheduler · Object Mgr · Capability Mgr · IPC · Memory · HAL      │           │
-  │   └───────────────────────────────────────────────────────────────────┘          │
-  │   Linux personality (~160 syscalls)  ║  Native object ABI 0x4000 (deny-by-default)│
-  │   rootless (no uid 0) · W^X/ASLR · X25519 + ChaCha20-Poly1305 secure IPC          │
-  └──────────┬─────────────────────────────────────────────────────────┬────────────┘
-             │                                                          │
-  ┌──────────▼──────────────── object model ─────────────────┐  ┌──────▼────────────────┐
-  │ Object-Reference-Graph · cap rights/derive/revoke · GC    │  │ Identity / security    │
-  │ Object FS:  /objects · /config · /system  (immutable)     │  │ domains (Qubes-style)  │
-  │ A/B updates + rollback                                    │  │ + Domain Manager (clone)│
-  └──────────┬───────────────────────────────────────────────┘  └──────┬────────────────┘
-             │                                                          │
-  ┌──────────▼───────────────────────┐              ┌──────────────────▼────────────────┐
-  │ Linux userland                    │              │ Native userland                    │
-  │ busybox · zsh · Weston desktop    │              │ hos-sh · esh · LFE (object shell)  │
-  │ (GPU: virgl/GL or Pixman) · GTK   │              │ gl-term / ratty terminals          │
-  └──────────┬───────────────────────┘              └────────────────────────────────────┘
-             │
-  ┌──────────▼──────────────── hardware / persistence ──────────────────────────────────┐
-  │ AHCI SATA → on-disk object store (persists across reboot) · e1000 NIC (Ethernet/ARP) │
-  │ virtio-gpu / virgl (host GPU) · LKL bridge → reuse real Linux drivers on bare metal   │
-  └──────────────────────────────────────────────────────────────────────────────────────┘
+  Status:  ✅ works   ◐ partial   ▢ stub   ✎ written-but-untested draft   ⌂ roadmap
 
-  ╔════════════ Installer + plausible deniability  (🚧 roadmap/INSTALLER.md) ════════════╗
-  ║ Calamares (static Qt) + native GPT/ESP partition engine (rootless, no libparted)      ║
-  ║ §E Hidden-OS encryption — VeraCrypt-derived AES/Serpent/Twofish-XTS, decoy + hidden    ║
-  ║    volumes, cap-gated 3-partition install, UEFI pre-boot loader (top of diagram)       ║
-  ║ §G Perlin decoy generator — deterministic fake logs/procs/net/security, keyed per pwd  ║
-  ║ §H Linux decoy OS + concealed synthesis   ·   §F zkSync blockchain boot integrity      ║
-  ╚════════════════════════════════════════════════════════════════════════════════════════╝
+  ┌────────────────────────────────────────────────────────────────────────────────────┐
+  │ system.json → anonymos-config (host, D) → manifest.blob (HMAC-signed TLV)         ✅ │
+  └───────────────────────────────────────┬──────────────────────────────────────────────┘
+                                           │ verified at first boot
+  ┌═══ BOOT  (see “Boot chain” breakdown) ══▼══════════════════════════════════════════════┐
+  │ Firmware/UEFI + on-disk GPT   [0]ESP  [1]system/decoy  [2]outer(hidden hdr @+128sec) ✅ │
+  │   threads the cross-stage artifacts:  /anos.key · install.json · attest.salt/.pass     │
+  │ ▸ Stage-1 Linux GATEKEEPER — IP-gate hidden OS via on-chain vault, set EFI unlock    ✎ │
+  │ ▸ VeraCrypt pre-boot loader — ONE password → DECOY | HIDDEN | REJECT                 ✅ │
+  │     (decoy & hidden take a BYTE-IDENTICAL visible path; REJECT ≡ off-whitelist hidden)  │
+  └──────────────── decoy pw │ ────────────────────────────── │ hidden pw (+ EFI unlock) ───┘
+                  ┌──────────▼───────────────────────┐  ┌──────▼───────────────────────────┐
+                  │ DECOY OS — Alpine + XFCE Linux  ✅ │  │ HIDDEN OS — anonymOS            ✅ │
+                  │ dm-crypt aes-xts · PID1 init-crypt│  │ RAM FAT vol → Limine → kernel.elf │
+                  │ deterministic fake logs/df (duress)│ └──────┬────────────────────────────┘
+                  └────────────────────────────────────┘        │
+  ┌═══ HIDDEN OS: anonymOS D microkernel  (D · -betterC · no GC · x86_64) ══════════▼════════┐
+  │ 6 pillars: Scheduler◐ · Object Mgr✅ · Capability Mgr✅ · IPC✅ · Memory✅ · HAL◐        │
+  │ one Big Kernel Lock · BSP cooperative/polled · only APs preempt (NOT full SMP yet)       │
+  │ ┌ syscall dispatch (LSTAR) — see breakdown ─────────────────────────────────────────┐   │
+  │ │ Linux personality ~157 calls (gateable off) ✅  ║  native object ABI rax=0x4000 ◐  │   │
+  │ └────────────────────────────────────────────────────────────────────────────────────┘  │
+  │ rootless (no uid 0) · W^X/NX · deny-by-default caps · X25519+ChaCha20-Poly1305 IPC ✅     │
+  └───────┬────────────────────────────┬───────────────────────────────┬────────────────────┘
+          │ (breakdown)                │ (breakdown)                   │
+  ┌───────▼─── object model ───────┐ ┌▼── security domains ──────┐ ┌──▼──── storage ──────────┐
+  │ 8192-slot object table · caps  │ │ 7 identity objects; per-  │ │ immutable content-addr    │
+  │ (no god-cap) · ref-graph + GC ✅│ │ app device/net gates ✅   │ │ store + objstore (real    │
+  │ FS /objects · /config · /system│ │ unspoofable colour borders│ │ disk, FDE AES-256-XTS) ✅ │
+  │                                │ │ · Domain Manager GUI      │ │ A/B updates (bootstate)  ◐│
+  └────────────────────────────────┘ └───────────────────────────┘ └───────────────────────────┘
+          │
+  ┌───────▼─ userland — dynamic musl: /ld-musl-x86_64.so.1 + shared .so (all Limine modules) ─┐
+  │ a normal app → Linux-personality syscalls → cap/object gate    busybox · zsh · GTK apps ✅ │
+  └───────┬─────────────────────────────────────────────────────────────┬─────────────────────┘
+          │ (breakdown)                                                 │ (breakdown)
+  ┌───────▼──── networking — 3 paths ──────────────────┐   ┌────────────▼──── desktop ──────────┐
+  │ native D stack: userland UDP/ICMP ONLY          ✅ │   │ Weston 14 + Pixman SOFTWARE render ✅│
+  │ LKL provider: real WiFi over NSP RPC            ◐ │   │ (no GPU by default) → kernel DRM/KMS │
+  │ libnshim LD_PRELOAD → LKL = only userland TCP   ✅ │   │ framebuffer → scanout · ~25 wl-* apps│
+  └─────────────────────────────────────────────────────┘   └──────────────────────────────────────┘
+
+  ╔═══ CROSS-CUT: on-chain trust (Base L2) — TWO DISTINCT paths (see attestation breakdown) ══╗
+  ║ (a) stage-1 gatekeeper → EncryptedAttestationVault.get(id)  ENCRYPTED record, over Tor  ✎ ║
+  ║ (b) in-kernel boot_integrity.d → BootIntegrityRegistry.systemRoot()  PLAINTEXT root     ◐ ║
+  ║ migrated off zkSync (some code symbols still read “zksync” — cosmetic lag)                 ║
+  ╚════════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 The **native kernel is six pillars**: Scheduler, Object Manager, Capability
@@ -119,6 +125,198 @@ Linux personality — is implemented *as objects* and can be gated off
 (`g_linuxEnabled`). A live boot census confirms exactly this:
 `[census] PASS native kernel = 6 pillars; families=0x10 are objects` — 16
 distinct object families populated.
+
+## Subsystem breakdowns
+
+The parts that need more than one box are broken out below. Same status key:
+`✅ works · ◐ partial · ▢ stub · ✎ written-but-untested draft · ⌂ roadmap`.
+
+### Boot chain — firmware → decoy | hidden
+
+```
+       ┌───────────────┐
+       │ Firmware/UEFI │  boots the default ESP entry
+       └───────┬───────┘
+               │
+   ┌ ─ ─ ─ ─ ─ ▼ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐   ✎ DRAFT / UNTESTED
+     Stage-1 GATEKEEPER (Linux UKI, boots FIRST)
+   │  net up (Eth/WiFi) → Tor → eth_call get(id)   │   (dashed = not wired into
+      → decrypt record → match public IP whitelist       the shipped boot path yet)
+   │  SetVariable AnosHiddenUnlock=ALLOW|DENY      │
+      + BootNext=loader → reboot ──────────────────────┐ one-shot EFI var
+   └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘    │
+               ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
+   ┌───────────▼───────────────────────────────────┐
+   │ VeraCrypt pre-boot loader (PE32+ EFI, §E5) ✅  │  ONE password prompt
+   │  auth: try password vs BOTH headers →          │
+   │        DECOY | HIDDEN | REJECT (retry ×3)      │
+   │  [PREBOOT_IPGATE ◐, OFF by default]: on HIDDEN │
+   │   read+delete AnosHiddenUnlock; !ALLOW→REJECT  │
+   └───────┬───────────────────────────────┬────────┘
+    decoy  │ kind 0                  kind 1 │ hidden
+   ┌───────▼───────────────────┐   ┌────────▼───────────────────────────────┐
+   │ decrypt+boot: PE UKI       │   │ decrypt+boot: FAT32 volume → RAM        │
+   │ LoadImage decoy UKI;       │   │ publish EFI BlockIo; patch /anos.key;   │
+   │ LoadOptions cmdline =      │   │ chain-load Limine BOOTX64.EFI           │
+   │  decoykey/rl/iv/sz(+seed)  │   │  (/anos.key ANOSKEY1 = 64B master key   │
+   └───────┬───────────────────┘   │   + object-store LBAs + flags)          │
+   ┌───────▼───────────────────┐   └────────┬────────────────────────────────┘
+   │ init-crypt (PID1)          │   ┌────────▼───────────────┐
+   │ dm-crypt aes-xts-plain64;  │   │ Limine → kernel.elf     │
+   │ switch_root Alpine + XFCE  │   │ (limine protocol)       │
+   └────────────────────────────┘   └─────────────────────────┘
+
+   on-disk GPT:  [0] ESP  — plain preboot loader
+                 [1] system / DECOY   — encrypted + random-filled; decoy header @ start
+                 [2] outer volume      — encrypted + random-filled; outer header @ start,
+                                         HIDDEN anonymOS nested, hidden header @ +128 sectors
+
+   Deniability: decoy & hidden take a byte-identical path (screen/serial/timing);
+                REJECT and off-whitelist HIDDEN both print “Incorrect passphrase”.
+```
+
+### Syscall dispatch — the dual personality
+
+```
+   user task ── `syscall` ──► LSTAR MSR ──► asm entry stub (HAL)
+                                              │
+                                    dispatchSyscall  switch(rax)
+                              ┌───────────────┴──────────────────┐
+                 rax==0x4000 AND g_taskNativeAbi            every other rax
+                              │                                  │
+                     ┌────────▼─────────┐            ┌───────────▼────────────┐
+                     │ Native object ABI │            │ inline (mmap/fork/exec) │
+                     │ hoscall.d, ~24 ◐  │            │  or default ──────────┐ │
+                     │ verbs: object_*,  │            │ dispatchLinuxSyscall  │ │
+                     │ cap_grant,        │            │ ~157 linux_sys_* ✅   │ │
+                     │ ns_clone,         │            │ (ENOSYS if            │ │
+                     │ identity_switch   │            │  g_linuxEnabled=off)  │ │
+                     └────────┬─────────┘            └───────────┬───────────┘ │
+   (a Linux task hitting 0x4000 → ENOSYS: the object surface is invisible)     │
+                              └──────────────┬─────────────────────────────────┘
+                        requireCap  (deny-by-default, per-family rights)
+                                             │
+                              Object Manager (central 8192-slot table)
+```
+
+### Object model, capabilities & object FS
+
+```
+   per-task cap tables ─(rights · derive⊆ · revoke)─►┐
+   ORG typed edges (StrongOwn/Ref/Cap/Weak/Observer) ►│   ┌──────────────────────────┐
+   namespace  name → objId ──────────────────────────►├──►│ Object table (8192 slots) │
+                                                       │   │ ObjHeader{id,type,refs}   │
+        GC: release → orgOnFree → reachability +       │   │ 36 families · no god-cap  │
+            Tarjan SCC → free physical page  ◄─────────┘   └────────────┬─────────────┘
+                                                                        │ projected as
+   ┌─────────── /objects ─────────┐ ┌──── /config ─────┐ ┌─── /system ──▼────────────┐
+   │ live views: identities,      │ │ *.action control │ │ /usr(ro) /etc(ovl) /var    │
+   │ services, domains, users,    │ │ (deny-by-default) │ │ over content-addressed     │
+   │ apps (enumerated from tables)│ │ + *.json rendered │ │ SHA-256 store + verity     │
+   └──────────────────────────────┘ └───────────────────┘ └────────────────────────────┘
+
+   Storage / updates — TWO separate A/B tracks + the real persisted store:
+     • generations (in-memory model): store.d blobs → update.d 2 slots → rollback = ptr swap
+     • physical boot (disk): sysupdate.d /config/update.action → bootstate sector → EFI arbiter
+     • objstore.d = the ONLY real persisted store ✅ (/objects/apps on disk, FDE AES-256-XTS)
+     • imgupdate physical ESP-B write + Ed25519 verify = ⌂ roadmap (HMAC stand-in today)
+```
+
+### Security domains (Qubes-style, no VMs)
+
+```
+   7 identity objects (deny-by-default, sealed after boot policy load):
+     ┌────────────┬───────┬───────────┬──────────┬──────────────┐
+     │ Identity   │ trust │ NetPolicy │ Clipboard│ device-class │
+     ├────────────┼───────┼───────────┼──────────┼──────────────┤
+     │ System     │ high  │ NAT       │ ask      │ all          │
+     │ Personal   │ med   │ NAT       │ ask      │ most         │
+     │ Work       │ med   │ VPN (lbl) │ ask      │ most         │
+     │ Banking    │ high  │ NAT       │ deny     │ locked-down  │
+     │ Development │ med   │ NAT       │ allow    │ most         │
+     │ Untrusted  │ low   │ Tor (lbl) │ deny     │ minimal      │
+     │ Disposable │ low   │ Disp.     │ deny     │ minimal      │
+     └────────────┴───────┴───────────┴──────────┴──────────────┘
+     (NetPolicy on/off is enforced via DEVCLASS_NET; the VPN/Tor “where” is a label ◐)
+
+   control loop:   wl-domain-manager ──read──►  /config/*.json  (rendered by hoscall.d)
+                                     ──write──► /config/domain.action  (verbs)
+
+   launch an app INTO a domain (confinement chain):
+     transition gate (needs ADMIN_IDENTITY + a compiled launch rule)
+       → private namespace clone + Task.identity/domain label
+         → per-syscall device/net gate  (open()/connect() → EACCES if the bit is clear)
+           → compositor draws the identity’s UNSPOOFABLE colour border
+```
+
+### Networking — three parallel paths
+
+```
+   LANE 1  native D stack (QEMU NICs)            LANE 2  LKL provider (real WiFi)
+   ┌─────────────────────────────────┐           ┌───────────────────────────────┐
+   │ app → AF_INET syscall            │           │ hos-wifi = native NSP client  │
+   │   SOCK_DGRAM = UDP           ✅   │           │        │  (speaks NSP direct) │
+   │   SOCK_RAW   = ICMP          ✅   │           │        ▼                      │
+   │   SOCK_STREAM → EPROTONOSUPPORT  │           │ /run/hos-net.sock  (cap-gated │
+   │ kernel-only: TCP·DNS·DHCP·NTP;   │           │   DEVCLASS_NET) NSP RPC       │
+   │ TLS ▢ stub → HTTPS ◐ broken      │           │        ▼                      │
+   │        ▼                          │           │ lkl-boot (real Linux drv) ◐   │
+   │ D NetStack → virtio_net / e1000  │           │        ▼  wlan0 / AX210       │
+   └─────────────────────────────────┘           └───────────────────────────────┘
+   LANE 3  interposer — the ONLY userland TCP
+   ┌────────────────────────────────────────────────────────────────────────────┐
+   │ unmodified dynamic-musl app (NetworkManager · wpa_supplicant · udhcpc ·      │
+   │ hos-ethsign-dyn) → LD_PRELOAD=/libnshim.so → NSP RPC → lkl-boot → hardware   │
+   └────────────────────────────────────────────────────────────────────────────┘
+     (on-device libnshim→LKL path untested on hardware ◐)
+```
+
+### Desktop render path (CPU / software)
+
+```
+   wl-* clients (~25 raw-Wayland + Cairo)  ┐
+   wl-term / wl-files / wl-installer        │ draw into wl_shm buffers ON THE CPU
+   GTK / GNOME apps (shared GTK stack .so)  ┘
+                     │ attach
+                     ▼
+   Weston 14 ── Pixman SOFTWARE renderer (no GL/EGL, no GPU) composites all surfaces ✅
+                     │  ADDFB2 / SETCRTC / PAGE_FLIP
+                     ▼
+   Weston DRM backend ──► kernel DRM/KMS emulation + framebuffer ──► scanout
+                                       ▲ kernel-drawn cursor sprite (decoupled from repaint)
+
+   linkage band:  /ld-musl-x86_64.so.1 (PT_INTERP) + every shared GTK/Wayland/DRI .so
+                  are staged as Limine boot modules (built -Wl,-rpath,sysroot/lib)
+   ⌂ roadmap: virgl GPU accel (black-screens hosts) · Hyprland compositor (does not build);
+              gl-term runs on Mesa softpipe (CPU), not the GPU
+```
+
+### Deniability + on-chain attestation — trust flow
+
+```
+  ① INSTALL-TIME (host)                          ② ON-CHAIN (Base L2)
+  manifest-build.py → system-file merkle root     ┌──────────────────────────────┐
+  attest-seal.py: Argon2id(pw,salt)→id/kEnc,       │ EncryptedAttestationVault     │
+    seal {root, IP-whitelist} (AES-256-GCM) ──────►│  put(id,ct)   get(id)         │
+  attest-deploy.sh / hos-ethsign (Tor + wallet)    │  ENCRYPTED · no operator key  │
+  → attest.salt/.pass on ESP; attestContract →     └───────────────┬──────────────┘
+    install.json                                                   │ get(id) (read-only,
+  ③ BOOT STAGE-1 (Linux gatekeeper) ✎  ◄───────────────────────────┘   no wallet)
+     net → Tor → get(id) → decrypt → match REAL public IP vs whitelist
+     → SetVariable AnosHiddenUnlock=ALLOW|DENY → BootNext → reboot
+  ④ BOOT STAGE-2 (VeraCrypt loader, PREBOOT_IPGATE ◐ off by default)
+     read+delete the var; disk password → decoy | hidden;
+     HIDDEN is forced to REJECT unless ALLOW → XTS-AES unlock
+
+  SEPARATE in-kernel check (NOT the vault above):
+    boot_integrity.d recomputes the boot-module merkle root and eth_calls
+    BootIntegrityRegistry.systemRoot() — PLAINTEXT, selector 0x07c1a224 → panic on mismatch ◐
+
+  The IP gate is a deniability HEURISTIC on top of the disk password (fail-closed to decoy);
+  AnosHiddenUnlock is EFI-var-writable, so a forged ALLOW only re-enables the prompt — the
+  hidden password is still required.  ✎ draft/untested: gatekeeper handoff, /bin/attest-unseal,
+  hos-attest-deploy, and the mobile management app.
+```
 
 ---
 

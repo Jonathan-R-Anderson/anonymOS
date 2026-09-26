@@ -37,6 +37,11 @@ def derive(password: bytes, salt: bytes):
     return sub(b"anos-id\0"), sub(b"anos-enc\0")
 
 
+def derive_key(password: bytes, salt: bytes, ctx: bytes):
+    km = hash_secret_raw(password, salt, ARGON_TIME, ARGON_MEM_KIB, ARGON_PAR, ARGON_LEN, Type.ID)
+    return hashlib.sha256(km + ctx).digest()
+
+
 def unseal(key: bytes, blob: bytes) -> bytes:
     if len(blob) < 1 + NONCE_LEN + 16 or blob[0] != SEAL_VERSION:
         raise ValueError("bad seal header")
@@ -70,6 +75,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--derive-id", action="store_true")
     ap.add_argument("--decode-ethcall", action="store_true")
+    ap.add_argument("--decrypt-file", help="decrypt an ESP-sealed file (e.g. wpa_supplicant.conf); password on stdin")
     ap.add_argument("--match")
     ap.add_argument("--password")
     ap.add_argument("--salt")
@@ -108,10 +114,15 @@ def main():
         _id, ke = derive((a.password or "").encode(), salt)
         sys.stdout.write(unseal(ke, blob).decode())
         return
+    if a.decrypt_file:
+        pw = a.password.encode() if a.password else sys.stdin.buffer.read().rstrip(b"\n")
+        key = derive_key(pw, salt, b"anos-wifi\0")
+        sys.stdout.buffer.write(unseal(key, open(a.decrypt_file, "rb").read()))
+        return
     if a.match:
         print(classify(a.match, json.loads(sys.stdin.read())))
         return
-    ap.error("one of --derive-id / --decode-ethcall / --match / --selftest required")
+    ap.error("one of --derive-id / --decode-ethcall / --decrypt-file / --match / --selftest required")
 
 
 if __name__ == "__main__":

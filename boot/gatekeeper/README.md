@@ -36,9 +36,28 @@ ESP** (needed to derive id/key before any fetch). Record payload: `{v,root,white
 3. **`/bin/attest-unseal`** — the compiled counterpart of `scripts/attest-seal.py` (derive-id,
    decode eth_call ABI `bytes`, AES-GCM-decrypt, and `--match <ip>` → ALLOW/DENY/BLACKLIST). Bake it
    into this initramfs. Verify the `get(bytes32)` selector (`0x8eaa6ac0`) against the compiled ABI.
-4. **Initramfs contents/build** — a `make` target (mirror decoy-os's UKI build): busybox, the net
-   modules, `udhcpc`, a **tor** binary + minimal `torrc` (SocksPort 9050), `wget` with SOCKS,
-   `attest-unseal`, kexec-tools, and mounting the ESP to read `attest.salt`.
+4. **Initramfs contents/build** — a `make` target (mirror decoy-os's UKI build): busybox, `udhcpc`,
+   a **tor** binary + minimal `torrc` (SocksPort 9050), `wget` with SOCKS, `attest-unseal`,
+   kexec-tools, and mounting the ESP to read `attest.salt`. **For WiFi** also: `wpa_supplicant` +
+   `wpa_cli`, the **wireless driver modules AND their firmware blobs** (hardware-specific, in
+   `/lib/firmware` — this is the bulky, per-NIC part), and the wired NIC modules for Ethernet.
+
+## Network (wired + WiFi), `net_up()`
+Brings up whatever link exists, fail-closed to decoy if none:
+- **Wired** (Ethernet / USB-NIC / virtio): `udhcpc` on each non-wireless iface. No credentials.
+- **WiFi**: for each wireless iface, decrypt the ESP-sealed `wpa_supplicant.conf`
+  (`/esp/anonymos/wifi.enc`) with the password key (`attest-unseal --decrypt-file`, verified
+  round-trip), then `wpa_supplicant` → wait for `wpa_state=COMPLETED` → `udhcpc`. The plaintext
+  config is written to tmpfs and shredded after; no WiFi key is ever stored in the clear on disk.
+
+**Provision the sealed WiFi config** (same password + salt as the record):
+```sh
+python3 scripts/attest-seal.py --password "$PW" --salt "$SALT" --manifest-root "$ROOT" \
+  --wifi-conf wpa_supplicant.conf --wifi-out wifi.enc
+cp wifi.enc  <ESP>/anonymos/wifi.enc      # alongside attest.salt
+```
+If there's no WiFi config and no wired link, the gatekeeper boots the decoy (which is correct —
+"can't reach the network to validate" must never reveal the real OS).
 
 ## Hard operational costs (already accepted in design)
 - **No network at boot ⇒ only the decoy boots.** Fail-closed is the guarantee's price.

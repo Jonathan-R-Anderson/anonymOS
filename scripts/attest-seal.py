@@ -52,7 +52,7 @@ NONCE_LEN = 12
 def derive(password: bytes, salt: bytes):
     km = hash_secret_raw(password, salt, ARGON_TIME, ARGON_MEM_KIB, ARGON_PAR, ARGON_LEN, Type.ID)
     sub = lambda ctx: hashlib.sha256(km + ctx).digest()
-    return sub(b"anos-id\0"), sub(b"anos-enc\0"), sub(b"anos-loc\0")
+    return sub(b"anos-id\0"), sub(b"anos-enc\0"), sub(b"anos-loc\0"), sub(b"anos-wifi\0")
 
 
 def seal(key: bytes, plaintext: bytes) -> bytes:
@@ -91,12 +91,14 @@ def main():
     ap.add_argument("--id-out", help="write the contract id here (hex)")
     ap.add_argument("--salt-out", help="write the salt here (hex) — goes on the ESP")
     ap.add_argument("--local-out", help="write the sealed full local manifest here (hex)")
+    ap.add_argument("--wifi-conf", help="plaintext wpa_supplicant.conf to seal for the gatekeeper")
+    ap.add_argument("--wifi-out", help="write the sealed wpa_supplicant.conf here (-> ESP /anonymos/wifi.enc)")
     ap.add_argument("--selftest", action="store_true", help="round-trip self-check and exit")
     args = ap.parse_args()
 
     if args.selftest:
         salt = secrets.token_bytes(SALT_LEN)
-        _id, ke, kl = derive(b"correct horse battery staple", salt)
+        _id, ke, kl, _kw = derive(b"correct horse battery staple", salt)
         pt = json.dumps({"v": 1, "root": "ab" * 32, "whitelist": ["10.0.0.0/8"], "blacklist": [], "ts": 0},
                         separators=(",", ":")).encode()
         blob = seal(ke, pt)
@@ -118,7 +120,7 @@ def main():
         sys.exit("attest-seal: --manifest-root required")
 
     salt = bytes.fromhex(args.salt) if args.salt else secrets.token_bytes(SALT_LEN)
-    _id, kEnc, kLoc = derive(pw.encode(), salt)
+    _id, kEnc, kLoc, kWifi = derive(pw.encode(), salt)
 
     record_pt = json.dumps({
         "v": 1,
@@ -140,6 +142,11 @@ def main():
     emit(args.salt_out, salt)
     if args.manifest_file and args.local_out:
         emit(args.local_out, seal(kLoc, open(args.manifest_file, "rb").read()))
+    if args.wifi_conf and args.wifi_out:
+        # sealed wpa_supplicant.conf the gatekeeper decrypts to bring up WiFi (raw bytes, not hex)
+        with open(args.wifi_out, "wb") as f:
+            f.write(seal(kWifi, open(args.wifi_conf, "rb").read()))
+        print("wifi=sealed -> %s (copy to the ESP as /anonymos/wifi.enc)" % args.wifi_out)
 
     print("id=%s" % _id.hex())
     print("salt=%s   (store on the ESP)" % salt.hex())

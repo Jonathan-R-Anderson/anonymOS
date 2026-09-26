@@ -222,7 +222,7 @@ WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 #   make decoy          # §G deterministic decoy activity generator engine    [engine DONE, tests PASS]
 #   make decoy-os       # §H1 decoy Linux distro (Alpine, seeded fake history) [rootfs DONE]
 # =========================================================
-.PHONY: qt-stack parted-stack calamares-deps calamares veracrypt decoy decoy-os installer-deps
+.PHONY: qt-stack parted-stack calamares-deps calamares veracrypt decoy decoy-os installer-deps gatekeeper-uki
 qt-stack:
 	+$(MAKE) -C deps/qt-stack all
 calamares-deps:
@@ -240,6 +240,12 @@ decoy-os:
 	+$(MAKE) -C deps/decoy-os image verify
 $(DECOY_IMAGE):
 	+$(MAKE) -C deps/decoy-os decoy-boot
+
+# The boot GATEKEEPER UKI (IP-gated decrypt; see boot/gatekeeper/). DRAFT — not in `all`, and it
+# needs the §E5 loader wired to StartImage it + boot-testing. Reuses deps/decoy-os's apk.static, so
+# build the decoy first (or set APK_STATIC=). Override GK_FIRMWARE for your WiFi chipset.
+gatekeeper-uki:
+	boot/gatekeeper/build-uki.sh
 veracrypt-efi:
 	+$(MAKE) -C deps/veracrypt efi
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt

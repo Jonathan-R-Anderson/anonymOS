@@ -17,11 +17,11 @@ mkdir -p "$(dirname "$OUT")"
 
 {
   echo "module Main where"
-  echo "import Data.Char (isSpace, isAlpha, isAlphaNum)"
+  echo "import Data.Char (isSpace, isAlpha, isAlphaNum, toUpper, toLower)"
   echo "import System.Environment (getArgs)"
   echo "import System.Exit (exitWith, ExitCode(..), exitSuccess)"
   echo "import System.IO (hPutStr, hPutStrLn, stderr)"
-  for m in Kuml/Types.hs Kuml/Lexer.hs Kuml/Parser.hs Kuml/Check.hs Kuml/Render.hs Main.hs; do
+  for m in Kuml/Types.hs Kuml/Lexer.hs Kuml/Parser.hs Kuml/Check.hs Kuml/Render.hs Kuml/Gen/Haskell.hs Main.hs; do
     echo "-- ===== $m ====="
     grep -vE '^module |^import Kuml|^import Data\.Char|^import System\.(Environment|Exit|IO)' "$SRC/$m"
   done

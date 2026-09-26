@@ -20,6 +20,7 @@ import Kuml.Types
 import Kuml.Parser (parseDiagram)
 import Kuml.Check (validate)
 import Kuml.Render (renderSvg)
+import Kuml.Gen.Haskell (generateHaskell)
 
 version :: String
 version = "kuml-hs 0.1.0 (anonymOS Haskell port; class diagrams)"
@@ -35,6 +36,8 @@ main = do
     ("--version" : _)  -> putStrLn version >> exitSuccess
     ("render" : rest)  -> cmdRender rest
     ("validate" : rest)-> cmdValidate rest
+    ("gen" : rest)     -> cmdGen rest
+    ("generate" : rest)-> cmdGen rest
     (other : _)        -> die ("unknown command '" ++ other ++ "' (try: kuml help)")
 
 -- -- options ----------------------------------------------------------------
@@ -44,18 +47,25 @@ data Opts = Opts
   , optOut    :: Maybe String
   , optJson   :: Bool
   , optFormat :: String
+  , optModule :: Maybe String
   }
 
 defOpts :: Opts
-defOpts = Opts Nothing Nothing False "svg"
+defOpts = Opts
+  { optFile = Nothing, optOut = Nothing, optJson = False
+  , optFormat = "svg", optModule = Nothing }
 
 parseOpts :: [String] -> Either String Opts
 parseOpts = go defOpts
   where
     go o [] = Right o
     go o ("-o" : v : xs)        = go o { optOut = Just v } xs
+    go o ("-i" : v : xs)        = go o { optFile = Just v } xs
+    go o ("--input" : v : xs)   = go o { optFile = Just v } xs
     go o ("--output" : v : xs)  = go o { optJson = v == "json" } xs
     go o ("--format" : v : xs)  = go o { optFormat = v } xs
+    go o ("--module" : v : xs)  = go o { optModule = Just v } xs
+    go o ("--package" : v : xs) = go o { optModule = Just v } xs
     go o (x : xs)
       | isFlag x  = Left ("unknown or incomplete option '" ++ x ++ "'")
       | otherwise = case optFile o of
@@ -110,6 +120,28 @@ cmdValidate argv =
 
 -- -- diagnostics output -------------------------------------------------------
 
+-- ── gen (code generation: model -> Haskell source) ──────────────────────────
+
+cmdGen :: [String] -> IO ()
+cmdGen argv =
+  case parseOpts argv of
+    Left e  -> die e
+    Right o -> case optFile o of
+      Nothing   -> die "gen: missing input FILE"
+      Just path -> do
+        src <- readFile path
+        case parseDiagram src of
+          Left perr -> do
+            emitDiagnostics True o [parseError perr]
+            exitWith (ExitFailure 1)
+          Right d -> do
+            let diags = validate d
+            emitDiagnostics True o diags   -- to stderr; generated code stays clean
+            let out = generateHaskell (optModule o) d
+            case optOut o of
+              Nothing  -> putStr out
+              Just f   -> writeFile f out
+
 parseError :: String -> KumlError
 parseError msg = KumlError "KUML-E-001" SevError ("parse error: " ++ msg)
 
@@ -162,8 +194,10 @@ usage = putStr $ unlines
   , "usage:"
   , "  kuml render   FILE [--format svg] [-o OUT] [--output json|text]"
   , "  kuml validate FILE [--output json|text]"
+  , "  kuml gen      FILE [--module NAME] [-o OUT.hs]   (generate Haskell source)"
   , "  kuml version"
   , "  kuml help"
   , ""
   , "input is the kUML native DSL (see examples/*.kuml)."
+  , "gen also accepts kUML-style flags: -i FILE, --package NAME."
   ]

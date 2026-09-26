@@ -26,7 +26,7 @@ MUSL_CC  ?= $(PROJECT_ROOT)/deps/musl/install/bin/musl-clang
 
 SRC    := src
 SINGLE := build/kuml_single.hs
-HS     := $(wildcard src/*.hs src/Kuml/*.hs)
+HS     := $(wildcard src/*.hs src/Kuml/*.hs src/Kuml/Gen/*.hs)
 
 .PHONY: all dev anos single check clean jhc-target
 
@@ -69,8 +69,13 @@ jhc-target:
 check: dev anos
 	@./build/kuml-ghc render examples/orders.kuml 2>/dev/null > build/o.ghc.svg
 	@./build/kuml     render examples/orders.kuml 2>/dev/null > build/o.anos.svg
-	@cmp build/o.ghc.svg build/o.anos.svg && echo "PARITY OK (ghc == anos, $$(wc -c < build/o.ghc.svg) bytes)"
+	@cmp build/o.ghc.svg build/o.anos.svg && echo "RENDER PARITY OK (ghc == anos, $$(wc -c < build/o.ghc.svg) bytes)"
 	@./build/kuml validate examples/orders.kuml
+	@# code generation: GHC and anos must emit identical Haskell, and it must compile.
+	@./build/kuml-ghc gen examples/orders.kuml --module GenModel -o build/GenModel.hs 2>/dev/null
+	@./build/kuml     gen examples/orders.kuml --module GenModel 2>/dev/null > build/gen.anos.hs
+	@cmp build/GenModel.hs build/gen.anos.hs && echo "GEN PARITY OK (ghc == anos, $$(wc -c < build/GenModel.hs) bytes)"
+	@ghc -c build/GenModel.hs -outputdir build/gen-check >/dev/null 2>&1 && echo "GENERATED HASKELL COMPILES"
 
 clean:
 	rm -rf build

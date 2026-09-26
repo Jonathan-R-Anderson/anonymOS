@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean iso zsh scp-client progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets build-zksync-wallet boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi arbiter-efi hos-install.iso wallpaper
+.PHONY: all clean iso zsh scp-client progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi arbiter-efi hos-install.iso wallpaper
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -65,23 +65,6 @@ build/libkernel_d.a: refresh-d-kernel
 boot-integrity-contract:
 	scripts/compile-contracts.sh
 
-# The wallet page lives in the deps/zksync-wallet-vue gitlink, which a plain clone
-# leaves empty (no .gitmodules entry maps it).  Skip cleanly in that case, the way
-# every other optional boot module here does: the packer hard-exits on the missing
-# directory, and taking the whole ISO down with it is the wrong trade.
-build-zksync-wallet:
-	@if [ ! -d "$(ZKSYNC_WALLET_STATIC)" ]; then \
-		echo "Skipping zksync-wallet.blob ($(ZKSYNC_WALLET_STATIC) not populated)"; \
-		exit 0; \
-	fi; \
-	echo "==== Packing zkSync wallet boot-integrity app ===="; \
-	python3 scripts/pack-zksync-wallet.py \
-		$(ZKSYNC_WALLET_STATIC) \
-		$(ZKSYNC_WALLET_BLOB) \
-		system/web/zksync-wallet \
-		--contract $(BOOT_INTEGRITY_CONTRACT) \
-		--abi $(BOOT_INTEGRITY_ABI) \
-		--artifact $(BOOT_INTEGRITY_ARTIFACT)
 
 # =========================================================
 # Kernel Link
@@ -298,8 +281,6 @@ THEME_BLOB    := $(ASSET_BLOBS_DIR)/themes.blob
 # Without this blob such files are packed only into the aggregate assets.blob, which the kernel
 # unpacks solely as a fallback -- so they ship in the ISO but never reach a running guest.
 MISC_BLOB     := $(ASSET_BLOBS_DIR)/misc.blob
-ZKSYNC_WALLET_STATIC := deps/zksync-wallet-vue/src/static/boot-integrity
-ZKSYNC_WALLET_BLOB := build/zksync-wallet.blob
 BOOT_INTEGRITY_CONTRACT := contracts/BootIntegrityRegistry.sol
 BOOT_INTEGRITY_ABI := contracts/BootIntegrityRegistry.abi.json
 BOOT_INTEGRITY_ARTIFACT := build/contracts/BootIntegrityRegistry.artifact.json
@@ -932,7 +913,7 @@ $(BSDTAR_BIN):
 $(GPGV_BIN):
 	$(MAKE) -C deps/gnupg
 
-stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG) $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLWALLPAPER_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOG_BIN) $(XIDTEST_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(INOTIFYTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG) $(WLTRACE_BIN) $(LKL_BOOT_BIN) $(WLWIFIMENU_BIN) $(WLLAYERBAR_BIN) $(WLWALLPAPER_BIN) $(WLLOGVIEW_BIN) $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN) $(BUSYBOX_BIN) $(BUSYBOX_DYN_BIN) $(MKE2FS_BIN) $(UNSQUASHFS_BIN) $(BSDTAR_BIN) $(GPGV_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOG_BIN) $(XIDTEST_BIN) $(HOS_SH_BIN) $(HOS_WIFI_BIN) $(NSHIM_SO) $(NETTEST_BIN) $(NETLAUNCH_BIN) $(DBUSLAUNCH_BIN) $(SSHDLAUNCH_BIN) $(DROPBEAR_SERVER_BIN) $(DBUSTEST_BIN) $(INOTIFYTEST_BIN) $(NMLAUNCH_BIN) $(WPALAUNCH_BIN) $(WIFIAGENT_BIN) $(WPAAGENT_BIN) $(UDHCPCSCRIPT_BIN) $(UDHCPCLAUNCH_BIN) $(SCPTEST_BIN) $(HTTPUPLOAD_BIN) $(LOGUPLOAD_BIN) $(SCP_CLIENT_STAGE_DEPS) $(THREADTEST_BIN) $(NMCLITEST_BIN) $(WIFITERM_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -1288,12 +1269,6 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	printf '\n    module_path: boot():/decoy-linux.ext4\n' >> cd/boot/limine/limine.conf
 	@echo "Included decoy-linux.ext4 (INSTALLER H1 decoy Linux disk image)"
 
-	@if [ -s $(ZKSYNC_WALLET_BLOB) ]; then \
-		cp $(ZKSYNC_WALLET_BLOB) cd/zksync-wallet.blob; \
-		printf '\n    module_path: boot():/zksync-wallet.blob\n' >> cd/boot/limine/limine.conf; \
-		echo "Included zksync-wallet.blob (ZKsync boot-integrity wallet + contract ABI)"; \
-	 else echo "Skipping zksync-wallet.blob (not packed — see build-zksync-wallet)"; fi
-
 	@if [ -x "$(RUSTC)" ]; then \
 	   $(MAKE) --no-print-directory $(HELLO_WL_BIN) && cp $(HELLO_WL_BIN) cd/hello-wl && \
 	   printf '\n    module_path: boot():/hello-wl\n' >> cd/boot/limine/limine.conf && \
@@ -1309,7 +1284,7 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	@# hos-ethsign: the on-device Ethereum tx signer. Non-fatal — a missing cargo or an offline
 	@# crate fetch skips it (deploy still works host-side via scripts/attest-deploy.sh + Foundry).
 	@if [ -x "$(CARGO)" ]; then \
-	   if $(MAKE) --no-print-directory $(ETHSIGN_BIN); then \
+	   if $(MAKE) --no-print-directory $(ETHSIGN_BIN) && [ -f $(ETHSIGN_BIN) ]; then \
 	     cp $(ETHSIGN_BIN) cd/hos-ethsign && \
 	     printf '\n    module_path: boot():/hos-ethsign\n' >> cd/boot/limine/limine.conf && \
 	     echo "Included hos-ethsign (on-device ETH tx signer, static — offline sign/address)"; \
@@ -1319,13 +1294,13 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	@# hos-ethsign-dyn (dynamic, for libnshim->LKL networking) + hos-attest-deploy launcher +
 	@# the vault creation bytecode — together these give on-device deploy. All non-fatal.
 	@if [ -x "$(CARGO)" ]; then \
-	   if $(MAKE) --no-print-directory hos-ethsign-dyn; then \
+	   if $(MAKE) --no-print-directory hos-ethsign-dyn && [ -f build/hos-ethsign-dyn ]; then \
 	     cp build/hos-ethsign-dyn cd/hos-ethsign-dyn && \
 	     printf '\n    module_path: boot():/hos-ethsign-dyn\n' >> cd/boot/limine/limine.conf && \
 	     echo "Included hos-ethsign-dyn (networked signer, via libnshim->LKL)"; \
 	   else echo "Skipping hos-ethsign-dyn (cargo build failed)"; fi; \
 	 fi
-	@if $(MAKE) --no-print-directory $(ATTESTDEPLOY_BIN); then \
+	@if $(MAKE) --no-print-directory $(ATTESTDEPLOY_BIN) && [ -f $(ATTESTDEPLOY_BIN) ]; then \
 	   cp $(ATTESTDEPLOY_BIN) cd/hos-attest-deploy && \
 	   printf '\n    module_path: boot():/hos-attest-deploy\n' >> cd/boot/limine/limine.conf && \
 	   echo "Included hos-attest-deploy (on-device deploy launcher -> /config/attest-contract)"; \

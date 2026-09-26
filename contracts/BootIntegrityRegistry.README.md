@@ -10,4 +10,4 @@ Build bytecode with a Solidity compiler:
 scripts/compile-boot-integrity-contract.sh
 ```
 
-Then deploy/update it from the wallet page staged at `/system/web/zksync-wallet/index.html`, or from the Nuxt route `/boot-integrity` when building `deps/zksync-wallet-vue`.
+Then deploy/update it from the wallet page staged at `/system/web/zksync-wallet/index.html`. (Note: this BootIntegrityRegistry + Vue wallet is the superseded zkSync-era flow; the `deps/zksync-wallet-vue` source has been removed in favour of the Ethereum EncryptedAttestationVault — see README-attestation-ops.md.)

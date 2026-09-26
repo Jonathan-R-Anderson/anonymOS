@@ -3870,7 +3870,7 @@ private void dispatchSyscall(int tid) {
                 vaddr = task.mmapNext;
                 task.mmapNext += alignedLen;
             }
-            x64WriteCR3(task.pml4Phys);
+            if (x64ReadCR3() != task.pml4Phys) x64WriteCR3(task.pml4Phys);  // redundant in-syscall (CR3==task); map_page_hhdm invlpg's new pages
             ulong numPgs = alignedLen >> 12;
             bool mmapOk = true;
 
@@ -3977,7 +3977,7 @@ private void dispatchSyscall(int tid) {
             if (mrNewAligned <= (mrEnd - mrStart)) { ret = cast(long)mrOld; break; }
             if ((mrFlags & MREMAP_MAYMOVE) == 0) { ret = -12; break; }  // ENOMEM
             if (mrNewAligned > mfSize) { ret = -22; break; }      // backing too small
-            x64WriteCR3(task.pml4Phys);
+            if (x64ReadCR3() != task.pml4Phys) x64WriteCR3(task.pml4Phys);  // redundant in-syscall (CR3==task); map_page_hhdm invlpg's new pages
             ulong mrVa = task.mmapNext;
             task.mmapNext += mrNewAligned;
             auto mrNew = addRegion(*task, mrVa, mrVa + mrNewAligned,
@@ -5377,8 +5377,12 @@ private void kernelLoop() {
         // Load task registers into curUserSpaceState
         loadTaskState(*task);
 
-        // Switch to this task's page table
-        x64WriteCR3(task.pml4Phys);
+        // Switch to this task's page table. GUARDED reload: on a syscall-return to the SAME
+        // task CR3 is already task.pml4Phys (the kernel-CR3 switch-back below is skipped), so the
+        // unconditional write was a gratuitous full-TLB flush every dispatch. Semantically
+        // identical — after this CR3 == task.pml4Phys either way; it only skips the flush.
+        if (x64ReadCR3() != task.pml4Phys)
+            if (x64ReadCR3() != task.pml4Phys) x64WriteCR3(task.pml4Phys);  // redundant in-syscall (CR3==task); map_page_hhdm invlpg's new pages
 
         // S4.4d: release the BKL across the userspace run — while the BSP is in ring 3 the AP can
         // hold the lock and dispatch its own task's syscalls.  Re-acquired immediately on return.

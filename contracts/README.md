@@ -70,4 +70,4 @@ scripts/compile-contracts.sh
 
 Requires `solc`. ZKsync Era supports standard Solidity/EVM bytecode on the Era EVM path,
 so no framework is needed. Deploy/interact from the integrated wallet staged at
-`/system/web/zksync-wallet/` (or the Nuxt route when building `deps/zksync-wallet-vue`).
+`/system/web/zksync-wallet/`. (The `deps/zksync-wallet-vue` source was removed with the migration to Ethereum + the EncryptedAttestationVault; see README-attestation-ops.md.)

@@ -348,7 +348,7 @@ $(DROPBEAR_SCP_BIN) $(DROPBEAR_SSH_BIN): deps/dropbear/Makefile
 	+$(MAKE) -C deps/dropbear all
 
 # R0 — Rust->musl toolchain (the analogue of musl-clang for the Wayland clients; install via rustup
-# + `rustup target add x86_64-unknown-linux-musl`).  Builds NON-PIE static-musl AnonymOS binaries.
+# + `rustup target add x86_64-unknown-linux-musl`).  Builds NON-PIE static-musl AnonymOS binaries. (hello-wl/hos-term stay static for now — dynamic-musl Rust needs the musl-cross linker + libgcc_s.so.1 staged; deferred to the desktop-dynamic pass.)
 RUSTC ?= $(HOME)/.cargo/bin/rustc
 CARGO ?= $(HOME)/.cargo/bin/cargo
 RUST_TARGET := x86_64-unknown-linux-musl
@@ -563,32 +563,32 @@ $(LAYER_SHELL_CODE): $(LAYER_SHELL_XML)
 
 $(WLSHM_DEMO_BIN): src/util/wl-shm-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-shm-demo (GUI G2 client window) ===="
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -Ibuild \
 		-o $@ src/util/wl-shm-demo.c $(XDG_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libwayland-client.a \
-		$(WAYLAND_SYSROOT)/lib/libffi.a \
+		-lwayland-client \
+		-lffi \
 		-pthread
 
 $(WLTERM_BIN): src/util/wl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-term (GUI G4/G9 antialiased terminal) ===="
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild -Isrc/util \
 		-o $@ src/util/wl-term.c $(XDG_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libwayland-client.a \
-		$(WAYLAND_SYSROOT)/lib/libffi.a \
-		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
-		$(WAYLAND_SYSROOT)/lib/libbz2.a \
-		$(WAYLAND_SYSROOT)/lib/libpng16.a \
-		$(WAYLAND_SYSROOT)/lib/libz.a \
+		-lwayland-client \
+		-lffi \
+		-lfreetype \
+		-lbz2 \
+		-lpng16 \
+		-lz \
 		-lm \
 		-pthread
 
 $(WLCAIRO_DEMO_BIN): src/util/wl-cairo-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-cairo-demo (GUI G11 Cairo/FreeType toolkit demo) ===="
 	@PANGOCAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags pangocairo wayland-client)" ; \
-	PANGOCAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs pangocairo wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	PANGOCAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs pangocairo wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -Ibuild $$PANGOCAIRO_CFLAGS \
 		-o $@ src/util/wl-cairo-demo.c $(XDG_SHELL_CODE) \
 		$$PANGOCAIRO_LIBS \
@@ -600,8 +600,8 @@ $(WLCAIRO_DEMO_BIN): src/util/wl-cairo-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CO
 $(INSTALLER_BIN): src/util/wl-installer.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-installer (INSTALLER D4.1 'Install to Disk' entry; D4.5 stub) ===="
 	@PANGOCAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags pangocairo wayland-client)" ; \
-	PANGOCAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs pangocairo wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	PANGOCAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs pangocairo wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -Ibuild $$PANGOCAIRO_CFLAGS \
 		-o $@ src/util/wl-installer.c $(XDG_SHELL_CODE) \
 		$$PANGOCAIRO_LIBS \
@@ -610,11 +610,11 @@ $(INSTALLER_BIN): src/util/wl-installer.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 $(WLFILES_BIN): src/util/wl-files.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-files (GUI G17 file manager) ===="
 	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
-	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs cairo wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs cairo wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$CAIRO_CFLAGS \
 		-o $@ src/util/wl-files.c $(XDG_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		-lfreetype \
 		$$CAIRO_LIBS \
 		-lm \
 		-pthread
@@ -625,11 +625,11 @@ $(WLFILES_BIN): src/util/wl-files.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 $(WLSOFTWARE_BIN): src/util/wl-software.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-software (Software Center) ===="
 	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
-	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs cairo wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs cairo wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$CAIRO_CFLAGS \
 		-o $@ src/util/wl-software.c $(XDG_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		-lfreetype \
 		$$CAIRO_LIBS \
 		-lm \
 		-pthread
@@ -655,15 +655,15 @@ $(IDLE_BIN): src/util/idle.c
 
 $(XIDTEST_BIN): src/util/xid-test.c
 	@echo "==== Building xid-test (ROADMAP 4.1 cross-identity gate proof) ===="
-	$(MUSL_CC) -static -O2 -o $@ src/util/xid-test.c
+	$(MUSL_CC) -O2 -o $@ src/util/xid-test.c
 
 $(HOG_BIN): src/util/hog.c
 	@echo "==== Building CPU hog (ROADMAP 3.5 preemption test) ===="
-	$(MUSL_CC) -static -O2 -o $@ src/util/hog.c
+	$(MUSL_CC) -O2 -o $@ src/util/hog.c
 
 $(HOS_WIFI_BIN): src/util/hos-wifi.c src/lkl/hos-net-proto.h
 	@echo "==== Building hos-wifi (H1b native netlink client -> cap-gated LKL net provider) ===="
-	$(MUSL_CC) -static -O2 -Isrc/lkl -o $@ src/util/hos-wifi.c
+	$(MUSL_CC) -O2 -Isrc/lkl -o $@ src/util/hos-wifi.c
 
 # H1b.3 LD_PRELOAD verification: interposer .so + dynamic target + static launcher
 $(NSHIM_SO): src/util/libnshim.c src/lkl/hos-net-proto.h
@@ -706,10 +706,10 @@ $(DROPBEAR_SERVER_BIN): deps/dropbear/Makefile
 
 $(DBUSTEST_BIN): src/util/hos-dbus-test.c
 	@echo "==== Building hos-dbus-test (M0 static launcher: dbus-send GetId EXTERNAL-auth test) ===="
-	$(MUSL_CC) -static -O2 -o $@ src/util/hos-dbus-test.c
+	$(MUSL_CC) -O2 -o $@ src/util/hos-dbus-test.c
 $(INOTIFYTEST_BIN): src/util/inotify-test.c
 	@echo "==== Building inotify-test (ROADMAP 2.2 verification) ===="
-	$(MUSL_CC) -static -O2 -o $@ src/util/inotify-test.c
+	$(MUSL_CC) -O2 -o $@ src/util/inotify-test.c
 
 
 $(NMLAUNCH_BIN): src/util/hos-nm-launch.c
@@ -730,7 +730,7 @@ $(UDHCPCLAUNCH_BIN): src/util/hos-udhcpc-launch.c
 
 $(SCPTEST_BIN): src/util/hos-scp-test.c
 	@echo "==== Building hos-scp-test (one-command /scp-test upload self-test) ===="
-	$(MUSL_CC) -static -O2 -Wall -o $@ src/util/hos-scp-test.c
+	$(MUSL_CC) -O2 -Wall -o $@ src/util/hos-scp-test.c
 
 $(HTTPUPLOAD_BIN): src/util/hos-http-upload.c
 	@echo "==== Building hos-http-upload (dynamic direct-socket LKL HTTP client) ===="
@@ -754,15 +754,15 @@ $(WIFIAGENT_BIN): src/util/hos-wifi-agent.c $(WAYLAND_SYSROOT)/lib/libdbus-1.so
 
 $(WPAAGENT_BIN): src/util/hos-wpa-agent.c src/lkl/hos-net-proto.h
 	@echo "==== Building hos-wpa-agent (direct-wpa Wi-Fi menu backend: NSP_SCAN + wpa SIGHUP reload, no dbus) ===="
-	$(MUSL_CC) -static -O2 -Wall -Isrc/lkl -o $@ src/util/hos-wpa-agent.c
+	$(MUSL_CC) -O2 -Wall -Isrc/lkl -o $@ src/util/hos-wpa-agent.c
 
 $(NMCLITEST_BIN): src/util/hos-nmcli-test.c src/lkl/hos-net-proto.h
 	@echo "==== Building hos-nmcli-test (M2b nmcli D-Bus probe) ===="
-	$(MUSL_CC) -static -O2 -Isrc/lkl -o $@ src/util/hos-nmcli-test.c
+	$(MUSL_CC) -O2 -Isrc/lkl -o $@ src/util/hos-nmcli-test.c
 
 $(LOGUPLOAD_BIN): src/util/hos-log-upload.c
 	@echo "==== Building hos-log-upload (debug log snapshot + scp launcher) ===="
-	$(MUSL_CC) -static -O2 -Wall -Wextra -o $@ src/util/hos-log-upload.c
+	$(MUSL_CC) -O2 -Wall -Wextra -o $@ src/util/hos-log-upload.c
 
 $(WIFITERM_BIN): src/util/hos-wifiterm.c
 	@echo "==== Building hos-wifiterm (TEMP lightweight terminal launcher) ===="
@@ -770,7 +770,7 @@ $(WIFITERM_BIN): src/util/hos-wifiterm.c
 
 $(THREADTEST_BIN): src/util/hos-thread-test.c
 	@echo "==== Building hos-thread-test (diag: cross-thread wakeup) ===="
-	$(MUSL_CC) -static -O2 -pthread -o $@ src/util/hos-thread-test.c
+	$(MUSL_CC) -O2 -pthread -o $@ src/util/hos-thread-test.c
 
 # Track B: the native EpinAnonymOS object shell (-sh / dash), written in D (-betterC,
 # same language as the kernel) and linked against musl for crt0 + stdio. It drives the
@@ -778,7 +778,7 @@ $(THREADTEST_BIN): src/util/hos-thread-test.c
 $(HOS_SH_BIN): src/util/hos-sh.d
 	@echo "==== Building hos-sh (native object shell, D + musl) ===="
 	ldc2 -betterC -O2 -release -boundscheck=off -c src/util/hos-sh.d -of=build/hos-sh.o
-	$(MUSL_CC) -static -o $@ build/hos-sh.o
+	$(MUSL_CC) -o $@ build/hos-sh.o
 
 # R0 — hello-wl: a "hello, Wayland" client in Rust, static-musl, validating the Rust toolchain.
 $(HELLO_WL_BIN): src/util/hello-wl.rs
@@ -832,35 +832,35 @@ $(ZSH_BIN):
 $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-domain-manager (IDENTITY_DOMAIN Qubes-style manager) ===="
 	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
-	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs cairo wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs cairo wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$CAIRO_CFLAGS \
 		-o $@ src/util/wl-domain-manager.c $(XDG_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		-lfreetype \
 		$$CAIRO_LIBS \
 		-lm \
 		-pthread
 
 $(WLWIFIMENU_BIN): src/util/wl-wifi-menu.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-wifi-menu (M6 top-right Wi-Fi menu) ===="
-	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild \
 		-o $@ src/util/wl-wifi-menu.c $(XDG_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
-		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libbz2.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		-lfreetype \
+		-lpng16 -lbz2 -lz \
 		$$WL_LIBS \
 		-lm \
 		-pthread
 
 $(WLLOGVIEW_BIN): src/util/wl-logview.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-logview (scrollable diagnostic log viewer) ===="
-	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild \
 		-o $@ src/util/wl-logview.c $(XDG_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
-		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libbz2.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		-lfreetype \
+		-lpng16 -lbz2 -lz \
 		$$WL_LIBS \
 		-lm \
 		-pthread
@@ -869,12 +869,12 @@ $(WLLOGVIEW_BIN): src/util/wl-logview.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 # protocol code (it anchors a layer surface, which the xdg-only pattern rule can't do).
 $(WLLAYERBAR_BIN): src/util/wl-layer-bar.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE) $(LAYER_SHELL_HEADER) $(LAYER_SHELL_CODE)
 	@echo "==== Building wl-layer-bar (GNOME top bar for Hyprland, wlr-layer-shell) ===="
-	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild \
 		-o $@ $< $(XDG_SHELL_CODE) $(LAYER_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
-		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libbz2.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		-lfreetype \
+		-lpng16 -lbz2 -lz \
 		$$WL_LIBS \
 		-lm \
 		-pthread
@@ -884,11 +884,11 @@ $(WLLAYERBAR_BIN): src/util/wl-layer-bar.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 # but needs no FreeType (its text is baked into the PNG), only libpng to decode it.
 $(WLWALLPAPER_BIN): src/util/wl-wallpaper.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE) $(LAYER_SHELL_HEADER) $(LAYER_SHELL_CODE)
 	@echo "==== Building wl-wallpaper (desktop background for Hyprland, wlr-layer-shell) ===="
-	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -Ibuild \
 		-o $@ $< $(XDG_SHELL_CODE) $(LAYER_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		-lpng16 -lz \
 		$$WL_LIBS \
 		-lm \
 		-pthread
@@ -898,12 +898,12 @@ $(WLWALLPAPER_BIN): src/util/wl-wallpaper.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE
 # these targets, so it never shadows the explicit wl-* rules above.
 $(WLOVERVIEW_BIN) $(WLCALENDAR_BIN) $(WLQUICKSET_BIN) $(WLCALC_BIN) $(WLCLOCKS_BIN) $(WLIMGVIEW_BIN) $(WLCHARS_BIN) $(WLSYSMON_BIN) $(WLEDITOR_BIN) $(WLSCREENSHOT_BIN): build/wl-%: src/util/wl-%.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-$* (GNOME utility) ===="
-	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs wayland-client)" ; \
-	$(MUSL_CC) -static -O2 -Wall -Wextra \
+	@WL_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs wayland-client)" ; \
+	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
 		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild \
 		-o $@ $< $(XDG_SHELL_CODE) \
-		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
-		$(WAYLAND_SYSROOT)/lib/libpng16.a $(WAYLAND_SYSROOT)/lib/libbz2.a $(WAYLAND_SYSROOT)/lib/libz.a \
+		-lfreetype \
+		-lpng16 -lbz2 -lz \
 		$$WL_LIBS \
 		-lm \
 		-pthread
@@ -1649,6 +1649,32 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	printf '\n    module_path: boot():/zksync-attestation.json\n' >> cd/boot/limine/limine.conf
 	@echo "Included zksync-attestation.json (boot-module hash manifest)"
 
+	@# Phase D: stage the shared GTK/Wayland/pango/glib .so set BY SONAME. A *.so.* glob would stage
+	@# both the SONAME symlink and the versioned real file -> duplicate basenames (the review's brick
+	@# #5); readelf SONAME + cp -L + dedup avoids it. Skip SONAMEs already staged by other blocks.
+	@if [ -d deps/gtk-stack/sysroot/lib ]; then set -e; \
+	  staged="ld-musl-x86_64.so.1 libdbus-1.so.3 libndp.so.0 libnm.so.0 libglapi.so"; \
+	  for so in deps/gtk-stack/sysroot/lib/*.so*; do \
+	    [ -f "$$so" ] || continue; case "$$so" in *.la|*.a) continue;; esac; \
+	    sn=`readelf -d "$$so" 2>/dev/null | sed -n 's/.*Library soname: \[\(.*\)\].*/\1/p' | head -n1`; \
+	    [ -n "$$sn" ] || continue; \
+	    case " $$staged " in *" $$sn "*) continue;; esac; \
+	    staged="$$staged $$sn"; cp -L "$$so" cd/$$sn; \
+	    printf '\n    module_path: boot():/%s\n' "$$sn" >> cd/boot/limine/limine.conf; \
+	  done; \
+	  for pl in deps/gtk-stack/sysroot/lib/gdk-pixbuf-2.0/*/loaders/*.so deps/gtk-stack/sysroot/lib/gtk-3.0/*/immodules/*.so; do \
+	    [ -f "$$pl" ] || continue; b=`basename "$$pl"`; \
+	    case " $$staged " in *" $$b "*) continue;; esac; staged="$$staged $$b"; \
+	    cp -L "$$pl" cd/$$b; printf '\n    module_path: boot():/%s\n' "$$b" >> cd/boot/limine/limine.conf; \
+	  done; \
+	  echo "Staged shared GTK/Wayland .so set by SONAME (+ gdk-pixbuf loaders/immodules)"; \
+	else echo "NOTE: deps/gtk-stack/sysroot/lib absent — shared GTK not built; the dynamic wl-* tools will fail the gate below. Run: make -C deps/gtk-stack clean && make -C deps/gtk-stack"; fi
+
+	@# Dynamic-linkage gate (build-time): every staged dynamic module's DT_NEEDED must be a staged
+	@# boot module, must-stay-static binaries must have no PT_INTERP, and no duplicate basenames.
+	@# Turns the dynamic-userland boot-bricks the review found into a build failure. See the script.
+	./scripts/verify-userland-linkage.sh cd build
+
 # =========================================================
 # INSTALLER ISO (hos-install.iso) — the only full ISO artifact. It contains the
 # normal boot tree PLUS a prebuilt FAT32 "esp-image"
@@ -1658,6 +1684,11 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 # See scripts/mk-install-iso.sh and scripts/vbox-install-test.sh.
 # =========================================================
 iso: hos-install.iso
+
+# Standalone dynamic-linkage audit (also run at the end of stage-iso-tree).
+.PHONY: verify-linkage
+verify-linkage:
+	./scripts/verify-userland-linkage.sh cd build
 
 # UPDATE U1-C: build the A/B slot-arbiter UEFI app (build/arbiter.efi).
 arbiter-efi:

@@ -53,7 +53,9 @@ BASE_CFLAGS  := -O2 -fPIC \
                 -I$(SYSROOT)/include/libpng16 \
                 -I$(MUSL_INSTALL)/include
 BASE_CXXFLAGS:= $(BASE_CFLAGS)
-BASE_LDFLAGS := -static -no-pie -L$(SYSROOT)/lib -L$(MUSL_INSTALL)/lib
+# ⚠ SHARED build: run `make clean` (purge stamps/ + committed *.la) BEFORE the first shared
+# rebuild — stale libtool *.la record dependency_libs=*.a and misdirect shared relinks.
+BASE_LDFLAGS := -L$(SYSROOT)/lib -L$(MUSL_INSTALL)/lib
 GL_HEADER_DIRS := EGL GL GLES GLES2 GLES3 KHR
 
 # Skip info-page generation/installation in every autotools `make install` —
@@ -75,8 +77,8 @@ CONFIGURE_COMMON := \
     --prefix="$(SYSROOT)" \
     --host=x86_64-linux-musl \
     --build=x86_64-linux-gnu \
-    --disable-shared \
-    --enable-static
+    --enable-shared \
+    --disable-static
 
 # ── Library versions ──────────────────────────────────────────────────────────
 ZLIB_VER    := 1.3.1
@@ -214,7 +216,8 @@ $(MESON) setup $(2) $(1) \
     --cross-file $(CROSS_FILE) \
     --prefix=$(SYSROOT) \
     --buildtype=release \
-    --default-library=static
+    --default-library=shared \
+    -Db_lundef=false
 endef
 
 # ── Download helper ───────────────────────────────────────────────────────────
@@ -241,7 +244,7 @@ $(STAMPS)/zlib: $(DLDIR)/zlib-$(ZLIB_VER).tar.gz $(SELF)/Makefile | dirs
 	tar -C $(BLDDIR) -xf $<
 	cd $(BLDDIR)/zlib-$(ZLIB_VER) && \
 	    CC="$(CC)" CFLAGS="$(BASE_CFLAGS)" LDFLAGS="$(BASE_LDFLAGS)" \
-	    ./configure --prefix=$(SYSROOT) --static && \
+	    ./configure --prefix=$(SYSROOT) --shared && \
 	    $(MAKE) $(MAKE_BUILD_FLAGS) && $(MAKE) $(MAKE_BUILD_FLAGS) install
 	touch $@
 
@@ -339,6 +342,10 @@ $(STAMPS)/bzip2: $(DLDIR)/bzip2-$(BZIP2_VER).tar.gz $(SELF)/Makefile | dirs
 	    CC="$(CC)" AR="$(AR)" RANLIB="$(RANLIB)" \
 	    CFLAGS="$(BASE_CFLAGS) -fPIC" \
 	    libbz2.a
+	$(MAKE) $(MAKE_BUILD_FLAGS) -C $(BLDDIR)/bzip2-$(BZIP2_VER) -f Makefile-libbz2_so \
+	    CC="$(CC)" CFLAGS="$(BASE_CFLAGS) -fPIC"
+	cp $(BLDDIR)/bzip2-$(BZIP2_VER)/libbz2.so.$(BZIP2_VER) $(SYSROOT)/lib/
+	cd $(SYSROOT)/lib && ln -sf libbz2.so.$(BZIP2_VER) libbz2.so.1.0 && ln -sf libbz2.so.1.0 libbz2.so
 	$(MAKE) $(MAKE_BUILD_FLAGS) -C $(BLDDIR)/bzip2-$(BZIP2_VER) \
 	    PREFIX="$(SYSROOT)" install
 	touch $@

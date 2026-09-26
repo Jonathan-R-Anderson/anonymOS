@@ -18,7 +18,7 @@ APP_SRC      := $(SELF)/desktop_stage.c
 APP_SRC_OPT  := $(wildcard $(APP_SRC))
 APP_BIN      := $(SELF)/$(APP_NAME)
 
-BASE_CFLAGS  := -O2 -fno-pic -fno-pie -I$(SYSROOT)/include -I$(MUSL_INSTALL)/include
+BASE_CFLAGS  := -O2 -fPIC -I$(SYSROOT)/include -I$(MUSL_INSTALL)/include
 BASE_LDFLAGS := -no-pie -L$(SYSROOT)/lib -L$(MUSL_INSTALL)/lib
 
 PKG_CONFIG_ENV := \
@@ -27,7 +27,7 @@ PKG_CONFIG_ENV := \
 	PKG_CONFIG_SYSROOT_DIR="$(SYSROOT)"
 
 GTK3_CFLAGS := $(BASE_CFLAGS) $$($(PKG_CONFIG_ENV) pkg-config --cflags gtk+-3.0)
-GTK3_LIBS   := $(BASE_LDFLAGS) $$($(PKG_CONFIG_ENV) pkg-config --static --libs gtk+-3.0) \
+GTK3_LIBS   := $(BASE_LDFLAGS) $$($(PKG_CONFIG_ENV) pkg-config --libs gtk+-3.0) \
 	-Wl,-rpath,$(SYSROOT)/lib -Wl,-rpath-link,$(SYSROOT)/lib \
 	-lwayland-server -lglapi \
 	-lm -ldl -lpthread -lutil -lrt

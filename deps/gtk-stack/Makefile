@@ -55,7 +55,7 @@ BASE_CFLAGS  := -O2 -fPIC \
 BASE_CXXFLAGS:= $(BASE_CFLAGS)
 # ⚠ SHARED build: run `make clean` (purge stamps/ + committed *.la) BEFORE the first shared
 # rebuild — stale libtool *.la record dependency_libs=*.a and misdirect shared relinks.
-BASE_LDFLAGS := -L$(SYSROOT)/lib -L$(MUSL_INSTALL)/lib
+BASE_LDFLAGS := -L$(SYSROOT)/lib -L$(MUSL_INSTALL)/lib -Wl,-rpath,$(SYSROOT)/lib
 GL_HEADER_DIRS := EGL GL GLES GLES2 GLES3 KHR
 
 # Skip info-page generation/installation in every autotools `make install` —
@@ -193,10 +193,10 @@ $(STAMPS)/meson-cross.ini: $(STAMPS)/sysroot-relocated $(MUSL_CC) $(MUSL_CXX) $(
 	    "$(CLANG_RESOURCE_INCLUDE)"                                    >> $@
 	@printf "            '-I%s/include', '-I%s/include/freetype2', '-I%s/include/libpng16', '-I%s/include']\n" \
 	    "$(SYSROOT)" "$(SYSROOT)" "$(SYSROOT)" "$(MUSL_INSTALL)"      >> $@
-	@printf "c_link_args = ['-Wl,--allow-multiple-definition', '-no-pie', '-L%s/lib', '-L%s/lib']\n" \
-	    "$(SYSROOT)" "$(MUSL_INSTALL)"                                 >> $@
-	@printf "cpp_link_args = ['-Wl,--allow-multiple-definition', '-no-pie', '-L%s/lib', '-L%s/lib']\n" \
-	    "$(SYSROOT)" "$(MUSL_INSTALL)"                                 >> $@
+	@printf "c_link_args = ['-Wl,--allow-multiple-definition', '-no-pie', '-L%s/lib', '-L%s/lib', '-Wl,-rpath,%s/lib']\n" \
+	    "$(SYSROOT)" "$(MUSL_INSTALL)" "$(SYSROOT)"                 >> $@
+	@printf "cpp_link_args = ['-Wl,--allow-multiple-definition', '-no-pie', '-L%s/lib', '-L%s/lib', '-Wl,-rpath,%s/lib']\n" \
+	    "$(SYSROOT)" "$(MUSL_INSTALL)" "$(SYSROOT)"                 >> $@
 	@printf '\n[properties]\n'                                         >> $@
 	@printf "need_exe_wrapper = true\n"                                 >> $@
 	@printf "sys_root = '%s'\n" "$(SYSROOT)"                           >> $@

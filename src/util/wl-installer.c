@@ -3974,6 +3974,27 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap, int r
         }
     }
 
+    /* Canonical domain set the installed kernel should seed (install_config.d "domains" ->
+     * domainInitDefaults).  System is always present (the admin domain); each ticked identity
+     * profile maps to its domain name.  Research and Anonymous both map to the built-in Untrusted
+     * domain (per the identity help text).  Duplicate names are harmless -- the kernel's
+     * domainCreate rejects them -- so no dedup is needed here. */
+    char doms[192];
+    {
+        static const char *const IDENTITY_DOMAIN[] = {
+            "Personal", "Work", "Banking", "Untrusted", "Disposable", "Untrusted",
+        };
+        size_t p = (size_t)snprintf(doms, sizeof doms, "System");
+        for (int i = 0; i < ARRAY_LEN(IDENTITIES) && i < (int)ARRAY_LEN(IDENTITY_DOMAIN); i++) {
+            if (!app->identity_on[i])
+                continue;
+            int n = snprintf(doms + p, sizeof doms - p, ",%s", IDENTITY_DOMAIN[i]);
+            if (n < 0 || (size_t)n >= sizeof doms - p)
+                break;
+            p += (size_t)n;
+        }
+    }
+
     char drv[160];
     {
         size_t p = 0;
@@ -4031,6 +4052,7 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap, int r
             append_json_string(buf, cap, &pos, "attestContract", attest_addr, 1);
     }
     append_json_string(buf, cap, &pos, "identities", ids, 1);
+    append_json_string(buf, cap, &pos, "domains", doms, 1);
     append_json_string(buf, cap, &pos, "drivers", drv, 1);
     append_json_string(buf, cap, &pos, "encryption", encryption_name(app), 1);
     /* Full disk encrypts the whole EpinAnonymOS system volume with one password asked

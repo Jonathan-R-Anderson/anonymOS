@@ -51,6 +51,8 @@ __gshared char[IC_FIELD_MAX] g_icBootIntegrity;
 __gshared uint g_icBootIntegrityLen;
 __gshared char[IC_FIELD_MAX] g_icIdentities;
 __gshared uint g_icIdentitiesLen;
+__gshared char[IC_FIELD_MAX] g_icDomains;       // comma-joined canonical domain names the installer selected
+__gshared uint g_icDomainsLen;
 __gshared char[IC_FIELD_MAX] g_icDrivers;      // comma-joined driver codes chosen in the installer
 __gshared uint g_icDriversLen;
 __gshared char[IC_FIELD_MAX] g_icDecoyUser;
@@ -80,6 +82,18 @@ public uint installConfigAttestContract(char[] outBuf) {
     uint n = g_icAttestContractLen;
     if (n > cast(uint)outBuf.length) n = cast(uint)outBuf.length;
     foreach (i; 0 .. n) outBuf[i] = g_icAttestContract[i];
+    return n;
+}
+
+// The comma-joined list of canonical domain names the installer selected (empty if none / not an
+// installed system).  domainInitDefaults() reads this to seed EXACTLY the chosen domains instead of
+// the hardcoded fallback set, so "which domains should exist" chosen at install time actually takes
+// effect.  Parsed early here (installConfigApply runs before the domain registry is seeded); the
+// consumer runs later, mirroring installConfigAttestContract.  Copies into outBuf, returns length.
+public uint installConfigDomains(char[] outBuf) {
+    uint n = g_icDomainsLen;
+    if (n > cast(uint)outBuf.length) n = cast(uint)outBuf.length;
+    foreach (i; 0 .. n) outBuf[i] = g_icDomains[i];
     return n;
 }
 
@@ -207,6 +221,7 @@ public bool installConfigApply() {
     icJsonGetString("filesystem", g_icFilesystem[], g_icFilesystemLen);
     icJsonGetString("bootIntegrity", g_icBootIntegrity[], g_icBootIntegrityLen);
     icJsonGetString("identities", g_icIdentities[], g_icIdentitiesLen);
+    icJsonGetString("domains", g_icDomains[], g_icDomainsLen);   // which domains should exist on this install
     icJsonGetString("drivers", g_icDrivers[], g_icDriversLen);
     icJsonGetString("decoyUser", g_icDecoyUser[], g_icDecoyUserLen);
     icJsonGetString("decoyFullName", g_icDecoyFullName[], g_icDecoyFullNameLen);
@@ -240,6 +255,7 @@ public bool installConfigApply() {
     klog(" bootIntegrity=");
     if (g_icBootIntegrityLen > 0) icLogSlice(g_icBootIntegrity.ptr, g_icBootIntegrityLen); else klog("off".ptr);
     if (g_icIdentitiesLen > 0) { klog(" identities="); icLogSlice(g_icIdentities.ptr, g_icIdentitiesLen); }
+    if (g_icDomainsLen > 0) { klog(" domains="); icLogSlice(g_icDomains.ptr, g_icDomainsLen); }
     if (g_icDriversLen > 0) { klog(" drivers="); icLogSlice(g_icDrivers.ptr, g_icDriversLen); }
     if (g_icDecoyUserLen > 0 || g_icDecoyHostnameLen > 0) {
         klog(" decoy=");

@@ -33,6 +33,7 @@ import core.overlay : overlayCreate, overlayDestroy, overlaySnapshot, overlayCom
 import core.io : klog, klog_hex;
 import core.pkgrepo : pkgInstallByName, pkgRemoveByName, pkgApplyProfile;   // DOMAIN_MANAGER DM7/DM11
 import core.appport : appPortAdd, appPortRemove;   // Software Center cross-domain app porting
+import core.install_config : installConfigDomains; // installer-chosen domain set (which domains exist)
 import core.template_bundle : templatePublish;                             // DOMAIN_MANAGER DM12: export verb
 
 extern (C) @nogc nothrow:
@@ -179,6 +180,30 @@ private void mkBootDomain(const(char)* name) {
 public void domainInitDefaults() {
     if (g_domDefaultsInited) return;
     g_domDefaultsInited = true;
+
+    // If the installer recorded which domains should exist (install.json "domains"), seed EXACTLY
+    // those instead of the hardcoded set — this is what makes the installer's domain selection
+    // actually take effect on the installed system (previously it was ignored and these 7 always
+    // won).  System is always present (the admin domain); duplicate names in the list are harmless
+    // (domainCreate rejects them).  Empty selection ⟹ fall back to the built-in set below.
+    char[512] sel = void;
+    const uint selLen = installConfigDomains(sel[]);
+    if (selLen > 0) {
+        mkBootDomain("System\0".ptr);
+        char[DOM_NAME_MAX] nm = void;
+        uint j = 0;
+        foreach (i; 0 .. selLen + 1) {
+            const char c = (i < selLen) ? sel[i] : ',';
+            if (c == ',' || c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                if (j > 0) { nm[j] = 0; mkBootDomain(nm.ptr); j = 0; }
+            } else if (j < DOM_NAME_MAX - 1) {
+                nm[j++] = c;
+            }
+        }
+        klog("[domain] seeded from install.json domain selection\n");
+        return;
+    }
+
     mkBootDomain("System\0".ptr);
     mkBootDomain("Personal\0".ptr);
     mkBootDomain("Work\0".ptr);

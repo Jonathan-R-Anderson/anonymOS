@@ -925,6 +925,8 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
         instCfgAppendJsonString("bootIntegrity".ptr, v.ptr, vl, true);
         instGetOrDefault(raw, len, "identities", "".ptr, v[], vl);
         instCfgAppendJsonString("identities".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "domains", "".ptr, v[], vl);            // which domains should exist
+        instCfgAppendJsonString("domains".ptr, v.ptr, vl, true);
         instGetOrDefault(raw, len, "drivers", "".ptr, v[], vl);
         instCfgAppendJsonString("drivers".ptr, v.ptr, vl, true);
     }

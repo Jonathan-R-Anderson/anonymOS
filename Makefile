@@ -60,7 +60,15 @@ refresh-d-kernel:
 
 # The D sub-make owns the real per-source dependency graph.  Always enter it before deciding
 # whether kernel.elf is current; otherwise an existing archive hides edits under src/kernel/d.
+#
+# The `@:` recipe is load-bearing: refresh-d-kernel is .PHONY, and the sub-make rebuilds the
+# archive ON DISK.  Without a recipe here, GNU make never re-stats build/libkernel_d.a after the
+# sub-make runs, so it compares kernel.elf against the archive's STALE (pre-refresh) timestamp and
+# skips the relink -- shipping a kernel.elf built from old objects.  The no-op recipe forces the
+# re-stat: a freshly rebuilt archive now correctly triggers the kernel.elf relink, while an
+# unchanged archive leaves the timestamp alone (incremental builds still skip the relink).
 build/libkernel_d.a: refresh-d-kernel
+	@:
 
 boot-integrity-contract:
 	scripts/compile-contracts.sh

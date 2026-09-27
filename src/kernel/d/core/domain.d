@@ -32,6 +32,7 @@ import core.overlay : overlayCreate, overlayDestroy, overlaySnapshot, overlayCom
                       overlayDiscard, overlayRestore;            // DOMAIN_MANAGER DM6.2
 import core.io : klog, klog_hex;
 import core.pkgrepo : pkgInstallByName, pkgRemoveByName, pkgApplyProfile;   // DOMAIN_MANAGER DM7/DM11
+import core.appport : appPortAdd, appPortRemove;   // Software Center cross-domain app porting
 import core.template_bundle : templatePublish;                             // DOMAIN_MANAGER DM12: export verb
 
 extern (C) @nogc nothrow:
@@ -528,6 +529,11 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     // DM7: package manager verbs — "install <domain> <pkg>" / "uninstall <domain> <pkg>"
     else if (verbEq(verb.ptr, "install"))   ok = (name[0] != 0) && (arg[0] != 0) && (pkgInstallByName(name.ptr, arg.ptr) == 0);
     else if (verbEq(verb.ptr, "uninstall")) ok = (name[0] != 0) && (arg[0] != 0) && (pkgRemoveByName(name.ptr, arg.ptr) == 0);
+    // Software Center cross-domain distribution — "port <domain> <app>" / "unport <domain> <app>":
+    // grant/revoke <domain> the right to run its OWN isolated instance of <app> (confined into that
+    // domain).  System (admin) is always allowed; other domains get an app only once it is ported.
+    else if (verbEq(verb.ptr, "port"))      ok = (name[0] != 0) && (arg[0] != 0) && (appPortAdd(arg.ptr, name.ptr) == 0);
+    else if (verbEq(verb.ptr, "unport"))    ok = (name[0] != 0) && (arg[0] != 0) && (appPortRemove(arg.ptr, name.ptr) == 0);
     // DM10.7: peripheral device toggles — "devon/devoff <domain> <gpu|audio|camera|mic|usb|input>"
     else if (verbEq(verb.ptr, "devon"))     ok = (id != 0) && domainSetDevice(id, domainDeviceClassByName(arg.ptr), true);
     else if (verbEq(verb.ptr, "devoff"))    ok = (id != 0) && domainSetDevice(id, domainDeviceClassByName(arg.ptr), false);

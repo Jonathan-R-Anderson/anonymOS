@@ -21,6 +21,8 @@ import core.domain   : g_domains, DomainState, domainStateName, domainCount,
 import core.pkgrepo  : pkgRepoCount, pkgRepoAt, pkgInstalledMask;          // DOMAIN_MANAGER DM7
 import core.domain   : domainDeviceMask;                                  // DOMAIN_MANAGER DM10.7
 import core.domain   : domainDistro, domainPkgMgr, distroName, pkgMgrName; // DOMAIN_MANAGER DM11
+import core.domain   : domainById;                                        // apps.json domain names
+import core.appport  : appPortCount, appPortAt;                           // Software Center app porting
 import core.template_bundle : templateCount, templateAt;                  // DOMAIN_MANAGER DM12
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
@@ -568,10 +570,10 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
 // object tables.  Read-only for now; the mutable ones become writable via the
 // identity policyEpoch transaction path (F2 phase 2).  /etc becomes a view of this.
 enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4,
-         CFG_DOMAINS = 5, CFG_PACKAGES = 6, CFG_TEMPLATES = 7, CFG_DISKS = 8;
+         CFG_DOMAINS = 5, CFG_PACKAGES = 6, CFG_TEMPLATES = 7, CFG_DISKS = 8, CFG_APPS = 9;
 
-private immutable string[8] g_configFiles =
-    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json", "templates.json", "disks.json"];
+private immutable string[9] g_configFiles =
+    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json", "templates.json", "disks.json", "apps.json"];
 
 // "<name>.json" -> config id (0 = not a config file).
 public int configfsId(const(char)* name, size_t len) {
@@ -735,6 +737,28 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                 lit(b, "] }");
             }
             lit(b, "\n] }\n");
+            return cast(long)b.len;
+        }
+        case CFG_APPS: {
+            // Software Center cross-domain ports: which domains may run each app as their own
+            // isolated instance.  One object per app that is ported to >= 1 domain.
+            lit(b, "[\n"); bool first = true;
+            foreach (uint i; 0 .. appPortCount()) {
+                auto a = appPortAt(i);
+                if (a is null) continue;
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"id\": "); jstr(b, a.app.ptr, a.appLen);
+                lit(b, ", \"domains\": [");
+                bool df = true;
+                foreach (uint j; 0 .. a.nDoms) {
+                    auto d = domainById(a.doms[j]);
+                    if (d is null) continue;
+                    if (!df) lit(b, ", "); df = false;
+                    jstr(b, d.name.ptr, d.nameLen);
+                }
+                lit(b, "] }");
+            }
+            lit(b, "\n]\n");
             return cast(long)b.len;
         }
         case CFG_TEMPLATES: {

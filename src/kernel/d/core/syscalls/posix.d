@@ -14178,14 +14178,15 @@ __gshared bool g_curVisible = true;                    // false = compositor hid
 // software pointer is the one shown/clicked, exactly as before.
 private bool cursorActive() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
-    // The kernel draws the cursor ONLY before the desktop claims the framebuffer (boot / installer,
-    // when nothing else can).  The post-handover "kernel cursor plane" (drawing the compositor's BO
-    // straight into the live scanout) was REVERTED (2026-09-26): it raced the compositor's partial
-    // re-render and replayed stale save-under rectangles over live output -> flickering borders and
-    // lost window content.  Once the desktop owns the fb the compositor's own software pointer is the
-    // only one (no_hardware_cursors = 1 in custom/general.lua), so this returns false there and the
-    // whole overlay (cursorPaint / cursorErase / cursorRepaintAfterPresent) is a no-op.
-    return !g_desktopClaimedFb;
+    // Pre-handover (boot / installer) the kernel is the only thing that can draw a cursor.
+    // Post-handover the kernel is a TRUE IRQ-rate cursor plane once the compositor uploads its BO
+    // (no_hardware_cursors = 0, so Hyprland stops compositing its own pointer): the pointer then
+    // moves on every PS/2 mouse IRQ, independent of the (slow) compositor present rate, so it never
+    // freezes during a present stall.  The 2026-09-26 revert of this was because the erase replayed a
+    // STALE live-scanout save-under; that is fixed — the erase now recomposites its background from
+    // the stable present shadow + kernel border geometry (cursorErase / bgComposeRow), never a
+    // scanout capture.
+    return (!g_desktopClaimedFb) || (g_curHasBo && g_curVisible);
 }
 private int curSpriteW() @nogc nothrow { return g_curHasBo ? g_curBmpW : CUR_W; }
 private int curSpriteH() @nogc nothrow { return g_curHasBo ? g_curBmpH : CUR_H; }
@@ -14208,6 +14209,30 @@ private void cursorLoadBo(uint handle, uint w, uint h, int hotX, int hotY) @nogc
     g_curHasBo = true; g_curVisible = true;
 }
 
+// Post-handover cursor ERASE: rebuild the pixels under the old sprite rect from the STABLE present
+// shadow (compositor content) + kernel border geometry — byte-identical to what the last present
+// wrote there — instead of replaying a saved copy of the LIVE scanout, which the compositor may have
+// overwritten since (the 2026-09-26 stale-save-under flicker).  Shares g_presentLine with the
+// present; safe because SYSCALLs run IF-masked so present and this mouse-IRQ path never overlap.
+private void cursorRecomposite(int rx, int ry, int rw, int rh) @nogc nothrow {
+    if (g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
+    if (g_presentLine is null || g_presentShadow is null) { g_presentForceFull = true; return; }
+    const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;
+    const int lineW  = g_presentShadowW;                // == copyW; g_presentLine is at least this wide
+    const int stride = cast(int)(g_fb.pitch / 4);
+    auto px = cast(uint*)g_fb.address;
+    foreach (i; 0 .. rh) {
+        const int sy = ry + i;
+        if (sy < 0 || sy >= fbh || sy >= g_presentShadowH) continue;
+        bgComposeRow(g_presentLine, lineW, sy);         // background for this row = shadow + borders
+        foreach (j; 0 .. rw) {
+            const int sx = rx + j;
+            if (sx < 0 || sx >= fbw || sx >= lineW) continue;
+            px[sy * stride + sx] = g_presentLine[sx];   // restore only the sprite's sub-span
+        }
+    }
+}
+
 // Restore the framebuffer pixels the cursor last covered (erase the sprite).
 //
 // Once the desktop owns the framebuffer these saved pixels are STALE -- the compositor has redrawn
@@ -14216,11 +14241,15 @@ private void cursorLoadBo(uint handle, uint w, uint h, int hotX, int hotY) @nogc
 // so the kernel's arrow does not get left behind on screen.
 private void cursorErase() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
-    // Post-handover the compositor owns the framebuffer and has redrawn this region since the sprite
-    // was stamped, so the save-under is STALE -- replaying it stamps old content (incl. kernel-drawn
-    // borders) over live output: the border-flicker regression.  Drop the save, never replay it; the
-    // kernel no longer draws a cursor once the desktop is up (see cursorActive()).
-    if (g_desktopClaimedFb) { g_curSaveValid = false; return; }
+    // Post-handover: rebuild the background under the old sprite from the STABLE present shadow +
+    // borders (cursorRecomposite), NOT a saved copy of the live scanout, which the compositor may
+    // have overwritten since (the 2026-09-26 stale-save-under flicker).  Pre-handover the kernel owns
+    // the fb, so the direct save-under replay below is valid and cheaper.
+    if (g_desktopClaimedFb) {
+        if (g_curSaveValid) cursorRecomposite(g_curSaveX, g_curSaveY, g_curSaveW, g_curSaveH);
+        g_curSaveValid = false;
+        return;
+    }
     if (!g_curSaveValid || g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
     auto px = cast(uint*)g_fb.address;
     const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;
@@ -14261,14 +14290,21 @@ private void cursorPaint() @nogc nothrow {
     const int cw = curSpriteW(), ch = curSpriteH();
     if (cw <= 0 || ch <= 0) return;
     g_curSaveX = g_curX; g_curSaveY = g_curY; g_curSaveW = cw; g_curSaveH = ch;
-    foreach (ry; 0 .. ch) {
-        const int sy = g_curY + ry;
-        foreach (rx; 0 .. cw) {
-            const int sx = g_curX + rx;
-            uint bg = 0;
-            if (sx >= 0 && sx < fbw && sy >= 0 && sy < fbh)
-                bg = px[sy * stride + sx];
-            g_curSaveUnder[ry * CUR_MAX + rx] = bg;
+    import core.console : g_desktopClaimedFb;
+    // Pre-handover the kernel owns the fb, so capture the pixels under the sprite for cursorErase's
+    // direct save-under replay.  Post-handover cursorErase recomposites the background from the
+    // shadow+borders instead, so the save-under is unused there — skip capturing it (which would be a
+    // per-move read of write-combining scanout MMIO).
+    if (!g_desktopClaimedFb) {
+        foreach (ry; 0 .. ch) {
+            const int sy = g_curY + ry;
+            foreach (rx; 0 .. cw) {
+                const int sx = g_curX + rx;
+                uint bg = 0;
+                if (sx >= 0 && sx < fbw && sy >= 0 && sy < fbh)
+                    bg = px[sy * stride + sx];
+                g_curSaveUnder[ry * CUR_MAX + rx] = bg;
+            }
         }
     }
     g_curSaveValid = true;
@@ -14328,6 +14364,10 @@ public void cursorSetPos(int x, int y) @nogc nothrow {
     cursorErase();
     g_curX = x; g_curY = y;
     cursorPaint();
+    // The cursor recomposite + sprite are regular stores to write-combining scanout memory, which is
+    // weakly ordered and buffered; fence so the moved pointer is flushed to the panel before this
+    // mouse-IRQ path returns (it runs at PS/2 rate, independent of the compositor present).
+    asm @nogc nothrow { sfence; }
     // Freeze probe: this mouse-IRQ path is the ONE code path proven alive during a hard freeze
     // (the cursor still moves).  Draw the who/what overlay here — pure fb writes, no serial, no
     // cli/sti; self-gated to only appear when the desktop has stopped presenting (>1.5 s).
@@ -14909,6 +14949,21 @@ public __gshared ulong g_presentRowsTotal  = 0;
 public __gshared ulong g_presentBlitCycles = 0;
 public __gshared ulong g_presentStoreCycles = 0;   // the framebuffer writes alone
 
+// BORDER-AWARE PRESENT + IRQ-RATE CURSOR (2026-09-27).  The kernel used to write the identity
+// borders (and, in a reverted attempt, the cursor) into the LIVE scanout in a SEPARATE pass AFTER
+// the content blit, so the continuously-scanning display could sample a borderless/cursorless
+// intermediate → the colour border flickered.  Now every scanout row is composed in a kernel RAM
+// line (compositor content + borders) and written with ONE store, so no intermediate is ever
+// visible; and the cursor's erase rebuilds its background from the SAME stable shadow+borders (never
+// a live-scanout capture, which was the old stale-save-under flicker).  Present and cursorSetPos
+// never run concurrently — SYSCALLs run IF-masked (SFMASK 0x47700), the mouse IRQ only fires between
+// presents — so this shares one shadow + one scratch line with no locking.
+private __gshared uint*  g_presentLine      = null;   // full-width scratch row (>= g_fb.pitch bytes)
+private __gshared size_t g_presentLineBytes = 0;
+public  __gshared int    g_presentShadowW   = 0;      // shadow content dims (== last present's copyW/H)
+public  __gshared int    g_presentShadowH   = 0;
+private __gshared bool   g_presentForceFull = false;  // set on window-geometry change → next present is full
+
 // DESKTOP_RESP R5, second half: write a scanline with non-temporal stores.
 //
 // movnti writes straight to memory without reading the line first and without keeping it in
@@ -14966,6 +15021,19 @@ private bool presentShadowEnsure(uint rows, size_t rowBytes) @nogc nothrow {
     g_presentShadow = cast(ubyte*)phys_to_virt(phys);
     g_presentShadowBytes = pages << 12;
     return false;   // freshly allocated: nothing to compare against yet, so copy everything once
+}
+
+// Lazily allocate the full-width scratch line the present composes each row into (content+border)
+// before its single scanout store.  On OOM g_presentLine stays null and the present falls back to
+// the old content-only copy + a post-blit border stamp (still correct, just the old flicker).
+private void presentLineEnsure(size_t rowBytes) @nogc nothrow {
+    if (rowBytes == 0) return;
+    if (g_presentLine !is null && g_presentLineBytes >= rowBytes) return;
+    const size_t pages = (rowBytes + 0xFFF) >> 12;
+    const ulong phys = alloc_phys_pages(pages);
+    if (phys == 0) { g_presentLine = null; g_presentLineBytes = 0; return; }
+    g_presentLine = cast(uint*)phys_to_virt(phys);
+    g_presentLineBytes = pages << 12;
 }
 
 private long drmPresentFb(uint fbId) @nogc nothrow {
@@ -15073,8 +15141,19 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     //     such a disagreement can persist to one interval rather than forever.
     const ulong _tBlit0 = rdtsc();
     ++g_presentFrameNo;
-    const bool fullRefresh = presentShadowEnsure(copyH, rowBytes) == false
-                             || (g_presentFrameNo % PRESENT_FULL_EVERY) == 0;
+    const bool shadowReady = presentShadowEnsure(copyH, rowBytes);
+    presentLineEnsure(rowBytes);
+    g_presentShadowW = cast(int)copyW;   // shadow content dims, for bgComposeRow / cursor recomposite
+    g_presentShadowH = cast(int)copyH;
+    // Each written row is composed (content + identity borders) into g_presentLine and stored ONCE,
+    // so the continuously-scanning display never samples a row mid-way between content and border.
+    // Fall back to a content-only copy + a post-blit border stamp only if the scratch line is absent.
+    const bool composeBorders = (g_presentLine !is null);
+    // g_presentForceFull: a window's border moved/resized/recoloured — its rows' CONTENT may be
+    // unchanged (row-diff would skip them), so force a full pass to (re)paint the border there.
+    const bool fullRefresh = !shadowReady || (g_presentFrameNo % PRESENT_FULL_EVERY) == 0
+                             || g_presentForceFull;
+    g_presentForceFull = false;
     // The forced cursor band must span BOTH the old sprite rect and the new one, whose height is
     // the compositor bitmap's (up to 64), not the boot arrow's CUR_H — else a taller cursor leaves
     // a trailing strip uncopied.
@@ -15085,24 +15164,30 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     uint rowsCopied = 0;
     foreach (row; 0 .. copyH) {
         auto srow = src + cast(size_t)row * cast(size_t)fb.pitch;
-        if (!fullRefresh) {
+        bool writeRow = fullRefresh;
+        if (!writeRow) {
             const bool inCursorBand = (cast(int)row >= curTop && cast(int)row <= curBot);
-            if (!inCursorBand) {
-                auto shrow = g_presentShadow + cast(size_t)row * rowBytes;
-                if (!rowDiffers(shrow, srow, rowBytes)) continue;   // unchanged: skip the MMIO write
-                memcpy(shrow, srow, rowBytes);
-            }
-        } else if (g_presentShadow !is null) {
-            memcpy(g_presentShadow + cast(size_t)row * rowBytes, srow, rowBytes);
+            if (inCursorBand) writeRow = true;
+            else if (rowDiffers(g_presentShadow + cast(size_t)row * rowBytes, srow, rowBytes))
+                writeRow = true;
         }
+        if (!writeRow) continue;   // unchanged content, not in the cursor band: skip the MMIO write
+        // Refresh the shadow with RAW content for EVERY written row — including the cursor band,
+        // which the old code skipped, leaving stale shadow under the sprite that the cursor
+        // recomposite would then read.  Borders are NOT baked into the shadow (keeps rowDiffers and
+        // bgComposeRow's content layer correct).
+        if (g_presentShadow !is null)
+            memcpy(g_presentShadow + cast(size_t)row * rowBytes, srow, rowBytes);
         ++rowsCopied;
-        // Time the STORE only.  Timing the whole loop and dividing by copied rows charged the
-        // cost of comparing ~740 unchanged rows to the ~60 that were written, which says nothing
-        // about the store instruction -- the thing actually under evaluation here.
         const ulong _tRow = rdtsc();
-        copyRowNT(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
-                  src + cast(size_t)row * cast(size_t)fb.pitch,
-                  rowBytes);
+        if (composeBorders) {
+            memcpy(g_presentLine, srow, rowBytes);                       // content into the RAM line
+            hosStampBordersRow(g_presentLine, cast(int)copyW, cast(int)row);  // overlay borders in RAM
+            copyRowNT(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
+                      cast(const(ubyte)*)g_presentLine, rowBytes);       // ONE store: content-or-border
+        } else {
+            copyRowNT(dst + cast(size_t)row * cast(size_t)g_fb.pitch, srow, rowBytes);
+        }
         g_presentStoreCycles += rdtsc() - _tRow;
     }
 
@@ -15127,11 +15212,14 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
         console_framebuffer_write(" -> display CLAIMED\n");
         g_dispLogPresent = true;
     }
-    // GUI roadmap G5: overlay trusted identity borders for each client window.
-    hosDrawIdentityBorders();
+    // GUI roadmap G5: identity borders are now composed INTO each row above (border-aware present,
+    // so the async scanout never sees a borderless intermediate).  Fall back to the old post-blit
+    // stamp only if the compose scratch line could not be allocated.
+    if (!composeBorders) hosDrawIdentityBorders();
     g_fbConsoleEnabled = false;
     g_desktopClaimedFb = true;   // the compositor now presents — no more kernel fb drawing
-    // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
+    // The compositor just overwrote the framebuffer; re-stamp the kernel cursor on top of the fresh
+    // frame (its background is now the just-written shadow+borders, so the next erase is never stale).
     cursorRepaintAfterPresent();
     // Log-egress status.  NO LONGER ALWAYS ON (2026-09-05).
     //
@@ -15853,6 +15941,60 @@ private void fbDrawBorder(int x, int y, int w, int h, uint color) @nogc nothrow 
     }
 }
 
+// ── Border-aware present: per-scanline border primitives (2026-09-27) ──────────
+// The SINGLE source of truth for "which pixels on scanline rowY are an identity border" — used by
+// BOTH the present compose loop and the cursor's background recomposite, so a border pixel produced
+// by a present and by a cursor erase are byte-identical (no shimmer).  Row-sliced port of
+// fbDrawBorder / fbDrawBorderSquare above: it MUST set exactly the same pixels those set on rowY.
+// Writes into a full-width kernel line[] (indexed by absolute x), so no SMAP gate is needed.
+private void hosBorderRowOverlay(uint* line, int lineW, int rowY,
+                                 int x, int y, int w, int h, uint color) @nogc nothrow {
+    if (w <= 0 || h <= 0) return;
+    if (rowY < y || rowY >= y + h) return;                       // scanline outside this window
+    immutable int r = HOS_BORDER_RADIUS;
+    immutable int B = HOS_BORDER_PX;
+    void put(int px) @nogc nothrow { if (px >= 0 && px < lineW) line[px] = color; }
+    void span(int x0, int x1) @nogc nothrow { for (int px = x0; px < x1; ++px) put(px); }
+    if (w < 2 * r + 2 || h < 2 * r + 2) {
+        // square border (fbDrawBorderSquare): full-width top/bottom bands + left/right B columns.
+        if ((rowY >= y && rowY < y + B) || (rowY >= y + h - B && rowY < y + h)) span(x, x + w);
+        span(x, x + B); span(x + w - B, x + w);
+        return;
+    }
+    // rounded border (fbDrawBorder): straight edges between quarter-circle corner arcs.
+    if (rowY >= y && rowY < y + B)        span(x + r, x + w - r);         // top band
+    if (rowY >= y + h - B && rowY < y + h) span(x + r, x + w - r);        // bottom band
+    if (rowY >= y + r && rowY < y + h - r) { span(x, x + B); span(x + w - B, x + w); } // mid edges
+    immutable int rOut2 = r * r, rIn = r - B, rIn2 = rIn * rIn;
+    const int dyt = (y + r) - rowY;                              // top corner rows: dy in 0..r
+    if (dyt >= 0 && dyt <= r)
+        foreach (dx; 0 .. r + 1) { const int d2 = dx * dx + dyt * dyt;
+            if (d2 <= rOut2 && d2 >= rIn2) { put(x + r - dx); put(x + w - 1 - r + dx); } }
+    const int dyb = rowY - (y + h - 1 - r);                      // bottom corner rows: dy in 0..r
+    if (dyb >= 0 && dyb <= r)
+        foreach (dx; 0 .. r + 1) { const int d2 = dx * dx + dyb * dyb;
+            if (d2 <= rOut2 && d2 >= rIn2) { put(x + r - dx); put(x + w - 1 - r + dx); } }
+}
+
+// Overlay EVERY identity border onto scanline rowY of line[] (full-width, absolute-x indexed).
+private void hosStampBordersRow(uint* line, int lineW, int rowY) @nogc nothrow {
+    foreach (i; 0 .. g_hosWinCount) {
+        auto wn = g_hosWins[i];
+        hosBorderRowOverlay(line, lineW, rowY, wn.x, wn.y, wn.w, wn.h, hosIdentityColor(wn.pid));
+    }
+}
+
+// Compose the STABLE background for scanline rowY into line[]: compositor content (present shadow) +
+// identity borders — byte-identical to what the present last wrote to that row.  The cursor erase
+// uses this to restore, so it never replays a stale live-scanout capture (the old flicker source).
+private void bgComposeRow(uint* line, int lineW, int rowY) @nogc nothrow {
+    if (g_presentShadow is null || rowY < 0 || rowY >= g_presentShadowH) return;
+    const int sw = g_presentShadowW;
+    auto shadow = cast(const(uint)*)(g_presentShadow + cast(size_t)rowY * cast(size_t)sw * 4);
+    foreach (i; 0 .. lineW) line[i] = (i < sw) ? (shadow[i] | 0xff000000) : 0xff000000;
+    hosStampBordersRow(line, lineW, rowY);
+}
+
 private void hosDrawIdentityBorders() @nogc nothrow {
     if (g_hosWinCount == 0) return;
     smapBegin();
@@ -15917,6 +16059,11 @@ private __gshared uint g_hosWinLogN     = 0;
 private __gshared uint g_hosWinPrevN    = 0xffffffffu;
 private __gshared int  g_hosWinPrevW    = -1;
 private __gshared int  g_hosWinPrevH    = -1;
+// Border-aware present: a full snapshot of the last window set, so ANY geometry/colour change forces
+// the next present to be a full pass (a moved/removed border sits on rows whose CONTENT is unchanged,
+// which row-diff would otherwise skip — leaving the old border behind / the new one unpainted).
+private __gshared HosWinRect[HOS_WIN_MAX] g_hosWinSnap;
+private __gshared uint g_hosWinSnapN    = 0xffffffffu;
 private long drmSetHosWindows(ulong arg) @nogc nothrow {
     // arg layout: u32 count, u32 pad, then count × { i32 x,y,w,h; u32 pid }.
     uint count = userRead!uint(arg + 0);
@@ -15931,6 +16078,23 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
         p += 20;
     }
     g_hosWinCount = count;
+    // Force-full the next present if the window set changed in ANY way (count or any rect/pid), so
+    // the border-aware present repaints borders whose underlying content did not change.
+    {
+        bool winsChanged = (count != g_hosWinSnapN);
+        if (!winsChanged)
+            foreach (i; 0 .. count) {
+                auto a = g_hosWins[i]; auto b = g_hosWinSnap[i];
+                if (a.x != b.x || a.y != b.y || a.w != b.w || a.h != b.h || a.pid != b.pid) {
+                    winsChanged = true; break;
+                }
+            }
+        if (winsChanged) {
+            g_presentForceFull = true;
+            g_hosWinSnapN = count;
+            foreach (i; 0 .. count) g_hosWinSnap[i] = g_hosWins[i];
+        }
+    }
     // Log the window SET whenever it CHANGES -- count or the first window's geometry --
     // rather than a fixed number of times at startup.  drmSetHosWindows runs every frame,
     // so a per-call klog floods the serial UART and stalls the compositor under KVM; but

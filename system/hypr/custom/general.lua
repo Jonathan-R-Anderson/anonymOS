@@ -117,10 +117,22 @@ end
 -- overlay is dormant.  Cursor smoothness during compositor stalls is served instead by the
 -- freeze-watchdog + input-ring fixes (kernel_main.d).  A real kernel cursor plane can be revisited,
 -- but only with a boot test.
+-- 2026-09-27: the kernel now draws the cursor as a proper IRQ-rate plane whose erase rebuilds its
+-- background from the present shadow + kernel borders (never a stale live-scanout save-under, which
+-- was the reverted attempt's flicker), so re-enable the hardware-cursor path:
+--   no_hardware_cursors = 0 -> Hyprland promotes the pointer to a "hardware" cursor, uploads its ARGB
+--                              BO via DRM_MODE_CURSOR_BO, and STOPS compositing its own software
+--                              pointer (so its frames carry no cursor, and moving the mouse no longer
+--                              forces a full compositor frame per motion). The kernel draws the BO on
+--                              every PS/2 IRQ, so the pointer moves independent of the (slow)
+--                              software present rate and cannot freeze during a present stall.
+--   use_cpu_buffer      = 1 -> the cursor BO is a CPU-mappable dumb buffer, so the kernel can read
+--                              its pixels through the HHDM (a GPU buffer would be unreadable).
+-- If the kernel ioctl ever regresses to EINVAL, Hyprland falls back to its software pointer, so safe.
 hl.config({
     cursor = {
-        no_hardware_cursors = 1,
-        use_cpu_buffer      = 0
+        no_hardware_cursors = 0,
+        use_cpu_buffer      = 1
     }
 })
 

@@ -3696,7 +3696,7 @@ build CMakeFiles/ContinuousSubmit | ${cmake_ninja_workdir}CMakeFiles/ContinuousS
 # Custom command for /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-global-shortcuts-v1.cpp
 
 build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-global-shortcuts-v1.cpp /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-global-shortcuts-v1.hpp: CUSTOM_COMMAND
-  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/hyprland-protocols/protocols/hyprland-global-shortcuts-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
+  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/pkgconfig/../../share/hyprland-protocols/protocols/hyprland-global-shortcuts-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
   DESC = Generating /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-global-shortcuts-v1.cpp, /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-global-shortcuts-v1.hpp
   restat = 1
 
@@ -3714,7 +3714,7 @@ build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/text-input-unstable
 # Custom command for /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-export-v1.cpp
 
 build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-export-v1.cpp /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-export-v1.hpp: CUSTOM_COMMAND
-  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/hyprland-protocols/protocols/hyprland-toplevel-export-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
+  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/pkgconfig/../../share/hyprland-protocols/protocols/hyprland-toplevel-export-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
   DESC = Generating /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-export-v1.cpp, /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-export-v1.hpp
   restat = 1
 
@@ -3813,7 +3813,7 @@ build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/wlr-data-control-un
 # Custom command for /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-focus-grab-v1.cpp
 
 build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-focus-grab-v1.cpp /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-focus-grab-v1.hpp: CUSTOM_COMMAND
-  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/hyprland-protocols/protocols/hyprland-focus-grab-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
+  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/pkgconfig/../../share/hyprland-protocols/protocols/hyprland-focus-grab-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
   DESC = Generating /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-focus-grab-v1.cpp, /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-focus-grab-v1.hpp
   restat = 1
 
@@ -3840,7 +3840,7 @@ build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/wayland-drm.cpp /ho
 # Custom command for /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-ctm-control-v1.cpp
 
 build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-ctm-control-v1.cpp /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-ctm-control-v1.hpp: CUSTOM_COMMAND
-  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/hyprland-protocols/protocols/hyprland-ctm-control-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
+  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/pkgconfig/../../share/hyprland-protocols/protocols/hyprland-ctm-control-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
   DESC = Generating /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-ctm-control-v1.cpp, /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-ctm-control-v1.hpp
   restat = 1
 
@@ -3849,7 +3849,7 @@ build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-ctm-contro
 # Custom command for /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-surface-v1.cpp
 
 build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-surface-v1.cpp /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-surface-v1.hpp: CUSTOM_COMMAND
-  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/hyprland-protocols/protocols/hyprland-surface-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
+  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/pkgconfig/../../share/hyprland-protocols/protocols/hyprland-surface-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
   DESC = Generating /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-surface-v1.cpp, /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-surface-v1.hpp
   restat = 1
 
@@ -3858,7 +3858,7 @@ build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-surface-v1
 # Custom command for /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-lock-notify-v1.cpp
 
 build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-lock-notify-v1.cpp /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-lock-notify-v1.hpp: CUSTOM_COMMAND
-  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/hyprland-protocols/protocols/hyprland-lock-notify-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
+  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/pkgconfig/../../share/hyprland-protocols/protocols/hyprland-lock-notify-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
   DESC = Generating /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-lock-notify-v1.cpp, /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-lock-notify-v1.hpp
   restat = 1
 
@@ -3867,7 +3867,7 @@ build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-lock-notif
 # Custom command for /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-mapping-v1.cpp
 
 build /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-mapping-v1.cpp /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-mapping-v1.hpp: CUSTOM_COMMAND
-  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/hyprland-protocols/protocols/hyprland-toplevel-mapping-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
+  COMMAND = cd /home/bruns/Documents/anonymOS/deps/hyprland && hyprwayland-scanner //home/bruns/Documents/anonymOS/deps/gtk-stack/sysroot/share/pkgconfig/../../share/hyprland-protocols/protocols/hyprland-toplevel-mapping-v1.xml /home/bruns/Documents/anonymOS/deps/hyprland/protocols/
   DESC = Generating /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-mapping-v1.cpp, /home/bruns/Documents/anonymOS/deps/hyprland/protocols/hyprland-toplevel-mapping-v1.hpp
   restat = 1
 

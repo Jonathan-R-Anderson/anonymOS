@@ -204,8 +204,10 @@ static const char *const BOOTINTEGRITY_DETAIL[] = {
     "no vault, a mismatch, or no network stops the boot."),
 };
 
-/* Toggleable identity profiles.  The kernel seeds its own fixed identity set on every
- * install; the ticks are recorded in install.json for when this becomes configurable. */
+/* Toggleable identity profiles.  Ticking a profile now selects which DOMAINS the installed
+ * system creates: the selection is written to install.json as "domains" and the kernel's
+ * domainInitDefaults() seeds exactly those (System is always created).  Research and Anonymous
+ * both map to the built-in Untrusted domain (see the per-row detail below). */
 static const struct opt IDENTITIES[] = {
     { "Personal",   "Everyday browsing and personal files",              "personal",   0 },
     { "Work",       "Work email, documents, and tools",                  "work",       0 },

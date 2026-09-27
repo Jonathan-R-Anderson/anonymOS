@@ -26,7 +26,7 @@ import core.identity : identityById, identityByName, IdentityRec,
 import core.namespace : nsAllocRestricted, nsBind, nsBindDeny, nsRootDir,
                         nsResolveCheck, nsRelease;     // DOMAIN_MANAGER DM2
 import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MANAGER DM2
-import core.objstore : objstoreMounted, objstoreInstallDomain,
+import core.objstore : objstoreMounted, objstoreInstallDomain, objstoreRemoveDomain,
                        objstoreDomainAt, objstoreDomainCount;     // DOMAIN_MANAGER DM5
 import core.overlay : overlayCreate, overlayDestroy, overlaySnapshot, overlayCommit,
                       overlayDiscard, overlayRestore;            // DOMAIN_MANAGER DM6.2
@@ -566,7 +566,7 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "fsro"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, false);
     else if (verbEq(verb.ptr, "fsrw"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, true);
     else if (verbEq(verb.ptr, "fsdeny"))    ok = (id != 0) && domainFsBindDeny(id, arg.ptr);
-    else if (verbEq(verb.ptr, "delete"))    ok = (id != 0) && domainDelete(id);   // DM10.7: GUI Delete button
+    else if (verbEq(verb.ptr, "delete"))    ok = (id != 0) && domainDelete(id);   // DM10.7: GUI Delete button (domainDelete forgets any persisted entry)
     // Power: "reboot System" / "poweroff System" — only the System domain may power the machine
     // (mirrors the DEVCLASS_POWER authority on the syscall path).  Never returns on success.
     else if (verbEq(verb.ptr, "reboot") || verbEq(verb.ptr, "poweroff"))
@@ -593,7 +593,13 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
         else
             ok = (id != 0) && domainSetDistro(id, wantLinux ? DISTRO_BUSYBOX : DISTRO_NATIVE);
     }
-    else if (verbEq(verb.ptr, "create"))    ok = (name[0] != 0) && (domainCreate(name.ptr, identityByName(arg.ptr), 0) != 0);
+    else if (verbEq(verb.ptr, "create")) {
+        ok = (name[0] != 0) && (domainCreate(name.ptr, identityByName(arg.ptr), 0) != 0);
+        // Persist the new domain's definition so a domain created from the GUI survives reboot
+        // (DM5 rehydrate).  Best-effort: if the store is unavailable it just stays session-only.
+        if (ok) objstoreInstallDomain(name[0 .. domCstrLen(name.ptr)],
+                                      arg[0 .. domCstrLen(arg.ptr)], "", PERSIST_EPHEMERAL);
+    }
     else if (verbEq(verb.ptr, "fromtpl"))   { const uint tp = domainByName(arg.ptr);
                                               ok = (name[0] != 0) && (tp != 0) && (domainCreate(name.ptr, domainById(tp).identityObjId, tp) != 0); }
     else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
@@ -833,6 +839,10 @@ public bool domainDelete(uint domObjId) {
     if (g_domFrozen) return false;
     auto d = domainById(domObjId);
     if (d is null) return false;
+    // DM5: forget any persisted definition first, so a domain deleted at runtime does not reappear
+    // on the next boot via domainRehydrateFromDisk.  No-op for a seed/manifest/clone domain that was
+    // never persisted.  Done here (not just in the GUI verb) so every delete path stays consistent.
+    if (d.nameLen > 0 && d.nameLen <= DOM_NAME_MAX) objstoreRemoveDomain(d.name[0 .. d.nameLen]);
     if (d.nsObjId != 0) { nsRelease(d.nsObjId); d.nsObjId = 0; }
     overlayDestroy(domObjId);   // DM6.2: release the writable overlay
     objRelease(d.objId);

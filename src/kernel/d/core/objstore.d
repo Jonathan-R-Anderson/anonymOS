@@ -388,6 +388,22 @@ public bool objstoreInstallDomain(const(char)[] name, const(char)[] identity,
     return flushMeta();
 }
 
+// DM5: forget a persisted domain by name (the DM "delete" path), so a domain deleted at runtime
+// does NOT reappear on the next boot via domainRehydrateFromDisk.  No-op (success) if not persisted.
+public bool objstoreRemoveDomain(const(char)[] name) {
+    if (!g_mounted) return false;
+    foreach (i; 0 .. cast(int)DOM_MAX_PERSIST) {
+        if (!g_domEntries[i].inUse || g_domEntries[i].nameLen != name.length) continue;
+        bool eq = true;
+        foreach (j; 0 .. cast(int)name.length) if (g_domEntries[i].name[j] != name[j]) { eq = false; break; }
+        if (!eq) continue;
+        memset(&g_domEntries[i], 0, DomainEntry.sizeof);
+        if (g_super.domainCount > 0) g_super.domainCount--;
+        return flushMeta();
+    }
+    return true;   // not persisted → nothing to forget
+}
+
 public uint objstoreDomainCount() { return g_mounted ? g_super.domainCount : 0; }
 
 // The i-th persisted domain (for rehydration). `name`/`identity` are NUL-terminated (the

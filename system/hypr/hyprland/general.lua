@@ -284,7 +284,13 @@ hl.config({
         allow_session_lock_restore = true,
         session_lock_xray = true,
         initial_workspace_tracking = false,
-        focus_on_activate = true
+        focus_on_activate = true,
+        -- Silence Hyprland's performUserChecks() login popups for things anonymOS intentionally
+        -- does NOT ship: it has its own GUI dialogs (no hyprland-guiutils / hyprland-dialog), and
+        -- the kernel launches the compositor directly (kernel-supervised) rather than via the
+        -- start-hyprland watchdog wrapper.  Neither is a real missing dependency here.
+        disable_hyprland_guiutils_check = true,
+        disable_watchdog_warning = true
     },
 
     binds = {

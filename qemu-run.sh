@@ -334,7 +334,7 @@ exec "$QEMU_BIN" \
   -serial file:serial.log \
   "${WIFISERIAL[@]}" \
   -m "$MEM" \
-  -smp "${SMP:-2}" \
+  -smp "${SMP:-4}" \
   -no-reboot \
   -no-shutdown \
   -monitor "unix:$PWD/mon.sock,server=on,wait=off" \

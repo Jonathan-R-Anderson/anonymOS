@@ -349,14 +349,20 @@ private void freezeWatchdog() {
     const ulong now = pitMs();
     if (now < g_lastPresentMs) return;
     const ulong stall = now - g_lastPresentMs;
-    if (stall < 2000) { g_fwdWakes = 0; return; }        // presenting fine (or brief hiccup)
+    // 250 ms, not 2000: a lost page-flip-completion wakeup (a queued completion the compositor's
+    // poll never woke for) used to sit unrecovered for 1-4 s, which is the "cursor freezes every
+    // few seconds then jumps" report — the composited software cursor cannot advance until the
+    // compositor commits the next frame.  desktopIsIdle() below still gates this to the genuine
+    // lost-wakeup case (flipQ != flipRd), and a normal frame reads its completion well under 250 ms,
+    // so this fires ONLY on a real wedge and clears it in ~250 ms instead of seconds.
+    if (stall < 250) { g_fwdWakes = 0; return; }         // presenting fine (or brief hiccup)
     // An IDLE desktop is not a lost wakeup.  Once clients stop damaging anything the compositor
     // parks in poll on purpose and presents nothing; re-waking it every second achieves nothing
     // and floods the log (81 bogus stall episodes in one boot).  desktopIsIdle() distinguishes
     // "parked with nothing outstanding" from "parked with a completion it never read", and only
     // the latter is the lost-wakeup this watchdog exists to recover from.
     if (desktopIsIdle()) { g_fwdWakes = 0; return; }
-    if (now - g_fwdLastMs < 1000) return;                // retry at most 1/s while stalled
+    if (now - g_fwdLastMs < 100) return;                 // retry every ~100ms while genuinely wedged (was 1s)
     g_fwdLastMs = now;
     ++g_fwdWakes;
     wakePollers();                                        // tier 1: poll/epoll/read-parked tasks
@@ -5260,7 +5266,15 @@ private void kernelLoop() {
             const ulong share = idleMs < 400 ? 15 : (idleMs < 4000 ? 60 : 90);
             if (g_instBudgetSpentMs < share) {
                 const ulong t0 = tscMs();
-                installStep(4096);                     // up to two 1 MiB staging slots per admitted pass
+                // 128 KiB (256 sectors) per admitted pass, NOT 2 MiB.  maxSectors bounds both the
+                // DMA write and the INLINE XTS/CSPRNG prepare inside installStep, so one pass holds
+                // the BKL with interrupts off for at most ~1-2 ms (256 software AES-XTS sectors),
+                // well under a frame — a moving cursor is never frozen by a single install burst.
+                // A 2 MiB pass was one indivisible 10-45 ms interrupt-off hold that dropped PS/2
+                // packets and made the cursor freeze-then-jump.  Throughput is preserved: when the
+                // desktop is idle the loop admits many of these small passes per 100 ms window (the
+                // budget still ramps to 60/90 %), so total MiB/s stays disk-bound.
+                installStep(256);
                 ulong dt = tscMs() - t0; if (dt == 0) dt = 1;
                 g_instBudgetSpentMs += dt;
             }

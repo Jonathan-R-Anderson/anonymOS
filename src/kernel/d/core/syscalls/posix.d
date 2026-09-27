@@ -333,7 +333,11 @@ struct InputEvent {
 }
 static assert(InputEvent.sizeof == 24);
 
-private enum size_t INPUT_RING_SIZE = 128;
+// 1024, not 128: at 100 Hz a mouse emits ~3 events/sample, so a 128-entry ring overflowed
+// (g_inMouseDrop) after only ~0.4 s of motion — after any compositor stall the cursor then landed
+// SHORT of where it was moved because the summed deltas were partly dropped.  1024 covers several
+// seconds of continuous motion, so the post-stall cursor lands where the pointer actually went.
+private enum size_t INPUT_RING_SIZE = 1024;
 
 struct InputRing {
     InputEvent[INPUT_RING_SIZE] events;
@@ -14152,10 +14156,51 @@ private static immutable string g_curArrow =
     "X#######X.." ~ "X########X." ~ "X#####XXXXX" ~ "X##X##X...." ~
     "X#X.X##X..." ~ "XX..X##X..." ~ "X....X##X.." ~ ".....X##X.." ~
     "......XXX..";
+private enum int CUR_MAX = 64;             // DRM_CAP_CURSOR_WIDTH/HEIGHT advertised max
 __gshared int  g_curX = -1, g_curY = -1;   // -1 → not positioned yet
 __gshared bool g_curSaveValid = false;
 __gshared int  g_curSaveX = 0, g_curSaveY = 0;
-__gshared uint[CUR_W * CUR_H] g_curSaveUnder;
+__gshared int  g_curSaveW = 0, g_curSaveH = 0;         // extent actually saved (arrow vs BO)
+__gshared uint[CUR_MAX * CUR_MAX] g_curSaveUnder;      // save-under, CUR_MAX-strided rows
+// Compositor-uploaded ARGB cursor bitmap.  When g_curHasBo is set the compositor called
+// DRM_MODE_CURSOR_BO (a "hardware" cursor plane, no_hardware_cursors=0) and has STOPPED
+// compositing its own software pointer, so the kernel draws THIS at IRQ rate — the pointer then
+// moves even while the compositor is mid-frame or wedged.  If the compositor never uploads one
+// (g_curHasBo==false), post-handover behaviour is unchanged (the compositor owns the cursor).
+__gshared uint[CUR_MAX * CUR_MAX] g_curBmp;
+__gshared int  g_curBmpW = 0, g_curBmpH = 0;
+__gshared int  g_curHotX = 0, g_curHotY = 0;
+__gshared bool g_curHasBo = false;
+__gshared bool g_curVisible = true;                    // false = compositor hid the cursor (BO handle 0)
+
+// Kernel draws the cursor during boot (nothing else can), and AFTER the desktop claims the fb only
+// when the compositor handed us a bitmap plane (g_curHasBo) — otherwise the compositor's own
+// software pointer is the one shown/clicked, exactly as before.
+private bool cursorActive() @nogc nothrow {
+    import core.console : g_desktopClaimedFb;
+    if (!g_desktopClaimedFb) return true;
+    return g_curHasBo && g_curVisible;
+}
+private int curSpriteW() @nogc nothrow { return g_curHasBo ? g_curBmpW : CUR_W; }
+private int curSpriteH() @nogc nothrow { return g_curHasBo ? g_curBmpH : CUR_H; }
+
+// Copy the compositor's ARGB8888 cursor BO (a dumb GEM buffer) into g_curBmp, read through the
+// HHDM exactly like drmPresentFb reads scanout pixels.
+private void cursorLoadBo(uint handle, uint w, uint h, int hotX, int hotY) @nogc nothrow {
+    GemBuf* g = findGem(handle);
+    if (g is null) return;
+    int cw = cast(int)w, ch = cast(int)h;
+    if (cw > CUR_MAX) cw = CUR_MAX;
+    if (ch > CUR_MAX) ch = CUR_MAX;
+    if (cw <= 0 || ch <= 0 || g.physAddr == 0) return;
+    const uint spitch = (g.pitch >= 4) ? (g.pitch / 4) : cast(uint)cw;   // source stride in pixels
+    auto src = cast(const(uint)*)(g.physAddr + hhdm_offset);
+    foreach (ry; 0 .. ch)
+        foreach (rx; 0 .. cw)
+            g_curBmp[ry * CUR_MAX + rx] = src[cast(uint)ry * spitch + cast(uint)rx];
+    g_curBmpW = cw; g_curBmpH = ch; g_curHotX = hotX; g_curHotY = hotY;
+    g_curHasBo = true; g_curVisible = true;
+}
 
 // Restore the framebuffer pixels the cursor last covered (erase the sprite).
 //
@@ -14164,19 +14209,21 @@ __gshared uint[CUR_W * CUR_H] g_curSaveUnder;
 // output.  Drop the save instead of replaying it.  The final erase before the handover still runs,
 // so the kernel's arrow does not get left behind on screen.
 private void cursorErase() @nogc nothrow {
-    import core.console : g_desktopClaimedFb;
-    if (g_desktopClaimedFb) { g_curSaveValid = false; return; }
+    // Restore the pixels the sprite last covered.  With the kernel-drawn plane the kernel is the
+    // LAST writer of the cursor region on every present (it stamps the sprite after the compositor
+    // blit), so the save-under is the compositor's own output and restoring it is correct even
+    // after the desktop claimed the framebuffer.
     if (!g_curSaveValid || g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
     auto px = cast(uint*)g_fb.address;
     const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;
     const int stride = cast(int)(g_fb.pitch / 4);
-    foreach (ry; 0 .. CUR_H) {
+    foreach (ry; 0 .. g_curSaveH) {
         const int sy = g_curSaveY + ry;
         if (sy < 0 || sy >= fbh) continue;
-        foreach (rx; 0 .. CUR_W) {
+        foreach (rx; 0 .. g_curSaveW) {
             const int sx = g_curSaveX + rx;
             if (sx < 0 || sx >= fbw) continue;
-            px[sy * stride + sx] = g_curSaveUnder[ry * CUR_W + rx];
+            px[sy * stride + sx] = g_curSaveUnder[ry * CUR_MAX + rx];
         }
     }
     g_curSaveValid = false;
@@ -14198,33 +14245,57 @@ private void cursorErase() @nogc nothrow {
 // desktop claims the framebuffer.  After that the compositor's pointer is the only one, and it is
 // the one clicks follow.
 private void cursorPaint() @nogc nothrow {
-    import core.console : g_desktopClaimedFb;
-    if (g_desktopClaimedFb) return;
+    if (!cursorActive()) return;
     if (g_curX < 0 || g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
     auto px = cast(uint*)g_fb.address;
     const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;
     const int stride = cast(int)(g_fb.pitch / 4);
-    g_curSaveX = g_curX; g_curSaveY = g_curY;
-    foreach (ry; 0 .. CUR_H) {
+    const int cw = curSpriteW(), ch = curSpriteH();
+    if (cw <= 0 || ch <= 0) return;
+    g_curSaveX = g_curX; g_curSaveY = g_curY; g_curSaveW = cw; g_curSaveH = ch;
+    foreach (ry; 0 .. ch) {
         const int sy = g_curY + ry;
-        foreach (rx; 0 .. CUR_W) {
+        foreach (rx; 0 .. cw) {
             const int sx = g_curX + rx;
             uint bg = 0;
             if (sx >= 0 && sx < fbw && sy >= 0 && sy < fbh)
                 bg = px[sy * stride + sx];
-            g_curSaveUnder[ry * CUR_W + rx] = bg;
+            g_curSaveUnder[ry * CUR_MAX + rx] = bg;
         }
     }
     g_curSaveValid = true;
-    foreach (ry; 0 .. CUR_H) {
-        const int sy = g_curY + ry;
-        if (sy < 0 || sy >= fbh) continue;
-        foreach (rx; 0 .. CUR_W) {
-            const int sx = g_curX + rx;
-            if (sx < 0 || sx >= fbw) continue;
-            const char c = g_curArrow[ry * CUR_W + rx];
-            if (c == 'X')      px[sy * stride + sx] = 0xff000000;
-            else if (c == '#') px[sy * stride + sx] = 0xffffffff;
+    if (g_curHasBo) {
+        // Alpha-blend the compositor's ARGB bitmap (straight alpha in the high byte) over the bg.
+        foreach (ry; 0 .. ch) {
+            const int sy = g_curY + ry;
+            if (sy < 0 || sy >= fbh) continue;
+            foreach (rx; 0 .. cw) {
+                const int sx = g_curX + rx;
+                if (sx < 0 || sx >= fbw) continue;
+                const uint argb = g_curBmp[ry * CUR_MAX + rx];
+                const uint a = argb >> 24;
+                if (a == 0) continue;                              // transparent → keep bg
+                if (a == 0xff) { px[sy * stride + sx] = argb | 0xff000000; continue; }
+                const uint bg = px[sy * stride + sx];
+                const uint sr = (argb >> 16) & 0xff, sg = (argb >> 8) & 0xff, sb = argb & 0xff;
+                const uint br = (bg >> 16) & 0xff, bgc = (bg >> 8) & 0xff, bb = bg & 0xff;
+                const uint rr = (sr * a + br  * (255 - a)) / 255;
+                const uint gg = (sg * a + bgc * (255 - a)) / 255;
+                const uint bl = (sb * a + bb  * (255 - a)) / 255;
+                px[sy * stride + sx] = 0xff000000 | (rr << 16) | (gg << 8) | bl;
+            }
+        }
+    } else {
+        foreach (ry; 0 .. CUR_H) {
+            const int sy = g_curY + ry;
+            if (sy < 0 || sy >= fbh) continue;
+            foreach (rx; 0 .. CUR_W) {
+                const int sx = g_curX + rx;
+                if (sx < 0 || sx >= fbw) continue;
+                const char c = g_curArrow[ry * CUR_W + rx];
+                if (c == 'X')      px[sy * stride + sx] = 0xff000000;
+                else if (c == '#') px[sy * stride + sx] = 0xffffffff;
+            }
         }
     }
 }
@@ -14996,8 +15067,13 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     ++g_presentFrameNo;
     const bool fullRefresh = presentShadowEnsure(copyH, rowBytes) == false
                              || (g_presentFrameNo % PRESENT_FULL_EVERY) == 0;
+    // The forced cursor band must span BOTH the old sprite rect and the new one, whose height is
+    // the compositor bitmap's (up to 64), not the boot arrow's CUR_H — else a taller cursor leaves
+    // a trailing strip uncopied.
+    const int curNewBot = g_curY + curSpriteH();
+    const int curOldBot = g_curSaveY + g_curSaveH;
     const int curTop  = (g_curY < g_curSaveY ? g_curY : g_curSaveY) - 1;
-    const int curBot  = (g_curY > g_curSaveY ? g_curY : g_curSaveY) + CUR_H + 1;
+    const int curBot  = (curNewBot > curOldBot ? curNewBot : curOldBot) + 1;
     uint rowsCopied = 0;
     foreach (row; 0 .. copyH) {
         auto srow = src + cast(size_t)row * cast(size_t)fb.pitch;
@@ -15960,6 +16036,12 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
     auto src = cast(const(ubyte)*)srcPtr;
     auto dst = cast(ubyte*)g_fb.address;
 
+    // Kernel cursor plane: this path blits only the damage sub-rect, so the sprite's OLD pixels
+    // would trail if the cursor left that rect.  Restore under the old sprite BEFORE the blit
+    // (no-op unless a BO cursor is active), then re-stamp AFTER — so the pointer stays smooth on
+    // Hyprland's partial-damage present without leaving a trail.
+    cursorErase();
+
     smapBegin();
     foreach (row; y0 .. y0 + blitH) {
         memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch + xByteOff,
@@ -15970,6 +16052,7 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
 
     // GUI roadmap G5: overlay trusted identity borders for each client window.
     hosDrawIdentityBorders();
+    cursorRepaintAfterPresent();
 
     g_fbConsoleEnabled = false;
 
@@ -16756,10 +16839,40 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     // return value of that arm is not used for control flow, so nothing else changes.
     case DRM_NR_MODE_CURSOR:
     case DRM_NR_MODE_CURSOR2: {
+        // Kernel-drawn "hardware" cursor plane: accept the compositor's bitmap + position so it can
+        // stop compositing its own software pointer (no_hardware_cursors=0).  The kernel then draws
+        // the sprite at IRQ rate, so the pointer stays smooth even while the compositor is wedged.
         const uint curFlags = userRead!uint(arg + 0);
-        if ((curFlags & DRM_MODE_CURSOR_BO) && userRead!uint(arg + 24) == 0)
-            return 0;                      // disable: nothing to turn off, and it worked
-        return negErrno(EINVAL);
+        if (curFlags & DRM_MODE_CURSOR_BO) {
+            const uint handle = userRead!uint(arg + 24);
+            if (handle == 0) {                 // hide the cursor
+                cursorErase();
+                g_curVisible = false;
+                return 0;
+            }
+            const uint cw = userRead!uint(arg + 16);
+            const uint ch = userRead!uint(arg + 20);
+            int hotX = 0, hotY = 0;
+            if (nr == DRM_NR_MODE_CURSOR2) { hotX = userRead!int(arg + 28); hotY = userRead!int(arg + 32); }
+            cursorErase();
+            cursorLoadBo(handle, cw, ch, hotX, hotY);
+            cursorPaint();
+            return 0;
+        }
+        if (curFlags & DRM_MODE_CURSOR_MOVE) {
+            const int mx = userRead!int(arg + 8);
+            const int my = userRead!int(arg + 12);
+            // (mx,my) is the plane top-left (hotspot already subtracted) = where the compositor
+            // dispatches clicks.  The PS/2 IRQ drives the DRAWN position for stall-independent
+            // smoothness; resync to the compositor only on real drift (first placement / post-stall
+            // / edge clamp), never every move — that would fight the fresher IRQ position and jitter.
+            const int ddx = (g_curX > mx) ? (g_curX - mx) : (mx - g_curX);
+            const int ddy = (g_curY > my) ? (g_curY - my) : (my - g_curY);
+            if (!g_curSaveValid || !g_curHasBo || ddx > 6 || ddy > 6)
+                cursorSetPos(mx, my);
+            return 0;
+        }
+        return 0;                              // unknown/legacy-null flags: accept silently
     }
 
     case DRM_NR_MODE_ATOMIC:

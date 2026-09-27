@@ -709,9 +709,13 @@ int main(void)
         int have_lease = (access(DHCP_OK, F_OK) == 0);
         if (s >= 0) {
             int associating = (g_connect_ssid[0] && !have_lease && (g_cyc - g_connectCyc) < 9);
-            /* Scan every ~15s until something is found, then only every ~60s.  Frequent WEXT scans
-             * contend with wpa_supplicant and sometimes observe cfg80211's cache between updates. */
-            int scan_period = (have_lease || g_nnets > 0) ? 12 : 3;
+            /* Scan every ~15s until something is found, then only every ~120s once we have a lease
+             * or a network list.  The nl80211 channel-hop scan is a seconds-long CPU burst on the
+             * single-CPU LKL stack that steals cycles from the software-rendered compositor (a
+             * source of the periodic cursor hitch), so once connected we scan rarely — the network
+             * you are on does not need re-discovery.  Discovery cadence while disconnected is
+             * unchanged so the menu still fills quickly. */
+            int scan_period = (have_lease || g_nnets > 0) ? 24 : 3;
             if (!associating && (g_cyc % scan_period) == 0) {
                 set_diag("scanning on wlan0 (provider-side)...");
                 int n = provider_scan(s);

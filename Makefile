@@ -575,9 +575,11 @@ $(WLCAIRO_DEMO_BIN): src/util/wl-cairo-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CO
 	@PANGOCAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags pangocairo wayland-client)" ; \
 	PANGOCAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs pangocairo wayland-client)" ; \
 	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
-		-I$(WAYLAND_SYSROOT)/include -Ibuild $$PANGOCAIRO_CFLAGS \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$PANGOCAIRO_CFLAGS \
 		-o $@ src/util/wl-cairo-demo.c $(XDG_SHELL_CODE) \
+		-lfreetype \
 		$$PANGOCAIRO_LIBS \
+		-lm \
 		-pthread
 
 # INSTALLER D4.1: the live "Install EpinAnonymOS to Disk" desktop entry's launch target.
@@ -588,9 +590,11 @@ $(INSTALLER_BIN): src/util/wl-installer.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@PANGOCAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags pangocairo wayland-client)" ; \
 	PANGOCAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --libs pangocairo wayland-client)" ; \
 	$(MUSL_CC) -O2 -Wall -Wextra -L$(WAYLAND_SYSROOT)/lib \
-		-I$(WAYLAND_SYSROOT)/include -Ibuild $$PANGOCAIRO_CFLAGS \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$PANGOCAIRO_CFLAGS \
 		-o $@ src/util/wl-installer.c $(XDG_SHELL_CODE) \
+		-lfreetype \
 		$$PANGOCAIRO_LIBS \
+		-lm \
 		-pthread
 
 $(WLFILES_BIN): src/util/wl-files.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)

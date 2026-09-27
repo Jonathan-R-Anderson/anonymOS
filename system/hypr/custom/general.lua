@@ -105,20 +105,21 @@ end
 
 -- UNCONDITIONAL: this one is a kernel property, not a renderer property.
 --
--- The kernel fails DRM_NR_MODE_CURSOR/CURSOR2 with EINVAL on purpose so the compositor
--- composites the pointer itself -- true on the virgl path as much as on softpipe.  The host
--- leaves cursor:no_hardware_cursors at its default 2 ("auto"), which resolves to FALSE here
--- (case 2 is nvidia+mgpu/VRR), so Hyprland would attempt a HARDWARE cursor on every pointer
--- update.  That attempt is not free: attemptHardwareCursor() runs a whole RENDER_MODE_FULL_FAKE
--- pass before drmModeSetCursor fails and it falls back to the software cursor anyway.  It is
--- also the source of the "legacy drm: cursor null failed" spam in the boot log.
---
--- Forcing 1 skips that dead end and routes motion through damageIfSoftware(), so the pointer
--- tracks properly instead of moving at the damage-driven fallback rate.
+-- The kernel now IMPLEMENTS a cursor plane: DRM_NR_MODE_CURSOR/CURSOR2 accept the compositor's
+-- ARGB bitmap + position and the kernel draws the sprite itself (posix.d cursorPaint), stamped
+-- into the scanout on every present and moved at PS/2-IRQ rate.  So the pointer moves INDEPENDENT
+-- of scene composition -- it stays smooth even while the compositor is mid-frame or wedged, which
+-- the composited software pointer could not.  Therefore:
+--   no_hardware_cursors = 0  -> Hyprland promotes the pointer to the (now-working) hardware cursor
+--                               and STOPS compositing its own software pointer (one cursor, fast).
+--   use_cpu_buffer      = 1  -> the cursor BO is a CPU-mappable dumb buffer, so the kernel can read
+--                               its ARGB pixels through the HHDM (a GPU buffer would be unreadable).
+-- If the kernel ioctl ever regresses to EINVAL, Hyprland falls back to its software pointer as
+-- before, so this is safe.
 hl.config({
     cursor = {
-        no_hardware_cursors = 1,
-        use_cpu_buffer      = 0
+        no_hardware_cursors = 0,
+        use_cpu_buffer      = 1
     }
 })
 

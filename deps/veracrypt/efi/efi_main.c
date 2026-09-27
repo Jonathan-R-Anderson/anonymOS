@@ -254,7 +254,7 @@ static int read_password(EFI_SIMPLE_TEXT_INPUT *ci, char *buf, int max){
  * key (hex) plus the on-disk geometry init-crypt needs to dm-crypt-mount the rootfs. For the DECOY
  * only — the coercer already has the decoy password, so the decoy key is not secret from them; the
  * hidden OS never uses this path. */
-static u16 g_cmd[600];
+static u16 g_cmd[1400];   /* base cmdline + decoykey(128 hex) + geometry + decoyacct (up to 960 hex) */
 static int g_cmdn;
 static void cmd_c(char c){ if (g_cmdn < (int)(sizeof g_cmd/2)-1) g_cmd[g_cmdn++] = (u16)(u8)c; }
 static void cmd_s(const char *s){ while (*s) cmd_c(*s++); }
@@ -535,6 +535,16 @@ static void decrypt_and_boot(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, EFI_BLOCK_I
          * match, so it is 0 (and omitted) for a hidden-OS boot. init-crypt reads it and hands
          * it to userspace; the synthetic-log generators seed the universe the password implies. */
         { u64 ds = preboot_last_decoy_seed(); if (ds){ cmd_s(" decoyseed="); cmd_u64(ds); } }
+        /* Decoy account descriptor: the installer wrote the chosen user/full name/hostname and the
+         * finished $6$ shadow hash into [32..512) of this (decrypted) descriptor sector at install.
+         * Forward it hex-encoded as one whitespace-free token so init-crypt can rewrite the decoy's
+         * /etc/passwd,shadow,group,hostname in the tmpfs overlay before switch_root.  Guarded by the
+         * "ANOSACCT" magic + version byte; absent/invalid => omitted => decoy keeps its baked account.
+         * kind is 0 here (kind!=0 returned above), so this is honored only for the decoy UKI. */
+        { static const u8 AM[8]={'A','N','O','S','A','C','C','T'}; int ok=1;
+          for (int i=0;i<8;i++) if (desc[32+i]!=AM[i]) ok=0;
+          if (ok && desc[40]==1){ u32 tl = (u32)desc[41] | ((u32)desc[42]<<8);
+            if (tl>0 && tl<=469){ cmd_s(" decoyacct="); cmd_hex(desc+43, (int)tl); } } }
         g_cmd[g_cmdn] = 0;
         EFI_LOADED_IMAGE *li = 0;
         if (BS->HandleProtocol(img, &LOADED_IMAGE_GUID, (void**)&li) == 0 && li){

@@ -799,10 +799,14 @@ hos-ethsign-dyn:
 	@echo "==== Building hos-ethsign-dyn (dynamic musl, for libnshim->LKL on-device networking) ===="
 	cd $(ETHSIGN_SRC) && \
 	  CC_x86_64_unknown_linux_musl="$(ETHSIGN_MUSL_CC)" \
-	  RUSTFLAGS="-C target-feature=-crt-static" \
+	  RUSTFLAGS="-C target-feature=-crt-static -C linker=$(ETHSIGN_MUSL_CC) -C link-self-contained=no" \
 	  "$(CARGO)" build --release --target $(RUST_TARGET)
 	@mkdir -p build
 	cp $(ETHSIGN_SRC)/target/$(RUST_TARGET)/release/hos-ethsign build/hos-ethsign-dyn
+	@# Verify it is DYNAMIC-musl, not a glibc leak (the old boot-brick): interp must be ld-musl.
+	@readelf -l build/hos-ethsign-dyn 2>/dev/null | grep -q 'ld-musl-x86_64' \
+	  && echo "hos-ethsign-dyn: dynamic musl OK (interp ld-musl-x86_64.so.1)" \
+	  || { echo "hos-ethsign-dyn: NOT musl (glibc leak) — refusing"; rm -f build/hos-ethsign-dyn; exit 1; }
 
 # kuml — the kUML Haskell port (class-diagram DSL -> SVG). Delegates to the
 # self-contained sub-Makefile, which concatenates the modules (JHC's multi-module
@@ -1317,13 +1321,27 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	   else echo "Skipping kuml (jhc build failed — run 'make -C $(KUML_HS_DIR) check')"; fi; \
 	 else echo "Skipping kuml (need jhc on PATH + $(MUSL_CC))"; fi
 
-	@# On-device NETWORKED deploy (hos-ethsign-dyn + hos-attest-deploy) is intentionally NOT staged
-	@# into the ISO: dynamic-musl Rust needs the out-of-tree musl-cross toolchain (absent -> it links
-	@# glibc/libc.so.6, which cannot run on anonymOS) plus a staged libgcc_s.so.1, and its
-	@# libnshim->LKL network path is untested on hardware. The linkage gate below correctly rejects
-	@# a staged glibc/unstaged-dep binary as a boot-brick. Build it on demand with `make hos-ethsign-dyn`
-	@# once that path is proven. The STATIC hos-ethsign (offline sign/address, staged above) plus the
-	@# host-side scripts/attest-deploy.sh cover signing + deploy today.
+	@# On-device NETWORKED deploy backend for the installer's "Deploy contract" button: the
+	@# dynamic-musl deploy pair (hos-ethsign-dyn + hos-attest-deploy) + libgcc_s.so.1, staged as
+	@# boot modules.  GATED + NON-FATAL: needs cargo + the musl-cross toolchain; the hos-ethsign-dyn
+	@# rule self-checks it is real dynamic-musl (interp ld-musl, not a glibc leak) and refuses
+	@# otherwise, and the verify-userland-linkage.sh gate at the end asserts the DT_NEEDED closure
+	@# (libc.so->ld-musl, libgcc_s.so.1) is staged.  A missing toolchain or build failure just skips
+	@# staging -> the installer's Deploy button reports "backend not available" and offline
+	@# sign/address via the static hos-ethsign still works.  NOTE: completing an on-chain deploy at
+	@# install time also needs LKL networking + a Tor SOCKS path up in the live environment (see
+	@# src/util/hos-attest-deploy.c): the plumbing is staged here; the network bring-up is separate.
+	@LIBGCC="$(HOME)/lkl-build/x86_64-linux-musl-cross/x86_64-linux-musl/lib/libgcc_s.so.1"; \
+	 if [ -x "$(ETHSIGN_MUSL_CC)" ] && [ -x "$(CARGO)" ] && [ -f "$$LIBGCC" ]; then \
+	   if $(MAKE) --no-print-directory hos-ethsign-dyn && $(MAKE) --no-print-directory $(ATTESTDEPLOY_BIN) \
+	      && [ -f build/hos-ethsign-dyn ] && [ -f $(ATTESTDEPLOY_BIN) ]; then \
+	     cp build/hos-ethsign-dyn cd/hos-ethsign-dyn && \
+	     cp $(ATTESTDEPLOY_BIN)   cd/hos-attest-deploy && \
+	     cp "$$LIBGCC"            cd/libgcc_s.so.1 && \
+	     printf '\n    module_path: boot():/hos-ethsign-dyn\n    module_path: boot():/hos-attest-deploy\n    module_path: boot():/libgcc_s.so.1\n' >> cd/boot/limine/limine.conf && \
+	     echo "Included on-device deploy backend (hos-ethsign-dyn + hos-attest-deploy + libgcc_s.so.1)"; \
+	   else echo "Skipping on-device deploy backend (dynamic-musl build failed)"; fi; \
+	 else echo "Skipping on-device deploy backend (need cargo + musl-cross toolchain + libgcc_s.so.1)"; fi
 	@if [ -f "$(ATTEST_VAULT_BIN)" ]; then \
 	   cp $(ATTEST_VAULT_BIN) cd/attest-vault.bin && \
 	   printf '\n    module_path: boot():/attest-vault.bin\n' >> cd/boot/limine/limine.conf && \

@@ -684,6 +684,16 @@ __gshared ulong g_instOuterFirst, g_instOuterSectors;
 __gshared const(ubyte)* g_instDecoyImageSrc;
 __gshared ulong g_instDecoyImageSize;
 __gshared ulong g_instDecoyImageSectors;
+// Decoy account descriptor: the installer-chosen user / full name / hostname and the finished
+// $6$ shadow hash (decoyPasswordCrypt), captured from install.json in installBuildPersistedConfig
+// and written into the decoy region's ANOSBOOT descriptor sector by installPatchDecoyAccountIntoImage.
+// Fail-safe: g_instDecoyAcctSet stays false unless a non-empty decoyUser was seen; when false the
+// decoy keeps whatever account was baked into the image at build time.
+__gshared bool     g_instDecoyAcctSet;
+__gshared char[64]  g_instDecoyAcctUser;  __gshared uint g_instDecoyAcctUserLen;
+__gshared char[96]  g_instDecoyAcctFull;  __gshared uint g_instDecoyAcctFullLen;
+__gshared char[64]  g_instDecoyAcctHost;  __gshared uint g_instDecoyAcctHostLen;
+__gshared char[128] g_instDecoyAcctHash;  __gshared uint g_instDecoyAcctHashLen;
 __gshared const(ubyte)* g_instHiddenImageSrc;
 __gshared ulong g_instHiddenImageSize;
 __gshared ulong g_instHiddenImageSectors;
@@ -857,6 +867,14 @@ private void instGetOrDefault(const(char)* src, size_t len, string key,
     if (outLen < outBuf.length) outBuf[outLen] = 0;
 }
 
+// Copy a field slice into a fixed decoy-account buffer, capping at the buffer length.
+@nogc nothrow
+private void instCopyAcct(const(char)* src, uint srcLen, char[] dst, ref uint dstLen) {
+    uint n = srcLen; if (n > cast(uint)dst.length) n = cast(uint)dst.length;
+    for (uint i = 0; i < n; i++) dst[i] = src[i];
+    dstLen = n;
+}
+
 @nogc nothrow
 private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
     char[128] hostname; uint hostnameLen;
@@ -873,6 +891,7 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
     g_instFillOuter = true;
     instClearTransientPasswords();
     g_instConfigLen = 0;
+    g_instDecoyAcctSet = false;   // rebuilt below only if a non-empty decoyUser is present
     instCfgAppend("{\n");
     instCfgAppendJsonString("schema".ptr, "epin.install.v1".ptr, cast(uint)"epin.install.v1".length, true);
     instGetOrDefault(raw, len, "hostname", "epin".ptr, hostname[], hostnameLen);
@@ -964,15 +983,27 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
     }
     instGetOrDefault(raw, len, "decoyUser", "decoy".ptr, decoyUser[], decoyUserLen);
     instCfgAppendJsonString("decoyUser".ptr, decoyUser.ptr, decoyUserLen, true);
+    instCopyAcct(decoyUser.ptr, decoyUserLen, g_instDecoyAcctUser[], g_instDecoyAcctUserLen);
     instGetOrDefault(raw, len, "decoyFullName", "Decoy User".ptr, decoyFullName[], decoyFullNameLen);
     instCfgAppendJsonString("decoyFullName".ptr, decoyFullName.ptr, decoyFullNameLen, true);
+    instCopyAcct(decoyFullName.ptr, decoyFullNameLen, g_instDecoyAcctFull[], g_instDecoyAcctFullLen);
     if (!encrypted) {
         instJsonGetString(raw, len, "decoyPassword", pw[], pwLen);
         instHexSha512(pw.ptr, pwLen, hash[], hashLen);
         instCfgAppendJsonString("decoyPasswordSha512".ptr, hash.ptr, hashLen, true);
     }
+    // Capture the finished $6$ shadow hash the installer computed (decoyPasswordCrypt) for the
+    // decoy region descriptor.  Independent of the encrypted flag; not re-emitted into the
+    // persisted install.json (it belongs only in the encrypted decoy descriptor).
+    {
+        char[160] c; uint cl;
+        instJsonGetString(raw, len, "decoyPasswordCrypt", c[], cl);
+        instCopyAcct(c.ptr, cl, g_instDecoyAcctHash[], g_instDecoyAcctHashLen);
+    }
     instGetOrDefault(raw, len, "decoyHostname", "decoy-pc".ptr, decoyHostname[], decoyHostnameLen);
     instCfgAppendJsonString("decoyHostname".ptr, decoyHostname.ptr, decoyHostnameLen, false);
+    instCopyAcct(decoyHostname.ptr, decoyHostnameLen, g_instDecoyAcctHost[], g_instDecoyAcctHostLen);
+    g_instDecoyAcctSet = g_instDecoyAcctUserLen > 0;
     instCfgAppend("}\n".ptr);
     g_instConfig[g_instConfigLen] = 0;
     return g_instConfigLen > 0 && g_instConfigLen < INST_CONFIG_MAX;
@@ -1282,6 +1313,48 @@ private bool installPatchConfigIntoImage(ubyte* img, ulong imgSize) {
         return false;
     }
     klog("[install] install.json placed in the boot volume image bytes=0x"); klog_hex(g_instConfigLen); klog("\n");
+    return true;
+}
+
+// Append "<tag><value>\n" to the descriptor payload at d[o..], advancing o.  Bounds-checked to the
+// 480-byte slack window; returns false (aborting the whole descriptor) if it would overflow.
+@nogc nothrow
+private bool instAcctPut(ubyte* d, ref uint o, string tag, const(char)* val, uint valLen) {
+    if (o + cast(uint)tag.length + valLen + 1 > 480) return false;
+    foreach (ch; tag) d[o++] = cast(ubyte)ch;
+    for (uint i = 0; i < valLen; i++) d[o++] = cast(ubyte)val[i];
+    d[o++] = cast(ubyte)'\n';
+    return true;
+}
+
+// Write the installer-chosen decoy account into the ANOSBOOT descriptor sector (sector 0) of the
+// in-RAM decoy image, using the 480 unused bytes [32..512).  The whole decoy region is XTS-encrypted
+// when streamed, so this sector is ciphertext on disk (indistinguishable from the random fill); no
+// partition sector is added, so the Full-disk/Hidden-OS geometry stays identical.  Layout at img+32:
+//   [0..8)="ANOSACCT" [8]=version(1) [9..11)=uint16-LE textLen, then `textLen` bytes of the text
+//   payload:  user=<u>\nfull=<f>\nhost=<h>\nhash=<$6$-hash>\n   (line-oriented so init-crypt's
+//   busybox ash can parse it with plain `read`/`case`, no binary slicing).
+// Fail-safe: no-op unless an account was captured AND the sector already carries the "ANOSBOOT"
+// magic; the loader and init-crypt validate the "ANOSACCT" magic before applying, so a partial or
+// absent descriptor simply leaves the decoy's baked account in place.
+@nogc nothrow
+private bool installPatchDecoyAccountIntoImage(ubyte* img, ulong imgSize) {
+    if (img is null || imgSize < 512 || !g_instDecoyAcctSet) return false;
+    immutable(char)* bm = "ANOSBOOT".ptr;
+    for (uint i = 0; i < 8; i++) if (img[i] != cast(ubyte)bm[i]) return false;
+    ubyte* d = img + 32;
+    uint o = 11;   // header = 8 (magic) + 1 (version) + 2 (uint16 textLen)
+    if (!instAcctPut(d, o, "user=", g_instDecoyAcctUser.ptr, g_instDecoyAcctUserLen)) return false;
+    if (!instAcctPut(d, o, "full=", g_instDecoyAcctFull.ptr, g_instDecoyAcctFullLen)) return false;
+    if (!instAcctPut(d, o, "host=", g_instDecoyAcctHost.ptr, g_instDecoyAcctHostLen)) return false;
+    if (!instAcctPut(d, o, "hash=", g_instDecoyAcctHash.ptr, g_instDecoyAcctHashLen)) return false;
+    const uint textLen = o - 11;
+    immutable(char)* am = "ANOSACCT".ptr;
+    for (uint i = 0; i < 8; i++) d[i] = cast(ubyte)am[i];
+    d[8] = 1;
+    d[9]  = cast(ubyte)(textLen & 0xFF);
+    d[10] = cast(ubyte)((textLen >> 8) & 0xFF);
+    klog("[install] decoy account descriptor written (textLen=0x"); klog_hex(textLen); klog(")\n");
     return true;
 }
 
@@ -1949,6 +2022,12 @@ public bool installBegin(int idx, ulong dsec) {
         g_instFailed = true;
         return false;
     }
+    // Carry the installer-chosen decoy account into the in-RAM decoy image's descriptor sector
+    // before it is streamed+encrypted.  Non-fatal by design: a false return just leaves the baked
+    // account (init-crypt applies nothing without a valid ANOSACCT descriptor), so it never aborts
+    // the install nor touches any adjacent partition.
+    if (hidden && decoyPhys && g_instDecoyAcctSet)
+        installPatchDecoyAccountIntoImage(cast(ubyte*) phys_to_virt(decoyPhys), decoySize);
     g_instLba = L.espFirst; g_instRemaining = espSectors;
     // UPDATE U1-B A/B state: slot-A first (= L.espFirst above), then slot-B, then ESP-boot.
     g_abInstall = abInstall;

@@ -86,6 +86,7 @@ enum uint DEVCLASS_MIC    = 1u << 3;   // /dev/snd/* capture
 enum uint DEVCLASS_AUDIO  = 1u << 4;   // /dev/snd/* playback
 enum uint DEVCLASS_USB    = 1u << 5;   // /dev/bus/usb/*
 enum uint DEVCLASS_NET    = 1u << 6;   // WiFi/network via the cap-gated LKL provider socket
+enum uint DEVCLASS_POWER  = 1u << 7;   // reboot/poweroff authority — System-only; deliberately NOT in DEVCLASS_ALL
 enum uint DEVCLASS_ALL    = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_CAMERA |
                             DEVCLASS_MIC | DEVCLASS_AUDIO | DEVCLASS_USB | DEVCLASS_NET;
 
@@ -306,7 +307,9 @@ public void identityInitDefaults() {
     // their policy exists to route.  The split is: the device bit decides whether you may
     // open a socket, NetPolicy decides where the packets are allowed to go.
     enum uint DEV_LOCKNET = DEV_LOCK | DEVCLASS_NET;
-    mkBootIdentity("System\0".ptr,     0xFF808080, TRUST_SYSTEM,     CEIL_FULL, NetPolicy.NAT,        ClipPolicy.AllowDownTrust,    GUI_BASE, false, DEV_FULL);
+    // System is the only identity granted DEVCLASS_POWER (reboot/poweroff).  DEV_FULL == DEVCLASS_ALL
+    // is shared with Development, so POWER is OR'd in ONLY on this row — never folded into DEVCLASS_ALL.
+    mkBootIdentity("System\0".ptr,     0xFF808080, TRUST_SYSTEM,     CEIL_FULL, NetPolicy.NAT,        ClipPolicy.AllowDownTrust,    GUI_BASE, false, DEV_FULL | DEVCLASS_POWER);
     mkBootIdentity("Personal\0".ptr,   0xFF2E7D32, TRUST_PERSONAL,   CEIL_USER, NetPolicy.NAT,        ClipPolicy.AskApproval,       GUI_BASE, false, DEV_HOME);
     mkBootIdentity("Work\0".ptr,       0xFF1565C0, TRUST_WORK,       CEIL_USER, NetPolicy.VPN,        ClipPolicy.AllowSameIdentity, GUI_WORK, false, DEV_WORK);
     mkBootIdentity("Banking\0".ptr,    0xFFFFD600, TRUST_BANKING,    CEIL_USER, NetPolicy.VPN,        ClipPolicy.Deny,              GUI_BANK, false, DEV_LOCKNET);

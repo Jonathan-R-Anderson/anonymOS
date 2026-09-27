@@ -19,7 +19,7 @@ import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
 import core.identity : identityById, identityByName, IdentityRec,
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
                        DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB,
-                       DEVCLASS_NET;  // DM8/DM10.7 device policy
+                       DEVCLASS_NET, DEVCLASS_POWER;  // DM8/DM10.7 device policy
                        // DEVCLASS_NET was missing from this list, which is exactly why
                        // domainDeviceClassByName() had no "net" case: the name could not be
                        // resolved here, so per-domain network control was unreachable.
@@ -459,6 +459,13 @@ public void domainSetSpawnHook(DomainSpawnFn fn) { g_domainSpawnHook = fn; }
 alias DomainModeFn = extern(C) bool function(int linuxMode) @nogc nothrow;
 private __gshared DomainModeFn g_domainModeHook = null;
 public void domainSetModeHook(DomainModeFn fn) { g_domainModeHook = fn; }
+
+// "reboot|poweroff System": reboot/power off the machine.  The action lives in core.syscalls.posix
+// (rebootNow), which this module cannot import (cycle), so kernel_main registers a bridge.  Gated
+// by the System-only name check in domainControlWrite + the fsPerm-gated control write.
+alias DomainRebootFn = extern(C) bool function(int poweroff) @nogc nothrow;
+private __gshared DomainRebootFn g_domainRebootHook = null;
+public void domainSetRebootHook(DomainRebootFn fn) { g_domainRebootHook = fn; }
 public bool domainSpawnInto(uint domObjId, const(char)* prog) {
     if (g_domainSpawnHook is null) { klog("[domain] spawn: no launcher registered\n"); return false; }
     if (domObjId == 0 || prog is null || prog[0] == 0) return false;
@@ -507,6 +514,11 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "fsrw"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, true);
     else if (verbEq(verb.ptr, "fsdeny"))    ok = (id != 0) && domainFsBindDeny(id, arg.ptr);
     else if (verbEq(verb.ptr, "delete"))    ok = (id != 0) && domainDelete(id);   // DM10.7: GUI Delete button
+    // Power: "reboot System" / "poweroff System" — only the System domain may power the machine
+    // (mirrors the DEVCLASS_POWER authority on the syscall path).  Never returns on success.
+    else if (verbEq(verb.ptr, "reboot") || verbEq(verb.ptr, "poweroff"))
+        ok = verbEq(name.ptr, "System") && (g_domainRebootHook !is null)
+             && g_domainRebootHook(verbEq(verb.ptr, "poweroff") ? 1 : 0);
     // DM11: distro / package-manager / profile — "distro <domain> <busybox|nix|alpine|native>" etc.
     else if (verbEq(verb.ptr, "distro"))    ok = (id != 0) && domainSetDistro(id, distroByName(arg.ptr));
     else if (verbEq(verb.ptr, "pkgmgr"))    ok = (id != 0) && domainSetPkgMgr(id, pkgMgrByName(arg.ptr));
@@ -564,6 +576,11 @@ public void domainControlProof() {
     ok = ok && domainControlWrite("devon Development gpu".ptr, 21)  &&  domainDeviceAllowed(devDom, DEVCLASS_GPU);
     ok = ok && domainControlWrite("fsrw Development /host/projects".ptr, 31);     // grant a real path rw
     ok = ok && domainControlWrite("fsdeny Development /host/projects/key".ptr, 37); // deny a sub-path
+    // Power authority (reboot/poweroff): System only.  The Development check guards the safety
+    // invariant that DEVCLASS_POWER was NOT folded into DEV_FULL/DEVCLASS_ALL.
+    ok = ok &&  domainDeviceAllowed(domainByName("System\0".ptr),     DEVCLASS_POWER);   // System may power off
+    ok = ok && !domainDeviceAllowed(domainByName("Untrusted\0".ptr),  DEVCLASS_POWER);   // untrusted may NOT
+    ok = ok && !domainDeviceAllowed(domainByName("Development\0".ptr), DEVCLASS_POWER);   // DEV_FULL must NOT imply POWER
     // GUI toolbar: from-scratch create + instantiate-from-template (both clean up after)
     ok = ok && domainControlWrite("create CtlNew Personal".ptr, 22) && (domainByName("CtlNew\0".ptr) != 0);
     ok = ok && domainControlWrite("fromtpl CtlInst DevTemplate".ptr, 27) && (domainByName("CtlInst\0".ptr) != 0);

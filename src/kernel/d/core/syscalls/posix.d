@@ -36,6 +36,7 @@ import core.domain : domainControlWrite,                     // DM10.3: /config/
 import core.identity : identityDeviceAllowed, identityByName, // DM8: §7 device-class enforcement
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
                        DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB, DEVCLASS_NET,
+                       DEVCLASS_POWER,            // reboot/poweroff authority (System-only)
                        IDENTITY_BORDER_NEUTRAL;   // ROADMAP 4.0c: shared neutral border colour
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userByUid, userByGid,
@@ -13767,9 +13768,22 @@ private enum uint LINUX_REBOOT_CMD_RESTART2  = 0xa1b2c3d4;
 private enum uint LINUX_REBOOT_CMD_CAD_ON    = 0x89abcdef;
 private enum uint LINUX_REBOOT_CMD_CAD_OFF   = 0x00000000;
 
-public long linux_sys_reboot(ulong magic1, ulong magic2, ulong cmd, ulong arg) {
-    if (!adminRequire(CAP_RIGHT_ADMIN_REBOOT)) return negErrno(EPERM);
-    if (cast(uint)magic1 != LINUX_REBOOT_MAGIC1) return negErrno(EINVAL);
+// Domain-level reboot authority: a task confined into a domain that holds DEVCLASS_POWER
+// (only System, see identity.d) may reboot/power off even without the PID1 admin cap.
+// An unconfined task (domainObjId==0) is NOT authorised here — the PID1 admin-cap path below
+// still covers init/the kernel.  Missing grant => every caller returns EPERM => today's rule.
+private bool rebootPowerAllowed() {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    const uint dom = g_tasks[tid].domainObjId;
+    if (dom == 0) return false;
+    return domainDeviceAllowed(dom, DEVCLASS_POWER);
+}
+
+// The reboot ACTION (persist /home, then ACPI power-off / kbd reset).  NO authority check — every
+// caller gates first (linux_sys_reboot's cap/DEVCLASS_POWER gate, or the System-only domain verb).
+// Never returns.
+public void rebootNow(uint cmd) {
     // ROADMAP 1.2: last chance to make /home survive.  Done here rather than on a timer
     // because a periodic autosave costs a full serialise per tick, and this is the moment
     // that actually matters.  The gap that leaves is an unclean power-off, which loses the
@@ -13792,7 +13806,20 @@ public long linux_sys_reboot(ulong magic1, ulong magic2, ulong cmd, ulong arg) {
     }
     // Spin if port write didn't halt the machine
     while (true) asm @nogc nothrow { hlt; }
+}
+
+public long linux_sys_reboot(ulong magic1, ulong magic2, ulong cmd, ulong arg) {
+    if (!adminRequire(CAP_RIGHT_ADMIN_REBOOT) && !rebootPowerAllowed()) return negErrno(EPERM);
+    if (cast(uint)magic1 != LINUX_REBOOT_MAGIC1) return negErrno(EINVAL);
+    rebootNow(cast(uint)cmd);
     return 0;
+}
+
+// Domain control-path reboot: the "reboot"/"poweroff System" verb calls this via a hook.  Authority
+// is the System-only verb check in domainControlWrite plus the fsPerm-gated /config/domain.action
+// write, so no cap check is repeated here.  poweroff != 0 powers off; otherwise restart.
+public void domainRebootAction(int poweroff) {
+    rebootNow(poweroff ? LINUX_REBOOT_CMD_POWER_OFF : LINUX_REBOOT_CMD_RESTART);
 }
 
 // --- settimeofday / adjtimex ---

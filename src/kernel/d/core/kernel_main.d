@@ -1809,6 +1809,14 @@ private extern(C) bool domainModeSelf(int linuxMode) {
                            linuxMode != 0 ? EXECMODE_LINUX : EXECMODE_NATIVE);
 }
 
+// Bridge for the "reboot|poweroff System" domain-control verb: core.domain cannot import
+// core.syscalls.posix (cycle), so kernel_main registers this.  rebootNow never returns.
+private extern(C) bool domainRebootBridge(int poweroff) {
+    import core.syscalls.posix : domainRebootAction;
+    domainRebootAction(poweroff);
+    return true;   // unreachable — the machine has rebooted
+}
+
 // Spawn the idle task (/idle boot module) once.  Like spawnWaylandProgram but does
 // NOT make it current (the scheduler only runs it as a last resort) and records its
 // tid in g_idleTid.
@@ -5809,9 +5817,10 @@ void d_kernel_main() {
     {   // DM3: give core.domain a launcher, so "spawn <domain> <prog>" can create a confined
         // task.  core.domain cannot reach allocTask/execveTask (kernel_main already imports it,
         // so importing back would be a cycle) -- hence the hook.
-        import core.domain : domainSetSpawnHook, domainSetModeHook;
+        import core.domain : domainSetSpawnHook, domainSetModeHook, domainSetRebootHook;
         domainSetSpawnHook(&domainSpawnProgram);
         domainSetModeHook(&domainModeSelf);   // DM13: "mode self linux" ratchet
+        domainSetRebootHook(&domainRebootBridge);   // "reboot|poweroff System"
     }
     domainSelfTest();            // DOMAIN_MANAGER DM0: one-shot proof create/lookup/dup/unknown-id/freeze (deterministic at boot)
     nsRestrictedSelfTest();      // DOMAIN_MANAGER DM2: one-shot proof deny-by-default restricted namespace (deterministic at boot)

@@ -29,7 +29,7 @@ $B mount -t devtmpfs dev  /dev  2>/dev/null
 # is ~6 deep; insmod every module repeatedly until the set stops changing so order doesn't matter.
 for pass in 1 2 3 4 5 6 7 8; do for m in /mod/*.ko; do $B insmod "$m" 2>/dev/null; done; done
 
-key=""; rl=""; iv=""; sz=""; seed=""
+key=""; rl=""; iv=""; sz=""; seed=""; acct=""
 for tok in $($B cat /proc/cmdline); do
   case "$tok" in
     decoykey=*)  key=${tok#decoykey=}   ;;
@@ -37,6 +37,7 @@ for tok in $($B cat /proc/cmdline); do
     decoyiv=*)   iv=${tok#decoyiv=}     ;;
     decoysz=*)   sz=${tok#decoysz=}     ;;
     decoyseed=*) seed=${tok#decoyseed=} ;;   # honey seed of the typed password (§G2.1)
+    decoyacct=*) acct=${tok#decoyacct=} ;;   # installer-chosen account (hex text blob, §decoy-account)
   esac
 done
 
@@ -121,6 +122,59 @@ if [ -n "$seed" ]; then
   $B mkdir -p /sysroot/etc
   $B sh -c "printf '%s\n' '$seed' > /sysroot/etc/synthetic-logs.seed"
   $B echo "[decoy-crypt] seed handed to userspace (/etc/synthetic-logs.seed)"
+fi
+
+# ── §decoy-account: apply the installer-chosen login account to the overlay ────────────────────
+# The pre-boot loader forwarded decoyacct=<hex>; the hex decodes to a small text blob
+# (user=..\nfull=..\nhost=..\nhash=..).  We rewrite ONLY the writable overlay (/sysroot, upperdir),
+# never the read-only squashfs and never any disk partition.  The whole thing runs in a subshell
+# guarded against every failure: an absent/garbled token leaves the image's baked account intact,
+# so the decoy always boots.
+if [ -n "$acct" ]; then
+  (
+    h="$acct"; : > /acct.txt
+    while [ -n "$h" ]; do
+      pair=${h%"${h#??}"}; h=${h#??}
+      [ ${#pair} -eq 2 ] || break
+      printf "\\x$pair" >> /acct.txt 2>/dev/null || break
+    done
+    NU=""; NF=""; NH=""; NP=""
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        user=*) NU=${line#user=} ;;
+        full=*) NF=${line#full=} ;;
+        host=*) NH=${line#host=} ;;
+        hash=*) NP=${line#hash=} ;;
+      esac
+    done < /acct.txt
+    if [ -n "$NU" ] && [ -n "$NP" ]; then
+      # Old baked login (the uid=1000 line) — rename it to the chosen account in the overlay.
+      OLD=$($B awk -F: '$3==1000{print $1; exit}' /squash/etc/passwd 2>/dev/null)
+      [ -n "$OLD" ] || OLD=alex
+      $B mkdir -p /sysroot/etc
+      $B awk -F: -v u="$NU" -v f="$NF" '
+        $3==1000 { printf "%s:x:1000:1000:%s:/home/%s:/bin/ash\n", u, f, u; next } { print }
+      ' /squash/etc/passwd > /sysroot/etc/passwd 2>/dev/null
+      $B awk -F: -v u="$NU" -v old="$OLD" -v hh="$NP" '
+        $1==old { printf "%s:%s:19000:0:99999:7:::\n", u, hh; next } { print }
+      ' /squash/etc/shadow > /sysroot/etc/shadow 2>/dev/null
+      $B chmod 600 /sysroot/etc/shadow 2>/dev/null
+      # group: inherit the baked account's memberships (input/video/audio/wheel...) under the new name.
+      if [ "$OLD" != "$NU" ]; then
+        $B sed "s/$OLD/$NU/g" /squash/etc/group > /sysroot/etc/group 2>/dev/null
+      fi
+      if [ -n "$NH" ]; then
+        printf '%s\n' "$NH" > /sysroot/etc/hostname 2>/dev/null
+        printf '127.0.0.1\tlocalhost %s\n::1\tlocalhost %s\n' "$NH" "$NH" > /sysroot/etc/hosts 2>/dev/null
+      fi
+      # home directory: best-effort copy-up under the new name (the lowerdir home is read-only).
+      if [ "$OLD" != "$NU" ] && [ -d /squash/home/"$OLD" ]; then
+        $B mkdir -p /sysroot/home 2>/dev/null
+        $B cp -a /squash/home/"$OLD" /sysroot/home/"$NU" 2>/dev/null
+      fi
+      $B echo "[decoy-crypt] decoy account applied: $NU (host ${NH:-unchanged})"
+    fi
+  ) 2>/dev/null || $B echo "[decoy-crypt] decoy account apply skipped (kept baked account)"
 fi
 
 # ---------------------------------------------------------------------------

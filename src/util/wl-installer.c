@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include <cairo.h>
+#include <crypt.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -12,6 +13,7 @@
 #include <sys/mman.h>
 #include <sys/reboot.h>
 #include <sys/syscall.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
@@ -347,14 +349,18 @@ static void attest_status_text(char *out, size_t cap)
  * source above.  Cached because it is polled every render; the deploy happens before/at this
  * screen (it needs a real EVM toolchain + Tor, not available inside this installer), so a
  * first-read cache is safe. */
+static int g_attest_cached = -1;
+/* Force the next zksync_attestation_has_contract() to re-read /config/attest-contract — called
+ * after an in-installer deploy succeeds so the Ethereum row un-greys and install.json picks up
+ * the freshly written address. */
+static void attest_cache_reset(void) { g_attest_cached = -1; }
 static int zksync_attestation_has_contract(void)
 {
-    static int cached = -1;
-    if (cached >= 0)
-        return cached;
+    if (g_attest_cached >= 0)
+        return g_attest_cached;
     char addr[64];
-    cached = read_attest_contract(addr, sizeof addr) ? 1 : 0;
-    return cached;
+    g_attest_cached = read_attest_contract(addr, sizeof addr) ? 1 : 0;
+    return g_attest_cached;
 }
 
 struct disk_entry {
@@ -530,7 +536,16 @@ struct app {
      * most once per second (and on entry) instead of on every repaint (INST-11). */
     char wifi_ip[48];
     time_t wifi_checked;
+
+    /* Boot-integrity "Deploy contract": an async fork/exec of /hos-attest-deploy, polled
+     * non-blocking in the main loop so the deploy (LKL net + Tor, minutes) never freezes the UI. */
+    int   deploy_state;              /* DEPLOY_IDLE / RUNNING / OK / FAILED */
+    pid_t deploy_pid;
+    int   deploy_fd;                 /* child stderr capture (O_NONBLOCK), -1 when idle */
+    char  deploy_msg[256];
 };
+
+enum { DEPLOY_IDLE = 0, DEPLOY_RUNNING, DEPLOY_OK, DEPLOY_FAILED };
 
 /* ── geometry ──────────────────────────────────────────────────────────────── */
 
@@ -3200,8 +3215,12 @@ static void screen_card(struct app *app, struct card *c)
         opt_detail(app, app->screen, idx, buf, sizeof buf);
         if (app->screen == SCREEN_BOOTINTEGRITY && idx == 1) {
             /* Ethereum row: the wallet/vault status IS the detail here (what it does is already in
-             * the paragraph above), so the address / deploy instruction shows in full. */
-            attest_status_text(buf, sizeof buf);
+             * the paragraph above), so the address / deploy instruction shows in full.  While a
+             * deploy is running or after it fails, the deploy status replaces the static text. */
+            if (app->deploy_state == DEPLOY_RUNNING || app->deploy_state == DEPLOY_FAILED)
+                snprintf(buf, sizeof buf, "%s", app->deploy_msg);
+            else
+                attest_status_text(buf, sizeof buf);
         } else if (app->screen == SCREEN_BOOTINTEGRITY && idx == 0 &&
                    opt_is_disabled(app, app->screen, 1)) {
             size_t l = strlen(buf);
@@ -3503,6 +3522,13 @@ static void draw_demo(struct app *app)
     draw_button(app, cr, BTN_PRIMARY, primary_label(app), primary_enabled);
     if (app->screen == SCREEN_WELCOME)
         draw_button(app, cr, BTN_SECONDARY, "Try Live", 1);
+    else if (app->screen == SCREEN_BOOTINTEGRITY) {
+        int de = strcmp(NETWORKS[app->network_idx].code, "offline") != 0
+                 && app->deploy_state != DEPLOY_RUNNING
+                 && !zksync_attestation_has_contract();
+        draw_button(app, cr, BTN_SECONDARY,
+                    app->deploy_state == DEPLOY_RUNNING ? "Deploying..." : "Deploy contract", de);
+    }
     if (back_enabled)
         draw_button(app, cr, BTN_BACK, "Back", 1);
 
@@ -3896,6 +3922,31 @@ static void append_json_string(char *buf, size_t cap, size_t *pos,
 
 /* `redact` replaces every password value with "" -- for the on-disk debug copy in
  * /tmp, which must never hold the one secret that unlocks an encrypted install. */
+/* Hash the decoy login password as a salted SHA-512 crypt ($6$) string, the format a real
+ * Alpine /etc/shadow carries.  Written to install.json as decoyPasswordCrypt so the kernel can
+ * carry the FINISHED hash into the decoy region (no plaintext password crosses the pre-boot
+ * boundary, and the kernel needs no crypt of its own).  Empty out for an empty password. */
+static void make_decoy_crypt(const char *pw, char *out, size_t outcap)
+{
+    if (outcap) out[0] = 0;
+    if (!pw || !pw[0] || outcap < 2)
+        return;
+    static const char ALPH[] =
+        "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    unsigned char rnd[16] = {0};
+    int fd = open("/dev/urandom", O_RDONLY);
+    if (fd >= 0) { ssize_t n = read(fd, rnd, sizeof rnd); (void)n; close(fd); }
+    char salt[3 + 16 + 2];
+    salt[0] = '$'; salt[1] = '6'; salt[2] = '$';
+    for (int i = 0; i < 16; i++) salt[3 + i] = ALPH[rnd[i] & 63];
+    salt[3 + 16] = '$'; salt[3 + 16 + 1] = 0;
+    char *h = crypt(pw, salt);
+    if (h && h[0] == '$') {
+        size_t n = strlen(h);
+        if (n < outcap) memcpy(out, h, n + 1);
+    }
+}
+
 static size_t build_install_config(struct app *app, char *buf, size_t cap, int redact)
 {
     size_t pos = 0;
@@ -3994,6 +4045,11 @@ static size_t build_install_config(struct app *app, char *buf, size_t cap, int r
     append_json_string(buf, cap, &pos, "decoyUser", app->field_text[FIELD_DECOY_USER], 1);
     append_json_string(buf, cap, &pos, "decoyFullName", app->field_text[FIELD_DECOY_FULLNAME], 1);
     append_json_string(buf, cap, &pos, "decoyPassword", decoy_pw, 1);
+    /* The finished $6$ shadow hash for the decoy account — the kernel copies this verbatim into
+     * the decoy region so the decoy boots with the account chosen here (not the baked default). */
+    char decoy_pw_hash[160];
+    make_decoy_crypt(decoy_pw, decoy_pw_hash, sizeof decoy_pw_hash);
+    append_json_string(buf, cap, &pos, "decoyPasswordCrypt", decoy_pw_hash, 1);
     /* decoyPercent/decoySizeMiB/hiddenSizeMiB are no longer emitted: the kernel never
      * read them (it sizes the decoy and hidden volumes itself; nothing under src/ or
      * deps/ looks for the keys), so the slider that fed them was removed from the
@@ -4046,6 +4102,85 @@ static int write_install_config(struct app *app)
     app->install_config_written = 1;
     ilog("INSTALLER: install config sent (%zu bytes json)", json_len);
     return 1;
+}
+
+/* Launch the on-device contract deploy: fork/exec /hos-attest-deploy (which in turn runs
+ * /hos-ethsign-dyn under LD_PRELOAD=/libnshim.so and writes /config/attest-contract).  Returns
+ * immediately; poll_deploy() reaps it.  Every prerequisite failure is a graceful message, never a
+ * hang: offline network, a missing funded seed at /config/deploy-seed, or (if the deploy backend
+ * is not staged on this media) the child's 127 exit. */
+static void start_deploy(struct app *app)
+{
+    if (app->deploy_state == DEPLOY_RUNNING)
+        return;
+    if (strcmp(NETWORKS[app->network_idx].code, "offline") == 0) {
+        snprintf(app->deploy_msg, sizeof app->deploy_msg,
+                 "Choose Wired or Wi-Fi on the Network page before deploying.");
+        app->deploy_state = DEPLOY_FAILED;
+        return;
+    }
+    if (access("/config/deploy-seed", R_OK) != 0) {
+        snprintf(app->deploy_msg, sizeof app->deploy_msg,
+                 "No funded deployer seed at /config/deploy-seed (a 12/24-word BIP-39 mnemonic).");
+        app->deploy_state = DEPLOY_FAILED;
+        return;
+    }
+    int p[2];
+    if (pipe(p) != 0) {
+        snprintf(app->deploy_msg, sizeof app->deploy_msg, "pipe() failed");
+        app->deploy_state = DEPLOY_FAILED;
+        return;
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(p[0]); close(p[1]);
+        snprintf(app->deploy_msg, sizeof app->deploy_msg, "fork() failed");
+        app->deploy_state = DEPLOY_FAILED;
+        return;
+    }
+    if (pid == 0) {
+        dup2(p[1], 2);                       /* child stderr -> pipe */
+        close(p[0]); close(p[1]);
+        char *argv[] = { "/hos-attest-deploy", "--mnemonic-file", "/config/deploy-seed", NULL };
+        char *envp[] = { NULL };
+        execve("/hos-attest-deploy", argv, envp);
+        _exit(127);                          /* backend not staged on this media */
+    }
+    close(p[1]);
+    fcntl(p[0], F_SETFL, O_NONBLOCK);
+    app->deploy_pid = pid;
+    app->deploy_fd = p[0];
+    app->deploy_state = DEPLOY_RUNNING;
+    snprintf(app->deploy_msg, sizeof app->deploy_msg,
+             "Deploying vault over the network (LKL net + Tor; this can take minutes)...");
+}
+
+/* Non-blocking reap of the deploy child; called each main-loop iteration. */
+static void poll_deploy(struct app *app)
+{
+    if (app->deploy_state != DEPLOY_RUNNING)
+        return;
+    char b[192];
+    ssize_t n;
+    while ((n = read(app->deploy_fd, b, sizeof b - 1)) > 0) {
+        b[n] = 0;
+        snprintf(app->deploy_msg, sizeof app->deploy_msg, "%s", b);  /* keep the latest chunk */
+    }
+    int status;
+    pid_t r = waitpid(app->deploy_pid, &status, WNOHANG);
+    if (r == 0)
+        return;                               /* still running */
+    if (app->deploy_fd >= 0) { close(app->deploy_fd); app->deploy_fd = -1; }
+    if (r == app->deploy_pid && WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        app->deploy_state = DEPLOY_OK;
+        attest_cache_reset();                 /* un-grey the Ethereum row; install.json re-reads it */
+        snprintf(app->deploy_msg, sizeof app->deploy_msg, "Contract deployed and recorded.");
+    } else {
+        app->deploy_state = DEPLOY_FAILED;
+        if (r == app->deploy_pid && WIFEXITED(status) && WEXITSTATUS(status) == 127)
+            snprintf(app->deploy_msg, sizeof app->deploy_msg,
+                     "Deploy backend not available on this install media.");
+    }
 }
 
 static void start_install(struct app *app)
@@ -4718,6 +4853,15 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
         return;
     }
 
+    /* Boot integrity: the SECONDARY button deploys the attestation contract on-device. */
+    if (app->screen == SCREEN_BOOTINTEGRITY) {
+        btn_rect(app, BTN_SECONDARY, &x, &y, &w, &h);
+        if (in_rect(app, x, y, w, h)) {
+            start_deploy(app);
+            return;
+        }
+    }
+
     /* Encryption segmented control. */
     if (app->screen == SCREEN_ENCRYPTION) {
         for (int i = 0; i < 3; i++) {
@@ -5128,6 +5272,11 @@ int main(void)
             if (remain < 0) remain = 0;
             timeout = (int)remain;
         }
+        /* While a contract deploy runs, wake at least every PROGRESS_POLL_MS to reap it. */
+        if (app.deploy_state == DEPLOY_RUNNING && (timeout < 0 || timeout > PROGRESS_POLL_MS))
+            timeout = PROGRESS_POLL_MS;
+
+        poll_deploy(&app);
 
         wl_display_flush(app.display);
         struct pollfd pfd = { .fd = wl_fd, .events = POLLIN, .revents = 0 };

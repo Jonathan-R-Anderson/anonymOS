@@ -216,3 +216,16 @@ hl.config({
         force_no_accel     = true
     }
 })
+
+-- Overlay plane persistence (2026-09-27): keep the special:overlay layer (SUPER+SPACE)
+-- visible across normal workspace switches (SUPER+1..9), so it behaves like a global
+-- desktop overlay rather than auto-hiding on every workspace change.  Overrides the base
+-- hyprland/general.lua default (hide_special_on_workspace_change = true).  NOTE: this is a
+-- global — it also affects the existing SUPER+S scratchpad (special:special); only one
+-- special workspace is visible per monitor at a time, so the two special layers preempt
+-- each other on show.
+hl.config({
+    binds = {
+        hide_special_on_workspace_change = false
+    }
+})

@@ -62,3 +62,17 @@ hl.bind("SUPER + B", hl.dsp.exec_cmd("/busybox sh -c \"[ -e /run/hos-bar.hidden 
 -- Kept from the host's own custom/keybinds.lua.
 hl.bind("CTRL + SUPER + ALT + Slash", hl.dsp.exec_cmd("/wl-editor /home/user/.config/hypr/custom/keybinds.lua"),
         { description = "Edit user keybinds" })
+
+-- ============================================================================
+-- Overlay plane (macOS / Ubuntu-style desktop overlay) — 2026-09-27.
+-- A second, independent window-management layer ABOVE the tiled workspace,
+-- implemented as a native Hyprland named special workspace ("special:overlay").
+-- It toggles as a group, never participates in dwindle tiling, floats freely,
+-- and persists its windows while hidden.  The persistent utility apps that live
+-- here (Domain Manager, terminal, system monitor, calculator) are routed onto it
+-- by class in custom/rules.lua, so fixed-size windows never tile-cover the normal
+-- desktop.  SUPER+SPACE is free on this build (only SUPER+ALT+Space was bound).
+hl.bind("SUPER + SPACE",         hl.dsp.workspace.toggle_special("overlay"),
+        { description = "Toggle overlay plane" })
+hl.bind("SUPER + SHIFT + SPACE", hl.dsp.window.move({ workspace = "special:overlay" }),
+        { description = "Send focused window to the overlay plane" })

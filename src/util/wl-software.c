@@ -39,6 +39,7 @@
 #include FT_FREETYPE_H
 
 #include "xdg-shell-client-protocol.h"
+#include "wl-deco.h"                 /* shared client-side window controls (min/max/close) */
 
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001U
@@ -128,6 +129,7 @@ struct app {
 
     uint32_t *px;                     /* the buffer being drawn into */
     int width, height, stride;
+    int maximized;                    /* window-control state for the maximize toggle */
     int pending_width, pending_height;
     int committed, running, dirty, frame_pending;
     int clip_top, clip_bottom;
@@ -789,6 +791,9 @@ static void render(struct app *a)
     a->px = a->pixels[idx];
     a->clip_top = 0; a->clip_bottom = 0;
     draw(a);
+    /* Overlay the shared window controls (minimize / maximize / close) at the top-right so the
+     * Software Center has the same close affordance as every other window. */
+    wl_deco_draw(a->px, a->width, a->width, a->height, 0xffb8c0ccu);
     a->busy[idx] = 1;
     a->dirty = 0;
     wl_surface_attach(a->surface, a->buffer[idx], 0, 0);
@@ -936,9 +941,21 @@ static void ptr_leave(void *d, struct wl_pointer *p, uint32_t s, struct wl_surfa
 static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial, uint32_t time,
                        uint32_t button, uint32_t state)
 {
-    struct app *a = data; (void)p; (void)serial; (void)time;
+    struct app *a = data; (void)p; (void)time;
     if (button != 0x110 || state != WL_POINTER_BUTTON_STATE_PRESSED) return;
     double x = a->ptr_x, y = a->ptr_y;
+
+    /* Window-control buttons (shared client-side decorations) + title-strip drag-to-move.
+     * Checked first so the top-right controls take precedence over content underneath. */
+    switch (wl_deco_hit(x, y, a->width)) {
+        case 4: a->running = 0; return;                              /* close  */
+        case 2: xdg_toplevel_set_minimized(a->toplevel); return;     /* minimize */
+        case 3: if (a->maximized) { xdg_toplevel_unset_maximized(a->toplevel); a->maximized = 0; }
+                else              { xdg_toplevel_set_maximized(a->toplevel);   a->maximized = 1; }
+                return;                                              /* maximize toggle */
+        default: break;
+    }
+    if (y < DECO_BTN_H) { xdg_toplevel_move(a->toplevel, a->seat, serial); return; }  /* drag header */
 
     if (x < SIDEBAR_W) {                                   /* sidebar: category or repository */
         int sp = side_pitch(a);

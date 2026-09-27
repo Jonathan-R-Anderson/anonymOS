@@ -69,6 +69,13 @@ typedef struct {
 static EFI_GUID BLOCK_IO_GUID    = {0x964e5b21,0x6459,0x11d2,{0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
 static EFI_GUID SIMPLE_FS_GUID   = {0x964e5b22,0x6459,0x11d2,{0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
 static EFI_GUID DEVICE_PATH_GUID = {0x09576e91,0x6d3f,0x11d2,{0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
+static EFI_GUID LOADED_IMAGE_GUID= {0x5b1b31a1,0x9562,0x11d2,{0x8e,0x3f,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
+
+/* EFI_LOADED_IMAGE_PROTOCOL — only DeviceHandle (offset 24) is needed here. Layout matches
+ * deps/veracrypt/efi/efi_main.c:59-66. */
+typedef struct {
+    u64 Revision; EFI_HANDLE ParentHandle; void *SystemTable; EFI_HANDLE DeviceHandle; /* 0,8,16,24 */
+} EFI_LOADED_IMAGE;
 
 /* ── COM1 serial (headless OVMF capture) ── */
 static void outb(u16 p, u8 v){ __asm__ __volatile__("outb %0,%1"::"a"(v),"Nd"(p)); }
@@ -152,8 +159,13 @@ static u64 devpath_part_start(const u8 *dp){
 
 static u16 LIMINE_PATH[] = L"\\EFI\\BOOT\\BOOTX64.EFI";
 
-/* LoadImage+StartImage the given SIMPLE_FS's limine. Returns only on failure. */
-static void chainload_fs(EFI_HANDLE Image, EFI_BOOT_SERVICES *BS, EFI_SIMPLE_FS *fs){
+/* LoadImage+StartImage the given SIMPLE_FS's limine. Returns only on failure.
+ * fsHandle is the slot filesystem's EFI handle: limine locates boot():/ (its config, kernel and
+ * modules) through the chainloaded image's LoadedImage.DeviceHandle, and LoadImage from a memory
+ * buffer leaves DeviceHandle NULL — so without the fix-up below limine finds no boot volume and
+ * hangs with a BLACK SCREEN before the kernel loads (this is the plain-install black screen). */
+static void chainload_fs(EFI_HANDLE Image, EFI_BOOT_SERVICES *BS, EFI_SIMPLE_FS *fs,
+                         EFI_HANDLE fsHandle, const u8 *voldp){
     EFI_FILE *root=0,*file=0; void *buf=0; EFI_HANDLE img=0;
     if(fs->OpenVolume(fs,&root)!=0){ ss("[arbiter] OpenVolume failed\n"); return; }
     if(root->Open(root,&file,LIMINE_PATH,1,0)!=0){ ss("[arbiter] slot has no \\EFI\\BOOT\\BOOTX64.EFI\n"); return; }
@@ -161,7 +173,35 @@ static void chainload_fs(EFI_HANDLE Image, EFI_BOOT_SERVICES *BS, EFI_SIMPLE_FS 
     if(BS->AllocatePool(2,cap,&buf)!=0){ ss("[arbiter] alloc failed\n"); return; }
     u64 size=cap;
     if(file->Read(file,&size,buf)!=0){ ss("[arbiter] read failed\n"); return; }
-    if(BS->LoadImage(0,Image,0,buf,size,&img)!=0){ ss("[arbiter] LoadImage failed\n"); return; }
+
+    /* Chainload limine EXACTLY as the veracrypt loader does (efi_main.c:445-458): LoadImage needs
+     * BOTH (1) a full device path <partition> + FILEPATH(\EFI\BOOT\BOOTX64.EFI) + END so the loaded
+     * image records where it came from (FilePath), AND (2) LoadedImage.DeviceHandle pointing at the
+     * slot volume so limine resolves boot():/.  Passing DevicePath=NULL (FilePath unset) leaves
+     * limine unable to locate itself and it hangs with a black screen before loading the kernel. */
+    void *fdp = 0;
+    if(voldp){
+        u32 plen=0;                              /* bytes of voldp before its END node */
+        for(const u8 *p=voldp;;){ u16 l=(u16)(p[2]|(p[3]<<8)); if(l<4){ plen=0; break; }
+                                  if(p[0]==0x7F) break; plen+=l; p+=l; }
+        u32 nchars=0; while(LIMINE_PATH[nchars]) nchars++; nchars++;   /* incl. NUL */
+        u32 fpn=4+nchars*2;                       /* FILEPATH node: hdr(4)+UTF16 path */
+        u32 total=plen+fpn+4;                     /* +END node(4) */
+        if(plen && BS->AllocatePool(2,total,&fdp)==0 && fdp){
+            u8 *o=(u8*)fdp;
+            for(u32 i=0;i<plen;i++) o[i]=voldp[i];
+            u8 *fn=o+plen; fn[0]=0x04; fn[1]=0x04; fn[2]=(u8)(fpn&0xFF); fn[3]=(u8)(fpn>>8);
+            u16 *fp=(u16*)(fn+4); for(u32 i=0;i<nchars;i++) fp[i]=LIMINE_PATH[i];
+            u8 *e=fn+fpn; e[0]=0x7F; e[1]=0xFF; e[2]=4; e[3]=0;
+        } else fdp=0;
+    }
+
+    if(BS->LoadImage(0,Image,fdp,buf,size,&img)!=0){ ss("[arbiter] LoadImage failed\n"); return; }
+    EFI_LOADED_IMAGE *li = 0;
+    if(BS->HandleProtocol(img,&LOADED_IMAGE_GUID,(void**)&li)==0 && li){
+        li->DeviceHandle = fsHandle;
+        ss(fdp ? "[arbiter] DeviceHandle+FilePath set\n" : "[arbiter] DeviceHandle set (FilePath NULL)\n");
+    } else ss("[arbiter] WARN: could not set DeviceHandle\n");
     ss("[arbiter] starting slot bootloader...\n");
     BS->StartImage(img,0,0);                     /* returns only if the slot loader returns */
 }
@@ -220,7 +260,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *ST){
             if(devpath_part_start(dp)!=want) continue;
             EFI_SIMPLE_FS *fs=0;
             if(BS->HandleProtocol(fsh[i],&SIMPLE_FS_GUID,(void**)&fs)!=0||!fs) continue;
-            chainload_fs(ImageHandle, BS, fs);     /* returns only on failure */
+            chainload_fs(ImageHandle, BS, fs, fsh[i], dp);   /* returns only on failure */
             break;
         }
     }

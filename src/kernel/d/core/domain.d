@@ -293,6 +293,28 @@ public uint domainBuildNamespace(uint domObjId) {
     // DM11: a non-native domain mounts its distro's Linux compat root at /linux (READ-only).
     if (d.distro != DISTRO_NATIVE) nsBind(ns, "/linux\0".ptr, root, RO);
 
+    // System is the trusted administrative identity (TRUST_SYSTEM / CEIL_FULL).  Confining it to a
+    // per-domain sandbox contradicts its role: the user runs System precisely to inspect and TWEAK
+    // the system's configuration (the Hyprland/desktop config, /etc, the live domain control files).
+    // So System — and ONLY System — additionally gets read-visibility of the whole tree plus RW on
+    // the configuration locations.  The more-specific RW bindings override the "/" RO the same way
+    // /Shared/Private's deny overrides /Shared above (longest-prefix wins).  Every other domain
+    // stays default-deny.
+    bool isSystem = (d.nameLen >= 6 && d.name.length >= 7);
+    if (isSystem) { static immutable string sysn = "System";
+                    foreach (i; 0 .. 6) if (d.name[i] != sysn[i]) { isSystem = false; break; }
+                    // accept "System" exactly, tolerating a trailing NUL in nameLen (6 or 7)
+                    if (isSystem && d.nameLen > 6 && d.name[6] != 0) isSystem = false; }
+    if (isSystem) {
+        klog("[domain] System namespace: granting config-file access (/home/user/.config, /etc, /config)\n");
+        nsBind(ns, "/\0".ptr,                   root, RO);   // browse the whole system read-only
+        nsBind(ns, "/home/user/.config\0".ptr,  root, RW);   // Hyprland + app config (general.lua, colors, …)
+        nsBind(ns, "/etc\0".ptr,                root, RW);   // system configuration
+        nsBind(ns, "/config\0".ptr,             root, RW);   // live domain/system control (domains.json, …)
+        nsBind(ns, "/desktop.conf\0".ptr,       root, RW);   // desktop autostart/config
+        nsBind(ns, "/display.conf\0".ptr,       root, RW);
+    }
+
     d.nsObjId = ns;
     return ns;
 }

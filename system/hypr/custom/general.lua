@@ -103,23 +103,24 @@ if softpipe then
     })
 end
 
--- UNCONDITIONAL: this one is a kernel property, not a renderer property.
+-- REVERTED (2026-09-26): the kernel "cursor plane" experiment is withdrawn.  Setting
+-- no_hardware_cursors = 0 made Hyprland upload a cursor BO and STOP compositing its own pointer,
+-- and the kernel then drew that BO straight into the live scanout post-handover.  On the first
+-- boot test that raced the compositor's partial re-render (damage_tracking = 2): cursorErase()
+-- replayed a STALE save-under rectangle -- including kernel-drawn border pixels -- over freshly
+-- composited output, so the colored window borders FLICKERED at mouse-move rate.  This is exactly
+-- the failure the damage-tracking note (below) predicted for "the kernel writing into the scanout
+-- behind the compositor's back."
 --
--- The kernel now IMPLEMENTS a cursor plane: DRM_NR_MODE_CURSOR/CURSOR2 accept the compositor's
--- ARGB bitmap + position and the kernel draws the sprite itself (posix.d cursorPaint), stamped
--- into the scanout on every present and moved at PS/2-IRQ rate.  So the pointer moves INDEPENDENT
--- of scene composition -- it stays smooth even while the compositor is mid-frame or wedged, which
--- the composited software pointer could not.  Therefore:
---   no_hardware_cursors = 0  -> Hyprland promotes the pointer to the (now-working) hardware cursor
---                               and STOPS compositing its own software pointer (one cursor, fast).
---   use_cpu_buffer      = 1  -> the cursor BO is a CPU-mappable dumb buffer, so the kernel can read
---                               its ARGB pixels through the HHDM (a GPU buffer would be unreadable).
--- If the kernel ioctl ever regresses to EINVAL, Hyprland falls back to its software pointer as
--- before, so this is safe.
+-- Back to the known-good pointer: no_hardware_cursors = 1 -> Hyprland composites its own software
+-- pointer and never uploads a BO, so the kernel's cursorActive() stays false post-handover and the
+-- overlay is dormant.  Cursor smoothness during compositor stalls is served instead by the
+-- freeze-watchdog + input-ring fixes (kernel_main.d).  A real kernel cursor plane can be revisited,
+-- but only with a boot test.
 hl.config({
     cursor = {
-        no_hardware_cursors = 0,
-        use_cpu_buffer      = 1
+        no_hardware_cursors = 1,
+        use_cpu_buffer      = 0
     }
 })
 

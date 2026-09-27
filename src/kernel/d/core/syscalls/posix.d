@@ -14178,8 +14178,14 @@ __gshared bool g_curVisible = true;                    // false = compositor hid
 // software pointer is the one shown/clicked, exactly as before.
 private bool cursorActive() @nogc nothrow {
     import core.console : g_desktopClaimedFb;
-    if (!g_desktopClaimedFb) return true;
-    return g_curHasBo && g_curVisible;
+    // The kernel draws the cursor ONLY before the desktop claims the framebuffer (boot / installer,
+    // when nothing else can).  The post-handover "kernel cursor plane" (drawing the compositor's BO
+    // straight into the live scanout) was REVERTED (2026-09-26): it raced the compositor's partial
+    // re-render and replayed stale save-under rectangles over live output -> flickering borders and
+    // lost window content.  Once the desktop owns the fb the compositor's own software pointer is the
+    // only one (no_hardware_cursors = 1 in custom/general.lua), so this returns false there and the
+    // whole overlay (cursorPaint / cursorErase / cursorRepaintAfterPresent) is a no-op.
+    return !g_desktopClaimedFb;
 }
 private int curSpriteW() @nogc nothrow { return g_curHasBo ? g_curBmpW : CUR_W; }
 private int curSpriteH() @nogc nothrow { return g_curHasBo ? g_curBmpH : CUR_H; }
@@ -14209,10 +14215,12 @@ private void cursorLoadBo(uint handle, uint w, uint h, int hotX, int hotY) @nogc
 // output.  Drop the save instead of replaying it.  The final erase before the handover still runs,
 // so the kernel's arrow does not get left behind on screen.
 private void cursorErase() @nogc nothrow {
-    // Restore the pixels the sprite last covered.  With the kernel-drawn plane the kernel is the
-    // LAST writer of the cursor region on every present (it stamps the sprite after the compositor
-    // blit), so the save-under is the compositor's own output and restoring it is correct even
-    // after the desktop claimed the framebuffer.
+    import core.console : g_desktopClaimedFb;
+    // Post-handover the compositor owns the framebuffer and has redrawn this region since the sprite
+    // was stamped, so the save-under is STALE -- replaying it stamps old content (incl. kernel-drawn
+    // borders) over live output: the border-flicker regression.  Drop the save, never replay it; the
+    // kernel no longer draws a cursor once the desktop is up (see cursorActive()).
+    if (g_desktopClaimedFb) { g_curSaveValid = false; return; }
     if (!g_curSaveValid || g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
     auto px = cast(uint*)g_fb.address;
     const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;

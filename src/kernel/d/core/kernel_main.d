@@ -1853,6 +1853,44 @@ private void maybeSpawnIdle() {
     klog("[idle] idle task spawned as tid "); klog_hex(cast(ulong)t); klog("\n");
 }
 
+// VMM bring-up probe: spawn Cloud Hypervisor once, unconfined (no domain bind, so
+// it is unrestricted and can open /dev/kvm — the first-tier smoke test), with its
+// stdout/stderr on the console (→ serial).  This is a debug probe to see whether
+// the real CH runs in the Linux personality and how far it gets against the KVM
+// compat layer; NOT the production launch path (that is a DEVCLASS_VIRT domain).
+__gshared int g_chProbeTid = -1;
+// EXPERIMENTAL, off by default: set true (and rebuild) to have the supervisor
+// loop spawn Cloud Hypervisor once for in-OS bring-up testing.  Kept off so it
+// never affects a normal boot; the in-OS launch path is still being brought up.
+__gshared bool g_chProbeEnabled = false;
+private void maybeSpawnCloudHypervisorProbe() {
+    if (g_chProbeTid >= 0 || g_chProbeTid == -2) return;   // one-shot (or already tried/absent)
+    int t = allocTask();
+    if (t <= 0) return;
+    g_tasks[t].parentId         = 0;
+    g_tasks[t].processLeaderTid = t;
+    g_tasks[t].userObjId        = g_tasks[0].userObjId;
+    g_tasks[t].untypedObjId     = untypedCreateProcess(0);
+    if (g_tasks[t].untypedObjId == 0) { releaseTask(t); return; }
+    g_tasks[t].namespaceObjId   = nsClone(g_tasks[0].namespaceObjId);
+    capTableClear(g_tasks[t].capTabId);
+    installTaskUntypedCap(t);
+    fdtabSetupConsoleStdio(g_tasks[t].fdTabId);
+
+    ulong savedCr3 = x64ReadCR3();
+    uint savedUntyped = physActiveUntyped();
+    ulong savedCur = g_current_task_id;
+    physSetActiveUntyped(g_tasks[t].untypedObjId);
+    klog("[ch] probe: spawning /cloud-hypervisor (unconfined; stdout/err -> serial)\n");
+    long r = execveTask(t, cast(ulong)"/cloud-hypervisor\0".ptr, 0, 0);
+    physSetActiveUntyped(savedUntyped);
+    x64WriteCR3(savedCr3);
+    g_current_task_id = savedCur;
+    if (r != 0) { klog("[ch] probe: execveTask failed\n"); releaseTask(t); g_chProbeTid = -2; return; }
+    g_chProbeTid = t;
+    klog("[ch] probe: cloud-hypervisor spawned as tid "); klog_hex(cast(ulong)t); klog("\n");
+}
+
 private void spawnWaylandClients() {
     const int mode = guiAutostartMode();
     if (mode == 0) {
@@ -5321,6 +5359,16 @@ private void kernelLoop() {
         maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
         maybeSpawnLogUpload(); // debug: snapshot logs and scp them when a client is staged
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
+        // VMM bring-up probe (EXPERIMENTAL, opt-in): run Cloud Hypervisor once and
+        // watch it on serial.  Off by default — enable with the `chprobe` kernel
+        // cmdline flag.  NOTE: in headless VBox the boot quiesces at idle-spawn
+        // before this supervisor-loop trigger iterates enough to fire; the in-OS
+        // launch path (and CH's own personality syscall needs) is the open next
+        // step.  See docs/hw-bringup/CLOUD_HYPERVISOR.md and maybeSpawnCloudHypervisorProbe.
+        if (g_chProbeEnabled) {
+            static __gshared ulong g_chDelay = 0;
+            if (g_idleTid >= 0 && ++g_chDelay == 300) maybeSpawnCloudHypervisorProbe();
+        }
 
         int tid = cast(int)g_current_task_id;
         auto task = &g_tasks[tid];

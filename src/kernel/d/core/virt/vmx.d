@@ -1182,7 +1182,9 @@ public void vmxMmioFirstLightProof() @nogc nothrow {
     auto run = cast(KvmRun*)phys_to_virt(rpage);
     foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
     cast(void) virtDispatchExit(xi, run, vm, vc);         // -> KVM_EXIT_MMIO, physAddr=0x2000, len=0
-    const bool enriched = mmioEnrichMmioExit(vm, vc, &regs, &s, run);
+    import core.virt.mmio : MmioAccess;
+    MmioAccess acc;
+    const bool enriched = mmioEnrichMmioExit(vm, vc, &regs, &s, run, acc);
 
     ulong wr = 0; foreach (k; 0 .. 4) wr |= (cast(ulong)run.u.mmio.data[k]) << (8 * k);
     if (enriched && run.exitReason == KVM_EXIT_MMIO && run.u.mmio.physAddr == 0x2000
@@ -1194,5 +1196,106 @@ public void vmxMmioFirstLightProof() @nogc nothrow {
         klog(" len="); klog_hex(run.u.mmio.len);
         klog(" data="); klog_hex(wr); klog("\n");
     }
+    free_phys_page(rpage);
+}
+
+// IOEVENTFD first-light proof: a guest doorbell store to an ioeventfd-registered
+// MMIO address is consumed in-kernel — the eventfd is signaled and the guest
+// resumes past the store WITHOUT a userspace exit.  This drives the same steps
+// as kvmVcpuRun's fast-path against a real guest + a real eventfd.
+__gshared bool g_vmxIoeventfdDone = false;
+public void vmxIoeventfdFirstLightProof() @nogc nothrow {
+    if (g_vmxIoeventfdDone) return;
+    g_vmxIoeventfdDone = true;
+    if (!vmxDetect()) return;
+    import core.virt.kvm : kvmCreateVm, kvmCreateVcpu;
+    import core.virt.kvmabi : KvmRun, KVM_EXIT_MMIO;
+    import core.virt.vmexit : virtDispatchExit;
+    import core.virt.mmio : mmioEnrichMmioExit, MmioAccess;
+    import core.virt.vm : vmIoeventfdAssign, vmIoeventfdMatch;
+    import core.syscalls.posix : posixEventfdTestAlloc, posixEventfdTestCounter,
+        posixEventfdTestFree, posixEventfdSignal;
+
+    const int tid = cast(int)g_current_task_id;
+    const long vh = kvmCreateVm(tid);
+    if (vh < 0) { klog("[vmx] ioeventfd: kvmCreateVm failed\n"); return; }
+    uint vo, vg; kvmUnpackHandle(cast(ulong)vh, vo, vg);
+    Vm* vm = vmCheck(vo, vg);
+    if (vm is null) { klog("[vmx] ioeventfd: vmCheck null\n"); return; }
+    const long ch = kvmCreateVcpu(vo, vg, 0);
+    if (ch < 0) { klog("[vmx] ioeventfd: kvmCreateVcpu failed\n"); return; }
+    uint co, cg; kvmUnpackHandle(cast(ulong)ch, co, cg);
+    Vcpu* vc = vcpuCheckObj(co, cg);
+    if (vc is null) { klog("[vmx] ioeventfd: vcpuCheckObj null\n"); return; }
+
+    const int eid = posixEventfdTestAlloc();
+    if (eid < 0) { klog("[vmx] ioeventfd: no eventfd slot\n"); return; }
+    // Bind a doorbell at guest-physical 0x2000, 4-byte writes, no datamatch.
+    if (vmIoeventfdAssign(vm, 0x2000, 4, false, 0, cast(uint)eid) != 0) {
+        klog("[vmx] ioeventfd: assign failed\n"); posixEventfdTestFree(eid); return;
+    }
+
+    const ulong gpage = alloc_phys_page();
+    if (gpage == 0) { klog("[vmx] ioeventfd: no guest page\n"); posixEventfdTestFree(eid); return; }
+    auto gp = cast(ubyte*)phys_to_virt(gpage);
+    foreach (i; 0 .. 4096) gp[i] = 0;
+    // mov dword [0x2000], 0x12345678 (doorbell) ; hlt
+    gp[0] = 0xC7; gp[1] = 0x05; gp[2] = 0x00; gp[3] = 0x20; gp[4] = 0x00; gp[5] = 0x00;
+    gp[6] = 0x78; gp[7] = 0x56; gp[8] = 0x34; gp[9] = 0x12;
+    gp[10] = 0xF4;                                       // hlt (reached only if the store resumes)
+    if (!slatMap(&vm.slat, 0, gpage, 1 | 2 | 4)) { klog("[vmx] ioeventfd: slatMap failed\n"); posixEventfdTestFree(eid); return; }
+
+    KvmRegs regs;
+    regs.rsp = 0x0FF0; regs.rip = 0; regs.rflags = 0x2;
+    KvmSRegs s;
+    s.cr0 = 0x1;
+    s.cs = vmxFlatSeg(0x08, 0xB, 1, 1, 1, 0xFFFFFFFF);
+    s.ds = vmxFlatSeg(0x10, 0x3, 1, 1, 1, 0xFFFFFFFF);
+    s.es = s.ss = s.fs = s.gs = s.ds;
+    s.tr = vmxFlatSeg(0x18, 0xB, 0, 0, 0, 0x67);
+    s.ldt.unusable = 1;
+    s.gdt.limit = 0xFFFF; s.idt.limit = 0xFFFF;
+
+    const ulong rpage = alloc_phys_page();
+    if (rpage == 0) { klog("[vmx] ioeventfd: no run page\n"); posixEventfdTestFree(eid); return; }
+    auto run = cast(KvmRun*)phys_to_virt(rpage);
+
+    // Drive kvmVcpuRun's fast-path steps directly against the guest.
+    int lastReason = -1;
+    foreach (iter; 0 .. 4) {
+        VirtExitInfo xi;
+        const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+        if (rc != VMX_OK) { lastReason = -2; break; }
+        lastReason = cast(int)xi.hardwareReason;
+        if (xi.hardwareReason == EXIT_REASON_EPT_VIOLATION) {
+            foreach (i; 0 .. 18) vc.regs[i] = (&regs.rax)[i];
+            foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
+            cast(void) virtDispatchExit(xi, run, vm, vc);
+            MmioAccess acc;
+            mmioEnrichMmioExit(vm, vc, &regs, &s, run, acc);
+            if (acc.valid && acc.isWrite && run.u.mmio.len != 0) {
+                ulong val = 0;
+                foreach (k; 0 .. run.u.mmio.len) val |= (cast(ulong)run.u.mmio.data[k]) << (8 * k);
+                const long ie = vmIoeventfdMatch(vm, run.u.mmio.physAddr, cast(ubyte)run.u.mmio.len, val);
+                if (ie >= 0) {
+                    posixEventfdSignal(cast(int)ie, 1);
+                    regs.rip += acc.insnLen;             // advance past the doorbell store
+                    continue;                            // resume the guest
+                }
+            }
+            break; // MMIO not claimed by an ioeventfd
+        }
+        if (xi.hardwareReason == EXIT_REASON_HLT) break; // resumed to the hlt
+        break;
+    }
+
+    const ulong sig = posixEventfdTestCounter(eid);
+    if (sig == 1 && lastReason == cast(int)EXIT_REASON_HLT) {
+        klog("[vmx] IOEVENTFD FIRST LIGHT PASS: doorbell write signaled the eventfd, guest resumed (HLT)\n");
+    } else {
+        klog("[vmx] ioeventfd: FAIL sig="); klog_hex(sig);
+        klog(" lastReason="); klog_hex(cast(ulong)cast(uint)lastReason); klog("\n");
+    }
+    posixEventfdTestFree(eid);
     free_phys_page(rpage);
 }

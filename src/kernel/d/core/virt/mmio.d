@@ -242,7 +242,9 @@ public bool guestTranslate(Vm* vm, ulong cr3, ulong lin, bool longmode, out ulon
 // device knows the width; the read-completion writeback into the destination
 // register happens on KVM_RUN re-entry (a later tier).
 public bool mmioEnrichMmioExit(Vm* vm, Vcpu* vc, const(KvmRegs)* regs,
-                               const(KvmSRegs)* sregs, KvmRun* run) @nogc nothrow {
+                               const(KvmSRegs)* sregs, KvmRun* run,
+                               out MmioAccess accOut) @nogc nothrow {
+    accOut = MmioAccess.init;
     if (vm is null || regs is null || run is null) return false;
     if (run.exitReason != KVM_EXIT_MMIO) return false;
     if (run.u.mmio.len != 0) return true;                 // already decoded
@@ -279,6 +281,7 @@ public bool mmioEnrichMmioExit(Vm* vm, Vcpu* vc, const(KvmRegs)* regs,
         const ulong val = acc.isImm ? cast(ulong) acc.imm : mmioRegValue(regs, acc.reg);
         foreach (k; 0 .. acc.size) run.u.mmio.data[k] = cast(ubyte)(val >> (8 * k));
     }
+    accOut = acc;   // caller uses insnLen (RIP advance) + size for the ioeventfd fast-path
     return true;
 }
 

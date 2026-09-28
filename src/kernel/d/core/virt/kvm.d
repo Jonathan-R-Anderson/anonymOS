@@ -194,10 +194,11 @@ private long kvmCheckExtension(ulong cap) {
                                                      // signaled eventfd raises the
                                                      // bound GSI, resolves, injects
                                                      // (see vmIrqfdSignal).
-        case KVM_CAP_IOEVENTFD:        return 0; // MMIO-exit->eventfd bridge not
-                                                     // built (needs the guest-write
-                                                     // exit path); next tier.  Fail
-                                                     // fast rather than claim+hang.
+        case KVM_CAP_IOEVENTFD:        return 1; // MMIO doorbell -> eventfd: a
+                                                     // matching guest write signals
+                                                     // the eventfd and the guest
+                                                     // resumes without a userspace
+                                                     // exit (MMIO write fast-path).
         case KVM_CAP_SET_IDENTITY_MAP_ADDR: return 1;
         case KVM_CAP_ADJUST_CLOCK:     return 1;
         case KVM_CAP_VCPU_EVENTS:      return 1;
@@ -520,9 +521,26 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
             return vmIrqfdAssign(vm, cast(uint)eid, k.gsi); // 0 / -EEXIST / -ENOSPC / -EINVAL
         }
         case KVM_IOEVENTFD: {
-            // Needs the MMIO-exit->eventfd bridge (a guest doorbell write must
-            // signal the bound eventfd).  Next tier.  Fail fast.
-            return E_NOTTY;
+            // struct kvm_ioeventfd { u64 datamatch; u64 addr; u32 len; s32 fd;
+            //   u32 flags; ... }.  Bind an MMIO doorbell address to an eventfd:
+            // a matching guest write signals it (the MMIO write fast-path in
+            // kvmVcpuRun) so the guest resumes without a userspace exit.
+            if (!kvmUserOk(tid, arg, KvmIoeventfd.sizeof, false)) return E_FAULT;
+            KvmIoeventfd k;
+            kvmUserCopyIn(&k, arg, KvmIoeventfd.sizeof);
+            if (k.flags & KVM_IOEVENTFD_FLAG_PIO) return E_INVAL; // port-I/O doorbells unsupported
+            if (k.flags & ~(KVM_IOEVENTFD_FLAG_DATAMATCH | KVM_IOEVENTFD_FLAG_PIO
+                            | KVM_IOEVENTFD_FLAG_DEASSIGN)) return E_INVAL;
+            if (k.len != 0 && k.len != 1 && k.len != 2 && k.len != 4 && k.len != 8)
+                return E_INVAL;
+            const bool hasDm = (k.flags & KVM_IOEVENTFD_FLAG_DATAMATCH) != 0;
+            if (k.flags & KVM_IOEVENTFD_FLAG_DEASSIGN)
+                return cast(long) vmIoeventfdDeassign(vm, k.addr, cast(ubyte)k.len, hasDm, k.datamatch);
+            import core.syscalls.posix : posixEventfdEidForFd;
+            const int eid = posixEventfdEidForFd(k.fd);
+            if (eid < 0) return E_BADF; // fd is not a live eventfd
+            return cast(long) vmIoeventfdAssign(vm, k.addr, cast(ubyte)k.len, hasDm,
+                                                k.datamatch, cast(uint)eid);
         }
         case KVM_SET_CLOCK: {
             // 7.4: kvmclock is part of the Compatibility bundle only.
@@ -696,47 +714,61 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
     const(KvmMsrEntry)* msrs = (cache !is null && cache.msrCount > 0) ? &cache.msrs[0] : null;
     uint nmsrs = (cache !is null) ? cache.msrCount : 0;
 
-    // Single entry point: validates guest state, picks the backend by
-    // hardware kind, enters once.  rc==0 -> xi holds the decoded,
-    // vendor-neutral exit; rc<0 -> entry failed, xi undefined.
-    VirtExitInfo xi;
-    int rc = virtEnter(vm, vc, &regs, sregs, msrs, nmsrs, &xi);
-
-    if (rc == E_NODEV) {
-        // Fail-soft: back out to Runnable, no exit reason written (we never
-        // entered).  The VMM sees -ENODEV, exactly like Linux without /dev/kvm.
-        // 8.1/8.2: name the cause both ways — the sticky named diagnostic
-        // and the klog line the AppVM contract documents.
-        vmSetDiag(vm, VirtDiag.NoHardware, 0);
-        klog("[virt] kvmVcpuRun: no virtualization hardware (ENODEV)\n");
-        vc.state = VcpuState.Runnable;
-        return E_NODEV;
+    // Entry/dispatch loop: normally one iteration.  An MMIO write that a
+    // registered ioeventfd claims is handled entirely in-kernel (signal the
+    // eventfd, advance guest RIP past the doorbell store, re-enter) so the guest
+    // resumes without a userspace round-trip.  Bounded to avoid a runaway guest.
+    import core.virt.mmio : mmioEnrichMmioExit, MmioAccess;
+    import core.virt.vm : vmIoeventfdMatch;
+    import core.syscalls.posix : posixEventfdSignal;
+    foreach (iter; 0 .. 65536) {
+        VirtExitInfo xi;
+        int rc = virtEnter(vm, vc, &regs, sregs, msrs, nmsrs, &xi);
+        if (rc == E_NODEV) {
+            // Fail-soft: back out to Runnable, no exit reason written (we never
+            // entered).  The VMM sees -ENODEV, exactly like Linux without /dev/kvm.
+            vmSetDiag(vm, VirtDiag.NoHardware, 0);
+            klog("[virt] kvmVcpuRun: no virtualization hardware (ENODEV)\n");
+            vc.state = VcpuState.Runnable;
+            return E_NODEV;
+        }
+        if (rc != 0) {
+            // -EINVAL: pre-entry validation failed (bad guest state) or the VM
+            // has no registered memory.
+            klog("[virt] kvmVcpuRun: entry rejected (EINVAL)\n");
+            vc.state = VcpuState.Runnable;
+            return E_INVAL;
+        }
+        // Persist the post-exit guest registers so KVM_GET_REGS and MMIO decode
+        // see the current state (the entry loaded them into the local `regs`).
+        foreach (i; 0 .. 18) vc.regs[i] = (&regs.rax)[i];
+        VmExitAction act = virtDispatchExit(xi, run, vm, vc);
+        // MMIO enrichment: the dispatcher emits KVM_EXIT_MMIO with len=0 (address
+        // + direction only).  Decode the faulting instruction to fill len + write
+        // data so the VMM / an ioeventfd sees a complete access.
+        if (run.exitReason == KVM_EXIT_MMIO) {
+            MmioAccess acc;
+            mmioEnrichMmioExit(vm, vc, &regs, sregs, run, acc);
+            // ioeventfd fast-path: a matching doorbell write is consumed here.
+            if (acc.valid && acc.isWrite && run.u.mmio.len != 0) {
+                ulong val = 0;
+                foreach (k; 0 .. run.u.mmio.len)
+                    val |= (cast(ulong) run.u.mmio.data[k]) << (8 * k);
+                const long eid = vmIoeventfdMatch(vm, run.u.mmio.physAddr,
+                                                  cast(ubyte) run.u.mmio.len, val);
+                if (eid >= 0) {
+                    posixEventfdSignal(cast(int) eid, 1);
+                    regs.rip += acc.insnLen;          // advance past the doorbell store
+                    vc.regs[16] = regs.rip;           // KvmRegs index 16 = rip
+                    continue;                          // resume the guest, no userspace exit
+                }
+            }
+        }
+        if (act == VmExitAction.VmContained)
+            return E_IO; // contained failure; VM is Dying, never re-entered
+        return 0;
     }
-    if (rc != 0) {
-        // -EINVAL: pre-entry validation failed (bad guest state) or the VM
-        // has no registered memory.  SET-time validation should have caught
-        // the former; the backend gate is authoritative either way.
-        klog("[virt] kvmVcpuRun: entry rejected (EINVAL)\n");
-        vc.state = VcpuState.Runnable;
-        return E_INVAL;
-    }
-    // Persist the post-exit guest registers so KVM_GET_REGS and MMIO decode see
-    // the current state (the entry loaded them into the local `regs`).
-    foreach (i; 0 .. 18) vc.regs[i] = (&regs.rax)[i];
-    // Real exit path: the backend decoded the hardware exit into xi; the
-    // HW-pure dispatcher populates struct kvm_run.
-    VmExitAction act = virtDispatchExit(xi, run, vm, vc);
-    // MMIO enrichment: the dispatcher emits KVM_EXIT_MMIO with len=0 (address +
-    // direction only).  Decode the faulting instruction to fill len + write data
-    // so the VMM / an ioeventfd sees a complete access (unpaged-flat guests;
-    // paged guests fall back to userspace decode).
-    if (run.exitReason == KVM_EXIT_MMIO) {
-        import core.virt.mmio : mmioEnrichMmioExit;
-        cast(void) mmioEnrichMmioExit(vm, vc, &regs, sregs, run);
-    }
-    if (act == VmExitAction.VmContained)
-        return E_IO; // contained failure; VM is Dying, never re-entered
-    return 0;
+    return 0; // loop budget exhausted (should not happen) -> hand control back
 }
 
 // vCPU-fd ioctl dispatch.

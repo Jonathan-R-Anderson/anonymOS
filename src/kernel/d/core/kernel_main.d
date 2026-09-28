@@ -5901,6 +5901,7 @@ void d_kernel_main() {
     { import core.virt.mmio : mmioDecodeSelfTest; mmioDecodeSelfTest(); } // VIRT: MMIO instruction decoder (mov r/m<->r, imm, movzx/sx) — foundation for device MMIO + ioeventfd
     { import core.virt.mmio : mmioPagedWalkSelfTest; mmioPagedWalkSelfTest(); } // VIRT: guest CR3 page-table walk (paged-guest instruction fetch)
     { import core.virt.vmx : vmxMmioFirstLightProof; vmxMmioFirstLightProof(); } // VIRT: EPT-violation store → MMIO decode → fill len/data (needs nested EPT)
+    { import core.virt.vmx : vmxIoeventfdFirstLightProof; vmxIoeventfdFirstLightProof(); } // VIRT: ioeventfd doorbell write → eventfd signaled + guest resumed (needs nested EPT)
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)

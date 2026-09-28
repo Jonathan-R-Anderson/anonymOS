@@ -974,6 +974,38 @@ public int posixEventfdEidForFd(int fd) {
     return eid;
 }
 
+// KVM_IOEVENTFD support: signal an eventfd by global id (bump its counter, as a
+// userspace write(8) would).  Used by the VMM MMIO fast-path when a guest
+// doorbell write matches an ioeventfd — a device backend blocked in
+// read/poll/epoll on the eventfd then wakes.  Returns false on a bad/free id.
+public bool posixEventfdSignal(int eid, ulong inc) {
+    if (eid < 0 || eid >= EVENTFD_MAX || !g_eventfd_inUse[eid]) return false;
+    if (inc == 0) return true;
+    g_eventfd_counters[eid] += inc;
+    return true;
+}
+
+// Boot self-test helpers: allocate/inspect/free a bare eventfd slot (no fd
+// table entry), so the virt self-tests can exercise the ioeventfd signal path
+// without the full eventfd syscall.  Not part of the syscall ABI.
+public int posixEventfdTestAlloc() {
+    foreach (i; 0 .. EVENTFD_MAX)
+        if (!g_eventfd_inUse[i]) {
+            g_eventfd_inUse[i] = true; g_eventfd_counters[i] = 0;
+            g_eventfd_flags[i] = 0; g_eventfd_refs[i] = 1;
+            return i;
+        }
+    return -1;
+}
+public ulong posixEventfdTestCounter(int eid) {
+    if (eid < 0 || eid >= EVENTFD_MAX || !g_eventfd_inUse[eid]) return ulong.max;
+    return g_eventfd_counters[eid];
+}
+public void posixEventfdTestFree(int eid) {
+    if (eid < 0 || eid >= EVENTFD_MAX) return;
+    g_eventfd_inUse[eid] = false; g_eventfd_counters[eid] = 0; g_eventfd_refs[eid] = 0;
+}
+
 private bool publishActiveFd(int fd) {
     if (fd < 0 || fd >= 1024 || g_fdTable is null) return false;
     auto f = &g_fdTable[fd];

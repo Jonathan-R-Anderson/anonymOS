@@ -572,6 +572,20 @@ public void virtSelfTest() {
                 vmIrqfdSignal(TEID); // no active binding now -> no injection
                 vtCheck(!vmVcpuHasPendingVector(&vm.vcpus[0], 0x41), "irqfd-deassign-nosignal");
 
+                // KVM_IOEVENTFD: register a doorbell + match logic (fake eids).
+                vtCheck(vmIoeventfdAssign(vm, 0x3000, 4, false, 0, 21) == 0, "ioevt-assign");
+                vtCheck(vmIoeventfdAssign(vm, 0x3000, 4, false, 0, 21) == -17, "ioevt-dup-eexist");
+                vtCheck(vmIoeventfdMatch(vm, 0x3000, 4, 0x99) == 21, "ioevt-match-any");
+                vtCheck(vmIoeventfdMatch(vm, 0x3000, 2, 0x99) == -1, "ioevt-match-len-miss");
+                vtCheck(vmIoeventfdMatch(vm, 0x3008, 4, 0x99) == -1, "ioevt-match-addr-miss");
+                // datamatch: only the matching value signals.
+                vtCheck(vmIoeventfdAssign(vm, 0x3004, 2, true, 0x55, 22) == 0, "ioevt-assign-dm");
+                vtCheck(vmIoeventfdMatch(vm, 0x3004, 2, 0x55) == 22, "ioevt-match-dm-hit");
+                vtCheck(vmIoeventfdMatch(vm, 0x3004, 2, 0x56) == -1, "ioevt-match-dm-miss");
+                vtCheck(vmIoeventfdDeassign(vm, 0x3000, 4, false, 0) == 0, "ioevt-deassign");
+                vtCheck(vmIoeventfdMatch(vm, 0x3000, 4, 0x99) == -1, "ioevt-deassign-nomatch");
+                vtCheck(vmIoeventfdAssign(vm, 0x3000, 3, false, 0, 23) == -22, "ioevt-badlen-einval");
+
                 // negative routing sets (leave the table empty, fail-closed)
                 KvmIrqRoutingEntry bad = r[0];
                 bad.flags = 1;

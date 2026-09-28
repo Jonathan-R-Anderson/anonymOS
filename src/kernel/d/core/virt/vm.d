@@ -94,6 +94,7 @@ enum uint  VIRT_MAX_GSI_ROUTES  = 64;  // KVM_SET_GSI_ROUTING table size
 enum uint  VIRT_GSI_CEILING     = 24;  // #GSIs (matches KVM_CAP_SPLIT_IRQCHIP)
 enum uint  VIRT_MAX_IRQFDS      = 32;  // KVM_IRQFD bindings per VM
 enum uint  VIRT_MAX_ROUTE_GSI   = 1024; // largest bindable GSI (KVM_MAX_IRQ_ROUTES-ish)
+enum uint  VIRT_MAX_IOEVENTFDS  = 16;  // KVM_IOEVENTFD bindings per VM
 
 // ---------------------------------------------------------------------------
 // Lifecycle states
@@ -195,6 +196,18 @@ struct VmIrqfd {
     bool active;
 }
 
+// KVM_IOEVENTFD binding: a guest MMIO write to [addr, addr+len) signals an
+// eventfd (a device doorbell), letting the guest resume without a userspace
+// exit.  With datamatch, only writes whose value equals `datamatch` signal.
+struct VmIoeventfd {
+    ulong addr;       // MMIO doorbell guest-physical address
+    ulong datamatch;  // required written value when hasDatamatch
+    uint  eid;        // global eventfd id to signal
+    ubyte len;        // access width to match: 1,2,4,8 (0 = any width)
+    bool  hasDatamatch;
+    bool  active;
+}
+
 struct Vm {
     VmState state;
     uint  objId;        // ObjType.Vm id
@@ -239,6 +252,9 @@ struct Vm {
     // KVM_IRQFD bindings: eventfd -> GSI.  Appended, never inserted.
     VmIrqfd[VIRT_MAX_IRQFDS] irqfds;
     uint  irqfdCount;    // high-water mark of used slots (slots may be inactive)
+    // KVM_IOEVENTFD bindings: MMIO doorbell -> eventfd.  Appended, never inserted.
+    VmIoeventfd[VIRT_MAX_IOEVENTFDS] ioeventfds;
+    uint  ioeventfdCount;
 }
 
 __gshared Vm[VIRT_MAX_VMS] g_vmPool;
@@ -570,6 +586,74 @@ public void vmIrqfdSignal(uint eid) {
     }
 }
 
+// ---- KVM_IOEVENTFD: MMIO doorbell -> eventfd -----------------------------------
+// System-wide count of active ioeventfds; the MMIO write fast-path checks this
+// (a plain load) before scanning, so guests without ioeventfds pay nothing.
+public __gshared uint g_virtIoeventfdActive = 0;
+
+// Assign an ioeventfd.  Dedups (addr,len,datamatch) -> -EEXIST; ceiling ->
+// -ENOSPC.  len must be 0 (any) or 1/2/4/8.
+public int vmIoeventfdAssign(Vm* vm, ulong addr, ubyte len, bool hasDm, ulong dm, uint eid) {
+    if (vm is null) return -22;
+    if (len != 0 && len != 1 && len != 2 && len != 4 && len != 8) return -22;
+    foreach (i; 0 .. vm.ioeventfdCount) {
+        auto e = &vm.ioeventfds[i];
+        if (e.active && e.addr == addr && e.len == len
+            && e.hasDatamatch == hasDm && (!hasDm || e.datamatch == dm))
+            return -17; // EEXIST
+    }
+    foreach (i; 0 .. vm.ioeventfdCount)
+        if (!vm.ioeventfds[i].active) {
+            vm.ioeventfds[i] = VmIoeventfd(addr, dm, eid, len, hasDm, true);
+            ++g_virtIoeventfdActive; return 0;
+        }
+    if (vm.ioeventfdCount >= VIRT_MAX_IOEVENTFDS) return -28; // ENOSPC
+    vm.ioeventfds[vm.ioeventfdCount++] = VmIoeventfd(addr, dm, eid, len, hasDm, true);
+    ++g_virtIoeventfdActive;
+    return 0;
+}
+
+// Deassign an ioeventfd (match on addr+len+datamatch).  Unknown -> -EINVAL.
+public int vmIoeventfdDeassign(Vm* vm, ulong addr, ubyte len, bool hasDm, ulong dm) {
+    if (vm is null) return -22;
+    foreach (i; 0 .. vm.ioeventfdCount) {
+        auto e = &vm.ioeventfds[i];
+        if (e.active && e.addr == addr && e.len == len
+            && e.hasDatamatch == hasDm && (!hasDm || e.datamatch == dm)) {
+            e.active = false;
+            if (g_virtIoeventfdActive != 0) --g_virtIoeventfdActive;
+            return 0;
+        }
+    }
+    return -22;
+}
+
+// Release all ioeventfd bindings a VM holds (teardown), keeping the active count
+// accurate so the fast-path gate does not leak.
+public void vmIoeventfdReleaseAll(Vm* vm) {
+    if (vm is null) return;
+    foreach (i; 0 .. vm.ioeventfdCount)
+        if (vm.ioeventfds[i].active) {
+            vm.ioeventfds[i].active = false;
+            if (g_virtIoeventfdActive != 0) --g_virtIoeventfdActive;
+        }
+    vm.ioeventfdCount = 0;
+}
+
+// Match a guest MMIO write against this VM's ioeventfds.  Returns the eventfd id
+// to signal, or -1 if no ioeventfd claims this write (-> exit to userspace).
+public long vmIoeventfdMatch(Vm* vm, ulong addr, ubyte len, ulong value) {
+    if (vm is null || g_virtIoeventfdActive == 0) return -1;
+    foreach (i; 0 .. vm.ioeventfdCount) {
+        auto e = &vm.ioeventfds[i];
+        if (!e.active || e.addr != addr) continue;
+        if (e.len != 0 && e.len != len) continue;
+        if (e.hasDatamatch && e.datamatch != value) continue;
+        return cast(long) e.eid;
+    }
+    return -1;
+}
+
 // Look up a vCPU by (vmObj, vmGen, index) with full stale checks.
 public Vcpu* vcpuCheck(uint vmObj, uint vmGen, uint index) {
     Vm* vm = vmCheck(vmObj, vmGen);
@@ -820,8 +904,9 @@ public void vmTeardown(Vm* vm) {
     }
     vm.vcpuCount = 0;
 
-    // 1b. irqfd bindings: keep the system-wide active count accurate.
+    // 1b. irqfd + ioeventfd bindings: keep the system-wide active counts accurate.
     vmIrqfdReleaseAll(vm);
+    vmIoeventfdReleaseAll(vm);
 
     // 2. Memory slots: SLAT is the source of truth for pinned pages.
     foreach (ref s; vm.slots) {

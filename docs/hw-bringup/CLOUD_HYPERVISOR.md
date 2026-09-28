@@ -1,13 +1,32 @@
 # Cloud Hypervisor Bring-Up Procedure (anonymOS KVM-compat target)
 
-> **VERIFICATION STATUS: NOT RUN.** This procedure has never been executed.
-> The sandbox where it was written has no VMX/SVM hardware (`vmxDetect()` fails
-> there), so Cloud Hypervisor cannot run against anonymOS here. Everything below
-> is derived from the traced source of a pinned Cloud Hypervisor checkout
-> (`~/workspace/cloud-hypervisor-reference/`) and from reading anonymOS's own
-> KVM-compat implementation (`src/kernel/d/core/virt/{kvm,kvmabi,vm,vmx,svm,ept}.d`).
-> Treat every step as a prediction to confirm on real hardware, not a record of
-> what happened.
+> **UPDATE 2026-09-28 — the Phase-0/5/6 blockers below are now IMPLEMENTED.**
+> This doc was written before the VMM tier landed and predicted failure at the
+> Phase-0 capability probe (Ioeventfd/Irqfd/IrqRouting all 0) and at Phase-5/6.
+> Since then anonymOS has implemented, and VBox-nested-VMX-verified, the whole
+> path those predictions were waiting on:
+> - **Phase 0 caps now 1:** `KVM_CAP_IRQ_ROUTING`, `KVM_CAP_IRQFD`,
+>   `KVM_CAP_IOEVENTFD` (and `KVM_CAP_SIGNAL_MSI`) — the three §4.1 blockers.
+> - **Phase 5 ioctls implemented:** `KVM_SET_GSI_ROUTING`, `KVM_IRQFD` (eventfd
+>   bridge), `KVM_IOEVENTFD` (MMIO doorbell → eventfd), `KVM_SIGNAL_MSI`,
+>   `KVM_IRQ_LINE` — no longer ENOTTY.
+> - **Phase 6 guest entry works:** `vmxEnter()` is implemented (FIRST LIGHT);
+>   interrupt injection + IF-aware/interrupt-window delivery; full MMIO
+>   (decode, write-data recovery, guest CR3 page-table walk, ioeventfd,
+>   read-completion).  See `src/kernel/d/core/virt/{vmx,mmio,kvm,vm}.d` and the
+>   boot self-tests (`[vmx] ... FIRST LIGHT PASS`, `[mmio] ...`).
+> - **The binary builds:** `scripts/build-cloud-hypervisor.sh` clones the pinned
+>   commit and produces a 6.4 MB static-musl `cloud-hypervisor v54.0.0`; the OS
+>   image build stages it as a boot module (`/cloud-hypervisor`).
+> STILL NOT DONE: launching it inside anonymOS in a DEVCLASS_VIRT domain and
+> booting a guest end-to-end (the app-spawn path + device models + guest boot
+> protocol) — that is the next phase.  The §3 sequence and §6 checklist below
+> remain the map; the predicted failure points 1–3 in §4 are now cleared.
+>
+> **ORIGINAL NOTE (pre-implementation):** This procedure had never been executed;
+> it was derived from the traced source of a pinned Cloud Hypervisor checkout and
+> from reading anonymOS's KVM-compat implementation. Treat the per-step details
+> as predictions to confirm on real hardware.
 
 ## 1. Pinned version
 

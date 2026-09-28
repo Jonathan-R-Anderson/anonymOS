@@ -160,6 +160,9 @@ SSHDLAUNCH_BIN := build/hos-sshd-launch        # SSH-in: AF_UNIX->dropbear -i la
 SYNDICHAN_NODE_SRC := dendritic/dendritic-node
 SYNDICHAN_NODE_BIN := build/syndichan-node
 DROPBEAR_SERVER_BIN := deps/dropbear/install/bin/dropbear   # SSH-in: the SSH server (inetd mode)
+# VMM: Cloud Hypervisor (static-musl), built by scripts/build-cloud-hypervisor.sh
+# from a pinned upstream commit (source NOT vendored — see docs/hw-bringup/CLOUD_HYPERVISOR.md).
+CLOUD_HYPERVISOR_BIN := deps/cloud-hypervisor/target/x86_64-unknown-linux-musl/release/cloud-hypervisor
 DBUSTEST_BIN := build/hos-dbus-test
 INOTIFYTEST_BIN := build/inotify-test
 NMLAUNCH_BIN := build/hos-nm-launch
@@ -1087,6 +1090,17 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 		echo "Included SSH-in (dropbear server + hos-sshd-launch; remote via lkl-boot tcp/22 bridge)"; \
 	else \
 		echo "SSH-in NOT staged (dropbear server or launcher missing)"; \
+	fi
+
+	@# VMM: Cloud Hypervisor (static-musl) as a boot module -> lands in the rtfs at
+	@# /cloud-hypervisor.  Runs only in a domain granted /dev/kvm ("devon <domain> virt").
+	@# Optional: staged only if built (scripts/build-cloud-hypervisor.sh).
+	@if [ -f $(CLOUD_HYPERVISOR_BIN) ]; then \
+		cp $(CLOUD_HYPERVISOR_BIN) cd/cloud-hypervisor; \
+		printf '    module_path: boot():/cloud-hypervisor\n' >> cd/boot/limine/limine.conf; \
+		echo "Included Cloud Hypervisor (VMM; needs a domain with DEVCLASS_VIRT / dev/kvm)"; \
+	else \
+		echo "Cloud Hypervisor NOT staged (run scripts/build-cloud-hypervisor.sh)"; \
 	fi
 
 	@# AXON anonymous-overlay node (dendritic/syndichan-node) — the I2P replacement.  Staged as a

@@ -190,13 +190,14 @@ private long kvmCheckExtension(ulong cap) {
                                                      // injected via the VMX entry
                                                      // backend (KVM_IRQ_LINE /
                                                      // KVM_SIGNAL_MSI below).
-        case KVM_CAP_IRQFD:            return 0; // eventfd->GSI bridge not built
+        case KVM_CAP_IRQFD:            return 1; // eventfd->GSI bridge live: a
+                                                     // signaled eventfd raises the
+                                                     // bound GSI, resolves, injects
+                                                     // (see vmIrqfdSignal).
         case KVM_CAP_IOEVENTFD:        return 0; // MMIO-exit->eventfd bridge not
-                                                     // built.  These two async
-                                                     // bridges are the next tier;
-                                                     // their inject backend now
-                                                     // exists.  Fail fast rather
-                                                     // than claim and hang.
+                                                     // built (needs the guest-write
+                                                     // exit path); next tier.  Fail
+                                                     // fast rather than claim+hang.
         case KVM_CAP_SET_IDENTITY_MAP_ADDR: return 1;
         case KVM_CAP_ADJUST_CLOCK:     return 1;
         case KVM_CAP_VCPU_EVENTS:      return 1;
@@ -501,10 +502,22 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
             return vmSignalMsi(vm, m.addressLo, m.addressHi, m.data); // 0 / -EINVAL
         }
         case KVM_IRQFD: {
-            // Registration accepted only once the eventfd->GSI bridge exists (the
-            // eventfd write path must raise the bound GSI).  Its inject backend is
-            // ready; the bridge is the next tier.  Fail fast until then.
-            return E_NOTTY;
+            // struct kvm_irqfd { u32 fd; u32 gsi; u32 flags; u32 resamplefd; ... }.
+            // Bind the eventfd to a GSI: a signaled eventfd raises the GSI, which
+            // resolves via the routing table and injects (the bridge lives in the
+            // eventfd write path, core.syscalls.posix -> vmIrqfdSignal).
+            if (!kvmUserOk(tid, arg, KvmIrqfd.sizeof, false)) return E_FAULT;
+            KvmIrqfd k;
+            kvmUserCopyIn(&k, arg, KvmIrqfd.sizeof);
+            if (k.flags & KVM_IRQFD_FLAG_RESAMPLE) return E_INVAL; // unsupported
+            if (k.flags & ~(KVM_IRQFD_FLAG_DEASSIGN | KVM_IRQFD_FLAG_RESAMPLE))
+                return E_INVAL; // unknown flags
+            import core.syscalls.posix : posixEventfdEidForFd;
+            const int eid = posixEventfdEidForFd(cast(int)k.fd);
+            if (eid < 0) return E_BADF; // fd is not a live eventfd
+            if (k.flags & KVM_IRQFD_FLAG_DEASSIGN)
+                return vmIrqfdDeassign(vm, cast(uint)eid, k.gsi);
+            return vmIrqfdAssign(vm, cast(uint)eid, k.gsi); // 0 / -EEXIST / -ENOSPC / -EINVAL
         }
         case KVM_IOEVENTFD: {
             // Needs the MMIO-exit->eventfd bridge (a guest doorbell write must

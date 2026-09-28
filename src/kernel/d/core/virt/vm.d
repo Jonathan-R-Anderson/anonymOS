@@ -92,6 +92,8 @@ enum uint  VIRT_MAX_CPUS        = 256;
 // Interrupt-delivery registration ceilings.
 enum uint  VIRT_MAX_GSI_ROUTES  = 64;  // KVM_SET_GSI_ROUTING table size
 enum uint  VIRT_GSI_CEILING     = 24;  // #GSIs (matches KVM_CAP_SPLIT_IRQCHIP)
+enum uint  VIRT_MAX_IRQFDS      = 32;  // KVM_IRQFD bindings per VM
+enum uint  VIRT_MAX_ROUTE_GSI   = 1024; // largest bindable GSI (KVM_MAX_IRQ_ROUTES-ish)
 
 // ---------------------------------------------------------------------------
 // Lifecycle states
@@ -177,12 +179,16 @@ struct Vcpu {
     //  the native object keeps only scheduling-relevant state.)
 }
 
-// KVM compat: interrupt injection registrations.  Delivery to the guest is
-// deferred until the vCPU execution backend exists; these tables record what
-// userspace asked for so setup sequences (Cloud Hypervisor device plug)
-// proceed instead of failing at -EINVAL.
-
-
+// KVM_IRQFD binding: a signaled eventfd raises a GSI, which resolves (via the
+// routing table) to a vector and injects on the target vCPU.  We store the
+// eventfd's GLOBAL id (eid), resolved from the caller's fd at registration, so
+// the eventfd write path (core.syscalls.posix) can look bindings up by eid
+// without the caller's fd table.
+struct VmIrqfd {
+    uint eid;    // global eventfd id (EVENTFD_MAX space in posix.d)
+    uint gsi;    // GSI to raise when the eventfd is signaled
+    bool active;
+}
 
 struct Vm {
     VmState state;
@@ -225,6 +231,9 @@ struct Vm {
     // Appended, never inserted.
     KvmIrqRoutingEntry[VIRT_MAX_GSI_ROUTES] gsiRoutes;
     uint  gsiRouteCount; // valid entries in gsiRoutes (0 = no routing)
+    // KVM_IRQFD bindings: eventfd -> GSI.  Appended, never inserted.
+    VmIrqfd[VIRT_MAX_IRQFDS] irqfds;
+    uint  irqfdCount;    // high-water mark of used slots (slots may be inactive)
 }
 
 __gshared Vm[VIRT_MAX_VMS] g_vmPool;
@@ -478,6 +487,71 @@ public int vmSignalMsi(Vm* vm, uint addressLo, uint addressHi, uint data) {
     return vmQueueExtInt(vm, vmApicToVcpu(vm, apicId), vector) ? 0 : -22;
 }
 
+// System-wide count of active irqfd bindings.  The eventfd write path checks
+// this (a plain load) before calling vmIrqfdSignal, so ordinary eventfd traffic
+// (thread wakeups, etc.) pays nothing when no VM has registered an irqfd.
+public __gshared uint g_virtIrqfdActive = 0;
+
+// KVM_IRQFD assign: bind eventfd `eid` to `gsi`.  Dedups (eid,gsi) -> -EEXIST;
+// ceiling -> -ENOSPC; bad gsi -> -EINVAL.  The GSI need not have a route yet
+// (KVM allows binding before KVM_SET_GSI_ROUTING); resolution happens at signal.
+public int vmIrqfdAssign(Vm* vm, uint eid, uint gsi) {
+    if (vm is null) return -22;
+    if (gsi >= VIRT_MAX_ROUTE_GSI) return -22;
+    foreach (i; 0 .. vm.irqfdCount)
+        if (vm.irqfds[i].active && vm.irqfds[i].eid == eid && vm.irqfds[i].gsi == gsi)
+            return -17; // EEXIST
+    // reuse an inactive slot first
+    foreach (i; 0 .. vm.irqfdCount)
+        if (!vm.irqfds[i].active) {
+            vm.irqfds[i] = VmIrqfd(eid, gsi, true);
+            ++g_virtIrqfdActive;
+            return 0;
+        }
+    if (vm.irqfdCount >= VIRT_MAX_IRQFDS) return -28; // ENOSPC
+    vm.irqfds[vm.irqfdCount++] = VmIrqfd(eid, gsi, true);
+    ++g_virtIrqfdActive;
+    return 0;
+}
+
+// KVM_IRQFD deassign: unbind (eid,gsi).  Unknown binding -> -EINVAL.
+public int vmIrqfdDeassign(Vm* vm, uint eid, uint gsi) {
+    if (vm is null) return -22;
+    foreach (i; 0 .. vm.irqfdCount)
+        if (vm.irqfds[i].active && vm.irqfds[i].eid == eid && vm.irqfds[i].gsi == gsi) {
+            vm.irqfds[i].active = false;
+            if (g_virtIrqfdActive != 0) --g_virtIrqfdActive;
+            return 0;
+        }
+    return -22;
+}
+
+// Release all irqfd bindings a VM holds (teardown): keeps g_virtIrqfdActive
+// accurate so the eventfd fast-path gate does not leak.
+public void vmIrqfdReleaseAll(Vm* vm) {
+    if (vm is null) return;
+    foreach (i; 0 .. vm.irqfdCount)
+        if (vm.irqfds[i].active) {
+            vm.irqfds[i].active = false;
+            if (g_virtIrqfdActive != 0) --g_virtIrqfdActive;
+        }
+    vm.irqfdCount = 0;
+}
+
+// The irqfd bridge: an eventfd (eid) was signaled — raise every GSI bound to it
+// across all live VMs.  Called from the eventfd write path (guarded by
+// g_virtIrqfdActive so it is skipped entirely when no irqfd exists).
+public void vmIrqfdSignal(uint eid) {
+    if (g_virtIrqfdActive == 0) return;
+    foreach (ref vm; g_vmPool) {
+        if (vm.state != VmState.Active) continue;
+        foreach (i; 0 .. vm.irqfdCount) {
+            if (!vm.irqfds[i].active || vm.irqfds[i].eid != eid) continue;
+            cast(void) vmRaiseIrqLine(&vm, vm.irqfds[i].gsi, 1); // resolve+inject; no-route is benign
+        }
+    }
+}
+
 // Look up a vCPU by (vmObj, vmGen, index) with full stale checks.
 public Vcpu* vcpuCheck(uint vmObj, uint vmGen, uint index) {
     Vm* vm = vmCheck(vmObj, vmGen);
@@ -727,6 +801,9 @@ public void vmTeardown(Vm* vm) {
         if (vc.objId != 0) { objRelease(vc.objId); vc.objId = 0; }
     }
     vm.vcpuCount = 0;
+
+    // 1b. irqfd bindings: keep the system-wide active count accurate.
+    vmIrqfdReleaseAll(vm);
 
     // 2. Memory slots: SLAT is the source of truth for pinned pages.
     foreach (ref s; vm.slots) {

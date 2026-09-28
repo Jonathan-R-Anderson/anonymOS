@@ -962,6 +962,18 @@ private bool publishFdInTable(int tableId, int fd, File* f,
     return true;
 }
 
+// KVM_IRQFD support: resolve a caller fd to its GLOBAL eventfd id, or -1 if the
+// fd is not a live eventfd in the current fd table.  core.virt.kvm binds an
+// irqfd to this eid; the eventfd write path signals bindings by eid.
+public int posixEventfdEidForFd(int fd) {
+    if (fd < 0 || fd >= 1024 || g_fdTable is null) return -1;
+    auto f = &g_fdTable[fd];
+    if (f.type != FileType.FD_EVENTFD) return -1;
+    int eid = cast(int)cast(size_t)f.backend;
+    if (eid < 0 || eid >= EVENTFD_MAX || !g_eventfd_inUse[eid]) return -1;
+    return eid;
+}
+
 private bool publishActiveFd(int fd) {
     if (fd < 0 || fd >= 1024 || g_fdTable is null) return false;
     auto f = &g_fdTable[fd];
@@ -2360,6 +2372,12 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         ulong inc = *cast(ulong*)buf;
         if (inc == ulong.max) return cast(ssize_t)negErrno(EINVAL);
         g_eventfd_counters[eid] += inc;
+        // irqfd bridge: a signaled eventfd raises any GSI bound to it (KVM_IRQFD).
+        // Guarded by the active-count load so non-VM eventfd traffic pays nothing.
+        {
+            import core.virt.vm : vmIrqfdSignal, g_virtIrqfdActive;
+            if (g_virtIrqfdActive != 0 && inc != 0) vmIrqfdSignal(cast(uint)eid);
+        }
         return 8;
     }
 

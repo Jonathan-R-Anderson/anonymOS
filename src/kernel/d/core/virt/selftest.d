@@ -558,6 +558,20 @@ public void virtSelfTest() {
                 vtCheck(vm.vcpus[0].pendingIntrInfo == (0x8000_0000u | 0x61), "signalmsi-injected");
                 vtCheck(vmSignalMsi(vm, 0xFEE00000, 0, 0x05) == -22, "signalmsi-lowvec-einval");
 
+                // KVM_IRQFD bridge: a signaled eventfd (fake eid) raises its bound
+                // GSI -> resolves (route 5 -> 0x41) -> injects.  Deassign silences it.
+                const uint TEID = 13;
+                vm.vcpus[0].pendingIntrInfo = 0;
+                vtCheck(vmIrqfdAssign(vm, TEID, 5) == 0, "irqfd-assign");
+                vtCheck(vmIrqfdAssign(vm, TEID, 5) == -17, "irqfd-dup-eexist");
+                vmIrqfdSignal(TEID);
+                vtCheck(vm.vcpus[0].pendingIntrInfo == (0x8000_0000u | 0x41), "irqfd-signal-injected");
+                vm.vcpus[0].pendingIntrInfo = 0;
+                vtCheck(vmIrqfdDeassign(vm, TEID, 5) == 0, "irqfd-deassign");
+                vtCheck(vmIrqfdDeassign(vm, TEID, 5) == -22, "irqfd-deassign-unknown");
+                vmIrqfdSignal(TEID); // no active binding now -> no injection
+                vtCheck(vm.vcpus[0].pendingIntrInfo == 0, "irqfd-deassign-nosignal");
+
                 // negative routing sets (leave the table empty, fail-closed)
                 KvmIrqRoutingEntry bad = r[0];
                 bad.flags = 1;

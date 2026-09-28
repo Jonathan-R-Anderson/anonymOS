@@ -10,6 +10,7 @@
  * listener) is copied VERBATIM from the proven wl-wifi-menu client -- only the drawn content differs.
  */
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
@@ -380,7 +381,7 @@ int main(void){
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Clocks");
-    xdg_toplevel_set_app_id(app.toplevel, "epin-clocks");
+    xdg_toplevel_set_app_id(app.toplevel, epin_domain_appid("epin-clocks"));
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

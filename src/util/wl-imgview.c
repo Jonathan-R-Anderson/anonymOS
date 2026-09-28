@@ -10,6 +10,7 @@
  * the complete v5 wl_pointer listener) is copied VERBATIM from the proven wl-wifi-menu.c client.
  */
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
@@ -410,7 +411,7 @@ int main(int argc, char **argv){
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, app.have_img ? app.base : "wl-imgview");
-    xdg_toplevel_set_app_id(app.toplevel, "epin-imgview");
+    xdg_toplevel_set_app_id(app.toplevel, epin_domain_appid("epin-imgview"));
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

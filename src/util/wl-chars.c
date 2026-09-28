@@ -11,6 +11,7 @@
  * extended to decode UTF-8 so it can render arbitrary codepoints (the wifi menu only drew ASCII).
  */
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
@@ -457,7 +458,7 @@ int main(void){
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Characters");
-    xdg_toplevel_set_app_id(app.toplevel, "epin-chars");
+    xdg_toplevel_set_app_id(app.toplevel, epin_domain_appid("epin-chars"));
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

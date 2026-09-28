@@ -9,6 +9,7 @@
  * is copied verbatim from the proven wl-wifi-menu client; only the drawing + hit-testing differ.
  */
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
@@ -442,7 +443,7 @@ int main(void){
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Calendar");
-    xdg_toplevel_set_app_id(app.toplevel, "epin-calendar");
+    xdg_toplevel_set_app_id(app.toplevel, epin_domain_appid("epin-calendar"));
     /* FLOAT: min==max fixes the size so the tiler treats us as a floating popover. */
     /* ROADMAP 3.2: a minimum, but NO maximum.  Hyprland floats any toplevel whose min equals its
      * max, so declaring both was the window opting out of tiling -- the layout was never at

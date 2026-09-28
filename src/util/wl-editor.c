@@ -17,6 +17,7 @@
  * a per-frame memfd or single buffer freezes the desktop, so those are copied whole.
  */
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <libgen.h>
 #include <signal.h>
@@ -588,7 +589,7 @@ int main(int argc, char **argv){
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Text Editor");
-    xdg_toplevel_set_app_id(app.toplevel, "epin-editor");
+    xdg_toplevel_set_app_id(app.toplevel, epin_domain_appid("epin-editor"));
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

@@ -9,6 +9,7 @@
 #define _GNU_SOURCE
 
 #include <dirent.h>
+#include "epin-appid.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
@@ -1134,7 +1135,7 @@ int main(void)
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Files");
-    xdg_toplevel_set_app_id(app.toplevel, "epin-files");
+    xdg_toplevel_set_app_id(app.toplevel, epin_domain_appid("epin-files"));
     xdg_toplevel_set_min_size(app.toplevel, 540, 360);
 
     wl_surface_commit(app.surface);

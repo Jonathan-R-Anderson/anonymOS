@@ -9,6 +9,7 @@
 #define _GNU_SOURCE
 
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <poll.h>
 #include <stdint.h>
@@ -1230,7 +1231,7 @@ int main(void) {
     else
         snprintf(a.title, sizeof(a.title), "EpinAnonymOS Terminal");
     xdg_toplevel_set_title(a.toplevel, a.title);
-    xdg_toplevel_set_app_id(a.toplevel, "epin-g4-term");
+    xdg_toplevel_set_app_id(a.toplevel, epin_domain_appid("epin-g4-term"));
     wl_surface_commit(a.surface);
     wl_display_roundtrip(a.display);   // drive the first configure → commit
 

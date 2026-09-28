@@ -18,6 +18,9 @@
 #define _GNU_SOURCE
 
 #include <errno.h>
+#include <dirent.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
@@ -242,6 +245,7 @@ struct app {
     // doms[d] may run this app), loaded from /config/apps.json; and which app's domain checklist is
     // currently open in the System Applications tab (-1 = none).
     unsigned app_port_mask[16];   /* per-avail-index bitmask over domain indices; sized like avail[] */
+    unsigned app_overlay_mask[16];/* per-avail-index bitmask over domain indices: overlay-mode on for (app,domain) */
     int  port_panel;
 };
 
@@ -456,20 +460,24 @@ static void pkg_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Package
 // wl-overview.c, so this mirrors it.  Rows are filtered by access(X_OK) at load time, which
 // also keeps dead entries (e.g. /gl-term, which has never been built) off the list instead of
 // offering a launch that can only fail.
-struct dmapp { const char *label; const char *exec; };
+/* `cls` is the app's BASE Wayland app_id (what it passes to set_app_id) — NOT the exec path.
+ * The per-domain "Overlay" toggle builds window rules matching "<cls>@<domain>", and the apps
+ * domain-qualify their app_id to that form via epin_domain_appid() (src/util/epin-appid.h).
+ * NOTE the trap: Terminal execs /hos-wifiterm which execve's /wl-term, whose class is epin-g4-term. */
+struct dmapp { const char *label; const char *exec; const char *cls; };
 static const struct dmapp DMAPPS[] = {
-    { "Software Center", "/wl-software"  },   /* the app store - install apps here, port to domains */
-    { "Terminal",       "/hos-wifiterm" },   /* wl-term w/ EPIN_SHELL=light, software-rendered */
-    { "Files",          "/wl-files"      },
-    { "Text Editor",    "/wl-editor"     },
-    { "Calculator",     "/wl-calc"       },
-    { "System Monitor", "/wl-sysmon"     },
-    { "Image Viewer",   "/wl-imgview"    },
-    { "Clocks",         "/wl-clocks"     },
-    { "Calendar",       "/wl-calendar"   },
-    { "Characters",     "/wl-chars"      },
-    { "Screenshot",     "/wl-screenshot" },
-    { "Logs",           "/wl-logview"    },
+    { "Software Center", "/wl-software",   "epinanonymos-software" },
+    { "Terminal",       "/hos-wifiterm",  "epin-g4-term"    },
+    { "Files",          "/wl-files",      "epin-files"      },
+    { "Text Editor",    "/wl-editor",     "epin-editor"     },
+    { "Calculator",     "/wl-calc",       "epin-calc"       },
+    { "System Monitor", "/wl-sysmon",     "epin-sysmon"     },
+    { "Image Viewer",   "/wl-imgview",    "epin-imgview"    },
+    { "Clocks",         "/wl-clocks",     "epin-clocks"     },
+    { "Calendar",       "/wl-calendar",   "epin-calendar"   },
+    { "Characters",     "/wl-chars",      "epin-chars"      },
+    { "Screenshot",     "/wl-screenshot", "epin-screenshot" },
+    { "Logs",           "/wl-logview",    "epin-logview"    },
 };
 enum { N_DMAPP = (int)(sizeof(DMAPPS)/sizeof(DMAPPS[0])) };
 
@@ -541,6 +549,121 @@ static void port_action(struct app *app, const char *verb, const char *domainNam
     ssize_t w = write(fd, cmd, len); close(fd);
     printf("DOMAINMGR: port action '%s' -> %zd\n", cmd, w); fflush(stdout);
     load_apps_ports(app);
+}
+
+/* ---- Per-domain "Overlay mode" (2026-09-27) --------------------------------------------------
+ * A per-app, per-domain toggle on the Applications tab routes an app's window onto the
+ * special:overlay plane (floating) instead of the tiled desktop.  A Hyprland window rule matches
+ * by CLASS, so apps domain-qualify their app_id to "<base>@<domain>" (epin-appid.h) — the SAME app
+ * can be overlay in one domain and tiled in another.  The persistent source of truth is a
+ * DM-generated Lua file the compositor sources at startup (overlay.lua, kept by persist=/home);
+ * changes are ALSO applied live over the Hyprland IPC socket for the open window (best-effort). */
+#define HYPR_RUNDIR   "/run/user/1000/hypr"
+#define HYPR_CUSTOMD  "/home/user/.config/hypr/custom"
+#define OVERLAY_LUA   HYPR_CUSTOMD "/overlay.lua"
+
+static int hypr_socket_path(char *out, size_t cap) {
+    DIR *d = opendir(HYPR_RUNDIR);
+    if (!d) return -1;
+    struct dirent *e; int found = 0;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.') continue;
+        snprintf(out, cap, HYPR_RUNDIR "/%s/.socket.sock", e->d_name);
+        found = 1; break;
+    }
+    closedir(d);
+    return found ? 0 : -1;
+}
+/* Send one Hyprland IPC command; best-effort (waits briefly for the reply — this kernel's AF_UNIX
+ * read races and Hyprland accepts lazily, so a single read loses; poll up to ~3s). */
+static void hypr_ipc(const char *cmd) {
+    char path[256];
+    if (hypr_socket_path(path, sizeof path) < 0) return;
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return;
+    struct sockaddr_un sa; memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX; strncpy(sa.sun_path, path, sizeof sa.sun_path - 1);
+    if (connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0) { close(fd); return; }
+    size_t len = strlen(cmd);
+    if (write(fd, cmd, len) != (ssize_t)len) { close(fd); return; }
+    char buf[64];
+    for (int tries = 0; tries < 60; tries++) {
+        struct pollfd pfd = { .fd = fd, .events = POLLIN, .revents = 0 };
+        int pr = poll(&pfd, 1, 50);
+        if (pr > 0 && (pfd.revents & POLLIN)) { if (read(fd, buf, sizeof buf) >= 0) break; }
+        if (pr < 0 && errno != EINTR) break;
+    }
+    close(fd);
+}
+static void ovl_mkdir_p(const char *path) {
+    char tmp[256]; snprintf(tmp, sizeof tmp, "%s", path);
+    for (char *p = tmp + 1; *p; p++)
+        if (*p == '/') { *p = 0; mkdir(tmp, 0755); *p = '/'; }
+    mkdir(tmp, 0755);
+}
+/* Rewrite overlay.lua from app_overlay_mask — the persistent, reboot-safe rule set. */
+static void write_overlay_lua(struct app *app) {
+    ovl_mkdir_p(HYPR_CUSTOMD);
+    FILE *f = fopen(OVERLAY_LUA, "w");
+    if (!f) return;
+    fprintf(f, "-- GENERATED by the Domain Manager (Applications tab \"Overlay\" toggle). Do not edit.\n");
+    fprintf(f, "-- Per (app,domain): float + route \"<app>@<domain>\" windows onto the special:overlay plane.\n");
+    for (int i = 0; i < app->n_avail; i++)
+        for (int d = 0; d < app->n_doms; d++) {
+            if (!(app->app_overlay_mask[i] & (1u << d))) continue;
+            char cls[96];
+            snprintf(cls, sizeof cls, "%s@%s", DMAPPS[app->avail[i]].cls, app->doms[d].name);
+            fprintf(f, "hl.window_rule({ match = { class = \"^(%s)$\" }, float = true })\n", cls);
+            fprintf(f, "hl.window_rule({ match = { class = \"^(%s)$\" }, workspace = \"special:overlay\" })\n", cls);
+        }
+    fclose(f);
+}
+/* Read overlay.lua back into app_overlay_mask so the pills show the persisted state. */
+static void load_apps_overlay(struct app *app) {
+    for (int i = 0; i < 16; i++) app->app_overlay_mask[i] = 0;
+    FILE *f = fopen(OVERLAY_LUA, "r");
+    if (!f) return;
+    char line[256];
+    while (fgets(line, sizeof line, f)) {
+        char *q = strstr(line, "class = \"^(");
+        if (!q) continue;
+        q += strlen("class = \"^(");
+        char *e = strstr(q, ")$\"");
+        if (!e) continue;
+        *e = 0;
+        char *at = strrchr(q, '@');
+        if (!at) continue;
+        *at = 0;
+        const char *base = q, *dom = at + 1;
+        int ai = -1, di = -1;
+        for (int i = 0; i < app->n_avail; i++) if (!strcmp(DMAPPS[app->avail[i]].cls, base)) { ai = i; break; }
+        for (int d = 0; d < app->n_doms; d++)  if (!strcmp(app->doms[d].name, dom))          { di = d; break; }
+        if (ai >= 0 && di >= 0) app->app_overlay_mask[ai] |= (1u << di);
+    }
+    fclose(f);
+}
+static void appl_ovl_rect(int idx, int *x, int *y, int *w, int *h) {   // per-app "Overlay: on/off" pill
+    *y = TAB_Y + 40 + idx * 30; *h = 26; *w = 100; *x = LABEL_X + 418;
+}
+/* Toggle overlay mode for avail-index `ai` in the currently-selected domain (app->sel). */
+static void overlay_action(struct app *app, int ai) {
+    if (ai < 0 || ai >= app->n_avail || app->sel < 0 || app->sel >= app->n_doms) return;
+    int d = app->sel;
+    int want = !(app->app_overlay_mask[ai] & (1u << d));
+    if (want) app->app_overlay_mask[ai] |= (1u << d);
+    else      app->app_overlay_mask[ai] &= ~(1u << d);
+    char cls[96], cmd[256];
+    snprintf(cls, sizeof cls, "%s@%s", DMAPPS[app->avail[ai]].cls, app->doms[d].name);
+    if (want) {                                        /* register for future windows + move the open one */
+        snprintf(cmd, sizeof cmd, "eval hl.window_rule({ match = { class = \"^(%s)$\" }, float = true })", cls); hypr_ipc(cmd);
+        snprintf(cmd, sizeof cmd, "eval hl.window_rule({ match = { class = \"^(%s)$\" }, workspace = \"special:overlay\" })", cls); hypr_ipc(cmd);
+        snprintf(cmd, sizeof cmd, "eval hl.dispatch(hl.window.move({ workspace = \"special:overlay\", follow = false, window = \"class:%s\" }))", cls); hypr_ipc(cmd);
+    } else {                                           /* pull the open window back to the tiled desktop */
+        snprintf(cmd, sizeof cmd, "eval hl.dispatch(hl.window.move({ workspace = \"e+0\", follow = false, window = \"class:%s\" }))", cls); hypr_ipc(cmd);
+        snprintf(cmd, sizeof cmd, "eval hl.dispatch(hl.window.float({ window = \"class:%s\", state = false }))", cls); hypr_ipc(cmd);
+    }
+    write_overlay_lua(app);                            /* persist — authoritative across reboot */
+    printf("DOMAINMGR: overlay %s %s\n", want ? "on" : "off", cls); fflush(stdout);
 }
 
 static void appl_cfg_rect(int idx, int *x, int *y, int *w, int *h) {   // "Domains (n)" per-app config pill
@@ -1191,11 +1314,15 @@ static void tab_applications(struct app *app, cairo_t *cr) {
             cairo_argb(cr, sd->color); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr);
             if (isSystem) { appl_cfg_rect(i,&x,&y,&w,&h);
                 cairo_set_source_rgb(cr, 0.20, 0.24, 0.30); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
+            { int ox,oy,ow,oh; appl_ovl_rect(i,&ox,&oy,&ow,&oh);   // per-domain "Overlay" pill
+              int on = (app->app_overlay_mask[i] & (1u << app->sel)) != 0;
+              if (on) cairo_set_source_rgb(cr, 0.18, 0.30, 0.22); else cairo_set_source_rgb(cr, 0.20, 0.24, 0.30);
+              rounded_rect(cr,ox,oy,ow,oh,6); cairo_fill(cr); }
         }
     } else {
         draw_text(app, isSystem
-            ? "Applications - 'Domains' copies an app to other domains; Launch runs it here"
-            : "Applications available in this domain - Launch runs them confined here",
+            ? "Applications - Domains copies to other domains; Overlay floats it on the SUPER+SPACE plane; Launch runs it"
+            : "Applications in this domain - Overlay floats it on the SUPER+SPACE plane; Launch runs it confined",
             LABEL_X, TAB_Y+10, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
         int shown = 0;
         for (int i = 0; i < app->n_avail; i++) {
@@ -1207,6 +1334,9 @@ static void tab_applications(struct app *app, cairo_t *cr) {
             draw_text(app, "Launch", x+22, y+5, w-16, 12, 0xffe8edf5u);
             if (isSystem) { char pl[24]; snprintf(pl,sizeof(pl),"Domains (%d)", __builtin_popcount(app->app_port_mask[i]));
                 appl_cfg_rect(i,&x,&y,&w,&h); draw_text(app, pl, x+8, y+5, w-10, 12, 0xffe8edf5u); }
+            { int ox,oy,ow,oh; appl_ovl_rect(i,&ox,&oy,&ow,&oh);
+              int on = (app->app_overlay_mask[i] & (1u << app->sel)) != 0;
+              draw_text(app, on ? "Overlay: on" : "Overlay: off", ox+8, oy+5, ow-10, 12, on ? 0xffbfe8c8u : 0xffcfd6e0u); }
         }
         if (shown == 0)
             draw_text(app, isSystem ? "(no application binaries found on this system)"
@@ -1728,6 +1858,9 @@ static void handle_click(struct app *app)
                 appl_cfg_rect(i,&bx,&by,&bw,&bh);
                 if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
                     app->port_panel = i; redraw_commit(app, "port open"); return; } }
+            appl_ovl_rect(i,&bx,&by,&bw,&bh);        // "Overlay: on/off" pill toggles overlay mode for (app, this domain)
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
+                overlay_action(app, i); redraw_commit(app, "overlay toggle"); return; }
             appl_row_rect(i,&bx,&by,&bw,&bh);
             if (x>=bx && x<=bx+bw && y>=by-2 && y<=by+bh+2) {
                 launch_in_domain(app, DMAPPS[app->avail[i]].exec);
@@ -1940,6 +2073,7 @@ int main(void)
     load_packages(&app);             // DM10.7: the software repository (Packages tab)
     load_apps(&app);                 // Applications tab: which app binaries are actually present
     load_apps_ports(&app);           // Software Center: per-app cross-domain port state (/config/apps.json)
+    load_apps_overlay(&app);         // per-app/per-domain overlay-mode state (~/.config/hypr/custom/overlay.lua)
     load_templates(&app);            // DM12: the local signed-template registry (Appearance tab)
     load_sysusers(&app);             // ROADMAP 1.5: Users tab    (/config/users.json)
     load_syssvcs(&app);              // ROADMAP 1.5: Services tab (/config/services.json)

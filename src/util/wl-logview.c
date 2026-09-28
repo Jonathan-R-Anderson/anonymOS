@@ -18,6 +18,7 @@
  * input doesn't crash the client).
  */
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
@@ -400,7 +401,7 @@ int main(void){
     xdg_surface_add_listener(app.xdg_surface,&xdg_surface_listener,&app);
     app.toplevel=xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel,&toplevel_listener,&app);
-    xdg_toplevel_set_title(app.toplevel,"Logs"); xdg_toplevel_set_app_id(app.toplevel,"epin-logview");
+    xdg_toplevel_set_title(app.toplevel,"Logs"); xdg_toplevel_set_app_id(app.toplevel,epin_domain_appid("epin-logview"));
     /* FLOAT: mark this popover as fixed-size (min==max = natural size) so the tiling WM's
      * epin_is_tileable() returns false and leaves it as a free-floating window, not a tile. */
     xdg_toplevel_set_min_size(app.toplevel,WIN_W,WIN_H);

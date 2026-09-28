@@ -11,6 +11,7 @@
  * button grid, and a correct precedence-aware evaluator (* and / bind tighter than + and -).
  */
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
@@ -469,7 +470,7 @@ int main(void){
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Calculator");
-    xdg_toplevel_set_app_id(app.toplevel, "epin-calc");
+    xdg_toplevel_set_app_id(app.toplevel, epin_domain_appid("epin-calc"));
     /* No min==max fixed-size hint: this app is TILEABLE and honors the compositor-driven size. */
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);

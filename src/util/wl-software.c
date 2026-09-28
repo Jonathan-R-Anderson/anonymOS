@@ -22,6 +22,7 @@
 #define _GNU_SOURCE
 
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -1085,7 +1086,7 @@ int main(void)
     a.toplevel = xdg_surface_get_toplevel(a.xdg_surface);
     xdg_toplevel_add_listener(a.toplevel, &tl_listener, &a);
     xdg_toplevel_set_title(a.toplevel, "Software");
-    xdg_toplevel_set_app_id(a.toplevel, "epinanonymos-software");
+    xdg_toplevel_set_app_id(a.toplevel, epin_domain_appid("epinanonymos-software"));
     xdg_toplevel_set_min_size(a.toplevel, MIN_WIDTH, MIN_HEIGHT);
     wl_surface_commit(a.surface);
     wl_display_flush(a.display);

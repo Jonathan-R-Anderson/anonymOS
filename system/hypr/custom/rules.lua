@@ -1,22 +1,16 @@
 -- Overlay-plane window rules (2026-09-27).
 --
--- These apps are FIXED-SIZE utility windows (or belong on the floating overlay layer):
--- the Domain Manager's layout is fixed-pixel and does NOT reflow, so Hyprland correctly
--- floats it (min==max) — but a floating window sitting on top of the tiled workspace is
--- exactly the "the Domain Manager covers everything" problem.  Routing these to the
--- special:overlay workspace (the SUPER+SPACE overlay plane) keeps them OFF the tiled
--- desktop entirely: the normal workspace stays cleanly tiled, and these utilities live
--- on the toggle-able overlay layer instead.
---
--- Normal reflowing apps (Software Center, Editor, Files, …) are deliberately NOT listed,
--- so they keep tiling on the normal workspace.
-local overlay_apps = {
-    "epin-domain-manager",   -- wl-domain-manager (fixed-pixel layout, must float)
-    "epin-g4-term",          -- wl-term  (terminal)
-    "epin-sysmon",           -- wl-sysmon (system monitor)
-    "epin-calc",             -- wl-calc  (calculator)
-}
-for _, cls in ipairs(overlay_apps) do
-    hl.window_rule({ match = { class = "^(" .. cls .. ")$" }, float     = true })
-    hl.window_rule({ match = { class = "^(" .. cls .. ")$" }, workspace = "special:overlay" })
-end
+-- The Domain Manager's layout is fixed-pixel and does NOT reflow, so Hyprland correctly floats it
+-- (min==max) — and a floating fixed-size window on the tiled workspace is exactly the "the Domain
+-- Manager covers everything" problem.  Routing it to the special:overlay workspace (the SUPER+SPACE
+-- overlay plane) keeps it OFF the tiled desktop.  The DM runs only in System and is never launched
+-- into another domain, so its app_id is the plain "epin-domain-manager" (no @domain qualifier).
+hl.window_rule({ match = { class = "^(epin-domain-manager)$" }, float     = true })
+hl.window_rule({ match = { class = "^(epin-domain-manager)$" }, workspace = "special:overlay" })
+
+-- PER-DOMAIN overlay for ordinary apps (terminal, monitor, calculator, …) is USER-CONFIGURABLE and
+-- lives in the DM-generated custom/overlay.lua (sourced from hyprland.lua), NOT here.  Those apps set
+-- a domain-qualified app_id "<base>@<domain>" (src/util/epin-appid.h), so a rule like
+-- class:^(epin-calc@Work)$ can float them onto special:overlay in Work only.  Toggle it per app on
+-- each domain's Applications tab in the Domain Manager.  Keeping the toggle's rules in the separate
+-- generated file (not this blob-shipped file) means a DM write is never clobbered by the boot unpack.

@@ -11,6 +11,7 @@
  * There is no cairo here -- everything is fill_rect() + draw_text().  Own CSD titlebar + close box.
  */
 #include <errno.h>
+#include "epin-appid.h"
 #include <fcntl.h>
 #include <signal.h>
 #include <stdint.h>
@@ -684,7 +685,7 @@ int main(int argc, char **argv){
     app.toplevel = xdg_surface_get_toplevel(app.xdg_surface);
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, VIEW_TITLE[app.view]);
-    xdg_toplevel_set_app_id(app.toplevel, "epin-sysmon");
+    xdg_toplevel_set_app_id(app.toplevel, epin_domain_appid("epin-sysmon"));
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);
 

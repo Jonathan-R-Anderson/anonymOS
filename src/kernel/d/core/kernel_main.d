@@ -5951,6 +5951,7 @@ void d_kernel_main() {
     { import core.virt.vmx : vmxMmioFirstLightProof; vmxMmioFirstLightProof(); } // VIRT: EPT-violation store → MMIO decode → fill len/data (needs nested EPT)
     { import core.virt.vmx : vmxIoeventfdFirstLightProof; vmxIoeventfdFirstLightProof(); } // VIRT: ioeventfd doorbell write → eventfd signaled + guest resumed (needs nested EPT)
     { import core.virt.vmx : vmxMmioReadCompletionProof; vmxMmioReadCompletionProof(); } // VIRT: MMIO read → supply value → writeback to reg + RIP advance + resume (needs nested EPT)
+    { import core.virt.vmx : vmxPortIoFirstLightProof; vmxPortIoFirstLightProof(); } // VIRT: port-I/O exit → RIP advance past IN/OUT + IN completion → guest resumes (blocker #1; needs nested EPT)
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)

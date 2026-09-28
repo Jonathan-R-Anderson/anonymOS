@@ -60,6 +60,11 @@ struct VirtExitInfo {
     ulong data;           // Io OUT: data bytes (<=8, little-endian from the
                           //   guest register); Hypercall: hypercall number
     uint  count;          // Io: REP count for string I/O
+    uint  insnLen;        // length of the faulting instruction (VMCS_EXIT_INSTR_LEN
+                          //   on VMX; nRIP-RIP on SVM).  KVM advances the guest RIP
+                          //   by this past an I/O instruction before returning to the
+                          //   VMM — without it a guest re-executes the same IN/OUT
+                          //   forever.  Transient (stack) field, never in Vcpu.
     ulong hardwareReason; // original vendor exit code (KVM_EXIT_UNKNOWN/debug)
 
     // Decoded I/O fields (valid when kind == Io).  Filled by the vendor

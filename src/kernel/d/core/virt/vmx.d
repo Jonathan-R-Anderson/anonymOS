@@ -442,6 +442,10 @@ public void vmxDecodeExit(uint reason, ulong qual, ulong gpa, ulong data,
     xi.gpa = gpa;
     xi.data = data;
     xi.count = count;
+    // VMX passes VMCS_EXIT_INSTR_LEN as `count` (see vmxEnter): it is the length of
+    // the instruction that caused the exit, which the KVM_RUN loop uses to advance the
+    // guest RIP past an I/O instruction.  Expose it under its true name too.
+    xi.insnLen = count;
     xi.hardwareReason = reason;
     xi.ioPort = 0; xi.ioSize = 0; xi.ioIsIn = 0; xi.ioIsString = 0;
     xi.slatIsWrite = 0;
@@ -815,6 +819,12 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
     regs.rip    = vmxRead(VMCS_GUEST_RIP);
     regs.rsp    = vmxRead(VMCS_GUEST_RSP);
     regs.rflags = vmxRead(VMCS_GUEST_RFLAGS);
+    // A port OUT carries its data in the guest accumulator (AL/AX/EAX); the I/O exit
+    // qualification does NOT include it.  Capture it from the (post-exit) guest RAX so
+    // the COM1 console tap and KVM_EXIT_IO deliver the real bytes — mirrors svmEnter.
+    // Without this the tap logged NUL bytes and any port device saw 0 on every write.
+    if (xi.kind == VirtExitKind.Io && xi.ioIsIn == 0 && xi.ioIsString == 0)
+        xi.data = regs.rax;
     return VMX_OK;
 }
 
@@ -1383,6 +1393,109 @@ public void vmxMmioReadCompletionProof() @nogc nothrow {
     } else {
         klog("[vmx] mmio-read: FAIL rax="); klog_hex(regs.rax);
         klog(" lastReason="); klog_hex(cast(ulong)cast(uint)lastReason); klog("\n");
+    }
+    free_phys_page(rpage);
+}
+
+// PORT-I/O first-light proof.  The blocker it proves fixed: the KVM_RUN loop never
+// advanced the guest RIP past an I/O instruction, so a guest that did any IN/OUT
+// re-executed it forever and could not boot.  The guest here writes "Hi" to COM1
+// (port 0x3f8), reads one byte back, then HLTs.  We drive the entry loop the way
+// kvmVcpuRun now does: on each I/O exit, advance RIP by the decoded instruction
+// length; for OUT the console tap (virtDispatchExit) mirrors the byte to klog; for
+// IN we supply a value and complete it into the accumulator.  PASS proves I/O exits
+// are produced, xi.insnLen is right, RIP advance resumes the guest, and IN lands in
+// AL — a guest can now talk to a port device and make forward progress.  Needs
+// nested VMX + EPT (VirtualBox exposes it); otherwise it stays silent.
+__gshared bool g_vmxPortIoDone = false;
+public void vmxPortIoFirstLightProof() @nogc nothrow {
+    if (g_vmxPortIoDone) return;
+    g_vmxPortIoDone = true;
+    if (!vmxDetect()) return;
+    import core.virt.kvm : kvmCreateVm, kvmCreateVcpu;
+    import core.virt.kvmabi : KvmRun, KVM_EXIT_IO_IN;
+    import core.virt.vmexit : virtDispatchExit, KVM_RUN_IO_DATA_OFF;
+    import core.virt.mmio : mmioWriteRegValue;
+
+    const int tid = cast(int)g_current_task_id;
+    const long vh = kvmCreateVm(tid);
+    if (vh < 0) { klog("[vmx] port-io: kvmCreateVm failed\n"); return; }
+    uint vo, vg; kvmUnpackHandle(cast(ulong)vh, vo, vg);
+    Vm* vm = vmCheck(vo, vg);
+    if (vm is null) { klog("[vmx] port-io: vmCheck null\n"); return; }
+    const long ch = kvmCreateVcpu(vo, vg, 0);
+    if (ch < 0) { klog("[vmx] port-io: kvmCreateVcpu failed\n"); return; }
+    uint co, cg; kvmUnpackHandle(cast(ulong)ch, co, cg);
+    Vcpu* vc = vcpuCheckObj(co, cg);
+    if (vc is null) { klog("[vmx] port-io: vcpuCheckObj null\n"); return; }
+
+    const ulong gpage = alloc_phys_page();
+    if (gpage == 0) { klog("[vmx] port-io: no guest page\n"); return; }
+    auto gp = cast(ubyte*)phys_to_virt(gpage);
+    foreach (i; 0 .. 4096) gp[i] = 0;
+    // mov edx,0x3f8 ; mov al,'H' ; out dx,al ; mov al,'i' ; out dx,al ; in al,dx ; hlt
+    gp[0]=0xBA; gp[1]=0xF8; gp[2]=0x03; gp[3]=0x00; gp[4]=0x00; // mov edx,0x000003f8
+    gp[5]=0xB0; gp[6]=0x48;                                     // mov al,0x48 ('H')
+    gp[7]=0xEE;                                                 // out dx,al
+    gp[8]=0xB0; gp[9]=0x69;                                     // mov al,0x69 ('i')
+    gp[10]=0xEE;                                                // out dx,al
+    gp[11]=0xEC;                                                // in al,dx
+    gp[12]=0xF4;                                                // hlt
+    if (!slatMap(&vm.slat, 0, gpage, 1 | 2 | 4)) { klog("[vmx] port-io: slatMap failed\n"); return; }
+
+    KvmRegs regs;
+    regs.rsp = 0x0FF0; regs.rip = 0; regs.rflags = 0x2;
+    KvmSRegs s;
+    s.cr0 = 0x1;
+    s.cs = vmxFlatSeg(0x08, 0xB, 1, 1, 1, 0xFFFFFFFF);
+    s.ds = vmxFlatSeg(0x10, 0x3, 1, 1, 1, 0xFFFFFFFF);
+    s.es = s.ss = s.fs = s.gs = s.ds;
+    s.tr = vmxFlatSeg(0x18, 0xB, 0, 0, 0, 0x67);
+    s.ldt.unusable = 1;
+    s.gdt.limit = 0xFFFF; s.idt.limit = 0xFFFF;
+
+    const ulong rpage = alloc_phys_page();
+    if (rpage == 0) { klog("[vmx] port-io: no run page\n"); return; }
+    auto run = cast(KvmRun*)phys_to_virt(rpage);
+
+    int lastReason = -1;
+    ubyte[4] outBytes; uint outCount = 0;
+    ulong gotIn = 0xFFFF; bool sawIn = false;
+    uint lastInsnLen = 0;
+    foreach (iter; 0 .. 8) {
+        VirtExitInfo xi;
+        const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+        if (rc != VMX_OK) { lastReason = -2; break; }
+        lastReason = cast(int)xi.hardwareReason;
+        if (xi.hardwareReason == EXIT_REASON_IO_INSTRUCTION) {
+            foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
+            cast(void) virtDispatchExit(xi, run, vm, vc);   // fills run.u.io + COM1 tap (OUT)
+            ubyte* iodata = (cast(ubyte*)run) + KVM_RUN_IO_DATA_OFF;
+            if (run.u.io.direction == KVM_EXIT_IO_IN) {
+                iodata[0] = 0x5A;                            // as a VMM would: supply the input byte
+                ulong val = 0;
+                foreach (k; 0 .. xi.ioSize) val |= (cast(ulong)iodata[k]) << (8 * k);
+                mmioWriteRegValue(&regs, 0 /*RAX*/, val, xi.ioSize, false, false);
+                gotIn = regs.rax & 0xFF; sawIn = true;
+            } else if (xi.ioPort == 0x3f8 && xi.ioSize == 1 && outCount < outBytes.length) {
+                outBytes[outCount++] = iodata[0];
+            }
+            regs.rip += xi.insnLen;                          // blocker fix: advance past the I/O insn
+            lastInsnLen = xi.insnLen;
+            continue;
+        }
+        if (xi.hardwareReason == EXIT_REASON_HLT) break;
+        break;
+    }
+
+    const bool outOk = (outCount == 2 && outBytes[0] == 0x48 && outBytes[1] == 0x69);
+    if (outOk && sawIn && gotIn == 0x5A && lastReason == cast(int)EXIT_REASON_HLT && lastInsnLen == 1) {
+        klog("[vmx] PORT-IO FIRST LIGHT PASS: guest wrote \"Hi\" to COM1, read 0x5A back, RIP advanced, resumed (HLT)\n");
+    } else {
+        klog("[vmx] port-io: FAIL outCount="); klog_hex(outCount);
+        klog(" in="); klog_hex(gotIn);
+        klog(" reason="); klog_hex(cast(ulong)cast(uint)lastReason);
+        klog(" insnLen="); klog_hex(lastInsnLen); klog("\n");
     }
     free_phys_page(rpage);
 }

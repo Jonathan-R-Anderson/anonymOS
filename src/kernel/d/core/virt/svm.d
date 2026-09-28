@@ -540,6 +540,10 @@ public int svmEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
     svmDecodeExit(exitcode, info1, info2, regs.rax, xi);
     // Register-dependent fields the pure decoder cannot fill.
     if (xi.kind == VirtExitKind.Io) {
+        // SVM reports the NEXT RIP (EXITINFO2) rather than an instruction length; the
+        // KVM_RUN loop advances the guest RIP by xi.insnLen past an I/O instruction, so
+        // derive the length here (save.rip still points at the I/O instruction).
+        if (info2 > regs.rip) xi.insnLen = cast(uint)(info2 - regs.rip);
         if (xi.ioIsIn == 0 && xi.ioIsString == 0)
             xi.data = regs.rax; // low ioSize bytes are the OUT payload
         if (xi.ioIsString != 0)

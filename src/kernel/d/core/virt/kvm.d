@@ -688,6 +688,19 @@ private struct MmioReadPend {
 }
 private __gshared MmioReadPend[VIRT_MAX_VMS * VIRT_MAX_VCPUS_PER_VM] g_mmioReadPend;
 
+// Pending port-input (IN) completion, per vCPU, in a SIDE table (same reason as
+// g_mmioReadPend — growing Vcpu trips a size-dependent boot regression).  Set when a
+// port IN exits to userspace; applied on the next KVM_RUN (userspace filled the I/O
+// data area): the value is written into the guest accumulator (AL/AX/EAX — port IN
+// always targets RAX).  Unlike the MMIO case, the guest RIP was ALREADY advanced at
+// the IO exit (Linux advances RIP before returning to the VMM), so completion only
+// writes the register, never touches RIP.
+private struct IoReadPend {
+    bool  active;
+    ubyte size;      // 1/2/4
+}
+private __gshared IoReadPend[VIRT_MAX_VMS * VIRT_MAX_VCPUS_PER_VM] g_ioReadPend;
+
 // has to fill in the backend call.
 long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
     Vcpu* vc = vcpuCheckObj(vcpuObj, vcpuGen);
@@ -717,6 +730,22 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
             mmioWriteRegValue(cast(KvmRegs*)&vc.regs[0], pend.reg, val,
                               pend.size, pend.zeroExt, pend.signExt);
             vc.regs[16] += pend.insnLen; // KvmRegs index 16 = rip
+        }
+    }
+    // Complete a pending port IN from the previous exit: userspace filled the I/O data
+    // area (right after the kvm_run struct); write it into the guest accumulator.  RIP
+    // was already advanced when the IN exited, so this only writes RAX (index 0), with
+    // x86 IN width semantics (AL/AX preserve upper bits; EAX zero-extends to RAX).
+    {
+        import core.virt.mmio : mmioWriteRegValue;
+        import core.virt.vmexit : KVM_RUN_IO_DATA_OFF;
+        auto iop = &g_ioReadPend[vmFlatVcpuIndex(vm, vc)];
+        if (iop.active) {
+            iop.active = false;
+            const(ubyte)* iodata = (cast(const(ubyte)*)run) + KVM_RUN_IO_DATA_OFF;
+            ulong val = 0;
+            foreach (k; 0 .. iop.size) val |= (cast(ulong) iodata[k]) << (8 * k);
+            mmioWriteRegValue(cast(KvmRegs*)&vc.regs[0], 0 /*RAX*/, val, iop.size, false, false);
         }
     }
     // immediate_exit: userspace asked for an immediate KVM_EXIT_INTR.
@@ -803,6 +832,19 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
                 pend.insnLen = acc.insnLen;
                 pend.zeroExt = acc.zeroExtend;
                 pend.signExt = acc.signExtend;
+            }
+        }
+        // KVM_EXIT_IO: advance the guest RIP past the I/O instruction before returning
+        // to the VMM (Linux advances RIP in-kernel here).  Without it the guest re-runs
+        // the same IN/OUT on the next KVM_RUN forever — the reason a trivial guest could
+        // not make progress.  For IN, remember to write the input the VMM supplies into
+        // the accumulator on re-entry (see the g_ioReadPend completion at the top).
+        if (run.exitReason == KVM_EXIT_IO) {
+            vc.regs[16] += xi.insnLen;                       // KvmRegs index 16 = rip
+            if (run.u.io.direction == KVM_EXIT_IO_IN) {
+                auto iop = &g_ioReadPend[vmFlatVcpuIndex(vm, vc)];
+                iop.active = true;
+                iop.size   = cast(ubyte) run.u.io.size;
             }
         }
         if (act == VmExitAction.VmContained)

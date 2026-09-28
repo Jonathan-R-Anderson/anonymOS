@@ -5407,6 +5407,11 @@ private struct RtNode {
     ulong  dataPhys;             // phys addr backing `data` (0 = none) — so we can free it
     uint   size;                 // current file length / link target length in bytes
     uint   cap;                  // allocated capacity (page multiple)
+    // DM6.2 per-domain isolation (data plane): 0 = shared base (visible to all), non-zero = private
+    // to that domain objId.  Set at creation from the writing task's domain (rtCurrentDomain).  A
+    // domain-private node SHADOWS a same-named shared node for its own domain only (copy-on-write),
+    // and is invisible to every other domain — see rtFindChild.  APPENDED, never inserted.
+    uint   ownerDom;
 }
 
 __gshared RtNode[RT_MAX_NODES] g_rt;
@@ -5441,12 +5446,32 @@ private bool rtNameEq(ref const(RtNode) n, const(char)* name, size_t len) {
 }
 
 private int rtFindChild(int parent, const(char)* name, size_t len) {
+    // DM6.2 per-domain isolation: a node private to the CURRENT task's domain shadows a same-named
+    // shared node for that domain only; another domain's private node is invisible.  dom==0 (kernel
+    // / non-domain tasks) sees only shared (ownerDom==0) nodes — identical to the pre-isolation
+    // behaviour, which keeps the whole boot path and every non-domain caller unchanged.  IPC is
+    // unaffected: Unix sockets (Wayland/D-Bus) are kernel socket objects matched in the socket layer,
+    // not rtfs nodes routed here.
+    const uint dom = rtCurrentDomain();
+    int sharedHit = -1;
     for (int i = 1; i < RT_MAX_NODES; ++i) {
         if (g_rt[i].kind == RT_FREE) continue;
         if (g_rt[i].parent != parent) continue;
-        if (rtNameEq(g_rt[i], name, len)) return i;
+        if (!rtNameEq(g_rt[i], name, len)) continue;
+        const uint own = g_rt[i].ownerDom;
+        if (own == dom) return i;          // exact-domain match wins (dom==0 → the shared node)
+        if (own == 0) sharedHit = i;       // shared base: fallback for a domain caller
+        // own != 0 && own != dom → another domain's private node: invisible here, skip
     }
-    return -1;
+    return sharedHit;                       // -1 if nothing (no shared base, no own-domain node)
+}
+
+// DM6.2 per-domain isolation: the domain the CURRENT task is bound to (0 = kernel/boot or a
+// non-domain task → shared rtfs).  rtCreate stamps new nodes with this; rtFindChild routes by it.
+private uint rtCurrentDomain() {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    return g_tasks[tid].domainObjId;
 }
 
 private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
@@ -5469,6 +5494,10 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     g_rt[idx].dataPhys = 0;
     g_rt[idx].size     = 0;
     g_rt[idx].cap      = 0;
+    // DM6.2 per-domain isolation: stamp the node with the writing task's domain (0 = shared).  A
+    // domain-bound write therefore creates a node PRIVATE to that domain that shadows any shared
+    // same-named node for that domain only, and is invisible to every other domain (see rtFindChild).
+    g_rt[idx].ownerDom = rtCurrentDomain();
     // DOMAIN_MANAGER DM6.2 data plane: if the creating task is bound into a domain, copy the new
     // file up into the domain's writable overlay.  No-op for normal (non-domain) tasks.
     if (kind == RT_REG) domainRecordWrite(cast(int)g_current_task_id, name, len);
@@ -6784,6 +6813,52 @@ public void softwareApkInstallSelfTest() @nogc nothrow {
     // Leave no trace: drop the placed file + the marker (the tiny staged tmp under /var/cache is harmless).
     linux_sys_unlink(cast(ulong)"/usr/bin/hosselftest\0".ptr);
     linux_sys_unlink(cast(ulong)"/run/pkg/hosselftest.done\0".ptr);
+}
+
+// DM6.2 boot proof for per-domain FILE isolation (the data plane): two different domains create the
+// SAME path; each sees only its own node, neither sees the other's, and a non-domain (dom 0) caller
+// sees neither (there is no shared version).  Proves rtFindChild's domain routing.  No network / no
+// hardware needed.  Runs by temporarily impersonating fake domain ids on the current task (the same
+// technique domainOverlayWriteProof uses), then restoring.
+__gshared bool g_rtIsoProofDone = false;
+public void rtDomainIsolationProof() @nogc nothrow {
+    if (g_rtIsoProofDone) return;
+    g_rtIsoProofDone = true;
+    initFdTable();
+    if (!g_rtInitialized) return;
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    const uint savedDom = g_tasks[tid].domainObjId;
+
+    enum uint DOM_A = 0xA1A10001u;
+    enum uint DOM_B = 0xB2B20002u;
+    int par; const(char)* lf; size_t ll;
+
+    // A shared parent dir (created as dom 0 so it is visible to both test domains as a base).
+    g_tasks[tid].domainObjId = 0;
+    rtMkdirPath("/tmp/isoproof\0".ptr, cast(ushort)0x1FF, 0, 0);   // 0777
+    const int dir = rtResolve("/tmp/isoproof\0".ptr, par, lf, ll);
+
+    bool ok = (dir >= 0);
+    int nodeA = -1, nodeB = -1;
+    if (ok) {
+        g_tasks[tid].domainObjId = DOM_A;
+        nodeA = rtCreate(dir, "f\0".ptr, 1, RT_REG, cast(ushort)0x1A4, 0, 0);
+        g_tasks[tid].domainObjId = DOM_B;
+        nodeB = rtCreate(dir, "f\0".ptr, 1, RT_REG, cast(ushort)0x1A4, 0, 0);
+
+        // Each domain resolves "f" to its OWN node; dom 0 sees neither (no shared "f").
+        g_tasks[tid].domainObjId = DOM_A; const int seenByA = rtFindChild(dir, "f\0".ptr, 1);
+        g_tasks[tid].domainObjId = DOM_B; const int seenByB = rtFindChild(dir, "f\0".ptr, 1);
+        g_tasks[tid].domainObjId = 0;     const int seenBy0 = rtFindChild(dir, "f\0".ptr, 1);
+
+        ok = ok && (nodeA >= 0) && (nodeB >= 0) && (nodeA != nodeB)
+                && (seenByA == nodeA) && (seenByB == nodeB) && (seenBy0 == -1);
+    }
+
+    g_tasks[tid].domainObjId = savedDom;   // restore BEFORE logging (klog is domain-agnostic anyway)
+    klog(ok ? "[domain] rtfs per-domain isolation PASS (same path, two domains, each sees only its own)\n"
+            : "[domain] rtfs per-domain isolation FAIL\n");
 }
 
 // A silent failure here is a file that is simply absent at runtime, while the unpack counters

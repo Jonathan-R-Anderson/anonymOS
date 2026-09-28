@@ -5900,6 +5900,7 @@ void d_kernel_main() {
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)
     { import core.software : softwareCatalogReport; softwareCatalogReport(); }  // Software Center catalog
     { import core.syscalls.posix : softwareApkInstallSelfTest; softwareApkInstallSelfTest(); }  // Software Center: prove the cap-gated apk placement path (no network needed)
+    { import core.syscalls.posix : rtDomainIsolationProof; rtDomainIsolationProof(); }  // DM6.2: prove per-domain rtfs file isolation (data plane)
     { import core.sysupdate : updateAdoptBootSlot; updateAdoptBootSlot(); } // UPDATE U1: read A/B boot-state → g_bootSlot
     { import core.sysversion : updateVersionProof; updateVersionProof(); } // UPDATE U0: version identity proof
     {   // UPDATE U1: prove the boot-state on-disk contract, but only on a scratch/install

@@ -26,8 +26,9 @@ import core.virt.kvmabi;
 import core.virt.vm;
 import core.virt.vmm_policy : vmmMayCreateVm, vmmAuditCreate, vmmAuditDeny,
                               VMM_DENY_VM_CEILING, VMM_DENY_POOL_EXHAUSTED;
-import core.virt.backend : virtEnter, virtBackendAvailable;
-import core.virt.vmexit : virtDispatchExit, VirtExitInfo, VmExitAction,
+import core.virt.backend : virtEnter, virtBackendAvailable, virtFpuXsaveMask,
+    virtFpuMxcsrMask, VIRT_FPU_UNSUPPORTED;
+import core.virt.vmexit : virtDispatchExit, VirtExitInfo, VirtExitKind, VmExitAction,
     virtValidateSRegs, virtValidateRegs, virtValidateMsrs;
 import core.task : g_tasks, findRegion, MAX_TASKS;
 import core.objmgr : objGet;
@@ -44,6 +45,7 @@ extern (C) @nogc nothrow:
 private enum long E_OK    = 0;
 private enum long E_PERM  = -1;
 private enum long E_NOENT = -2;
+private enum long E_INTR  = -4;   // EINTR: KVM_RUN handed back without a guest-visible exit
 private enum long E_BADF  = -9;
 private enum long E_NOMEM = -12;
 private enum long E_ACCES = -13;
@@ -615,7 +617,11 @@ private KvmCpuidPage* kvmCpuidFor(Vcpu* vc, bool create) {
 
 // Lazily-allocated XSAVE area (struct kvm_xsave, 4096 bytes).  The legacy
 // region defaults match a freshly-reset FPU (FCW=0x37f, MXCSR=0x1f80).
-private KvmXsave* kvmXsaveFor(Vcpu* vc, bool create) {
+// This page IS the vCPU's live FPU image: the backends load it before every
+// guest entry and store the guest's registers back into it after every exit
+// (core.virt.backend virtFpuPrepare).  Page-aligned, so it satisfies FXRSTOR's
+// 16-byte and XRSTOR's 64-byte alignment.  Public for that backend path.
+public KvmXsave* kvmXsaveFor(Vcpu* vc, bool create) {
     if (vc.xsavePhys == 0) {
         if (!create) return null;
         ulong p = alloc_phys_page();
@@ -630,10 +636,58 @@ private KvmXsave* kvmXsaveFor(Vcpu* vc, bool create) {
     return cast(KvmXsave*)phys_to_virt(vc.xsavePhys);
 }
 
+// KVM_GET/SET_FPU <-> the vCPU FPU image.  Its first 512 bytes are the FXSAVE64 legacy layout:
+// fcw@0 fsw@2 ftw(abridged)@4 fop@6 fip@8 fdp@16 mxcsr@24 st0-7@32 (16 B each) xmm0-15@160.
+private void kvmFxToFpu(const(ubyte)* fx, KvmFpu* f) {
+    auto fpr = cast(ubyte*)f.fpr.ptr;
+    auto xmm = cast(ubyte*)f.xmm.ptr;
+    foreach (i; 0 .. 128) fpr[i] = fx[32 + i];
+    f.fcw        = *cast(const(ushort)*)(fx + 0);
+    f.fsw        = *cast(const(ushort)*)(fx + 2);
+    f.ftwx       = fx[4];
+    f.lastOpcode = *cast(const(ushort)*)(fx + 6);
+    f.lastIp     = *cast(const(ulong)*)(fx + 8);
+    f.lastDp     = *cast(const(ulong)*)(fx + 16);
+    foreach (i; 0 .. 256) xmm[i] = fx[160 + i];
+    f.mxcsr      = *cast(const(uint)*)(fx + 24);
+}
+private void kvmFpuToFx(const(KvmFpu)* f, ubyte* fx) {
+    auto fpr = cast(const(ubyte)*)f.fpr.ptr;
+    auto xmm = cast(const(ubyte)*)f.xmm.ptr;
+    foreach (i; 0 .. 128) fx[32 + i] = fpr[i];
+    *cast(ushort*)(fx + 0)  = f.fcw;
+    *cast(ushort*)(fx + 2)  = f.fsw;
+    fx[4]                   = f.ftwx;
+    *cast(ushort*)(fx + 6)  = f.lastOpcode;
+    *cast(ulong*)(fx + 8)   = f.lastIp;
+    *cast(ulong*)(fx + 16)  = f.lastDp;
+    *cast(uint*)(fx + 24)   = f.mxcsr;
+    foreach (i; 0 .. 256) fx[160 + i] = xmm[i];
+    // XSAVE header XSTATE_BV |= x87|SSE: an XRSTOR-form switch then loads these registers rather
+    // than the init state (FXRSTOR ignores the header).
+    *cast(ulong*)(fx + 512) |= 3;
+}
+
+// An image the in-kernel FXRSTOR64/XRSTOR64 can load without faulting — checked at SET time on an
+// in-kernel copy (no TOCTOU), since a #GP there is a kernel fault at the next entry:
+//   - MXCSR carries no bit outside the CPU's MXCSR_MASK;
+//   - XRSTOR form only: a standard-form header — XSTATE_BV within the switched XCR0 features,
+//     XCOMP_BV (bytes 520..527) and the reserved header bytes (528..575) zero.
+private bool kvmFpuImageValid(const(ubyte)* img) {
+    if ((*cast(const(uint)*)(img + 24) & ~virtFpuMxcsrMask()) != 0) return false;
+    const ulong mask = virtFpuXsaveMask();
+    if (mask != 0 && mask != VIRT_FPU_UNSUPPORTED) {
+        if ((*cast(const(ulong)*)(img + 512) & ~mask) != 0) return false;
+        foreach (i; 520 .. 576) if (img[i] != 0) return false;
+    }
+    return true;
+}
+
 // Fixed part of the cache (fits one page with 64 MSRs).
 private struct KvmVcpuFixed {
     KvmSRegs sregs;
-    KvmFpu fpu;
+    KvmFpu fpu;           // unused: the FPU state lives in the XSAVE page (kvmXsaveFor); kept so
+                          // the cache layout is unchanged
     KvmVcpuEvents events;
     uint mpState;
     uint tscKhz;
@@ -748,11 +802,13 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
             mmioWriteRegValue(cast(KvmRegs*)&vc.regs[0], 0 /*RAX*/, val, iop.size, false, false);
         }
     }
-    // immediate_exit: userspace asked for an immediate KVM_EXIT_INTR.
+    // immediate_exit: userspace asked for an immediate KVM_EXIT_INTR.  Linux answers it with
+    // -EINTR (Cloud Hypervisor maps EINTR to "ignore, re-run"; a 0 return with KVM_EXIT_INTR is
+    // an "unexpected exit reason" there, i.e. fatal).
     if (run.immediateExit != 0) {
         run.immediateExit = 0;
         run.exitReason = KVM_EXIT_INTR;
-        return 0;
+        return E_INTR;
     }
 
     vc.state = VcpuState.Running;
@@ -763,6 +819,12 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
     if (!virtBackendAvailable()) {
         vc.state = VcpuState.Runnable;
         return E_NODEV;
+    }
+    // The guest FPU image the backends switch in/out around every entry (core.virt.backend
+    // virtFpuPrepare).  Allocated up front so a shortage is a clean -ENOMEM, not a false -ENODEV.
+    if (kvmXsaveFor(vc, true) is null) {
+        vc.state = VcpuState.Runnable;
+        return E_NOMEM;
     }
     // Build the guest state the backend programs into the VMCS/VMCB from
     // the vCPU's cached SET_REGS/SET_SREGS/SET_MSRS values.
@@ -802,6 +864,17 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
         // see the current state (the entry loaded them into the local `regs`).
         foreach (i; 0 .. 18) vc.regs[i] = (&regs.rax)[i];
         VmExitAction act = virtDispatchExit(xi, run, vm, vc);
+        // A HOST interrupt forced this exit (VMX external-interrupt exiting).  It was not
+        // acknowledged, so it is still pending in the host LAPIC/PIC.  Hand control back the way
+        // Linux does for a signal — -EINTR with KVM_EXIT_INTR (Cloud Hypervisor re-runs on EINTR)
+        // — and do NOT re-enter here: the syscall return re-enables IF, the host takes the
+        // interrupt through its normal path (tick, EOI, preemption), and only then does the VMM
+        // issue the next KVM_RUN.  That is what stops a guest spinning with IF=0 (`cli; jmp $`)
+        // from pinning the CPU, and host timer/keyboard/mouse IRQs from going to the guest IDT.
+        if (xi.kind == VirtExitKind.Intr) {
+            vc.state = VcpuState.Runnable;
+            return E_INTR;
+        }
         // MMIO enrichment: the dispatcher emits KVM_EXIT_MMIO with len=0 (address
         // + direction only).  Decode the faulting instruction to fill len + write
         // data so the VMM / an ioeventfd sees a complete access.
@@ -849,9 +922,16 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
         }
         if (act == VmExitAction.VmContained)
             return E_IO; // contained failure; VM is Dying, never re-entered
+        // The run is over.  An exit to the VMM (I/O, MMIO, hypercall, unknown) leaves the vCPU
+        // Runnable so the next KVM_RUN can re-enter — it used to stay Running, which made every
+        // re-entry -EINVAL.  HLT/SHUTDOWN already moved it to Exited.
+        if (act == VmExitAction.ToUserspace) vc.state = VcpuState.Runnable;
         return 0;
     }
-    return 0; // loop budget exhausted (should not happen) -> hand control back
+    // Loop budget exhausted (in-kernel ioeventfd resumes only): hand control back re-runnable.
+    run.exitReason = KVM_EXIT_INTR;
+    vc.state = VcpuState.Runnable;
+    return E_INTR;
 }
 
 // vCPU-fd ioctl dispatch.
@@ -901,19 +981,28 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_GET_FPU: {
+            // Read from the vCPU's live FPU image (the XSAVE page the backends switch in/out
+            // around every entry), so it reflects the guest's registers as of the last exit.
             if (!kvmUserOk(tid, arg, KvmFpu.sizeof, true)) return E_FAULT;
-            auto c = kvmCacheFor(vc, false);
             KvmFpu f;
-            if (c !is null) f = c.fpu;
-            else foreach (i; 0 .. KvmFpu.sizeof) (cast(ubyte*)&f)[i] = 0;
+            foreach (i; 0 .. KvmFpu.sizeof) (cast(ubyte*)&f)[i] = 0;
+            auto x = kvmXsaveFor(vc, false);
+            if (x !is null) kvmFxToFpu(cast(const(ubyte)*)x, &f);
+            else { f.fcw = 0x37f; f.mxcsr = 0x1f80; }   // same reset state as a fresh image
             kvmUserCopyOut(arg, &f, KvmFpu.sizeof);
             return 0;
         }
         case KVM_SET_FPU: {
+            // Write into the same image, so it takes effect at the next entry (it used to land in
+            // a cache nothing ever loaded).  MXCSR is validated first: a reserved bit would #GP
+            // the in-kernel FXRSTOR64/XRSTOR64.
             if (!kvmUserOk(tid, arg, KvmFpu.sizeof, false)) return E_FAULT;
-            auto c = kvmCacheFor(vc, true);
-            if (c is null) return E_NOMEM;
-            kvmUserCopyIn(&c.fpu, arg, KvmFpu.sizeof);
+            KvmFpu f;
+            kvmUserCopyIn(&f, arg, KvmFpu.sizeof);
+            if ((f.mxcsr & ~virtFpuMxcsrMask()) != 0) return E_INVAL;
+            auto x = kvmXsaveFor(vc, true);
+            if (x is null) return E_NOMEM;
+            kvmFpuToFx(&f, cast(ubyte*)x);
             return 0;
         }
         case KVM_GET_VCPU_EVENTS: {
@@ -1044,10 +1133,15 @@ long kvmVcpuIoctl(int tid, uint vcpuObj, uint vcpuGen, ulong cmd, ulong arg) {
             return 0;
         }
         case KVM_SET_XSAVE: {
+            // Copy in, validate, THEN commit: this page is loaded by FXRSTOR64/XRSTOR64 in kernel
+            // mode at the next entry, and a malformed image would #GP the kernel there.
             if (!kvmUserOk(tid, arg, KvmXsave.sizeof, false)) return E_FAULT;
+            KvmXsave tmp;
+            kvmUserCopyIn(&tmp, arg, KvmXsave.sizeof);
+            if (!kvmFpuImageValid(cast(const(ubyte)*)&tmp)) return E_INVAL;
             auto x = kvmXsaveFor(vc, true);
             if (x is null) return E_NOMEM;
-            kvmUserCopyIn(x, arg, KvmXsave.sizeof);
+            *x = tmp;
             return 0;
         }
         case KVM_GET_XCRS: {

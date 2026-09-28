@@ -25,7 +25,7 @@ module core.virt.vmx;
 import core.io : klog, klog_hex;
 import core.exports : phys_to_virt, g_current_task_id;
 import memory.mm : alloc_phys_page, free_phys_page;
-import core.virt.vm : Vm, Vcpu, VIRT_MAX_CPUS, vmCheck, vcpuCheckObj, kvmUnpackHandle;
+import core.virt.vm : Vm, Vcpu, VIRT_MAX_CPUS, vmCheck, vcpuCheckObj, kvmUnpackHandle, g_vmPool;
 import core.virt.vmexit : VirtExitInfo, VirtExitKind;
 import core.virt.kvmabi : KvmRegs, KvmSRegs, KvmSegment;
 import core.virt.slat : slatRootPhys, slatMap;
@@ -67,6 +67,12 @@ enum uint MSR_IA32_SYSENTER_ESP    = 0x175;
 enum uint MSR_IA32_SYSENTER_EIP    = 0x176;
 
 // --- control-word desired bits ----------------------------------------------------------------
+// Pin-based external-interrupt exiting: a HOST interrupt that arrives while the guest runs causes a
+// VM exit (reason 1) instead of being vectored through the GUEST IDT, whatever the guest's IF.
+// "Acknowledge interrupt on exit" (exit ctl bit 15) is deliberately NOT set, so the vector stays
+// pending in the host LAPIC/PIC and the host's own handler services + EOIs it once IF is back on.
+// NMI exiting stays off: the host has no NMI handler to re-deliver one to (trap2 = kernel fault).
+enum uint PIN_EXT_INT_EXITING      = 1u << 0;
 enum uint PROC_INTERRUPT_WINDOW    = 1u << 2;   // exit when the guest can take an interrupt
 enum uint PROC_HLT_EXITING         = 1u << 7;
 enum uint PROC_UNCOND_IO_EXITING   = 1u << 24;
@@ -155,7 +161,10 @@ enum int VMX_NOHW = -19; // ENODEV: VMX not ready / entry not implemented
 
 // VMX basic exit reasons (Intel SDM vol 3C §"Basic VM-Exit Information").
 // These live here — in the Intel backend — not in the common dispatcher.
-enum ulong EXIT_REASON_EXTERNAL_INTERRUPT = 0;
+// (SDM Appendix C: 0 = exception or NMI, 1 = external interrupt.  EXTERNAL_INTERRUPT used to be
+//  declared 0 here, which is the exception/NMI reason.)
+enum ulong EXIT_REASON_EXCEPTION_NMI      = 0;
+enum ulong EXIT_REASON_EXTERNAL_INTERRUPT = 1;
 enum ulong EXIT_REASON_TRIPLE_FAULT       = 2;
 enum ulong EXIT_REASON_INIT               = 3;
 enum ulong EXIT_REASON_SIPI               = 4;
@@ -220,8 +229,9 @@ enum ulong EXIT_REASON_XRSTORS            = 64;
 // Per-CPU VMX state.  Indexed by the kernel's per-CPU index
 // (0 = BSP).  Size from core.virt.vm.VIRT_MAX_CPUS.
 struct VmxCpuState {
-    bool  ready;     // VMXON succeeded on this CPU
-    ulong vmxonPhys; // this CPU's VMXON region (4K, revision ID set)
+    bool  ready;     // VMXON succeeded on this CPU (cleared again by vmxHostDisable)
+    ulong vmxonPhys; // this CPU's VMXON region (4K, revision ID set); kept across a
+                     // vmxHostDisable -> lazy re-enable cycle and reused by vmxCpuInit
 }
 __gshared VmxCpuState[VIRT_MAX_CPUS] g_vmxCpu;
 __gshared bool g_vmxSupported = false; // CPUID says VMX exists (any CPU)
@@ -348,6 +358,10 @@ public void vmxCapProbe() {
 // this CPU's ready=false and the boot continues without virtualization.
 public void vmxCpuInit(uint cpuId) {
     if (cpuId >= VIRT_MAX_CPUS) return;
+    // Idempotent: a second VMXON in VMX operation VMfails, and the failure path below would then
+    // tear down the LIVE state.  Re-entry after vmxHostDisable (ready=false) is the supported case:
+    // FEATURE_CONTROL is already locked-with-VMXON, and CR0/CR4 + the VMXON region are redone below.
+    if (g_vmxCpu[cpuId].ready) return;
     g_vmxSupported = vmxDetect();
     if (!g_vmxSupported) {
         if (!x64VendorIsIntel())
@@ -370,17 +384,20 @@ public void vmxCpuInit(uint cpuId) {
         klog("[vmx] IA32_FEATURE_CONTROL: enabled VMXON outside SMX, locked\n");
     }
 
-    // CR4.VMXE
-    ulong cr4 = vmxReadCR4();
-    if ((cr4 & CR4_VMXE) == 0)
-        vmxWriteCR4(cr4 | CR4_VMXE);
+    // CR4.VMXE (+ any other IA32_VMX_CR4_FIXED0 bit — VMXON #GPs unless CR4 satisfies them).
+    // Remember the prior value: a failed VMXON must not leave the CPU half-enabled (VMXE set
+    // outside VMX operation), so every failure below restores it.
+    const ulong cr4Before = vmxReadCR4();
+    const ulong cr4 = cr4Before | CR4_VMXE | vmxRdmsr(IA32_VMX_CR4_FIXED0);
+    if (cr4 != cr4Before)
+        vmxWriteCR4(cr4);
 
     // CR0 must satisfy the VMX fixed bits (IA32_VMX_CR0_FIXED0/1 — e.g. NE, bit5) or VMXON #GPs.
     // The kernel's CR0 may lack NE, which is exactly what faulted VMXON here.
     ulong cr0 = vmxReadCR0();
     const ulong ncr0 = (cr0 | vmxRdmsr(IA32_VMX_CR0_FIXED0)) & vmxRdmsr(IA32_VMX_CR0_FIXED1);
     if (ncr0 != cr0) vmxWriteCR0(ncr0);
-    klog("[vmx] pre-VMXON cr0="); klog_hex(ncr0); klog(" cr4="); klog_hex(cr4 | CR4_VMXE);
+    klog("[vmx] pre-VMXON cr0="); klog_hex(ncr0); klog(" cr4="); klog_hex(cr4);
     klog(" fc="); klog_hex(fc); klog("\n");
 
     // VMXON region: 4K page, revision ID in the low 31 bits.
@@ -389,9 +406,14 @@ public void vmxCpuInit(uint cpuId) {
     // region + every VMCS, but never assigned — so VMXON/VMPTRLD/VMLAUNCH validated against 0 and
     // VMfail'd on real silicon.  Set it from the MSR before first use.
     g_vmcsRevId = cast(uint)(basic & 0x7FFFFFFF);
-    ulong vmxonPhys = alloc_phys_page();
+    // Reuse this CPU's region across a vmxHostDisable -> re-enable cycle (it is idle outside VMX
+    // operation); allocate it on the first enable only.
+    ulong vmxonPhys = g_vmxCpu[cpuId].vmxonPhys;
+    const bool freshRegion = (vmxonPhys == 0);
+    if (freshRegion) vmxonPhys = alloc_phys_page();
     if (vmxonPhys == 0) {
         klog("[vmx] VMXON region allocation failed\n");
+        if (cr4 != cr4Before) vmxWriteCR4(cr4Before);
         return;
     }
     auto p = cast(uint*)phys_to_virt(vmxonPhys);
@@ -417,7 +439,8 @@ public void vmxCpuInit(uint cpuId) {
     }
     if (!ok) {
         klog("[vmx] VMXON failed — virtualization unavailable\n");
-        free_phys_page(vmxonPhys);
+        if (cr4 != cr4Before) vmxWriteCR4(cr4Before);
+        if (freshRegion) free_phys_page(vmxonPhys);
         return;
     }
     g_vmxCpu[cpuId].vmxonPhys = vmxonPhys;
@@ -430,7 +453,77 @@ public void vmxCpuInit(uint cpuId) {
 // Boot-time init: the BSP's share of the per-CPU init above.
 public void vmxBootInit() { vmxCpuInit(0); }
 
-public bool vmxIsReady() { return g_vmxCpu[0].ready; }
+// True when a guest can be entered: VMX is on, OR the next vmxEnter can turn it on lazily (VMX
+// present and not firmware-locked off).  VMX is enabled on first entry and vmxHostDisable leaves it
+// again after the boot proofs, so "currently in VMX operation" must not gate KVM_RUN — that made
+// every KVM_RUN a permanent -ENODEV once the CPU was out of VMX root.  A VMXON that still fails is
+// reported by vmxEnter as -ENODEV (fail-soft, same as before).
+public bool vmxIsReady() {
+    if (g_vmxCpu[0].ready) return true;
+    if (!vmxDetect()) return false;                      // vendor-gated: no VMX MSR read on AMD
+    const ulong fc = vmxRdmsr(IA32_FEATURE_CONTROL);
+    return (fc & FEATURE_LOCK) == 0 || (fc & FEATURE_VMXON_NOSMX) != 0;
+}
+
+// Leave VMX operation on the calling CPU.  Called after the boot VMX proofs (kernel_main) and from
+// the reboot path: a logical processor in VMX root operation BLOCKS INIT (SDM Vol. 3C, "Restrictions
+// on VMX Operation"), and the i8042 reset reaches Intel CPUs as INIT — so a CPU left in VMX root
+// ignores the reboot and hangs.  Sequence: VMCLEAR every VMCS this CPU may hold active (flushes its
+// cached data to its region and resets its launch state, so the next entry VMLAUNCHes it afresh),
+// VMXOFF, clear CR4.VMXE, mark the CPU not-ready so the next vmxEnter lazily re-runs vmxCpuInit
+// (which reuses the VMXON region).  Safe no-op when VMX is off.
+public void vmxHostDisable() @nogc nothrow {
+    enum uint cpuId = 0;                                 // VMX is only ever enabled on the BSP
+    if (!g_vmxCpu[cpuId].ready) return;                  // never enabled / already off
+    // Only the CPU that executed VMXON has CR4.VMXE set; on any other CPU VMCLEAR/VMXOFF would #UD.
+    if ((vmxReadCR4() & CR4_VMXE) == 0) return;
+    vmxClearAllVmcs();
+    bool ok = false;
+    asm @nogc nothrow {
+        db 0x0F; db 0x01; db 0xC4;                       // VMXOFF
+        jbe Lvmxoff_fail;                                // CF/ZF = VMfail (dual-monitor SMM active)
+        mov ok, 1;
+        jmp Lvmxoff_done;
+    Lvmxoff_fail:; mov ok, 0;
+    Lvmxoff_done:;
+    }
+    if (!ok) { klog("[vmx] VMXOFF failed — CPU stays in VMX operation\n"); return; }
+    vmxWriteCR4(vmxReadCR4() & ~CR4_VMXE);
+    g_vmxCpu[cpuId].ready = false;
+    klog("[vmx] VMXOFF: left VMX operation (re-enabled lazily on the next guest entry)\n");
+}
+
+// VMCLEAR every allocated VMCS.  A VMCS is only ever VMPTRLD'd on the BSP (vmxEnter), so this covers
+// every one that can be active there.  After VMCLEAR the launch state is "clear": the next entry
+// must VMLAUNCH, never VMRESUME.
+private void vmxClearAllVmcs() {
+    foreach (ref vm; g_vmPool)
+        foreach (ref vc; vm.vcpus)
+            if (vc.hwCtrlPhys != 0) {
+                cast(void) vmxClear(vc.hwCtrlPhys);
+                vc.launched = false;
+            }
+}
+
+// VMCLEAR a vCPU's VMCS before its page goes back to the allocator (vm.d vcpuRelease/vmTeardown,
+// via core.virt.backend virtReleaseCtrl).  An active VMCS may be written back to its region by the
+// CPU — or by an L0 hypervisor when the next VMPTRLD evicts it — at ANY later time, which would
+// overwrite whatever the page was reused for.  Returns true when the page may be freed:
+//   - VMX off (never enabled, or vmxHostDisable already VMCLEARed everything): nothing is active;
+//   - on the VMX CPU, after a successful VMCLEAR.
+// false = keep (leak) the page rather than risk the write-back: not on the CPU that holds it.
+public bool vmxReleaseVmcs(ulong phys) @nogc nothrow {
+    if (phys == 0 || !g_vmxCpu[0].ready) return true;
+    if ((vmxReadCR4() & CR4_VMXE) == 0) {
+        klog("[vmx] VMCS release off the VMX CPU — page kept (cannot VMCLEAR here)\n");
+        return false;
+    }
+    if (!vmxClear(phys)) {
+        klog("[vmx] VMCLEAR on release failed — page kept\n");
+        return false;
+    }
+    return true;
+}
 
 // ---------------------------------------------------------------------------
 // Exit decoder: VMX basic exit reason -> vendor-neutral VirtExitInfo.
@@ -450,6 +543,12 @@ public void vmxDecodeExit(uint reason, ulong qual, ulong gpa, ulong data,
     xi.ioPort = 0; xi.ioSize = 0; xi.ioIsIn = 0; xi.ioIsString = 0;
     xi.slatIsWrite = 0;
     switch (reason) {
+        case EXIT_REASON_EXTERNAL_INTERRUPT:
+            // A HOST interrupt arrived while the guest ran (pin-based external-interrupt exiting).
+            // Not acknowledged on exit: it is still pending in the host LAPIC/PIC and is serviced
+            // by the host once it re-enables IF (KVM_RUN returns -EINTR/KVM_EXIT_INTR for that).
+            xi.kind = VirtExitKind.Intr;
+            break;
         case EXIT_REASON_HLT:
             xi.kind = VirtExitKind.Hlt;
             break;
@@ -569,7 +668,8 @@ private void vmxWriteSeg(uint idx, const(KvmSegment)* s) {
 private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs) {
     // ---- controls (clamped) ----
     const bool useTrue = (vmxRdmsr(IA32_VMX_BASIC) & (1UL << 55)) != 0;
-    const uint pin  = vmxClampCtl(0, useTrue ? IA32_VMX_TRUE_PINBASED : IA32_VMX_PINBASED_CTLS);
+    const uint pin  = vmxClampCtl(PIN_EXT_INT_EXITING,
+                                  useTrue ? IA32_VMX_TRUE_PINBASED : IA32_VMX_PINBASED_CTLS);
     const bool guestLong = (sregs.efer & (1UL << 10)) != 0;   // EFER.LMA
     // Resolve the LAPIC IRR into an entry injection: inject the highest pending
     // vector iff the guest is interruptible; otherwise arm interrupt-window
@@ -590,6 +690,12 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
     if (!(proc & PROC_ACTIVATE_SECONDARY) || !(sec & SEC_ENABLE_EPT)
         || !(exitc & EXIT_HOST_ADDR_SPACE_SIZE)) {
         klog("[vmx] required control bit clamped away — EPT/secondary/host-addr-size unavailable\n");
+        return false;
+    }
+    // Without external-interrupt exiting host IRQs are vectored into the GUEST IDT (never EOI'd on
+    // the host) and a guest spinning with IF=0 can never be preempted: refuse to enter.
+    if (!(pin & PIN_EXT_INT_EXITING)) {
+        klog("[vmx] external-interrupt exiting clamped away — guest entry refused\n");
         return false;
     }
     vmxWrite(VMCS_PIN_BASED, pin);
@@ -703,11 +809,24 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
 public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
                     VirtExitInfo* xi) {
     if (vm is null || vc is null || xi is null || regs is null || sregs is null) return -22;
-    // Lazy per-CPU enable (boot no longer VMXONs; do it on first entry).
+    // Lazy per-CPU enable (boot no longer VMXONs; do it on first entry — and again on the first
+    // entry after vmxHostDisable left VMX operation).
     if (!g_vmxCpu[0].ready) { vmxCpuInit(0); if (!g_vmxCpu[0].ready) return VMX_NOHW; }
 
+    // Guest/host FPU switch operands (core.virt.backend virtFpuPrepare): the XSAVE RFBM (0 = the
+    // FXSAVE64 form) and the virtual addresses of the per-CPU host save page and this vCPU's image
+    // (its XSAVE page, which KVM_SET_FPU/SET_XSAVE write and KVM_GET_* read).  Resolved here so the
+    // transition asm below only reads plain locals.  Function-local import: backend imports us.
+    ulong fpuMask = 0, hostFpu = 0, guestFpu = 0;
+    {
+        import core.virt.backend : virtFpuPrepare;
+        if (!virtFpuPrepare(vc, 0, fpuMask, hostFpu, guestFpu)) {
+            klog("[vmx] guest FPU image unavailable — entry refused\n");
+            return VMX_NOHW;
+        }
+    }
+
     // Allocate + initialize this vCPU's VMCS on first entry.
-    bool freshVmcs = false;
     if (vc.hwCtrlPhys == 0) {
         const ulong phys = alloc_phys_page();
         if (phys == 0) return VMX_NOHW;
@@ -715,12 +834,22 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
         foreach (i; 0 .. 1024) p[i] = 0;
         p[0] = g_vmcsRevId;                       // dword0 = revision id, bit31 (shadow) clear
         vc.hwCtrlPhys = phys;
-        freshVmcs = true;
+        vc.launched = false;
     }
-    if (freshVmcs && !vmxClear(vc.hwCtrlPhys)) { klog("[vmx] VMCLEAR failed\n"); return VMX_NOHW; }
-    if (!vmxPtrld(vc.hwCtrlPhys))              { klog("[vmx] VMPTRLD failed\n"); return VMX_NOHW; }
+    // VMCLEAR whenever the VMCS is not launched: a fresh region, one vmxHostDisable cleared across a
+    // VMXOFF, or one whose last entry failed.  Its launch state is then "clear" and the entry below
+    // VMLAUNCHes it — VMRESUME is only ever issued on a VMCS that a real VM exit left launched.
+    if (!vc.launched && !vmxClear(vc.hwCtrlPhys)) { klog("[vmx] VMCLEAR failed\n"); return VMX_NOHW; }
+    if (!vmxPtrld(vc.hwCtrlPhys))                 { klog("[vmx] VMPTRLD failed\n"); return VMX_NOHW; }
 
     if (!vmxProgramVmcs(vm, vc, regs, sregs)) return VMX_NOHW;
+
+    // Host GDTR/IDTR pseudo-descriptors.  A VM exit restores only their BASES (from the VMCS) and
+    // forces both LIMITS to 0xFFFF (SDM "Loading Host Segment and Descriptor-Table Registers"), and
+    // the VMCS has no limit fields.  Captured in the asm below and re-loaded right after the
+    // transition, before any other host code runs — otherwise ring-3 LAR/LSL/VERR and segment
+    // loads would index kernel .bss past the 7-entry GDT.
+    ubyte[10] hostGdtr = void, hostIdtr = void;
 
     // --- the transition: VMLAUNCH (first) / VMRESUME (subsequent) --------------------------------
     // HOST_RSP/RIP are VMWRITTEN from INSIDE the asm (RSP after pushes, RIP = resume label).  On a
@@ -730,6 +859,25 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
         KvmRegs* r = regs;
         const ulong launchInsn = vc.launched ? 0xC3 : 0xC2;   // VMRESUME=0F01C3 / VMLAUNCH=0F01C2
         asm @nogc nothrow {
+            // host descriptor tables (limits re-loaded at Ltrans_done)
+            lea RAX, hostGdtr; db 0x0F; db 0x01; db 0x00;   // SGDT [RAX]
+            lea RAX, hostIdtr; db 0x0F; db 0x01; db 0x08;   // SIDT [RAX]
+            // FPU switch IN — VMX does not switch x87/SSE/AVX: save the host image, load the
+            // guest's.  Before ANY guest state, while RBP is still the host frame (the D locals are
+            // RBP-relative), and with no compiled (SSE-using) code between here and the entry.
+            // XSAVE64/XRSTOR64 take the feature mask (RFBM) in EDX:EAX.
+            mov RAX, fpuMask;
+            test RAX, RAX;
+            jz Lfpu_in_fx;
+            mov RDX, RAX;
+            shr RDX, 32;
+            mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x21;   // XSAVE64  [RCX] (host)
+            mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x29;   // XRSTOR64 [RCX] (guest)
+            jmp Lfpu_in_done;
+        Lfpu_in_fx:;
+            mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x01;   // FXSAVE64  [RCX] (host)
+            mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x09;   // FXRSTOR64 [RCX] (guest)
+        Lfpu_in_done:;
             mov RBX, r;                 // RBX = regs (callee-saved across the guest via stack below)
             // save host GPRs
             push RBP; push RBX; push RCX; push RDX; push RSI; push RDI;
@@ -805,6 +953,25 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
             pop RDI; pop RSI; pop RDX; pop RCX; pop RBX; pop RBP;
             mov entryFail, 0;
         Ltrans_done:;
+            // Both paths land here with the host GPRs (so the RBP frame + D locals) restored.
+            // 1) Descriptor-table limits: a VM exit left GDTR.limit = IDTR.limit = 0xFFFF.
+            //    Same bases, so no segment register is reloaded.
+            lea RAX, hostGdtr; db 0x0F; db 0x01; db 0x10;   // LGDT [RAX]
+            lea RAX, hostIdtr; db 0x0F; db 0x01; db 0x18;   // LIDT [RAX]
+            // 2) FPU switch OUT: save the guest's registers back into its image, restore the host's.
+            //    (Entry-failure path: the guest never ran, so this rewrites the image just loaded.)
+            mov RAX, fpuMask;
+            test RAX, RAX;
+            jz Lfpu_out_fx;
+            mov RDX, RAX;
+            shr RDX, 32;
+            mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x21;   // XSAVE64  [RCX] (guest)
+            mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x29;   // XRSTOR64 [RCX] (host)
+            jmp Lfpu_out_done;
+        Lfpu_out_fx:;
+            mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x01;   // FXSAVE64  [RCX] (guest)
+            mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x09;   // FXRSTOR64 [RCX] (host)
+        Lfpu_out_done:;
         }
     }
 
@@ -813,11 +980,15 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
         klog("[vmx] VM-entry failed, instruction-error="); klog_hex(err); klog("\n");
         return VMX_NOHW;
     }
-    vc.launched = true;
+    // A VM-entry failure that loads host state (raw exit reason bit 31: invalid guest state / MSR
+    // loading) leaves the VMCS launch state "clear" (SDM VMLAUNCH pseudocode); only a real VM exit
+    // makes it "launched".  Marking it launched anyway made the next entry VMRESUME -> VMfail(5).
+    const ulong rawReason = vmxRead(VMCS_EXIT_REASON);
+    if ((rawReason & 0x8000_0000UL) == 0) vc.launched = true;
     // The injected vector (if any) was consumed from the IRR at plan time
     // (vmxPlanInjection), so nothing to clear here.
     // decode the VM-exit
-    const uint reason = cast(uint)vmxRead(VMCS_EXIT_REASON) & 0xFFFF;
+    const uint reason = cast(uint)rawReason & 0xFFFF;
     const ulong qual  = vmxRead(VMCS_EXIT_QUALIFICATION);
     const ulong gpa   = vmxRead(VMCS_GUEST_PHYS_ADDR);
     const ulong ilen  = vmxRead(VMCS_EXIT_INSTR_LEN);
@@ -842,6 +1013,20 @@ private KvmSegment vmxFlatSeg(ushort sel, ubyte type, ubyte sbit, ubyte dbit, ub
     g.type = type; g.s = sbit; g.dpl = 0; g.present = 1;
     g.db = dbit; g.l = 0; g.g = gbit; g.avl = 0; g.unusable = 0;
     return g;
+}
+
+// Boot-proof entry that tolerates external-interrupt exits.  With external-interrupt exiting on, a
+// host interrupt pending in the LAPIC/PIC forces an exit (reason 1) before the guest progresses.
+// The proofs run with host IF=0 before the PIC/PIT/IDT are live, so they cannot service it here:
+// they re-enter a bounded number of times (the guest resumes where it was) and, if it stays
+// pending, report the reason honestly instead of hanging.
+private int vmxProofEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs, VirtExitInfo* xi) {
+    int rc = VMX_NOHW;
+    foreach (attempt; 0 .. 64) {
+        rc = vmxEnter(vm, vc, regs, sregs, xi);
+        if (rc != VMX_OK || xi.hardwareReason != EXIT_REASON_EXTERNAL_INTERRUPT) break;
+    }
+    return rc;
 }
 
 // FIRST-LIGHT boot proof: build a minimal unpaged 32-bit guest whose only instruction is CPUID
@@ -896,7 +1081,7 @@ public void vmxFirstLightProof() @nogc nothrow {
     s.gdt.limit = 0xFFFF; s.idt.limit = 0xFFFF;
 
     VirtExitInfo xi;
-    const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+    const int rc = vmxProofEnter(vm, vc, &regs, &s, &xi);
     if (rc == VMX_OK && xi.hardwareReason == EXIT_REASON_CPUID) {
         klog("[vmx] FIRST LIGHT PASS: guest entered and exited on CPUID (reason=10) — VMLAUNCH works\n");
     } else {
@@ -1014,7 +1199,7 @@ public void vmxInterruptFirstLightProof() @nogc nothrow {
 
     vmxInjectExtInt(vc, 0x30);                           // queue the interrupt
     VirtExitInfo xi;
-    const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+    const int rc = vmxProofEnter(vm, vc, &regs, &s, &xi);
     const ubyte sentinel = gp[0x800];
     if (rc == VMX_OK && xi.hardwareReason == EXIT_REASON_HLT && sentinel == 0xA5) {
         klog("[vmx] INTR FIRST LIGHT PASS: injected vector 0x30 delivered — guest handler ran (sentinel=0xA5, HLT exit)\n");
@@ -1025,6 +1210,8 @@ public void vmxInterruptFirstLightProof() @nogc nothrow {
         klog(" sentinel="); klog_hex(sentinel); klog("\n");
         // diagnostic dump: raw exit reason (bit31 = entry-failure), qualification,
         // VM-instruction error, guest RIP, and the entry-interruption-info readback.
+        // Only in VMX operation: VMREAD #UDs outside it (e.g. VMXON failed / firmware-locked).
+        if (!g_vmxCpu[0].ready) return;
         klog("[vmx]   rawReason="); klog_hex(vmxRead(VMCS_EXIT_REASON));
         klog(" qual="); klog_hex(vmxRead(VMCS_EXIT_QUALIFICATION));
         klog(" instrErr="); klog_hex(vmxRead(VMCS_INSTRUCTION_ERROR));
@@ -1117,7 +1304,7 @@ public void vmxInterruptWindowProof() @nogc nothrow {
     bool delivered = false, sawWindow = false;
     int lastReason = -1;
     foreach (iter; 0 .. 8) {
-        const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+        const int rc = vmxProofEnter(vm, vc, &regs, &s, &xi);
         if (rc != VMX_OK) { lastReason = -2; break; }
         lastReason = cast(int)xi.hardwareReason;
         if (xi.hardwareReason == EXIT_REASON_INTERRUPT_WINDOW) { sawWindow = true; continue; } // re-enter
@@ -1186,7 +1373,7 @@ public void vmxMmioFirstLightProof() @nogc nothrow {
     s.gdt.limit = 0xFFFF; s.idt.limit = 0xFFFF;
 
     VirtExitInfo xi;
-    const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+    const int rc = vmxProofEnter(vm, vc, &regs, &s, &xi);
     if (rc != VMX_OK || xi.hardwareReason != EXIT_REASON_EPT_VIOLATION) {
         klog("[vmx] mmio: FAIL no EPT-violation exit rc=");
         klog_hex(cast(ulong)cast(uint)rc); klog(" reason="); klog_hex(xi.hardwareReason); klog("\n");
@@ -1281,7 +1468,7 @@ public void vmxIoeventfdFirstLightProof() @nogc nothrow {
     int lastReason = -1;
     foreach (iter; 0 .. 4) {
         VirtExitInfo xi;
-        const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+        const int rc = vmxProofEnter(vm, vc, &regs, &s, &xi);
         if (rc != VMX_OK) { lastReason = -2; break; }
         lastReason = cast(int)xi.hardwareReason;
         if (xi.hardwareReason == EXIT_REASON_EPT_VIOLATION) {
@@ -1370,7 +1557,7 @@ public void vmxMmioReadCompletionProof() @nogc nothrow {
     int lastReason = -1;
     foreach (iter; 0 .. 4) {
         VirtExitInfo xi;
-        const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+        const int rc = vmxProofEnter(vm, vc, &regs, &s, &xi);
         if (rc != VMX_OK) { lastReason = -2; break; }
         lastReason = cast(int)xi.hardwareReason;
         if (xi.hardwareReason == EXIT_REASON_EPT_VIOLATION) {
@@ -1471,7 +1658,7 @@ public void vmxPortIoFirstLightProof() @nogc nothrow {
     uint lastInsnLen = 0;
     foreach (iter; 0 .. 8) {
         VirtExitInfo xi;
-        const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+        const int rc = vmxProofEnter(vm, vc, &regs, &s, &xi);
         if (rc != VMX_OK) { lastReason = -2; break; }
         lastReason = cast(int)xi.hardwareReason;
         if (xi.hardwareReason == EXIT_REASON_IO_INSTRUCTION) {

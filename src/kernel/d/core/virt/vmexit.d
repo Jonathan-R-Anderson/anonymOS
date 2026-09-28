@@ -21,7 +21,7 @@ import core.virt.vm : Vm, Vcpu, VmState, VcpuState, VirtDiag, vmSetDiag;
 import core.virt.kvmabi : KvmRun, KvmExitIo, KvmExitMmio, KvmMsrEntry,
     KvmRegs, KvmSRegs,
     KVM_EXIT_UNKNOWN, KVM_EXIT_IO, KVM_EXIT_HYPERCALL, KVM_EXIT_HLT,
-    KVM_EXIT_MMIO, KVM_EXIT_SHUTDOWN, KVM_EXIT_INTERNAL_ERROR,
+    KVM_EXIT_MMIO, KVM_EXIT_SHUTDOWN, KVM_EXIT_INTERNAL_ERROR, KVM_EXIT_INTR,
     KVM_EXIT_IO_IN, KVM_EXIT_IO_OUT;
 import core.io : klog, klog_dec;
 
@@ -48,6 +48,9 @@ enum VirtExitKind : uint {
     Io        = 3, // -> KVM_EXIT_IO
     Hypercall = 4, // -> KVM_EXIT_HYPERCALL
     SlatFault = 5, // -> KVM_EXIT_MMIO (EPT violation / nested page fault)
+    Intr      = 6, // -> KVM_EXIT_INTR: a HOST interrupt forced the exit (VMX external-interrupt
+                   //    exiting).  Still pending on the host; KVM_RUN returns -EINTR so the host
+                   //    services it before the VMM re-runs the vCPU (never KVM_EXIT_UNKNOWN).
 }
 
 struct VirtExitInfo {
@@ -203,6 +206,12 @@ VmExitAction virtDispatchExit(const ref VirtExitInfo info, KvmRun* run, Vm* vm, 
             foreach (i; 0 .. 8) run.u.mmio.data[i] = 0;
             return VmExitAction.ToUserspace;
         }
+
+        case VirtExitKind.Intr:
+            // Host interrupt: nothing guest-visible happened.  The vCPU stays runnable; the
+            // KVM_RUN path returns -EINTR (Linux's signal-exit shape) instead of re-entering.
+            run.exitReason = KVM_EXIT_INTR;
+            return VmExitAction.ToUserspace;
 
         case VirtExitKind.Hypercall: {
             run.exitReason = KVM_EXIT_HYPERCALL;

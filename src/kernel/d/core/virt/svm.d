@@ -379,8 +379,31 @@ private int svmProgramVmcb(Vm* vm, Vcpu* vc, const KvmRegs* regs,
 // pointer because the guest's RBP is loaded into RBP before VMRUN.  The
 // pushes/pops are exactly balanced, so the D epilogue runs normally (no
 // ret inside the asm).
-private void svmRunVmcb(ulong vmcbPhys, ulong hostSavePhys, KvmRegs* regs) {
+//
+// FPU: VMRUN does not switch x87/SSE/AVX state either (see core.virt.backend
+// virtFpuPrepare).  The host image is saved and the guest's loaded BEFORE the
+// pushes, and the reverse happens AFTER the pops — both while the frame and the
+// D parameters are addressable exactly as at entry, and with only integer
+// instructions between them and VMRUN/#VMEXIT.  fpuMask = XSAVE RFBM (0 = the
+// FXSAVE64 form); hostFpu/guestFpu = virtual addresses of the two images.
+private void svmRunVmcb(ulong vmcbPhys, ulong hostSavePhys, KvmRegs* regs,
+                        ulong fpuMask, ulong hostFpu, ulong guestFpu) {
     asm @nogc nothrow {
+        // --- FPU switch IN: save the host image, load the guest's ----------
+        // (XSAVE64/XRSTOR64 take the RFBM in EDX:EAX; RCX/RDX are reloaded below.)
+        mov RAX, fpuMask;
+        test RAX, RAX;
+        jz Lsvm_fpu_in_fx;
+        mov RDX, RAX;
+        shr RDX, 32;
+        mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x21;   // XSAVE64  [RCX] (host)
+        mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x29;   // XRSTOR64 [RCX] (guest)
+        jmp Lsvm_fpu_in_done;
+    Lsvm_fpu_in_fx:;
+        mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x01;   // FXSAVE64  [RCX] (host)
+        mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x09;   // FXRSTOR64 [RCX] (guest)
+    Lsvm_fpu_in_done:;
+
         // Materialize the SysV args (belt-and-braces: the caller already
         // passed them in RDI/RSI/RDX).
         mov RDI, vmcbPhys;
@@ -494,6 +517,22 @@ private void svmRunVmcb(ulong vmcbPhys, ulong hostSavePhys, KvmRegs* regs) {
         pop RBX;
         pop RAX;
         pop RBP;
+
+        // --- FPU switch OUT: save the guest's registers, restore the host's --
+        // (stack + frame are back to their entry state, so the parameters are
+        // addressable again; only integer instructions ran since #VMEXIT.)
+        mov RAX, fpuMask;
+        test RAX, RAX;
+        jz Lsvm_fpu_out_fx;
+        mov RDX, RAX;
+        shr RDX, 32;
+        mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x21;   // XSAVE64  [RCX] (guest)
+        mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x29;   // XRSTOR64 [RCX] (host)
+        jmp Lsvm_fpu_out_done;
+    Lsvm_fpu_out_fx:;
+        mov RCX, guestFpu; db 0x48; db 0x0F; db 0xAE; db 0x01;   // FXSAVE64  [RCX] (guest)
+        mov RCX, hostFpu;  db 0x48; db 0x0F; db 0xAE; db 0x09;   // FXRSTOR64 [RCX] (host)
+    Lsvm_fpu_out_done:;
         // (no ret: the D epilogue runs normally)
     }
 }
@@ -515,13 +554,23 @@ public int svmEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
     if (vm.svmIopmPhys == 0 || vm.svmMsrpmPhys == 0)
         return -22; // -EINVAL: VM was not created on the SVM path
 
+    // Guest/host FPU switch operands (core.virt.backend virtFpuPrepare).
+    // Function-local import: core.virt.backend imports this module.
+    ulong fpuMask = 0, hostFpu = 0, guestFpu = 0;
+    {
+        import core.virt.backend : virtFpuPrepare;
+        if (!virtFpuPrepare(vc, cpuId, fpuMask, hostFpu, guestFpu))
+            return -12; // -ENOMEM (or a host XSAVE layout the vCPU image cannot hold)
+    }
+
     int rc = svmProgramVmcb(vm, vc, regs, sregs, cpuId);
     if (rc != 0) return rc;
 
     // [HW] The next line executes VMRUN.  Untestable without AMD SVM
     // hardware; the host harness never reaches it (svmAvailable() is false
     // there — svmEnter returns -ENODEV above).
-    svmRunVmcb(vc.hwCtrlPhys, g_svmCpu[cpuId].hostSavePhys, regs);
+    svmRunVmcb(vc.hwCtrlPhys, g_svmCpu[cpuId].hostSavePhys, regs,
+               fpuMask, hostFpu, guestFpu);
 
     Vmcb* vmcb = cast(Vmcb*)phys_to_virt(vc.hwCtrlPhys);
     ulong exitcode = vmcb.control.exitcode;

@@ -909,7 +909,7 @@ public void vmTeardown(Vm* vm) {
         if (vc.cachePhys != 0) { free_phys_page(vc.cachePhys); vc.cachePhys = 0; }
         if (vc.cpuidPhys != 0) { free_phys_page(vc.cpuidPhys); vc.cpuidPhys = 0; }
         if (vc.xsavePhys != 0) { free_phys_page(vc.xsavePhys); vc.xsavePhys = 0; }
-        if (vc.hwCtrlPhys != 0) { free_phys_page(vc.hwCtrlPhys); vc.hwCtrlPhys = 0; }
+        vcpuReleaseCtrl(&vc);
         if (vc.objId != 0) { objRelease(vc.objId); vc.objId = 0; }
     }
     vm.vcpuCount = 0;
@@ -954,6 +954,20 @@ public void vmTeardown(Vm* vm) {
     objRelease(id);
 }
 
+// Free a vCPU's backend control page (VMCS/VMCB).  On VMX the VMCS must be VMCLEARed first: it
+// stays active (usually current) on the CPU that ran it, and the CPU — or an L0 hypervisor when the
+// next VMPTRLD evicts it — may write its cached contents back to the region at any later time,
+// i.e. over whatever the page was reused for.  The backend decides (core.virt.backend
+// virtReleaseCtrl); if it cannot clear the VMCS here the page is leaked rather than reused.
+// Safe when never launched or when VMX is already off.  Function-local import: backend imports us.
+private void vcpuReleaseCtrl(Vcpu* vc) {
+    if (vc.hwCtrlPhys == 0) return;
+    import core.virt.backend : virtReleaseCtrl;
+    if (virtReleaseCtrl(vc.hwCtrlPhys)) free_phys_page(vc.hwCtrlPhys);
+    vc.hwCtrlPhys = 0;
+    vc.launched = false;            // a new VMCS (if any) starts with a VMLAUNCH
+}
+
 // Release one vCPU: free its kvm_run page and object mirror, then drop the
 // reference it holds on its parent VM (which may release the VM itself).
 // The caller must not touch `vc` afterwards — it may point into a freed Vm.
@@ -964,7 +978,7 @@ public void vcpuRelease(Vcpu* vc) {
     if (vc.cachePhys != 0) { free_phys_page(vc.cachePhys); vc.cachePhys = 0; }
     if (vc.cpuidPhys != 0) { free_phys_page(vc.cpuidPhys); vc.cpuidPhys = 0; }
     if (vc.xsavePhys != 0) { free_phys_page(vc.xsavePhys); vc.xsavePhys = 0; }
-    if (vc.hwCtrlPhys != 0) { free_phys_page(vc.hwCtrlPhys); vc.hwCtrlPhys = 0; }
+    vcpuReleaseCtrl(vc);
     if (vc.objId != 0) { objRelease(vc.objId); vc.objId = 0; }
     // Close-path lookup must accept Dying VMs: a contained VM still needs
     // its refs dropped and its slot freed (vmCheckQuery, not vmCheck).

@@ -50,6 +50,7 @@ enum ulong KVM_CREATE_PIT2          = 0x4040ae77;   // rejected: ENOTTY
 enum ulong KVM_IOEVENTFD            = 0x4040ae79;   // _IOW(AE,0x79,size=64)
 enum ulong KVM_SET_CLOCK            = 0x4030ae7b;   // _IOW(AE,0x7b,size=48)
 enum ulong KVM_GET_CLOCK            = 0x8030ae7c;   // _IOR(AE,0x7c,size=48)
+enum ulong KVM_SIGNAL_MSI           = 0x4020aea5;   // _IOW(AE,0xa5,size=32) struct kvm_msi
 enum ulong KVM_ENABLE_CAP           = 0x4068aea3;   // _IOW(AE,0xa3,size=104)
 
 // ---------------------------------------------------------------------------
@@ -494,6 +495,28 @@ struct KvmIrqRouting {
 static assert(KvmIrqRouting.sizeof == 8);
 enum uint KVM_IRQ_ROUTING_IRQCHIP = 1;
 enum uint KVM_IRQ_ROUTING_MSI     = 2;
+
+// struct kvm_irq_level (8): { union { u32 irq; s32 status }; u32 level } — the
+// KVM_IRQ_LINE argument.  `irq` is the GSI; `level` 1 = assert, 0 = de-assert.
+struct KvmIrqLevel {
+    uint irq;    // GSI in (status out for KVM_IRQ_LINE_STATUS, unused here)
+    uint level;  // 1 = assert / 0 = de-assert (edge model)
+}
+static assert(KvmIrqLevel.sizeof == 8);
+
+// struct kvm_msi (32): the KVM_SIGNAL_MSI argument — a synchronous MSI inject.
+// The message-address destination-ID field (bits 19:12 of address_lo) picks the
+// target LAPIC; the low byte of `data` is the vector.
+struct KvmMsi {
+    uint addressLo;
+    uint addressHi;
+    uint data;
+    uint flags;    // must be 0 (KVM_MSI_VALID_DEVID unsupported)
+    uint devid;
+    ubyte[12] pad;
+}
+static assert(KvmMsi.sizeof == 32);
+enum uint KVM_MSI_VALID_DEVID = 1u << 0; // not supported: EINVAL
 
 // ---------------------------------------------------------------------------
 // anonymOS-specific extensions (NOT Linux UAPI).

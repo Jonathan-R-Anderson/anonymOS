@@ -513,6 +513,65 @@ public void virtSelfTest() {
         }
     }
 
+    // --- Interrupt-delivery registration + synchronous injection -------------
+    // Exercises the vm.d layer directly (kernel pointers, no user buffers): GSI
+    // routing store/validate, MSI resolve, KVM_IRQ_LINE and KVM_SIGNAL_MSI
+    // injection queueing.  The delivery this queues (VMCS_ENTRY_INTR_INFO ->
+    // guest IDT) is proven end-to-end by vmxInterruptFirstLightProof.
+    {
+        long h = kvmCreateVm(tid);
+        vtCheck(h >= 0, "intr-vm-alloc");
+        if (h >= 0) {
+            uint io, ig; kvmUnpackHandle(cast(ulong)h, io, ig);
+            Vm* vm = vmCheck(io, ig);
+            long ch = kvmCreateVcpu(io, ig, 0);
+            vtCheck(vm !is null && ch >= 0, "intr-vcpu-alloc");
+            if (vm !is null && ch >= 0) {
+                // two MSI routes: GSI 5 -> vector 0x41 (dest 0); GSI 7 -> 0x51 (dest 0)
+                KvmIrqRoutingEntry[2] r;
+                foreach (ref e; r) e = KvmIrqRoutingEntry.init;
+                r[0].gsi = 5; r[0].type = KVM_IRQ_ROUTING_MSI;
+                r[0].msi.addressLo = 0xFEE00000; r[0].msi.data = 0x41; // dest-ID 0
+                r[1].gsi = 7; r[1].type = KVM_IRQ_ROUTING_MSI;
+                r[1].msi.addressLo = 0xFEE00000; r[1].msi.data = 0x51;
+                vtCheck(vmSetGsiRouting(vm, r.ptr, 2) == 0, "gsi-route-set");
+                vtCheck(vm.gsiRouteCount == 2, "gsi-route-count");
+
+                // resolve MSI routes to vectors; unrouted GSI misses honestly
+                ubyte apic = 0, vec = 0;
+                vtCheck(vmResolveGsiVector(vm, 5, apic, vec) && vec == 0x41, "gsi-resolve-5");
+                vtCheck(vmResolveGsiVector(vm, 7, apic, vec) && vec == 0x51, "gsi-resolve-7");
+                vtCheck(!vmResolveGsiVector(vm, 9, apic, vec), "gsi-resolve-miss");
+
+                // KVM_IRQ_LINE assert -> queue; de-assert -> no-op
+                vm.vcpus[0].pendingIntrInfo = 0;
+                vtCheck(vmRaiseIrqLine(vm, 5, 1) == 0, "irqline-assert-ok");
+                vtCheck(vm.vcpus[0].pendingIntrInfo == (0x8000_0000u | 0x41), "irqline-injected");
+                vm.vcpus[0].pendingIntrInfo = 0;
+                vtCheck(vmRaiseIrqLine(vm, 5, 0) == 0, "irqline-deassert-ok");
+                vtCheck(vm.vcpus[0].pendingIntrInfo == 0, "irqline-deassert-noop");
+                vtCheck(vmRaiseIrqLine(vm, 9, 1) == -22, "irqline-noroute-einval");
+
+                // KVM_SIGNAL_MSI direct inject
+                vm.vcpus[0].pendingIntrInfo = 0;
+                vtCheck(vmSignalMsi(vm, 0xFEE00000, 0, 0x61) == 0, "signalmsi-ok");
+                vtCheck(vm.vcpus[0].pendingIntrInfo == (0x8000_0000u | 0x61), "signalmsi-injected");
+                vtCheck(vmSignalMsi(vm, 0xFEE00000, 0, 0x05) == -22, "signalmsi-lowvec-einval");
+
+                // negative routing sets (leave the table empty, fail-closed)
+                KvmIrqRoutingEntry bad = r[0];
+                bad.flags = 1;
+                vtCheck(vmSetGsiRouting(vm, &bad, 1) == -22, "gsi-route-badflags");
+                bad = r[0]; bad.type = 99;
+                vtCheck(vmSetGsiRouting(vm, &bad, 1) == -22, "gsi-route-badtype");
+                vtCheck(vmSetGsiRouting(vm, r.ptr, VIRT_MAX_GSI_ROUTES + 1) == -28, "gsi-route-ceiling");
+                vtCheck(vm.gsiRouteCount == 0, "gsi-route-failclosed");
+            }
+            if (ch >= 0) { uint co, cg; kvmUnpackHandle(cast(ulong)ch, co, cg); kvmVcpuFdClosed(co, cg); }
+            kvmVmFdClosed(io, ig);
+        }
+    }
+
 done:
     version (HostTest) virtCompatTest(tid);
     if (g_virtTestFails == 0) klog("[virt] selftest PASS\n");

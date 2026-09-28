@@ -70,7 +70,8 @@ import core.task : g_tasks, MAX_TASKS;
 import core.untyped : untypedRetype, untypedRelease;
 import memory.mm : alloc_phys_page, free_phys_page, physPageRefInc, physPageRefDec;
 import core.virt.slat;
-import core.virt.kvmabi : KVM_MEM_READONLY, KvmIrqRoutingEntry;
+import core.virt.kvmabi : KVM_MEM_READONLY, KvmIrqRoutingEntry,
+    KVM_IRQ_ROUTING_IRQCHIP, KVM_IRQ_ROUTING_MSI;
 
 // Routing entries are 48 bytes; 85 fit per 4 KiB page.
 
@@ -88,6 +89,9 @@ enum ulong VIRT_MAX_PAGES_TOTAL  = 1048576; // 4 GiB system-wide for guests
 // (0 = BSP).  Mirrors core.kmain.MAX_CPUS (SMP roadmap: runtime-discovered,
 // never larger than this ceiling).
 enum uint  VIRT_MAX_CPUS        = 256;
+// Interrupt-delivery registration ceilings.
+enum uint  VIRT_MAX_GSI_ROUTES  = 64;  // KVM_SET_GSI_ROUTING table size
+enum uint  VIRT_GSI_CEILING     = 24;  // #GSIs (matches KVM_CAP_SPLIT_IRQCHIP)
 
 // ---------------------------------------------------------------------------
 // Lifecycle states
@@ -203,10 +207,11 @@ struct Vm {
     ulong tssAddr;      // KVM_SET_TSS_ADDR value (recorded)
     ulong identityMapAddr; // KVM_SET_IDENTITY_MAP_ADDR value
     bool  splitIrqchip; // KVM_ENABLE_CAP(SPLIT_IRQCHIP) seen
-    // NB: GSI routing / IRQFD / IOEVENTFD tables were removed: advertising
-    // those capabilities without interrupt delivery is a fake hardware claim.
-    // The ABI structs (KvmIrqRoutingEntry/KvmIrqfd/KvmIoeventfd in kvmabi.d)
-    // stay for the delivery tier; the ioctls currently return ENOTTY.
+    // GSI routing table: see gsiRoutes below (appended).  Restored now that a
+    // real injection backend exists (core.virt.vmx: VMCS_ENTRY_INTR_INFO), so
+    // routing -> vector -> inject is a real path, not a fake claim.  IRQFD /
+    // IOEVENTFD tables are still absent: their async bridges (eventfd-signal,
+    // MMIO-exit) are the next tier and their ioctls still return ENOTTY.
     uint  memLock;      // region registration/teardown serialization (xchg)
     uint  creatorDom;   // VMM policy (core.virt.vmm_policy): creating task's domainObjId
                        // (0 = no domain).  Appended, never inserted.  Set once at
@@ -215,6 +220,11 @@ struct Vm {
     VmProfile profile;  // policy bundle: Lightweight | Compatibility
     VirtDiag diag;      // named diagnostic: last fault/failure, sticky
     ulong diagInfo;     // SlatViolation -> faulting GPA; 0 otherwise
+    // GSI routing table (KVM_SET_GSI_ROUTING).  MSI routes resolve to a
+    // (destination LAPIC, vector) and inject on the target vCPU's next entry.
+    // Appended, never inserted.
+    KvmIrqRoutingEntry[VIRT_MAX_GSI_ROUTES] gsiRoutes;
+    uint  gsiRouteCount; // valid entries in gsiRoutes (0 = no routing)
 }
 
 __gshared Vm[VIRT_MAX_VMS] g_vmPool;
@@ -371,6 +381,101 @@ public void vmSetDiag(Vm* vm, VirtDiag d, ulong info) {
     if (vm is null) return;
     vm.diag = d;
     vm.diagInfo = info;
+}
+
+// ---------------------------------------------------------------------------
+// Interrupt delivery: GSI routing + synchronous injection
+// ---------------------------------------------------------------------------
+// The mechanism these resolve TO — writing the vector into VMCS_ENTRY_INTR_INFO
+// so the CPU delivers it through the guest IDT on VM-entry — is implemented and
+// hardware-proven in core.virt.vmx (vmxInjectExtInt / vmxInterruptFirstLightProof).
+// Here we accept userspace's routing, resolve a GSI or MSI message to a
+// (destination LAPIC, vector), and queue it on the target vCPU.
+
+// Validate one routing entry.  0 = ok, -22 = EINVAL.
+public int vmGsiEntryValid(const(KvmIrqRoutingEntry)* e) {
+    if (e is null) return -22;
+    if (e.flags != 0) return -22;
+    if (e.type != KVM_IRQ_ROUTING_IRQCHIP && e.type != KVM_IRQ_ROUTING_MSI) return -22;
+    // IRQCHIP (IOAPIC pin) routes are bounded by the advertised GSI count; MSI
+    // routes carry their own destination and are not GSI-ceiling-bound.
+    if (e.type == KVM_IRQ_ROUTING_IRQCHIP && e.gsi >= VIRT_GSI_CEILING) return -22;
+    return 0;
+}
+
+// Replace the whole GSI routing table.  `entries` points at nr in-kernel copies
+// (the caller copied them in).  Fail-closed: on any invalid entry the table is
+// left EMPTY (gsiRouteCount = 0), never partially applied.
+// Returns 0, -28 (ENOSPC, too many), or -22 (EINVAL, bad entry).
+public int vmSetGsiRouting(Vm* vm, const(KvmIrqRoutingEntry)* entries, uint nr) {
+    if (vm is null) return -22;
+    if (nr > VIRT_MAX_GSI_ROUTES) return -28;
+    if (nr != 0 && entries is null) return -22;
+    foreach (i; 0 .. nr) {
+        int rc = vmGsiEntryValid(&entries[i]);
+        if (rc != 0) { vm.gsiRouteCount = 0; return rc; }
+    }
+    foreach (i; 0 .. nr) vm.gsiRoutes[i] = entries[i];
+    vm.gsiRouteCount = nr;
+    return 0;
+}
+
+// Resolve a GSI to (destination LAPIC id, vector) via an MSI route.  IRQCHIP
+// (IOAPIC pin) routes need an IOAPIC model we do not have, so they are not
+// resolvable here (honest false, not a guessed vector).
+public bool vmResolveGsiVector(Vm* vm, uint gsi, out ubyte apicId, out ubyte vector) {
+    if (vm is null) return false;
+    foreach (i; 0 .. vm.gsiRouteCount) {
+        const e = &vm.gsiRoutes[i];
+        if (e.gsi != gsi) continue;
+        if (e.type == KVM_IRQ_ROUTING_MSI) {
+            vector = cast(ubyte)(e.msi.data & 0xFF);
+            apicId = cast(ubyte)((e.msi.addressLo >> 12) & 0xFF); // dest-ID field
+            return true;
+        }
+    }
+    return false;
+}
+
+// Queue an external interrupt for a vCPU's next entry.  Encoded in VMX
+// VM-entry interruption-information form (bit31 valid | type=external(0) |
+// vector); the VMX backend consumes it directly.  (When SVM injection is
+// wired, svmEnter will translate this field.)
+public bool vmQueueExtInt(Vm* vm, uint vcpuIdx, ubyte vector) {
+    if (vm is null || vcpuIdx >= vm.vcpuCount) return false;
+    vm.vcpus[vcpuIdx].pendingIntrInfo = 0x8000_0000u | vector;
+    return true;
+}
+
+// Map an MSI destination-ID to a vCPU index.  First tier: physical, flat —
+// destination id == vCPU index (Cloud Hypervisor assigns LAPIC ids this way for
+// small guests).  Out-of-range falls back to the BSP (index 0).
+private uint vmApicToVcpu(Vm* vm, ubyte apicId) {
+    return (apicId < vm.vcpuCount) ? apicId : 0;
+}
+
+// KVM_IRQ_LINE: raise (level=1) or de-assert (level=0) a GSI.  Edge model: an
+// assert resolves via the routing table and queues the interrupt; a de-assert
+// is a no-op (nothing latched).  Returns 0 on success, -22 if the GSI has no
+// resolvable (MSI) route.
+public int vmRaiseIrqLine(Vm* vm, uint gsi, uint level) {
+    if (vm is null) return -22;
+    if (level == 0) return 0;             // de-assert: edge model, nothing queued
+    ubyte apicId, vector;
+    if (!vmResolveGsiVector(vm, gsi, apicId, vector)) return -22;
+    return vmQueueExtInt(vm, vmApicToVcpu(vm, apicId), vector) ? 0 : -22;
+}
+
+// KVM_SIGNAL_MSI: inject an MSI message directly (no routing table lookup).
+// address_lo bits 19:12 = destination LAPIC id; data low byte = vector.
+// Returns 0 on success, -22 on a malformed message.
+public int vmSignalMsi(Vm* vm, uint addressLo, uint addressHi, uint data) {
+    if (vm is null) return -22;
+    cast(void) addressHi;                 // 32-bit destination model (no x2APIC hi bits yet)
+    const ubyte apicId = cast(ubyte)((addressLo >> 12) & 0xFF);
+    const ubyte vector = cast(ubyte)(data & 0xFF);
+    if (vector < 0x10) return -22;        // vectors 0..15 are reserved/exceptions
+    return vmQueueExtInt(vm, vmApicToVcpu(vm, apicId), vector) ? 0 : -22;
 }
 
 // Look up a vCPU by (vmObj, vmGen, index) with full stale checks.

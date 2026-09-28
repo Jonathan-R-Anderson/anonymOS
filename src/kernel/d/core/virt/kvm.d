@@ -78,6 +78,7 @@ uint kvmRequiredRight(KvmFdKind kind, ulong cmd) {
                 case KVM_CREATE_PIT2:        return CAP_RIGHT_VM_CONTROL;
                 case KVM_SET_GSI_ROUTING:    return CAP_RIGHT_VM_CONTROL;
                 case KVM_IRQ_LINE:           return CAP_RIGHT_VM_CONTROL;
+                case KVM_SIGNAL_MSI:         return CAP_RIGHT_VM_CONTROL;
                 case KVM_IRQFD:              return CAP_RIGHT_VM_CONTROL;
                 case KVM_IOEVENTFD:          return CAP_RIGHT_VM_CONTROL;
                 case KVM_SET_CLOCK:          return CAP_RIGHT_VM_CONTROL;
@@ -184,12 +185,18 @@ private long kvmCheckExtension(ulong cap) {
         case KVM_CAP_USER_NMI:         return 1;
         case KVM_CAP_HLT:              return 1;
         case KVM_CAP_NOP_IO_DELAY:     return 1;
-        case KVM_CAP_IRQ_ROUTING:      return 0; // routing stored, but no
-        case KVM_CAP_IRQFD:            return 0; // interrupt/eventfd delivery
-        case KVM_CAP_IOEVENTFD:        return 0; // not yet implemented — fail
-                                                     // fast rather than claim
-                                                     // and hang.  Split-irqchip
-                                                     // delivery is the next tier.
+        case KVM_CAP_IRQ_ROUTING:      return 1; // routing stored + resolved to a
+                                                     // vector (MSI routes) and
+                                                     // injected via the VMX entry
+                                                     // backend (KVM_IRQ_LINE /
+                                                     // KVM_SIGNAL_MSI below).
+        case KVM_CAP_IRQFD:            return 0; // eventfd->GSI bridge not built
+        case KVM_CAP_IOEVENTFD:        return 0; // MMIO-exit->eventfd bridge not
+                                                     // built.  These two async
+                                                     // bridges are the next tier;
+                                                     // their inject backend now
+                                                     // exists.  Fail fast rather
+                                                     // than claim and hang.
         case KVM_CAP_SET_IDENTITY_MAP_ADDR: return 1;
         case KVM_CAP_ADJUST_CLOCK:     return 1;
         case KVM_CAP_VCPU_EVENTS:      return 1;
@@ -200,7 +207,8 @@ private long kvmCheckExtension(ulong cap) {
         case KVM_CAP_GET_TSC_KHZ:      return 1;
         case KVM_CAP_TSC_CONTROL:      return 1;
         case KVM_CAP_TSC_DEADLINE_TIMER: return 1;
-        case KVM_CAP_SIGNAL_MSI:       return 0; // not used by any VMM we target
+        case KVM_CAP_SIGNAL_MSI:       return 1; // synchronous MSI inject (resolve
+                                                     // dest+vector -> VMX entry inject)
         case KVM_CAP_READONLY_MEM:     return 1;
         case KVM_CAP_IMMEDIATE_EXIT:   return 1;
         // --- Cloud Hypervisor's hard probe gate: answered 1 even though
@@ -454,23 +462,53 @@ long kvmVmIoctl(int tid, uint vmObj, uint vmGen, ulong cmd, ulong arg) {
             return E_INVAL;
         }
         case KVM_SET_GSI_ROUTING: {
-            // Not yet: routing without delivery is a fake claim.  The GSI
-            // table structs stay (the delivery tier consumes them); the
-            // ioctl fails fast until interrupt injection exists.
-            return E_NOTTY;
+            // struct kvm_irq_routing { u32 nr; u32 flags; entries[nr] }.  Copy
+            // the header, then each 48-byte entry straight into the VM's table
+            // (validated in-kernel = no TOCTOU, no large stack temp); fail-closed
+            // leaves the table empty on any bad entry (see vmSetGsiRouting).
+            if (!kvmUserOk(tid, arg, KvmIrqRouting.sizeof, false)) return E_FAULT;
+            KvmIrqRouting hdr;
+            kvmUserCopyIn(&hdr, arg, KvmIrqRouting.sizeof);
+            if (hdr.flags != 0) return E_INVAL;
+            if (hdr.nr > VIRT_MAX_GSI_ROUTES) return E_NOSPC;
+            const ulong entriesBase = arg + KvmIrqRouting.sizeof;
+            const ulong sz = KvmIrqRoutingEntry.sizeof;
+            const ulong totalBytes = cast(ulong)hdr.nr * sz;
+            if (totalBytes != 0 && !kvmUserOk(tid, entriesBase, totalBytes, false))
+                return E_FAULT;
+            foreach (i; 0 .. hdr.nr)
+                kvmUserCopyIn(&vm.gsiRoutes[i], entriesBase + i * sz, sz);
+            const int rc = vmSetGsiRouting(vm, vm.gsiRoutes.ptr, hdr.nr);
+            return rc; // 0 / -EINVAL / -ENOSPC
         }
         case KVM_IRQ_LINE: {
-            // Not yet: acking without LAPIC injection would hang guests.
-            // Fail fast until the delivery backend exists.
-            return E_NOTTY;
+            // struct kvm_irq_level { u32 irq(=GSI); u32 level }.  Assert resolves
+            // the GSI via the routing table to a vector and injects on the target
+            // vCPU's next entry; de-assert is a no-op (edge model).
+            if (!kvmUserOk(tid, arg, KvmIrqLevel.sizeof, false)) return E_FAULT;
+            KvmIrqLevel k;
+            kvmUserCopyIn(&k, arg, KvmIrqLevel.sizeof);
+            return vmRaiseIrqLine(vm, k.irq, k.level); // 0 / -EINVAL (no route)
+        }
+        case KVM_SIGNAL_MSI: {
+            // struct kvm_msi: inject an MSI message directly (split-irqchip's
+            // synchronous inject path).  Dest LAPIC + vector -> queue on the vCPU.
+            if (!kvmUserOk(tid, arg, KvmMsi.sizeof, false)) return E_FAULT;
+            KvmMsi m;
+            kvmUserCopyIn(&m, arg, KvmMsi.sizeof);
+            if (m.flags & KVM_MSI_VALID_DEVID) return E_INVAL; // devid routing unsupported
+            if (m.flags != 0) return E_INVAL;
+            return vmSignalMsi(vm, m.addressLo, m.addressHi, m.data); // 0 / -EINVAL
         }
         case KVM_IRQFD: {
-            // Not yet: no eventfd bridge, no injection.  Fail fast.
+            // Registration accepted only once the eventfd->GSI bridge exists (the
+            // eventfd write path must raise the bound GSI).  Its inject backend is
+            // ready; the bridge is the next tier.  Fail fast until then.
             return E_NOTTY;
         }
         case KVM_IOEVENTFD: {
-            // Not yet: no MMIO-bus matching without the exit backend.
-            // Fail fast.
+            // Needs the MMIO-exit->eventfd bridge (a guest doorbell write must
+            // signal the bound eventfd).  Next tier.  Fail fast.
             return E_NOTTY;
         }
         case KVM_SET_CLOCK: {

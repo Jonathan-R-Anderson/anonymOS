@@ -5895,6 +5895,7 @@ void d_kernel_main() {
     // virt (VirtualBox). VMXON is deferred to lazy first-VM enablement once guest-entry is implemented.
     // See core/virt/backend.d:virtBootInit.
     { import core.virt.selftest : virtSelfTest; virtSelfTest(); } // VIRT: native VMM + KVM ABI boot proof (software object layer; no VMXON)
+    { import core.virt.vmx : vmxFirstLightProof; vmxFirstLightProof(); } // VIRT: Intel VMX guest-entry first-light (VMXON + VMLAUNCH a CPUID guest); needs nested EPT
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)

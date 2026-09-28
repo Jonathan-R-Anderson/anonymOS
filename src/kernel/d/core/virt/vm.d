@@ -158,6 +158,7 @@ struct Vcpu {
                         // lazily by the backend on first entry; freed on
                         // vCPU/VM teardown.
     bool  lapicSet;     // KVM_SET_LAPIC seen (split-irqchip bookkeeping)
+    bool  launched;     // VMX: this vCPU's VMCS has been VMLAUNCH'd once → subsequent entries VMRESUME
     ulong[18] regs;     // KvmRegs order: rax..rflags (cached SET_REGS)
     bool  regsSet;
     bool  sregsSet;

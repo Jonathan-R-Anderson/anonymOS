@@ -3891,13 +3891,25 @@ private void dispatchSyscall(int tid) {
             // Shared fd backings (DRM dumb-buffer mmap and memfd mmap) now route
             // through the fd object's mmap op instead of peeking at File.type here.
             ulong backingPhys = 0;
+            ulong backingSize = 0;   // valid bytes starting at backingPhys
             uint vmoObjId = 0;
             bool useObjectBacking = false;
             if (mfd < 1024) {
                 long backing = fdMmapBacking(mfd, moffset, &backingPhys,
-                                             null, &vmoObjId,
+                                             &backingSize, &vmoObjId,
                                              &useObjectBacking);
                 if (backing <= 0) useObjectBacking = false;
+            }
+            // SECURITY: clamp the mapping to the backing's valid window.  A
+            // valid offset with an oversized length must not map physical
+            // pages past the end of the GEM buffer / memfd.
+            if (useObjectBacking && backingSize > 0) {
+                ulong maxPgs = backingSize >> 12;
+                if (maxPgs < numPgs) {
+                    numPgs = maxPgs;
+                    alignedLen = numPgs << 12;
+                }
+                if (numPgs == 0) { ret = -22; break; }   // EINVAL
             }
 
             // File-backed mmap (MAP_PRIVATE of a regular file): the dynamic linker
@@ -5877,6 +5889,8 @@ void d_kernel_main() {
     domainBuildAllNamespaces();  // DOMAIN_MANAGER DM10.2: give every domain a restricted ns so the GUI's Filesystem RuntimeView shows a policy for each
     domainControlProof();        // DOMAIN_MANAGER DM10.3: drive a domain through its lifecycle via parsed control strings (the action-panel executor)
     domDeviceProof();            // DOMAIN_MANAGER DM8: §7 device-class enforcement (deviceClassGate)
+    { import core.virt.vmx : vmxBootInit; vmxBootInit(); } // VIRT: VMXON attempt, fail-soft (honest "no VMX" on non-Intel CPUs)
+    { import core.virt.selftest : virtSelfTest; virtSelfTest(); } // VIRT: native VMM + KVM ABI boot proof
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)

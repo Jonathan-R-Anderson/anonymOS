@@ -103,12 +103,34 @@ ROOTFS   := $(BLD)/rootfs
 DECOY_IMG_MB ?= 256
 
 # Assembling a REAL distro rootfs (apk install, correct root:root ownership, device nodes) is
-# inherently a privileged operation — fakeroot cannot fake a STATIC apk.static's syscalls, and
-# Ubuntu's AppArmor blocks unprivileged user namespaces. So run the privileged steps as root:
-# passwordless when already root (the ISO build runs in Docker as root), else via sudo. The
-# artifacts are chown'd back to the caller so later unprivileged steps (git, verify) can read.
-SUDO := $(shell [ "$$(id -u)" -eq 0 ] || echo sudo)
+# inherently a privileged operation — fakeroot cannot fake a STATIC apk.static's syscalls. So run
+# the privileged steps as real root, in this order: already root (the ISO build runs in Docker as
+# root); else sudo when usable WITHOUT a tty (CI); else a root-mapped user namespace — `unshare
+# -r` grants REAL root inside (chown/chroot and the static apk.static all work, and mkfs.ext4 -d
+# sees in-namespace root ownership) with zero host privileges.  Ubuntu's AppArmor blocks
+# unprivileged user namespaces, which is why this is not the first choice; Arch and most other
+# distros allow them.  The artifacts are chown'd back to the caller so later unprivileged steps
+# (git, verify) can read — a no-op under the namespace, where every file is already caller-owned
+# (and chown to the host uid is unmapped there, so those chowns are best-effort `|| true`).
+SUDO := $(shell if [ $$(id -u) -eq 0 ]; then :; \
+	elif sudo -n true 2>/dev/null; then echo sudo; \
+	elif command -v unshare >/dev/null 2>&1 && unshare -r true 2>/dev/null; then echo "unshare -r --"; \
+	else echo sudo; fi)
 UGID := $(shell id -u):$(shell id -g)
+
+# Under the user-namespace fallback, unmapped uid/gid values make apk's
+# ownership restore fail (exit 3: "errors updating directory permissions")
+# even though every package installed cleanly — so tell apk not to chown at
+# all.  Real-root paths keep exact ownership.
+ifneq ($(findstring unshare,$(SUDO)),)
+APK_FLAGS := --no-chown
+else
+APK_FLAGS :=
+endif
+
+# Host mksquashfs, or the one this repo builds from the same squashfs-tools source
+# (deps/squashfs-tools), since not every distro ships the tool.
+MKSQUASHFS := $(shell command -v mksquashfs 2>/dev/null || echo $(abspath ../squashfs-tools)/mksquashfs)
 
 VMLINUZ_URL := https://dl-cdn.alpinelinux.org/alpine/$(ALPINE_BRANCH)/releases/$(ALPINE_ARCH)/netboot/vmlinuz-lts
 # The decoy is booted as a self-contained UKI (kernel + initramfs + cmdline, one PE) that the
@@ -118,6 +140,29 @@ UKI_STUB    := /usr/lib/systemd/boot/efi/linuxx64.efi.stub
 # NB: ttyS0 must be the LAST console= — the last one becomes /dev/console, where PID 1's stdout
 # lands. With tty0 last, the userspace banner goes to VGA and the serial boot-check sees nothing.
 UKI_CMDLINE ?= console=tty0 console=ttyS0,115200 rdinit=/init loglevel=4
+# $(call) splits arguments on commas, so a literal comma in a cmdline argument
+# would split the argument list itself — pass it through a variable instead
+# (it expands after the split).
+COMMA := ,
+
+# Build a UKI: ukify when the host has it; else plain objcopy appending the same
+# sections at the same VMAs to the stub — a UKI is exactly that (the systemd stub
+# PE with .osrel/.cmdline/.linux/.initrd sections added), and the objcopy recipe
+# predates ukify (it is what distros used before it existed).
+define BUILD_UKI
+@test -f $(UKI_STUB) || { echo "[decoy-os] missing $(UKI_STUB) — install systemd-boot's EFI stub or the ukify package"; exit 1; }
+@if command -v ukify >/dev/null 2>&1; then \
+	ukify build --linux=$(1) --initrd=$(2) --cmdline="$(3)" --stub=$(UKI_STUB) --output=$(4); \
+else \
+	printf 'ID=decoy\nNAME=Decoy\n' > $(BLD)/.uki-osrel && \
+	printf '%s' "$(3)" > $(BLD)/.uki-cmdline && \
+	objcopy --add-section .osrel=$(BLD)/.uki-osrel --change-section-vma .osrel=0x20000 \
+	         --add-section .cmdline=$(BLD)/.uki-cmdline --change-section-vma .cmdline=0x30000 \
+	         --add-section .linux=$(1) --change-section-vma .linux=0x2000000 \
+	         --add-section .initrd=$(2) --change-section-vma .initrd=0x3000000 \
+	         $(UKI_STUB) $(4); \
+fi
+endef
 
 .PHONY: rootfs image verify consistency h4 uki boot-check kernel kernel-mods desktop-rootfs desktop-image desktop-boot-check clean
 
@@ -158,15 +203,15 @@ $(BLD)/fakelogd: $(DECOY)/decoy.c $(DECOY)/decoy_render.c $(DECOY)/h2/fakelogd.c
 $(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.sh $(APP_FILES) $(DETECTOR_BINS) customize.sh | $(BLD)
 	$(SUDO) rm -rf $(ROOTFS)
 	mkdir -p $(ROOTFS)
-	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(ROOTFS)
+	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(ROOTFS) --no-same-owner
 	$(SUDO) $(BLD)/apk.static --root $(ROOTFS) --repository $(APKMAIN) --repository $(APKCOMM) \
-	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS) $(DETECTOR_PKGS)
+	    --no-scripts --no-cache --update-cache add $(APK_FLAGS) $(DECOY_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS) $(DETECTOR_PKGS)
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
 	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(ROOTFS) $(BLD)/fakelogd "$(DECOY_PW)"
 	$(SUDO) $(SELF)/stage-apps.sh $(ROOTFS)
 	$(SUDO) tar -czf $@ -C $(ROOTFS) .
-	$(SUDO) chown $(UGID) $@
+	$(SUDO) chown $(UGID) $@ || true
 	@echo "[decoy-os] built $@ ($$(du -h $@ | cut -f1)), $$(wc -l < $(ROOTFS)/etc/apk/world) pkgs in world, seeded with the §H2 fake history"
 
 # ── §E5d/§H1 — the bootable decoy UKI (real Alpine kernel, decrypt-and-booted) ──────────────
@@ -189,9 +234,7 @@ $(BLD)/initramfs.gz: $(BLD)/busybox.static initramfs/init | $(BLD)
 	@echo "[decoy-os] built initramfs.gz ($$(du -h $(BLD)/initramfs.gz | cut -f1))"
 
 $(BLD)/decoy-uki.efi: $(DL)/vmlinuz-lts $(BLD)/initramfs.gz | $(BLD)
-	@test -f $(UKI_STUB) || { echo "[decoy-os] missing $(UKI_STUB) — apt install systemd-boot-efi systemd-ukify"; exit 1; }
-	ukify build --linux=$(DL)/vmlinuz-lts --initrd=$(BLD)/initramfs.gz \
-	    --cmdline="$(UKI_CMDLINE)" --stub=$(UKI_STUB) --output=$@
+	$(call BUILD_UKI,$(DL)/vmlinuz-lts,$(BLD)/initramfs.gz,console=tty0 console=ttyS0$(COMMA)115200 rdinit=/init loglevel=4,$@)
 	@echo "[decoy-os] built decoy-uki.efi ($$(du -h $@ | cut -f1)) — a self-contained bootable Alpine PE"
 uki: $(BLD)/decoy-uki.efi
 
@@ -274,9 +317,9 @@ boot-check: uki
 $(DROOT)/.stamp: $(DL)/$(MINIROOT) $(BLD)/apk.static $(BLD)/fakelogd stage-apps.sh $(APP_FILES) $(DETECTOR_BINS) customize.sh customize-desktop.sh | $(BLD)
 	$(SUDO) rm -rf $(DROOT)
 	mkdir -p $(DROOT)
-	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(DROOT)
+	$(SUDO) tar -xzf $(DL)/$(MINIROOT) -C $(DROOT) --no-same-owner
 	$(SUDO) $(BLD)/apk.static --root $(DROOT) --repository $(APKMAIN) --repository $(APKCOMM) \
-	    --no-scripts --no-cache --update-cache add $(DECOY_PKGS) $(DESKTOP_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS) $(DETECTOR_PKGS)
+	    --no-scripts --no-cache --update-cache add $(APK_FLAGS) $(DECOY_PKGS) $(DESKTOP_PKGS) $(SYNTH_PKGS) $(RECLAIM_PKGS) $(DETECTOR_PKGS)
 	$(SUDO) env DECOY_USER='$(DECOY_USER)' DECOY_HOSTNAME='$(DECOY_HOSTNAME)' \
 	    DECOY_USER_FULLNAME='$(DECOY_USER_FULLNAME)' DECOY_USER_PASSWORD='$(DECOY_USER_PASSWORD)' \
 	    DECOY_NOW='$(DECOY_NOW)' $(SELF)/customize.sh $(DROOT) $(BLD)/fakelogd "$(DECOY_PW)"
@@ -305,7 +348,7 @@ desktop-image: desktop-rootfs $(DROOT)/.kernel-mods $(BLD)/vmlinuz-decoy
 	   libcrc32c mbcache jbd2 ext4; do \
 	   f=$$($(SUDO) find $$M -name "$$name.ko.gz" 2>/dev/null | head -1); \
 	   [ -n "$$f" ] && $(SUDO) sh -c "gunzip -c '$$f' > $(BLD)/dir/mod/$$name.ko" || true; done
-	@$(SUDO) chown -R $(UGID) $(BLD)/dir
+	@$(SUDO) chown -R $(UGID) $(BLD)/dir || true
 	@( cd $(BLD)/dir && find . | $(BLD)/busybox.static cpio -o -H newc 2>/dev/null | gzip > $(BLD)/initramfs-decoy.gz )
 	@echo "[decoy-os] desktop image: decoy-desktop.ext4 ($(DESKTOP_MB) MiB) + initramfs-decoy.gz + vmlinuz-decoy (kver $(KVER))"
 
@@ -402,8 +445,8 @@ crypt-uki: $(BLD)/decoy-crypt-uki.efi
 $(BLD)/decoy-desktop.squashfs: desktop-rootfs $(DROOT)/.kernel-mods | $(BLD)
 	@command -v mksquashfs >/dev/null || { echo "[decoy-os] need squashfs-tools (apt install squashfs-tools)"; exit 1; }
 	$(SUDO) rm -f $@
-	$(SUDO) mksquashfs $(DROOT) $@ -comp zstd -noappend -no-progress -quiet
-	$(SUDO) chown $(UGID) $@
+	$(SUDO) $(MKSQUASHFS) $(DROOT) $@ -comp zstd -noappend -no-progress -quiet
+	$(SUDO) chown $(UGID) $@ || true
 	@echo "[decoy-os] built decoy-desktop.squashfs ($$(du -h $@|cut -f1)) — full desktop, compressed"
 squashfs: $(BLD)/decoy-desktop.squashfs
 
@@ -424,7 +467,7 @@ image: rootfs
 	$(SUDO) rm -f $(BLD)/decoy.ext4
 	$(SUDO) sh -c 'dd if=/dev/zero of=$(BLD)/decoy.ext4 bs=1M count=$(DECOY_IMG_MB) status=none && \
 	  mkfs.ext4 -q -L decoy -d $(ROOTFS) $(BLD)/decoy.ext4'
-	$(SUDO) chown $(UGID) $(BLD)/decoy.ext4
+	$(SUDO) chown $(UGID) $(BLD)/decoy.ext4 || true
 	@echo "[decoy-os] built $(BLD)/decoy.ext4 ($(DECOY_IMG_MB) MiB)"
 
 verify: rootfs

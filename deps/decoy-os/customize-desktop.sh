@@ -49,7 +49,10 @@ export XFCE_PANEL_MIGRATE_DEFAULT=1
 exec startxfce4
 EOF
 chmod +x "$H/.xinitrc"
-chown 1000:1000 "$H/.profile" "$H/.xinitrc"
+# || true: under the unshare -r rootfs build, uid 1000 is not mapped inside the
+# namespace and this chown fails with EINVAL — the files are root-owned in the
+# decoy image there, which only affects cosmetics, not the autologin boot.
+chown 1000:1000 "$H/.profile" "$H/.xinitrc" 2>/dev/null || true
 
 # allow the non-root user to start the X server
 mkdir -p "$R/etc/X11"

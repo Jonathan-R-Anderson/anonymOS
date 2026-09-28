@@ -6671,6 +6671,117 @@ public void pkgFetchSetRequest(const(char)* pkgmgr, const(char)* name, const(cha
     rtAddFile("run/pkg/request\0".ptr, "run/pkg/request".length, cast(const(ubyte)*)req.ptr, n);
 }
 
+// The Software Center's cap-gated placement step.  hos-pkg-fetch (userspace) has already downloaded
+// and unpacked a package's DATA files into a staging tree under /var/cache/apk and written a marker
+// /run/pkg/<name>.done = "apk <name> <ver> <stagedir> <manifestpath> <count>".  Userspace cannot
+// write /usr (it is EROFS to it), so the kernel does the one remaining step: copy each staged file
+// into the Linux rootfs via rtAddFile.  Files land at /usr/... and are visible at /linux/usr/... in
+// every Linux-personality domain — there is ONE shared rtfs, so this install is system-wide; true
+// per-domain file isolation awaits the DM6 overlay data plane (see core/overlay.d).  Returns the
+// number of files placed, or -1 if the marker or manifest could not be read.
+public int softwareApkInstallDone(const(char)* name) @nogc nothrow {
+    if (name is null || name[0] == 0) return -1;
+
+    // Build "/run/pkg/<name>.done".
+    char[256] donePath = void;
+    size_t dl = 0;
+    foreach (ch; "/run/pkg/")      if (dl + 1 < donePath.length) donePath[dl++] = ch;
+    for (uint i = 0; name[i] != 0 && dl + 1 < donePath.length; ++i) donePath[dl++] = name[i];
+    foreach (ch; ".done")          if (dl + 1 < donePath.length) donePath[dl++] = ch;
+    donePath[dl] = 0;
+
+    int par; const(char)* lf; size_t ll;
+    int di = rtResolve(donePath.ptr, par, lf, ll);
+    if (di < 0 || g_rt[di].kind != RT_REG || g_rt[di].data is null) return -1;
+
+    // Parse the marker's first line; we need token 3 (stagedir) and token 4 (manifestpath).
+    char[256] stageDir = void; size_t sdl = 0;
+    char[256] manPath  = void; size_t mnl = 0;
+    {
+        const(ubyte)* d = g_rt[di].data;
+        uint sz = g_rt[di].size;
+        uint i = 0, tok = 0;
+        while (i < sz && d[i] != '\n') {
+            while (i < sz && d[i] == ' ') ++i;
+            uint start = i;
+            while (i < sz && d[i] != ' ' && d[i] != '\n') ++i;
+            uint len = i - start;
+            if (tok == 3)      { for (uint k = 0; k < len && sdl + 1 < stageDir.length; ++k) stageDir[sdl++] = cast(char)d[start + k]; }
+            else if (tok == 4) { for (uint k = 0; k < len && mnl + 1 < manPath.length;  ++k) manPath[mnl++]  = cast(char)d[start + k]; }
+            ++tok;
+        }
+    }
+    if (sdl == 0 || mnl == 0) return -1;
+    stageDir[sdl] = 0; manPath[mnl] = 0;
+
+    // Read the manifest (one relative path per line) and place each staged file into the rootfs.
+    int mi = rtResolve(manPath.ptr, par, lf, ll);
+    if (mi < 0 || g_rt[mi].kind != RT_REG || g_rt[mi].data is null) return -1;
+
+    int placed = 0;
+    const(ubyte)* md = g_rt[mi].data;
+    uint msz = g_rt[mi].size;
+    uint p = 0;
+    while (p < msz) {
+        uint start = p;
+        while (p < msz && md[p] != '\n') ++p;
+        uint rlen = p - start;
+        if (p < msz) ++p;                              // skip the newline
+        if (rlen == 0) continue;
+
+        // src = "<stageDir>/<rel>" (absolute), resolve it, then place at the relative <rel>.
+        char[600] src = void; size_t sl = 0;
+        for (uint k = 0; k < sdl && sl + 1 < src.length; ++k) src[sl++] = stageDir[k];
+        if (sl + 1 < src.length) src[sl++] = '/';
+        for (uint k = 0; k < rlen && sl + 1 < src.length; ++k) src[sl++] = cast(char)md[start + k];
+        src[sl] = 0;
+
+        int si = rtResolve(src.ptr, par, lf, ll);
+        if (si < 0 || g_rt[si].kind != RT_REG) continue;
+        // rtAddFile takes a RELATIVE path (no leading '/'); the manifest paths are already relative.
+        rtAddFile(cast(const(char)*)(md + start), rlen, g_rt[si].data, g_rt[si].size);
+        ++placed;
+    }
+    return placed;
+}
+
+// Boot proof for the apk placement path — no network needed.  Stages a synthetic package exactly
+// the way hos-pkg-fetch would (staged data file + manifest + /run/pkg/<name>.done marker), runs
+// softwareApkInstallDone, and asserts the file appears in the rootfs with the right bytes.  Mirrors
+// pkgRepoSelfTest / virtSelfTest; leaves no trace.  This is the one deterministic check of the
+// kernel half that a headless boot can make without a live Alpine mirror.
+__gshared bool g_swApkSelfTestDone = false;
+public void softwareApkInstallSelfTest() @nogc nothrow {
+    if (g_swApkSelfTestDone) return;
+    g_swApkSelfTestDone = true;
+    if (!g_rtInitialized) return;
+
+    enum string CONTENT  = "#!/bin/sh\necho hos-apk-selftest\n";
+    enum string STAGED   = "var/cache/apk/hosselftest.files/usr/bin/hosselftest";
+    enum string MANP     = "var/cache/apk/hosselftest.manifest";
+    enum string MANBODY  = "usr/bin/hosselftest\n";
+    enum string DONEP    = "run/pkg/hosselftest.done";
+    enum string DONEBODY = "apk hosselftest 1.0 /var/cache/apk/hosselftest.files /var/cache/apk/hosselftest.manifest 1\n";
+
+    rtAddFile(STAGED.ptr, STAGED.length, cast(const(ubyte)*)CONTENT.ptr,  cast(uint)CONTENT.length);
+    rtAddFile(MANP.ptr,   MANP.length,   cast(const(ubyte)*)MANBODY.ptr,  cast(uint)MANBODY.length);
+    rtAddFile(DONEP.ptr,  DONEP.length,  cast(const(ubyte)*)DONEBODY.ptr, cast(uint)DONEBODY.length);
+
+    const int placed = softwareApkInstallDone("hosselftest\0".ptr);
+
+    int par; const(char)* lf; size_t ll;
+    int idx = rtResolve("/usr/bin/hosselftest\0".ptr, par, lf, ll);
+    bool ok = (placed == 1) && (idx >= 0) && (g_rt[idx].kind == RT_REG) && (g_rt[idx].size == cast(uint)CONTENT.length);
+    if (ok) foreach (k; 0 .. cast(uint)CONTENT.length) if (g_rt[idx].data[k] != cast(ubyte)CONTENT[k]) { ok = false; break; }
+
+    klog(ok ? "[software] apk-install self-test PASS (synthetic pkg placed at /usr/bin/hosselftest)\n"
+            : "[software] apk-install self-test FAIL\n");
+
+    // Leave no trace: drop the placed file + the marker (the tiny staged tmp under /var/cache is harmless).
+    linux_sys_unlink(cast(ulong)"/usr/bin/hosselftest\0".ptr);
+    linux_sys_unlink(cast(ulong)"/run/pkg/hosselftest.done\0".ptr);
+}
+
 // A silent failure here is a file that is simply absent at runtime, while the unpack counters
 // still report it as placed -- which is exactly how a 6.8 MB catalog shipped inside the image and
 // the client that reads it got ENOENT.  Say which path failed, and why.

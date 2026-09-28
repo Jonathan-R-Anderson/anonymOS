@@ -640,9 +640,13 @@ $(WLSOFTWARE_BIN): src/util/wl-software.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 # The Software Center's fetcher: the kernel approves an install and writes the request; this
 # carries it out over the LKL socket shim.  Dynamic musl (it needs LD_PRELOAD=/libnshim.so to
 # reach the network), like the other net clients here.
-$(PKGFETCH_BIN): src/util/hos-pkg-fetch.c
+# zlib (musl-static, from the gtk-stack sysroot) decompresses APKINDEX + the .apk in userspace,
+# so the kernel needs no DEFLATE.  Linked statically so the fetcher stays a self-contained binary.
+ZLIB_A   := deps/gtk-stack/sysroot/lib/libz.a
+ZLIB_INC := deps/gtk-stack/sysroot/include
+$(PKGFETCH_BIN): src/util/hos-pkg-fetch.c $(ZLIB_A)
 	@echo "==== Building hos-pkg-fetch (Software Center package fetcher) ===="
-	$(MUSL_CC) -O2 -Wall -Wextra -o $@ src/util/hos-pkg-fetch.c
+	$(MUSL_CC) -O2 -Wall -Wextra -I$(ZLIB_INC) -o $@ src/util/hos-pkg-fetch.c $(ZLIB_A)
 
 # The aggregated catalog: the real package indexes of Alpine, Debian, Ubuntu, Fedora, Arch,
 # openSUSE and Flathub, harvested from their own mirrors and packed into one file the Software
@@ -1713,6 +1717,13 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 # See scripts/mk-install-iso.sh and scripts/vbox-install-test.sh.
 # =========================================================
 iso: hos-install.iso
+
+# Reassemble the pfSense/Netgate installer ISO from the committed <95 MiB parts (deps/pfsense/*.part;
+# the whole image is over GitHub's 100 MiB limit).  Byte-exact + SHA-256-verified.  `--gunzip` also
+# expands the raw .iso the firewall VM boots.  See deps/pfsense/README.md.
+.PHONY: pfsense-iso
+pfsense-iso:
+	sh scripts/pfsense-assemble.sh --gunzip
 
 # Standalone dynamic-linkage audit (also run at the end of stage-iso-tree).
 .PHONY: verify-linkage

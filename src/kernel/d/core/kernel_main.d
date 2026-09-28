@@ -5317,6 +5317,7 @@ private void kernelLoop() {
         maybeSpawnWifiAgent();      // M6: Wi-Fi menu's D-Bus bridge (NM mode only; skipped by useDirectWifi + COM2 bridge)
         maybeSpawnWpaAgent();       // direct-wpa menu backend (default): NSP_SCAN -> /run/wifi/networks, connect via wpa config+SIGHUP
         maybeSpawnUdhcpc();         // external DHCP: busybox udhcpc gets the lease (NM's n-dhcp4 stalls)
+        { import core.software : softwarePoll; softwarePoll(); }  // Software Center: finish an armed apk install (cap-gated placement + verdict)
         maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
         maybeSpawnLogUpload(); // debug: snapshot logs and scp them when a client is staged
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
@@ -5895,6 +5896,7 @@ void d_kernel_main() {
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)
     { import core.software : softwareCatalogReport; softwareCatalogReport(); }  // Software Center catalog
+    { import core.syscalls.posix : softwareApkInstallSelfTest; softwareApkInstallSelfTest(); }  // Software Center: prove the cap-gated apk placement path (no network needed)
     { import core.sysupdate : updateAdoptBootSlot; updateAdoptBootSlot(); } // UPDATE U1: read A/B boot-state → g_bootSlot
     { import core.sysversion : updateVersionProof; updateVersionProof(); } // UPDATE U0: version identity proof
     {   // UPDATE U1: prove the boot-state on-disk contract, but only on a scratch/install

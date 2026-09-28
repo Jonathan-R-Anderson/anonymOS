@@ -31,6 +31,16 @@ __gshared char[SW_STATUS_MAX] g_swStatus;
 __gshared uint g_swStatusLen = 0;
 __gshared uint g_swRequests  = 0;
 
+// Install completion.  The fetch+unpack is asynchronous (hos-pkg-fetch runs in userspace and takes
+// as long as the download does), so the control-write only ARMS the install; the kernel supervisor
+// loop calls softwarePoll(), which watches for the fetcher's /run/pkg/<name>.{done,fail} markers and
+// then performs the one cap-gated step userspace cannot — placing the files — and writes the real
+// verdict.  One install is tracked at a time (the Software Center issues them one click at a time).
+__gshared char[128] g_swPendName;
+__gshared uint      g_swPendLen    = 0;
+__gshared bool      g_swPendActive = false;
+__gshared uint      g_swPollTick   = 0;
+
 private void swSet(string kind, const(char)[] a = null, const(char)[] b = null,
                    const(char)[] c = null, const(char)[] d = null) {
     uint n = 0;
@@ -115,12 +125,64 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
     {
         import core.kernel_main : softwareSpawnFetcher;
         if (softwareSpawnFetcher(mgr.ptr, name.ptr, url.ptr)) {
+            // Clear any stale markers from a previous install of the same package BEFORE arming the
+            // poll, so softwarePoll() cannot fire on an old .done while this fetch is still running.
+            swClearMarkers(name.ptr, nl);
+            g_swPendLen = 0;
+            for (uint i = 0; i < nl && i + 1 < g_swPendName.length; ++i) { g_swPendName[i] = name[i]; ++g_swPendLen; }
+            g_swPendName[g_swPendLen] = 0;
+            g_swPendActive = true;
             swSet("busy fetching ", name[0 .. nl],
                   " from the Alpine mirror (hos-pkg-fetch); watch Logs, filter 'pkg'.");
             return true;
         }
         swSet("refused could not start the package fetcher (hos-pkg-fetch is not staged in this image)");
         return false;
+    }
+}
+
+// Build "/run/pkg/<name><suffix>" (NUL-terminated) into dst; used to probe/clear the fetcher markers.
+private uint swMarkerPath(char[] dst, const(char)* name, uint nameLen, string suffix) {
+    uint n = 0;
+    foreach (ch; "/run/pkg/") if (n + 1 < dst.length) dst[n++] = ch;
+    for (uint i = 0; i < nameLen && n + 1 < dst.length; ++i) dst[n++] = name[i];
+    foreach (ch; suffix)       if (n + 1 < dst.length) dst[n++] = ch;
+    if (n < dst.length) dst[n] = 0;
+    return n;
+}
+
+// Remove any leftover completion markers for `name` (a re-install of the same package must not see
+// the previous run's .done/.fail).
+private void swClearMarkers(const(char)* name, uint nameLen) {
+    import core.syscalls.posix : linux_sys_unlink;
+    char[160] p = void;
+    swMarkerPath(p[], name, nameLen, ".done"); linux_sys_unlink(cast(ulong)p.ptr);
+    swMarkerPath(p[], name, nameLen, ".fail"); linux_sys_unlink(cast(ulong)p.ptr);
+}
+
+// Kernel supervisor hook: when an install is armed, watch for the fetcher's completion marker and,
+// on .done, do the cap-gated placement (softwareApkInstallDone) and report the real verdict; on
+// .fail, report the failure.  Throttled so it is a couple of cheap access() probes, not a scan.
+public void softwarePoll() {
+    if (!g_swPendActive) return;
+    if ((g_swPollTick++ % 30) != 0) return;
+    import core.syscalls.posix : linux_sys_access, softwareApkInstallDone;
+    char[160] dpath = void, fpath = void;
+    swMarkerPath(dpath[], g_swPendName.ptr, g_swPendLen, ".done");
+    swMarkerPath(fpath[], g_swPendName.ptr, g_swPendLen, ".fail");
+    if (linux_sys_access(cast(ulong)dpath.ptr, 0) == 0) {
+        const int placed = softwareApkInstallDone(g_swPendName.ptr);
+        if (placed > 0)
+            swSet("ok installed ", g_swPendName[0 .. g_swPendLen],
+                  " into the Linux rootfs (system-wide — one shared rootfs today; see Logs, filter 'pkg').");
+        else
+            swSet("refused ", g_swPendName[0 .. g_swPendLen],
+                  " downloaded but no files could be placed (see Logs, filter 'pkg').");
+        g_swPendActive = false;
+    } else if (linux_sys_access(cast(ulong)fpath.ptr, 0) == 0) {
+        swSet("refused could not fetch or unpack ", g_swPendName[0 .. g_swPendLen],
+              " (see Logs, filter 'pkg').");
+        g_swPendActive = false;
     }
 }
 

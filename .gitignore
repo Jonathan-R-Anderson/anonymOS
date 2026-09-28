@@ -29,6 +29,10 @@ target/
 *.elf
 *.img
 *.iso
+# Reassembled installer images (e.g. the pfSense/Netgate ISO) are build artifacts: commit the split
+# <95 MiB parts under deps/pfsense/*.part instead (GitHub rejects files over 100 MiB).  The .part
+# files do not match this pattern, so they stay tracked.
+*.iso.gz
 *.symbols
 *.ppm
 

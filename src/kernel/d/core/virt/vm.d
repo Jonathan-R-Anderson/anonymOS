@@ -162,6 +162,13 @@ struct Vcpu {
     ulong[18] regs;     // KvmRegs order: rax..rflags (cached SET_REGS)
     bool  regsSet;
     bool  sregsSet;
+    uint  pendingIntrInfo; // VMX VM-entry interruption-information to inject on the
+                        // next entry (bit31 valid | type<<8 | vector); 0 = none.
+                        // Written into VMCS_ENTRY_INTR_INFO by the VMX backend and
+                        // cleared once the CPU consumes it on a successful entry.
+                        // This is the guest-facing end of the interrupt-delivery
+                        // path (GSI routing / irqfd resolve TO a vector, then land
+                        // here).  Appended, never inserted.
     // (sregs/fpu/msr/cpuid blobs live in the KVM layer's per-vCPU cache;
     //  the native object keeps only scheduling-relevant state.)
 }

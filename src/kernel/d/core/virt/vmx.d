@@ -591,7 +591,10 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
     vmxWrite(VMCS_EXIT_MSR_STORE_CNT, 0);
     vmxWrite(VMCS_EXIT_MSR_LOAD_CNT, 0);
     vmxWrite(VMCS_ENTRY_MSR_LOAD_CNT, 0);
-    vmxWrite(VMCS_ENTRY_INTR_INFO, 0);
+    // VM-entry event injection: if an interrupt/exception is pending for this
+    // vCPU, the CPU delivers it through the guest IDT on entry (unconditional —
+    // ignores guest RFLAGS.IF).  0 = valid bit clear = no injection.
+    vmxWrite(VMCS_ENTRY_INTR_INFO, vc.pendingIntrInfo);
     vmxWrite(VMCS_LINK_POINTER, ~0UL);
     // EPTP = root | WB(6) | walk-length-1(3<<3)
     vmxWrite(VMCS_EPT_POINTER, (slatRootPhys(&vm.slat) & 0x000F_FFFF_FFFF_F000UL) | 6 | (3 << 3));
@@ -792,6 +795,9 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
         return VMX_NOHW;
     }
     vc.launched = true;
+    // VM-entry consumed any pending injection (delivered on entry); clear it so a
+    // subsequent VMRESUME does not re-inject the same event.
+    vc.pendingIntrInfo = 0;
     // decode the VM-exit
     const uint reason = cast(uint)vmxRead(VMCS_EXIT_REASON) & 0xFFFF;
     const ulong qual  = vmxRead(VMCS_EXIT_QUALIFICATION);
@@ -873,5 +879,106 @@ public void vmxFirstLightProof() @nogc nothrow {
         klog("[vmx] first-light: no clean CPUID exit; rc=");
         klog_hex(cast(ulong)cast(uint)rc);
         klog(" reason="); klog_hex(xi.hardwareReason); klog("\n");
+    }
+}
+
+// Queue an external interrupt (vector) for delivery to this vCPU on its next
+// entry.  This is the vmx end of the interrupt-delivery path: a raised GSI or a
+// signaled irqfd resolves (via the VM's routing) TO a vector, which lands here.
+// The CPU delivers it through the guest IDT on VM-entry.  VM-entry event
+// injection is UNCONDITIONAL — it does not honor guest RFLAGS.IF or
+// interruptibility state — so this is a forced, one-shot delivery consumed on
+// the next successful entry.  type = 0 (external interrupt); no error code.
+public void vmxInjectExtInt(Vcpu* vc, ubyte vector) @nogc nothrow {
+    if (vc is null) return;
+    vc.pendingIntrInfo = 0x8000_0000u | vector;   // valid | type=external(0) | vector
+}
+
+// INTERRUPT-INJECTION FIRST-LIGHT boot proof.  This proves the *delivery*
+// mechanism the whole interrupt tier depends on: that a vector queued by the
+// host is actually delivered into the guest and runs the guest's handler.
+//
+// The guest is one unpaged 32-bit page at GPA 0 with a real IDT + GDT:
+//   0x000  fallback: hlt ; jmp $         (never reached if injection works)
+//   0x040  handler:  mov byte [0x800],0xA5 ; hlt
+//   0x400  IDT (limit 0x1FF): entry 0x30 -> handler @0x040, selector 0x08, 0x8E
+//   0x600  GDT (limit 0x17): null / flat code32 (0x08) / flat data32 (0x10)
+//   0x800  sentinel byte (init 0; handler writes 0xA5)
+// We queue vector 0x30 and enter.  The CPU delivers it through IDT[0x30] BEFORE
+// executing RIP=0, runs the handler (which writes the sentinel then HLTs), and
+// VM-exits on HLT (reason 12).  PASS = sentinel==0xA5 AND reason==HLT: the CPU
+// really vectored our injected interrupt into the guest and ran its code.
+__gshared bool g_vmxIntrFirstLightDone = false;
+public void vmxInterruptFirstLightProof() @nogc nothrow {
+    if (g_vmxIntrFirstLightDone) return;
+    g_vmxIntrFirstLightDone = true;
+    if (!vmxDetect()) return;   // first-light (CPUID) proof already reported why
+    import core.virt.kvm : kvmCreateVm, kvmCreateVcpu;
+
+    const int tid = cast(int)g_current_task_id;
+    const long vh = kvmCreateVm(tid);
+    if (vh < 0) { klog("[vmx] intr-first-light: kvmCreateVm failed\n"); return; }
+    uint vo, vg; kvmUnpackHandle(cast(ulong)vh, vo, vg);
+    Vm* vm = vmCheck(vo, vg);
+    if (vm is null) { klog("[vmx] intr-first-light: vmCheck null\n"); return; }
+
+    const long ch = kvmCreateVcpu(vo, vg, 0);
+    if (ch < 0) { klog("[vmx] intr-first-light: kvmCreateVcpu failed\n"); return; }
+    uint co, cg; kvmUnpackHandle(cast(ulong)ch, co, cg);
+    Vcpu* vc = vcpuCheckObj(co, cg);
+    if (vc is null) { klog("[vmx] intr-first-light: vcpuCheckObj null\n"); return; }
+
+    const ulong gpage = alloc_phys_page();
+    if (gpage == 0) { klog("[vmx] intr-first-light: no guest page\n"); return; }
+    auto gp = cast(ubyte*)phys_to_virt(gpage);
+    foreach (i; 0 .. 4096) gp[i] = 0;
+
+    // 0x000 fallback: hlt ; jmp $-1  (F4 EB FD) — reached only if delivery fails.
+    gp[0x000] = 0xF4; gp[0x001] = 0xEB; gp[0x002] = 0xFD;
+    // 0x040 handler: mov byte ptr [0x800],0xA5 ; hlt  (C6 05 00 08 00 00 A5 F4)
+    gp[0x040] = 0xC6; gp[0x041] = 0x05; gp[0x042] = 0x00; gp[0x043] = 0x08;
+    gp[0x044] = 0x00; gp[0x045] = 0x00; gp[0x046] = 0xA5; gp[0x047] = 0xF4;
+    // 0x580 = IDT[0x30]: offset15:0=0x0040, sel=0x08, ist/rsvd=0, type=0x8E, offset31:16=0
+    gp[0x580] = 0x40; gp[0x581] = 0x00; gp[0x582] = 0x08; gp[0x583] = 0x00;
+    gp[0x584] = 0x00; gp[0x585] = 0x8E; gp[0x586] = 0x00; gp[0x587] = 0x00;
+    // 0x608 = GDT[1] flat code32 (sel 0x08): FF FF 00 00 00 9B CF 00
+    gp[0x608] = 0xFF; gp[0x609] = 0xFF; gp[0x60A] = 0x00; gp[0x60B] = 0x00;
+    gp[0x60C] = 0x00; gp[0x60D] = 0x9B; gp[0x60E] = 0xCF; gp[0x60F] = 0x00;
+    // 0x610 = GDT[2] flat data32 (sel 0x10): FF FF 00 00 00 93 CF 00
+    gp[0x610] = 0xFF; gp[0x611] = 0xFF; gp[0x612] = 0x00; gp[0x613] = 0x00;
+    gp[0x614] = 0x00; gp[0x615] = 0x93; gp[0x616] = 0xCF; gp[0x617] = 0x00;
+    // 0x800 sentinel already 0.
+    if (!slatMap(&vm.slat, 0, gpage, 1 | 2 | 4)) { klog("[vmx] intr-first-light: slatMap failed\n"); return; }
+
+    KvmRegs regs;
+    regs.rsp = 0x0FF0; regs.rip = 0; regs.rflags = 0x202;  // IF=1 (bit9) + reserved bit1
+    KvmSRegs s;
+    s.cr0 = 0x1;                                          // PE=1, PG=0 (unpaged → unrestricted-guest)
+    s.cs = vmxFlatSeg(0x08, 0xB, 1, 1, 1, 0xFFFFFFFF);
+    s.ds = vmxFlatSeg(0x10, 0x3, 1, 1, 1, 0xFFFFFFFF);
+    s.es = s.ss = s.fs = s.gs = s.ds;
+    s.tr = vmxFlatSeg(0x18, 0xB, 0, 0, 0, 0x67);         // busy 32-bit TSS
+    s.ldt.unusable = 1;
+    s.gdt.base = 0x600; s.gdt.limit = 0x17;              // real GDT (CS reload on delivery reads it)
+    s.idt.base = 0x400; s.idt.limit = 0x1FF;             // real IDT (delivery reads IDT[0x30])
+
+    vmxInjectExtInt(vc, 0x30);                           // queue the interrupt
+    VirtExitInfo xi;
+    const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+    const ubyte sentinel = gp[0x800];
+    if (rc == VMX_OK && xi.hardwareReason == EXIT_REASON_HLT && sentinel == 0xA5) {
+        klog("[vmx] INTR FIRST LIGHT PASS: injected vector 0x30 delivered — guest handler ran (sentinel=0xA5, HLT exit)\n");
+    } else {
+        klog("[vmx] intr-first-light: FAIL rc=");
+        klog_hex(cast(ulong)cast(uint)rc);
+        klog(" reason="); klog_hex(xi.hardwareReason);
+        klog(" sentinel="); klog_hex(sentinel); klog("\n");
+        // diagnostic dump: raw exit reason (bit31 = entry-failure), qualification,
+        // VM-instruction error, guest RIP, and the entry-interruption-info readback.
+        klog("[vmx]   rawReason="); klog_hex(vmxRead(VMCS_EXIT_REASON));
+        klog(" qual="); klog_hex(vmxRead(VMCS_EXIT_QUALIFICATION));
+        klog(" instrErr="); klog_hex(vmxRead(VMCS_INSTRUCTION_ERROR));
+        klog(" gRIP="); klog_hex(vmxRead(VMCS_GUEST_RIP));
+        klog(" entryInfo="); klog_hex(vmxRead(VMCS_ENTRY_INTR_INFO)); klog("\n");
     }
 }

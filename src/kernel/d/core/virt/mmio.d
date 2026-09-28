@@ -174,6 +174,65 @@ private ulong mmioRegValue(const(KvmRegs)* regs, ubyte x86reg) {
     return (&regs.rax)[idx];
 }
 
+// Read `len` bytes at guest-physical `gpa` through EPT (per-page), into dst.
+private bool readGuestPhys(Vm* vm, ulong gpa, ubyte* dst, size_t len) @nogc nothrow {
+    size_t done = 0;
+    while (done < len) {
+        const ulong hpa = slatLookup(&vm.slat, (gpa + done) & ~0xFFFUL);
+        if (hpa == 0) return false;
+        auto page = cast(ubyte*)phys_to_virt(hpa);
+        ulong off = (gpa + done) & 0xFFF;
+        while (off < 4096 && done < len) { dst[done++] = page[off]; ++off; }
+    }
+    return true;
+}
+private bool readGuestPte64(Vm* vm, ulong gpa, out ulong v) @nogc nothrow {
+    ubyte[8] b = 0;
+    if (!readGuestPhys(vm, gpa, b.ptr, 8)) return false;
+    v = 0; foreach (k; 0 .. 8) v |= (cast(ulong)b[k]) << (8 * k);
+    return true;
+}
+private bool readGuestPte32(Vm* vm, ulong gpa, out uint v) @nogc nothrow {
+    ubyte[4] b = 0;
+    if (!readGuestPhys(vm, gpa, b.ptr, 4)) return false;
+    v = 0; foreach (k; 0 .. 4) v |= (cast(uint)b[k]) << (8 * k);
+    return true;
+}
+
+private enum ulong PTE_P    = 1UL << 0;                 // present
+private enum ulong PTE_PS   = 1UL << 7;                 // page size (large page)
+private enum ulong PADDR_52 = 0x000F_FFFF_FFFF_F000UL;  // 4KB frame, bits 51:12
+
+// Translate a guest LINEAR address to guest-PHYSICAL via the guest page tables
+// (rooted at cr3), reading each table through EPT.  Handles long-mode 4-level
+// (incl. 1G/2M large pages) and legacy 32-bit 2-level non-PAE (incl. 4M).
+// Returns false if any level is not-present or a table read fails.
+public bool guestTranslate(Vm* vm, ulong cr3, ulong lin, bool longmode, out ulong gpa) @nogc nothrow {
+    if (vm is null) return false;
+    if (longmode) {
+        ulong e; ulong base = cr3 & PADDR_52;
+        if (!readGuestPte64(vm, base + ((lin >> 39) & 0x1FF) * 8, e) || !(e & PTE_P)) return false;
+        base = e & PADDR_52;                                               // PML4E -> PDPT
+        if (!readGuestPte64(vm, base + ((lin >> 30) & 0x1FF) * 8, e) || !(e & PTE_P)) return false;
+        if (e & PTE_PS) { gpa = (e & 0x000F_FFFF_C000_0000UL) | (lin & 0x3FFF_FFFF); return true; } // 1G
+        base = e & PADDR_52;                                               // PDPTE -> PD
+        if (!readGuestPte64(vm, base + ((lin >> 21) & 0x1FF) * 8, e) || !(e & PTE_P)) return false;
+        if (e & PTE_PS) { gpa = (e & 0x000F_FFFF_FFE0_0000UL) | (lin & 0x001F_FFFF); return true; }  // 2M
+        base = e & PADDR_52;                                               // PDE -> PT
+        if (!readGuestPte64(vm, base + ((lin >> 12) & 0x1FF) * 8, e) || !(e & PTE_P)) return false;
+        gpa = (e & PADDR_52) | (lin & 0xFFF);
+        return true;
+    }
+    // legacy 32-bit 2-level (non-PAE)
+    uint e; ulong base = cr3 & 0xFFFF_F000UL;
+    if (!readGuestPte32(vm, base + ((lin >> 22) & 0x3FF) * 4, e) || !(e & 1)) return false;
+    if (e & 0x80) { gpa = (cast(ulong)(e & 0xFFC0_0000)) | (lin & 0x003F_FFFF); return true; }        // 4M
+    base = cast(ulong)(e & 0xFFFF_F000);
+    if (!readGuestPte32(vm, base + ((lin >> 12) & 0x3FF) * 4, e) || !(e & 1)) return false;
+    gpa = (cast(ulong)(e & 0xFFFF_F000)) | (lin & 0xFFF);
+    return true;
+}
+
 // Enrich a SLAT-fault MMIO exit (KVM_EXIT_MMIO, len still 0) by decoding the
 // faulting guest instruction to fill mmio.len and, for writes, mmio.data.
 // Returns true if it decoded and filled the exit; false if it declined (caller
@@ -188,19 +247,26 @@ public bool mmioEnrichMmioExit(Vm* vm, Vcpu* vc, const(KvmRegs)* regs,
     if (run.exitReason != KVM_EXIT_MMIO) return false;
     if (run.u.mmio.len != 0) return true;                 // already decoded
     const bool paged    = sregs !is null && (sregs.cr0 & (1UL << 31)) != 0; // CR0.PG
+    const bool pae      = sregs !is null && (sregs.cr4 & (1UL << 5))  != 0; // CR4.PAE
     const bool longmode = sregs !is null && (sregs.efer & (1UL << 10)) != 0; // EFER.LMA
-    if (paged) return false;                              // TODO: guest CR3 walk
+    if (paged && pae && !longmode) return false;          // PAE (3-level) not yet supported
+    const ulong cr3     = sregs !is null ? sregs.cr3 : 0;
+    // Linear address of the faulting instruction: CS base + RIP (CS base is 0 in
+    // long mode and for flat protected-mode guests).
+    const ulong rip = regs.rip + (sregs !is null ? sregs.cs.base : 0);
 
-    // Fetch up to 15 instruction bytes at GPA = RIP, honoring the EPT mapping and
-    // the guest page boundary.
+    // Fetch up to 15 instruction bytes at the linear RIP, translating guest-linear
+    // -> guest-physical via the guest page tables when paging is on, then
+    // guest-physical -> host via EPT.  Stops at the first untranslatable page.
     ubyte[16] buf = 0; size_t got = 0;
-    const ulong rip = regs.rip;
     while (got < 15) {
         const ulong lin = rip + got;
-        const ulong hpa = slatLookup(&vm.slat, lin & ~0xFFFUL);
+        ulong gpa = lin;
+        if (paged && !guestTranslate(vm, cr3, lin, longmode, gpa)) break;
+        const ulong hpa = slatLookup(&vm.slat, gpa & ~0xFFFUL);
         if (hpa == 0) break;                              // instruction page not mapped
         auto page = cast(ubyte*)phys_to_virt(hpa);
-        ulong off = lin & 0xFFF;
+        ulong off = gpa & 0xFFF;
         while (off < 4096 && got < 15) { buf[got++] = page[off]; ++off; }
     }
     if (got == 0) return false;
@@ -306,4 +372,69 @@ public void mmioDecodeSelfTest() @nogc nothrow {
         klog("[mmio] decode selftest PASS (mov r/m<->r, imm, movzx/sx, disp/sib/riprel, rex; reg-direct+non-mov rejected)\n");
     else
         klog("[mmio] decode selftest FAILURES logged above\n");
+}
+
+// ---------------------------------------------------------------------------
+// Boot self-test for the guest page-table walker: build a minimal long-mode
+// 4-level table in EPT-mapped guest RAM and assert translations.  No guest
+// execution — pure walk over tables we author.
+// ---------------------------------------------------------------------------
+public void mmioPagedWalkSelfTest() @nogc nothrow {
+    import core.virt.kvm : kvmCreateVm;
+    import core.virt.vm  : vmCheck, kvmUnpackHandle, kvmVmFdClosed;
+    import core.virt.slat : slatMap;
+    import memory.mm : alloc_phys_page;
+    import core.exports : g_current_task_id;
+
+    const long vh = kvmCreateVm(cast(int)g_current_task_id);
+    if (vh < 0) { klog("[mmio] paged-walk: kvmCreateVm failed\n"); return; }
+    uint vo, vg; kvmUnpackHandle(cast(ulong)vh, vo, vg);
+    Vm* vm = vmCheck(vo, vg);
+    if (vm is null) { klog("[mmio] paged-walk: vmCheck null\n"); return; }
+
+    // Page-table pages at guest-physical 0x1000..0x4000, each EPT-mapped so the
+    // walker (which reads through EPT) can fetch entries.
+    ulong[4] tgpa = [0x1000, 0x2000, 0x3000, 0x4000];
+    ulong[4] host = [0, 0, 0, 0];
+    foreach (i; 0 .. 4) {
+        const ulong ph = alloc_phys_page();
+        if (ph == 0 || !slatMap(&vm.slat, tgpa[i], ph, 1 | 2 | 4)) {
+            klog("[mmio] paged-walk: map fail\n"); kvmVmFdClosed(vo, vg); return;
+        }
+        auto p = cast(ubyte*)phys_to_virt(ph);
+        foreach (j; 0 .. 4096) p[j] = 0;
+        host[i] = cast(ulong)p;
+    }
+    auto pml4 = cast(ulong*)host[0];
+    auto pdpt = cast(ulong*)host[1];
+    auto pd   = cast(ulong*)host[2];
+    auto pt   = cast(ulong*)host[3];
+
+    uint fails = 0;
+
+    // Case 1: 4KB mapping.  lin 0x400000 -> gpa 0x5000.
+    const ulong lin1 = 0x400000;
+    pml4[(lin1 >> 39) & 0x1FF] = 0x2000 | PTE_P;
+    pdpt[(lin1 >> 30) & 0x1FF] = 0x3000 | PTE_P;
+    pd  [(lin1 >> 21) & 0x1FF] = 0x4000 | PTE_P;
+    pt  [(lin1 >> 12) & 0x1FF] = 0x5000 | PTE_P;
+    ulong g1;
+    if (!(guestTranslate(vm, 0x1000, lin1, true, g1) && g1 == (0x5000 | (lin1 & 0xFFF)))) ++fails;
+
+    // Case 2: 2MB large page.  lin 0x600010 -> 0x200000 | offset.
+    const ulong lin2 = 0x600010;
+    pdpt[(lin2 >> 30) & 0x1FF] = 0x3000 | PTE_P;              // (same PDPT slot as case 1)
+    pd  [(lin2 >> 21) & 0x1FF] = 0x200000 | PTE_P | PTE_PS;   // 2MB page
+    ulong g2;
+    if (!(guestTranslate(vm, 0x1000, lin2, true, g2) && g2 == (0x200000 | (lin2 & 0x001F_FFFF)))) ++fails;
+
+    // Case 3: not-present PD slot -> translation fails.
+    ulong g3;
+    if (guestTranslate(vm, 0x1000, 0x800000, true, g3)) ++fails;   // pd[4] == 0
+
+    if (fails == 0)
+        klog("[mmio] paged-walk selftest PASS (4-level: 4K + 2M large page + not-present)\n");
+    else
+        klog("[mmio] paged-walk selftest FAIL\n");
+    kvmVmFdClosed(vo, vg);
 }

@@ -6754,6 +6754,10 @@ __gshared bool g_swApkSelfTestDone = false;
 public void softwareApkInstallSelfTest() @nogc nothrow {
     if (g_swApkSelfTestDone) return;
     g_swApkSelfTestDone = true;
+    // rtInit() is lazy (first FD op triggers it via initFdTable), and this boot proof runs before
+    // the desktop makes that first op — so build the rtfs skeleton now, or the guard below trips and
+    // the proof silently no-ops (which is exactly what happened on the first VirtualBox boot).
+    initFdTable();
     if (!g_rtInitialized) return;
 
     enum string CONTENT  = "#!/bin/sh\necho hos-apk-selftest\n";

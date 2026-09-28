@@ -85,24 +85,28 @@ public bool virtBackendAvailable() {
 // hardware no SVM MSR is ever read.
 public void virtBootInit() {
     auto k = virtBackendKind();
-    if (k == VirtBackendKind.Svm) {
-        svmBootInit();
-    } else if (k == VirtBackendKind.Vmx) {
-        vmxBootInit();
-    }
+    // BOOT-HANG FIX (2026-09-27): do NOT enable the backend (VMXON / EFER.SVME) at boot.
+    // Enabling it here bricks the boot before the desktop comes up: VMXON hangs under some
+    // nested-virt hypervisors (observed on VirtualBox), and svmCpuInit on a CPU that reports
+    // AuthenticAMD without real SVM (QEMU's qemu64) faults.  "Fail-soft" only covers a clean
+    // VMXON/VMRUN failure, not a hang.  Guest entry (vmxEnter/svmEnter) is not implemented yet,
+    // so boot-time enablement provides NO capability today — KVM_RUN is -ENODEV either way.
+    // When guest entry lands, enable the backend LAZILY on first VM creation (with proper
+    // fault handling), not unconditionally at boot.  Detection + honest logging only here.
     klog("[virt] backend=");
     klog(k == VirtBackendKind.Svm ? "svm" : k == VirtBackendKind.Vmx ? "vmx" : "none");
-    klog(" available=");
-    klog(virtBackendAvailable() ? "yes\n" : "no\n");
+    klog("; boot-time enable deferred (guest-entry not yet implemented)\n");
 }
 
 // Per-CPU initialization for application processors.  The active backend
 // enables itself on the calling CPU (VMXON / EFER.SVME + HSAVE + VMCB
 // area).  Must be called with the target CPU executing this code.
 public void virtCpuInit(uint cpuId) {
-    auto k = virtBackendKind();
-    if (k == VirtBackendKind.Svm) svmCpuInit(cpuId);
-    else if (k == VirtBackendKind.Vmx) vmxCpuInit(cpuId);
+    // BOOT-HANG FIX (2026-09-27): the APs must not VMXON / enable SVME at boot either — the same
+    // hang that bricks the BSP in virtBootInit applies per-AP here (apKernelLoopBody).  No-op until
+    // per-CPU enablement is wired lazily alongside guest entry.  (svmCpuInit/vmxCpuInit remain for
+    // that future path.)
+    cast(void) cpuId;
 }
 
 // Enter the guest once.  On return:

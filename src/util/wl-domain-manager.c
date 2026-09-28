@@ -467,6 +467,7 @@ static void pkg_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Package
 struct dmapp { const char *label; const char *exec; const char *cls; };
 static const struct dmapp DMAPPS[] = {
     { "Software Center", "/wl-software",   "epinanonymos-software" },
+    { "Virtual Machines","/wl-vmm",        "epin-vmm"        },
     { "Terminal",       "/hos-wifiterm",  "epin-g4-term"    },
     { "Files",          "/wl-files",      "epin-files"      },
     { "Text Editor",    "/wl-editor",     "epin-editor"     },

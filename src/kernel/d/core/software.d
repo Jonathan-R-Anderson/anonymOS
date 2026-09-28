@@ -40,6 +40,10 @@ __gshared char[128] g_swPendName;
 __gshared uint      g_swPendLen    = 0;
 __gshared bool      g_swPendActive = false;
 __gshared uint      g_swPollTick   = 0;
+// The domain that requested the install (captured at request time, when the CURRENT task is the
+// requesting app).  The placement runs later in the supervisor (dom 0), so it must be told which
+// domain to install INTO — otherwise a per-domain-private .apk lands nowhere the requester can see.
+__gshared uint      g_swPendDom    = 0;
 
 private void swSet(string kind, const(char)[] a = null, const(char)[] b = null,
                    const(char)[] c = null, const(char)[] d = null) {
@@ -131,6 +135,9 @@ public bool softwareControlWrite(const(char)* cmd, size_t len) {
             g_swPendLen = 0;
             for (uint i = 0; i < nl && i + 1 < g_swPendName.length; ++i) { g_swPendName[i] = name[i]; ++g_swPendLen; }
             g_swPendName[g_swPendLen] = 0;
+            // Capture the requesting domain NOW (this control-write runs in the requesting app's
+            // context); the async placement will install into it.
+            { import core.syscalls.posix : softwareCallerDomain; g_swPendDom = softwareCallerDomain(); }
             g_swPendActive = true;
             swSet("busy fetching ", name[0 .. nl],
                   " from the Alpine mirror (hos-pkg-fetch); watch Logs, filter 'pkg'.");
@@ -161,29 +168,25 @@ private void swClearMarkers(const(char)* name, uint nameLen) {
 }
 
 // Kernel supervisor hook: when an install is armed, watch for the fetcher's completion marker and,
-// on .done, do the cap-gated placement (softwareApkInstallDone) and report the real verdict; on
-// .fail, report the failure.  Throttled so it is a couple of cheap access() probes, not a scan.
+// on .done, do the cap-gated placement into the REQUESTING domain and report the real verdict; on
+// .fail, report the failure.  Throttled.  softwareApkTryComplete impersonates g_swPendDom so the
+// domain-private marker + staged files are visible (per DM6.2 isolation) and the install lands in
+// that domain — not the shared base.
 public void softwarePoll() {
     if (!g_swPendActive) return;
     if ((g_swPollTick++ % 30) != 0) return;
-    import core.syscalls.posix : linux_sys_access, softwareApkInstallDone;
-    char[160] dpath = void, fpath = void;
-    swMarkerPath(dpath[], g_swPendName.ptr, g_swPendLen, ".done");
-    swMarkerPath(fpath[], g_swPendName.ptr, g_swPendLen, ".fail");
-    if (linux_sys_access(cast(ulong)dpath.ptr, 0) == 0) {
-        const int placed = softwareApkInstallDone(g_swPendName.ptr);
-        if (placed > 0)
-            swSet("ok installed ", g_swPendName[0 .. g_swPendLen],
-                  " into the Linux rootfs (system-wide — one shared rootfs today; see Logs, filter 'pkg').");
-        else
-            swSet("refused ", g_swPendName[0 .. g_swPendLen],
-                  " downloaded but no files could be placed (see Logs, filter 'pkg').");
+    import core.syscalls.posix : softwareApkTryComplete;
+    const int rc = softwareApkTryComplete(g_swPendName.ptr, g_swPendDom);
+    if (rc >= 0) {
+        swSet("ok installed ", g_swPendName[0 .. g_swPendLen],
+              " into this domain's filesystem (see Logs, filter 'pkg').");
         g_swPendActive = false;
-    } else if (linux_sys_access(cast(ulong)fpath.ptr, 0) == 0) {
+    } else if (rc == -2) {
         swSet("refused could not fetch or unpack ", g_swPendName[0 .. g_swPendLen],
               " (see Logs, filter 'pkg').");
         g_swPendActive = false;
     }
+    // rc == -1: still pending — keep polling.
 }
 
 // Report the catalog at boot: its presence (and size) is the difference between a Software Center

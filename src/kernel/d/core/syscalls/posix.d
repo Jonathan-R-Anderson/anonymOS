@@ -6708,7 +6708,61 @@ public void pkgFetchSetRequest(const(char)* pkgmgr, const(char)* name, const(cha
 // every Linux-personality domain — there is ONE shared rtfs, so this install is system-wide; true
 // per-domain file isolation awaits the DM6 overlay data plane (see core/overlay.d).  Returns the
 // number of files placed, or -1 if the marker or manifest could not be read.
-public int softwareApkInstallDone(const(char)* name) @nogc nothrow {
+// The requesting domain of the CURRENT task — captured by software.d at install-request time so the
+// asynchronous placement (which runs later in the kernel supervisor, dom 0) can run AS that domain.
+public uint softwareCallerDomain() @nogc nothrow { return rtCurrentDomain(); }
+
+// Place a fetched+unpacked apk into the requesting domain (targetDom), cap-gated.  Runs AS targetDom
+// for the whole operation: the fetcher (bound to that domain) wrote the .done marker + staged files
+// as domain-PRIVATE (per DM6.2 isolation), so both finding them and placing the result must resolve
+// in that domain's view.  targetDom 0 = the shared base (used by the self-test).  Wrapper restores
+// the supervisor's own domain on every exit.
+public int softwareApkInstallDone(const(char)* name, uint targetDom) @nogc nothrow {
+    const int tid = cast(int)g_current_task_id;
+    const bool haveTid = (tid >= 0 && tid < MAX_TASKS);
+    const uint savedDom = haveTid ? g_tasks[tid].domainObjId : 0;
+    if (haveTid) g_tasks[tid].domainObjId = targetDom;
+    const int r = softwareApkInstallDoneInner(name);
+    if (haveTid) g_tasks[tid].domainObjId = savedDom;
+    return r;
+}
+
+// Software Center supervisor-poll helper.  Runs AS domain `dom` (the requester) so the fetcher's
+// domain-PRIVATE completion marker + staged files are visible, then: if /run/pkg/<name>.done exists,
+// does the cap-gated placement into `dom`; if .fail exists, reports failure.  Returns >=0 = installed
+// (files placed), -1 = still pending (no marker yet), -2 = fetch/unpack failed.  One impersonation
+// covers both the marker probe and the placement.
+public int softwareApkTryComplete(const(char)* name, uint dom) @nogc nothrow {
+    if (name is null || name[0] == 0) return -1;
+    const int tid = cast(int)g_current_task_id;
+    const bool haveTid = (tid >= 0 && tid < MAX_TASKS);
+    const uint savedDom = haveTid ? g_tasks[tid].domainObjId : 0;
+    if (haveTid) g_tasks[tid].domainObjId = dom;
+
+    char[256] dp = void; size_t dl = 0;
+    foreach (ch; "/run/pkg/") if (dl + 1 < dp.length) dp[dl++] = ch;
+    for (uint i = 0; name[i] != 0 && dl + 1 < dp.length; ++i) dp[dl++] = name[i];
+    const size_t baseLen = dl;
+    foreach (ch; ".done") if (dl + 1 < dp.length) dp[dl++] = ch;
+    dp[dl] = 0;
+
+    int par; const(char)* lf; size_t ll;
+    int rc;
+    if (rtResolve(dp.ptr, par, lf, ll) >= 0) {
+        rc = softwareApkInstallDoneInner(name);   // already impersonating dom
+        if (rc < 0) rc = -2;                       // marker present but placement failed
+    } else {
+        dl = baseLen;
+        foreach (ch; ".fail") if (dl + 1 < dp.length) dp[dl++] = ch;
+        dp[dl] = 0;
+        rc = (rtResolve(dp.ptr, par, lf, ll) >= 0) ? -2 : -1;   // .fail → failed, else still pending
+    }
+
+    if (haveTid) g_tasks[tid].domainObjId = savedDom;
+    return rc;
+}
+
+private int softwareApkInstallDoneInner(const(char)* name) @nogc nothrow {
     if (name is null || name[0] == 0) return -1;
 
     // Build "/run/pkg/<name>.done".
@@ -6800,7 +6854,7 @@ public void softwareApkInstallSelfTest() @nogc nothrow {
     rtAddFile(MANP.ptr,   MANP.length,   cast(const(ubyte)*)MANBODY.ptr,  cast(uint)MANBODY.length);
     rtAddFile(DONEP.ptr,  DONEP.length,  cast(const(ubyte)*)DONEBODY.ptr, cast(uint)DONEBODY.length);
 
-    const int placed = softwareApkInstallDone("hosselftest\0".ptr);
+    const int placed = softwareApkInstallDone("hosselftest\0".ptr, 0);  // 0 = shared base (self-test stages + checks as dom 0)
 
     int par; const(char)* lf; size_t ll;
     int idx = rtResolve("/usr/bin/hosselftest\0".ptr, par, lf, ll);
@@ -6854,6 +6908,18 @@ public void rtDomainIsolationProof() @nogc nothrow {
 
         ok = ok && (nodeA >= 0) && (nodeB >= 0) && (nodeA != nodeB)
                 && (seenByA == nodeA) && (seenByB == nodeB) && (seenBy0 == -1);
+
+        // readdir visibility (the getdents64 filter rule: show own==dom or shared): each domain
+        // LISTS only its own "f"; a non-domain caller lists neither (both are private).
+        int visA = 0, visB = 0, vis0 = 0;
+        for (int i = 1; i < RT_MAX_NODES; ++i) {
+            if (g_rt[i].kind == RT_FREE || g_rt[i].parent != dir) continue;
+            const uint own = g_rt[i].ownerDom;
+            if (own == DOM_A || own == 0) ++visA;
+            if (own == DOM_B || own == 0) ++visB;
+            if (own == 0) ++vis0;
+        }
+        ok = ok && (visA == 1) && (visB == 1) && (vis0 == 0);
     }
 
     g_tasks[tid].domainObjId = savedDom;   // restore BEFORE logging (klog is domain-agnostic anyway)
@@ -11905,9 +11971,23 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
 
     if (fileIsRtDirectory(f)) {
         const int dirIdx = cast(int)cast(size_t)f.backend;
+        // DM6.2 per-domain isolation: a listing must show only what THIS domain would resolve —
+        // hide other domains' private nodes, and de-dup a shared node the caller shadows with its
+        // own private one.  Cheap in the common case: dom==0 (kernel/non-domain) just hides private
+        // nodes; a domain with no private overrides under this dir needs no shadow check.  Only a
+        // domain that actually has private nodes here pays the per-shared-entry rtFindChild dedup.
+        const uint listDom = rtCurrentDomain();
+        bool domHasPrivateHere = false;
+        if (listDom != 0)
+            for (int i = 1; i < RT_MAX_NODES; ++i)
+                if (g_rt[i].kind != RT_FREE && g_rt[i].parent == dirIdx && g_rt[i].ownerDom == listDom) { domHasPrivateHere = true; break; }
         ulong logical = 2;
         for (int i = 1; i < RT_MAX_NODES; ++i) {
             if (g_rt[i].kind == RT_FREE || g_rt[i].parent != dirIdx) continue;
+            const uint own = g_rt[i].ownerDom;
+            if (own != 0 && own != listDom) continue;                 // another domain's private node — hidden
+            if (own == 0 && domHasPrivateHere
+                && rtFindChild(dirIdx, g_rt[i].name.ptr, g_rt[i].nameLen) != i) continue;  // shadowed by my private — de-dup
             if (f.offset <= logical) {
                 const ubyte dtype = (g_rt[i].kind == RT_DIR) ? DT_DIR
                                   : (g_rt[i].kind == RT_LNK) ? DT_LNK : DT_REG;

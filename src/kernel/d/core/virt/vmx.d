@@ -67,6 +67,7 @@ enum uint MSR_IA32_SYSENTER_ESP    = 0x175;
 enum uint MSR_IA32_SYSENTER_EIP    = 0x176;
 
 // --- control-word desired bits ----------------------------------------------------------------
+enum uint PROC_INTERRUPT_WINDOW    = 1u << 2;   // exit when the guest can take an interrupt
 enum uint PROC_HLT_EXITING         = 1u << 7;
 enum uint PROC_UNCOND_IO_EXITING   = 1u << 24;
 enum uint PROC_ACTIVATE_SECONDARY  = 1u << 31;
@@ -565,9 +566,16 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
     // ---- controls (clamped) ----
     const bool useTrue = (vmxRdmsr(IA32_VMX_BASIC) & (1UL << 55)) != 0;
     const uint pin  = vmxClampCtl(0, useTrue ? IA32_VMX_TRUE_PINBASED : IA32_VMX_PINBASED_CTLS);
-    const uint proc = vmxClampCtl(PROC_HLT_EXITING | PROC_UNCOND_IO_EXITING | PROC_ACTIVATE_SECONDARY,
-                                  useTrue ? IA32_VMX_TRUE_PROCBASED : IA32_VMX_PROCBASED_CTLS);
     const bool guestLong = (sregs.efer & (1UL << 10)) != 0;   // EFER.LMA
+    // Resolve the LAPIC IRR into an entry injection: inject the highest pending
+    // vector iff the guest is interruptible; otherwise arm interrupt-window
+    // exiting so we exit — and inject — the moment it becomes interruptible.
+    // (Interruptibility-state is 0 in this model, so the gate is RFLAGS.IF.)
+    const InjectPlan plan = vmxPlanInjection(vc, regs.rflags, 0);
+    const uint procExtra = plan.wantWindow ? PROC_INTERRUPT_WINDOW : 0;
+    const uint proc = vmxClampCtl(PROC_HLT_EXITING | PROC_UNCOND_IO_EXITING
+                                  | PROC_ACTIVATE_SECONDARY | procExtra,
+                                  useTrue ? IA32_VMX_TRUE_PROCBASED : IA32_VMX_PROCBASED_CTLS);
     uint sec = vmxClampCtl(SEC_ENABLE_EPT | (guestLong ? 0 : SEC_UNRESTRICTED_GUEST),
                            IA32_VMX_PROCBASED_CTLS2);
     const uint exitc = vmxClampCtl(EXIT_HOST_ADDR_SPACE_SIZE | EXIT_SAVE_EFER | EXIT_LOAD_EFER,
@@ -591,10 +599,10 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
     vmxWrite(VMCS_EXIT_MSR_STORE_CNT, 0);
     vmxWrite(VMCS_EXIT_MSR_LOAD_CNT, 0);
     vmxWrite(VMCS_ENTRY_MSR_LOAD_CNT, 0);
-    // VM-entry event injection: if an interrupt/exception is pending for this
-    // vCPU, the CPU delivers it through the guest IDT on entry (unconditional —
-    // ignores guest RFLAGS.IF).  0 = valid bit clear = no injection.
-    vmxWrite(VMCS_ENTRY_INTR_INFO, vc.pendingIntrInfo);
+    // VM-entry event injection: the resolved highest-priority pending vector
+    // (or 0 = none when nothing is deliverable this entry — see vmxPlanInjection).
+    // The CPU delivers it through the guest IDT on entry.
+    vmxWrite(VMCS_ENTRY_INTR_INFO, plan.info);
     vmxWrite(VMCS_LINK_POINTER, ~0UL);
     // EPTP = root | WB(6) | walk-length-1(3<<3)
     vmxWrite(VMCS_EPT_POINTER, (slatRootPhys(&vm.slat) & 0x000F_FFFF_FFFF_F000UL) | 6 | (3 << 3));
@@ -795,9 +803,8 @@ public int vmxEnter(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sregs,
         return VMX_NOHW;
     }
     vc.launched = true;
-    // VM-entry consumed any pending injection (delivered on entry); clear it so a
-    // subsequent VMRESUME does not re-inject the same event.
-    vc.pendingIntrInfo = 0;
+    // The injected vector (if any) was consumed from the IRR at plan time
+    // (vmxPlanInjection), so nothing to clear here.
     // decode the VM-exit
     const uint reason = cast(uint)vmxRead(VMCS_EXIT_REASON) & 0xFFFF;
     const ulong qual  = vmxRead(VMCS_EXIT_QUALIFICATION);
@@ -882,16 +889,42 @@ public void vmxFirstLightProof() @nogc nothrow {
     }
 }
 
-// Queue an external interrupt (vector) for delivery to this vCPU on its next
-// entry.  This is the vmx end of the interrupt-delivery path: a raised GSI or a
-// signaled irqfd resolves (via the VM's routing) TO a vector, which lands here.
-// The CPU delivers it through the guest IDT on VM-entry.  VM-entry event
-// injection is UNCONDITIONAL — it does not honor guest RFLAGS.IF or
-// interruptibility state — so this is a forced, one-shot delivery consumed on
-// the next successful entry.  type = 0 (external interrupt); no error code.
+// Queue an external interrupt (vector) for this vCPU by setting its IRR bit.
+// A raised GSI / signaled irqfd / SIGNAL_MSI resolves TO a vector, which lands
+// here.  Delivery is deferred to VM-entry, where vmxPlanInjection picks the
+// highest pending vector and injects it only when the guest is interruptible
+// (else it arms interrupt-window exiting) — so unlike a raw entry-info write,
+// this honors guest RFLAGS.IF.
 public void vmxInjectExtInt(Vcpu* vc, ubyte vector) @nogc nothrow {
     if (vc is null) return;
-    vc.pendingIntrInfo = 0x8000_0000u | vector;   // valid | type=external(0) | vector
+    // single-slot pending: keep the highest-priority (highest vector) pending.
+    if ((vc.pendingIntrInfo & 0x8000_0000u) == 0 || vector >= (vc.pendingIntrInfo & 0xFF))
+        vc.pendingIntrInfo = 0x8000_0000u | vector;
+}
+
+struct InjectPlan { uint info; bool wantWindow; }
+
+// Resolve the vCPU's pending interrupt into a VM-entry injection decision.
+//   - nothing pending             -> {info:0, wantWindow:false}
+//   - pending & interruptible     -> consume it,
+//                                    {info: valid|external|vector, wantWindow:false}
+//   - pending & NOT interruptible -> {info:0, wantWindow:true} (arm window exit;
+//                                     the pending slot is kept for next time)
+// Interruptible = guest RFLAGS.IF set AND no STI/MOV-SS interrupt shadow.
+private InjectPlan vmxPlanInjection(Vcpu* vc, ulong guestRflags, uint interruptibility) @nogc nothrow {
+    InjectPlan p;
+    p.info = 0; p.wantWindow = false;
+    if (vc is null) return p;
+    if ((vc.pendingIntrInfo & 0x8000_0000u) == 0) return p; // nothing pending
+    const bool shadowed = (interruptibility & 0x3) != 0; // STI(1) / MOV-SS(2) blocking
+    const bool interruptible = ((guestRflags & (1UL << 9)) != 0) && !shadowed; // RFLAGS.IF
+    if (interruptible) {
+        p.info = vc.pendingIntrInfo;   // valid | type=external(0) | vector
+        vc.pendingIntrInfo = 0;        // consume
+    } else {
+        p.wantWindow = true;
+    }
+    return p;
 }
 
 // INTERRUPT-INJECTION FIRST-LIGHT boot proof.  This proves the *delivery*
@@ -980,5 +1013,107 @@ public void vmxInterruptFirstLightProof() @nogc nothrow {
         klog(" instrErr="); klog_hex(vmxRead(VMCS_INSTRUCTION_ERROR));
         klog(" gRIP="); klog_hex(vmxRead(VMCS_GUEST_RIP));
         klog(" entryInfo="); klog_hex(vmxRead(VMCS_ENTRY_INTR_INFO)); klog("\n");
+    }
+}
+
+// INTERRUPT-WINDOW / IF-GATING proof.  Two parts:
+//  (1) unit-test vmxPlanInjection: IF-gating (IF=0 -> window, not injected),
+//      priority (highest vector first), and consume-once semantics.
+//  (2) hardware: a guest that starts with interrupts DISABLED (RFLAGS.IF=0),
+//      runs `sti; nop; hlt`, with vector 0x30 queued.  On the first entry the
+//      interrupt is NOT injectable (IF=0) so interrupt-window exiting is armed;
+//      once the guest enables interrupts the CPU exits (reason 7), we re-enter,
+//      and now-interruptible the vector is injected -> the handler runs.
+//      PASS = the handler ran (sentinel) after the window opened, proving
+//      delivery respects guest IF and the window mechanism works.
+__gshared bool g_vmxIntrWindowDone = false;
+public void vmxInterruptWindowProof() @nogc nothrow {
+    if (g_vmxIntrWindowDone) return;
+    g_vmxIntrWindowDone = true;
+    if (!vmxDetect()) return;
+
+    // (1) logic unit-test — no hardware needed.
+    {
+        Vcpu tv; tv.pendingIntrInfo = 0;
+        const InjectPlan e = vmxPlanInjection(&tv, 0x202, 0);           // empty -> nothing
+        tv.pendingIntrInfo = 0x8000_0000u | 0x41;
+        const InjectPlan w = vmxPlanInjection(&tv, 0x0002, 0);          // pending, IF=0 -> window
+        const InjectPlan hi = vmxPlanInjection(&tv, 0x202, 0);          // IF=1 -> inject 0x41
+        const InjectPlan em = vmxPlanInjection(&tv, 0x202, 0);          // consumed -> empty
+        Vcpu tv2; tv2.pendingIntrInfo = 0x8000_0000u | 0x20;           // IF=1 but STI-shadow
+        const InjectPlan sh = vmxPlanInjection(&tv2, 0x202, 0x1);       // shadow bit0 -> blocked
+        const bool ok = e.info == 0 && !e.wantWindow
+                     && w.info == 0 && w.wantWindow
+                     && hi.info == (0x8000_0000u | 0x41) && !hi.wantWindow
+                     && em.info == 0 && !em.wantWindow
+                     && sh.info == 0 && sh.wantWindow;
+        klog(ok ? "[vmx] inject-plan logic PASS (IF-gate + consume + STI-shadow)\n"
+                : "[vmx] inject-plan logic FAIL\n");
+    }
+
+    // (2) hardware interrupt-window test.
+    import core.virt.kvm : kvmCreateVm, kvmCreateVcpu;
+    const int tid = cast(int)g_current_task_id;
+    const long vh = kvmCreateVm(tid);
+    if (vh < 0) { klog("[vmx] intr-window: kvmCreateVm failed\n"); return; }
+    uint vo, vg; kvmUnpackHandle(cast(ulong)vh, vo, vg);
+    Vm* vm = vmCheck(vo, vg);
+    if (vm is null) { klog("[vmx] intr-window: vmCheck null\n"); return; }
+    const long ch = kvmCreateVcpu(vo, vg, 0);
+    if (ch < 0) { klog("[vmx] intr-window: kvmCreateVcpu failed\n"); return; }
+    uint co, cg; kvmUnpackHandle(cast(ulong)ch, co, cg);
+    Vcpu* vc = vcpuCheckObj(co, cg);
+    if (vc is null) { klog("[vmx] intr-window: vcpuCheckObj null\n"); return; }
+
+    const ulong gpage = alloc_phys_page();
+    if (gpage == 0) { klog("[vmx] intr-window: no guest page\n"); return; }
+    auto gp = cast(ubyte*)phys_to_virt(gpage);
+    foreach (i; 0 .. 4096) gp[i] = 0;
+    // 0x000: sti ; nop ; hlt  (FB 90 F4) — enable interrupts, clear the STI shadow, halt
+    gp[0x000] = 0xFB; gp[0x001] = 0x90; gp[0x002] = 0xF4;
+    // 0x040 handler: mov byte [0x800],0xA5 ; hlt
+    gp[0x040] = 0xC6; gp[0x041] = 0x05; gp[0x042] = 0x00; gp[0x043] = 0x08;
+    gp[0x044] = 0x00; gp[0x045] = 0x00; gp[0x046] = 0xA5; gp[0x047] = 0xF4;
+    // IDT[0x30] -> handler, GDT[1]/[2] flat code/data (same as intr-first-light)
+    gp[0x580] = 0x40; gp[0x581] = 0x00; gp[0x582] = 0x08; gp[0x583] = 0x00;
+    gp[0x584] = 0x00; gp[0x585] = 0x8E; gp[0x586] = 0x00; gp[0x587] = 0x00;
+    gp[0x608] = 0xFF; gp[0x609] = 0xFF; gp[0x60A] = 0x00; gp[0x60B] = 0x00;
+    gp[0x60C] = 0x00; gp[0x60D] = 0x9B; gp[0x60E] = 0xCF; gp[0x60F] = 0x00;
+    gp[0x610] = 0xFF; gp[0x611] = 0xFF; gp[0x612] = 0x00; gp[0x613] = 0x00;
+    gp[0x614] = 0x00; gp[0x615] = 0x93; gp[0x616] = 0xCF; gp[0x617] = 0x00;
+    if (!slatMap(&vm.slat, 0, gpage, 1 | 2 | 4)) { klog("[vmx] intr-window: slatMap failed\n"); return; }
+
+    KvmRegs regs;
+    regs.rsp = 0x0FF0; regs.rip = 0; regs.rflags = 0x2;   // IF=0 — interrupts DISABLED at start
+    KvmSRegs s;
+    s.cr0 = 0x1;
+    s.cs = vmxFlatSeg(0x08, 0xB, 1, 1, 1, 0xFFFFFFFF);
+    s.ds = vmxFlatSeg(0x10, 0x3, 1, 1, 1, 0xFFFFFFFF);
+    s.es = s.ss = s.fs = s.gs = s.ds;
+    s.tr = vmxFlatSeg(0x18, 0xB, 0, 0, 0, 0x67);
+    s.ldt.unusable = 1;
+    s.gdt.base = 0x600; s.gdt.limit = 0x17;
+    s.idt.base = 0x400; s.idt.limit = 0x1FF;
+
+    vmxInjectExtInt(vc, 0x30);   // queue while IF=0 -> must be withheld until the window opens
+    VirtExitInfo xi;
+    bool delivered = false, sawWindow = false;
+    int lastReason = -1;
+    foreach (iter; 0 .. 8) {
+        const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+        if (rc != VMX_OK) { lastReason = -2; break; }
+        lastReason = cast(int)xi.hardwareReason;
+        if (xi.hardwareReason == EXIT_REASON_INTERRUPT_WINDOW) { sawWindow = true; continue; } // re-enter
+        if (xi.hardwareReason == EXIT_REASON_HLT) break;
+        break; // unexpected exit
+    }
+    delivered = (gp[0x800] == 0xA5);
+    if (delivered && sawWindow) {
+        klog("[vmx] INTR WINDOW PASS: IF=0 held the interrupt; window opened -> delivered (handler ran)\n");
+    } else {
+        klog("[vmx] intr-window: FAIL delivered=");
+        klog_hex(delivered ? 1 : 0);
+        klog(" sawWindow="); klog_hex(sawWindow ? 1 : 0);
+        klog(" lastReason="); klog_hex(cast(ulong)cast(uint)lastReason); klog("\n");
     }
 }

@@ -543,34 +543,34 @@ public void virtSelfTest() {
                 vtCheck(vmResolveGsiVector(vm, 7, apic, vec) && vec == 0x51, "gsi-resolve-7");
                 vtCheck(!vmResolveGsiVector(vm, 9, apic, vec), "gsi-resolve-miss");
 
-                // KVM_IRQ_LINE assert -> queue; de-assert -> no-op
-                vm.vcpus[0].pendingIntrInfo = 0;
+                // KVM_IRQ_LINE assert -> queue (IRR bit set); de-assert -> no-op
+                vmVcpuClearPending(&vm.vcpus[0]);
                 vtCheck(vmRaiseIrqLine(vm, 5, 1) == 0, "irqline-assert-ok");
-                vtCheck(vm.vcpus[0].pendingIntrInfo == (0x8000_0000u | 0x41), "irqline-injected");
-                vm.vcpus[0].pendingIntrInfo = 0;
+                vtCheck(vmVcpuHasPendingVector(&vm.vcpus[0], 0x41), "irqline-injected");
+                vmVcpuClearPending(&vm.vcpus[0]);
                 vtCheck(vmRaiseIrqLine(vm, 5, 0) == 0, "irqline-deassert-ok");
-                vtCheck(vm.vcpus[0].pendingIntrInfo == 0, "irqline-deassert-noop");
+                vtCheck(!vmVcpuHasPendingVector(&vm.vcpus[0], 0x41), "irqline-deassert-noop");
                 vtCheck(vmRaiseIrqLine(vm, 9, 1) == -22, "irqline-noroute-einval");
 
                 // KVM_SIGNAL_MSI direct inject
-                vm.vcpus[0].pendingIntrInfo = 0;
+                vmVcpuClearPending(&vm.vcpus[0]);
                 vtCheck(vmSignalMsi(vm, 0xFEE00000, 0, 0x61) == 0, "signalmsi-ok");
-                vtCheck(vm.vcpus[0].pendingIntrInfo == (0x8000_0000u | 0x61), "signalmsi-injected");
+                vtCheck(vmVcpuHasPendingVector(&vm.vcpus[0], 0x61), "signalmsi-injected");
                 vtCheck(vmSignalMsi(vm, 0xFEE00000, 0, 0x05) == -22, "signalmsi-lowvec-einval");
 
                 // KVM_IRQFD bridge: a signaled eventfd (fake eid) raises its bound
                 // GSI -> resolves (route 5 -> 0x41) -> injects.  Deassign silences it.
                 const uint TEID = 13;
-                vm.vcpus[0].pendingIntrInfo = 0;
+                vmVcpuClearPending(&vm.vcpus[0]);
                 vtCheck(vmIrqfdAssign(vm, TEID, 5) == 0, "irqfd-assign");
                 vtCheck(vmIrqfdAssign(vm, TEID, 5) == -17, "irqfd-dup-eexist");
                 vmIrqfdSignal(TEID);
-                vtCheck(vm.vcpus[0].pendingIntrInfo == (0x8000_0000u | 0x41), "irqfd-signal-injected");
-                vm.vcpus[0].pendingIntrInfo = 0;
+                vtCheck(vmVcpuHasPendingVector(&vm.vcpus[0], 0x41), "irqfd-signal-injected");
+                vmVcpuClearPending(&vm.vcpus[0]);
                 vtCheck(vmIrqfdDeassign(vm, TEID, 5) == 0, "irqfd-deassign");
                 vtCheck(vmIrqfdDeassign(vm, TEID, 5) == -22, "irqfd-deassign-unknown");
                 vmIrqfdSignal(TEID); // no active binding now -> no injection
-                vtCheck(vm.vcpus[0].pendingIntrInfo == 0, "irqfd-deassign-nosignal");
+                vtCheck(!vmVcpuHasPendingVector(&vm.vcpus[0], 0x41), "irqfd-deassign-nosignal");
 
                 // negative routing sets (leave the table empty, fail-closed)
                 KvmIrqRoutingEntry bad = r[0];

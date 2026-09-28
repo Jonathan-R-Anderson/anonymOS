@@ -168,13 +168,18 @@ struct Vcpu {
     ulong[18] regs;     // KvmRegs order: rax..rflags (cached SET_REGS)
     bool  regsSet;
     bool  sregsSet;
-    uint  pendingIntrInfo; // VMX VM-entry interruption-information to inject on the
-                        // next entry (bit31 valid | type<<8 | vector); 0 = none.
-                        // Written into VMCS_ENTRY_INTR_INFO by the VMX backend and
-                        // cleared once the CPU consumes it on a successful entry.
-                        // This is the guest-facing end of the interrupt-delivery
-                        // path (GSI routing / irqfd resolve TO a vector, then land
-                        // here).  Appended, never inserted.
+    uint  pendingIntrInfo; // Highest-priority pending external interrupt, in VMX
+                        // VM-entry interruption-information form (bit31 valid |
+                        // type=external(0) | vector); 0 = none.  Set by the
+                        // delivery path (GSI routing / irqfd / SIGNAL_MSI resolve
+                        // TO a vector).  Consumed at VM-entry: the backend injects
+                        // it when the guest is interruptible (RFLAGS.IF), else arms
+                        // interrupt-window exiting to inject as soon as it is.
+                        // NOTE: single-slot (highest vector wins), not a full
+                        // 256-bit LAPIC IRR — a wider IRR grows Vcpu/g_vmPool and
+                        // tripped a size-dependent boot regression (see
+                        // [[vmx-guest-entry-firstlight]]); deferred pending that
+                        // investigation.  Appended, never inserted.
     // (sregs/fpu/msr/cpuid blobs live in the KVM layer's per-vCPU cache;
     //  the native object keeps only scheduling-relevant state.)
 }
@@ -452,8 +457,21 @@ public bool vmResolveGsiVector(Vm* vm, uint gsi, out ubyte apicId, out ubyte vec
 // wired, svmEnter will translate this field.)
 public bool vmQueueExtInt(Vm* vm, uint vcpuIdx, ubyte vector) {
     if (vm is null || vcpuIdx >= vm.vcpuCount) return false;
-    vm.vcpus[vcpuIdx].pendingIntrInfo = 0x8000_0000u | vector;
+    auto vc = &vm.vcpus[vcpuIdx];
+    // single-slot pending: keep the highest-priority (highest vector) pending.
+    if ((vc.pendingIntrInfo & 0x8000_0000u) == 0 || vector >= (vc.pendingIntrInfo & 0xFF))
+        vc.pendingIntrInfo = 0x8000_0000u | vector;
     return true;
+}
+
+// Test/inspection helpers for the pending-interrupt slot (boot self-tests).
+public bool vmVcpuHasPendingVector(const(Vcpu)* vc, ubyte vector) {
+    if (vc is null) return false;
+    return (vc.pendingIntrInfo & 0x8000_0000u) != 0 && (vc.pendingIntrInfo & 0xFF) == vector;
+}
+public void vmVcpuClearPending(Vcpu* vc) {
+    if (vc is null) return;
+    vc.pendingIntrInfo = 0;
 }
 
 // Map an MSI destination-ID to a vCPU index.  First tier: physical, flat —

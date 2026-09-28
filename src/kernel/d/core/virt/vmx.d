@@ -677,13 +677,20 @@ private bool vmxProgramVmcs(Vm* vm, Vcpu* vc, KvmRegs* regs, const KvmSRegs* sre
     const ulong hidtBase = *cast(ulong*)(&idtr[2]);
     vmxWrite(VMCS_HOST_GDTR_BASE, hgdtBase);
     vmxWrite(VMCS_HOST_IDTR_BASE, hidtBase);
-    // host TR base: walk the GDT entry named by the TR selector
+    // host TR base: walk the GDT entry named by the TR selector.  64-bit TSS descriptor:
+    //   d[0] bits 16..31 = base[15:0]; d[1] bits 0..7 = base[23:16], bits 24..31 = base[31:24];
+    //   d[2] = base[63:32].  base[31:24] is ALREADY at bit 24 in d[1] — it must NOT be shifted.
+    // (It used to be `>> 8`, which folded base[31:24] into bits 16..23: CPU0's real TSS at
+    //  0xffffffff8aa146d0 became 0xffffffff00ab46d0.  Every VM exit reloads TR from this field,
+    //  so after the first boot proof CPU0's TSS pointed at unmapped memory, and the first
+    //  ring3->ring0 interrupt/exception on CPU0 (reading RSP0/IST) triple-faulted — which is
+    //  what killed Hyprland ~26 s into every VirtualBox boot, and the Cloud Hypervisor probe.)
     const uint trIdx = (htr & 0xFFF8);
     ulong htrBase = 0;
     if (trIdx != 0) {
         auto d = cast(uint*)(hgdtBase + trIdx);
         const ulong lo = (cast(ulong)(d[0] >> 16) & 0xFFFF) | ((cast(ulong)(d[1] & 0xFF)) << 16)
-                       | ((cast(ulong)(d[1] & 0xFF00_0000)) >> 8);
+                       | (cast(ulong)(d[1] & 0xFF00_0000));
         const ulong hi = cast(ulong)d[2];                    // upper 32 bits of a 64-bit TSS base
         htrBase = lo | (hi << 32);
     }

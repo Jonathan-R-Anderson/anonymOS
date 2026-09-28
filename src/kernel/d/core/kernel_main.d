@@ -5898,6 +5898,7 @@ void d_kernel_main() {
     { import core.virt.vmx : vmxFirstLightProof; vmxFirstLightProof(); } // VIRT: Intel VMX guest-entry first-light (VMXON + VMLAUNCH a CPUID guest); needs nested EPT
     { import core.virt.vmx : vmxInterruptFirstLightProof; vmxInterruptFirstLightProof(); } // VIRT: interrupt-injection first-light (inject vector 0x30 → guest IDT handler runs); needs nested EPT
     { import core.virt.vmx : vmxInterruptWindowProof; vmxInterruptWindowProof(); } // VIRT: IF-gating + interrupt-window exiting (IF=0 holds the IRQ; window opens → delivered)
+    { import core.virt.mmio : mmioDecodeSelfTest; mmioDecodeSelfTest(); } // VIRT: MMIO instruction decoder (mov r/m<->r, imm, movzx/sx) — foundation for device MMIO + ioeventfd
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)

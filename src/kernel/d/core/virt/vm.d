@@ -654,6 +654,16 @@ public long vmIoeventfdMatch(Vm* vm, ulong addr, ubyte len, ulong value) {
     return -1;
 }
 
+// A stable flat index for (VM slot, vCPU index) — 0 .. VIRT_MAX_VMS*VIRT_MAX_VCPUS-1.
+// Used to key per-vCPU side tables (e.g. pending MMIO-read completion) WITHOUT
+// growing the Vcpu struct (which trips a size-dependent boot regression).
+public uint vmFlatVcpuIndex(Vm* vm, Vcpu* vc) {
+    if (vm is null || vc is null) return 0;
+    const size_t slot = (cast(size_t)vm - cast(size_t)&g_vmPool[0]) / Vm.sizeof;
+    const uint idx = vc.index;
+    return cast(uint)(slot * VIRT_MAX_VCPUS_PER_VM + (idx < VIRT_MAX_VCPUS_PER_VM ? idx : 0));
+}
+
 // Look up a vCPU by (vmObj, vmGen, index) with full stale checks.
 public Vcpu* vcpuCheck(uint vmObj, uint vmGen, uint index) {
     Vm* vm = vmCheck(vmObj, vmGen);

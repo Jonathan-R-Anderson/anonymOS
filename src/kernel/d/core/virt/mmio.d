@@ -157,21 +157,46 @@ public MmioAccess mmioDecode(const(ubyte)* p, size_t n, bool is64) {
 // x86 GPR number (ModRM/REX encoding) -> KvmRegs field index.  KvmRegs order is
 // rax,rbx,rcx,rdx,rsi,rdi,rsp,rbp,r8..r15; the ModRM/REX number order is
 // rax,rcx,rdx,rbx,rsp,rbp,rsi,rdi,r8..r15 — they differ for indices 1..7.
-private ulong mmioRegValue(const(KvmRegs)* regs, ubyte x86reg) {
-    ubyte idx;
+private ubyte mmioX86ToKvmIdx(ubyte x86reg) {
     switch (x86reg) {
-        case 0:  idx = 0; break; // rax
-        case 1:  idx = 2; break; // rcx
-        case 2:  idx = 3; break; // rdx
-        case 3:  idx = 1; break; // rbx
-        case 4:  idx = 6; break; // rsp
-        case 5:  idx = 7; break; // rbp
-        case 6:  idx = 4; break; // rsi
-        case 7:  idx = 5; break; // rdi
-        case 8: .. case 15: idx = x86reg; break; // r8..r15 line up
-        default: return 0;
+        case 0:  return 0;  // rax
+        case 1:  return 2;  // rcx
+        case 2:  return 3;  // rdx
+        case 3:  return 1;  // rbx
+        case 4:  return 6;  // rsp
+        case 5:  return 7;  // rbp
+        case 6:  return 4;  // rsi
+        case 7:  return 5;  // rdi
+        case 8: .. case 15: return x86reg; // r8..r15 line up
+        default: return 0xFF;
     }
-    return (&regs.rax)[idx];
+}
+private ulong mmioRegValue(const(KvmRegs)* regs, ubyte x86reg) {
+    const ubyte idx = mmioX86ToKvmIdx(x86reg);
+    return (idx == 0xFF) ? 0 : (&regs.rax)[idx];
+}
+
+// Write a completed MMIO READ value into a destination GPR, applying the load's
+// width and extension: size 8 -> full 64; size 4 -> zero-extend to 64 (x86 rule
+// for 32-bit writes); size 1/2 -> zero-extend (MOVZX), sign-extend (MOVSX), or
+// merge into the low bits preserving the upper bits (plain MOV r8/r16).
+public void mmioWriteRegValue(KvmRegs* regs, ubyte x86reg, ulong value,
+                              ubyte size, bool zeroExt, bool signExt) @nogc nothrow {
+    if (regs is null) return;
+    const ubyte idx = mmioX86ToKvmIdx(x86reg);
+    if (idx == 0xFF) return;
+    ulong* slot = &(&regs.rax)[idx];
+    if (size >= 8) { *slot = value; return; }
+    const ulong mask = (1UL << (size * 8)) - 1;
+    ulong v = value & mask;
+    if (signExt) {                                   // MOVSX
+        const ulong sbit = 1UL << (size * 8 - 1);
+        *slot = (v & sbit) ? (v | ~mask) : v;
+    } else if (zeroExt || size == 4) {               // MOVZX, or 32-bit load (zero-extends to 64)
+        *slot = v;
+    } else {                                          // plain byte/word load: preserve upper bits
+        *slot = (*slot & ~mask) | v;
+    }
 }
 
 // Read `len` bytes at guest-physical `gpa` through EPT (per-page), into dst.
@@ -371,8 +396,24 @@ public void mmioDecodeSelfTest() @nogc nothrow {
       auto a = mmioDecode(b.ptr, 1, true);
       mtCheck(!a.valid, "truncated-rejected"); }
 
+    // ---- read-completion writeback extension semantics ----
+    { KvmRegs r; foreach (i; 0 .. 18) (&r.rax)[i] = 0;
+      (&r.rax)[0] = 0xFFFF_FFFF_FFFF_FFFFUL;
+      mmioWriteRegValue(&r, 0, 0x0000_00AB, 4, false, false);          // 32-bit load zero-extends to 64
+      mtCheck((&r.rax)[0] == 0xAB, "wb-load32-zeroext"); }
+    { KvmRegs r; foreach (i; 0 .. 18) (&r.rax)[i] = 0;
+      (&r.rax)[0] = 0xFFFF_FFFF_FFFF_FF00UL;
+      mmioWriteRegValue(&r, 0, 0x0000_005A, 1, false, false);          // byte load merges (preserve upper)
+      mtCheck((&r.rax)[0] == 0xFFFF_FFFF_FFFF_FF5AUL, "wb-load8-merge"); }
+    { KvmRegs r; foreach (i; 0 .. 18) (&r.rax)[i] = 0;
+      mmioWriteRegValue(&r, 0, 0x0000_00FF, 1, false, true);           // MOVSX byte 0xFF -> -1
+      mtCheck((&r.rax)[0] == 0xFFFF_FFFF_FFFF_FFFFUL, "wb-movsx-byte"); }
+    { KvmRegs r; foreach (i; 0 .. 18) (&r.rax)[i] = 0xFFFF_FFFF_FFFF_FFFFUL;
+      mmioWriteRegValue(&r, 0, 0x0000_00FF, 1, true, false);           // MOVZX byte 0xFF -> 0x0000..FF
+      mtCheck((&r.rax)[0] == 0xFF, "wb-movzx-byte"); }
+
     if (g_mmioTestFails == 0)
-        klog("[mmio] decode selftest PASS (mov r/m<->r, imm, movzx/sx, disp/sib/riprel, rex; reg-direct+non-mov rejected)\n");
+        klog("[mmio] decode selftest PASS (mov r/m<->r, imm, movzx/sx, disp/sib/riprel, rex; writeback ext; reg-direct+non-mov rejected)\n");
     else
         klog("[mmio] decode selftest FAILURES logged above\n");
 }

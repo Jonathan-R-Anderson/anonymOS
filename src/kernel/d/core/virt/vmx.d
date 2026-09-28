@@ -1299,3 +1299,90 @@ public void vmxIoeventfdFirstLightProof() @nogc nothrow {
     posixEventfdTestFree(eid);
     free_phys_page(rpage);
 }
+
+// MMIO READ completion proof: a guest load from an unmapped MMIO address exits;
+// we (as a userspace VMM would) supply the read value, complete it into the
+// destination register with the right width, advance RIP, and resume.  Asserts
+// the register holds the supplied value and the guest ran on.
+__gshared bool g_vmxMmioReadDone = false;
+public void vmxMmioReadCompletionProof() @nogc nothrow {
+    if (g_vmxMmioReadDone) return;
+    g_vmxMmioReadDone = true;
+    if (!vmxDetect()) return;
+    import core.virt.kvm : kvmCreateVm, kvmCreateVcpu;
+    import core.virt.kvmabi : KvmRun, KVM_EXIT_MMIO;
+    import core.virt.vmexit : virtDispatchExit;
+    import core.virt.mmio : mmioEnrichMmioExit, MmioAccess, mmioWriteRegValue;
+
+    const int tid = cast(int)g_current_task_id;
+    const long vh = kvmCreateVm(tid);
+    if (vh < 0) { klog("[vmx] mmio-read: kvmCreateVm failed\n"); return; }
+    uint vo, vg; kvmUnpackHandle(cast(ulong)vh, vo, vg);
+    Vm* vm = vmCheck(vo, vg);
+    if (vm is null) { klog("[vmx] mmio-read: vmCheck null\n"); return; }
+    const long ch = kvmCreateVcpu(vo, vg, 0);
+    if (ch < 0) { klog("[vmx] mmio-read: kvmCreateVcpu failed\n"); return; }
+    uint co, cg; kvmUnpackHandle(cast(ulong)ch, co, cg);
+    Vcpu* vc = vcpuCheckObj(co, cg);
+    if (vc is null) { klog("[vmx] mmio-read: vcpuCheckObj null\n"); return; }
+
+    const ulong gpage = alloc_phys_page();
+    if (gpage == 0) { klog("[vmx] mmio-read: no guest page\n"); return; }
+    auto gp = cast(ubyte*)phys_to_virt(gpage);
+    foreach (i; 0 .. 4096) gp[i] = 0;
+    // mov eax, [0x2000]  (8B 05 00 20 00 00) ; hlt
+    gp[0] = 0x8B; gp[1] = 0x05; gp[2] = 0x00; gp[3] = 0x20; gp[4] = 0x00; gp[5] = 0x00;
+    gp[6] = 0xF4;
+    if (!slatMap(&vm.slat, 0, gpage, 1 | 2 | 4)) { klog("[vmx] mmio-read: slatMap failed\n"); return; }
+
+    KvmRegs regs;
+    regs.rsp = 0x0FF0; regs.rip = 0; regs.rflags = 0x2; regs.rax = 0xDEAD_DEAD_DEAD_DEAD;
+    KvmSRegs s;
+    s.cr0 = 0x1;
+    s.cs = vmxFlatSeg(0x08, 0xB, 1, 1, 1, 0xFFFFFFFF);
+    s.ds = vmxFlatSeg(0x10, 0x3, 1, 1, 1, 0xFFFFFFFF);
+    s.es = s.ss = s.fs = s.gs = s.ds;
+    s.tr = vmxFlatSeg(0x18, 0xB, 0, 0, 0, 0x67);
+    s.ldt.unusable = 1;
+    s.gdt.limit = 0xFFFF; s.idt.limit = 0xFFFF;
+
+    const ulong rpage = alloc_phys_page();
+    if (rpage == 0) { klog("[vmx] mmio-read: no run page\n"); return; }
+    auto run = cast(KvmRun*)phys_to_virt(rpage);
+
+    int lastReason = -1;
+    foreach (iter; 0 .. 4) {
+        VirtExitInfo xi;
+        const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+        if (rc != VMX_OK) { lastReason = -2; break; }
+        lastReason = cast(int)xi.hardwareReason;
+        if (xi.hardwareReason == EXIT_REASON_EPT_VIOLATION) {
+            foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
+            cast(void) virtDispatchExit(xi, run, vm, vc);
+            MmioAccess acc;
+            mmioEnrichMmioExit(vm, vc, &regs, &s, run, acc);
+            if (acc.valid && !acc.isWrite) {
+                // as a userspace VMM would: provide the device read value...
+                run.u.mmio.data[0] = 0xBE; run.u.mmio.data[1] = 0xBA;
+                run.u.mmio.data[2] = 0xFE; run.u.mmio.data[3] = 0xCA; // 0xCAFEBABE LE
+                ulong val = 0;
+                foreach (k; 0 .. acc.size) val |= (cast(ulong)run.u.mmio.data[k]) << (8 * k);
+                // ...complete it into the destination register + advance RIP.
+                mmioWriteRegValue(&regs, acc.reg, val, acc.size, acc.zeroExtend, acc.signExtend);
+                regs.rip += acc.insnLen;
+                continue;
+            }
+            break;
+        }
+        if (xi.hardwareReason == EXIT_REASON_HLT) break;
+        break;
+    }
+
+    if (regs.rax == 0xCAFEBABE && lastReason == cast(int)EXIT_REASON_HLT) {
+        klog("[vmx] MMIO READ COMPLETION PASS: load result 0xCAFEBABE written to EAX, guest resumed (HLT)\n");
+    } else {
+        klog("[vmx] mmio-read: FAIL rax="); klog_hex(regs.rax);
+        klog(" lastReason="); klog_hex(cast(ulong)cast(uint)lastReason); klog("\n");
+    }
+    free_phys_page(rpage);
+}

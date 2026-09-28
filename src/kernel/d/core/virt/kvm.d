@@ -673,6 +673,21 @@ long kvmVcpuMmap(uint vcpuObj, uint vcpuGen, ulong offset, ulong* physOut) {
 // Enter the guest (KVM_RUN).  Without virtualization hardware this fails
 // cleanly with -ENODEV AFTER doing the full state dance (stale checks,
 // kvm_run mapping, immediate_exit, state transitions) so the [HW] phase only
+// Pending MMIO-read completion, per vCPU, kept in a SIDE table (not the Vcpu
+// struct — growing Vcpu trips a size-dependent boot regression).  Set when an
+// MMIO read exits to userspace; applied on the next KVM_RUN (userspace has
+// filled run.u.mmio.data): the value is written into the destination register
+// and RIP is advanced past the load.
+private struct MmioReadPend {
+    bool  active;
+    ubyte reg;       // x86 GPR number
+    ubyte size;      // 1/2/4/8
+    ubyte insnLen;
+    bool  zeroExt;   // MOVZX
+    bool  signExt;   // MOVSX
+}
+private __gshared MmioReadPend[VIRT_MAX_VMS * VIRT_MAX_VCPUS_PER_VM] g_mmioReadPend;
+
 // has to fill in the backend call.
 long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
     Vcpu* vc = vcpuCheckObj(vcpuObj, vcpuGen);
@@ -689,6 +704,21 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
     vmSetDiag(vm, VirtDiag.None, 0);
 
     KvmRun* run = cast(KvmRun*)phys_to_virt(vc.runPhys);
+    // Complete a pending MMIO read from the previous exit: userspace has filled
+    // run.u.mmio.data; write it into the destination register and advance RIP
+    // past the load before running the guest again.
+    {
+        import core.virt.mmio : mmioWriteRegValue;
+        auto pend = &g_mmioReadPend[vmFlatVcpuIndex(vm, vc)];
+        if (pend.active) {
+            pend.active = false;
+            ulong val = 0;
+            foreach (k; 0 .. pend.size) val |= (cast(ulong) run.u.mmio.data[k]) << (8 * k);
+            mmioWriteRegValue(cast(KvmRegs*)&vc.regs[0], pend.reg, val,
+                              pend.size, pend.zeroExt, pend.signExt);
+            vc.regs[16] += pend.insnLen; // KvmRegs index 16 = rip
+        }
+    }
     // immediate_exit: userspace asked for an immediate KVM_EXIT_INTR.
     if (run.immediateExit != 0) {
         run.immediateExit = 0;
@@ -762,6 +792,17 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
                     vc.regs[16] = regs.rip;           // KvmRegs index 16 = rip
                     continue;                          // resume the guest, no userspace exit
                 }
+            }
+            // MMIO READ: remember what to complete on re-entry (userspace fills
+            // run.u.mmio.data), then exit to userspace.
+            if (acc.valid && !acc.isWrite) {
+                auto pend = &g_mmioReadPend[vmFlatVcpuIndex(vm, vc)];
+                pend.active  = true;
+                pend.reg     = acc.reg;
+                pend.size    = acc.size;
+                pend.insnLen = acc.insnLen;
+                pend.zeroExt = acc.zeroExtend;
+                pend.signExt = acc.signExtend;
             }
         }
         if (act == VmExitAction.VmContained)

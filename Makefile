@@ -164,6 +164,14 @@ DROPBEAR_SERVER_BIN := deps/dropbear/install/bin/dropbear   # SSH-in: the SSH se
 # VMM: Cloud Hypervisor (static-musl), built by scripts/build-cloud-hypervisor.sh
 # from a pinned upstream commit (source NOT vendored — see docs/hw-bringup/CLOUD_HYPERVISOR.md).
 CLOUD_HYPERVISOR_BIN := deps/cloud-hypervisor/target/x86_64-unknown-linux-musl/release/cloud-hypervisor
+# VMM: the pfSense/Netgate installer ISO the firewall VM boots.  Git-ignored (>100 MiB);
+# reassembled from deps/pfsense/*.part by `make pfsense-iso`.  Staged as an install-media boot
+# module /pfsense.iso; on a plain (non-encrypted) A/B install the in-OS installer streams it to
+# an ISO-store partition on the TARGET disk (see installBegin / INST_PHASE_ISO_IMAGE in
+# veracrypt_impl.d), and the installed OS exposes it as a deletable /home/user/isos/pfsense.iso.
+# Full-disk and Hidden-OS installs skip it, as does a target disk too small for it (logged).
+# It is NEVER placed in the 512 MiB installed ESP.  Optional (opt-in: PFSENSE=1).
+PFSENSE_ISO := deps/netgate-installer-v1.2-RELEASE-amd64.iso
 DBUSTEST_BIN := build/hos-dbus-test
 INOTIFYTEST_BIN := build/inotify-test
 NMLAUNCH_BIN := build/hos-nm-launch
@@ -1102,6 +1110,27 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 		echo "Included Cloud Hypervisor (VMM; needs a domain with DEVCLASS_VIRT / dev/kvm)"; \
 	else \
 		echo "Cloud Hypervisor NOT staged (run scripts/build-cloud-hypervisor.sh)"; \
+	fi
+
+	@# VMM: the pfSense installer ISO as an install-media boot module -> Limine loads it into RAM
+	@# on the LIVE installer, where instFindModule("pfsense.iso") locates it and a plain (non-
+	@# encrypted) A/B install streams it to the TARGET disk's ISO store, so the installed OS has a
+	@# deletable copy at /home/user/isos/pfsense.iso (Full-disk / Hidden-OS installs, and disks too
+	@# small for it, install without it).  Like decoy-linux.ext4 it is EXCLUDED from the 512 MiB
+	@# installed ESP by mk-install-iso.sh (it can never fit there) AND from the boot-integrity
+	@# manifest (EXCLUDED_MODULES in build-boot-integrity-manifest.py), so an attested install
+	@# does not look for it.
+	@# OPT-IN (PFSENSE=1) and NOT default-on-file-presence: it is ~1 GiB, which pushes the whole
+	@# hos-install.iso PAST 2 GiB, and VirtualBox's UEFI El Torito boot fails on an ISO over 2 GiB
+	@# ("No bootable option or device was found") — so a plain `make iso` must stay under that.
+	@if [ "$(PFSENSE)" = "1" ] && [ -f $(PFSENSE_ISO) ]; then \
+		cp $(PFSENSE_ISO) cd/pfsense.iso; \
+		printf '    module_path: boot():/pfsense.iso\n' >> cd/boot/limine/limine.conf; \
+		echo "Included pfsense.iso ($$(du -h $(PFSENSE_ISO) | cut -f1); PFSENSE=1; the real ~1 GiB image pushes hos-install.iso past 2 GiB; installer streams it to the target ISO store)"; \
+	elif [ "$(PFSENSE)" = "1" ]; then \
+		echo "PFSENSE=1 but $(PFSENSE_ISO) missing — run 'make pfsense-iso' first"; \
+	else \
+		echo "pfsense.iso NOT staged (opt-in: 'PFSENSE=1 make iso'; adds ~1 GiB, ISO exceeds 2 GiB)"; \
 	fi
 
 	@# AXON anonymous-overlay node (dendritic/syndichan-node) — the I2P replacement.  Staged as a

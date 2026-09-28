@@ -195,6 +195,11 @@ struct GptLayout {
     // UPDATE U1-B A/B layout: ESP-boot (arbiter) + slot-A + slot-B partitions.
     ulong bootEspFirst, bootEspLast;
     ulong slotAFirst, slotBFirst;
+    // VMM: an optional ISO-store partition after slot-B (holds an installer ISO the user
+    // can boot in a VM and later delete).  Zero when no ISO store is written.  It uses the generic
+    // MS-Basic-Data type — NOT a private GUID — so the disk still looks ordinary (see the
+    // deniability note on gptLastPartition); the installed OS finds it by its ISO9660 content.
+    ulong isoFirst, isoLast;
 }
 
 private ulong align2048(ulong x) { return (x + 2047) & ~cast(ulong)2047; }
@@ -206,7 +211,7 @@ private ulong align2048(ulong x) { return (x + 2047) & ~cast(ulong)2047; }
 // FIXED LBA 34 in the pre-partition gap (partitions start at 2048), matching
 // core.bootstate.BOOTSTATE_LBA and the arbiter's hardcoded read.
 bool gptWriteABToDisk(int diskIdx, ulong diskSectors, ulong bootEspSectors,
-                      ulong espSectors, ref GptLayout L) {
+                      ulong espSectors, ulong isoSectors, ref GptLayout L) {
     L.diskSectors = diskSectors;
     L.bootEspFirst = 2048;
     L.bootEspLast  = L.bootEspFirst + bootEspSectors - 1;
@@ -215,8 +220,17 @@ bool gptWriteABToDisk(int diskIdx, ulong diskSectors, ulong bootEspSectors,
     L.espLast      = L.slotAFirst + espSectors - 1;
     L.slotBFirst   = align2048(L.espLast + 1);
     const ulong slotBLast = L.slotBFirst + espSectors - 1;
+    // Optional ISO-store partition, appended AFTER slot-B so it stays the last partition and
+    // the object store's free-tail lookup keeps working (its tail lands after the ISO).  The
+    // installBegin size check guarantees ≥64 MiB is still left past the ISO for the store.
+    ulong lastPartLast = slotBLast;
+    if (isoSectors > 0) {
+        L.isoFirst = align2048(slotBLast + 1);
+        L.isoLast  = L.isoFirst + isoSectors - 1;
+        lastPartLast = L.isoLast;
+    }
     const ulong lastUse = (diskSectors - 1) - 1 - ENTRY_SECTORS;
-    if (slotBLast > lastUse) return false;               // disk too small for A/B
+    if (lastPartLast > lastUse) return false;            // disk too small for A/B (+ISO)
 
     __gshared ubyte[PRIMARY_SECTORS * SECTOR] pbuf;
     foreach (i; 0 .. PRIMARY_SECTORS * SECTOR) pbuf[i] = 0;
@@ -231,6 +245,8 @@ bool gptWriteABToDisk(int diskIdx, ulong diskSectors, ulong bootEspSectors,
     writeEntry(0, GUID_ESP,           L.bootEspFirst, L.bootEspLast, baseSeed);
     writeEntry(1, GUID_MS_BASIC_DATA, L.slotAFirst,   L.espLast,     baseSeed + 0x100);
     writeEntry(2, GUID_MS_BASIC_DATA, L.slotBFirst,   slotBLast,     baseSeed + 0x200);
+    if (isoSectors > 0)
+        writeEntry(3, GUID_MS_BASIC_DATA, L.isoFirst, L.isoLast,     baseSeed + 0x300);
     gptFinalize(pbuf.ptr, diskSectors, baseSeed);
 
     const ulong lastLba = diskSectors - 1;

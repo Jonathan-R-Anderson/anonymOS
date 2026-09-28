@@ -42,11 +42,39 @@ INSTALL_LIMCONF="$(mktemp)"
 cleanup_install_tmp() { rm -rf "$ESP_ROOT"; rm -f "$INSTALL_PLACEHOLDER" "$INSTALL_LIMCONF" "${ANOS_KEY_PLACEHOLDER:-}" esp.img hidden-esp.img esp-boot.img esp-preboot.img; }
 trap cleanup_install_tmp EXIT
 
-cp -a cd/. "$ESP_ROOT"/
-rm -f "$ESP_ROOT/esp-image" "$ESP_ROOT/esp-hidden-image" "$ESP_ROOT/decoy-linux.ext4"
+# The large install-media-only payloads never belong in the pristine installed ESP: the live
+# installer streams them to their own TARGET-disk partitions (decoy-linux.ext4 on a Hidden-OS
+# install, pfsense.iso into the ISO store on a plain A/B install), and pfsense.iso (~1 GiB)
+# cannot fit a 512 MiB ESP anyway.  Copy WITHOUT them rather than copy-then-delete, so a
+# PFSENSE=1 build does not push ~2 GiB of dead weight through $TMPDIR (often a small tmpfs).
+# The rm below is a safety net; each removal is mirrored by its limine.conf module line, and
+# each must also be in EXCLUDED_MODULES of scripts/build-boot-integrity-manifest.py (checked below).
+tar -C cd --exclude=./esp-image --exclude=./esp-hidden-image --exclude=./decoy-linux.ext4 \
+    --exclude=./pfsense.iso -cf - . | tar -C "$ESP_ROOT" -xf -
+rm -f "$ESP_ROOT/esp-image" "$ESP_ROOT/esp-hidden-image" "$ESP_ROOT/decoy-linux.ext4" "$ESP_ROOT/pfsense.iso"
 sed -i '\#module_path: boot():/esp-image#d' "$ESP_ROOT/boot/limine/limine.conf"
 sed -i '\#module_path: boot():/esp-hidden-image#d' "$ESP_ROOT/boot/limine/limine.conf"
 sed -i '\#module_path: boot():/decoy-linux.ext4#d' "$ESP_ROOT/boot/limine/limine.conf"
+sed -i '\#module_path: boot():/pfsense.iso#d' "$ESP_ROOT/boot/limine/limine.conf"
+
+# The boot-integrity manifest ships in this ESP unchanged, and an attested install verifies every
+# module it lists -- one the installed ESP no longer carries halts that install on EVERY boot.  So
+# refuse to build an ESP whose manifest names a module stripped above.
+if [ -f "$ESP_ROOT/zksync-attestation.json" ]; then
+    python3 - "$ESP_ROOT" <<'PY'
+import json, re, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+rx = re.compile(r"^\s*module_path:\s*boot\(\):/(.+?)\s*$")
+loaded = {Path(m.group(1)).name for m in map(rx.match,
+          (root / "boot/limine/limine.conf").read_text(encoding="utf-8").splitlines()) if m}
+files = json.loads((root / "zksync-attestation.json").read_text(encoding="utf-8"))["files"]
+missing = [f["path"] for f in files if f["path"] not in loaded or not (root / f["path"]).is_file()]
+if missing:
+    sys.exit("  boot-integrity manifest lists modules the installed ESP lacks: " + ", ".join(missing)
+             + " -- add them to EXCLUDED_MODULES in scripts/build-boot-integrity-manifest.py")
+PY
+fi
 
 USED_MB=$(du -sm "$ESP_ROOT" | cut -f1)
 if [ "$USED_MB" -ge "$ESP_MB" ]; then

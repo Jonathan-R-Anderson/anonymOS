@@ -4932,8 +4932,8 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 292: return linux_sys_dup3(a, b, c);
         case 293: return linux_sys_pipe2(a, b);
         case 294: return linux_sys_inotify_init1(a);
-        case 295: return linux_sys_pread64(a, b, c, d);
-        case 296: return linux_sys_pwrite64(a, b, c, d);
+        case 295: return linux_sys_preadv(a, b, c, d);
+        case 296: return linux_sys_pwritev(a, b, c, d);
         case 299: return linux_sys_recvmmsg(a, b, c, d, e);
         case 302: return linux_sys_prlimit64(a, b, c, d);
         case 307: return linux_sys_sendmmsg(a, b, c, d);
@@ -4942,6 +4942,8 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 319: return linux_sys_memfd_create(a, b);
         case 323: return linux_sys_userfaultfd(a);
         case 324: return linux_sys_membarrier(a, b, c);
+        case 327: return linux_sys_preadv2(a, b, c, d, f);   // (fd, iov, cnt, pos_l, pos_h, flags)
+        case 328: return linux_sys_pwritev2(a, b, c, d, f);
         case 332: return linux_sys_statx(a, b, c, d, e);
         case 334: return linux_sys_rseq(a, b, c, d);
         case 435: return linux_sys_clone3(a, b);
@@ -5866,6 +5868,10 @@ void d_kernel_main() {
     fsPersistInitRoots();  // ROADMAP 1.2: read `persist =` from /desktop.conf
     fsPersistLoad();
     fsPersistSelfTest();   // ROADMAP 1.2: prove the round trip across reboots
+    // VMM: expose an installer ISO the installer wrote to a target-disk partition as a disk-backed
+    // /home/<user>/isos/pfsense.iso.  Runs after the restored /home is in place so the ISO node is
+    // added on top of it (it is never part of the /home snapshot); no-op on live media or without an ISO.
+    { import core.syscalls.posix : materializeIsoStore; materializeIsoStore(); }
     // procSelfTest() deliberately does NOT run here: at store-mount the PIT has barely ticked and
     // the idle task does not exist yet, so /proc/stat and /proc/uptime correctly read zero and the
     // proof shows nothing.  It runs from the periodic loop once the desktop is up instead.
@@ -5952,6 +5958,9 @@ void d_kernel_main() {
     { import core.virt.vmx : vmxIoeventfdFirstLightProof; vmxIoeventfdFirstLightProof(); } // VIRT: ioeventfd doorbell write → eventfd signaled + guest resumed (needs nested EPT)
     { import core.virt.vmx : vmxMmioReadCompletionProof; vmxMmioReadCompletionProof(); } // VIRT: MMIO read → supply value → writeback to reg + RIP advance + resume (needs nested EPT)
     { import core.virt.vmx : vmxPortIoFirstLightProof; vmxPortIoFirstLightProof(); } // VIRT: port-I/O exit → RIP advance past IN/OUT + IN completion → guest resumes (blocker #1; needs nested EPT)
+    // The proofs above are one-shot: take the BSP back out of VMX root so INIT is not blocked and
+    // nothing else runs in VMX operation.  KVM_RUN re-enables VMX lazily when a real VM runs.
+    { import core.virt.vmx : vmxHostDisable; vmxHostDisable(); }
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     configDisksDump();           // INSTALLER: /config/disks.json install-target view (AHCI or NVMe idx 0)

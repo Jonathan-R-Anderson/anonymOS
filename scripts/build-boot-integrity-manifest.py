@@ -15,10 +15,14 @@ from pathlib import Path
 
 
 MODULE_RE = re.compile(r"^\s*module_path:\s*boot\(\):/(.+?)\s*$")
+# Install-media-only payloads are left out: the manifest must describe exactly what the
+# INSTALLED ESP carries, and scripts/mk-install-iso.sh strips these from it.  A listed module
+# the installed ESP lacks makes an attested install halt (biPanic) on every boot.
 EXCLUDED_MODULES = {
     "esp-image",
     "esp-hidden-image",
     "decoy-linux.ext4",
+    "pfsense.iso",
     "install.json",
     "zksync-attestation.json",
 }

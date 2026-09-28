@@ -725,6 +725,7 @@ __gshared uint g_umask = 18; // Octal 022
 private enum int EPERM  = 1;
 private enum int ENOENT = 2;
 private enum int EINTR  = 4;
+private enum int EIO    = 5;
 private enum int ENODEV = 19;
 private enum int ENXIO  = 6;
 private enum int EBADF  = 9;
@@ -2213,6 +2214,16 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         const int idx = cast(int)cast(size_t)f.backend;
         if (idx < 0 || idx >= RT_MAX_NODES || g_rt[idx].kind != RT_REG)
             return negErrno(EBADF);
+        // Disk-backed (an imported ISO): bytes live in a target-disk region, not RAM.
+        {
+            ulong dbLen;
+            const ulong dbLba = diskFileLbaForNode(idx, dbLen);
+            if (dbLba != 0) {
+                const long r = diskRegionRead(dbLba, dbLen, f.offset, _buf, _count);
+                if (r > 0) f.offset += cast(ulong)r;
+                return cast(ssize_t)r;
+            }
+        }
         const uint sz = g_rt[idx].size;
         if (f.offset >= sz) return 0;                       // EOF
         size_t remaining = sz - cast(size_t)f.offset;
@@ -2417,6 +2428,9 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         const int idx = cast(int)cast(size_t)f.backend;
         if (idx < 0 || idx >= RT_MAX_NODES || g_rt[idx].kind != RT_REG)
             return cast(ssize_t)negErrno(EBADF);
+        // Disk-backed (an imported ISO) is read-only: data is null and size is ~1 GiB, so
+        // rtEnsureCap would otherwise copy from a null pointer.  Covers write/writev/pwrite.
+        { ulong _dbLen; if (diskFileLbaForNode(idx, _dbLen) != 0) return cast(ssize_t)negErrno(EROFS); }
         if (f.flags & O_APPEND) f.offset = g_rt[idx].size;
         const ulong end = f.offset + count;
         if (end > uint.max) return cast(ssize_t)negErrno(ENOSPC);
@@ -3838,6 +3852,11 @@ public int sys_open(const(char)* path, int flags) {
         const int ri = rtResolve(path, rp, rl, rll);
         if (ri >= 0 && g_rt[ri].kind == RT_REG) {
             if ((flags & O_CREAT) && (flags & O_EXCL)) return negErrno(EEXIST);
+            // Disk-backed (an imported ISO) is read-only: refuse write access and O_TRUNC
+            // BEFORE the truncation below (delete it to reclaim the space instead).
+            { ulong _dbLen;
+              if (diskFileLbaForNode(ri, _dbLen) != 0 && ((flags & 3) != O_RDONLY || (flags & O_TRUNC)))
+                  return negErrno(EROFS); }
             if (flags & O_TRUNC) g_rt[ri].size = 0;
             g_fdTable[fd].type     = FileType.FD_RTFILE;
             g_fdTable[fd].flags    = flags;
@@ -4346,6 +4365,10 @@ public int sys_open(const(char)* path, int flags) {
             }
             // existing regular overlay file
             if ((flags & O_CREAT) && (flags & O_EXCL)) return negErrno(EEXIST);
+            // Disk-backed (an imported ISO) is read-only — same guard as the rtfs-assets branch.
+            { ulong _dbLen;
+              if (diskFileLbaForNode(ridx, _dbLen) != 0 && ((flags & 3) != O_RDONLY || (flags & O_TRUNC)))
+                  return negErrno(EROFS); }
             if (flags & O_TRUNC) { g_rt[ridx].size = 0; }
             g_fdTable[fd].type     = FileType.FD_RTFILE;
             g_fdTable[fd].flags    = flags;
@@ -4835,6 +4858,20 @@ public int mmapCopyFileRange(int fd, ulong off, ubyte* dst, ulong len) {
         case FileType.FD_RTFILE: {
             int idx = cast(int)cast(size_t)f.backend;
             if (idx < 0 || idx >= RT_MAX_NODES || g_rt[idx].kind != RT_REG) return 0;
+            // Disk-backed (an imported ISO): data is null, so the loop below would map zeros.
+            // Fill the page from disk instead.  (fileObjMmap returns -ENODEV for this node, but
+            // the kernel_main mmap handler treats any backing <= 0 as "no object backing" and
+            // lands here — this IS the live path for an mmap of the ISO.)
+            {
+                ulong dbLen;
+                const ulong dbLba = diskFileLbaForNode(idx, dbLen);
+                if (dbLba != 0) {
+                    const long n = diskRegionRead(dbLba, dbLen, off, dst, len);
+                    const ulong done = n > 0 ? cast(ulong)n : 0;
+                    for (ulong i = done; i < len; ++i) dst[i] = 0;   // past EOF / on error
+                    return 1;
+                }
+            }
             auto src = g_rt[idx].data;
             ulong fsize = g_rt[idx].size;
             for (ulong i = 0; i < len; ++i) {
@@ -5468,6 +5505,218 @@ __gshared RtNode[RT_MAX_NODES] g_rt;
 __gshared bool  g_rtInitialized = false;
 __gshared ulong g_rtBytes = 0;               // total bytes backing RT payloads (for the cap + df)
 
+// VMM: DISK-BACKED rtfs files.  A handful of large, read-only files (an installer ISO the
+// installer streamed to a target-disk partition) whose bytes live on DISK, not in RAM — so a
+// ~1 GiB ISO never counts against the 64 MiB rtfs cap (RT_MAX_BYTES / g_rtBytes) and is not
+// serialized into the /home persistence snapshot.  The rtfs node is an ordinary RT_REG entry
+// with data=null and size=the byte length; reads route to the backing disk region via this
+// side table (chosen over new RtNode fields to keep the node struct — and its BSS — unchanged).
+private struct DiskBackedFile { int node = -1; ulong lbaBase; ulong byteLen; }
+private enum int RT_DISK_FILES_MAX = 4;
+private __gshared DiskBackedFile[RT_DISK_FILES_MAX] g_diskFiles;
+private __gshared int g_diskFileCount = 0;
+private __gshared bool g_isoStoreMaterialized = false;
+
+// Backing LBA for a disk-backed node (0 = not disk-backed); its byte length via the out param.
+private ulong diskFileLbaForNode(int node, out ulong byteLen) @nogc nothrow {
+    foreach (i; 0 .. g_diskFileCount)
+        if (g_diskFiles[i].node == node) { byteLen = g_diskFiles[i].byteLen; return g_diskFiles[i].lbaBase; }
+    byteLen = 0;
+    return 0;
+}
+private bool diskFileRegister(int node, ulong lbaBase, ulong byteLen) @nogc nothrow {
+    if (g_diskFileCount >= RT_DISK_FILES_MAX) return false;
+    g_diskFiles[g_diskFileCount] = DiskBackedFile(node, lbaBase, byteLen);
+    ++g_diskFileCount;
+    return true;
+}
+private void diskFileUnregister(int node) @nogc nothrow {
+    foreach (i; 0 .. g_diskFileCount)
+        if (g_diskFiles[i].node == node) {
+            g_diskFiles[i] = g_diskFiles[g_diskFileCount - 1];
+            g_diskFiles[g_diskFileCount - 1] = DiskBackedFile.init;
+            --g_diskFileCount;
+            return;
+        }
+}
+
+// Read up to `count` bytes at byte `offset` from the disk region [lbaBase, lbaBase+byteLen).
+// Sector-granular with head/tail handling — the ~0-RAM read path for a disk-backed file
+// (one 512 B bounce sector on the stack, mirroring bootModuleRead but sourced from disk).
+private long diskRegionRead(ulong lbaBase, ulong byteLen, ulong offset, void* buf, ulong count) {
+    import drivers.block.disk : diskReadSectors;
+    if (buf is null || offset >= byteLen) return 0;
+    const ulong avail = byteLen - offset;
+    if (count > avail) count = avail;
+    if (count == 0) return 0;
+    auto dst = cast(ubyte*)buf;
+    ulong done = 0;
+    ubyte[512] sec = void;
+    while (done < count) {
+        const ulong pos    = offset + done;
+        const ulong lba    = lbaBase + (pos / 512);
+        const uint  within = cast(uint)(pos % 512);
+        // A media/driver error must not look like EOF: -EIO if nothing was read yet, else a
+        // short count (POSIX short read; the next read at the new offset then gets -EIO).
+        if (!diskReadSectors(lba, 1, sec.ptr))
+            return done > 0 ? cast(long)done : negErrno(EIO);
+        uint chunk = 512 - within;
+        if (chunk > count - done) chunk = cast(uint)(count - done);
+        foreach (k; 0 .. chunk) dst[done + k] = sec[within + k];
+        done += chunk;
+    }
+    return cast(long)done;
+}
+
+private bool isoGuidEq(const(ubyte)* a, const(ubyte)* b) {
+    foreach (i; 0 .. 16) if (a[i] != b[i]) return false;
+    return true;
+}
+private ulong isoAlign2048(ulong x) { return (x + 2047) & ~cast(ulong)2047; }
+
+// VMM: locate OUR ISO-store partition on the primary disk — ONLY in the exact A/B layout
+// gptWriteABToDisk writes: entry 0 = ESP-boot at LBA 2048; entries 1/2 = slot-A/slot-B, two
+// equal-size MS-Basic-Data partitions each 2048-aligned right after the previous one; entry 3
+// = MS-Basic-Data starting right after slot-B with an ISO9660 PVD (0x01 "CD001" 0x01) at
+// +32 KiB (LBA+64).  A foreign disk's partition that merely contains an ISO never matches, so
+// it is never exposed nor written on delete.  Returns false (first=last=0) when absent.
+private bool isoStoreFindAB(out ulong first, out ulong last) {
+    import core.diskpart : gptReadPartition, GUID_ESP, GUID_MS_BASIC_DATA;
+    import drivers.block.disk : diskReadSectors;
+    first = 0; last = 0;
+    auto e0 = gptReadPartition(0);
+    auto e1 = gptReadPartition(1);
+    auto e2 = gptReadPartition(2);
+    auto e3 = gptReadPartition(3);
+    if (!e0.valid || !e1.valid || !e2.valid || !e3.valid) return false;
+    if (!isoGuidEq(e0.typeGuid.ptr, GUID_ESP.ptr) || e0.first != 2048) return false;
+    if (!isoGuidEq(e1.typeGuid.ptr, GUID_MS_BASIC_DATA.ptr) || e1.first != isoAlign2048(e0.last + 1)) return false;
+    if (!isoGuidEq(e2.typeGuid.ptr, GUID_MS_BASIC_DATA.ptr) || e2.first != isoAlign2048(e1.last + 1)) return false;
+    if ((e2.last - e2.first) != (e1.last - e1.first)) return false;           // slot-A == slot-B
+    if (!isoGuidEq(e3.typeGuid.ptr, GUID_MS_BASIC_DATA.ptr) || e3.first != isoAlign2048(e2.last + 1)) return false;
+    const ulong pvdLba = e3.first + 64;                                        // 32768 / 512
+    if (pvdLba > e3.last) return false;
+    ubyte[512] pvd = void;
+    if (!diskReadSectors(pvdLba, 1, pvd.ptr)) return false;
+    if (!(pvd[0] == 0x01 && pvd[1] == 'C' && pvd[2] == 'D' && pvd[3] == '0' &&
+          pvd[4] == '0' && pvd[5] == '1' && pvd[6] == 0x01)) return false;
+    first = e3.first; last = e3.last;
+    return true;
+}
+
+// Installer contract: drop every disk-backed rtfs file — unregister it from the side table and
+// free its rtfs node — WITHOUT touching disk.  Called before the installer rewrites the disk
+// the ISO partition lives on, so no stale registration can read (or, on unlink, wipe) an LBA
+// that now belongs to the new layout.  Also stops any re-materialization this session.
+public void isoStoreForgetAll() {
+    int[RT_DISK_FILES_MAX] nodes = void;
+    const int n = g_diskFileCount;
+    foreach (i; 0 .. n) { nodes[i] = g_diskFiles[i].node; g_diskFiles[i] = DiskBackedFile.init; }
+    g_diskFileCount = 0;                               // cleared first: rtFreeData's hook is a no-op
+    g_isoStoreMaterialized = true;
+    foreach (i; 0 .. n) {
+        const int node = nodes[i];
+        if (node <= 0 || node >= RT_MAX_NODES || g_rt[node].kind != RT_REG) continue;
+        inotifyNotify(g_rt[node].parent, IN_DELETE_F, g_rt[node].name.ptr, g_rt[node].nameLen);
+        rtFreeData(g_rt[node]);
+        g_rt[node].kind   = RT_FREE;
+        g_rt[node].parent = -1;
+    }
+    if (n > 0) klog("[iso-store] disk-backed files forgotten (disk untouched)\n");
+}
+
+// VMM: on an installed system, expose an ISO the installer wrote to a target-disk partition
+// as /home/<user>/isos/pfsense.iso — a disk-backed (~0-RAM) read-only file the VMM boots and
+// the user can delete to reclaim the space.  Runs once at boot, after fsPersistLoad has restored
+// /home (the ISO node is added on top — fspWalk never snapshots it).  A no-op on live install
+// media and when the A/B disk carries no ISO9660 partition (a plain install, or after deletion).
+public void materializeIsoStore() {
+    if (g_isoStoreMaterialized) return;
+    g_isoStoreMaterialized = true;
+    import drivers.block.disk : diskReady;
+    import drivers.veracrypt_impl : bootHasInstallPayload;
+    if (!diskReady()) return;
+    // Installed systems ONLY.  On the live install medium the primary disk is the install
+    // TARGET (or some other OS's disk): exposing its ISO would let the user read — and on rm,
+    // wipe a sector of — a layout the installer may be about to rewrite.
+    if (bootHasInstallPayload()) return;
+    ulong isoFirst, isoLast;
+    if (!isoStoreFindAB(isoFirst, isoLast)) return;
+    const ulong lbaBase = isoFirst;
+    const ulong byteLen = (isoLast - isoFirst + 1) * 512;  // sector-aligned partition length
+    if (byteLen > uint.max) { klog("[iso-store] partition > 4 GiB — ISO not exposed\n"); return; }
+    rtMkdirPath("/home\0".ptr,            0x1ED, 0, 0);     // 0755; no-ops if present
+    rtMkdirPath("/home/user\0".ptr,       0x1ED, 0, 0);
+    rtMkdirPath("/home/user/isos\0".ptr,  0x1ED, 0, 0);
+    int dp; const(char)* dl; size_t dll;
+    const int isosDir = rtResolve("/home/user/isos\0".ptr, dp, dl, dll);
+    if (isosDir < 0) { klog("[iso-store] /home/user/isos missing — not exposed\n"); return; }
+    // A restored /home file already holds the name (e.g. something was renamed over the ISO
+    // last session): never create a second same-named node beside it.
+    {
+        int fp; const(char)* fl; size_t fll;
+        if (rtResolve("/home/user/isos/pfsense.iso\0".ptr, fp, fl, fll) >= 0) {
+            klog("[iso-store] /home/user/isos/pfsense.iso already exists — ISO not exposed\n");
+            return;
+        }
+    }
+    const int fileNode = rtCreate(isosDir, "pfsense.iso".ptr, 11, RT_REG, 0x124 /*0444*/, 0, 0);
+    if (fileNode < 0) { klog("[iso-store] rtCreate failed — ISO not exposed\n"); return; }
+    g_rt[fileNode].size     = cast(uint)byteLen;           // ≤ 4 GiB checked above
+    g_rt[fileNode].ownerDom = 0;                           // shared base: visible in every domain
+    if (!diskFileRegister(fileNode, lbaBase, byteLen)) {
+        g_rt[fileNode].size   = 0;                         // roll back the node if the table is full
+        g_rt[fileNode].kind   = RT_FREE;
+        g_rt[fileNode].parent = -1;
+        klog("[iso-store] disk-file table full — ISO not exposed\n");
+        return;
+    }
+    klog("[iso-store] /home/user/isos/pfsense.iso @lba=0x"); klog_hex(lbaBase);
+    klog(" ("); klog_dec(cast(uint)(byteLen / (1024*1024))); klog(" MiB, disk-backed)\n");
+    // Sanity: read the ISO9660 PVD back through the disk-REGION path at byte offset 32768 —
+    // proves the disk-backed read (offset arithmetic + sector bounce) works, not merely that
+    // isoStoreFindAB saw the partition.
+    {
+        ubyte[8] chk = 0;
+        diskRegionRead(lbaBase, byteLen, 32768, chk.ptr, 8);
+        const bool ok = chk[1]=='C' && chk[2]=='D' && chk[3]=='0' && chk[4]=='0' && chk[5]=='1';
+        klog(ok ? "[iso-store] readback OK (CD001 via disk-region path)\n"
+                : "[iso-store] WARN: readback did not return CD001\n");
+    }
+    isoStoreSelfTest();
+}
+
+// Boot proof of the ISO store's contract through the REAL syscall entry points a VMM uses: an
+// open for write, or one with O_TRUNC, is refused with EROFS (a write to this node used to
+// null-deref in rtEnsureCap and halt the kernel), while a read-only open + pread64 at byte 32768
+// returns the CD001 descriptor and a write() on that fd is still refused.  Runs only right after
+// an ISO was exposed, i.e. on an installed system.
+private void isoStoreSelfTest() {
+    const(char)* p = "/home/user/isos/pfsense.iso\0".ptr;
+    const int rw = sys_open(p, O_RDWR);
+    if (rw >= 0) sys_close(rw);
+    const int tr = sys_open(p, O_RDONLY | O_TRUNC);
+    if (tr >= 0) sys_close(tr);
+    ubyte[8] b = 0;
+    long n = -1;
+    long w = 0;
+    const int ro = sys_open(p, O_RDONLY);
+    if (ro >= 0) {
+        n = linux_sys_pread64(cast(ulong)ro, cast(ulong)b.ptr, 8, 32768);
+        w = sys_write(ro, b.ptr, 1);
+        sys_close(ro);
+    }
+    const bool cd = b[1]=='C' && b[2]=='D' && b[3]=='0' && b[4]=='0' && b[5]=='1';
+    const bool pass = rw == -EROFS && tr == -EROFS && ro >= 0 && n == 8 && cd && w < 0;
+    klog(pass ? "[iso-store] selftest PASS (rw/trunc open -> EROFS, ro pread64 -> CD001, write refused)\n"
+              : "[iso-store] selftest FAIL");
+    if (!pass) {
+        klog(" rw="); klog_hex(cast(ulong)cast(long)rw); klog(" trunc="); klog_hex(cast(ulong)cast(long)tr);
+        klog(" ro="); klog_hex(cast(ulong)cast(long)ro); klog(" pread="); klog_hex(cast(ulong)n);
+        klog(" write="); klog_hex(cast(ulong)w); klog(cd ? " cd001=Y\n" : " cd001=N\n");
+    }
+}
+
 // Z8: a rolling free-slot hint turns the boot-time bulk creates (busybox, xkb, the
 // ~1018 zsh functions) from O(n^2) into ~O(n).  Scan forward from the hint, then wrap
 // to catch slots freed below it.
@@ -5529,6 +5778,7 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     if (len == 0 || len > RT_NAME_MAX) return -1;
     int idx = rtAllocNode();
     if (idx < 0) return -1;
+    diskFileUnregister(idx);   // defense in depth: a reused slot never inherits a disk backing
     // ROADMAP 2.2: IN_CREATE fires on the PARENT directory, which is what a directory watch is.
     // Hooked here rather than at each caller, because this is the single place a node comes into
     // existence -- the same reason the persistence flag is set at the one place bytes change.
@@ -5645,8 +5895,11 @@ private bool rtEnsureCap(ref RtNode n, uint need) {
     const ulong phys = alloc_phys_pages(pages);
     if (phys == 0) return false;
     ubyte* nd = cast(ubyte*)phys_to_virt(phys);
-    foreach (i; 0 .. n.size) nd[i] = n.data[i];          // copy existing bytes
-    foreach (i; n.size .. newCap) nd[i] = 0;             // zero the remainder
+    // Copy only bytes that actually exist in RAM: min(size, cap), and none when data is null
+    // (a disk-backed node has size ~1 GiB with data=null/cap=0 — never copy from null).
+    const uint keep = (n.data is null) ? 0 : (n.size < n.cap ? n.size : n.cap);
+    foreach (i; 0 .. keep) nd[i] = n.data[i];            // copy existing bytes
+    foreach (i; keep .. newCap) nd[i] = 0;               // zero the remainder
     const ulong oldPhys = n.dataPhys;
     const uint  oldCap  = n.cap;
     n.data     = nd;
@@ -5661,7 +5914,16 @@ private bool rtEnsureCap(ref RtNode n, uint need) {
 }
 
 // Release a node's payload pages (on unlink / overwrite) and update the byte total.
+// Every caller frees the node right after (kind=RT_FREE), so this is also the ONE place a
+// freed node drops its disk-backed registration (no disk write): a later reuse of the index
+// can then never read the ISO region nor trigger the unlink-time PVD wipe.  Only the explicit
+// unlink of the disk-backed file itself wipes the PVD — rtUnlinkSyscall does that first.
 private void rtFreeData(ref RtNode n) {
+    {
+        RtNode* base = &g_rt[0];
+        if (&n >= base && &n < base + RT_MAX_NODES)
+            diskFileUnregister(cast(int)(&n - base));
+    }
     if (n.dataPhys != 0 && n.cap != 0) {
         free_phys_pages(n.dataPhys, n.cap / 4096);
         g_rtBytes -= n.cap;
@@ -5970,6 +6232,10 @@ private bool fspWalk(int node, char* path, uint pathLen, ubyte* buf, ref uint of
         if (g_rt[i].kind == RT_DIR) {
             if (!fspWalk(i, path, pl, buf, off)) return false;
         } else if (g_rt[i].kind == RT_REG) {
+            // Disk-backed files (an imported ISO) are re-materialized from their partition at
+            // boot, never serialized — a ~1 GiB size with null data would otherwise blow the
+            // 1 MiB snapshot cap and abort the whole /home save.  Skip them.
+            { ulong _dbLen; if (diskFileLbaForNode(i, _dbLen) != 0) continue; }
             const ushort plen = cast(ushort)pl;
             const ushort mode = g_rt[i].mode;
             const uint   sz   = g_rt[i].size;
@@ -7001,6 +7267,16 @@ private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint
                                           cast(ushort)0x1A4 /*0644*/, 0, 0);
             if (fidx < 0 || g_rt[fidx].kind != RT_REG) {
                 rtAddFileFail(rel, relLen, "no free overlay node (RT_MAX_NODES)\0".ptr);
+                return;
+            }
+            { ulong _dbLen; if (diskFileLbaForNode(fidx, _dbLen) != 0) {
+                rtAddFileFail(rel, relLen, "target is a read-only disk-backed file\0".ptr);
+                return;
+            } }
+            // A source with no RAM payload but a non-zero size (a disk-backed node passed as the
+            // apk-placement SOURCE, g_rt[si].data) would be copied from null below.
+            if (data is null && dataLen != 0) {
+                rtAddFileFail(rel, relLen, "source has no RAM payload (disk-backed?)\0".ptr);
                 return;
             }
             if (!rtEnsureCap(g_rt[fidx], dataLen)) {
@@ -9580,6 +9856,7 @@ public long linuxSyscallCapPrecheck(ulong n, ulong a, ulong b, ulong c,
         case 78:
         case 217:
         case 295:
+        case 327:   // preadv2
             if (!fdRequireCap(a, CAP_RIGHT_READ)) return negErrno(EBADF);
             break;
         case 18:
@@ -9592,6 +9869,7 @@ public long linuxSyscallCapPrecheck(ulong n, ulong a, ulong b, ulong c,
         case 77:
         case 286:
         case 296:
+        case 328:   // pwritev2
             if (!fdRequireCap(a, CAP_RIGHT_WRITE)) return negErrno(EBADF);
             break;
         case 32:
@@ -11553,7 +11831,24 @@ public long linux_sys_fcntl(ulong fd, ulong cmd, ulong arg) {
         return negErrno(EBADF);
     enum F_DUPFD = 0, F_GETFD = 1, F_SETFD = 2, F_GETFL = 3, F_SETFL = 4;
     enum F_DUPFD_CLOEXEC = 1030;
+    // Record locks (POSIX + open-file-description).  Single-user OS with no lock table: every
+    // lock is ADVISORY and always granted, and GETLK reports "no conflicting lock".  Cloud
+    // Hypervisor takes an F_OFD_SETLK on every --disk image and aborts VM boot on EINVAL.
+    enum F_GETLK = 5, F_SETLK = 6, F_SETLKW = 7;
+    enum F_OFD_GETLK = 36, F_OFD_SETLK = 37, F_OFD_SETLKW = 38;
+    enum FLOCK_SIZE = 32;                         // x86-64 struct flock; l_type = short @0
+    enum short F_RDLCK = 0, F_WRLCK = 1, F_UNLCK = 2;
     switch (cmd) {
+        case F_SETLK: case F_SETLKW: case F_OFD_SETLK: case F_OFD_SETLKW: {
+            if (!isUserRange(arg, FLOCK_SIZE)) return negErrno(EFAULT);
+            const short lt = *cast(const(short)*)arg;
+            if (lt != F_RDLCK && lt != F_WRLCK && lt != F_UNLCK) return negErrno(EINVAL);
+            return 0;                             // granted (advisory; nothing to track)
+        }
+        case F_GETLK: case F_OFD_GETLK:
+            if (!isUserRange(arg, FLOCK_SIZE)) return negErrno(EFAULT);
+            *cast(short*)arg = F_UNLCK;           // no conflicting lock
+            return 0;
         case F_GETFD: return 0;
         case F_SETFD: return 0;
         case F_GETFL: return g_fdTable[ifd].flags;
@@ -12941,6 +13236,28 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     // itself, posted BEFORE the node is freed so the name is still readable.
     inotifyNotify(g_rt[idx].parent, IN_DELETE_F, leaf, leafLen);
     inotifyNotify(idx, IN_DELETE_SELF_F, null, 0);
+    // VMM: deleting a disk-backed ISO must persist.  Wipe its ISO9660 signature on disk so the
+    // next boot's materializeIsoStore does not re-expose it, and drop the side-table entry.  We
+    // do NOT remove the GPT partition — that would move the object store's free-tail base LBA and
+    // could corrupt /home — so the 1 GiB becomes a blank region reusable for a future import.
+    {
+        ulong dbLen;
+        const ulong dbLba = diskFileLbaForNode(idx, dbLen);
+        if (dbLba != 0) {
+            import drivers.block.disk : diskWriteSectors;
+            // Re-validate against the CURRENT disk before writing: only wipe when our A/B ISO
+            // partition still starts at dbLba and still carries CD001 (never a stale LBA).
+            ulong curFirst, curLast;
+            if (isoStoreFindAB(curFirst, curLast) && curFirst == dbLba) {
+                ubyte[512] z = 0;
+                diskWriteSectors(dbLba + 64, 1, z.ptr);  // zero the CD001 primary volume descriptor
+                klog("[iso-store] deleted pfsense.iso — ISO9660 signature wiped; space reclaimable\n");
+            } else {
+                klog("[iso-store] backing partition changed — unlinked without touching disk\n");
+            }
+            diskFileUnregister(idx);
+        }
+    }
     rtFreeData(g_rt[idx]);                           // release payload/link pages (no leak)
     // ROADMAP 1.2: a deletion changes the persisted subtree just as much as a write.
     if (rtUnderPersistRoot(idx)) g_fsDirty = true;
@@ -13244,6 +13561,17 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
         return 1;
     }
 
+    if (f.type == FileType.FD_RTFILE) {
+        // Disk-backed (an imported ISO): its bytes live on disk, not in RAM pages, so there
+        // is no object backing to share.  NOTE: the kernel_main mmap handler currently treats
+        // any result <= 0 alike and falls back to mmapCopyFileRange, which fills from disk.
+        const int ridx = cast(int)cast(size_t)f.backend;
+        ulong dbLen;
+        if (ridx >= 0 && ridx < RT_MAX_NODES && diskFileLbaForNode(ridx, dbLen) != 0)
+            return negErrno(ENODEV);
+        return 0;
+    }
+
     if (f.type == FileType.FD_MEMFD) {
         int mid = cast(int)cast(size_t)f.backend;
         if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
@@ -13369,6 +13697,75 @@ public long linux_sys_readv(ulong fd, ulong iov_ptr, ulong iovcnt) {
         if (cast(size_t)r < iovs[i].iov_len) break;
     }
     return total;
+}
+
+// --- preadv / pwritev (+ preadv2 / pwritev2) ---
+// Cloud Hypervisor's raw --disk backend (no io_uring / AIO here) does every virtio-blk
+// transfer with preadv/pwritev.  These used to be routed to pread64/pwrite64, which read
+// `iovcnt` bytes over the iovec ARRAY itself and reported success.  Now: walk the array,
+// transfer each segment at offset+done, stop on a short transfer (Linux semantics).
+private enum ulong PV_IOV_MAX = 1024;
+
+// Positioned write: the write-side twin of linux_sys_pread64 (the fd offset is saved, moved
+// and restored).  fileObjWrite refuses disk-backed nodes with EROFS.  NOTE: linux_sys_pwrite64
+// itself still returns EROFS unconditionally (pre-existing); only pwritev/pwritev2 use this.
+private long rtPwriteAt(ulong fd, ulong buf, ulong count, ulong offset) {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type == FileType.FD_NONE) return negErrno(EBADF);
+    ulong saved = g_fdTable[ifd].offset;
+    g_fdTable[ifd].offset = offset;
+    long ret = sys_write(ifd, cast(const(void)*)buf, cast(size_t)count);
+    g_fdTable[ifd].offset = saved;
+    return ret;
+}
+
+private long pvTransfer(ulong fd, ulong iov_ptr, ulong iovcnt, ulong offset, bool isWrite) {
+    if (cast(long)offset < 0) return negErrno(EINVAL);
+    if (iovcnt > PV_IOV_MAX) return negErrno(EINVAL);
+    if (iovcnt == 0) return 0;
+    if (!isUserRange(iov_ptr, cast(size_t)(iovcnt * iovec.sizeof))) return negErrno(EFAULT);
+    auto iovs = cast(const(iovec)*)iov_ptr;
+    long total = 0;
+    for (ulong i = 0; i < iovcnt; ++i) {
+        const size_t len = iovs[i].iov_len;
+        if (len == 0) continue;
+        const ulong base = cast(ulong)iovs[i].iov_base;
+        if (!isUserRange(base, len)) return total > 0 ? total : negErrno(EFAULT);
+        const ulong at = offset + cast(ulong)total;
+        long r = isWrite ? rtPwriteAt(fd, base, len, at) : linux_sys_pread64(fd, base, len, at);
+        if (r < 0) return total > 0 ? total : r;
+        total += r;
+        if (cast(size_t)r < len) break;               // short transfer (EOF / partial): stop
+    }
+    return total;
+}
+
+public long linux_sys_preadv(ulong fd, ulong iov_ptr, ulong iovcnt, ulong offset) {
+    return pvTransfer(fd, iov_ptr, iovcnt, offset, false);
+}
+public long linux_sys_pwritev(ulong fd, ulong iov_ptr, ulong iovcnt, ulong offset) {
+    return pvTransfer(fd, iov_ptr, iovcnt, offset, true);
+}
+// preadv2/pwritev2(fd, iov, iovcnt, pos_l, pos_h, flags): only flags==0 is supported
+// (RWF_* hints → EOPNOTSUPP).  offset -1 = use and advance the current file position.
+public long linux_sys_preadv2(ulong fd, ulong iov_ptr, ulong iovcnt, ulong offset, ulong flags) {
+    if (flags != 0) return negErrno(EOPNOTSUPP);
+    if (cast(long)offset == -1) {
+        if (iovcnt > PV_IOV_MAX) return negErrno(EINVAL);
+        if (iovcnt != 0 && !isUserRange(iov_ptr, cast(size_t)(iovcnt * iovec.sizeof))) return negErrno(EFAULT);
+        return linux_sys_readv(fd, iov_ptr, iovcnt);
+    }
+    return pvTransfer(fd, iov_ptr, iovcnt, offset, false);
+}
+public long linux_sys_pwritev2(ulong fd, ulong iov_ptr, ulong iovcnt, ulong offset, ulong flags) {
+    if (flags != 0) return negErrno(EOPNOTSUPP);
+    if (cast(long)offset == -1) {
+        if (iovcnt > PV_IOV_MAX) return negErrno(EINVAL);
+        if (iovcnt != 0 && !isUserRange(iov_ptr, cast(size_t)(iovcnt * iovec.sizeof))) return negErrno(EFAULT);
+        return linux_sys_writev(fd, iov_ptr, iovcnt);
+    }
+    return pvTransfer(fd, iov_ptr, iovcnt, offset, true);
 }
 
 // --- Socket syscalls (already implemented above; expose with syscall-number naming) ---
@@ -14362,6 +14759,12 @@ public void rebootNow(uint cmd) {
     // that actually matters.  The gap that leaves is an unclean power-off, which loses the
     // session -- acceptable for now, and stated rather than hidden.
     fsPersistSave();
+    // Leave VMX root on this CPU BEFORE the reset: INIT is blocked in VMX root operation (SDM
+    // Vol. 3C, "Restrictions on VMX Operation"), and on Intel ICH/PCH the 8042 reset below
+    // reaches the CPU as INIT — a post-VMXON BSP would ignore it and sit in the hlt loop.
+    // rebootNow runs on the BSP (APs only run apKernelLoopBody), the CPU vmxEnter VMXON'd.
+    // Safe no-op when VMX is off (non-Intel, VT-x disabled, or never entered).
+    { import core.virt.vmx : vmxHostDisable; vmxHostDisable(); }
     if (cmd == LINUX_REBOOT_CMD_POWER_OFF || cmd == LINUX_REBOOT_CMD_HALT) {
         // QEMU ACPI power-off: outw(0x2000, 0x604)
         asm @nogc nothrow {

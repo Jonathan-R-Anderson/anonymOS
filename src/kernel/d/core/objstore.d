@@ -141,6 +141,18 @@ __gshared ulong g_baseLba = 0;      // absolute LBA of this store's relative sec
 __gshared ulong g_endLba  = 0;      // first absolute LBA the store may NOT touch (0 = unbounded)
 
 public bool objstoreMounted() { return g_mounted; }
+
+// Live media: the installer is about to rewrite the disk this store lives on.  From here on the
+// on-disk region belongs to the NEW layout (its tail may now be slot-B or the ISO store), so the
+// live session must never write it again: mark the store unmounted, which turns every public
+// writer (and fsPersistSave / fsPersistTick / rebootNow's save, all gated on objstoreMounted)
+// into a no-op, and stWrite refuses as a backstop.  Nothing on disk is touched.  One-way: only
+// objstoreMount (boot) mounts again.
+public void objstoreDetach() {
+    if (!g_mounted) return;
+    g_mounted = false;
+    klog("[objstore] detached: no further writes (installer is rewriting the store disk)\n");
+}
 public ulong objstoreBootCount() { return g_super.bootCount; }
 public uint  objstoreAppCount() { return g_super.appCount; }
 public ulong objstoreBaseLba() { return g_baseLba; }
@@ -167,6 +179,7 @@ private bool stRead(ulong rel, uint count, void* dst) {
     return true;
 }
 private bool stWrite(ulong rel, uint count, const(void)* src) {
+    if (!g_mounted) return false;          // detached (or never mounted): the region is not ours
     const ulong a = g_baseLba + rel;
     if (g_endLba != 0 && (a + count) > g_endLba) return false;
     if (!fdeActive())
@@ -502,8 +515,10 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
     // project builds, so the store never mounted in anything anyone could run.
     //
     // The store only ever writes inside the free tail after the last partition (or, failing
-    // that, the unused pre-partition gap), so mounting on a partitioned disk cannot damage a
-    // subsequent reinstall: the installer rewrites the partitions it owns regardless.
+    // that, the unused pre-partition gap).  A reinstall from this live session is a different
+    // matter: the NEW layout can allocate exactly that old tail (a larger slot-B, or the ISO
+    // store placed right after slot-B), so installBegin calls objstoreDetach() before it
+    // rewrites this disk, and the live store never writes into the new layout.
     {
         import drivers.veracrypt_impl : bootHasInstallPayload;
         import drivers.block.disk : diskFirstSectorIsGpt;

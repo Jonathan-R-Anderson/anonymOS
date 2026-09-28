@@ -639,6 +639,20 @@ __gshared const(ubyte)* g_instSrc;
 __gshared bool   g_abInstall;
 __gshared ulong  g_instSlotBFirst, g_instBootEspFirst, g_instBootEspSectors;
 __gshared const(ubyte)* g_instBootSrc;
+// VMM: optional ISO-store partition (streamed after the ESP-boot arbiter, before DONE).
+// g_instIsoSrc is null when no ISO store is written (no pfsense.iso module staged, an
+// encrypted install, or a disk too small for it), in which case nothing below changes the
+// layout or the phase sequence — a normal install is byte-for-byte unaffected.
+__gshared ulong  g_instIsoFirst, g_instIsoSectors;
+__gshared const(ubyte)* g_instIsoSrc;
+// ISO commit marker: the installed OS recognises the ISO store by the ISO9660 primary volume
+// descriptor (0x01 "CD001", byte 32768 = partition sector 64 — core.syscalls.posix
+// isoStoreFindAB).
+// So that sector is zeroed when the GPT is written, streamed as ZEROS, and the real PVD is
+// written only after the whole image is on disk: an interrupted or failed stream leaves no
+// CD001, and the partial image is never exposed as /home/user/isos/pfsense.iso.
+private enum ulong INST_ISO_PVD_REL = 64;
+__gshared ubyte[512] g_instZeroSector;       // stays all-zero (BSS)
 __gshared InstallWriteCap g_instCap;
 private enum size_t INST_CONFIG_MAX = 8192;
 private enum uint INST_SECRET_MAX = 128;
@@ -652,6 +666,7 @@ private enum ubyte INST_PHASE_HEADERS = 5;
 private enum ubyte INST_PHASE_SLOTB = 6;     // UPDATE U1-B: stream esp-image → slot-B
 private enum ubyte INST_PHASE_BOOTESP = 7;   // UPDATE U1-B: stream esp-boot (arbiter) → ESP-boot
 private enum ubyte INST_PHASE_FDE_IMAGE = 8;  // §E6 Full disk: descriptor v3 + esp-image → sys partition
+private enum ubyte INST_PHASE_ISO_IMAGE = 9;  // VMM: stream pfsense.iso → the ISO-store partition (A/B, non-encrypted)
 private enum ulong INST_HIDDEN_HDR_OFFSET = 128; // VeraCrypt hidden header, 64 KiB into outer volume.
 __gshared char[INST_CONFIG_MAX] g_instConfig;
 __gshared uint g_instConfigLen;
@@ -1965,10 +1980,23 @@ public bool installBegin(int idx, ulong dsec) {
     ulong bootPhys = 0, bootSize = 0;
     const bool abInstall = !enc && instFindModule("esp-boot-image", bootPhys, bootSize);
     const ulong bootEspSectors = abInstall ? ((bootSize + SEC - 1) / SEC) : 0;
+    // VMM: an optional pfsense.iso module gets its own partition after slot-B (A/B, non-
+    // encrypted installs only).  Absent → isoSectors stays 0 and the layout + phase sequence
+    // are unchanged, so a normal install is byte-for-byte identical to before.
+    ulong isoPhys = 0, isoSize = 0;
+    bool haveIso = abInstall && instFindModule("pfsense.iso", isoPhys, isoSize);
+    ulong isoSectors = haveIso ? ((isoSize + SEC - 1) / SEC) : 0;
     if (!enc) {
         const ulong need = abInstall ? (2048 + bootEspSectors + 2 * espSectors + 2048 + 64)
                                      : (espSectors + 2048 + 64);
         if (dsec < need) { klog("[install] FAIL: target disk too small\n"); g_instFailed = true; return false; }
+        // The ISO store is best-effort: it needs its partition AND ≥64 MiB of object-store tail
+        // past it (131072 sectors), so the installed system keeps a persistent /home.  A disk that
+        // fits the A/B layout but not that gets a normal install without the ISO, not a failure.
+        if (haveIso && dsec < need + isoSectors + 131072) {
+            klog("[install] WARN: target disk too small for the ISO store (+64 MiB /home tail); installing WITHOUT pfsense.iso\n");
+            haveIso = false; isoSectors = 0;
+        }
     }
     klog("[install] begin idx=0x"); klog_hex(idx); klog(" image=0x"); klog_hex(size);
     klog("B sectors=0x"); klog_hex(espSectors); klog("\n");
@@ -1982,17 +2010,49 @@ public bool installBegin(int idx, ulong dsec) {
         random_get_bytes(g_instSaltH.ptr, cast(ulong)g_instSaltH.length);
     }
 
+    // Past every pre-write check: the disk is about to be rewritten.  A live session booted on an
+    // already-installed disk has its object store MOUNTED in that disk's old free tail -- exactly
+    // where the new layout may put slot-B or the ISO store (isoFirst = align2048(slotBLast+1) is
+    // the old tail base) -- and its /home autosave (every 30 s, and on reboot) would then write
+    // into the new partitions.  Detach it first.  diskStoreIndex() is the disk the store writes;
+    // if it cannot be identified, assume it is the target.  Also drop every disk-backed rtfs file
+    // (an old install's /home/user/isos/pfsense.iso): its LBAs describe the OLD layout, and
+    // reading or deleting it (which zeroes a sector) must not reach the new one.  Done
+    // unconditionally -- this live session is being replaced, and it only loses a view.
+    {
+        import drivers.block.disk : diskStoreIndex;
+        import core.objstore : objstoreMounted, objstoreDetach;
+        import core.syscalls.posix : isoStoreForgetAll;
+        ulong storeSec;
+        const int storeIdx = diskStoreIndex(storeSec);
+        if (objstoreMounted() && (storeIdx < 0 || storeIdx == idx))
+            objstoreDetach();                        // logs "[objstore] detached"
+        isoStoreForgetAll();
+    }
+
     g_instCap = mintInstallWriteCap(idx);
     GptLayout L;
     bool gptOk;
     if (enc)
         gptOk = gptWriteEncryptedToDisk(idx, dsec, espSectors, sysSectors, L);
     else if (abInstall)
-        gptOk = gptWriteABToDisk(idx, dsec, bootEspSectors, espSectors, L);
+        gptOk = gptWriteABToDisk(idx, dsec, bootEspSectors, espSectors, isoSectors, L);
     else
         gptOk = gptWriteBootableEsp(idx, dsec, espSectors, L);
     if (!gptOk) {
         klog("[install] FAIL (gpt)\n");
+        revokeInstallWriteCap(g_instCap);
+        instClearTransientPasswords();
+        instClearHiddenInstallState();
+        g_instFailed = true;
+        return false;
+    }
+    // ISO commit marker (see INST_ISO_PVD_REL): clear any PVD an earlier install left where the
+    // new ISO store lies BEFORE anything else is streamed, so an install interrupted at any point
+    // from here on cannot leave a CD001 over a partial image.
+    if (haveIso && isoSectors > INST_ISO_PVD_REL &&
+        !gatedDiskWrite(g_instCap, idx, L.isoFirst + INST_ISO_PVD_REL, 1, g_instZeroSector.ptr)) {
+        klog("[install] FAIL (ISO store PVD clear)\n");
         revokeInstallWriteCap(g_instCap);
         instClearTransientPasswords();
         instClearHiddenInstallState();
@@ -2037,9 +2097,12 @@ public bool installBegin(int idx, ulong dsec) {
     g_instBootEspFirst = abInstall ? L.bootEspFirst : 0;
     g_instBootEspSectors = bootEspSectors;
     g_instBootSrc = abInstall ? cast(const(ubyte)*) phys_to_virt(bootPhys) : null;
+    g_instIsoFirst   = haveIso ? L.isoFirst   : 0;
+    g_instIsoSectors = haveIso ? isoSectors   : 0;
+    g_instIsoSrc     = haveIso ? cast(const(ubyte)*) phys_to_virt(isoPhys) : null;
     g_instTotal = hidden ? (espSectors + g_instSysSectors + g_instOuterSectors + decoyImageSectors + hiddenImageSectors + 1 + 3)
                 : fde    ? (espSectors + g_instSysSectors + g_instOuterSectors + hiddenImageSectors + 1 + 1)
-                : (abInstall ? (2 * espSectors + bootEspSectors) : espSectors);
+                : (abInstall ? (2 * espSectors + bootEspSectors + isoSectors) : espSectors);
     g_instOff = 0;
     g_instLastBeat = 0;
     g_instActive = true; g_instDone = false; g_instFailed = false;
@@ -2170,8 +2233,10 @@ public void installStep(uint maxSectors) {
         // (src+off → lba). They share the streaming loop; only the completion transition
         // differs. INST_PHASE_ESP targets slot-A (the active slot) in A/B mode.
         if (g_instPhase == INST_PHASE_ESP || g_instPhase == INST_PHASE_SLOTB ||
-            g_instPhase == INST_PHASE_BOOTESP) {
-            const(ubyte)* src = (g_instPhase == INST_PHASE_BOOTESP) ? g_instBootSrc : g_instSrc;
+            g_instPhase == INST_PHASE_BOOTESP || g_instPhase == INST_PHASE_ISO_IMAGE) {
+            const(ubyte)* src = (g_instPhase == INST_PHASE_BOOTESP)   ? g_instBootSrc
+                              : (g_instPhase == INST_PHASE_ISO_IMAGE) ? g_instIsoSrc
+                              : g_instSrc;
             while (g_instRemaining > 0 && did < maxSectors) {
                 // 1 MiB per command, not the historical 64 KiB: this is a straight copy out of the
                 // boot module with no crypto in the way, so the only cost per command is the AHCI
@@ -2180,7 +2245,15 @@ public void installStep(uint maxSectors) {
                 uint chunk = cast(uint)(g_instRemaining > INST_STAGE_SECTORS ? INST_STAGE_SECTORS : g_instRemaining);
                 if (chunk > maxSectors - did) chunk = maxSectors - did;
                 if (chunk == 0) break;
-                if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, chunk, src + g_instOff)) {
+                const(void)* wsrc = src + g_instOff;
+                // ISO store: never stream the real PVD sector (see INST_ISO_PVD_REL).  End the chunk
+                // just before it, then write that one sector as zeros; the completion commits it.
+                if (g_instPhase == INST_PHASE_ISO_IMAGE) {
+                    const ulong pvd = g_instIsoFirst + INST_ISO_PVD_REL;
+                    if (g_instLba == pvd) { chunk = 1; wsrc = g_instZeroSector.ptr; }
+                    else if (g_instLba < pvd && g_instLba + chunk > pvd) chunk = cast(uint)(pvd - g_instLba);
+                }
+                if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, chunk, wsrc)) {
                     klog("[install] FAIL (write @lba=0x"); klog_hex(g_instLba); klog(")\n");
                     revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
                     instClearTransientPasswords(); instClearHiddenInstallState();
@@ -2244,17 +2317,44 @@ public void installStep(uint maxSectors) {
                 continue;
             }
 
-            // A/B: ESP-boot (arbiter) done → initialize the boot-state to slot-A, finish.
+            // A/B: ESP-boot (arbiter) done → boot-state to slot-A.  If a pfsense.iso is staged,
+            // stream it into the ISO-store partition next; otherwise finish here.
             if (g_instPhase == INST_PHASE_BOOTESP) {
                 import core.bootstate : bootStateInit, SLOT_A;
                 if (!bootStateInit(SLOT_A))
                     klog("[install] WARN: boot-state init failed (arbiter defaults to slot A)\n");
                 else
                     klog("[install] A/B: boot-state initialized (active=slot A, tries reset)\n");
+                if (g_instIsoSrc !is null && g_instIsoSectors > 0) {
+                    g_instPhase = INST_PHASE_ISO_IMAGE;
+                    g_instLba = g_instIsoFirst; g_instRemaining = g_instIsoSectors; g_instOff = 0;
+                    klog("[install] VMM: streaming pfsense.iso → ISO store @lba=0x"); klog_hex(g_instIsoFirst); klog("\n");
+                    continue;
+                }
                 revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
                 instClearTransientPasswords(); instClearHiddenInstallState();
                 klog("[install] DONE (A/B): idx=0x"); klog_hex(g_instIdx);
                 klog(" — arbiter → slot A → limine → EpinAnonymOS\n");
+                return;
+            }
+
+            // A/B: ISO store streamed → commit its PVD (the last write, so CD001 on disk means the
+            // whole image is there), then finish.  The installed OS finds this partition by that
+            // ISO9660 signature and exposes it as /home/user/isos/pfsense.iso (disk-backed,
+            // ~0 RAM), which the VMM boots and the user can delete to reclaim the space.
+            if (g_instPhase == INST_PHASE_ISO_IMAGE) {
+                if (g_instIsoSectors > INST_ISO_PVD_REL &&
+                    !gatedDiskWrite(g_instCap, g_instIdx, g_instIsoFirst + INST_ISO_PVD_REL, 1,
+                                    g_instIsoSrc + INST_ISO_PVD_REL * SEC)) {
+                    revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                    instClearTransientPasswords(); instClearHiddenInstallState();
+                    klog("[install] FAIL (ISO store PVD commit) — pfsense.iso not exposed\n");
+                    return;
+                }
+                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
+                instClearTransientPasswords(); instClearHiddenInstallState();
+                klog("[install] DONE (A/B +ISO): idx=0x"); klog_hex(g_instIdx);
+                klog(" — pfsense.iso written to the ISO store\n");
                 return;
             }
         }

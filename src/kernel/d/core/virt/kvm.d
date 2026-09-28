@@ -720,9 +720,20 @@ long kvmVcpuRun(int tid, uint vcpuObj, uint vcpuGen) {
         vc.state = VcpuState.Runnable;
         return E_INVAL;
     }
+    // Persist the post-exit guest registers so KVM_GET_REGS and MMIO decode see
+    // the current state (the entry loaded them into the local `regs`).
+    foreach (i; 0 .. 18) vc.regs[i] = (&regs.rax)[i];
     // Real exit path: the backend decoded the hardware exit into xi; the
     // HW-pure dispatcher populates struct kvm_run.
     VmExitAction act = virtDispatchExit(xi, run, vm, vc);
+    // MMIO enrichment: the dispatcher emits KVM_EXIT_MMIO with len=0 (address +
+    // direction only).  Decode the faulting instruction to fill len + write data
+    // so the VMM / an ioeventfd sees a complete access (unpaged-flat guests;
+    // paged guests fall back to userspace decode).
+    if (run.exitReason == KVM_EXIT_MMIO) {
+        import core.virt.mmio : mmioEnrichMmioExit;
+        cast(void) mmioEnrichMmioExit(vm, vc, &regs, sregs, run);
+    }
     if (act == VmExitAction.VmContained)
         return E_IO; // contained failure; VM is Dying, never re-entered
     return 0;

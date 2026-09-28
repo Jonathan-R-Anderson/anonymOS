@@ -24,6 +24,10 @@
 module core.virt.mmio;
 
 import core.io : klog;
+import core.virt.vm : Vm, Vcpu;
+import core.virt.slat : slatLookup;
+import core.virt.kvmabi : KvmRegs, KvmSRegs, KvmRun, KVM_EXIT_MMIO;
+import core.exports : phys_to_virt;
 
 extern (C) @nogc nothrow:
 
@@ -148,6 +152,68 @@ public MmioAccess mmioDecode(const(ubyte)* p, size_t n, bool is64) {
     a.imm     = immVal;
     a.reg     = regIsData ? regNum : 0;
     return a;
+}
+
+// x86 GPR number (ModRM/REX encoding) -> KvmRegs field index.  KvmRegs order is
+// rax,rbx,rcx,rdx,rsi,rdi,rsp,rbp,r8..r15; the ModRM/REX number order is
+// rax,rcx,rdx,rbx,rsp,rbp,rsi,rdi,r8..r15 — they differ for indices 1..7.
+private ulong mmioRegValue(const(KvmRegs)* regs, ubyte x86reg) {
+    ubyte idx;
+    switch (x86reg) {
+        case 0:  idx = 0; break; // rax
+        case 1:  idx = 2; break; // rcx
+        case 2:  idx = 3; break; // rdx
+        case 3:  idx = 1; break; // rbx
+        case 4:  idx = 6; break; // rsp
+        case 5:  idx = 7; break; // rbp
+        case 6:  idx = 4; break; // rsi
+        case 7:  idx = 5; break; // rdi
+        case 8: .. case 15: idx = x86reg; break; // r8..r15 line up
+        default: return 0;
+    }
+    return (&regs.rax)[idx];
+}
+
+// Enrich a SLAT-fault MMIO exit (KVM_EXIT_MMIO, len still 0) by decoding the
+// faulting guest instruction to fill mmio.len and, for writes, mmio.data.
+// Returns true if it decoded and filled the exit; false if it declined (caller
+// leaves len=0 and userspace decodes).  Scope: UNPAGED-FLAT guests (RIP linear
+// == guest-physical, CS base 0); paged guests need a guest CR3 page-table walk
+// and fall back to false for now.  For reads, mmio.len is set so userspace/the
+// device knows the width; the read-completion writeback into the destination
+// register happens on KVM_RUN re-entry (a later tier).
+public bool mmioEnrichMmioExit(Vm* vm, Vcpu* vc, const(KvmRegs)* regs,
+                               const(KvmSRegs)* sregs, KvmRun* run) @nogc nothrow {
+    if (vm is null || regs is null || run is null) return false;
+    if (run.exitReason != KVM_EXIT_MMIO) return false;
+    if (run.u.mmio.len != 0) return true;                 // already decoded
+    const bool paged    = sregs !is null && (sregs.cr0 & (1UL << 31)) != 0; // CR0.PG
+    const bool longmode = sregs !is null && (sregs.efer & (1UL << 10)) != 0; // EFER.LMA
+    if (paged) return false;                              // TODO: guest CR3 walk
+
+    // Fetch up to 15 instruction bytes at GPA = RIP, honoring the EPT mapping and
+    // the guest page boundary.
+    ubyte[16] buf = 0; size_t got = 0;
+    const ulong rip = regs.rip;
+    while (got < 15) {
+        const ulong lin = rip + got;
+        const ulong hpa = slatLookup(&vm.slat, lin & ~0xFFFUL);
+        if (hpa == 0) break;                              // instruction page not mapped
+        auto page = cast(ubyte*)phys_to_virt(hpa);
+        ulong off = lin & 0xFFF;
+        while (off < 4096 && got < 15) { buf[got++] = page[off]; ++off; }
+    }
+    if (got == 0) return false;
+
+    const acc = mmioDecode(buf.ptr, got, longmode);
+    if (!acc.valid) return false;
+    run.u.mmio.len     = acc.size;
+    run.u.mmio.isWrite = acc.isWrite ? 1 : 0;
+    if (acc.isWrite) {
+        const ulong val = acc.isImm ? cast(ulong) acc.imm : mmioRegValue(regs, acc.reg);
+        foreach (k; 0 .. acc.size) run.u.mmio.data[k] = cast(ubyte)(val >> (8 * k));
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------

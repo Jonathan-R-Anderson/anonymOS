@@ -1117,3 +1117,82 @@ public void vmxInterruptWindowProof() @nogc nothrow {
         klog(" lastReason="); klog_hex(cast(ulong)cast(uint)lastReason); klog("\n");
     }
 }
+
+// MMIO first-light proof: a guest whose only instruction is a store to an
+// UNMAPPED guest-physical address faults with an EPT violation (SLAT fault).
+// We run the real dispatch (-> KVM_EXIT_MMIO with len=0) and then the MMIO
+// enrichment (instruction decode) and assert it recovered the access width and
+// the written value.  This proves the EPT-violation -> decode -> fill-data path
+// that device MMIO and ioeventfd depend on.
+__gshared bool g_vmxMmioDone = false;
+public void vmxMmioFirstLightProof() @nogc nothrow {
+    if (g_vmxMmioDone) return;
+    g_vmxMmioDone = true;
+    if (!vmxDetect()) return;
+    import core.virt.kvm : kvmCreateVm, kvmCreateVcpu;
+    import core.virt.kvmabi : KvmRun, KVM_EXIT_MMIO;
+    import core.virt.vmexit : virtDispatchExit;
+    import core.virt.mmio : mmioEnrichMmioExit;
+
+    const int tid = cast(int)g_current_task_id;
+    const long vh = kvmCreateVm(tid);
+    if (vh < 0) { klog("[vmx] mmio: kvmCreateVm failed\n"); return; }
+    uint vo, vg; kvmUnpackHandle(cast(ulong)vh, vo, vg);
+    Vm* vm = vmCheck(vo, vg);
+    if (vm is null) { klog("[vmx] mmio: vmCheck null\n"); return; }
+    const long ch = kvmCreateVcpu(vo, vg, 0);
+    if (ch < 0) { klog("[vmx] mmio: kvmCreateVcpu failed\n"); return; }
+    uint co, cg; kvmUnpackHandle(cast(ulong)ch, co, cg);
+    Vcpu* vc = vcpuCheckObj(co, cg);
+    if (vc is null) { klog("[vmx] mmio: vcpuCheckObj null\n"); return; }
+
+    const ulong gpage = alloc_phys_page();
+    if (gpage == 0) { klog("[vmx] mmio: no guest page\n"); return; }
+    auto gp = cast(ubyte*)phys_to_virt(gpage);
+    foreach (i; 0 .. 4096) gp[i] = 0;
+    // mov dword [0x2000], 0x12345678  (C7 05 <disp32=0x2000> <imm32>) ; hlt
+    gp[0] = 0xC7; gp[1] = 0x05; gp[2] = 0x00; gp[3] = 0x20; gp[4] = 0x00; gp[5] = 0x00;
+    gp[6] = 0x78; gp[7] = 0x56; gp[8] = 0x34; gp[9] = 0x12;
+    gp[10] = 0xF4;                                        // hlt (unreached: the store faults)
+    if (!slatMap(&vm.slat, 0, gpage, 1 | 2 | 4)) { klog("[vmx] mmio: slatMap failed\n"); return; }
+    // GPA 0x2000 is deliberately left UNMAPPED -> the store EPT-violates.
+
+    KvmRegs regs;
+    regs.rsp = 0x0FF0; regs.rip = 0; regs.rflags = 0x2;
+    KvmSRegs s;
+    s.cr0 = 0x1;                                          // PE=1, PG=0 (unpaged flat)
+    s.cs = vmxFlatSeg(0x08, 0xB, 1, 1, 1, 0xFFFFFFFF);
+    s.ds = vmxFlatSeg(0x10, 0x3, 1, 1, 1, 0xFFFFFFFF);
+    s.es = s.ss = s.fs = s.gs = s.ds;
+    s.tr = vmxFlatSeg(0x18, 0xB, 0, 0, 0, 0x67);
+    s.ldt.unusable = 1;
+    s.gdt.limit = 0xFFFF; s.idt.limit = 0xFFFF;
+
+    VirtExitInfo xi;
+    const int rc = vmxEnter(vm, vc, &regs, &s, &xi);
+    if (rc != VMX_OK || xi.hardwareReason != EXIT_REASON_EPT_VIOLATION) {
+        klog("[vmx] mmio: FAIL no EPT-violation exit rc=");
+        klog_hex(cast(ulong)cast(uint)rc); klog(" reason="); klog_hex(xi.hardwareReason); klog("\n");
+        return;
+    }
+    // Persist post-exit regs (as kvmVcpuRun does) so the decode reads current state.
+    foreach (i; 0 .. 18) vc.regs[i] = (&regs.rax)[i];
+    const ulong rpage = alloc_phys_page();
+    if (rpage == 0) { klog("[vmx] mmio: no run page\n"); return; }
+    auto run = cast(KvmRun*)phys_to_virt(rpage);
+    foreach (i; 0 .. KvmRun.sizeof) (cast(ubyte*)run)[i] = 0;
+    cast(void) virtDispatchExit(xi, run, vm, vc);         // -> KVM_EXIT_MMIO, physAddr=0x2000, len=0
+    const bool enriched = mmioEnrichMmioExit(vm, vc, &regs, &s, run);
+
+    ulong wr = 0; foreach (k; 0 .. 4) wr |= (cast(ulong)run.u.mmio.data[k]) << (8 * k);
+    if (enriched && run.exitReason == KVM_EXIT_MMIO && run.u.mmio.physAddr == 0x2000
+        && run.u.mmio.len == 4 && run.u.mmio.isWrite == 1 && wr == 0x12345678) {
+        klog("[vmx] MMIO FIRST LIGHT PASS: EPT-violation store decoded (gpa=0x2000 len=4 data=0x12345678)\n");
+    } else {
+        klog("[vmx] mmio: FAIL enriched="); klog_hex(enriched ? 1 : 0);
+        klog(" gpa="); klog_hex(run.u.mmio.physAddr);
+        klog(" len="); klog_hex(run.u.mmio.len);
+        klog(" data="); klog_hex(wr); klog("\n");
+    }
+    free_phys_page(rpage);
+}

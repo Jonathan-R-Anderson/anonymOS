@@ -1859,6 +1859,31 @@ private void maybeSpawnIdle() {
 // the real CH runs in the Linux personality and how far it gets against the KVM
 // compat layer; NOT the production launch path (that is a DEVCLASS_VIRT domain).
 __gshared int g_chProbeTid = -1;
+// `CHPROBE=1 make iso` stages the /epin-chprobe.conf marker to run the probe (mirrors
+// debugUsbBootPresent); a normal image never carries it, so the probe stays off.
+private __gshared int g_chProbeBoot = -1;   // -1=unknown, 0=no, 1=yes (cached)
+private bool vmmChProbeBootPresent() {
+    if (g_chProbeBoot < 0) {
+        g_chProbeBoot = 0;
+        if (g_mboot_modules !is null && g_module_count > 0) {
+            auto recs = cast(ubyte*)g_mboot_modules;
+            for (int i = 0; i < g_module_count; i++) {
+                auto rec = cast(multiboot_module_t*)(recs + i * 128);
+                const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
+                const(char)* modBase = modName;
+                for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+                if (cstrEqK(modBase, "epin-chprobe.conf")) { g_chProbeBoot = 1; break; }
+            }
+        }
+    }
+    return g_chProbeBoot == 1;
+}
+// `cloud-hypervisor --version`: prints its version to stdout (serial) and exits 0 — an
+// unambiguous proof the VMM starts, runs and exits cleanly.  execveTask snapshots argv through
+// raw pointers while the kernel half is mapped, so a kernel-memory argv is fine.
+private __gshared immutable(char)[] g_chArg0 = "/cloud-hypervisor\0";
+private __gshared immutable(char)[] g_chArg1 = "--version\0";
+private __gshared ulong[3] g_chArgv;
 // EXPERIMENTAL, off by default: set true (and rebuild) to have the supervisor
 // loop spawn Cloud Hypervisor once for in-OS bring-up testing.  Kept off so it
 // never affects a normal boot; the in-OS launch path is still being brought up.
@@ -1881,8 +1906,9 @@ private void maybeSpawnCloudHypervisorProbe() {
     uint savedUntyped = physActiveUntyped();
     ulong savedCur = g_current_task_id;
     physSetActiveUntyped(g_tasks[t].untypedObjId);
-    klog("[ch] probe: spawning /cloud-hypervisor (unconfined; stdout/err -> serial)\n");
-    long r = execveTask(t, cast(ulong)"/cloud-hypervisor\0".ptr, 0, 0);
+    klog("[ch] probe: spawning /cloud-hypervisor --version (unconfined; stdout/err -> serial)\n");
+    g_chArgv[0] = cast(ulong)g_chArg0.ptr; g_chArgv[1] = cast(ulong)g_chArg1.ptr; g_chArgv[2] = 0;
+    long r = execveTask(t, cast(ulong)"/cloud-hypervisor\0".ptr, cast(ulong)g_chArgv.ptr, 0);
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
     g_current_task_id = savedCur;
@@ -5361,15 +5387,12 @@ private void kernelLoop() {
         maybeSpawnNmcli();     // M2b: confirm NM is up by querying it over D-Bus with nmcli
         maybeSpawnLogUpload(); // debug: snapshot logs and scp them when a client is staged
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
-        // VMM bring-up probe (EXPERIMENTAL, opt-in): run Cloud Hypervisor once and
-        // watch it on serial.  Off by default — enable with the `chprobe` kernel
-        // cmdline flag.  NOTE: in headless VBox the boot quiesces at idle-spawn
-        // before this supervisor-loop trigger iterates enough to fire; the in-OS
-        // launch path (and CH's own personality syscall needs) is the open next
-        // step.  See docs/hw-bringup/CLOUD_HYPERVISOR.md and maybeSpawnCloudHypervisorProbe.
-        if (g_chProbeEnabled) {
-            static __gshared ulong g_chDelay = 0;
-            if (g_idleTid >= 0 && ++g_chDelay == 300) maybeSpawnCloudHypervisorProbe();
+        // VMM bring-up probe (opt-in): run Cloud Hypervisor once and watch it on serial.  Off by
+        // default; `CHPROBE=1 make iso` stages the marker that enables it.  Fires on the first
+        // supervisor iteration after the idle task exists (the one-shot guard in the probe stops
+        // any respawn).  See docs/hw-bringup/CLOUD_HYPERVISOR.md.
+        if (g_chProbeEnabled || vmmChProbeBootPresent()) {
+            if (g_idleTid >= 0) maybeSpawnCloudHypervisorProbe();
         }
 
         int tid = cast(int)g_current_task_id;

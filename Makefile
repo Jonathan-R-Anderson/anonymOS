@@ -1174,6 +1174,14 @@ stage-iso-tree: kernel.elf $(WLSOFTWARE_BIN) $(PKGFETCH_BIN) $(SOFTWARE_CATALOG)
 	printf '    module_path: boot():/hos-thread-test\n' >> cd/boot/limine/limine.conf
 	@echo "Included hos-thread-test (diag: cross-thread wakeup)"
 
+	@# VMM bring-up: `CHPROBE=1 make iso` stages the /epin-chprobe.conf marker, which makes the
+	@# kernel run `/cloud-hypervisor --version` once after boot (output on serial).  Test images only.
+	@if [ -n "$(CHPROBE)" ]; then \
+		printf 'epin cloud-hypervisor probe marker\n' > cd/epin-chprobe.conf; \
+		printf '    module_path: boot():/epin-chprobe.conf\n' >> cd/boot/limine/limine.conf; \
+		echo "Included /epin-chprobe.conf (CHPROBE=1: run cloud-hypervisor --version after boot)"; \
+	fi
+
 	@# DECOY_DISTRO US0: opt-in USB — `USB=1 make iso` stages the /epin-usb.conf marker so
 	@# the kernel grants the xHCI to the LKL (usb-storage). OFF by default to preserve the
 	@# FW13 no-IOMMU freeze fix; enable only for QEMU USB testing / the decoy-install path.
